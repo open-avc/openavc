@@ -19,6 +19,7 @@ from pathlib import Path
 from server.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
+    REM_BASE_PX,
     RULES,
 )
 
@@ -86,8 +87,8 @@ export interface ControlMinimumRule {
 /** The screen every percentage is reasoned about against. */
 export const UI_REFERENCE = { widthPx: %(ref_w)d, heightPx: %(ref_h)d };
 
-/** The panel's rem base: style measurements are px / 14. */
-export const REM_BASE_PX = 14;
+/** The panel's rem base: style measurements are px / %(rem_base)d. */
+export const REM_BASE_PX = %(rem_base)d;
 
 """
 
@@ -127,7 +128,11 @@ def render() -> str:
         indent=2,
         ensure_ascii=False,
     )
-    types = TYPES % {"ref_w": REFERENCE_WIDTH_PX, "ref_h": REFERENCE_HEIGHT_PX}
+    types = TYPES % {
+        "ref_w": REFERENCE_WIDTH_PX,
+        "ref_h": REFERENCE_HEIGHT_PX,
+        "rem_base": REM_BASE_PX,
+    }
     table = (
         "export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =\n"
         f"{body} as const;\n\n"

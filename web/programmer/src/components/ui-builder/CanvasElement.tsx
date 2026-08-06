@@ -8,9 +8,11 @@ interface CanvasElementProps {
   placementFor: (id: string) => Placement;
   selectedIds: string[];
   previewMode: boolean;
-  overlappingIds: Set<string>;
-  outOfBoundsIds: Set<string>;
-  smallTouchIds: Set<string>;
+  /** Everything each element will draw wrong, already in words, from the shared
+   *  page review. One entry per element; several findings arrive joined, because
+   *  a control can be starved AND overlapping AND out of its container and
+   *  showing only the first would hide the other two behind fixing it. */
+  warningsByElement: Map<string, string>;
   lockedIds: Set<string>;
   /** Elements this arrangement hides. The iframe draws nothing for them, so the
    *  hit box is the only thing left to select them by — and un-hide them. */
@@ -56,9 +58,7 @@ export function CanvasElement({
   placementFor,
   selectedIds,
   previewMode,
-  overlappingIds,
-  outOfBoundsIds,
-  smallTouchIds,
+  warningsByElement,
   lockedIds,
   hiddenIds,
   gestureKind,
@@ -72,9 +72,6 @@ export function CanvasElement({
   const multiSelected = selected && selectedIds.length > 1;
   const locked = lockedIds.has(element.id);
   const hidden = hiddenIds.has(element.id);
-  const hasOverlap = overlappingIds.has(element.id);
-  const outOfBounds = outOfBoundsIds.has(element.id);
-  const smallTouch = smallTouchIds.has(element.id);
   const isAdoptTarget = adoptTargetId === element.id;
   const children = childrenByParent.get(element.id) ?? [];
 
@@ -103,15 +100,7 @@ export function CanvasElement({
     onContextMenu(e, element.id);
   };
 
-  const warning = outOfBounds
-    ? element.parent
-      ? "This element extends beyond its container"
-      : "This element extends beyond the page"
-    : hasOverlap
-    ? "This element overlaps another"
-    : smallTouch
-    ? "Smaller than a comfortable touch target — see the Layout panel for the physical size"
-    : null;
+  const warning = warningsByElement.get(element.id) ?? null;
 
   return (
     <div
@@ -157,9 +146,7 @@ export function CanvasElement({
           placementFor={placementFor}
           selectedIds={selectedIds}
           previewMode={previewMode}
-          overlappingIds={overlappingIds}
-          outOfBoundsIds={outOfBoundsIds}
-          smallTouchIds={smallTouchIds}
+          warningsByElement={warningsByElement}
           lockedIds={lockedIds}
           hiddenIds={hiddenIds}
           gestureKind={gestureKind}

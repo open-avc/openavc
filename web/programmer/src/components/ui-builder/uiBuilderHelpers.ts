@@ -1,5 +1,19 @@
 import type { UIPage, UIElement, Placement, Layout, SnapConfig, MasterElement, PageGroup, MacroConfig, MacroStep, VariableConfig, ScriptConfig, ProjectConfig } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
+// Both generated, both from Python, because both are measured facts rather than
+// design decisions: the per-control floors were binary-searched against a real
+// browser, and the binding-reach table is read off the panel renderer itself.
+// See server/ui/minimums_gen.py and server/ui/review_gen.py.
+import {
+  CONTROL_MINIMUMS,
+  REM_BASE_PX,
+  type ControlScalingInternal,
+} from "../../api/uiMinimums.gen";
+import {
+  HONORED_SHOW_SLOTS,
+  REVIEWED_SHOW_SLOTS,
+  STATE_LABEL_TYPES,
+} from "../../api/uiBindingReach.gen";
 
 // --- Binding type definitions ---
 
@@ -426,8 +440,12 @@ export function createDefaultElement(
 // wrong in one direction and a typed 24 renders at 336px; get it wrong in the
 // other and every panel in the field silently shrinks by a factor of fourteen.
 
-/** 1rem at the 1280x800 reference, where `1.75vmin` resolves to 14px. */
-export const REM_BASE_PX = 14;
+/** 1rem at the 1280x800 reference, where `1.75vmin` resolves to 14px.
+ *
+ *  Re-exported rather than declared here: the panel's rem base is one fact, and
+ *  the measured control floors are expressed against it, so it comes from the
+ *  same generated table they do. */
+export { REM_BASE_PX };
 
 /**
  * Style keys the panel renders as `rem`.
@@ -2827,8 +2845,13 @@ export function renameElement(
 
 // --- Project validation ---
 
-/** Percentages are floats; a hair over 100 is rounding, not a mistake. */
-const BOUNDS_EPSILON = 0.01;
+/** Percentages are floats; a hair over 100 is rounding, not a mistake.
+ *
+ *  Placements are stored to four decimal places, so this is exactly the
+ *  rounding floor and nothing wider. It used to be 0.01, which quietly forgave
+ *  a hundred times more than rounding can produce -- and the AI door does not
+ *  forgive it, so the two surfaces disagreed about the same file. */
+const BOUNDS_EPSILON = 0.0001;
 
 /**
  * True when a box hangs outside its parent.
@@ -2843,58 +2866,6 @@ export function isOutOfBounds(p: Placement): boolean {
     p.x + p.w > 100 + BOUNDS_EPSILON ||
     p.y + p.h > 100 + BOUNDS_EPSILON
   );
-}
-
-/** IDs of elements hanging outside their parent -- the page, or the container
- *  they belong to. A child's percentages are of its container, so the same
- *  0..100 test covers both cases; only the box it is measured against changes.
- *  Used by the canvas to badge live, not just when Validate is pressed. */
-export function findOutOfBoundsIds(
-  page: UIPage,
-  layoutId?: string | null,
-): Set<string> {
-  const placements = resolvePlacements(page, layoutId);
-  const ids = new Set<string>();
-  for (const el of page.elements) {
-    const p = placements[el.id];
-    if (p && isOutOfBounds(p)) ids.add(el.id);
-  }
-  return ids;
-}
-
-/** IDs of elements that overlap a sibling under the same parent.
- *
- *  Containers are excluded: overlapping their children is the entire point of
- *  being a container. Siblings are only compared within one parent, because a
- *  child's percentages mean nothing next to a page-level element's. */
-export function findOverlappingIds(
-  page: UIPage,
-  layoutId?: string | null,
-): Set<string> {
-  const placements = resolvePlacements(page, layoutId);
-  const ids = new Set<string>();
-  const byParent = new Map<string, UIElement[]>();
-  for (const el of page.elements) {
-    if (el.type === "group") continue;
-    const key = el.parent ?? "";
-    const list = byParent.get(key);
-    if (list) list.push(el);
-    else byParent.set(key, [el]);
-  }
-  for (const siblings of byParent.values()) {
-    for (let i = 0; i < siblings.length; i++) {
-      const a = placements[siblings[i].id];
-      if (!a) continue;
-      for (let j = i + 1; j < siblings.length; j++) {
-        const b = placements[siblings[j].id];
-        if (b && placementsOverlap(a, b)) {
-          ids.add(siblings[i].id);
-          ids.add(siblings[j].id);
-        }
-      }
-    }
-  }
-  return ids;
 }
 
 // --- Touch-target warning (plan section 3.7) ---
@@ -2998,29 +2969,691 @@ export function referenceParentBox(
   return { width, height };
 }
 
-/** Element types a finger actually has to hit. A label being small is fine. */
+/** Whether a finger has to hit this element type at all. */
+export function isTouchable(type: string): boolean {
+  return TOUCHABLE_TYPES.has(type);
+}
+
+/** Element types a finger actually has to hit. A label being small is fine.
+ *
+ *  `fader` and `slider` are here because dragging is touch -- the same thumb
+ *  grabs the handle. Neither can actually reach this check without already
+ *  having failed its contents floor (a fader that holds its handle and scale is
+ *  72x100, a slider 68x81, both past the 53px finger minimum), so they are here
+ *  for consistency: the rule is "a control you touch has a physical minimum",
+ *  and leaving the draggable ones out made it read like a rule about buttons.
+ *  Mirrored in server/ui/page_review.py, with a test asserting the two match. */
 const TOUCHABLE_TYPES = new Set([
   "button", "page_nav", "camera_preset", "select", "text_input", "keypad", "list",
+  "fader", "slider",
 ]);
 
-/** IDs of interactive elements whose box is under the comfortable touch size. */
-export function findSmallTouchTargetIds(
-  page: UIPage,
-  layoutId?: string | null,
-): Set<string> {
-  const placements = resolvePlacements(page, layoutId);
-  const ids = new Set<string>();
-  for (const el of page.elements) {
-    if (!TOUCHABLE_TYPES.has(el.type)) continue;
-    const p = placements[el.id];
-    // A child is a percentage of its container, so the reference box is the
-    // container's own pixels, not the page's -- half a page-width inside a
-    // quarter-page container is an eighth of the panel.
-    if (p && touchTargetWarning(p, referenceParentBox(page, el.id, layoutId))) {
-      ids.add(el.id);
+// --- The page review: what a page will actually draw wrong ---
+//
+// The mirror of server/ui/page_review.py, which runs at the AI write door. The
+// two ask the same questions of the same measured numbers and answer in the
+// same words, down to the byte -- tests/test_ui_review_parity.py pushes a
+// project through both and fails on any difference. That matters because a
+// human starves a status light by dragging exactly as easily as the AI does by
+// sizing, and until now only one of them was ever told.
+//
+// Every message carries the failure twice: in reference pixels, and in the
+// percentage of the element's REAL container to write instead. The second
+// number is the one that was missing. An author edits a percentage of a parent,
+// so "needs 29px" leaves them holding the same arithmetic that produced the
+// problem -- 3% of 1280 is 38px, of which 20 is a dot that does not shrink.
+
+/** One thing that will not draw the way it was written. */
+export interface ReviewFinding {
+  elementId: string;
+  /** Groups findings for a caller that wants to count or filter them. */
+  kind:
+    | "too_small_for_contents"
+    | "small_touch_target"
+    | "outside_its_container"
+    | "overlap"
+    | "no_placement"
+    | "binding_not_rendered";
+  /** The whole finding in one self-contained sentence. */
+  message: string;
+  /** What makes a finding the same finding across two arrangements -- an
+   *  element can collide with three neighbours, and all three are worth saying
+   *  once each rather than once per layout that inherits the collision. */
+  key: string;
+}
+
+/** The theme slice a control minimum can move with (only a slider's thumb). */
+export type ElementDefaults = Record<string, unknown> | null | undefined;
+
+/** A part of a control that keeps its size when the box shrinks. */
+interface ResolvedInternal {
+  part: string;
+  widthPx: number | null;
+  heightPx: number | null;
+}
+
+export interface ControlMinimumBox {
+  widthPx: number;
+  heightPx: number;
+  internals: ResolvedInternal[];
+}
+
+/**
+ * Python's `format(value, '.Nf')`, which rounds ties to EVEN.
+ *
+ * `toFixed` rounds ties away from zero, so the two disagree on any box that
+ * lands exactly on a half pixel -- reachable, because a height is a four-decimal
+ * percentage of 800 and 0.0625% is exactly 0.5px. One digit of difference in one
+ * message is a parity failure, and chasing it later from a red test would cost
+ * far more than writing it correctly once.
+ */
+function fixed(value: number, digits: number): string {
+  const negative = value < 0 || Object.is(value, -0);
+  const scale = 10 ** digits;
+  const scaled = Math.abs(value) * scale;
+  const floor = Math.floor(scaled);
+  const remainder = scaled - floor;
+  const rounded =
+    remainder > 0.5 ? floor + 1
+    : remainder < 0.5 ? floor
+    : floor % 2 === 0 ? floor : floor + 1;
+  const body = (rounded / scale).toFixed(digits);
+  return negative ? `-${body}` : body;
+}
+
+/** A percentage the way it would be written back into a placement. */
+function pct(value: number): string {
+  return fixed(value, 2).replace(/0+$/, "").replace(/\.$/, "") || "0";
+}
+
+function toMm(px: number): number {
+  return (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
+}
+
+/** A table lookup keyed by an element TYPE, which is authored text.
+ *
+ *  A plain object inherits `constructor`, `toString` and friends, so a bare
+ *  `TABLE[el.type]` hands back a function for a type named after one of them
+ *  and the next line throws. Python's `.get` has no such hole; this closes it. */
+function own<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+}
+
+/** Whether this element draws text beside its control.
+ *
+ *  A bound value counts: the caption is rendered either way, and an empty
+ *  string today becomes a device name at runtime. */
+function hasCaption(el: UIElement): boolean {
+  if ((el.label ?? "").trim()) return true;
+  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
+    | Record<string, unknown>
+    | undefined;
+  return !!(show?.text || show?.value);
+}
+
+/** Resolve an authored internal: element wins, then theme, then the default. */
+function scaledInternalPx(
+  scale: ControlScalingInternal,
+  el: UIElement,
+  theme: ElementDefaults,
+): number {
+  let value = (el as unknown as Record<string, unknown>)[scale.property];
+  if ((value === undefined || value === null) && scale.fromTheme && theme) {
+    value = theme[scale.property];
+  }
+  return value === undefined || value === null
+    ? scale.defaultPx
+    : Number(value) * REM_BASE_PX;
+}
+
+/**
+ * The smallest box this element can be drawn in, or null when unbounded.
+ *
+ * Null means the type has no fixed internals at all -- a button, a label, an
+ * image. Those are limited by their text, which is unbounded and theme
+ * dependent, and is therefore not a minimum box.
+ */
+export function controlMinimumBox(
+  el: UIElement,
+  theme?: ElementDefaults,
+): ControlMinimumBox | null {
+  const rule = own(CONTROL_MINIMUMS, el.type);
+  if (!rule) return null;
+  let widthPx = rule.baseWidthPx;
+  let heightPx = rule.baseHeightPx;
+  const internals: ResolvedInternal[] = rule.internals.map((i) => ({
+    part: i.part,
+    widthPx: i.widthPx,
+    heightPx: i.heightPx,
+  }));
+  if (rule.scalesWith) {
+    const size = scaledInternalPx(rule.scalesWith, el, theme);
+    widthPx += rule.scalesWith.widthCoefficient * size;
+    heightPx += rule.scalesWith.heightCoefficient * size;
+    internals.push({
+      part: rule.scalesWith.part,
+      widthPx: rule.scalesWith.widthCoefficient ? size : null,
+      heightPx: rule.scalesWith.heightCoefficient ? size : null,
+    });
+  }
+  if (rule.captionWidthBonusPx && hasCaption(el)) widthPx += rule.captionWidthBonusPx;
+  return { widthPx, heightPx, internals };
+}
+
+/**
+ * The same floor as a percentage of the box the element actually sits in.
+ *
+ * This is the form an authoring surface needs: geometry is percentages, so a
+ * minimum in pixels only becomes actionable once it is divided by the parent.
+ */
+export function controlMinimumPercent(
+  el: UIElement,
+  parentPx: { width: number; height: number },
+  theme?: ElementDefaults,
+): { w: number; h: number } | null {
+  const box = controlMinimumBox(el, theme);
+  if (!box) return null;
+  return {
+    w: (box.widthPx / parentPx.width) * 100,
+    h: (box.heightPx / parentPx.height) * 100,
+  };
+}
+
+function blame(internals: ResolvedInternal[], axis: "width" | "height"): string {
+  const parts = internals
+    .map((i) => ({ part: i.part, size: axis === "width" ? i.widthPx : i.heightPx }))
+    .filter((i) => !!i.size)
+    .map((i) => `${i.part} is ${fixed(i.size as number, 0)}px`);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
+/** Why this box is too small, per axis, with the numbers in it. Empty when it fits. */
+function starvedReasons(
+  box: ControlMinimumBox,
+  widthPx: number,
+  heightPx: number,
+): string[] {
+  const reasons: string[] = [];
+  if (widthPx + 0.5 < box.widthPx) {
+    reasons.push(
+      `${fixed(widthPx, 0)}px wide, needs ${fixed(box.widthPx, 0)}px` +
+        blame(box.internals, "width"),
+    );
+  }
+  if (heightPx + 0.5 < box.heightPx) {
+    reasons.push(
+      `${fixed(heightPx, 0)}px tall, needs ${fixed(box.heightPx, 0)}px` +
+        blame(box.internals, "height"),
+    );
+  }
+  return reasons;
+}
+
+/**
+ * A control smaller than the parts inside it that do not shrink.
+ *
+ * The dominant defect class, and the one nothing could see before the minimums
+ * were measured: the box is a percentage and can be any size, while the dot, the
+ * handle, the thumb and the key grid are pixels and are not negotiable. Below
+ * the floor the control still draws -- it just draws with its contents cut off,
+ * which reads as a styling bug rather than a sizing one.
+ */
+export function starvationFinding(
+  el: UIElement,
+  boxPx: { width: number; height: number },
+  parentPx: { width: number; height: number },
+  parentName: string,
+  theme?: ElementDefaults,
+): ReviewFinding | null {
+  const box = controlMinimumBox(el, theme);
+  if (!box) return null;
+  const reasons = starvedReasons(box, boxPx.width, boxPx.height);
+  if (!reasons.length) return null;
+
+  const need = controlMinimumPercent(el, parentPx, theme);
+  const fixes: string[] = [];
+  if (need) {
+    if (boxPx.width + 0.5 < box.widthPx) fixes.push(`w at least ${pct(need.w)}%`);
+    if (boxPx.height + 0.5 < box.heightPx) fixes.push(`h at least ${pct(need.h)}%`);
+  }
+  const fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  return {
+    elementId: el.id,
+    kind: "too_small_for_contents",
+    message:
+      `${el.id} (${el.type}) is ${fixed(boxPx.width, 0)}x${fixed(boxPx.height, 0)}px at the ` +
+      `${TOUCH_REFERENCE.width}x${TOUCH_REFERENCE.height} reference, too small for what it ` +
+      `draws: ${reasons.join("; ")}.${fix}`,
+    key: `too_small_for_contents|${el.id}`,
+  };
+}
+
+/**
+ * A control a finger will struggle to hit. Physical, not pixel.
+ *
+ * A separate question from starvation with a separate answer: a select holds
+ * everything it draws at 44px tall and is still under the comfortable touch
+ * minimum, which is exactly what shipped.
+ */
+export function touchFinding(
+  el: UIElement,
+  boxPx: { width: number; height: number },
+): ReviewFinding | null {
+  if (!TOUCHABLE_TYPES.has(el.type)) return null;
+  const narrow = boxPx.width < TOUCH_MIN_PX;
+  const short = boxPx.height < TOUCH_MIN_PX;
+  if (!narrow && !short) return null;
+  const axis = narrow && short ? "width and height" : narrow ? "width" : "height";
+  return {
+    elementId: el.id,
+    kind: "small_touch_target",
+    message:
+      `${el.id} (${el.type}) is about ${fixed(boxPx.width, 0)}x${fixed(boxPx.height, 0)}px, roughly ` +
+      `${fixed(toMm(boxPx.width), 1)}x${fixed(toMm(boxPx.height), 1)}mm on a 10-inch panel -- under the ` +
+      `${TOUCH_MIN_MM}mm comfortable touch minimum on ${axis} (${fixed(TOUCH_MIN_PX, 0)}px).`,
+    key: `small_touch_target|${el.id}`,
+  };
+}
+
+/**
+ * A box that runs off the edge of whatever holds it.
+ *
+ * Containers do not clip -- the panel sets `overflow: visible` on any element
+ * with children -- so this draws rather than disappearing. It lands on top of
+ * whatever sits beside the container, which is worse than being cut off,
+ * because it looks intentional.
+ */
+export function overhangFinding(
+  el: UIElement,
+  p: Placement,
+  parentName: string,
+  parentPx: { width: number; height: number },
+): ReviewFinding | null {
+  const sides: string[] = [];
+  if (p.x < -BOUNDS_EPSILON) {
+    sides.push(`${fixed((-p.x / 100) * parentPx.width, 0)}px past the left (x ${pct(p.x)}%)`);
+  }
+  if (p.y < -BOUNDS_EPSILON) {
+    sides.push(`${fixed((-p.y / 100) * parentPx.height, 0)}px past the top (y ${pct(p.y)}%)`);
+  }
+  if (p.x + p.w > 100 + BOUNDS_EPSILON) {
+    sides.push(
+      `${fixed(((p.x + p.w - 100) / 100) * parentPx.width, 0)}px past the right ` +
+        `(x ${pct(p.x)}% + w ${pct(p.w)}% = ${pct(p.x + p.w)}%)`,
+    );
+  }
+  if (p.y + p.h > 100 + BOUNDS_EPSILON) {
+    sides.push(
+      `${fixed(((p.y + p.h - 100) / 100) * parentPx.height, 0)}px past the bottom ` +
+        `(y ${pct(p.y)}% + h ${pct(p.h)}% = ${pct(p.y + p.h)}%)`,
+    );
+  }
+  if (!sides.length) return null;
+  return {
+    elementId: el.id,
+    kind: "outside_its_container",
+    message: `${el.id} extends beyond ${parentName}: ${sides.join(", and ")}.`,
+    key: `outside_its_container|${el.id}`,
+  };
+}
+
+/** An overlap smaller than this on either axis is a rounding artefact. */
+const OVERLAP_MIN_PX = 1.0;
+/** ...and it has to be a visible share of the smaller box, so two controls that
+ *  graze a corner do not read like one sitting on top of another. */
+const OVERLAP_MIN_SHARE = 1.0;
+
+/**
+ * Two controls in the same space sitting on top of each other.
+ *
+ * Checked between siblings only. Boxes under different containers can
+ * legitimately overlap (a group laid over another is a design), and a container
+ * always contains its own children -- neither is a defect, and flagging them
+ * would bury the case that is.
+ */
+export function overlapFinding(
+  a: UIElement, aBox: Placement,
+  b: UIElement, bBox: Placement,
+  parentName: string,
+): ReviewFinding | null {
+  const ox = Math.min(aBox.x + aBox.w, bBox.x + bBox.w) - Math.max(aBox.x, bBox.x);
+  const oy = Math.min(aBox.y + aBox.h, bBox.y + bBox.h) - Math.max(aBox.y, bBox.y);
+  if (ox <= 0 || oy <= 0) return null;
+  const oxPx = (ox / 100) * TOUCH_REFERENCE.width;
+  const oyPx = (oy / 100) * TOUCH_REFERENCE.height;
+  if (oxPx < OVERLAP_MIN_PX || oyPx < OVERLAP_MIN_PX) return null;
+  const smaller = Math.min(aBox.w * aBox.h, bBox.w * bBox.h);
+  const share = smaller ? (100 * (ox * oy)) / smaller : 100;
+  if (share < OVERLAP_MIN_SHARE) return null;
+  return {
+    elementId: a.id,
+    kind: "overlap",
+    message:
+      `${a.id} (${a.type}) and ${b.id} (${b.type}) overlap by ${fixed(oxPx, 0)}x${fixed(oyPx, 0)}px ` +
+      `(${fixed(share, 0)}% of the smaller one) inside ${parentName}.`,
+    key: `overlap|${a.id}|${b.id}`,
+  };
+}
+
+/**
+ * An element the primary arrangement never positions.
+ *
+ * The renderer's fallback for a missing placement is {0, 0, 100, 100} -- it
+ * fills its parent and covers everything already there. Nothing in the file says
+ * so, which makes this the one geometry defect with no geometry to look at.
+ */
+export function noBoxFinding(el: UIElement, parentName: string): ReviewFinding {
+  return {
+    elementId: el.id,
+    kind: "no_placement",
+    message:
+      `${el.id} (${el.type}) has no placement, so it fills ${parentName} edge to edge ` +
+      `and covers whatever is already there. Give it {x, y, w, h}.`,
+    key: `no_placement|${el.id}`,
+  };
+}
+
+/**
+ * Bindings this element type's renderer never reads.
+ *
+ * Nothing rejects these and nothing logs them at runtime: the element draws, the
+ * state key resolves, and the binding simply has no code path behind it for this
+ * type. From the outside it is indistinguishable from a value that never
+ * changes -- and the Builder does not even offer an editor for the slot, so a
+ * binding written by anything else is invisible until it is badged.
+ */
+export function bindingFindings(el: UIElement): ReviewFinding[] {
+  const honored = own(HONORED_SHOW_SLOTS, el.type);
+  if (!honored) return []; // a type this module has never heard of; say nothing
+  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
+    | Record<string, unknown>
+    | undefined;
+  if (!show || typeof show !== "object") return [];
+
+  const findings: ReviewFinding[] = [];
+  const reads =
+    REVIEWED_SHOW_SLOTS.filter((slot) => honored.includes(slot))
+      .map((slot) => `show.${slot}`)
+      .join(", ") || "nothing from show but show.visible_when";
+
+  for (const slot of REVIEWED_SHOW_SLOTS) {
+    if (!show[slot] || honored.includes(slot)) continue;
+    const extra =
+      slot === "look" && honored.includes("value")
+        ? " Put whatever depended on it into show.value (a condition with " +
+          "text_true / text_false), or use a button."
+        : "";
+    findings.push({
+      elementId: el.id,
+      kind: "binding_not_rendered",
+      message:
+        `${el.id} (${el.type}) declares show.${slot}, which a ${el.type} does not render ` +
+        `-- it reads ${reads}. That binding has no effect.${extra}`,
+      key: `binding_not_rendered|${el.id}|${slot}`,
+    });
+  }
+
+  // A look binding can be honored for its colour while its state labels are
+  // not: a status LED tints its dot, a select styles its options, and neither
+  // has anywhere to put text.
+  const look = show.look as Record<string, unknown> | undefined;
+  const states = look && typeof look === "object" ? look.states : undefined;
+  if (
+    honored.includes("look") &&
+    !STATE_LABEL_TYPES.includes(el.type) &&
+    states && typeof states === "object" && !Array.isArray(states)
+  ) {
+    const labelled = Object.entries(states as Record<string, unknown>)
+      .filter(([, spec]) =>
+        spec && typeof spec === "object" && !Array.isArray(spec) &&
+        (spec as Record<string, unknown>).label !== undefined &&
+        (spec as Record<string, unknown>).label !== null)
+      .map(([name]) => name)
+      .sort();
+    if (labelled.length) {
+      findings.push({
+        elementId: el.id,
+        kind: "binding_not_rendered",
+        message:
+          `${el.id} (${el.type}): show.look.states sets a label for ` +
+          `${labelled.join(", ")}, but a ${el.type} takes only colour from show.look, ` +
+          `so that text never appears. Use the element's own label, or a label ` +
+          `element bound to the same key.`,
+        key: `binding_not_rendered|${el.id}|look.states.label`,
+      });
     }
   }
-  return ids;
+  return findings;
+}
+
+/** The page-space box an element's percentages are measured against, in px. */
+function parentBoxPx(
+  parentId: string | null,
+  absolute: Record<string, Placement>,
+): { width: number; height: number } {
+  const box = (parentId ? own(absolute, parentId) : undefined) ?? PAGE_BOX;
+  return {
+    width: (box.w / 100) * TOUCH_REFERENCE.width,
+    height: (box.h / 100) * TOUCH_REFERENCE.height,
+  };
+}
+
+function withWhere(finding: ReviewFinding, where: string): ReviewFinding {
+  if (!where) return finding;
+  return {
+    ...finding,
+    message: finding.message.replace(/\.+$/, "") + `${where}.`,
+  };
+}
+
+export interface ReviewOptions {
+  /** The project's own `theme_overrides.element_defaults.slider`, which is the
+   *  only theme value any control minimum moves with. */
+  theme?: ElementDefaults;
+  /** Only these elements answer. Everything, when omitted. */
+  touched?: Set<string>;
+  /** Review only this arrangement, for a surface that is showing one. Every
+   *  arrangement, when omitted -- which is what the AI door does, because a
+   *  portrait variant can starve a control the primary leaves fine. */
+  layoutId?: string | null;
+}
+
+/**
+ * Everything a page will draw wrong, across every arrangement.
+ *
+ * Ordered and de-duplicated exactly the way the Python side is: bindings are a
+ * property of the element and answered once; geometry is answered per
+ * arrangement with the primary first, so its phrasing wins and a variant only
+ * speaks up about something the primary got right.
+ */
+export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFinding[] {
+  const { theme, touched, layoutId } = options;
+  const inScope = (id: string) => (touched ? touched.has(id) : true);
+  const findings: ReviewFinding[] = [];
+
+  for (const el of page.elements) {
+    if (!inScope(el.id)) continue;
+    findings.push(...bindingFindings(el));
+  }
+
+  const layouts = page.layouts ?? [];
+  if (!layouts.length) return findings;
+
+  const primaryId = primaryLayout(page)?.id;
+  // One arrangement when the caller is looking at one (an unknown id resolves
+  // to the primary, the way every other read of a layout id does).
+  const chosen = layoutId === undefined ? layouts : [layoutById(page, layoutId) ?? layouts[0]];
+  // Primary first: it is the arrangement every variant inherits from, so its
+  // phrasing ("...") beats the variant's ("... in the portrait arrangement").
+  const ordered = [...chosen].sort(
+    (a, b) => Number(a.id !== primaryId) - Number(b.id !== primaryId),
+  );
+  const seen = new Set<string>();
+  for (const layout of ordered) {
+    const where = layout.id === primaryId ? "" : ` in the '${layout.id}' arrangement`;
+    for (const finding of layoutFindings(page, layout.id, {
+      theme,
+      inScope,
+      isPrimary: layout.id === primaryId,
+    })) {
+      if (seen.has(finding.key)) continue;
+      seen.add(finding.key);
+      findings.push(withWhere(finding, where));
+    }
+  }
+  return findings;
+}
+
+/** Every geometry finding for one arrangement. */
+function layoutFindings(
+  page: UIPage,
+  layoutId: string,
+  ctx: {
+    theme?: ElementDefaults;
+    inScope: (id: string) => boolean;
+    isPrimary: boolean;
+  },
+): ReviewFinding[] {
+  const absolute = absolutePlacements(page, layoutId);
+  const ownBoxes = resolvePlacements(page, layoutId);
+  const hidden = resolveHidden(page, layoutId);
+  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const findings: ReviewFinding[] = [];
+
+  const parentOf = (id: string): string | null => {
+    const named = byId.get(id)?.parent;
+    return named && byId.has(named) && named !== id ? named : null;
+  };
+  const parentName = (id: string): string => {
+    const parent = parentOf(id);
+    return parent ? `its container '${parent}'` : "the page";
+  };
+
+  for (const el of page.elements) {
+    if (!ctx.inScope(el.id) || hidden.has(el.id)) continue;
+    const box = own(absolute, el.id);
+    if (!box) {
+      // A variant legitimately carries no delta for an element -- it inherits
+      // one. Only the primary having no box means it has none at all.
+      if (ctx.isPrimary) findings.push(noBoxFinding(el, parentName(el.id)));
+      continue;
+    }
+    const parentPx = parentBoxPx(parentOf(el.id), absolute);
+    const boxPx = {
+      width: (box.w / 100) * TOUCH_REFERENCE.width,
+      height: (box.h / 100) * TOUCH_REFERENCE.height,
+    };
+    const candidates = [
+      starvationFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme),
+      touchFinding(el, boxPx),
+    ];
+    const stored = own(ownBoxes, el.id);
+    if (stored) {
+      candidates.push(overhangFinding(el, stored, parentName(el.id), parentPx));
+    }
+    for (const finding of candidates) if (finding) findings.push(finding);
+  }
+
+  // Siblings, in the space they share.
+  const byParent = new Map<string | null, string[]>();
+  for (const el of page.elements) {
+    if (hidden.has(el.id) || !own(absolute, el.id)) continue;
+    const parent = parentOf(el.id);
+    const kids = byParent.get(parent);
+    if (kids) kids.push(el.id);
+    else byParent.set(parent, [el.id]);
+  }
+  for (const [parent, kids] of byParent) {
+    kids.sort();
+    for (let i = 0; i < kids.length; i++) {
+      for (let j = i + 1; j < kids.length; j++) {
+        if (!ctx.inScope(kids[i]) && !ctx.inScope(kids[j])) continue;
+        const finding = overlapFinding(
+          byId.get(kids[i]) as UIElement, own(absolute, kids[i]) as Placement,
+          byId.get(kids[j]) as UIElement, own(absolute, kids[j]) as Placement,
+          parent ? `'${parent}'` : "the page",
+        );
+        if (finding) findings.push(finding);
+      }
+    }
+  }
+  return findings;
+}
+
+/**
+ * The same checks a master element can be given.
+ *
+ * A master borrows no page's layout -- its box is a percentage of the viewport,
+ * keyed by orientation -- so it has no siblings to collide with and no container
+ * to hang out of. What is left is whether it holds its own contents, whether a
+ * finger can hit it, and whether its bindings are read.
+ */
+export function reviewMasterElement(
+  master: MasterElement,
+  theme?: ElementDefaults,
+): ReviewFinding[] {
+  const findings = bindingFindings(master);
+  const placements = master.placements;
+  if (!placements || typeof placements !== "object") return findings;
+  const seen = new Set<string>();
+  for (const [orientation, box] of Object.entries(placements)) {
+    const boxPx = {
+      width: ((box?.w ?? 100) / 100) * TOUCH_REFERENCE.width,
+      height: ((box?.h ?? 100) / 100) * TOUCH_REFERENCE.height,
+    };
+    if (!Number.isFinite(boxPx.width) || !Number.isFinite(boxPx.height)) continue;
+    const candidates = [
+      starvationFinding(
+        master, boxPx,
+        { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height },
+        "the page", theme,
+      ),
+      touchFinding(master, boxPx),
+    ];
+    for (const finding of candidates) {
+      if (!finding || seen.has(finding.key)) continue;
+      seen.add(finding.key);
+      findings.push(withWhere(finding, ` in the ${orientation} arrangement`));
+    }
+  }
+  return findings;
+}
+
+/**
+ * The review folded into one tooltip per element, for the canvas badges.
+ *
+ * Everything an element is guilty of, not just the first thing -- a control can
+ * be starved AND overlapping AND out of its container, and picking one to show
+ * would hide the other two behind a fix for the one.
+ */
+export function reviewWarningsByElement(
+  page: UIPage,
+  layoutId: string | null = null,
+  theme?: ElementDefaults,
+): Map<string, string> {
+  const byElement = new Map<string, string[]>();
+  for (const finding of reviewPage(page, { theme, layoutId })) {
+    const lines = byElement.get(finding.elementId);
+    if (lines) lines.push(finding.message);
+    else byElement.set(finding.elementId, [finding.message]);
+  }
+  return new Map([...byElement].map(([id, lines]) => [id, lines.join("\n\n")]));
+}
+
+/**
+ * The theme values a control minimum can move with, out of a project.
+ *
+ * Only a slider's thumb moves, and only through `element_defaults`. A custom
+ * theme FILE that changed it is not seen here, but every built-in theme ships
+ * the 44px default, so the project override is the case that can differ.
+ */
+export function sliderThemeDefaults(project: ProjectConfig | null | undefined): ElementDefaults {
+  const overrides = (project?.ui?.settings?.theme_overrides ?? {}) as Record<string, unknown>;
+  const defaults = (overrides.element_defaults ?? {}) as Record<string, unknown>;
+  const slider = defaults.slider;
+  return slider && typeof slider === "object" && !Array.isArray(slider)
+    ? (slider as Record<string, unknown>)
+    : null;
 }
 
 export interface ValidationIssue {
@@ -3130,14 +3763,17 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
     }
   };
 
-  // Check page elements. Geometry is per-arrangement: a portrait variant can
-  // push a control off-screen or shrink it below a finger while the primary is
-  // fine, so every layout is checked -- but an issue is reported once per
-  // element, naming the arrangement only when it isn't the primary's fault.
+  // Check page elements. Geometry and binding reach come back from the shared
+  // review -- the same code, the same numbers and the same sentences the AI
+  // write path answers with, so the two surfaces cannot reach different
+  // verdicts about the same file. Geometry is per-arrangement: a portrait
+  // variant can push a control off-screen or starve it while the primary is
+  // fine, so every layout is checked, and an issue is reported once per element
+  // naming the arrangement only when it isn't the primary's fault.
+  const theme = sliderThemeDefaults(project);
   for (const page of project.ui.pages) {
     const byId = new Map(page.elements.map((e) => [e.id, e]));
     const layoutIds = new Set((page.layouts ?? []).map((l) => l.id));
-    const primaryId = primaryLayout(page)?.id;
 
     // The arrangements themselves: a dangling inherits silently collapses the
     // variant (everything without its own box falls to default placements),
@@ -3158,10 +3794,6 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       }
     }
 
-    const arrangements = (page.layouts ?? []).map((l) => ({
-      layout: l,
-      placements: resolvePlacements(page, l.id),
-    }));
     for (const el of page.elements) {
       checkElement(el, page.id, page.name);
       // A parent that doesn't exist leaves the child unrendered \u2014 the runtime
@@ -3169,33 +3801,30 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       if (el.parent && !byId.has(el.parent)) {
         issues.push({ severity: "error", message: `Container "${el.parent}" does not exist`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
       }
-      let boundsFlagged = false;
-      let touchFlagged = false;
-      for (const { layout, placements } of arrangements) {
-        const inArrangement = layout.id === primaryId ? "" : ` in the "${layout.id}" arrangement`;
-        const p = placements[el.id];
-        if (!boundsFlagged && p && isOutOfBounds(p)) {
-          const where = el.parent ? `its container` : `the page`;
-          issues.push({ severity: "warning", message: `Element extends beyond ${where}${inArrangement}`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
-          boundsFlagged = true;
-        }
-        // Container children are measured against the box they actually sit
-        // in \u2014 half of a small container is a small control, whatever its
-        // percentages say.
-        const touch = p && TOUCHABLE_TYPES.has(el.type)
-          ? touchTargetWarning(p, referenceParentBox(page, el.id, layout.id))
-          : null;
-        if (!touchFlagged && touch) {
-          issues.push({ severity: "warning", message: `Small touch target${inArrangement} (about ${touch.widthPx}\u00d7${touch.heightPx}px on a 1280\u00d7800 panel, roughly ${touch.widthMm}\u00d7${touch.heightMm}mm on a 10" one)`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
-          touchFlagged = true;
-        }
-      }
+    }
+
+    for (const finding of reviewPage(page, { theme })) {
+      issues.push({
+        severity: "warning",
+        message: finding.message,
+        location: `${page.name} > ${finding.elementId}`,
+        pageId: page.id,
+        elementId: finding.elementId,
+      });
     }
   }
 
   // Check master elements
   for (const mel of project.ui.master_elements || []) {
     checkElement(mel, "", "Master Elements");
+    for (const finding of reviewMasterElement(mel, theme)) {
+      issues.push({
+        severity: "warning",
+        message: finding.message,
+        location: `Master Elements > ${finding.elementId}`,
+        elementId: finding.elementId,
+      });
+    }
     if (Array.isArray(mel.pages)) {
       for (const pid of mel.pages) {
         if (!pageIds.has(pid)) {

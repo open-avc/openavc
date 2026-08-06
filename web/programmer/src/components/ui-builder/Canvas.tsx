@@ -7,9 +7,8 @@ import { CanvasElement } from "./CanvasElement";
 import {
   commitGesturePlacements,
   moveElementsInPage,
-  findOutOfBoundsIds,
-  findOverlappingIds,
-  findSmallTouchTargetIds,
+  reviewWarningsByElement,
+  sliderThemeDefaults,
   resolvePlacements,
   pageSnap,
   snapMove,
@@ -145,25 +144,24 @@ export function Canvas({
   void iframeReady;
   void themeVariables;
 
-  const overlappingIds = useMemo(
-    () => (previewMode ? new Set<string>() : findOverlappingIds(page, activeLayoutId)),
-    [page, previewMode, activeLayoutId],
-  );
-
-  // Elements hanging outside their parent still render (containers don't clip)
-  // but usually by accident — flag them live, not just on Validate.
-  const outOfBoundsIds = useMemo(
-    () => (previewMode ? new Set<string>() : findOutOfBoundsIds(page, activeLayoutId)),
-    [page, previewMode, activeLayoutId],
-  );
-
-  // The comfortable finger minimum, which used to be a 44px runtime clamp. As a
-  // clamp it shoved elements out of their boxes into overlap on every touch
-  // panel, so it advises here instead -- and it is stated in millimetres now,
-  // because 44px was under the comfortable size on every panel we ship to.
-  const smallTouchIds = useMemo(
-    () => (previewMode ? new Set<string>() : findSmallTouchTargetIds(page, activeLayoutId)),
-    [page, previewMode, activeLayoutId],
+  // Everything this arrangement will draw wrong, per element, from the same
+  // review the AI write path answers with: a control starved of the parts inside
+  // it that don't shrink, two controls on top of each other, one hanging out of
+  // its container, one with no box at all, one too small for a finger, and a
+  // binding this element type's renderer never reads. Live, not just on
+  // Validate -- a status light gets starved by dragging as easily as by sizing,
+  // and the badge is the moment to notice. Each message carries the pixels AND
+  // the percentage of the real container to type instead.
+  //
+  // The theme slice is stable across renders -- it is the store's own object,
+  // or null -- so it can be a dependency without re-reviewing every render.
+  const sliderTheme = sliderThemeDefaults(project);
+  const warningsByElement = useMemo(
+    () =>
+      previewMode
+        ? new Map<string, string>()
+        : reviewWarningsByElement(page, activeLayoutId, sliderTheme),
+    [page, previewMode, activeLayoutId, sliderTheme],
   );
 
   const placements = useMemo(
@@ -852,9 +850,7 @@ export function Canvas({
                 placementFor={placementFor}
                 selectedIds={selectedElementIds}
                 previewMode={false}
-                overlappingIds={overlappingIds}
-                outOfBoundsIds={outOfBoundsIds}
-                smallTouchIds={smallTouchIds}
+                warningsByElement={warningsByElement}
                 lockedIds={lockedElementIds}
                 hiddenIds={hiddenIds}
                 gestureKind={gesture?.kind ?? null}

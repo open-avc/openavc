@@ -70,8 +70,17 @@ TOUCH_MIN_PX = TOUCH_MIN_MM / 25.4 * TOUCH_PX_PER_INCH
 
 #: Element types a finger actually has to hit. A label being small is fine.
 #: The same set as the Builder's TOUCHABLE_TYPES, so the two agree.
+#:
+#: ``fader`` and ``slider`` are here because dragging is touch -- you grab the
+#: handle with the same thumb. In practice neither can reach this check without
+#: already having failed the contents floor (a fader that holds its handle and
+#: scale is 72x100, a slider 68x81, and every one of those exceeds the 53px
+#: finger minimum), so what they buy is consistency rather than coverage: the
+#: rule is "a control you touch has a physical minimum", and leaving the two
+#: draggable controls out made it read like a rule about buttons.
 TOUCHABLE_TYPES = frozenset({
     "button", "page_nav", "camera_preset", "select", "text_input", "keypad", "list",
+    "fader", "slider",
 })
 
 

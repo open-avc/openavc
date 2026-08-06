@@ -10,10 +10,21 @@ const fs = require("fs");
 const path = require("path");
 
 const helpersPath = process.argv[2];
-const src = fs.readFileSync(helpersPath, "utf8");
 
 const esbuild = require("esbuild");
-const { code } = esbuild.transformSync(src, { loader: "ts", format: "cjs" });
+// Bundled rather than transpiled: the helpers import the generated control
+// minimums and binding-reach tables, which are real runtime values and have to
+// come along. Everything else they import is `import type`, which esbuild
+// strips, so the bundle still pulls in nothing but this module and those two.
+const built = esbuild.buildSync({
+  entryPoints: [helpersPath],
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  write: false,
+  logLevel: "silent",
+});
+const code = built.outputFiles[0].text;
 const moduleObj = { exports: {} };
 const fn = new Function("exports", "require", "module", "__filename", "__dirname", code);
 fn(moduleObj.exports, require, moduleObj, helpersPath, path.dirname(helpersPath));
@@ -726,7 +737,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- L-088: findOutOfBoundsIds flags boxes hanging outside their parent ---
+// --- L-088: the review flags boxes hanging outside their parent ---
 {
   const page = {
     id: "p1", name: "P1", snap: SNAP,
@@ -751,10 +762,78 @@ function makeValidationProject(elements) {
       box: { x: 0, y: 0, w: 50, h: 50 },
     })],
   };
-  const flagged = [...H.findOutOfBoundsIds(page)].sort();
+  const flagged = H.reviewPage(page)
+    .filter((f) => f.kind === "outside_its_container")
+    .map((f) => f.elementId)
+    .sort();
   results.l088_out_of_bounds_ids = {
     pass: eq(flagged, ["kid_out", "off_bottom", "off_right"]),
     detail: flagged,
+  };
+}
+
+// --- Phase 8: the contents floor, which nothing anywhere used to ask about ---
+// A status LED's dot is 20px whatever the box says. The human drags it to 2%
+// of a 1280px page and the caption has negative room -- the same defect the AI
+// produced by sizing, reached by a different hand.
+{
+  const page = {
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [
+      { id: "led_labelled", type: "status_led", label: "Ready" },
+      { id: "led_bare", type: "status_led" },
+      { id: "btn", type: "button", label: "Go" },
+    ],
+    layouts: [LANDSCAPE({
+      // 28px wide: 20px of dot fits, 20px of dot plus a caption does not.
+      led_labelled: { x: 0, y: 0, w: 28 / 12.8, h: 44 / 8 },
+      led_bare: { x: 20, y: 0, w: 28 / 12.8, h: 44 / 8 },
+      // A button has no fixed internals at all, so it has no floor to breach.
+      btn: { x: 50, y: 0, w: 2, h: 2 },
+    })],
+  };
+  const starved = H.reviewPage(page).filter((f) => f.kind === "too_small_for_contents");
+  results.p008_contents_floor_is_a_property_of_the_element = {
+    pass:
+      starved.length === 1 &&
+      starved[0].elementId === "led_labelled" &&
+      /needs 29px/.test(starved[0].message) &&
+      /led-dot is 20px/.test(starved[0].message) &&
+      // The number an author actually types is a percentage of the parent.
+      /w at least 2\.27% of the page/.test(starved[0].message),
+    detail: starved,
+  };
+}
+
+// --- Phase 8: a binding the renderer for this type never reads ---
+// The element draws, the state key resolves, and the thing the author asked
+// for simply never happens. The Builder does not even offer the editor, so
+// nothing but this says so.
+{
+  const page = {
+    id: "p1", name: "P1", snap: SNAP,
+    elements: [
+      {
+        id: "status_text", type: "label",
+        bindings: { show: { look: { key: "device.amp.online", states: { true: { label: "ONLINE" } } } } },
+      },
+      {
+        id: "real_led", type: "status_led",
+        bindings: { show: { look: { key: "device.amp.online", states: { true: { color: "#0f0" } } } } },
+      },
+    ],
+    layouts: [LANDSCAPE({
+      status_text: { x: 0, y: 0, w: 25, h: 12.5 },
+      real_led: { x: 30, y: 0, w: 8, h: 12.5 },
+    })],
+  };
+  const inert = H.reviewPage(page).filter((f) => f.kind === "binding_not_rendered");
+  results.p008_inert_binding_is_named = {
+    pass:
+      inert.length === 1 &&
+      inert[0].elementId === "status_text" &&
+      /does not render/.test(inert[0].message),
+    detail: inert,
   };
 }
 
@@ -2364,7 +2443,7 @@ const variantPage = () => ({
     b1: { x: 0, y: 0, w: 30, h: 30 },
   };
   const issues = H.validateProject(proj);
-  const touch = issues.filter((i) => /Small touch target/.test(i.message) && i.elementId === "b1");
+  const touch = issues.filter((i) => /comfortable touch minimum/.test(i.message) && i.elementId === "b1");
   results.a003_validate_touch_uses_container_space = {
     pass: touch.length === 1 && !/15-inch/.test(touch[0].message),
     detail: touch,

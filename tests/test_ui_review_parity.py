@@ -1,0 +1,515 @@
+"""The Builder and the AI door must reach identical verdicts about one file.
+
+Two implementations of the same arithmetic exist on purpose: the AI writes
+blind through ``server/ui/page_review.py``, and a human drags a box in the
+Builder, which cannot call Python. They read the same measured numbers, and the
+tables neither of them owns are generated rather than copied -- but the
+arithmetic over those numbers is written twice, and the moment one side is
+edited alone the two disagree about the same project while each looks correct
+on its own. Nobody would notice: the AI would be warned about something the
+canvas shows as fine, or the canvas would badge something the AI was told was
+acceptable, and the number that gets believed would be whichever one was read.
+
+So this pushes a corpus through both and compares **message for message**.
+Byte-exact, not just finding-for-finding: the sentence is the deliverable. A
+warning that says "too small" teaches nothing and gets guessed at; one that says
+"28px wide, needs 29px, so give it at least 2.27% of its container" is checkable
+and gets acted on. If the two sides ever phrase the same defect differently, one
+of them has been edited and the other has not.
+
+Every device and element here is invented. This tests a platform capability.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from tests import gates
+
+from server.core.project_loader import ProjectConfig
+from server.ui.page_review import review_master_element, review_page
+
+OPENAVC_ROOT = Path(__file__).resolve().parents[1]
+HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "ui_review_parity_harness.cjs"
+HELPERS = (
+    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ui-builder"
+    / "uiBuilderHelpers.ts"
+)
+NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+ESBUILD_DIR = NODE_MODULES / "esbuild"
+
+# 1280 x 800 is the reference, so a percentage states itself in pixels: 1% of
+# the width is 12.8px and 1% of the height is 8px.
+PX_W = 12.8
+PX_H = 8.0
+
+
+def _box(x, y, w_px, h_px) -> dict:
+    return {"x": x, "y": y, "w": w_px / PX_W, "h": h_px / PX_H}
+
+
+def _pct_box(x, y, w, h) -> dict:
+    return {"x": x, "y": y, "w": w, "h": h}
+
+
+def _landscape(placements, **kwargs) -> dict:
+    return {
+        "id": "landscape", "orientation": "landscape", "primary": True,
+        "placements": placements, "hidden": [], **kwargs,
+    }
+
+
+def _page(page_id, elements, layouts) -> dict:
+    return {"id": page_id, "name": page_id.title(), "elements": elements, "layouts": layouts}
+
+
+def _project(pages, masters=(), theme_overrides=None) -> dict:
+    return {
+        "project": {"id": "parity", "name": "Parity", "description": ""},
+        "ui": {
+            "settings": {"theme_overrides": theme_overrides or {}},
+            "pages": list(pages),
+            "master_elements": list(masters),
+        },
+    }
+
+
+# --- The corpus ------------------------------------------------------------
+#
+# One case per behaviour rather than one big page, so a parity failure names the
+# check that drifted instead of "something in the project".
+
+CASES: dict[str, dict] = {}
+
+# Every type that has a floor, sized one pixel under it on each axis that has
+# one. This is the check that did not exist on the Builder side at all.
+CASES["starvation_every_type"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "led_labelled", "type": "status_led", "label": "Ready"},
+            {"id": "led_bare", "type": "status_led"},
+            {"id": "led_bound", "type": "status_led",
+             "bindings": {"show": {"value": {"key": "device.acme.name"}}}},
+            {"id": "fdr", "type": "fader"},
+            {"id": "sld", "type": "slider"},
+            {"id": "sld_thick", "type": "slider", "thumb_size": 6},
+            {"id": "lst", "type": "list"},
+            {"id": "lst_tall", "type": "list", "item_height": 6},
+            {"id": "mtx", "type": "matrix"},
+            {"id": "meter", "type": "level_meter"},
+            {"id": "pad", "type": "keypad"},
+            {"id": "sel", "type": "select"},
+            {"id": "txt", "type": "text_input"},
+            # No floor at all: limited by their text, which is not a minimum box.
+            {"id": "btn", "type": "button", "label": "Go"},
+            {"id": "lbl", "type": "label", "text": "Hello"},
+            {"id": "img", "type": "image"},
+            {"id": "dial", "type": "gauge"},
+        ],
+        [_landscape({
+            "led_labelled": _box(0, 0, 28, 44),
+            "led_bare": _box(10, 0, 28, 44),
+            "led_bound": _box(20, 0, 28, 44),
+            "fdr": _box(30, 0, 60, 90),
+            "sld": _box(40, 0, 60, 70),
+            "sld_thick": _box(50, 0, 100, 110),
+            "lst": _box(60, 0, 20, 70),
+            "lst_tall": _box(70, 0, 40, 100),
+            "mtx": _box(0, 20, 200, 200),
+            "meter": _box(20, 20, 8, 60),
+            "pad": _box(30, 20, 60, 180),
+            "sel": _box(40, 20, 40, 44),
+            "txt": _box(50, 20, 40, 44),
+            # Comfortably over the finger minimum, so the silence below means
+            # "this type has no contents floor" rather than "it happened to be
+            # big enough to touch".
+            "btn": _box(60, 20, 60, 60),
+            "lbl": _box(70, 20, 60, 60),
+            "img": _box(80, 20, 60, 60),
+            "dial": _box(90, 20, 60, 60),
+        })],
+    ),
+])
+
+# The one theme value any minimum moves with: a slider's thumb. The element
+# wins, then the project's element_defaults, then the 44px default.
+CASES["slider_thumb_from_theme"] = _project(
+    [_page(
+        "main",
+        [
+            {"id": "sld_default", "type": "slider"},
+            {"id": "sld_own", "type": "slider", "thumb_size": 2},
+        ],
+        [_landscape({
+            "sld_default": _box(0, 0, 70, 80),
+            "sld_own": _box(20, 0, 70, 80),
+        })],
+    )],
+    theme_overrides={"element_defaults": {"slider": {"thumb_size": 5}}},
+)
+
+# All four sides, at page level and inside a container, plus a box that ends
+# exactly on the edge and must stay quiet.
+CASES["overhangs"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "off_left", "type": "button", "label": "L"},
+            {"id": "off_top", "type": "button", "label": "T"},
+            {"id": "off_right", "type": "button", "label": "R"},
+            {"id": "off_bottom", "type": "button", "label": "B"},
+            {"id": "off_both", "type": "button", "label": "X"},
+            {"id": "flush", "type": "button", "label": "F"},
+            {"id": "holder", "type": "group"},
+            {"id": "kid_out", "type": "button", "parent": "holder", "label": "K"},
+        ],
+        [_landscape({
+            "off_left": _pct_box(-4, 0, 10, 10),
+            "off_top": _pct_box(10, -3.5, 10, 10),
+            "off_right": _pct_box(95, 0, 10, 10),
+            "off_bottom": _pct_box(30, 95, 10, 10),
+            "off_both": _pct_box(-2, -2, 10, 10),
+            "flush": _pct_box(50, 90, 50, 10),
+            "holder": _pct_box(0, 40, 40, 40),
+            "kid_out": _pct_box(70, 10, 50, 20),
+        })],
+    ),
+])
+
+# Sibling collisions, and the three things that look like one and are not: a
+# container holding its own child, two boxes under different containers, and a
+# pair that grazes by less than a pixel.
+CASES["overlaps"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "a", "type": "button", "label": "A"},
+            {"id": "b", "type": "button", "label": "B"},
+            {"id": "c", "type": "button", "label": "C"},
+            {"id": "graze", "type": "button", "label": "G"},
+            {"id": "left_box", "type": "group"},
+            {"id": "right_box", "type": "group"},
+            {"id": "left_kid", "type": "button", "parent": "left_box", "label": "LK"},
+            {"id": "right_kid", "type": "button", "parent": "right_box", "label": "RK"},
+        ],
+        [_landscape({
+            "a": _pct_box(0, 0, 20, 20),
+            "b": _pct_box(10, 10, 20, 20),
+            "c": _pct_box(15, 15, 20, 20),
+            "graze": _pct_box(20, 0, 20, 20.001),
+            "left_box": _pct_box(0, 50, 50, 40),
+            "right_box": _pct_box(50, 50, 50, 40),
+            # Both fill their own container, so in page space they sit side by
+            # side. Different parents, so never compared.
+            "left_kid": _pct_box(0, 0, 100, 100),
+            "right_kid": _pct_box(0, 0, 100, 100),
+        })],
+    ),
+])
+
+# An element the primary arrangement never positions. The renderer fills the
+# parent edge to edge and nothing in the file says so.
+CASES["no_placement"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "placed", "type": "button", "label": "P"},
+            {"id": "unplaced", "type": "button", "label": "U"},
+            {"id": "holder", "type": "group"},
+            {"id": "unplaced_kid", "type": "label", "parent": "holder", "text": "K"},
+        ],
+        [_landscape({
+            "placed": _pct_box(0, 0, 20, 20),
+            "holder": _pct_box(50, 0, 40, 40),
+        })],
+    ),
+])
+
+# Bindings the renderer for that type never reads, which is the defect class
+# with no visible symptom: the element draws and the state key resolves.
+CASES["binding_reach"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "text_with_look", "type": "label",
+             "bindings": {"show": {"look": {"key": "device.acme.online",
+                                            "states": {"true": {"label": "ONLINE"},
+                                                       "false": {"label": "OFFLINE"}}}}}},
+            {"id": "led_with_value", "type": "status_led", "label": "Ok",
+             "bindings": {"show": {"value": {"key": "device.acme.level"}}}},
+            {"id": "led_with_state_labels", "type": "status_led", "label": "Ok",
+             "bindings": {"show": {"look": {"key": "device.acme.online",
+                                            "states": {"on": {"color": "#0f0", "label": "UP"}}}}}},
+            {"id": "sel_with_state_labels", "type": "select",
+             "bindings": {"show": {"look": {"key": "device.acme.mode",
+                                            "states": {"a": {"label": "A"}}},
+                                   "value": {"key": "device.acme.mode"}}}},
+            {"id": "btn_with_state_labels", "type": "button",
+             "bindings": {"show": {"look": {"key": "device.acme.online",
+                                            "states": {"true": {"label": "ON"}}}}}},
+            {"id": "pad_with_everything", "type": "keypad",
+             "bindings": {"show": {"value": {"key": "device.acme.code"},
+                                   "items": {"key": "device.acme.list"}}}},
+            {"id": "list_ok", "type": "list",
+             "bindings": {"show": {"items": {"key": "device.acme.inputs"},
+                                   "value": {"key": "device.acme.selected"}}}},
+            {"id": "visible_only", "type": "image",
+             "bindings": {"show": {"visible_when": {"key": "var.admin", "equals": True}}}},
+            # A type nothing has an opinion about must produce silence, not a crash.
+            {"id": "unknown_kind", "type": "plugin:acme:widget",
+             "bindings": {"show": {"look": {"key": "device.acme.online"}}}},
+        ],
+        [_landscape({
+            "text_with_look": _pct_box(0, 0, 20, 10),
+            "led_with_value": _pct_box(25, 0, 8, 10),
+            "led_with_state_labels": _pct_box(35, 0, 8, 10),
+            "sel_with_state_labels": _pct_box(45, 0, 20, 10),
+            "btn_with_state_labels": _pct_box(0, 20, 20, 10),
+            "pad_with_everything": _pct_box(25, 20, 20, 40),
+            "list_ok": _pct_box(50, 20, 20, 40),
+            "visible_only": _pct_box(75, 20, 20, 20),
+            "unknown_kind": _pct_box(75, 45, 20, 20),
+        })],
+    ),
+])
+
+# Geometry is per-arrangement. A variant can starve or strand a control the
+# primary leaves fine, and it can hide one so neither question applies.
+CASES["arrangements"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "led", "type": "status_led", "label": "Ready"},
+            {"id": "fine_here", "type": "button", "label": "F"},
+            {"id": "hidden_in_portrait", "type": "select"},
+            {"id": "starved_everywhere", "type": "select"},
+        ],
+        [
+            _landscape({
+                "led": _box(0, 0, 40, 44),
+                "fine_here": _pct_box(50, 0, 20, 20),
+                "hidden_in_portrait": _box(0, 30, 40, 44),
+                "starved_everywhere": _box(50, 30, 40, 44),
+            }),
+            {
+                "id": "portrait", "orientation": "portrait", "primary": False,
+                "inherits": "landscape",
+                "placements": {
+                    # Fine in landscape, starved here.
+                    "led": _box(0, 0, 24, 44),
+                    "fine_here": _pct_box(95, 0, 20, 20),
+                },
+                "hidden": ["hidden_in_portrait"],
+            },
+            # A dangling inherits collapses the variant to nothing. It carries
+            # no boxes, so it must report nothing rather than everything.
+            {
+                "id": "broken", "orientation": "portrait", "primary": False,
+                "inherits": "gone", "placements": {}, "hidden": [],
+            },
+        ],
+    ),
+])
+
+# Containers nested three deep: a percentage of a percentage of a percentage,
+# which is exactly the arithmetic that has to fold the same way on both sides.
+CASES["nesting"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "outer", "type": "group"},
+            {"id": "middle", "type": "group", "parent": "outer"},
+            {"id": "inner_led", "type": "status_led", "parent": "middle", "label": "Deep"},
+            {"id": "inner_sel", "type": "select", "parent": "middle"},
+            # A parent that does not exist, and one that is itself: both are
+            # treated as no parent, because the page still has to draw.
+            {"id": "orphan", "type": "status_led", "parent": "nowhere", "label": "O"},
+            {"id": "selfish", "type": "status_led", "parent": "selfish", "label": "S"},
+        ],
+        [_landscape({
+            "outer": _pct_box(0, 0, 50, 50),
+            "middle": _pct_box(0, 0, 50, 50),
+            "inner_led": _pct_box(0, 0, 20, 40),
+            "inner_sel": _pct_box(30, 0, 40, 40),
+            "orphan": _box(60, 0, 24, 44),
+            "selfish": _box(70, 0, 24, 44),
+        })],
+    ),
+])
+
+# A master borrows no page's layout: its box is a percentage of the viewport,
+# keyed by orientation, so it has no siblings and no container.
+CASES["masters"] = _project(
+    [_page("main", [], [_landscape({})])],
+    masters=[
+        {"id": "bar_led", "type": "status_led", "label": "Sys", "pages": "*",
+         "placements": {"landscape": _box(0, 0, 24, 44),
+                        "portrait": _box(0, 0, 40, 44)}},
+        {"id": "bar_sel", "type": "select", "pages": ["main"],
+         "placements": {"landscape": _box(10, 0, 60, 40)}},
+        {"id": "bar_label", "type": "label", "text": "Room",
+         "bindings": {"show": {"look": {"key": "device.acme.online",
+                                        "states": {"true": {"label": "UP"}}}}},
+         "placements": {"landscape": _pct_box(50, 0, 20, 8)}},
+    ],
+)
+
+# A page with no layouts at all, which a hand-built or half-migrated project can
+# reach. Nothing has a box, so geometry says nothing and bindings still answer.
+CASES["no_layouts"] = _project([
+    {
+        "id": "bare", "name": "Bare",
+        "elements": [
+            {"id": "led", "type": "status_led", "label": "R"},
+            {"id": "text_with_look", "type": "label",
+             "bindings": {"show": {"look": {"key": "device.acme.online"}}}},
+        ],
+        "layouts": [],
+    },
+])
+
+
+def _python_findings(project: ProjectConfig) -> list[dict]:
+    findings: list[dict] = []
+    for page in project.ui.pages:
+        theme = _theme(project)
+        for finding in review_page(page, theme=theme)[0]:
+            findings.append({
+                "element_id": finding.element_id,
+                "kind": finding.kind,
+                "message": finding.message,
+            })
+    for master in project.ui.master_elements or []:
+        for finding in review_master_element(master, _theme(project)):
+            findings.append({
+                "element_id": finding.element_id,
+                "kind": finding.kind,
+                "message": finding.message,
+            })
+    return findings
+
+
+def _theme(project: ProjectConfig) -> dict | None:
+    defaults = (project.ui.settings.theme_overrides or {}).get("element_defaults") or {}
+    slider = defaults.get("slider")
+    return slider if isinstance(slider, dict) else None
+
+
+def _toolchain_reason() -> str | None:
+    if shutil.which("node") is None:
+        return "node not installed"
+    if not ESBUILD_DIR.is_dir():
+        return "esbuild not installed (run `npm ci` in web/programmer)"
+    if not HARNESS.is_file():
+        return "ui review parity harness missing"
+    if not HELPERS.is_file():
+        return "uiBuilderHelpers.ts missing"
+    return None
+
+
+@pytest.fixture(scope="module")
+def verdicts(tmp_path_factory) -> dict[str, tuple[list[dict], list[dict]]]:
+    """Both sides' findings, keyed by case, from the SAME bytes.
+
+    The projects go through the Pydantic models first and the harness is fed the
+    dump rather than the literal above -- so a default the loader fills in, or a
+    normalisation it applies, reaches both sides identically. Comparing a model
+    against a hand-written dict would test the loader, not the reviewers.
+    """
+    reason = _toolchain_reason()
+    if reason:
+        gates.skip_or_fail(gates.NODE, reason)
+
+    projects = {name: ProjectConfig.model_validate(raw) for name, raw in CASES.items()}
+    dumps = {name: project.model_dump(mode="json") for name, project in projects.items()}
+
+    cases_file = tmp_path_factory.mktemp("ui-review-parity") / "cases.json"
+    cases_file.write_text(json.dumps(dumps), encoding="utf-8")
+
+    proc = subprocess.run(
+        ["node", str(HARNESS), str(HELPERS), str(cases_file)],
+        capture_output=True,
+        text=True,
+        cwd=str(OPENAVC_ROOT),
+        env={**os.environ, "NODE_PATH": str(NODE_MODULES)},
+        timeout=180,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"ui review parity harness crashed (rc={proc.returncode}):\n{proc.stderr}"
+        )
+    try:
+        builder = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+        raise AssertionError(
+            f"could not parse harness output:\n{proc.stdout}\n---\n{proc.stderr}"
+        ) from exc
+
+    return {
+        name: (_python_findings(projects[name]), builder[name])
+        for name in CASES
+    }
+
+
+@pytest.mark.parametrize("case", sorted(CASES))
+def test_both_surfaces_say_exactly_the_same_thing(case, verdicts) -> None:
+    """Same findings, same order, same sentences, down to the byte."""
+    python_side, builder_side = verdicts[case]
+    assert builder_side == python_side
+
+
+def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
+    """A parity test over a corpus that trips nothing passes for free.
+
+    This is the assertion that keeps the one above honest: if a future edit
+    stops a whole check firing on both sides at once, every case still matches
+    and the suite stays green. Naming the kinds is what catches that.
+    """
+    kinds = {
+        finding["kind"]
+        for python_side, _ in verdicts.values()
+        for finding in python_side
+    }
+    assert kinds == {
+        "too_small_for_contents",
+        "small_touch_target",
+        "outside_its_container",
+        "overlap",
+        "no_placement",
+        "binding_not_rendered",
+    }
+
+
+def test_the_corpus_also_produces_silence(verdicts) -> None:
+    """Half of a checker's value is what it does NOT say.
+
+    Parity on a corpus where everything is flagged would be satisfied by two
+    implementations that flag everything. These are the elements that must come
+    back clean on both sides: a control with no floor to breach, a container
+    holding its own child, boxes under different parents, an element flush with
+    the edge, a pair grazing by a fraction of a pixel, and a binding the
+    renderer really does read.
+    """
+    flagged = {
+        finding["element_id"]
+        for python_side, _ in verdicts.values()
+        for finding in python_side
+    }
+    for quiet in (
+        "btn", "lbl", "img", "dial",          # no fixed internals at all
+        "led_bare",                            # 20px of dot fits in 28px
+        "flush",                               # ends exactly on the edge
+        "graze",                               # overlaps by a thousandth of a percent
+        "left_kid", "right_kid",               # different containers
+        "list_ok", "visible_only",             # bindings the renderer reads
+        "unknown_kind",                        # a type nothing has an opinion about
+        "btn_with_state_labels",               # a button DOES draw state text
+    ):
+        assert quiet not in flagged, f"{quiet} should not have been flagged"

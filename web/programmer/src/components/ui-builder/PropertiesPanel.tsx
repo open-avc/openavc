@@ -24,6 +24,7 @@ import {
   resolveHidden,
   withHidden,
   layoutById,
+  sliderThemeDefaults,
 } from "./uiBuilderHelpers";
 
 interface ThemeSummary {
@@ -305,6 +306,7 @@ export function PropertiesPanel({
           placement={getPlacement(page, element.id, activeLayoutId)}
           containers={containerChoices(page, element.id)}
           parentPx={referenceParentBox(page, element.id, activeLayoutId)}
+          theme={sliderThemeDefaults(project)}
           onChangePlacement={(placement) => {
             // Geometry lives in the page's layout, so a typed coordinate is a
             // page change, not an element change.

@@ -39,7 +39,22 @@ Put controls where you want them. Position and size are stored as a percentage o
 
 **Aspect Lock** in the Layout section holds an element's shape when a screen stretches. A locked element shrinks to fit its box and stays centered, so a round indicator stays round and a camera image is not squashed. Status LEDs, camera presets and video elements get one automatically when you drop them.
 
-The Layout section also shows a warning when a control is smaller than a finger can reliably hit, with the physical size it works out to on a real panel.
+## Warnings on the canvas
+
+Some controls contain parts that are a fixed number of pixels and do not shrink with the box. A status LED's dot is 20 pixels whatever you size the element to; a fader's handle is 44 and its number scale another 28. Drag one of those smaller than the parts inside it and the control still draws, with its contents cut off, which reads like a styling bug rather than a sizing one.
+
+An orange badge in the corner of an element says something about it will not draw the way it was written. Hover the badge for the whole sentence. It covers:
+
+- **Too small for its contents** - the box in pixels, the size the control actually needs, and the width or height to type into the Layout section to fix it. The Layout section repeats this next to the fields you would change.
+- **Overlapping a neighbour** - by how much, and which other control.
+- **Hanging outside the page or its container** - by how much, and over which edge. Containers do not clip, so an element that runs past the edge lands on top of whatever sits beside it.
+- **No position at all** - an element with no box fills its container edge to edge and covers whatever is already there.
+- **Smaller than a finger** - the physical size it works out to on a real panel, for controls you actually touch.
+- **A binding this control does not use** - every element accepts the same binding slots, but each type only reads some of them. A label takes its text from Value and does not read Appearance, so a state-driven color set on one never appears. The badge names the slots that control really reads.
+
+Sizes are worked out against a 1280x800 reference panel, which is what the percentages mean in pixels. Everything here is advice: nothing is blocked, and a control you deliberately made small stays where you put it.
+
+**Validate** in the toolbar lists the same findings for the whole project, alongside the checks for missing devices, macros and pages. These are the same warnings the AI assistant gets back when it builds a page, so a panel it wrote and a panel you dragged are held to the same standard.
 
 ## Element Types
 

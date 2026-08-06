@@ -1,5 +1,12 @@
 import type { UIElement, Placement } from "../../../api/types";
-import { touchTargetWarning, TOUCH_MIN_MM } from "../uiBuilderHelpers";
+import {
+  touchTargetWarning,
+  isTouchable,
+  TOUCH_MIN_MM,
+  controlMinimumBox,
+  controlMinimumPercent,
+  type ElementDefaults,
+} from "../uiBuilderHelpers";
 import { NumericInput } from "../../shared/NumericInput";
 
 interface LayoutPropertiesProps {
@@ -12,6 +19,9 @@ interface LayoutPropertiesProps {
   /** The box the percentages are OF, in reference pixels. An aspect lock is a
    *  pixel ratio, so it only means anything against the real parent. */
   parentPx: { width: number; height: number };
+  /** The project's slider theme defaults -- the only theme values a control
+   *  minimum moves with. */
+  theme?: ElementDefaults;
   onChangePlacement: (placement: Placement) => void;
   onChange: (patch: Partial<UIElement>) => void;
   /** Changing the container is NOT a plain patch: the percentages are of
@@ -34,6 +44,7 @@ export function LayoutProperties({
   placement,
   containers,
   parentPx,
+  theme,
   onChangePlacement,
   onChange,
   onChangeParent,
@@ -58,7 +69,32 @@ export function LayoutProperties({
     onChangePlacement(next);
   };
 
-  const touch = touchTargetWarning(placement, parentPx);
+  // Only for controls a finger has to hit. This used to show on anything small
+  // enough, which told you a status light was "hard to hit with a finger" --
+  // true, irrelevant, and now visibly at odds with the canvas badge and the
+  // warning the AI gets, which have always asked the type first.
+  const touch = isTouchable(element.type) ? touchTargetWarning(placement, parentPx) : null;
+
+  // Some controls hold parts that are a fixed number of pixels and simply do
+  // not shrink -- a status LED's dot is 20px whatever the box says. This is the
+  // panel where the box gets typed, so it is where the floor belongs, stated in
+  // the same percentages the fields above take.
+  const minimum = controlMinimumBox(element, theme);
+  const minimumPercent = minimum ? controlMinimumPercent(element, parentPx, theme) : null;
+  const widthPx = (placement.w / 100) * parentPx.width;
+  const heightPx = (placement.h / 100) * parentPx.height;
+  const starved =
+    minimum && minimumPercent
+      ? {
+          narrow: widthPx + 0.5 < minimum.widthPx,
+          short: heightPx + 0.5 < minimum.heightPx,
+          parts: minimum.internals.map((i) => i.part).join(", "),
+          needW: round2(minimumPercent.w),
+          needH: round2(minimumPercent.h),
+          minWidthPx: Math.round(minimum.widthPx),
+          minHeightPx: Math.round(minimum.heightPx),
+        }
+      : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -152,17 +188,28 @@ export function LayoutProperties({
         </div>
       </div>
 
+      {starved && (starved.narrow || starved.short) && (
+        <div style={warningBoxStyle}>
+          This {element.type.replace(/_/g, " ")} is{" "}
+          {starved.narrow && starved.short
+            ? "too small on both axes"
+            : starved.narrow
+              ? "too narrow"
+              : "too short"}{" "}
+          for what it draws: {starved.parts} {starved.parts.includes(",") ? "keep" : "keeps"} its
+          size however small the box gets. It needs at least {starved.minWidthPx}&times;
+          {starved.minHeightPx}px, which here is{" "}
+          {starved.narrow && <>width {starved.needW}%</>}
+          {starved.narrow && starved.short && " and "}
+          {starved.short && <>height {starved.needH}%</>}
+          {" of "}
+          {element.parent ? "the container" : "the page"}. Below that it still draws, with
+          its contents cut off.
+        </div>
+      )}
+
       {touch && (
-        <div
-          style={{
-            fontSize: 11,
-            padding: "6px 8px",
-            borderRadius: 4,
-            background: "rgba(255,152,0,0.12)",
-            border: "1px solid rgba(255,152,0,0.4)",
-            color: "var(--text-primary)",
-          }}
-        >
+        <div style={warningBoxStyle}>
           About {touch.widthPx}&times;{touch.heightPx}px on a 1280&times;800 panel, roughly{" "}
           {touch.widthMm}&times;{touch.heightMm}mm on a 10&quot; one. Under about {TOUCH_MIN_MM}mm is
           hard to hit reliably with a finger. Bigger glass gives you more
@@ -177,6 +224,20 @@ export function LayoutProperties({
 function round(v: number): number {
   return Math.round(v * 10000) / 10000;
 }
+
+/** A percentage the way it would be typed back into the fields above. */
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+const warningBoxStyle: React.CSSProperties = {
+  fontSize: 11,
+  padding: "6px 8px",
+  borderRadius: 4,
+  background: "rgba(255,152,0,0.12)",
+  border: "1px solid rgba(255,152,0,0.4)",
+  color: "var(--text-primary)",
+};
 
 const labelStyle: React.CSSProperties = {
   display: "block",

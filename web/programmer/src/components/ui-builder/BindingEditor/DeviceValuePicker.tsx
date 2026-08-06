@@ -647,6 +647,38 @@ export function driverRangeTarget(
   return { min: varDef.min, max: varDef.max, step, unit, differs };
 }
 
+/** Element types that SEND what they read.
+ *
+ *  A gauge or a level meter scaled past what the device reports is a needle
+ *  that never reaches the end of its sweep -- untidy, and a legitimate choice
+ *  for a scale shared across channels. A fader scaled past it hands the device
+ *  a value it refuses. Mirrors COMMANDING_TYPES in server/ui/page_review.py,
+ *  which warns the AI about the same thing. */
+const COMMANDING_ELEMENTS = new Set(["slider", "fader"]);
+
+/**
+ * The ends of a control's travel that command a value the device will refuse.
+ *
+ * Empty when the control sits inside what the driver declares. A NARROWER range
+ * is deliberately not flagged -- a volume-limited install is real authoring, and
+ * the platform has output_min / output_max / scale_to_full for adjacent
+ * purposes. Only wider is a defect, and only on a control that commands.
+ */
+export function driverRangeOverreach(
+  element: UIElement,
+  varDef: DeviceStateVarDef,
+): string[] {
+  if (!COMMANDING_ELEMENTS.has(element.type)) return [];
+  const over: string[] = [];
+  if (typeof varDef.min === "number" && typeof element.min === "number" && element.min < varDef.min) {
+    over.push(`its Min of ${element.min} is below the ${varDef.min} the driver declares`);
+  }
+  if (typeof varDef.max === "number" && typeof element.max === "number" && element.max > varDef.max) {
+    over.push(`its Max of ${element.max} is above the ${varDef.max} the driver declares`);
+  }
+  return over;
+}
+
 function applyDriverRange(
   target: { min: number; max: number; step?: number; unit?: string },
   onElementPatch: (patch: Partial<UIElement>) => void,
@@ -669,6 +701,7 @@ function RangeMatchPrompt({
   const [dismissed, setDismissed] = useState(false);
 
   const target = driverRangeTarget(element, varDef);
+  const overreach = driverRangeOverreach(element, varDef);
   if (dismissed || !target || !target.differs) return null;
 
   return (
@@ -679,6 +712,12 @@ function RangeMatchPrompt({
           This value has a defined range of {target.min} to {target.max}
           {target.unit ? ` ${target.unit}` : ""}. Match this {element.type.replace(/_/g, " ")} to it?
         </span>
+        {overreach.length > 0 && (
+          <span style={overreachStyle}>
+            Right now {overreach.join(" and ")}, so that end of its travel commands a
+            value the device refuses.
+          </span>
+        )}
         <div style={{ display: "flex", gap: 6 }}>
           <button type="button" onClick={() => applyDriverRange(target, onElementPatch)} style={applyBtnStyle}>
             Match range
@@ -728,20 +767,39 @@ export function MatchDriverRangeRow({
   }, [deviceId, suffix]);
 
   const target = varDef ? driverRangeTarget(element, varDef) : null;
+  const overreach = varDef ? driverRangeOverreach(element, varDef) : [];
   if (!target || !target.differs) return null;
 
   return (
-    <button
-      type="button"
-      onClick={() => applyDriverRange(target, onElementPatch)}
-      title="Set Min/Max (and Step/Unit when the driver declares them) from the bound device property"
-      style={matchRowBtnStyle}
-    >
-      Match driver range ({target.min} to {target.max}
-      {target.unit ? ` ${target.unit}` : ""})
-    </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {overreach.length > 0 && (
+        <div style={overreachStyle}>
+          This control commands the device, and {overreach.join(" and ")}. That end of
+          its travel sends a value the device refuses.
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => applyDriverRange(target, onElementPatch)}
+        title="Set Min/Max (and Step/Unit when the driver declares them) from the bound device property"
+        style={matchRowBtnStyle}
+      >
+        Match driver range ({target.min} to {target.max}
+        {target.unit ? ` ${target.unit}` : ""})
+      </button>
+    </div>
   );
 }
+
+/** A range that reaches past the device, which the match button then fixes. */
+const overreachStyle: React.CSSProperties = {
+  fontSize: 11,
+  padding: "4px 6px",
+  borderRadius: 4,
+  background: "rgba(255,152,0,0.12)",
+  border: "1px solid rgba(255,152,0,0.4)",
+  color: "var(--text-primary)",
+};
 
 // --- Styles ---
 

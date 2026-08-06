@@ -214,6 +214,8 @@ SCENARIOS = [
     "a002_promote_group_rehomes_children",
     "a003_validate_sees_variant_geometry",
     "a003_validate_touch_uses_container_space",
+    "p008_contents_floor_is_a_property_of_the_element",
+    "p008_inert_binding_is_named",
 ]
 
 
