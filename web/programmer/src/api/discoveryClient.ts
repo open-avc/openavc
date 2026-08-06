@@ -118,6 +118,7 @@ export async function discoveryStartScan(options?: {
   scan_depth?: ScanDepth;
   max_subnet_size?: number;
   timeout?: number;
+  ignore_control_interface?: boolean;
 }): Promise<{ scan_id: string; status: string; subnets: string[]; budget_seconds: number }> {
   return request("/discovery/scan", {
     method: "POST",

@@ -146,6 +146,10 @@ class ScanRequest(BaseModel):
     # scan; the phases then divide that cap by share rather than the early
     # ones spending it all before the ones that identify devices run.
     timeout: float | None = None
+    # One-off: run this scan as if no control interface were pinned (subnet
+    # filter AND scanner source binding). The Discovery tab sends this from
+    # its stale-pin escape hatch; the stored setting is untouched.
+    ignore_control_interface: bool = False
 
 
 class DiscoveryConfigRequest(BaseModel):
@@ -214,6 +218,7 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
             extra_subnets=req.extra_subnets,
             on_update=_broadcast_fn,
             timeout=req.timeout,
+            ignore_control_interface=req.ignore_control_interface,
         )
     except RuntimeError as e:
         raise _api_error(409, "A scan is already in progress", e)

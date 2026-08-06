@@ -481,12 +481,19 @@ class DiscoveryEngine:
         extra_subnets: list[str] | None = None,
         on_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
         timeout: float | None = None,
+        ignore_control_interface: bool = False,
     ) -> str:
         """Start a discovery scan. Returns scan_id.
 
         Args:
             subnets: CIDR ranges to scan. Auto-detect if None.
             extra_subnets: Additional ranges to scan alongside auto-detected ones.
+            ignore_control_interface: Run THIS scan as if no control interface
+                were pinned. The pin is both a subnet filter and the source
+                address the scanners bind, so when its adapter is gone every
+                probe fails at the socket even with explicit subnets. This is
+                the one-off escape hatch the Discovery tab offers for a stale
+                pin; the setting itself is untouched.
             on_update: Async callback for live WebSocket push.
             timeout: Ceiling on the whole scan, in seconds. ``None`` takes the
                 ceiling from the ``scan_depth`` policy — the normal path, since
@@ -503,8 +510,10 @@ class DiscoveryEngine:
             scan_id = f"scan_{self._scan_counter}_{int(time.time())}"
 
             # Determine target subnets (filtered to control interface if set)
-            control_ip = self._get_control_interface()
-            if control_ip:
+            control_ip = "" if ignore_control_interface else self._get_control_interface()
+            if ignore_control_interface:
+                log.info("Scan requested with the control-interface pin ignored")
+            elif control_ip:
                 log.info("Control interface set to %s — filtering subnets to this adapter", control_ip)
             else:
                 log.info("No control interface set — scanning all physical adapters")
@@ -540,6 +549,7 @@ class DiscoveryEngine:
             )
 
             self._on_update = on_update
+            self._scan_ignores_pin = ignore_control_interface
             self.scan_status = ScanStatus()
             self.scan_status.scan_id = scan_id
             self.scan_status.status = "running"
@@ -727,7 +737,7 @@ class DiscoveryEngine:
         policy = self._budget.policy
         snmp_enabled = self.config.get("snmp_enabled", True)
         snmp_community = self.config.get("snmp_community", "public")
-        control_ip = self._get_control_interface()
+        control_ip = "" if getattr(self, "_scan_ignores_pin", False) else self._get_control_interface()
 
         # --- Phase 1: Subnet Detection (already done) ---
         await self._set_phase(1, "subnet_detection", "Detecting network interfaces...")

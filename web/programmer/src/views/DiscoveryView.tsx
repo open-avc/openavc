@@ -231,6 +231,11 @@ export function DiscoveryPanel() {
   // Active control interface
   const [controlInterface, setControlInterface] = useState("");
   const [adapterLabel, setAdapterLabel] = useState("");
+  // The pinned control interface no longer matches any adapter on this
+  // machine (the box changed networks since it was set). The scan would
+  // refuse; offer a one-off "scan what's actually here" instead.
+  const [pinStale, setPinStale] = useState(false);
+  const [adapterSubnets, setAdapterSubnets] = useState<string[]>([]);
 
   // Load subnets + config + driver catalogs on mount
   useEffect(() => {
@@ -262,7 +267,11 @@ export function DiscoveryPanel() {
           if (match) setAdapterLabel(`${match.name} (${match.ip}/${match.subnet.split("/")[1] || "24"})`);
           // No current adapter has the pinned address — say so here, because
           // the pin otherwise looks like a live scan target.
-          else setAdapterLabel(`${ip} (adapter not found on this machine — fix in Settings > Network)`);
+          else {
+            setAdapterLabel(`${ip} (adapter not found on this machine — fix in Settings > Network)`);
+            setPinStale(true);
+            setAdapterSubnets(r.adapters.map((a) => a.subnet).filter(Boolean));
+          }
         }).catch(() => setAdapterLabel(ip));
       }
     }).catch(() => {});
@@ -301,6 +310,31 @@ export function DiscoveryPanel() {
       showError(String(e));
     }
   }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings]);
+
+  // One-off escape hatch for a stale control-interface pin: scan the subnets
+  // of the adapters actually present, WITHOUT clearing or bypassing the pin
+  // in config. Explicit by design — silently falling back could probe
+  // networks the pin exists to keep discovery off of.
+  const handleScanCurrentAdapters = useCallback(async () => {
+    try {
+      setWarnings([]);
+      const started = await api.discoveryStartScan({
+        subnets: adapterSubnets,
+        ignore_control_interface: true,
+        extra_subnets: extraSubnet ? [extraSubnet] : undefined,
+        snmp_enabled: snmpEnabled,
+        snmp_community: snmpCommunityField(snmpCommunity),
+        gentle_mode: gentleMode,
+        scan_depth: scanDepth,
+        max_subnet_size: maxSubnetSize,
+      });
+      setScanBudget(started.budget_seconds || 0);
+      setStatus("running");
+    } catch (e) {
+      setStatus("idle");
+      showError(String(e));
+    }
+  }, [adapterSubnets, extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings]);
 
   const handleStopScan = useCallback(async () => {
     await api.discoveryStopScan();
@@ -631,6 +665,33 @@ export function DiscoveryPanel() {
             }}
           >
             Change in Settings
+          </button>
+        </div>
+      )}
+
+      {/* Stale pin escape hatch: the pinned adapter is gone, so the normal
+          scan will refuse. Offer scanning what is actually on the machine. */}
+      {!showSettings && pinStale && !isRunning && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            fontSize: "var(--font-size-xs)",
+            color: "var(--warning, #d9a648)",
+            marginTop: "var(--space-xs)",
+          }}
+        >
+          <AlertTriangle size={12} />
+          <span>The pinned adapter is not on this machine, so a scan will find nothing.</span>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={handleScanCurrentAdapters}
+            disabled={adapterSubnets.length === 0}
+            title={adapterSubnets.length === 0 ? "No physical adapters detected" : "Scan the subnets of the adapters currently on this machine, without changing the setting"}
+          >
+            Scan current adapters instead
           </button>
         </div>
       )}

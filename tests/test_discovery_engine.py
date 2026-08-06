@@ -789,3 +789,22 @@ class TestEmptySubnetErrors:
             with pytest.raises(ValueError) as exc:
                 await self.engine.start_scan()
         assert str(exc.value) == "No subnets to scan. Specify subnets manually."
+
+    @pytest.mark.asyncio
+    async def test_ignore_control_interface_bypasses_stale_pin(self):
+        """The escape hatch must bypass the pin for BOTH subnet selection and
+        the scanners' source binding — an explicit subnet list alone still
+        failed every probe by binding sockets to the missing address."""
+        seen: dict = {}
+
+        def fake_subnets(interface_ip=None):
+            seen["interface_ip"] = interface_ip
+            return ["192.0.2.0/24"]
+
+        with patch.object(self.engine, "_get_control_interface", return_value="192.0.2.77"), \
+             patch("server.discovery.engine.get_local_subnets", side_effect=fake_subnets), \
+             patch.object(self.engine, "_run_scan", new=AsyncMock()):
+            scan_id = await self.engine.start_scan(ignore_control_interface=True)
+        assert scan_id
+        assert seen["interface_ip"] is None
+        assert self.engine._scan_ignores_pin is True
