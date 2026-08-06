@@ -3013,7 +3013,8 @@ export interface ReviewFinding {
     | "outside_its_container"
     | "overlap"
     | "no_placement"
-    | "binding_not_rendered";
+    | "binding_not_rendered"
+    | "unknown_element_type";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an
@@ -3504,6 +3505,37 @@ export function noBoxFinding(el: UIElement, parentName: string): ReviewFinding {
   };
 }
 
+/** Every type the panel has a renderer for.
+ *
+ *  Read off the generated binding-reach table rather than listed again: a test
+ *  re-derives that table's keys from `renderElement`'s dispatch in panel.js, so
+ *  this IS the renderer's own set. */
+const RENDERED_TYPES = new Set(Object.keys(HONORED_SHOW_SLOTS));
+
+/**
+ * A type the panel has no renderer for, which draws nothing at all.
+ *
+ * `UIElement.type` is a free-form string and every layer downstream treats it as
+ * one: the loader accepts anything, this review used to return early on a type it
+ * did not know, and `renderElement`'s switch falls through to a `console.warn`
+ * and returns null. So the element has an id, a placement and bindings, the write
+ * comes back created, and it is simply absent from the screen.
+ *
+ * The message lists the whole set on purpose -- it is the only place an author
+ * who guessed is told what the alternatives are.
+ */
+export function elementTypeFinding(el: UIElement): ReviewFinding | null {
+  if (RENDERED_TYPES.has(el.type)) return null;
+  return {
+    elementId: el.id,
+    kind: "unknown_element_type",
+    message:
+      `${el.id} has type '${el.type}', which the panel has no renderer for, so it draws ` +
+      `nothing at all. The types are: ${[...RENDERED_TYPES].sort().join(", ")}.`,
+    key: `unknown_element_type|${el.id}`,
+  };
+}
+
 /**
  * Bindings this element type's renderer never reads.
  *
@@ -3624,6 +3656,8 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
 
   for (const el of page.elements) {
     if (!inScope(el.id)) continue;
+    const typeFinding = elementTypeFinding(el);
+    if (typeFinding) findings.push(typeFinding);
     findings.push(...bindingFindings(el));
   }
 
@@ -3765,7 +3799,10 @@ export function reviewMasterElement(
   master: MasterElement,
   theme?: ElementDefaults,
 ): ReviewFinding[] {
-  const findings = bindingFindings(master);
+  const typeFinding = elementTypeFinding(master);
+  const findings = typeFinding
+    ? [typeFinding, ...bindingFindings(master)]
+    : bindingFindings(master);
   const placements = master.placements;
   if (!placements || typeof placements !== "object") return findings;
   const seen = new Set<string>();

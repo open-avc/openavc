@@ -262,9 +262,16 @@ CASES["binding_reach"] = _project([
                                    "value": {"key": "device.acme.selected"}}}},
             {"id": "visible_only", "type": "image",
              "bindings": {"show": {"visible_when": {"key": "var.admin", "equals": True}}}},
-            # A type nothing has an opinion about must produce silence, not a crash.
+            # A type the panel cannot draw. It answers about the TYPE and says
+            # nothing about the binding: a slot reaching a renderer that does
+            # not exist is not a second, separate problem.
             {"id": "unknown_kind", "type": "plugin:acme:widget",
              "bindings": {"show": {"look": {"key": "device.acme.online"}}}},
+            # `plugin` is a real type the panel draws, and the one the Builder's
+            # palette and the authoring prompt both leave out -- so it has to
+            # come back clean here or the check would teach the wrong set.
+            {"id": "plugin_ok", "type": "plugin",
+             "plugin_id": "acme", "plugin_type": "widget"},
         ],
         [_landscape({
             "text_with_look": _pct_box(0, 0, 20, 10),
@@ -276,6 +283,7 @@ CASES["binding_reach"] = _project([
             "list_ok": _pct_box(50, 20, 20, 40),
             "visible_only": _pct_box(75, 20, 20, 20),
             "unknown_kind": _pct_box(75, 45, 20, 20),
+            "plugin_ok": _pct_box(0, 70, 20, 20),
         })],
     ),
 ])
@@ -918,6 +926,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "overlap",
         "no_placement",
         "binding_not_rendered",
+        "unknown_element_type",
     }
 
 
@@ -943,7 +952,25 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "graze",                               # overlaps by a thousandth of a percent
         "left_kid", "right_kid",               # different containers
         "list_ok", "visible_only",             # bindings the renderer reads
-        "unknown_kind",                        # a type nothing has an opinion about
+        "plugin_ok",                           # a real type both authoring surfaces omit
         "btn_with_state_labels",               # a button DOES draw state text
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
+
+
+def test_an_unknown_type_answers_once_about_the_type(verdicts) -> None:
+    """And says nothing about its bindings.
+
+    ``unknown_kind`` carries a ``show.look`` as well as a type the panel cannot
+    draw. Warning that the slot is unread would be answering for a renderer that
+    does not exist, and the fix for both is the same one edit.
+    """
+    findings = [
+        finding
+        for python_side, _ in verdicts.values()
+        for finding in python_side
+        if finding["element_id"] == "unknown_kind"
+    ]
+    assert [f["kind"] for f in findings] == ["unknown_element_type"]
+    # The whole set is in the message, because this is where an author learns it.
+    assert "plugin" in findings[0]["message"]

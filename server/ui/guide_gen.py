@@ -48,6 +48,7 @@ from server.ui.control_minimums import (
 )
 from server.ui.page_review import (
     HONORED_SHOW_SLOTS,
+    RENDERED_TYPES,
     STATE_LABEL_TYPES,
     TOUCH_MIN_MM,
     TOUCH_MIN_PX,
@@ -140,6 +141,24 @@ container, in which case it is **that container's box**, and this is where the
 arithmetic usually goes wrong. A container %(cw)d%% x %(ch)d%% of the page is %(cw_px)d x %(ch_px)d px, so a
 status LED inside it needs %(dot_in_container)s of the container to hold the same %(dot)spx dot --
 not the %(dot_of_page)s it would need of the page.
+"""
+
+TYPES_INTRO = """\
+
+## The element types
+
+%(names)s
+
+That is the whole set. `type` is a free-form string in the file, so anything else
+is accepted by the loader, saved, given a placement -- and then dropped by the
+renderer, which has no case for it and draws nothing. There is no error and no
+gap on screen where it would have been, so this is worth checking before
+inventing a name: there is no `knob`, no `toggle`, no `meter`.
+
+`plugin` is the one that gets missed. It draws an element an installed plugin
+defines, and needs `plugin_id` naming the plugin plus `plugin_type` naming the
+element that plugin declares -- both of them, or it draws its unconfigured
+placeholder. Do not guess either value.
 """
 
 FIXED_INTRO = """\
@@ -290,9 +309,10 @@ def _caption_rows() -> str:
         bare = {"type": name}
         labelled = {"type": name, "label": "Zone 1"}
         rows.append(f"| no caption | {_box(bare)} px | {_pct_pair(bare)} |")
-        rows.append(
-            f"| caption or bound text | {_box(labelled)} px | {_pct_pair(labelled)} |"
-        )
+        # "or bound text" until the caption rule was corrected: a bound
+        # show.value neither draws nor widens, which is what the prose above
+        # now says, and this row was still contradicting it.
+        rows.append(f"| caption | {_box(labelled)} px | {_pct_pair(labelled)} |")
     return "\n".join(rows) + "\n"
 
 
@@ -404,6 +424,7 @@ def render() -> str:
 
     return "".join([
         header,
+        TYPES_INTRO % {"names": _and_list(sorted(RENDERED_TYPES))},
         FIXED_INTRO % {"ref_w": REFERENCE_WIDTH_PX, "ref_h": REFERENCE_HEIGHT_PX},
         _fixed_rows(),
         CAPTION_INTRO,

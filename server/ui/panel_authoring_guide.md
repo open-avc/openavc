@@ -26,6 +26,21 @@ arithmetic usually goes wrong. A container 40% x 30% of the page is 512 x 240 px
 status LED inside it needs 3.91% of the container to hold the same 20px dot --
 not the 1.56% it would need of the page.
 
+## The element types
+
+`button`, `camera_preset`, `clock`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led` and `text_input`
+
+That is the whole set. `type` is a free-form string in the file, so anything else
+is accepted by the loader, saved, given a placement -- and then dropped by the
+renderer, which has no case for it and draws nothing. There is no error and no
+gap on screen where it would have been, so this is worth checking before
+inventing a name: there is no `knob`, no `toggle`, no `meter`.
+
+`plugin` is the one that gets missed. It draws an element an installed plugin
+defines, and needs `plugin_id` naming the plugin plus `plugin_type` naming the
+element that plugin declares -- both of them, or it draws its unconfigured
+placeholder. Do not guess either value.
+
 ## Controls with a fixed floor
 
 `Of a full page` is the floor as a percentage of a 1280 x 800 parent. Divide by
@@ -51,7 +66,7 @@ screen nor widens this floor.
 | status_led | Smallest box | Of a full page |
 |---|---|---|
 | no caption | 20 x 20 px | 1.56% x 2.5% |
-| caption or bound text | 29 x 20 px | 2.27% x 2.5% |
+| caption | 29 x 20 px | 2.27% x 2.5% |
 
 ## Controls whose floor depends on a size you set
 

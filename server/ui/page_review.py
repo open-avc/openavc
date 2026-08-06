@@ -120,6 +120,14 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "text_input": frozenset({"value"}),
 }
 
+#: Every type the panel has a renderer for.
+#:
+#: Derived from the table above rather than written out again:
+#: ``tests/test_ui_page_review_mirrors.py`` re-derives that table's keys from
+#: ``renderElement``'s dispatch, so this IS the renderer's own set, and a type
+#: added to the panel without a row above fails that test before it reaches here.
+RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
+
 #: Types whose ``look`` binding renders per-state TEXT. Everything else that
 #: reads ``look`` takes only colour from it -- a status LED tints its dot, a
 #: select styles its options -- so a ``states[].label`` on those never appears.
@@ -507,6 +515,33 @@ def no_box_finding(element: Mapping[str, Any], parent_name: str) -> Finding:
 # --- Binding findings ------------------------------------------------------
 
 
+def element_type_finding(element: Mapping[str, Any]) -> Finding | None:
+    """A type the panel has no renderer for, which draws nothing at all.
+
+    ``UIElement.type`` is a free-form ``str`` and every layer downstream treats
+    it as one: the loader accepts anything, this module used to return early on
+    a type it did not know, and ``renderElement``'s switch falls through to a
+    ``console.warn`` and returns null. So the element has an id, a placement and
+    bindings, the write comes back created, and it is simply absent from the
+    screen -- a defect with a file entry and no symptom.
+
+    The message lists the whole set on purpose. This is the only place an author
+    who guessed is told what the alternatives are, and one of them (``plugin``)
+    is in neither the Builder's palette nor the authoring prompt, so naming it
+    here is what makes it reachable at all.
+    """
+    el_type = str(element.get("type", ""))
+    if el_type in RENDERED_TYPES:
+        return None
+    el_id = str(element.get("id", "?"))
+    return Finding(
+        el_id,
+        "unknown_element_type",
+        f"{el_id} has type '{el_type}', which the panel has no renderer for, so it draws "
+        f"nothing at all. The types are: {', '.join(sorted(RENDERED_TYPES))}.",
+    )
+
+
 def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     """Bindings this element type's renderer never reads.
 
@@ -693,6 +728,9 @@ def review_page(
     for el_id, dump in dumps.items():
         if not in_scope(el_id):
             continue
+        type_finding = element_type_finding(dump)
+        if type_finding:
+            findings.append(type_finding)
         findings.extend(binding_findings(dump))
         key = bound_state_key(dump)
         if key and declared_range:
@@ -848,7 +886,8 @@ def review_master_element(
     contents, whether a finger can hit it, and whether its bindings are read.
     """
     dump = _mapping(element)
-    findings = binding_findings(dump)
+    type_finding = element_type_finding(dump)
+    findings = ([type_finding] if type_finding else []) + binding_findings(dump)
     placements = dump.get("placements")
     if not isinstance(placements, Mapping):
         return findings
