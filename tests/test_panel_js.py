@@ -88,6 +88,11 @@ SCENARIOS = [
     "select_look_applies_matching_option_style",
     "select_look_registered_and_dispatched",
     "slider_fader_step_no_float_noise",
+    # display_decimals reaches every element that draws a number.
+    "label_display_decimals_rounds_a_numeric_value",
+    "label_display_decimals_leaves_text_alone",
+    "gauge_display_decimals",
+    "display_decimals_out_of_range_cannot_throw",
     # Layout engine (percentage geometry, project format 0.8.0).
     "layout_elements_paint_above_page_background",
     "layout_placement_is_percentages",

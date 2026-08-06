@@ -189,7 +189,7 @@ export interface UIElement {
   response_db_range?: number; // logarithmic taper: dB span of the throw
   send_on_release?: boolean; // slider/fader: send only when the drag ends
   send_throttle_ms?: number; // slider/fader: min ms between live sends
-  display_decimals?: number; // slider/fader: decimal places in the value readout
+  display_decimals?: number; // slider/fader/gauge/label: decimal places in the value readout
   target_page?: string;
   options?: UIElementOption[];
   placeholder?: string;

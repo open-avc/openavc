@@ -186,11 +186,29 @@ When you choose Logarithmic, one extra field appears:
 
 The Response setting only changes how the control feels. The value sent to the device (after any output range scaling) is unchanged, so it is safe to switch between Linear and Logarithmic at any time.
 
+#### Shown decimals (labels, gauges, sliders, faders)
+
+Every element that draws a number offers **Shown decimals**, which sets how many decimal places the readout uses.
+
+Reach for it whenever a panel shows a raw reading. Devices report measurements at full machine precision, so an amplifier reporting 0.06 amps often sends `0.06000000238418579`, and a label bound straight to that value prints all of it. Setting **Shown decimals** to 2 draws `0.06 A` instead.
+
+Each element type has its own default when you leave the field empty:
+
+| Element | Empty means |
+|---------|-------------|
+| **Label** | The value is shown exactly as the device reports it. Only numbers are rounded when you set a value here; text (device names, input modes, firmware versions) is always left alone, so a version of "2.10" is never reformatted. |
+| **Gauge** | One decimal place, with trailing zeros dropped. |
+| **Slider**, **Fader** | One decimal place for a fractional step, whole numbers otherwise. |
+
+**Shown decimals** changes the on-screen number only. It does **not** change the value sent to a device. That value is formatted by the driver's command parameter, so a device that needs a whole number gets one because its driver declares the parameter as an integer, not because of what the readout shows.
+
+On a label, the setting applies to the value that fills the `{value}` placeholder, so a format of `Current: {value} A` becomes `Current: 0.06 A`.
+
 #### Value display and send behavior (sliders and faders)
 
 Two more settings on the slider and fader control the readout and how commands are sent.
 
-- **Unit** and **Shown decimals** change the on-screen number only: a unit label (dB, %) shown beside the value, and how many decimal places the readout uses. They do **not** change the value sent to a device. That value is formatted by the driver's command parameter, so a device that needs a whole number gets one because its driver declares the parameter as an integer, not because of what the readout shows.
+- **Unit** adds a label (dB, %) beside the value. Like **Shown decimals** above, it changes the on-screen number only.
 - **Send** chooses whether the control streams commands continuously as you drag (the default) or sends a single command when you let go. Use **On release only** for devices that can't keep up with a burst of commands, such as a serial receiver. In the default live mode, **Rate (ms)** sets the minimum time between commands while dragging.
 
 ### Shows: Appearance

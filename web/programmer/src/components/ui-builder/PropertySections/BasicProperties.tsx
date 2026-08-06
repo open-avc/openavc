@@ -232,6 +232,10 @@ export function BasicProperties({
               Use Enter for line breaks
             </label>
           </FieldRow>
+          <ShownDecimalsRow element={element} onChange={onChange} placeholder="As reported" />
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
+            Rounds a bound value when it is a number. Text is shown exactly as the device reports it.
+          </div>
         </>
       )}
 
@@ -453,6 +457,7 @@ export function BasicProperties({
           <FieldRow label="Unit">
             <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%, dB, etc." style={{ flex: 1 }} />
           </FieldRow>
+          <ShownDecimalsRow element={element} onChange={onChange} placeholder="1" />
           <MatchDriverRangeRow element={element} onElementPatch={onChange} />
           <FieldRow label="Arc Angle">
             <input type="number" value={element.arc_angle ?? ""} onChange={(e) => onChange({ arc_angle: numOrUndefined(e.target.value) })} placeholder="240" min={90} max={360} style={{ flex: 1 }} />
@@ -1585,12 +1590,47 @@ function ResponseCurveFields({
 }
 
 /**
- * Value/send behavior shared by slider and fader. `Shown decimals` controls the
- * readout only (the value sent to a device is formatted by the driver's command
- * param, not here). `Send` chooses whether the control streams commands while
- * dragging or fires a single command on release — the latter for gear that
- * can't absorb a burst. `includeUnit` adds the unit field for the slider (the
- * fader already has its own).
+ * How many decimal places a readout shows. Every element that DRAWS a number
+ * offers this, because a device float arrives at full float64 width: an amp
+ * reporting 0.06 A puts 0.06000000238418579 on the panel unless something
+ * rounds it. `placeholder` is what that element type does when the field is
+ * left empty, so the author can see the default without reading a doc.
+ *
+ * Display only — the value sent to a device is formatted by the driver's
+ * command parameter, never by this.
+ */
+function ShownDecimalsRow({
+  element,
+  onChange,
+  placeholder,
+}: {
+  element: UIElement;
+  onChange: (patch: Partial<UIElement>) => void;
+  placeholder: string;
+}) {
+  return (
+    <FieldRow label="Shown decimals">
+      <input
+        type="number"
+        value={element.display_decimals ?? ""}
+        onChange={(e) =>
+          onChange({ display_decimals: e.target.value === "" ? undefined : Number(e.target.value) })
+        }
+        placeholder={placeholder}
+        min={0}
+        max={6}
+        step={1}
+        style={{ flex: 1 }}
+      />
+    </FieldRow>
+  );
+}
+
+/**
+ * Value/send behavior shared by slider and fader. `Send` chooses whether the
+ * control streams commands while dragging or fires a single command on release
+ * — the latter for gear that can't absorb a burst. `includeUnit` adds the unit
+ * field for the slider (the fader already has its own).
  */
 function ValueBehaviorFields({
   element,
@@ -1615,20 +1655,7 @@ function ValueBehaviorFields({
           />
         </FieldRow>
       )}
-      <FieldRow label="Shown decimals">
-        <input
-          type="number"
-          value={element.display_decimals ?? ""}
-          onChange={(e) =>
-            onChange({ display_decimals: e.target.value === "" ? undefined : Number(e.target.value) })
-          }
-          placeholder="Auto"
-          min={0}
-          max={6}
-          step={1}
-          style={{ flex: 1 }}
-        />
-      </FieldRow>
+      <ShownDecimalsRow element={element} onChange={onChange} placeholder="Auto" />
       <FieldRow label="Send">
         <select
           value={onRelease ? "release" : "live"}

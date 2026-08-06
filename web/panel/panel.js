@@ -2807,6 +2807,7 @@ class PanelApp {
         const showTicks = style.show_ticks !== false;
         const tickCount = style.tick_count || 5;
         const zones = element.zones || null;
+        const displayDecimals = this._displayDecimals(element);
 
         // SVG gauge
         const size = 120;
@@ -2904,7 +2905,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: element.bindings.show.value,
-                _svg: { fgPath, valueText, startAngle, endAngle, radius, cx, cy, min, max, unit, gaugeColor, zones, showValue, arcPath: arcPath, polarToCart },
+                _svg: { fgPath, valueText, startAngle, endAngle, radius, cx, cy, min, max, unit, gaugeColor, zones, showValue, displayDecimals, arcPath: arcPath, polarToCart },
             });
         }
 
@@ -2916,7 +2917,7 @@ class PanelApp {
         // Memoize: skip if unchanged (also short-circuits the undefined steady state)
         if (b._lastGaugeRaw === raw) return;
         b._lastGaugeRaw = raw;
-        const { fgPath, valueText, startAngle, endAngle, radius, min, max, unit, gaugeColor, zones, showValue, arcPath: arcPathFn } = b._svg;
+        const { fgPath, valueText, startAngle, endAngle, radius, min, max, unit, gaugeColor, zones, showValue, displayDecimals, arcPath: arcPathFn } = b._svg;
         if (raw === undefined || raw === null) {
             // Bound key was deleted (device removed/offline) — revert to the
             // no-data placeholder instead of freezing on the last reading.
@@ -2947,7 +2948,14 @@ class PanelApp {
         fgPath.setAttribute('stroke', color);
 
         if (showValue) {
-            valueText.textContent = `${Math.round(value * 10) / 10}${unit}`;
+            // Unset means one decimal with trailing zeros dropped — exactly what
+            // a gauge has always drawn, so no panel built before this moves. An
+            // explicit setting is a fixed width instead, the way the slider and
+            // fader readouts already behave.
+            const shown = displayDecimals != null
+                ? value.toFixed(displayDecimals)
+                : String(Math.round(value * 10) / 10);
+            valueText.textContent = `${shown}${unit}`;
         }
     }
 
@@ -3346,6 +3354,18 @@ class PanelApp {
         const dot = s.indexOf('.');
         const decimals = dot === -1 ? 0 : s.length - dot - 1;
         return decimals > 0 ? Number(snapped.toFixed(decimals)) : snapped;
+    }
+
+    // The fixed decimal count an element asked for in its readout, or null when
+    // the author said nothing (each element type decides its own default from
+    // that). Clamped to the range toFixed accepts, so a stray project value
+    // can't throw part-way through a render pass and leave the page half drawn.
+    _displayDecimals(elementDef) {
+        const raw = elementDef?.display_decimals;
+        if (raw == null) return null;
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return null;
+        return Math.max(0, Math.min(20, Math.round(n)));
     }
 
     // Response curve for faders/sliders. Maps physical travel (0..1, bottom to
@@ -4454,6 +4474,21 @@ class PanelApp {
         }
     }
 
+    /**
+     * A bound value as a label should print it.
+     *
+     * A device float arrives at float64 width, so a float32 reading of 0.06
+     * comes across as 0.06000000238418579 and a raw print is unreadable on a
+     * panel. `display_decimals` rounds it. Only real numbers are touched:
+     * most labels are bound to text — device names, input modes, firmware
+     * versions — and reformatting a version string of "2.10" would be wrong.
+     */
+    _labelValueText(value, elementDef) {
+        const dec = this._displayDecimals(elementDef);
+        if (dec == null || typeof value !== 'number' || !Number.isFinite(value)) return String(value);
+        return value.toFixed(dec);
+    }
+
     evaluateText(b) {
         const { element, elementDef, binding } = b;
         const value = this.state[binding.key];
@@ -4483,13 +4518,14 @@ class PanelApp {
             setText('');
             return;
         }
+        const shown = this._labelValueText(value, elementDef);
         if (binding.format) {
             // split/join replaces every {value} and treats the value literally,
             // so device values containing $-sequences (track titles, paths)
             // aren't reinterpreted the way String.replace would.
-            setText(String(binding.format).split('{value}').join(String(value)));
+            setText(String(binding.format).split('{value}').join(shown));
         } else {
-            setText(String(value));
+            setText(shown);
         }
     }
 

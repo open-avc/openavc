@@ -372,6 +372,104 @@ const tests = {
         assert(el.textContent === '[$&] [$&]', `all placeholders replaced literally, got ${el.textContent}`);
     },
 
+    // A device float crosses the wire at float64 width, so a float32 reading of
+    // 0.06 arrives as 0.06000000238418579 and a label printed it whole. The
+    // element's display_decimals rounds it, through the format placeholder and
+    // through the bare no-format path alike.
+    label_display_decimals_rounds_a_numeric_value() {
+        const app = mkApp();
+        const raw = 0.06000000238418579;
+
+        const withFormat = document.createElement('div');
+        const bf = {
+            element: withFormat,
+            elementDef: { id: 'amps', type: 'label', display_decimals: 2 },
+            binding: { key: 'device.amp.ac_line_current', format: '{value} A' },
+        };
+        app.state = { 'device.amp.ac_line_current': raw };
+        app.evaluateText(bf);
+        assert(withFormat.textContent === '0.06 A', `rounded inside the format, got ${withFormat.textContent}`);
+
+        const bare = document.createElement('div');
+        const bb = {
+            element: bare,
+            elementDef: { id: 'amps2', type: 'label', display_decimals: 2 },
+            binding: { key: 'device.amp.ac_line_current' },
+        };
+        app.evaluateText(bb);
+        assert(bare.textContent === '0.06', `rounded with no format string, got ${bare.textContent}`);
+
+        // Unset is unchanged: a label that never asked still prints the value raw.
+        const untouched = document.createElement('div');
+        const bu = { element: untouched, elementDef: { id: 'amps3', type: 'label' }, binding: { key: 'device.amp.ac_line_current' } };
+        app.evaluateText(bu);
+        assert(untouched.textContent === String(raw), `unset label unchanged, got ${untouched.textContent}`);
+    },
+
+    // Most labels are bound to text — names, input modes, firmware versions —
+    // and a version of "2.10" must not be reformatted into "2.1".
+    label_display_decimals_leaves_text_alone() {
+        const app = mkApp();
+        for (const [value, expected] of [['2.10', '2.10'], ['Blu-ray', 'Blu-ray'], [true, 'true']]) {
+            const el = document.createElement('div');
+            const b = { element: el, elementDef: { id: 'v', type: 'label', display_decimals: 1 }, binding: { key: 'var.v' } };
+            app.state = { 'var.v': value };
+            app.evaluateText(b);
+            assert(el.textContent === expected, `${JSON.stringify(value)} left alone, got ${el.textContent}`);
+        }
+    },
+
+    // The gauge readout honours display_decimals, and an unset one draws exactly
+    // what it always drew (one decimal, trailing zeros dropped) so no panel
+    // built before this moves.
+    gauge_display_decimals() {
+        const app = mkApp();
+        const mkGauge = (extra) => {
+            const el = app.renderGauge(Object.assign(
+                { id: 'g', type: 'gauge', min: 0, max: 1, unit: ' A', bindings: { show: { value: { key: 'var.a' } } } },
+                extra,
+            ));
+            return { el, b: app.bindings[app.bindings.length - 1] };
+        };
+        const readout = (el) => el.querySelector('[data-role=gauge-value]').textContent;
+
+        app.state = { 'var.a': 0.06000000238418579 };
+        const two = mkGauge({ display_decimals: 2 });
+        app.evaluateGaugeValue(two.b);
+        assert(readout(two.el) === '0.06 A', `two decimals, got ${readout(two.el)}`);
+
+        const zero = mkGauge({ display_decimals: 0, min: 0, max: 100 });
+        app.state = { 'var.a': 72.6 };
+        app.evaluateGaugeValue(zero.b);
+        assert(readout(zero.el) === '73 A', `zero decimals rounds, got ${readout(zero.el)}`);
+
+        // Unset: a whole number stays whole (not "50.0"), a long float still
+        // collapses to one decimal. Both are today's output, unchanged.
+        const auto = mkGauge({ min: 0, max: 100 });
+        app.state = { 'var.a': 50 };
+        app.evaluateGaugeValue(auto.b);
+        assert(readout(auto.el) === '50 A', `unset drops trailing zeros, got ${readout(auto.el)}`);
+        app.state = { 'var.a': 0.06000000238418579 };
+        app.evaluateGaugeValue(auto.b);
+        assert(readout(auto.el) === '0.1 A', `unset rounds to one decimal, got ${readout(auto.el)}`);
+    },
+
+    // A project value toFixed would throw on must not take the render pass down.
+    display_decimals_out_of_range_cannot_throw() {
+        const app = mkApp();
+        for (const bad of [-3, 999, 'lots', NaN]) {
+            const el = document.createElement('div');
+            const b = { element: el, elementDef: { id: 'x', type: 'label', display_decimals: bad }, binding: { key: 'var.n' } };
+            app.state = { 'var.n': 1.23456 };
+            app.evaluateText(b);   // throwing here fails the scenario
+            assert(el.textContent.length > 0, `${JSON.stringify(bad)} still renders something`);
+        }
+        assert(app._displayDecimals({ display_decimals: -3 }) === 0, 'negative clamps to 0');
+        assert(app._displayDecimals({ display_decimals: 999 }) === 20, 'huge clamps to 20');
+        assert(app._displayDecimals({ display_decimals: 'lots' }) === null, 'non-numeric reads as unset');
+        assert(app._displayDecimals({}) === null, 'absent reads as unset');
+    },
+
     // L-004 — the reconnect backoff cap field is wired up.
     l004_max_reconnect_delay() {
         assert(mkApp().maxReconnectDelay === 30000, 'maxReconnectDelay is 30000');
