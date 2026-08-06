@@ -806,6 +806,14 @@ export function SystemSettingsView() {
                     {a.name} — {a.ip} ({a.subnet})
                   </option>
                 ))}
+                {/* A stored pin whose adapter is gone matches no option above;
+                    without its own entry the select silently renders "Auto"
+                    while the stale pin stays live and breaks scans/connects. */}
+                {net.control_interface && !adapters.some((a) => a.ip === net.control_interface) && (
+                  <option value={net.control_interface}>
+                    {net.control_interface} (not connected — pick a current adapter or Auto)
+                  </option>
+                )}
               </select>
               <button
                 type="button"

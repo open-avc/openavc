@@ -760,3 +760,32 @@ class TestCollectSnmpResults:
         except asyncio.CancelledError:
             pass
         await self.engine._collect_snmp_results(task)
+
+
+class TestEmptySubnetErrors:
+    """The no-subnets refusal must name a stale control-interface pin.
+
+    A pinned control interface whose adapter is gone (the box moved networks
+    since it was set) yields zero subnets; the old generic message sent the
+    user hunting a phantom subnet instead of the pin in Settings.
+    """
+
+    def setup_method(self):
+        self.engine = DiscoveryEngine()
+
+    @pytest.mark.asyncio
+    async def test_stale_control_interface_named_in_error(self):
+        with patch.object(self.engine, "_get_control_interface", return_value="192.0.2.77"), \
+             patch("server.discovery.engine.get_local_subnets", return_value=[]):
+            with pytest.raises(ValueError) as exc:
+                await self.engine.start_scan()
+        assert "192.0.2.77" in str(exc.value)
+        assert "Settings > Network" in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_no_pin_keeps_generic_message(self):
+        with patch.object(self.engine, "_get_control_interface", return_value=""), \
+             patch("server.discovery.engine.get_local_subnets", return_value=[]):
+            with pytest.raises(ValueError) as exc:
+                await self.engine.start_scan()
+        assert str(exc.value) == "No subnets to scan. Specify subnets manually."

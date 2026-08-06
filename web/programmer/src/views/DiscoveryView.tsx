@@ -260,7 +260,9 @@ export function DiscoveryPanel() {
         api.getNetworkAdapters().then((r) => {
           const match = r.adapters.find((a) => a.ip === ip);
           if (match) setAdapterLabel(`${match.name} (${match.ip}/${match.subnet.split("/")[1] || "24"})`);
-          else setAdapterLabel(ip);
+          // No current adapter has the pinned address — say so here, because
+          // the pin otherwise looks like a live scan target.
+          else setAdapterLabel(`${ip} (adapter not found on this machine — fix in Settings > Network)`);
         }).catch(() => setAdapterLabel(ip));
       }
     }).catch(() => {});

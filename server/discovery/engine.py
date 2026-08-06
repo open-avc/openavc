@@ -519,6 +519,17 @@ class DiscoveryEngine:
             log.info("Discovery target subnets: %s", targets)
 
             if not targets:
+                # A pinned control interface that no longer exists is the usual
+                # culprit here (the box moved networks since it was set), and
+                # the generic message sent one integrator hunting a phantom
+                # subnet — name the pin and where to clear it.
+                if control_ip and not subnets:
+                    raise ValueError(
+                        f"Control interface {control_ip} is set in Settings > "
+                        "Network but no adapter on this machine has that "
+                        "address. Pick a current adapter there (or Auto), or "
+                        "specify subnets manually."
+                    )
                 raise ValueError("No subnets to scan. Specify subnets manually.")
 
             depth = self.config.get("scan_depth", "standard")
