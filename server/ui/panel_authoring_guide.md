@@ -49,7 +49,7 @@ the container instead when the element sits in one.
 | Type | Smallest box | Of a full page | What does not shrink |
 |---|---|---|---|
 | fader | 72 x 100 px | 5.62% x 12.5% | fader-handle 44 x 44, fader-scale 28 wide |
-| matrix | 277 x 236 px | 21.64% x 29.5% | matrix-cell 44 x 44 |
+| matrix | 278 x 236 px | 21.72% x 29.5% | matrix-cell 44 x 44 |
 | level_meter | 13 x 80 px | 1.02% x 10% | meter-segment 2 tall |
 | keypad | 84 x 221 px | 6.56% x 27.62% | keypad-key 36 tall (font-driven) |
 | select | 44 x 51 px | 3.44% x 6.38% | native control 30 tall (font-driven) |
@@ -91,7 +91,7 @@ authored value by 14 before working one out.
 Where a floor is not what the shape of the control suggests.
 
 - **list** -- Row height does not change how wide a list has to be.
-- **matrix** -- Constant, NOT a function of the crosspoint count: 2x2, 3x3 and 4x4 all floor here, because .matrix-scroll scrolls the grid internally once it runs out of room. The height is 236 rather than the 234 first recorded because 234 pushes a cell outside the box on Linux: these floors are text-driven and move a pixel or two with the font stack, so where two machines disagree the larger wins -- a floor that is slightly generous rejects a layout that would have rendered, but one that is too small draws a broken control and says nothing.
+- **matrix** -- Constant, NOT a function of the crosspoint count: 2x2, 3x3 and 4x4 all floor here, because .matrix-scroll scrolls the grid internally once it runs out of room. 278x236 rather than the 277x234 first recorded because both of those push a cell outside the box somewhere: these floors are text-driven and move a pixel or two with the font stack, so this is the largest of three machines (274..278 wide, 234..236 tall) rather than any one measurement. Where they disagree the larger wins -- a slightly generous floor rejects a layout that would have rendered, but a short one draws a broken control and says nothing.
 
 ## Types with no floor at all
 

@@ -133,7 +133,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": "Row height does not change how wide a list has to be."
   },
   "matrix": {
-    "baseWidthPx": 277,
+    "baseWidthPx": 278,
     "baseHeightPx": 236,
     "internals": [
       {
@@ -146,7 +146,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
-    "note": "Constant, NOT a function of the crosspoint count: 2x2, 3x3 and 4x4 all floor here, because .matrix-scroll scrolls the grid internally once it runs out of room. The height is 236 rather than the 234 first recorded because 234 pushes a cell outside the box on Linux: these floors are text-driven and move a pixel or two with the font stack, so where two machines disagree the larger wins -- a floor that is slightly generous rejects a layout that would have rendered, but one that is too small draws a broken control and says nothing."
+    "note": "Constant, NOT a function of the crosspoint count: 2x2, 3x3 and 4x4 all floor here, because .matrix-scroll scrolls the grid internally once it runs out of room. 278x236 rather than the 277x234 first recorded because both of those push a cell outside the box somewhere: these floors are text-driven and move a pixel or two with the font stack, so this is the largest of three machines (274..278 wide, 234..236 tall) rather than any one measurement. Where they disagree the larger wins -- a slightly generous floor rejects a layout that would have rendered, but a short one draws a broken control and says nothing."
   },
   "level_meter": {
     "baseWidthPx": 13,

@@ -308,11 +308,11 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
 #: therefore asserting which machine ran it, and it duly failed CI on seven
 #: controls at once the first time it was ever allowed to execute there.
 #:
-#: Three is the widest disagreement actually measured across those three, not a
-#: round number: the fader's height spans 99..102 and the matrix's width 274..277.
+#: Four is the widest disagreement actually measured across those three, not a
+#: round number: the matrix's width spans 274..278 and the fader's height 99..102.
 #: The check still does its real job, which is catching a floor inflated far
 #: enough to make the Builder and the AI reject layouts that would render fine.
-TIGHTNESS_SLACK_PX = 3
+TIGHTNESS_SLACK_PX = 4
 
 
 @pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)
