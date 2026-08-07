@@ -87,7 +87,7 @@ Name: "{commonstartup}\OpenAVC Tray"; Filename: "{app}\openavc-tray.exe"; Compon
 
 [Run]
 ; Install and start service (mandatory)
-Filename: "{app}\install-service.bat"; Parameters: """{app}"" ""{commonappdata}\OpenAVC"""; Flags: runhidden waituntilterminated; StatusMsg: "Installing OpenAVC service..."
+Filename: "{app}\install-service.bat"; Parameters: """{app}"" ""{commonappdata}\OpenAVC"""; Flags: runhidden waituntilterminated; StatusMsg: "Installing and starting OpenAVC service..."
 ; Launch tray app
 Filename: "{app}\openavc-tray.exe"; Flags: nowait postinstall skipifsilent; Components: tray; Description: "Launch OpenAVC system tray"
 ; Open Programmer IDE in browser

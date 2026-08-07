@@ -61,4 +61,51 @@ if not exist "%DATA_DIR%\projects\default\project.avc" (
 REM Start the service
 "%INSTALL_DIR%\nssm.exe" start OpenAVC
 
+REM Wait briefly for the server to actually accept connections.
+REM
+REM The installer opens http://localhost:8080/programmer right after this
+REM script returns, and `nssm start` returns once the process is LAUNCHED, not
+REM once it is LISTENING. In that window the browser shows its own
+REM connection-refused page. The startup splash cannot cover it: the splash is
+REM served BY the server, so it needs the socket already bound. On a first run
+REM the gap is real (a freshly written bundle gets virus-scanned before it
+REM gets far), even though a warm machine usually binds before the user can
+REM click Finish.
+REM
+REM Deliberately FAIL-OPEN: if the port never shows up we fall through and the
+REM install completes exactly as it did before. A slow start must never become
+REM a failed installation. Same reason the ceiling is bounded rather than
+REM waiting forever, and why the port is checked before the first sleep -- the
+REM normal case (already listening) costs nothing.
+REM
+REM `ping` is the delay, not `timeout`: timeout aborts with "input redirection
+REM is not supported" when stdin is redirected, which is how the installer
+REM invokes this (runhidden).
+REM
+REM The port is the 8080 default on purpose -- it is what the installer's own
+REM shortcuts and the Finish-page browser link use, so it is the only port this
+REM wait could be protecting. This script also runs on upgrades, so someone who
+REM moved the server to a custom port or bind address never matches and waits
+REM out the ceiling before continuing normally. That is why the ceiling is
+REM short: overshooting costs a rare upgrade a few seconds, while undershooting
+REM just returns the pre-existing behaviour of a browser that may beat the
+REM socket.
+REM
+REM Match on the local address, NOT on the word LISTENING: netstat localises
+REM its state column, so "LISTENING" is absent on a German or French Windows
+REM and every install there would sit out the full ceiling for nothing.
+REM "0.0.0.0:8080" is locale-independent, and it can only be a listening
+REM socket -- 0.0.0.0 never appears as a peer address. The service is pinned to
+REM that bind address above (OPENAVC_BIND), so this is exactly our own socket.
+set OPENAVC_WAIT_TRIES=20
+:openavc_wait_loop
+netstat -an | findstr /c:"0.0.0.0:8080" >nul 2>&1
+if not errorlevel 1 goto openavc_wait_done
+set /a OPENAVC_WAIT_TRIES-=1
+if %OPENAVC_WAIT_TRIES% LEQ 0 goto openavc_wait_done
+ping -n 2 127.0.0.1 >nul 2>&1
+goto openavc_wait_loop
+:openavc_wait_done
+
 echo OpenAVC service installed and started.
+exit /b 0
