@@ -10,10 +10,18 @@ came back ``created``.
 This module is the answer to that question. It takes a page, folds its geometry
 down through ``page_geometry``, and reports -- in reference pixels and in the
 percentages the caller actually writes -- everything that will render wrong: a
-control smaller than its own fixed internals, two controls on top of each other,
-one hanging out of its container, one with no box at all, one too small for a
-finger, a range wider than the device it drives, and a binding the panel does
-not read for that element type.
+control smaller than its own fixed internals, one drawn so small nothing
+survives it, two controls on top of each other, one hanging out of its
+container, one with no box at all, one too small for a finger, a ``style``
+measurement bigger than the element carrying it (those are rem), a range wider
+than the device it drives, a ``type`` the panel has no renderer for, and a
+binding the panel does not read for that element type.
+
+What a binding POINTS AT -- a macro, a page, a device, a command -- is the
+neighbouring question, and ``page_references`` answers it. It is separate
+because those checks need the project and the driver registry, and because the
+Builder already answers them somewhere else (``validateProject``) rather than in
+the mirror of this module.
 
 Everything here is a WARNING. Nothing rejects.
 --------------------------------------------
