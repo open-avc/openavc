@@ -1,0 +1,9 @@
+# Files written by scripts/build-icons.mjs during `npm run build`. The
+# generator emits Unix line endings, and one of them is a byte-for-byte copy of
+# an installed package asset, so a Windows checkout that converted them would
+# report both files as modified after every single build -- a permanent pair of
+# fake changes with no content difference, easy to mistake for real work in
+# progress. Pinning them to the endings the generator writes keeps a rebuild a
+# no-op unless the icon set actually changed.
+web/panel/icons.svg                                        text eol=lf
+web/programmer/src/components/ui-builder/spriteIconNames.ts text eol=lf
