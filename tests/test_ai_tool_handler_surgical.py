@@ -1004,6 +1004,50 @@ async def test_simulate_action_filters_background_state_changes(handler, mock_ag
 
 
 @pytest.mark.asyncio
+async def test_simulate_reports_the_actions_it_dispatched(handler, mock_agent, mock_engine):
+    """State changes alone cannot tell a working button from a dead one.
+
+    A device.command writes no state key directly, so `state_changes: []` is the
+    EXPECTED result for a command that fired -- and also what a button with no
+    binding returns. The AI asked to verify its own panel read that as a silent
+    failure, correctly, because nothing distinguished the two.
+    """
+    async def fake_handle(action, element_id, *args):
+        return [{"action": "device.command", "device": "projector1",
+                 "command": "power_on", "params": {}, "sent": True}]
+
+    mock_engine.handle_ui_event = fake_handle
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._simulate_ui_action({"action": "press", "element_id": "btn_on"})
+
+    assert result["state_changes"] == []
+    assert result["dispatched"] == [{
+        "action": "device.command", "device": "projector1",
+        "command": "power_on", "params": {}, "sent": True,
+    }]
+    assert "note" not in result, "something ran, so there is nothing to explain"
+
+
+@pytest.mark.asyncio
+async def test_simulate_says_why_nothing_ran(handler, mock_agent, mock_engine):
+    """An empty result is worth a sentence rather than an empty array to read."""
+    async def fake_handle(action, element_id, *args):
+        return []
+
+    mock_engine.handle_ui_event = fake_handle
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        missing = await handler._simulate_ui_action({
+            "action": "press", "element_id": "not_a_thing",
+        })
+        unbound = await handler._simulate_ui_action({
+            "action": "hold", "element_id": "btn_on",
+        })
+
+    assert "No element 'not_a_thing' is on any page" in missing["note"]
+    assert "nothing bound to hold" in unbound["note"]
+
+
+@pytest.mark.asyncio
 async def test_update_ui_page_snap_partial_merge(handler, mock_engine):
     """M-137: a partial grid update keeps omitted fields + forward-compat keys."""
     from server.core.project_loader import SnapConfig

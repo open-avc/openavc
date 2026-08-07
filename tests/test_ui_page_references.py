@@ -135,12 +135,41 @@ def test_an_object_shaped_action_list_is_checked_too() -> None:
     one-element one. Skipping it here would leave the shape that executes as the
     shape nothing checks.
     """
-    messages = _messages([{
+    findings = _findings([{
         "id": "btn", "type": "button",
         "bindings": {"do": {"press": {"action": "macro", "macro": "nope"}}},
     }])
-    assert len(messages) == 1, messages
-    assert "runs macro 'nope'" in messages[0]
+    kinds = sorted(f.kind for f in findings)
+    assert kinds == ["dangling_reference", "object_action_list"], kinds
+    assert any("runs macro 'nope'" in f.message for f in findings)
+
+
+def test_the_object_shape_warns_and_does_not_claim_it_is_broken() -> None:
+    """It runs. Saying otherwise would be the review inventing a rule.
+
+    `ui_events.py` wraps a non-list before executing, and handles the dict form
+    explicitly for off_action and hold_action. What the shape costs is that it
+    holds exactly one action -- worth a warning, not a rejection.
+    """
+    findings = _findings([{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": {
+            "action": "device.command", "device": "acme_amp", "command": "mute_on",
+        }}},
+    }])
+    assert [f.kind for f in findings] == ["object_action_list"]
+    message = findings[0].message
+    assert "does run it" in message
+    assert "holds exactly one" in message
+
+
+def test_an_array_of_one_is_not_the_object_shape() -> None:
+    assert _findings([{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": [
+            {"action": "device.command", "device": "acme_amp", "command": "mute_on"},
+        ]}},
+    }]) == []
 
 
 def test_a_driver_with_no_opinion_produces_no_warning() -> None:

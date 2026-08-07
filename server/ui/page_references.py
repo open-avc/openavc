@@ -1,5 +1,11 @@
 """What a page's bindings POINT AT, and whether any of it is there.
 
+(Plus one thing about their SHAPE. An action list written as a single object
+rather than an array is checked here because this is the module that walks every
+``do`` slot and has to normalise that shape anyway; giving it a home of its own
+would be a third module for one finding.)
+
+
 ``page_review`` answers what a page will draw wrong. This answers a different
 question with the same posture: an element can be perfectly sized, perfectly
 bound, and aimed at a macro that does not exist. The button draws, it takes a
@@ -72,6 +78,33 @@ def _actions(do_map: Mapping[str, Any], slot: str) -> list[Mapping[str, Any]]:
         return []
     items = raw if isinstance(raw, list) else [raw]
     return [item for item in items if isinstance(item, Mapping)]
+
+
+def _shape_finding(
+    do_map: Mapping[str, Any], slot: str, el_id: str, el_type: str,
+) -> Finding | None:
+    """An action list written as a single object rather than an array.
+
+    It RUNS -- ``ui_events.py`` wraps a non-list before executing it, and the
+    dict form is handled explicitly for ``off_action`` and ``hold_action``. So
+    this warns and does not reject: refusing a shape the runtime executes would
+    be the review inventing a rule the platform does not have.
+
+    What it costs is real but smaller than it looks: an object holds exactly one
+    action, so a second can never be added without rewriting it, and the Builder
+    stores the array form on the next edit either way.
+    """
+    raw = do_map.get(slot)
+    if raw is None or isinstance(raw, list) or not isinstance(raw, Mapping):
+        return None
+    return Finding(
+        el_id, "object_action_list",
+        f"{el_id} ({el_type}) writes do.{slot} as an object, not an array. The panel does run "
+        f"it -- a single action is wrapped before it executes -- but an object holds exactly "
+        f"one, so a second cannot be added without rewriting it, and the Builder stores the "
+        f"array form on the next edit anyway. Write do.{slot} as [{{...}}].",
+        key=("object_action_list", el_id, slot),
+    )
 
 
 def _device_of(key: str, device_ids: Iterable[str]) -> str | None:
@@ -162,6 +195,9 @@ def _element_findings(
     do_map = _mapping(bindings.get("do")) or {}
     options = _option_values(dump)
     for slot in ACTION_SLOTS:
+        shape = _shape_finding(do_map, slot, el_id, el_type)
+        if shape:
+            findings.append(shape)
         for index, action in enumerate(_actions(do_map, slot)):
             findings.extend(_action_findings(
                 action, el_id, el_type, f"do.{slot}[{index}]",

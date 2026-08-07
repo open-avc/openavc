@@ -43,14 +43,23 @@ class UIEventRuntime:
 
     async def handle(
         self, event_type: str, element_id: str, data: dict[str, Any] | None = None
-    ) -> None:
+    ) -> list[dict[str, Any]]:
         """
         Handle a UI event from a connected panel.
 
         Looks up the element's bindings and dispatches the appropriate action.
+
+        Returns what it dispatched, one record per action, in the order they
+        ran. The panel ignores it -- a touch has nowhere to put a receipt. It
+        exists for ``simulate_ui_action``, which had no way to tell a button
+        that fired from a button that did nothing: a ``device.command`` writes
+        no state key directly (it goes out the wire and comes back on a poll or
+        a push), so watching the state store reported "success, no changes" for
+        a working control, and the caller reasonably believed it.
         """
         engine = self._engine
         data = data or {}
+        dispatched: list[dict[str, Any]] = []
 
         # Emit the raw UI event
         event_name = f"ui.{event_type}.{element_id}"
@@ -59,7 +68,7 @@ class UIEventRuntime:
         # Find the element and its bindings
         element = self._find_element(element_id)
         if not element:
-            return
+            return dispatched
 
         bindings = element.bindings
         show = bindings.get("show") if isinstance(bindings.get("show"), dict) else {}
@@ -118,22 +127,32 @@ class UIEventRuntime:
                         break
 
         if not binding:
-            return
+            return dispatched
 
         # Binding is a list of actions — execute sequentially
         if not isinstance(binding, list):
             binding = [binding]
         for action_item in binding:
             if isinstance(action_item, dict):
-                await self.execute_action(action_item, data, element)
+                await self.execute_action(action_item, data, element, dispatched)
+        return dispatched
 
     async def execute_action(
         self, action_def: dict[str, Any], data: dict[str, Any],
-        element: Any = None,
+        element: Any = None, dispatched: list[dict[str, Any]] | None = None,
     ) -> None:
-        """Execute a single UI binding action."""
+        """Execute a single UI binding action.
+
+        ``dispatched`` collects a record per action for a caller that needs to
+        know what happened rather than only what changed. Optional because the
+        panel does not want one, and None here must stay as cheap as it looks.
+        """
         engine = self._engine
         action = action_def.get("action", "")
+
+        def record(**fields: Any) -> None:
+            if dispatched is not None:
+                dispatched.append({"action": action, **fields})
 
         # The UI-event tokens a binding can reference. Built once so the
         # device.command and state.set branches resolve them identically: $value
@@ -154,8 +173,11 @@ class UIEventRuntime:
             element_value = str(data.get("value", ""))
             action_map = action_def.get("map", {})
             mapped_action = action_map.get(element_value)
+            # A value that matches no entry is the quiet failure this whole
+            # binding shape invites, so it is recorded either way.
+            record(value=element_value, matched=bool(mapped_action))
             if mapped_action:
-                await self.execute_action(mapped_action, data, element)
+                await self.execute_action(mapped_action, data, element, dispatched)
 
         elif action == "macro":
             macro_id = action_def.get("macro", "")
@@ -163,6 +185,7 @@ class UIEventRuntime:
                 # Run macro in background so UI doesn't block
                 task = asyncio.create_task(engine.macros.execute(macro_id))
                 task.add_done_callback(_log_task_exception)
+                record(macro=macro_id, started=True)
 
         elif action == "device.command":
             device_id = action_def.get("device", "")
@@ -175,8 +198,13 @@ class UIEventRuntime:
                 params[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
             try:
                 await engine.devices.send_command(device_id, command, params)
-            except Exception:  # Catch-all: driver send_command may raise arbitrary errors
+                record(device=device_id, command=command, params=params, sent=True)
+            except Exception as exc:  # Catch-all: driver send_command may raise arbitrary errors
                 log.exception(f"Binding command failed: {device_id}.{command}")
+                record(
+                    device=device_id, command=command, params=params,
+                    sent=False, error=str(exc),
+                )
 
         elif action == "state.set":
             key = action_def.get("key", "")
@@ -200,6 +228,7 @@ class UIEventRuntime:
                     "coerced to a JSON string", key,
                 )
             engine.state.set(key, value, source="ui")
+            record(key=key, value=value)
 
         elif action == "ui.navigate":
             # Page navigation — broadcast to all panels so they can switch.
@@ -216,11 +245,13 @@ class UIEventRuntime:
                     "type": "ui.navigate",
                     "page_id": page_id,
                 })
+                record(page=page_id)
 
         elif action == "script.call":
             func_name = action_def.get("function", "")
             if func_name:
                 await engine.events.emit(f"script.call.{func_name}", data)
+                record(function=func_name)
 
     @staticmethod
     def scale_value_forward(element: Any, raw_value: Any) -> Any:

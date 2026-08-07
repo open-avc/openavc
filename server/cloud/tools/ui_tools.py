@@ -39,6 +39,35 @@ _RETIRED_GEOMETRY = {
 }
 
 
+def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: list) -> dict:
+    """Say why an interaction did nothing, when it did nothing.
+
+    ``{"success": true, "state_changes": []}`` is what a working device command
+    looks like AND what a button with no binding at all looks like, which is how
+    a simulation came back reading like a failure for a control that fired. Now
+    that the dispatched list separates those two, the remaining silence is worth
+    a sentence rather than an empty array to interpret.
+    """
+    if dispatched:
+        return {}
+    project = getattr(engine, "project", None)
+    element = None
+    for page in getattr(getattr(project, "ui", None), "pages", []) or []:
+        for candidate in page.elements:
+            if candidate.id == element_id:
+                element = candidate
+                break
+    if element is None:
+        return {"note": f"No element '{element_id}' is on any page, so nothing ran."}
+    bindings = element.bindings if isinstance(element.bindings, dict) else {}
+    do_map = bindings.get("do") if isinstance(bindings.get("do"), dict) else {}
+    if not do_map.get(action):
+        slots = sorted(slot for slot, actions in do_map.items() if actions)
+        has = f" It has: {', '.join(slots)}." if slots else " It has no do bindings at all."
+        return {"note": f"'{element_id}' has nothing bound to {action}.{has}"}
+    return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
+
+
 def _declared_commands(devices: Any, device_id: str) -> set[str] | None:
     """The command names a device's driver declares, or None for no opinion.
 
@@ -1132,11 +1161,15 @@ class UIToolsMixin:
         sub_id = self._agent.state.subscribe("*", on_change)
         try:
             if action in ("press", "release", "hold"):
-                await engine.handle_ui_event(action, element_id)
+                dispatched = await engine.handle_ui_event(action, element_id)
             elif action == "change":
-                await engine.handle_ui_event("change", element_id, {"value": value})
+                dispatched = await engine.handle_ui_event(
+                    "change", element_id, {"value": value},
+                )
             elif action == "submit":
-                await engine.handle_ui_event("submit", element_id, {"value": value})
+                dispatched = await engine.handle_ui_event(
+                    "submit", element_id, {"value": value},
+                )
             else:
                 return {"error": f"Unknown action: {action}"}
         except Exception as e:
@@ -1144,4 +1177,17 @@ class UIToolsMixin:
         finally:
             self._agent.state.unsubscribe(sub_id)
 
-        return {"success": True, "action": action, "element_id": element_id, "state_changes": state_changes}
+        return {
+            "success": True,
+            "action": action,
+            "element_id": element_id,
+            # What the interaction actually DID. State changes alone report a
+            # working button as "success, nothing happened": a device.command
+            # writes no state key directly -- it goes out the wire and comes
+            # back on a poll or a push -- so an empty list is the expected
+            # result for a command that fired. That is a verification tool
+            # that cannot verify the commonest binding there is.
+            "dispatched": dispatched or [],
+            "state_changes": state_changes,
+            **_nothing_ran_note(engine, element_id, action, dispatched),
+        }
