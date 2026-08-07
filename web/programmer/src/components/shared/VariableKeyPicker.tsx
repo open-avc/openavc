@@ -2,8 +2,8 @@
  * Searchable state key picker with grouped dropdown, live values, and inline variable creation.
  * Used in macro editors, UI Builder binding editors, and anywhere a state key is selected.
  */
-import { useState, useRef, useEffect, useMemo } from "react";
-import { ChevronDown, Plus } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Plus } from "lucide-react";
 import type { VariableConfig } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -11,7 +11,13 @@ import { CopyButton } from "./CopyButton";
 import { groupLabel } from "./variableKeyPickerHelpers";
 import { showError } from "../../store/toastStore";
 import { getDevice, listChildEntities } from "../../api/restClient";
-import { LAYER } from "./layers";
+import {
+  SearchableDropdown,
+  dropdownRowStyle,
+  dropdownGroupHeaderStyle,
+  dropdownTypeBadgeStyle,
+  dropdownEmptyHintStyle,
+} from "./SearchableDropdown";
 
 /** Session cache of device state-variable labels (deviceId -> suffix ->
  *  friendly label), filled lazily the first time a picker opens. Display-only:
@@ -113,6 +119,33 @@ interface KeyEntry {
   description?: string;
 }
 
+/** Match on the raw key, the friendly label, or the owning device's name. */
+function filterEntries(entries: KeyEntry[], search: string): KeyEntry[] {
+  if (!search) return entries;
+  const q = search.toLowerCase();
+  return entries.filter(
+    (e) =>
+      e.key.toLowerCase().includes(q) ||
+      e.label.toLowerCase().includes(q) ||
+      (e.deviceName && e.deviceName.toLowerCase().includes(q)),
+  );
+}
+
+function groupEntries(entries: KeyEntry[]) {
+  const map = new Map<string, { label: string; desc: string; entries: KeyEntry[] }>();
+  for (const e of entries) {
+    if (!map.has(e.group)) {
+      map.set(e.group, {
+        label: groupLabel(e.group, e.deviceName),
+        desc: e.groupDesc,
+        entries: [],
+      });
+    }
+    map.get(e.group)!.entries.push(e);
+  }
+  return map;
+}
+
 export function VariableKeyPicker({
   value,
   onChange,
@@ -132,49 +165,15 @@ export function VariableKeyPicker({
   const devices = projectDevices ?? [];
   const pages = projectPages ?? [];
 
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [newId, setNewId] = useState("");
   const [newType, setNewType] = useState("string");
   const [newLabel, setNewLabel] = useState("");
   const [newDefault, setNewDefault] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; flipUp: boolean }>({ top: 0, left: 0, width: 0, flipUp: false });
-
-  // Close on click outside or scroll
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-        setShowCreate(false);
-      }
-    };
-    const handleScroll = (e: Event) => {
-      // Ignore scrolling inside the dropdown itself
-      if (containerRef.current && containerRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-      setSearch("");
-      setShowCreate(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [open]);
-
-  // Focus search when opening
-  useEffect(() => {
-    if (open && searchRef.current) {
-      searchRef.current.focus();
-    }
-  }, [open]);
+  // Mirrors the dropdown's own open flag. The shell owns opening and closing;
+  // this picker only needs to know, so the lazy label fetch below can wait for
+  // the first time someone actually looks at the list.
+  const [open, setOpen] = useState(false);
 
   // Resolve friendly device state-variable labels (lazily, first open only per
   // device — see deviceVarLabelCache). The version bump re-runs the entries
@@ -302,34 +301,6 @@ export function VariableKeyPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectVariables, projectDevices, projectPages, liveState, showDeviceState, showTriggerContext, eventContext, labelsVersion]);
 
-  // Filter entries by search
-  const filteredEntries = useMemo(() => {
-    if (!search) return allEntries;
-    const q = search.toLowerCase();
-    return allEntries.filter(
-      (e) =>
-        e.key.toLowerCase().includes(q) ||
-        e.label.toLowerCase().includes(q) ||
-        (e.deviceName && e.deviceName.toLowerCase().includes(q)),
-    );
-  }, [allEntries, search]);
-
-  // Group filtered entries
-  const groups = useMemo(() => {
-    const map = new Map<string, { label: string; desc: string; entries: KeyEntry[] }>();
-    for (const e of filteredEntries) {
-      if (!map.has(e.group)) {
-        map.set(e.group, {
-          label: groupLabel(e.group, e.deviceName),
-          desc: e.groupDesc,
-          entries: [],
-        });
-      }
-      map.get(e.group)!.entries.push(e);
-    }
-    return map;
-  }, [filteredEntries]);
-
   // Display text for collapsed state
   const selectedEntry = allEntries.find((e) => e.key === value);
   const displayText = selectedEntry
@@ -337,14 +308,12 @@ export function VariableKeyPicker({
     : value || placeholder;
   const liveValue = value ? liveState[value] : undefined;
 
-  const handleSelect = (key: string) => {
+  const handleSelect = (key: string, close: () => void) => {
     onChange(key);
-    setOpen(false);
-    setSearch("");
-    setShowCreate(false);
+    close();
   };
 
-  const handleCreateVariable = () => {
+  const handleCreateVariable = (close: () => void) => {
     const id = newId.trim().replace(/[^a-zA-Z0-9_]/g, "_");
     if (!id) return;
     if (variables.some((v) => v.id === id)) {
@@ -367,111 +336,113 @@ export function VariableKeyPicker({
     setNewType("string");
     setNewLabel("");
     setNewDefault("");
-    setShowCreate(false);
-    setOpen(false);
-    setSearch("");
+    close();
     useProjectStore.getState().debouncedSave();
   };
 
   const hasLiveData = Object.keys(liveState).length > 0;
 
   return (
-    <div ref={containerRef} style={{ position: "relative", ...style }}>
-      {/* Collapsed trigger button */}
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => {
-          if (!open && triggerRef.current) {
-            const rect = triggerRef.current.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const spaceAbove = rect.top;
-            const minDropdownHeight = 250;
-            const flipUp = spaceBelow < minDropdownHeight && spaceAbove > spaceBelow;
-            // Clamp the dropdown into the viewport so it isn't clipped at the
-            // right edge — it can be 320px wide while the trigger sits in a
-            // narrow right-docked panel (e.g. the UI Builder properties pane).
-            const width = Math.max(rect.width, 320);
-            const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-            setDropdownPos({
-              top: flipUp ? 0 : rect.bottom + 2,
-              left,
-              width,
-              flipUp,
-            });
-          }
-          setOpen(!open);
-        }}
-        style={{
-          ...triggerStyle,
-          color: value ? "var(--text-primary)" : "var(--text-muted)",
-        }}
-      >
-        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>
+    <SearchableDropdown
+      display={
+        <>
           {displayText}
           {liveValue !== undefined && (
             <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>
               = {String(liveValue)}
             </span>
           )}
-        </span>
-        <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
-      </button>
-
-      {/* Dropdown panel (fixed position to avoid overflow clipping) */}
-      {open && (() => {
-        const rect = triggerRef.current?.getBoundingClientRect();
-        const triggerBottom = rect?.bottom ?? dropdownPos.top;
-        const triggerTop = rect?.top ?? dropdownPos.top;
-        const top = dropdownPos.flipUp ? undefined : triggerBottom + 2;
-        const bottom = dropdownPos.flipUp ? (window.innerHeight - triggerTop + 2) : undefined;
-        const maxH = dropdownPos.flipUp
-          ? triggerTop - 16
-          : window.innerHeight - triggerBottom - 16;
-        return (
-        <div style={{
-          position: "fixed",
-          top,
-          bottom,
-          left: dropdownPos.left,
-          width: dropdownPos.width,
-          maxHeight: Math.max(200, maxH),
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--bg-elevated)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
-          boxShadow: "var(--shadow-lg)",
-          zIndex: LAYER.popover,
-        }}>
-          {/* Search input */}
-          <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>
-            <input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search state keys..."
-              style={searchInputStyle}
-            />
+        </>
+      }
+      empty={!value}
+      searchPlaceholder="Search state keys..."
+      onOpenChange={setOpen}
+      onClose={() => setShowCreate(false)}
+      style={style}
+      footer={({ close }) =>
+        showCreate ? (
+          <div style={createFormStyle}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>
+              Create New Variable
+            </div>
+            <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+              <div style={{ flex: 1 }}>
+                <label style={miniLabel}>ID</label>
+                <input
+                  style={fieldStyle}
+                  value={newId}
+                  onChange={(e) => setNewId(e.target.value)}
+                  placeholder="e.g. room_active"
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Enter" && handleCreateVariable(close)}
+                />
+              </div>
+              <div style={{ width: 90 }}>
+                <label style={miniLabel}>Type</label>
+                <select style={fieldStyle} value={newType} onChange={(e) => setNewType(e.target.value)}>
+                  <option value="string">String</option>
+                  <option value="boolean">Boolean</option>
+                  <option value="number">Number</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+              <div style={{ flex: 1 }}>
+                <label style={miniLabel}>Label</label>
+                <input
+                  style={fieldStyle}
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="Display name"
+                  onKeyDown={(e) => e.key === "Enter" && handleCreateVariable(close)}
+                />
+              </div>
+              <div style={{ width: 90 }}>
+                <label style={miniLabel}>Default</label>
+                {newType === "boolean" ? (
+                  <select style={fieldStyle} value={newDefault} onChange={(e) => setNewDefault(e.target.value)}>
+                    <option value="false">false</option>
+                    <option value="true">true</option>
+                  </select>
+                ) : (
+                  <input
+                    style={fieldStyle}
+                    value={newDefault}
+                    onChange={(e) => setNewDefault(e.target.value)}
+                    placeholder={newType === "number" ? "0" : ""}
+                    onKeyDown={(e) => e.key === "Enter" && handleCreateVariable(close)}
+                  />
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+              <button type="button" onClick={() => handleCreateVariable(close)} style={btnPrimary}>Create & Select</button>
+              <button type="button" onClick={() => setShowCreate(false)} style={btnSecondary}>Cancel</button>
+            </div>
           </div>
-
-          {/* Scrollable list */}
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        ) : null
+      }
+    >
+      {({ search, close }) => {
+        const filteredEntries = filterEntries(allEntries, search);
+        const groups = groupEntries(filteredEntries);
+        return (
+          <>
             {!hasLiveData && showDeviceState && (
-              <div style={emptyHintStyle}>
+              <div style={dropdownEmptyHintStyle}>
                 Start the system to see live device state values.
               </div>
             )}
 
             {filteredEntries.length === 0 && search && (
-              <div style={emptyHintStyle}>
+              <div style={dropdownEmptyHintStyle}>
                 No keys matching &ldquo;{search}&rdquo;
               </div>
             )}
 
             {Array.from(groups.entries()).map(([groupId, group]) => (
               <div key={groupId}>
-                <div style={groupHeaderStyle}>
+                <div style={dropdownGroupHeaderStyle}>
                   <span style={{ fontWeight: 600 }}>{group.label}</span>
                   <span style={{ fontWeight: 400, fontStyle: "italic", marginLeft: 6 }}>
                     {group.desc}
@@ -490,9 +461,9 @@ export function VariableKeyPicker({
                   return (
                   <div
                     key={entry.key}
-                    onClick={() => handleSelect(entry.key)}
+                    onClick={() => handleSelect(entry.key, close)}
                     style={{
-                      ...rowStyle,
+                      ...dropdownRowStyle,
                       background: entry.key === value ? "var(--bg-hover)" : undefined,
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
@@ -518,10 +489,10 @@ export function VariableKeyPicker({
                           {entry.label}
                         </span>
                         {entry.type && (
-                          <span style={typeBadgeStyle}>{entry.type}</span>
+                          <span style={dropdownTypeBadgeStyle}>{entry.type}</span>
                         )}
                         {!entry.type && liveType && liveType !== "" && (
-                          <span style={typeBadgeStyle}>{liveType}</span>
+                          <span style={dropdownTypeBadgeStyle}>{liveType}</span>
                         )}
                       </div>
                       {entry.group !== "variables" && (
@@ -572,7 +543,7 @@ export function VariableKeyPicker({
             {!showCreate && (
               <div
                 onClick={() => setShowCreate(true)}
-                style={{ ...rowStyle, color: "var(--accent)", gap: 4, borderTop: "1px solid var(--border-color)" }}
+                style={{ ...dropdownRowStyle, color: "var(--accent)", gap: 4, borderTop: "1px solid var(--border-color)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
@@ -580,136 +551,14 @@ export function VariableKeyPicker({
                 <span>New Variable...</span>
               </div>
             )}
-          </div>
-
-          {/* Inline create form */}
-          {showCreate && (
-            <div style={createFormStyle}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>
-                Create New Variable
-              </div>
-              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-                <div style={{ flex: 1 }}>
-                  <label style={miniLabel}>ID</label>
-                  <input
-                    style={fieldStyle}
-                    value={newId}
-                    onChange={(e) => setNewId(e.target.value)}
-                    placeholder="e.g. room_active"
-                    autoFocus
-                    onKeyDown={(e) => e.key === "Enter" && handleCreateVariable()}
-                  />
-                </div>
-                <div style={{ width: 90 }}>
-                  <label style={miniLabel}>Type</label>
-                  <select style={fieldStyle} value={newType} onChange={(e) => setNewType(e.target.value)}>
-                    <option value="string">String</option>
-                    <option value="boolean">Boolean</option>
-                    <option value="number">Number</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-                <div style={{ flex: 1 }}>
-                  <label style={miniLabel}>Label</label>
-                  <input
-                    style={fieldStyle}
-                    value={newLabel}
-                    onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="Display name"
-                    onKeyDown={(e) => e.key === "Enter" && handleCreateVariable()}
-                  />
-                </div>
-                <div style={{ width: 90 }}>
-                  <label style={miniLabel}>Default</label>
-                  {newType === "boolean" ? (
-                    <select style={fieldStyle} value={newDefault} onChange={(e) => setNewDefault(e.target.value)}>
-                      <option value="false">false</option>
-                      <option value="true">true</option>
-                    </select>
-                  ) : (
-                    <input
-                      style={fieldStyle}
-                      value={newDefault}
-                      onChange={(e) => setNewDefault(e.target.value)}
-                      placeholder={newType === "number" ? "0" : ""}
-                      onKeyDown={(e) => e.key === "Enter" && handleCreateVariable()}
-                    />
-                  )}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "var(--space-xs)" }}>
-                <button type="button" onClick={handleCreateVariable} style={btnPrimary}>Create & Select</button>
-                <button type="button" onClick={() => setShowCreate(false)} style={btnSecondary}>Cancel</button>
-              </div>
-            </div>
-          )}
-        </div>
+          </>
         );
-      })()}
-    </div>
+      }}
+    </SearchableDropdown>
   );
 }
 
 /* ── Styles ── */
-
-const triggerStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 8px",
-  fontSize: "var(--font-size-sm)",
-  borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-primary)",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  gap: 4,
-};
-
-const searchInputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 6px",
-  fontSize: "var(--font-size-sm)",
-  borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-primary)",
-  color: "var(--text-primary)",
-};
-
-const groupHeaderStyle: React.CSSProperties = {
-  padding: "6px 8px 2px",
-  fontSize: 11,
-  color: "var(--text-muted)",
-  display: "flex",
-  alignItems: "baseline",
-  flexWrap: "wrap",
-};
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  padding: "4px 8px 4px 16px",
-  cursor: "pointer",
-  fontSize: "var(--font-size-sm)",
-  transition: "background 0.1s",
-  position: "relative",
-};
-
-const typeBadgeStyle: React.CSSProperties = {
-  fontSize: 10,
-  padding: "0 4px",
-  borderRadius: 3,
-  background: "var(--bg-hover)",
-  color: "var(--text-muted)",
-};
-
-const emptyHintStyle: React.CSSProperties = {
-  padding: "12px 8px",
-  fontSize: 12,
-  color: "var(--text-muted)",
-  fontStyle: "italic",
-  textAlign: "center",
-};
 
 const createFormStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",

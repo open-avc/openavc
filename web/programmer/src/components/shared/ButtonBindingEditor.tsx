@@ -19,6 +19,7 @@ import type { ProjectConfig } from "../../api/types";
 import { ActionPicker } from "../ui-builder/BindingEditor/ActionPicker";
 import { FeedbackBindingEditor } from "../ui-builder/BindingEditor/FeedbackBindingEditor";
 import { VariableKeyPicker } from "./VariableKeyPicker";
+import { ActionListEditor, ActionTestButton } from "./ActionListEditor";
 import { useConnectionStore } from "../../store/connectionStore";
 import { pressActionFields, pressAfterActionEdit } from "./buttonBindingHelpers";
 
@@ -442,19 +443,22 @@ export function ButtonBindingEditor({
                       allowedActions={allowedActions}
                       navigateOptions={navigateOptions}
                     />
-                    {getActionValue(section.id) && (
-                      <button
-                        onClick={() => setActionValue(section.id, null)}
-                        style={{
-                          padding: "4px 8px", borderRadius: "var(--border-radius)",
-                          fontSize: "var(--font-size-sm)", color: "var(--color-error)",
-                          background: "transparent", border: "1px solid var(--border-color)",
-                          alignSelf: "flex-start", cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                    )}
+                    <div style={{ display: "flex", gap: "var(--space-sm)", alignSelf: "flex-start" }}>
+                      <ActionTestButton action={getActionValue(section.id)} size="md" />
+                      {getActionValue(section.id) && (
+                        <button
+                          onClick={() => setActionValue(section.id, null)}
+                          style={{
+                            padding: "4px 8px", borderRadius: "var(--border-radius)",
+                            fontSize: "var(--font-size-sm)", color: "var(--color-error)",
+                            background: "transparent", border: "1px solid var(--border-color)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -463,99 +467,29 @@ export function ButtonBindingEditor({
         );
   };
 
-  const extrasBlock = (
-    <>
-      {/* Extra actions (tap mode only) */}
-      {currentMode === "tap" && extraActions.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-          <label style={{ ...sectionLabelStyle, marginBottom: 0 }}>Additional Actions</label>
-          {extraActions.map((act, i) => (
-            <div
-              key={i}
-              style={{
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--border-radius)",
-                padding: "var(--space-sm)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-xs)" }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Action {i + 2}</span>
-                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                  {i > 0 && (
-                    <button
-                      onClick={() => {
-                        const newExtra = [...extraActions];
-                        [newExtra[i - 1], newExtra[i]] = [newExtra[i], newExtra[i - 1]];
-                        onBindingsChange({ ...bindings, press: [press, ...newExtra] });
-                      }}
-                      title="Move up"
-                      style={reorderBtnStyle}
-                    >&#9650;</button>
-                  )}
-                  {i < extraActions.length - 1 && (
-                    <button
-                      onClick={() => {
-                        const newExtra = [...extraActions];
-                        [newExtra[i], newExtra[i + 1]] = [newExtra[i + 1], newExtra[i]];
-                        onBindingsChange({ ...bindings, press: [press, ...newExtra] });
-                      }}
-                      title="Move down"
-                      style={reorderBtnStyle}
-                    >&#9660;</button>
-                  )}
-                  <button
-                    onClick={() => {
-                      const newExtra = extraActions.filter((_, j) => j !== i);
-                      onBindingsChange({ ...bindings, press: [press, ...newExtra] });
-                    }}
-                    style={{
-                      padding: "2px 6px", borderRadius: "var(--border-radius)",
-                      fontSize: 11, color: "var(--color-error)",
-                      background: "transparent", border: "1px solid var(--border-color)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-              <ActionPicker
-                value={act}
-                project={project}
-                onChange={(v) => {
-                  const newExtra = [...extraActions];
-                  newExtra[i] = v;
-                  onBindingsChange({ ...bindings, press: [press, ...newExtra] });
-                }}
-                allowedActions={allowedActions}
-                navigateOptions={navigateOptions}
-              />
-            </div>
-          ))}
-        </div>
+  // Extra actions (tap mode only). The list mechanic — a picker per action,
+  // add, remove, reorder, Test — is the shared one, so this and the slider-side
+  // editor cannot drift into offering different affordances again.
+  const extrasBlock = currentMode === "tap" ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      {extraActions.length > 0 && (
+        <label style={{ ...sectionLabelStyle, marginBottom: 0 }}>Additional Actions</label>
       )}
-
-      {/* Add another action button (tap mode only) */}
-      {currentMode === "tap" && getActionValue("press") && (
-        <button
-          onClick={() => {
-            onBindingsChange({ ...bindings, press: [...pressArray, { action: "" }] });
-          }}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            gap: 4, padding: "5px 10px",
-            borderRadius: "var(--border-radius)",
-            border: "1px dashed var(--border-color)",
-            background: "transparent",
-            color: "var(--text-muted)",
-            fontSize: 12, cursor: "pointer",
-          }}
-        >
-          + Add another action
-        </button>
-      )}
-    </>
-  );
+      <ActionListEditor
+        actions={extraActions}
+        project={project}
+        onChange={(next) => onBindingsChange({ ...bindings, press: [press, ...next] })}
+        // The primary action is Action 1 and lives in its own section above.
+        numberFrom={1}
+        numberSingle
+        boxed
+        removeSingle
+        canAdd={!!getActionValue("press")}
+        allowedActions={allowedActions}
+        navigateOptions={navigateOptions}
+      />
+    </div>
+  ) : null;
 
   const actionSections = sections.filter((s) => s.type !== "feedback");
   const feedbackSections = sections.filter((s) => s.type === "feedback");
@@ -600,11 +534,4 @@ const inputStyle: React.CSSProperties = {
 
 const hintStyle: React.CSSProperties = {
   fontSize: 11, color: "var(--text-muted)",
-};
-
-const reorderBtnStyle: React.CSSProperties = {
-  padding: "2px 5px", borderRadius: "var(--border-radius)",
-  fontSize: 9, color: "var(--text-muted)",
-  background: "transparent", border: "1px solid var(--border-color)",
-  cursor: "pointer", lineHeight: 1,
 };

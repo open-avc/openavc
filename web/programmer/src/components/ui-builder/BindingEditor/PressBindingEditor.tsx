@@ -1,10 +1,6 @@
-import { Play } from "lucide-react";
 import type { ProjectConfig } from "../../../api/types";
-import * as api from "../../../api/restClient";
-import { showSuccess, showError } from "../../../store/toastStore";
-import { useConnectionStore } from "../../../store/connectionStore";
 import { ActionPicker } from "./ActionPicker";
-import { resolveTestParams, testBlockedMessage } from "./testActionParams";
+import { ActionListEditor } from "../../shared/ActionListEditor";
 
 interface PressBindingEditorProps {
   value: Record<string, unknown>[];
@@ -17,6 +13,13 @@ interface PressBindingEditorProps {
   eventTokens?: { key: string; label: string }[];
 }
 
+/**
+ * The actions one non-button interaction runs — a slider's "on change", a
+ * matrix cell's "on route", a select's "on select". A flat list, in order,
+ * with no press styles: those belong to a button and live in
+ * `shared/ButtonBindingEditor`. The list itself is the shared
+ * `ActionListEditor`, which is what both editors were spelling out separately.
+ */
 export function PressBindingEditor({
   value,
   project,
@@ -26,56 +29,7 @@ export function PressBindingEditor({
   eventTokens,
 }: PressBindingEditorProps) {
   const actions = Array.isArray(value) ? value : [];
-
-  const updateAction = (index: number, updated: Record<string, unknown>) => {
-    const next = [...actions];
-    next[index] = updated;
-    onChange(next);
-  };
-
-  const removeAction = (index: number) => {
-    const next = actions.filter((_, i) => i !== index);
-    if (next.length === 0) {
-      onClear();
-    } else {
-      onChange(next);
-    }
-  };
-
-  const addAction = () => {
-    onChange([...actions, { action: "" }]);
-  };
-
-  const testAction = async (action: Record<string, unknown>) => {
-    try {
-      if (action.action === "device.command" && action.device && action.command) {
-        // Params can hold $-references; a raw send would put the literal
-        // "$value" on the wire. Resolve what has a live value, refuse the
-        // rest with a message instead of sending a malformed command.
-        const result = resolveTestParams(
-          (action.params as Record<string, unknown>) ?? {},
-          useConnectionStore.getState().liveState,
-        );
-        if (!result.ok) {
-          showError(testBlockedMessage(result));
-          return;
-        }
-        await api.sendCommand(String(action.device), String(action.command), result.params);
-        showSuccess("Command sent");
-      } else if (action.action === "macro" && action.macro) {
-        await api.executeMacro(String(action.macro));
-        showSuccess("Macro triggered");
-      } else {
-        showError("Cannot test this action type");
-      }
-    } catch (e) {
-      showError(`Test failed: ${e}`);
-    }
-  };
-
-  const isTestable = (action: Record<string, unknown>): boolean =>
-    (action.action === "device.command" && !!action.device && !!action.command) ||
-    (action.action === "macro" && !!action.macro);
+  const lastAction = actions[actions.length - 1];
 
   return (
     <div
@@ -85,92 +39,34 @@ export function PressBindingEditor({
         gap: "var(--space-sm)",
       }}
     >
-      {actions.map((action, i) => (
-        <div key={i}>
-          <div style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 4,
-          }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {actions.length > 1 ? `Action ${i + 1}` : ""}
-            </span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {isTestable(action) && (
-                <button
-                  onClick={() => testAction(action)}
-                  title="Test this action now"
-                  style={{
-                    display: "flex", alignItems: "center", gap: 3,
-                    padding: "2px 6px", borderRadius: "var(--border-radius)",
-                    fontSize: 11, color: "var(--accent)",
-                    background: "transparent", border: "1px solid var(--border-color)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <Play size={10} /> Test
-                </button>
-              )}
-              {actions.length > 1 && (
-                <button
-                  onClick={() => removeAction(i)}
-                  style={{
-                    padding: "2px 6px",
-                    borderRadius: "var(--border-radius)",
-                    fontSize: 11,
-                    color: "var(--color-error)",
-                    background: "transparent",
-                    border: "1px solid var(--border-color)",
-                    cursor: "pointer",
-                  }}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          </div>
-          <ActionPicker
-            value={action}
-            project={project}
-            onChange={(v) => updateAction(i, v)}
-            forChangeBinding={forChangeBinding}
-            eventTokens={eventTokens}
-          />
-          {actions.length === 1 && String(action.action || "") && (
-            <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
-              {isTestable(action) && (
-                <button
-                  onClick={() => testAction(action)}
-                  title="Test this action now"
-                  style={{
-                    display: "flex", alignItems: "center", gap: 3,
-                    padding: "4px 8px", borderRadius: "var(--border-radius)",
-                    fontSize: "var(--font-size-sm)", color: "var(--accent)",
-                    background: "transparent", border: "1px solid var(--border-color)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <Play size={11} /> Test
-                </button>
-              )}
-              <button
-                onClick={onClear}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: "var(--border-radius)",
-                  fontSize: "var(--font-size-sm)",
-                  color: "var(--color-error)",
-                  background: "transparent",
-                  border: "1px solid var(--border-color)",
-                }}
-              >
-                Remove Binding
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+      <ActionListEditor
+        actions={actions}
+        project={project}
+        // Removing the last action removes the binding, rather than leaving an
+        // empty slot behind that still reads as configured.
+        onChange={(next) => (next.length === 0 ? onClear() : onChange(next))}
+        canAdd={!!String(lastAction?.action || "")}
+        forChangeBinding={forChangeBinding}
+        eventTokens={eventTokens}
+        footer={
+          actions.length === 1 && String(actions[0].action || "") ? (
+            <button
+              onClick={onClear}
+              style={{
+                padding: "4px 8px",
+                borderRadius: "var(--border-radius)",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--color-error)",
+                background: "transparent",
+                border: "1px solid var(--border-color)",
+                alignSelf: "flex-start",
+              }}
+            >
+              Remove Binding
+            </button>
+          ) : undefined
+        }
+      />
 
       {actions.length === 0 && (
         <ActionPicker
@@ -180,27 +76,6 @@ export function PressBindingEditor({
           forChangeBinding={forChangeBinding}
           eventTokens={eventTokens}
         />
-      )}
-
-      {actions.length > 0 && String(actions[actions.length - 1]?.action || "") && (
-        <button
-          onClick={addAction}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            padding: "5px 10px",
-            borderRadius: "var(--border-radius)",
-            border: "1px dashed var(--border-color)",
-            background: "transparent",
-            color: "var(--text-muted)",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-        >
-          + Add another action
-        </button>
       )}
     </div>
   );

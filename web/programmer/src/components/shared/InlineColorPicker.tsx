@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from "react";
 import { HexColorPicker } from "react-colorful";
-import { LAYER } from "./layers";
+import { useAnchoredPanel } from "./AnchoredPanel";
+
+/** Padding + border the popover adds around the colour wheel. */
+const PANEL_CHROME = 10;
 
 interface InlineColorPickerProps {
   value: string;
@@ -17,53 +19,31 @@ export function InlineColorPicker({
   clearable = false,
   size = "sm",
 }: InlineColorPickerProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const swatchRef = useRef<HTMLDivElement>(null);
-  const [popoverPos, setPopoverPos] = useState<{ top?: number; bottom?: number; left: number }>({ left: 0 });
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const handleScroll = (e: Event) => {
-      if (ref.current && ref.current.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [open]);
-
-  const handleOpen = () => {
-    if (!open && swatchRef.current) {
-      const rect = swatchRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const popoverHeight = size === "md" ? 170 : 150;
-      const flipUp = spaceBelow < popoverHeight && rect.top > spaceBelow;
-      setPopoverPos(flipUp
-        ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
-        : { top: rect.bottom + 4, left: rect.left });
-    }
-    setOpen(!open);
-  };
-
   const displayColor = value || placeholder || "transparent";
   const isInherited = !value && !!placeholder;
   const swatchPx = size === "md" ? 24 : 22;
   const inputPx = size === "md" ? 80 : 72;
   const pickerW = size === "md" ? 180 : 160;
   const pickerH = size === "md" ? 150 : 130;
+  // Unlike the list dropdowns, this popover is exactly as big as the colour
+  // wheel inside it, so it tells the shared panel its real size: no 320px floor
+  // it would never fill, and no flipping up when the space below already fits.
+  const popoverW = pickerW + PANEL_CHROME;
+  const popoverH = pickerH + PANEL_CHROME + 10;
+
+  const panel = useAnchoredPanel<HTMLDivElement>({
+    minWidth: popoverW,
+    wantsHeight: popoverH,
+    minHeight: popoverH,
+    widthMode: "min",
+  });
+  const { open } = panel;
 
   return (
-    <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+    <div ref={panel.containerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
       <div
-        ref={swatchRef}
-        onClick={handleOpen}
+        ref={panel.triggerRef}
+        onClick={panel.toggle}
         style={{
           width: swatchPx, height: swatchPx, borderRadius: 4, flexShrink: 0,
           backgroundColor: displayColor,
@@ -92,8 +72,7 @@ export function InlineColorPicker({
       )}
       {open && (
         <div style={{
-          position: "fixed", zIndex: LAYER.popover,
-          top: popoverPos.top, bottom: popoverPos.bottom, left: popoverPos.left,
+          ...panel.panelStyle,
           background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
           borderRadius: "var(--border-radius)", padding: "var(--space-xs)",
           boxShadow: "var(--shadow-lg)",

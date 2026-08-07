@@ -5,12 +5,12 @@
  * rows and columns appear as the system discovers them and a cell is a
  * crosspoint to route rather than a control to configure.
  */
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { Trash2, ChevronRight } from "lucide-react";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { isCellRouted, matchStateKeys } from "../routingMatrixHelpers";
 import * as api from "../../../api/restClient";
-import { LAYER } from "../../shared/layers";
+import { useAnchoredPanel } from "../../shared/AnchoredPanel";
 import type { SurfaceLayout } from "./types";
 
 export function RoutingMatrix({
@@ -27,32 +27,12 @@ export function RoutingMatrix({
   const liveState = useConnectionStore((s) => s.liveState);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
-  const [presetDropdownOpen, setPresetDropdownOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [pendingCells, setPendingCells] = useState<Set<string>>(new Set());
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const triggerBtnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 180 });
-
-  // Close preset dropdown on click outside or scroll
-  useEffect(() => {
-    if (!presetDropdownOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setPresetDropdownOpen(false);
-      }
-    };
-    const handleScroll = (e: Event) => {
-      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) return;
-      setPresetDropdownOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [presetDropdownOpen]);
+  // A short list of preset names, so it floors at its own readable width and
+  // lets a long name push it wider rather than being clipped to the trigger.
+  const presetPanel = useAnchoredPanel<HTMLButtonElement>({ minWidth: 180, widthMode: "min" });
+  const presetDropdownOpen = presetPanel.open;
 
   // Get row/column labels from state ('*' matches anywhere in the pattern)
   const stateKeys = Object.keys(liveState);
@@ -97,7 +77,7 @@ export function RoutingMatrix({
   const isDirty = Boolean(liveState[`plugin.${pluginId}.preset_dirty`]);
 
   const handleRecallPreset = async (name: string) => {
-    setPresetDropdownOpen(false);
+    presetPanel.close();
     await api.emitContextAction(pluginId, "recall_preset", { preset_name: name });
   };
 
@@ -148,21 +128,10 @@ export function RoutingMatrix({
           flexWrap: "wrap",
         }}>
           {/* Preset dropdown */}
-          <div ref={dropdownRef}>
+          <div ref={presetPanel.containerRef}>
             <button
-              ref={triggerBtnRef}
-              onClick={() => {
-                if (!presetDropdownOpen && triggerBtnRef.current) {
-                  const rect = triggerBtnRef.current.getBoundingClientRect();
-                  const spaceBelow = window.innerHeight - rect.bottom;
-                  const spaceAbove = rect.top;
-                  const flipUp = spaceBelow < 220 && spaceAbove > spaceBelow;
-                  setDropdownPos(flipUp
-                    ? { bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 180) }
-                    : { top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 180) });
-                }
-                setPresetDropdownOpen(!presetDropdownOpen);
-              }}
+              ref={presetPanel.triggerRef}
+              onClick={presetPanel.toggle}
               style={{
                 ...btnStyle,
                 border: "1px solid var(--border-color)",
@@ -182,17 +151,11 @@ export function RoutingMatrix({
             </button>
             {presetDropdownOpen && (
               <div style={{
-                position: "fixed",
-                top: dropdownPos.top,
-                bottom: dropdownPos.bottom,
-                left: dropdownPos.left,
-                minWidth: dropdownPos.width,
+                ...presetPanel.panelStyle,
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border-color)",
                 borderRadius: "var(--border-radius)",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                zIndex: LAYER.popover,
-                maxHeight: 200,
                 overflow: "auto",
               }}>
                 {presetNames.length === 0 && (

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ParamOption } from "./paramOptions";
-import { LAYER } from "./layers";
+import { useAnchoredPanel } from "./AnchoredPanel";
 
 /** A "pick or type" field for a param whose known values come from an option
  *  provider (options_state / options_from). Unlike an HTML
@@ -21,13 +21,6 @@ export interface ParamComboboxProps {
   style?: CSSProperties;
 }
 
-interface DropdownPos {
-  top: number;
-  left: number;
-  width: number;
-  flipUp: boolean;
-}
-
 export function ParamCombobox({
   value,
   onChange,
@@ -35,11 +28,9 @@ export function ParamCombobox({
   placeholder,
   style,
 }: ParamComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<DropdownPos>({ top: 0, left: 0, width: 0, flipUp: false });
   const [highlight, setHighlight] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const panel = useAnchoredPanel<HTMLInputElement>();
+  const { open, containerRef, triggerRef: inputRef } = panel;
 
   // Show the full list when nothing is typed or the text exactly matches an
   // option (so reopening after a selection still shows everything); otherwise
@@ -55,43 +46,19 @@ export function ParamCombobox({
             o.label.toLowerCase().includes(q),
         );
 
-  // Close on outside click or any scroll (the dropdown is position:fixed, so a
-  // scroll would otherwise leave it stranded).
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onScroll = () => setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    window.addEventListener("scroll", onScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [open]);
-
   const openDropdown = () => {
-    const rect = inputRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const flipUp = spaceBelow < 220 && rect.top > spaceBelow;
-      setPos({ top: rect.bottom + 2, left: rect.left, width: rect.width, flipUp });
-    }
     setHighlight(0);
-    setOpen(true);
+    panel.openPanel();
   };
 
   const choose = (v: string) => {
     onChange(v);
-    setOpen(false);
+    panel.close();
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
-      setOpen(false);
+      panel.close();
       return;
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -112,13 +79,6 @@ export function ParamCombobox({
       choose(filtered[highlight].value);
     }
   };
-
-  const rect = inputRef.current?.getBoundingClientRect();
-  const ddTop = pos.flipUp ? undefined : (rect?.bottom ?? pos.top) + 2;
-  const ddBottom = pos.flipUp ? window.innerHeight - (rect?.top ?? 0) + 2 : undefined;
-  const ddMaxH = pos.flipUp
-    ? (rect?.top ?? 0) - 16
-    : window.innerHeight - (rect?.bottom ?? 0) - 16;
 
   return (
     <div ref={containerRef} style={{ position: "relative", display: "flex", alignItems: "center", ...style }}>
@@ -144,7 +104,7 @@ export function ParamCombobox({
           // mousedown (not click) so the input doesn't blur-close first
           e.preventDefault();
           if (open) {
-            setOpen(false);
+            panel.close();
           } else {
             inputRef.current?.focus();
             openDropdown();
@@ -161,12 +121,7 @@ export function ParamCombobox({
       {open && filtered.length > 0 && (
         <ul
           style={{
-            position: "fixed",
-            top: ddTop,
-            bottom: ddBottom,
-            left: pos.left,
-            width: pos.width,
-            maxHeight: Math.max(160, ddMaxH),
+            ...panel.panelStyle,
             overflowY: "auto",
             margin: 0,
             padding: 4,
@@ -175,7 +130,6 @@ export function ParamCombobox({
             border: "1px solid var(--border-color)",
             borderRadius: "var(--border-radius)",
             boxShadow: "var(--shadow-lg)",
-            zIndex: LAYER.popover,
           }}
         >
           {filtered.map((o, i) => {

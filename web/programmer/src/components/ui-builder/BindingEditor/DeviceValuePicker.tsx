@@ -10,8 +10,8 @@
  * de-emphasized, never hidden. A device with no driver schema (disabled,
  * orphaned) falls back to its live state keys.
  */
-import { useState, useRef, useEffect, useMemo } from "react";
-import { ChevronDown, Info } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Info } from "lucide-react";
 import type {
   ProjectConfig,
   DeviceInfo,
@@ -21,7 +21,13 @@ import type {
 } from "../../../api/types";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
-import { LAYER } from "../../shared/layers";
+import {
+  SearchableDropdown,
+  dropdownRowStyle,
+  dropdownGroupHeaderStyle,
+  dropdownTypeBadgeStyle,
+  dropdownEmptyHintStyle,
+} from "../../shared/SearchableDropdown";
 
 /** Shape of one entry in DRIVER_INFO.state_variables (per-device, from
  *  getDevice — instance-building drivers only populate it there). Child
@@ -413,202 +419,113 @@ function PropertyDropdown({
   deviceId: string;
   onPick: (suffix: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0, flipUp: false });
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    const handleScroll = (e: Event) => {
-      if (containerRef.current && containerRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-      setSearch("");
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("scroll", handleScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (open && searchRef.current) searchRef.current.focus();
-  }, [open]);
-
-  const filtered = useMemo(() => {
-    if (!search) return entries;
-    const q = search.toLowerCase();
-    return entries.filter(
-      (e) => e.suffix.toLowerCase().includes(q) || e.label.toLowerCase().includes(q),
-    );
-  }, [entries, search]);
-
-  const groups: { id: string; label: string; desc: string; items: PropEntry[] }[] = [
-    { id: "match", label: matchGroupLabel(elementType), desc: "", items: [] },
-    ...childGroups.map((g) => ({ id: g.id, label: g.label, desc: "", items: [] as PropEntry[] })),
-    { id: "other", label: "Other properties", desc: "", items: [] },
-    { id: "more", label: "Status & metadata", desc: "Read-outs and device info", items: [] },
-  ];
-  for (const e of filtered) groups.find((g) => g.id === e.group)?.items.push(e);
-
   const displayText = selectedSuffix
     ? selectedLabel || selectedSuffix
     : "Select property...";
 
   return (
-    <div ref={containerRef} style={{ position: "relative" }}>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => {
-          if (!open && triggerRef.current) {
-            const rect = triggerRef.current.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const flipUp = spaceBelow < 250 && rect.top > spaceBelow;
-            // Clamp into the viewport — the trigger sits in the narrow
-            // right-docked properties pane while the dropdown is 320px wide.
-            const width = Math.max(rect.width, 320);
-            const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-            setDropdownPos({ top: rect.bottom + 2, left, width, flipUp });
-          }
-          setOpen(!open);
-        }}
-        style={{
-          ...triggerStyle,
-          color: selectedSuffix ? "var(--text-primary)" : "var(--text-muted)",
-        }}
-      >
-        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>
-          {displayText}
-        </span>
-        <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
-      </button>
+    <SearchableDropdown
+      display={displayText}
+      empty={!selectedSuffix}
+      searchPlaceholder="Search properties..."
+    >
+      {({ search, close }) => {
+        const q = search.toLowerCase();
+        const filtered = search
+          ? entries.filter(
+              (e) => e.suffix.toLowerCase().includes(q) || e.label.toLowerCase().includes(q),
+            )
+          : entries;
 
-      {open && (() => {
-        const rect = triggerRef.current?.getBoundingClientRect();
-        const triggerBottom = rect?.bottom ?? dropdownPos.top;
-        const triggerTop = rect?.top ?? dropdownPos.top;
-        const top = dropdownPos.flipUp ? undefined : triggerBottom + 2;
-        const bottom = dropdownPos.flipUp ? window.innerHeight - triggerTop + 2 : undefined;
-        const maxH = dropdownPos.flipUp ? triggerTop - 16 : window.innerHeight - triggerBottom - 16;
+        const groups: { id: string; label: string; desc: string; items: PropEntry[] }[] = [
+          { id: "match", label: matchGroupLabel(elementType), desc: "", items: [] },
+          ...childGroups.map((g) => ({ id: g.id, label: g.label, desc: "", items: [] as PropEntry[] })),
+          { id: "other", label: "Other properties", desc: "", items: [] },
+          { id: "more", label: "Status & metadata", desc: "Read-outs and device info", items: [] },
+        ];
+        for (const e of filtered) groups.find((g) => g.id === e.group)?.items.push(e);
+
         const liveState = useConnectionStore.getState().liveState;
+
         return (
-          <div
-            style={{
-              position: "fixed",
-              top,
-              bottom,
-              left: dropdownPos.left,
-              width: dropdownPos.width,
-              maxHeight: Math.max(200, maxH),
-              display: "flex",
-              flexDirection: "column",
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--border-color)",
-              borderRadius: "var(--border-radius)",
-              boxShadow: "var(--shadow-lg)",
-              zIndex: LAYER.popover,
-            }}
-          >
-            <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>
-              <input
-                ref={searchRef}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search properties..."
-                style={searchInputStyle}
-              />
-            </div>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-              {entries.length === 0 && (
-                <div style={emptyHintStyle}>
-                  No state reported by this device yet. Use &ldquo;Pick any state
-                  key&rdquo; below, or start the system.
+          <>
+            {entries.length === 0 && (
+              <div style={dropdownEmptyHintStyle}>
+                No state reported by this device yet. Use &ldquo;Pick any state
+                key&rdquo; below, or start the system.
+              </div>
+            )}
+            {entries.length > 0 && filtered.length === 0 && (
+              <div style={dropdownEmptyHintStyle}>No properties matching &ldquo;{search}&rdquo;</div>
+            )}
+            {groups.filter((g) => g.items.length > 0).map((g) => (
+              <div key={g.id}>
+                <div style={dropdownGroupHeaderStyle}>
+                  <span style={{ fontWeight: 600 }}>{g.label}</span>
+                  {g.desc && (
+                    <span style={{ fontWeight: 400, fontStyle: "italic", marginLeft: 6 }}>{g.desc}</span>
+                  )}
                 </div>
-              )}
-              {entries.length > 0 && filtered.length === 0 && (
-                <div style={emptyHintStyle}>No properties matching &ldquo;{search}&rdquo;</div>
-              )}
-              {groups.filter((g) => g.items.length > 0).map((g) => (
-                <div key={g.id}>
-                  <div style={groupHeaderStyle}>
-                    <span style={{ fontWeight: 600 }}>{g.label}</span>
-                    {g.desc && (
-                      <span style={{ fontWeight: 400, fontStyle: "italic", marginLeft: 6 }}>{g.desc}</span>
-                    )}
-                  </div>
-                  {g.items.map((entry) => {
-                    const live = liveState[`device.${deviceId}.${entry.suffix}`];
-                    const dimmed = entry.group === "more" || entry.dim === true;
-                    return (
-                      <div
-                        key={entry.suffix}
-                        onClick={() => {
-                          onPick(entry.suffix);
-                          setOpen(false);
-                          setSearch("");
-                        }}
-                        style={{
-                          ...rowStyle,
-                          opacity: dimmed ? 0.75 : 1,
-                          background: entry.suffix === selectedSuffix ? "var(--bg-hover)" : undefined,
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.background =
-                            entry.suffix === selectedSuffix ? "var(--bg-hover)" : "transparent")
-                        }
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ fontSize: 12, color: "var(--text-primary)" }}>
-                              {entry.label}
-                            </span>
-                            {entry.def?.type && <span style={typeBadgeStyle}>{entry.def.type}</span>}
-                          </div>
-                          {entry.label !== entry.suffix && (
-                            <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                              {entry.suffix}
-                            </div>
-                          )}
-                        </div>
-                        {live !== undefined && (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: "var(--text-muted)",
-                              flexShrink: 0,
-                              maxWidth: 110,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              fontFamily: "var(--font-mono)",
-                            }}
-                            title={String(live)}
-                          >
-                            {String(live)}
+                {g.items.map((entry) => {
+                  const live = liveState[`device.${deviceId}.${entry.suffix}`];
+                  const dimmed = entry.group === "more" || entry.dim === true;
+                  return (
+                    <div
+                      key={entry.suffix}
+                      onClick={() => {
+                        onPick(entry.suffix);
+                        close();
+                      }}
+                      style={{
+                        ...rowStyle,
+                        opacity: dimmed ? 0.75 : 1,
+                        background: entry.suffix === selectedSuffix ? "var(--bg-hover)" : undefined,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background =
+                          entry.suffix === selectedSuffix ? "var(--bg-hover)" : "transparent")
+                      }
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 12, color: "var(--text-primary)" }}>
+                            {entry.label}
                           </span>
+                          {entry.def?.type && <span style={dropdownTypeBadgeStyle}>{entry.def.type}</span>}
+                        </div>
+                        {entry.label !== entry.suffix && (
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                            {entry.suffix}
+                          </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
+                      {live !== undefined && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text-muted)",
+                            flexShrink: 0,
+                            maxWidth: 110,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontFamily: "var(--font-mono)",
+                          }}
+                          title={String(live)}
+                        >
+                          {String(live)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </>
         );
-      })()}
-    </div>
+      }}
+    </SearchableDropdown>
   );
 }
 
@@ -810,63 +727,9 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 2,
 };
 
-const triggerStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 8px",
-  fontSize: "var(--font-size-sm)",
-  borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-primary)",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  gap: 4,
-};
-
-const searchInputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "4px 6px",
-  fontSize: "var(--font-size-sm)",
-  borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-primary)",
-  color: "var(--text-primary)",
-};
-
-const groupHeaderStyle: React.CSSProperties = {
-  padding: "6px 8px 2px",
-  fontSize: 11,
-  color: "var(--text-muted)",
-  display: "flex",
-  alignItems: "baseline",
-  flexWrap: "wrap",
-};
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "4px 8px 4px 16px",
-  cursor: "pointer",
-  fontSize: "var(--font-size-sm)",
-  transition: "background 0.1s",
-};
-
-const typeBadgeStyle: React.CSSProperties = {
-  fontSize: 10,
-  padding: "0 4px",
-  borderRadius: 3,
-  background: "var(--bg-hover)",
-  color: "var(--text-muted)",
-};
-
-const emptyHintStyle: React.CSSProperties = {
-  padding: "12px 8px",
-  fontSize: 12,
-  color: "var(--text-muted)",
-  fontStyle: "italic",
-  textAlign: "center",
-};
+/** The shared dropdown row, plus the one thing this list wants that the
+ *  state-key list does not: a gap between the label block and the live value. */
+const rowStyle: React.CSSProperties = { ...dropdownRowStyle, gap: 6 };
 
 const helpBoxStyle: React.CSSProperties = {
   display: "flex",
