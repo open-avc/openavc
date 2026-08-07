@@ -30,7 +30,9 @@ import pytest
 
 from server.ui.control_minimums import TYPES_WITH_MINIMUMS, minimum_box
 
-playwright_api = pytest.importorskip("playwright.sync_api")
+# Skip-gate only: the browser itself comes from pytest-playwright's session
+# fixtures, never from a second sync_playwright() of our own.
+pytest.importorskip("playwright.sync_api")
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[2]
 PANEL_DIR = OPENAVC_ROOT / "web" / "panel"
@@ -238,16 +240,24 @@ def _page_html() -> str:
 
 
 @pytest.fixture(scope="module")
-def panel_page():
-    with playwright_api.sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": REF_W, "height": REF_H})
-        page.set_content(_page_html(), wait_until="load")
-        assert page.evaluate("() => !!window.__openavcPanel"), (
-            "panel.js did not initialise -- the harness page is wrong, not the minimums"
-        )
-        yield page
-        browser.close()
+def panel_page(browser):
+    """A page on the plugin's browser -- never a second Playwright of our own.
+
+    pytest-playwright keeps ONE Playwright open for the whole session, started
+    the first time any test asks for `page` or `browser`. Calling
+    `sync_playwright()` here as well raises "Sync API inside the asyncio loop"
+    for every test in this file, because that first one is still running. It
+    only looked fine in isolation: alone, nothing had started the plugin's
+    instance yet, so the whole file passed and `pytest tests/e2e` errored.
+    """
+    context = browser.new_context(viewport={"width": REF_W, "height": REF_H})
+    page = context.new_page()
+    page.set_content(_page_html(), wait_until="load")
+    assert page.evaluate("() => !!window.__openavcPanel"), (
+        "panel.js did not initialise -- the harness page is wrong, not the minimums"
+    )
+    yield page
+    context.close()
 
 
 def _holds(page, type_: str, w: float, h: float) -> tuple[bool, str]:

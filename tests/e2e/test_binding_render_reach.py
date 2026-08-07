@@ -26,7 +26,9 @@ import pytest
 
 from server.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
 
-playwright_api = pytest.importorskip("playwright.sync_api")
+# Skip-gate only: the browser itself comes from pytest-playwright's session
+# fixtures, never from a second sync_playwright() of our own.
+pytest.importorskip("playwright.sync_api")
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[2]
 PANEL_DIR = OPENAVC_ROOT / "web" / "panel"
@@ -94,16 +96,20 @@ def _page_html() -> str:
 
 
 @pytest.fixture(scope="module")
-def panel_page():
-    with playwright_api.sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": REF_W, "height": REF_H})
-        page.set_content(_page_html(), wait_until="load")
-        assert page.evaluate("() => !!window.__openavcPanel"), (
-            "panel.js did not initialise -- the harness page is wrong, not the table"
-        )
-        yield page
-        browser.close()
+def panel_page(browser):
+    """A page on the plugin's browser -- see the note in test_control_minimums.
+
+    One Playwright per session. Opening a second with `sync_playwright()` fails
+    outright once the plugin has started its own.
+    """
+    context = browser.new_context(viewport={"width": REF_W, "height": REF_H})
+    page = context.new_page()
+    page.set_content(_page_html(), wait_until="load")
+    assert page.evaluate("() => !!window.__openavcPanel"), (
+        "panel.js did not initialise -- the harness page is wrong, not the table"
+    )
+    yield page
+    context.close()
 
 
 def _probe(page, type_: str, extra: dict, value: str = "true") -> dict:
