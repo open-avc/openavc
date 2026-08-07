@@ -139,7 +139,7 @@ async def test_reconnect_loop_stops_when_auth_failure_appears(dm):
     dm._device_configs["d1"] = {"id": "d1", "driver": "acme_auth", "config": {}}
 
     with patch("server.core.device_manager.asyncio.sleep", new=AsyncMock()):
-        await dm._reconnect_loop("d1", max_attempts=10)
+        await dm._reconnect_loop("d1")
 
     # 2 unreachable attempts + the 1 that discovered the rejection — not 10.
     assert driver.connect_attempts == 3
@@ -201,24 +201,34 @@ async def test_reconnect_loop_stops_early_on_permanent_fault(
     dm._device_configs["d1"] = {"id": "d1", "driver": "acme_perm", "config": {}}
 
     with patch("server.core.device_manager.asyncio.sleep", new=AsyncMock()):
-        await dm._reconnect_loop("d1", max_attempts=50)
+        await dm._reconnect_loop("d1")
 
     assert driver.connect_attempts == _MAX_PERMANENT_FAULT_ATTEMPTS
     assert dm.state.get("device.d1.offline_reason") == expected_code
     assert dm.state.get("device.d1.reconnect_failed") is True
 
 
-async def test_network_faults_still_use_all_attempts(dm):
-    """The early stop must not leak into faults that do heal on their own."""
+async def test_network_faults_keep_retrying_indefinitely(dm):
+    """The early stop must not leak into faults that do heal on their own.
+
+    These have no ceiling at all now, so the test bounds the loop itself and
+    asserts it was still going when it did — a device nobody has fixed is a
+    device we are still trying to reach.
+    """
     driver = _UnreachableDriver("d1", {"host": "192.0.2.1"}, dm.state, dm.events)
     dm._devices["d1"] = driver
     dm._device_configs["d1"] = {"id": "d1", "driver": "acme_dead", "config": {}}
 
-    with patch("server.core.device_manager.asyncio.sleep", new=AsyncMock()):
-        await dm._reconnect_loop("d1", max_attempts=5)
+    async def stop_at_150(delay):
+        if driver.connect_attempts >= 150:
+            raise asyncio.CancelledError
 
-    assert driver.connect_attempts == 5
+    with patch("server.core.device_manager.asyncio.sleep", side_effect=stop_at_150):
+        await dm._reconnect_loop("d1")
+
+    assert driver.connect_attempts >= 150
     assert dm.state.get("device.d1.offline_reason") == "connection_refused"
+    assert dm.state.get("device.d1.reconnect_failed") is None
 
 
 async def test_transient_permanent_fault_does_not_stop_a_recovering_device(dm):
@@ -237,7 +247,12 @@ async def test_transient_permanent_fault_does_not_stop_a_recovering_device(dm):
     dm._devices["d1"] = driver
     dm._device_configs["d1"] = {"id": "d1", "driver": "acme_flip", "config": {}}
 
-    with patch("server.core.device_manager.asyncio.sleep", new=AsyncMock()):
-        await dm._reconnect_loop("d1", max_attempts=6)
+    async def stop_at_6(delay):
+        if driver.connect_attempts >= 6:
+            raise asyncio.CancelledError
+
+    with patch("server.core.device_manager.asyncio.sleep", side_effect=stop_at_6):
+        await dm._reconnect_loop("d1")
 
     assert driver.connect_attempts == 6
+    assert dm.state.get("device.d1.reconnect_failed") is None

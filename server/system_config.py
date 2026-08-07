@@ -261,6 +261,16 @@ DEFAULTS: dict[str, Any] = {
     "discovery": {
         "advertise": True,
     },
+    "devices": {
+        # Seconds between reconnect attempts for a device that has gone
+        # offline for a network reason. OpenAVC retries for as long as the
+        # device is in the project, so this is the interval a returning device
+        # waits at — and the rate of connection attempts an IT department
+        # would see. The default suits a normal AV VLAN; raise it on a network
+        # whose monitoring is strict about repeated connection attempts.
+        # Clamped to 1..300 seconds.
+        "reconnect_interval_seconds": 5.0,
+    },
     "simulation": {
         # Ports the device simulator subprocess listens on. Two OpenAVC
         # instances on one machine cannot both simulate on the same numbers,

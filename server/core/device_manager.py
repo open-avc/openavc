@@ -11,10 +11,15 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import random
+import time
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from server.core.connection_fault import (
+    UNREACHABLE,
+    ConnectionFaultError,
     classify_connection_fault,
     is_permanent_fault,
     no_simulator_fault,
@@ -47,6 +52,54 @@ log = get_logger(__name__)
 # genuinely misconfigured device stops churning almost immediately. auth_failed
 # is stricter still (zero retries — see _pause_reconnect_for_auth).
 _MAX_PERMANENT_FAULT_ATTEMPTS = 2
+
+# --- Retry policy for a device that is simply ABSENT -----------------------
+# A transient fault gets retried for as long as the device is in the project.
+# There is deliberately no attempt ceiling: the address of a projector on a
+# wall is a permanent fact about the room, so "we gave up an hour ago" is never
+# the right answer to someone plugging the cable back in the next morning. Only
+# the permanent set above ever stops, because only those need a human.
+#
+# The ramp is short and then flat. Its whole job is to catch a blip in a second
+# or two; past that, the steady interval is what a returning device waits for,
+# and slower does not help anyone.
+_RECONNECT_RAMP_SECONDS = (1.0, 2.0)
+
+# Steady-state seconds between attempts. Two things set this floor, and neither
+# is CPU. Repeated SYNs to a non-responding address, continuing indefinitely,
+# is the signature of a slow horizontal port scan, and docs/it-network-guide.md
+# tells IT departments we don't probe their network — so this is the number
+# that has to stay defensible to somebody's IDS. The unreachable path also ARPs,
+# which is broadcast, and now runs around the clock. Overridable per-site via
+# system.json ("devices" -> "reconnect_interval_seconds").
+_RECONNECT_INTERVAL_DEFAULT = 5.0
+
+# Spread simultaneous retries so a rack full of devices doesn't redial in
+# lockstep after a switch reboot — the one moment when they are ALL offline.
+_RECONNECT_JITTER = 0.2  # +/- 20%
+
+# Transports where the real connect is expensive enough to be worth gating
+# behind a cheap reachability check first. ssh spawns an `ssh` subprocess and
+# negotiates keys; mqtt does a TLS handshake; http can carry an auth exchange.
+# Everything else (tcp, serial, udp, osc) connects about as cheaply as any
+# probe would, so probing first would just do the work twice — and on a
+# single-session device, an extra socket is not free.
+_PROBE_FIRST_TRANSPORTS = frozenset({"ssh", "mqtt", "http"})
+_PROBE_TIMEOUT = 1.5
+
+# A reconnect that succeeds and then drops again inside this window is
+# flapping, not recovering. THIS is what backoff is for: an absent device costs
+# one cheap syscall to check, but a device that connects and dies on a loop can
+# genuinely hurt — so the escalating delay lives here instead of on absence,
+# which is where it used to be and where it did nothing but hide recoveries.
+_FLAP_WINDOW_SECONDS = 30.0
+_MAX_FLAP_ESCALATIONS = 4  # 5s -> 10 -> 20 -> 40 -> 80, then holds
+
+# Log the first few attempts, then go quiet apart from a periodic heartbeat.
+# Retrying forever at INFO would be ~17k lines a day for ONE offline device,
+# into both the ring buffer and the log file; the recovery is always logged.
+_RECONNECT_LOG_FIRST = 3
+_RECONNECT_LOG_EVERY = 60  # roughly every 5 minutes at the default interval
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -87,6 +140,12 @@ class DeviceManager:
         self._devices: dict[str, BaseDriver] = {}
         self._device_configs: dict[str, dict[str, Any]] = {}
         self._reconnect_tasks: dict[str, asyncio.Task] = {}
+        # Flapping bookkeeping — see _FLAP_WINDOW_SECONDS. Lives here rather
+        # than in the reconnect loop because the loop EXITS on success: a
+        # device that connects and drops again starts a brand new loop, so a
+        # counter inside one could never see the pattern it exists to catch.
+        self._last_connect_at: dict[str, float] = {}
+        self._flap_counts: dict[str, int] = {}
         self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
         self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
         self._pause_expiry_tasks: dict[str, asyncio.Task] = {}  # pause TTL backstops
@@ -279,6 +338,11 @@ class DeviceManager:
         # under the same id.
         self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
+        # Forget the flap history too — a device re-added under the same id is
+        # a fresh device, and inheriting a backoff it never earned would make
+        # its first reconnect mysteriously slow.
+        self._last_connect_at.pop(device_id, None)
+        self._flap_counts.pop(device_id, None)
         # Forget this device's credentials, so a password that is no longer
         # configured anywhere stops masking text in an unrelated device's log.
         get_secret_registry().forget(device_id)
@@ -354,6 +418,11 @@ class DeviceManager:
         if not driver.get_state("connected") and not self._command_available_offline(
             driver, command
         ):
+            # Someone just asked for this device by name. That is the clearest
+            # signal we ever get that it's wanted back, and most of the people
+            # who send it are standing at a panel with no access to the IDE —
+            # so retry now instead of leaving them to wait out the interval.
+            self.kick_reconnect(device_id)
             raise ConnectionError(f"Device '{device_id}' is not connected")
         try:
             params = self._coerce_child_id_params(driver, command, params)
@@ -1263,9 +1332,104 @@ class DeviceManager:
         """Start a background reconnect loop for a device."""
         if device_id in self._reconnect_tasks:
             return  # Already reconnecting
+        self._note_flap(device_id)
         task = asyncio.create_task(self._reconnect_loop(device_id))
         task.add_done_callback(_log_task_exception)
         self._reconnect_tasks[device_id] = task
+
+    def _note_flap(self, device_id: str) -> None:
+        """Count this drop as a flap if the device only just came up.
+
+        Called as a reconnect loop starts, which is the one place that sees
+        both halves of the pattern: how long ago we last got this device
+        online, and the fact that it has fallen over again.
+        """
+        last = self._last_connect_at.get(device_id)
+        if last is not None and (time.monotonic() - last) < _FLAP_WINDOW_SECONDS:
+            self._flap_counts[device_id] = self._flap_counts.get(device_id, 0) + 1
+            log.warning(
+                "[%s] Dropped again %.1fs after connecting — backing off "
+                "(flap %d)", device_id, time.monotonic() - last,
+                self._flap_counts[device_id],
+            )
+        else:
+            self._flap_counts.pop(device_id, None)
+
+    def _reconnect_delay(self, device_id: str, attempt: int) -> float:
+        """Seconds to wait before ``attempt`` (0-indexed), jittered.
+
+        Short ramp to catch a blip, then the steady interval forever. The only
+        thing that stretches it is flapping, never absence.
+        """
+        if attempt < len(_RECONNECT_RAMP_SECONDS):
+            base = _RECONNECT_RAMP_SECONDS[attempt]
+        else:
+            base = self._reconnect_interval()
+        flaps = min(self._flap_counts.get(device_id, 0), _MAX_FLAP_ESCALATIONS)
+        base *= 2 ** flaps
+        return base * (1.0 + random.uniform(-_RECONNECT_JITTER, _RECONNECT_JITTER))
+
+    @staticmethod
+    def _reconnect_interval() -> float:
+        """The configured steady-state retry interval, in seconds."""
+        try:
+            from server.system_config import get_system_config
+
+            value = float(
+                get_system_config().get(
+                    "devices", "reconnect_interval_seconds",
+                    _RECONNECT_INTERVAL_DEFAULT,
+                )
+            )
+        except Exception:
+            return _RECONNECT_INTERVAL_DEFAULT
+        # A zero or negative interval would spin; an absurdly large one would
+        # silently recreate the problem this whole loop exists to fix.
+        return min(max(value, 1.0), 300.0)
+
+    async def _probe_reachable(self, device_id: str, driver: BaseDriver) -> bool:
+        """Cheap "is it back?" check, for transports whose connect is costly.
+
+        Returns True when the expensive connect is worth attempting — which
+        includes every case where we can't cheaply tell, so a probe failure
+        never becomes the reason a device stays offline.
+        """
+        host, port, transport = self._connection_descriptor(driver)
+        if (transport or "").lower() not in _PROBE_FIRST_TRANSPORTS:
+            return True
+        if not host or port in (None, "", 0):
+            return True
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, int(port)), timeout=_PROBE_TIMEOUT
+            )
+        except (OSError, asyncio.TimeoutError, ValueError):
+            return False
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+        return True
+
+    def kick_reconnect(self, device_id: str) -> bool:
+        """Retry this device now instead of waiting out the interval.
+
+        The customer standing at the panel pressing a button on a dead device
+        is the strongest "I want this back" signal the system gets, and it used
+        to be thrown away. Cancels the sleeping loop and starts a fresh one, so
+        the next attempt is immediate. Does nothing for a device that isn't
+        retrying (connected, disabled, or deliberately stopped) — a permanent
+        fault still needs its human. Returns True if an attempt was triggered.
+        """
+        if device_id not in self._devices:
+            return False
+        if device_id not in self._reconnect_tasks:
+            return False
+        task = self._reconnect_tasks.pop(device_id)
+        task.cancel()
+        fresh = asyncio.create_task(self._reconnect_loop(device_id, immediate=True))
+        fresh.add_done_callback(_log_task_exception)
+        self._reconnect_tasks[device_id] = fresh
+        return True
 
     async def _cancel_reconnect(self, device_id: str) -> None:
         """Cancel a running reconnect task and wait for it to finish."""
@@ -1277,55 +1441,96 @@ class DeviceManager:
             except (asyncio.CancelledError, Exception):
                 pass
 
-    async def _reconnect_loop(self, device_id: str, max_attempts: int = 120) -> None:
-        """
-        Background task that attempts to reconnect a disconnected device.
-        Exponential backoff: 2s, 4s, 8s, 16s, 30s max.
-        Gives up after max_attempts (default 120 = ~1 hour at 30s intervals).
+    async def _reconnect_loop(self, device_id: str, immediate: bool = False) -> None:
+        """Reconnect a disconnected device, for as long as it takes.
+
+        A short ramp (1s, 2s) then the steady interval, jittered, with **no
+        attempt ceiling** — see the retry-policy constants above for why the
+        old ~1 hour cap was the wrong answer for fixed AV installations. The
+        only exits are success, the device going away, a permanent fault, and
+        cancellation.
+
+        ``immediate`` skips the first wait: used by ``kick_reconnect`` when a
+        human has just asked for this device by pressing something.
         """
         # This loop is spawned from inside the disconnect emit chain but outlives
         # it, so it must not keep being charged to it — see detach_emit_chain.
         detach_emit_chain()
-        delays = [2, 4, 8, 16, 30]
         attempt = 0
         permanent_attempts = 0
 
         try:
-            while attempt < max_attempts:
+            while True:
                 # Check device still exists before each attempt
                 driver = self._devices.get(device_id)
                 if driver is None:
                     log.debug(f"[{device_id}] Device removed, stopping reconnect")
                     return
 
-                delay = delays[min(attempt, len(delays) - 1)]
-                self.state.set(
-                    f"device.{device_id}.reconnect_attempt", attempt + 1,
-                    source="device_manager",
-                )
-                log.info(
-                    f"[{device_id}] Reconnect attempt {attempt + 1}/{max_attempts} in {delay}s..."
-                )
-                await asyncio.sleep(delay)
+                # Quiet by construction: the first few attempts are the
+                # interesting ones, then a heartbeat. This loop can run for
+                # days, so a line (and a state write, which fans out over the
+                # WebSocket to every panel) per attempt would be pure noise
+                # for a number nothing counts down from any more.
+                noisy = attempt < _RECONNECT_LOG_FIRST or attempt % _RECONNECT_LOG_EVERY == 0
+                if noisy:
+                    self.state.set(
+                        f"device.{device_id}.reconnect_attempt", attempt + 1,
+                        source="device_manager",
+                    )
+                if attempt == 0 and immediate:
+                    delay = 0.0
+                else:
+                    delay = self._reconnect_delay(device_id, attempt)
+                    if noisy:
+                        log.info(
+                            "[%s] Reconnect attempt %d in %.1fs...",
+                            device_id, attempt + 1, delay,
+                        )
+                    await asyncio.sleep(delay)
 
                 # Re-check after sleep — device may have been removed
                 if device_id not in self._devices:
                     log.debug(f"[{device_id}] Device removed during wait, stopping reconnect")
                     return
 
+                # Stop polling before anything else touches the transport.
+                # This sits ahead of the probe on purpose: the probe can skip
+                # the rest of the cycle, and a poll loop left running against a
+                # dead transport would then never be stopped at all — which,
+                # now that the loop has no ceiling, means never.
                 try:
-                    # Stop polling before reconnect to prevent race conditions
-                    # (poll firing while transport is being replaced)
                     await driver.stop_polling()
+                except Exception:
+                    log.debug(f"[{device_id}] stop_polling failed", exc_info=True)
+
+                # Cheap reachability first for the transports whose connect is
+                # expensive. A device that is still absent costs one short
+                # socket here instead of an ssh subprocess every few seconds.
+                if not await self._probe_reachable(device_id, driver):
+                    # The control port didn't answer, so the expensive connect
+                    # would only fail slower. Still classify — skipping the
+                    # attempt must not leave the device card showing a stale
+                    # reason for a device that is now simply not there.
+                    self._set_offline_reason(
+                        device_id, driver,
+                        exc=ConnectionFaultError("", code=UNREACHABLE),
+                    )
+                    attempt += 1
+                    continue
+
+                try:
                     self._refresh_usb_serial_port(device_id, driver)
                     await driver.connect()
                     log.info(f"[{device_id}] Reconnected successfully")
+                    self._last_connect_at[device_id] = time.monotonic()
                     self._clear_offline_reason(device_id)
                     self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
                     await self._apply_pending_settings(device_id)
                     return
                 except Exception as e:
-                    log.warning(f"[{device_id}] Reconnect failed: {e}")
+                    if noisy:
+                        log.warning(f"[{device_id}] Reconnect failed: {e}")
                     # Refine the offline reason from this attempt's failure —
                     # the cause can change between attempts (auth vs unreachable).
                     code = self._set_offline_reason(device_id, driver, exc=e)
@@ -1341,8 +1546,8 @@ class DeviceManager:
                         # Host key, TLS trust, connection settings, missing
                         # client: a human has to change something. Allow a
                         # couple of tries first — a device rebooting mid-scan
-                        # can briefly present one of these — then stop rather
-                        # than grinding through all 120 attempts.
+                        # can briefly present one of these — then stop, since
+                        # nothing about waiting longer will clear them.
                         permanent_attempts += 1
                         if permanent_attempts >= _MAX_PERMANENT_FAULT_ATTEMPTS:
                             self._stop_reconnect_for_permanent_fault(device_id, code)
@@ -1350,20 +1555,15 @@ class DeviceManager:
                     else:
                         permanent_attempts = 0
                     attempt += 1
-
-            # Exhausted all attempts
-            log.warning(
-                f"[{device_id}] Gave up reconnecting after {max_attempts} attempts. "
-                f"Use the Reconnect button or restart the server to try again."
-            )
-            self.state.set(
-                f"device.{device_id}.reconnect_failed", True,
-                source="device_manager",
-            )
         except asyncio.CancelledError:
             log.debug(f"[{device_id}] Reconnect cancelled")
         finally:
-            self._reconnect_tasks.pop(device_id, None)
+            # kick_reconnect replaces the entry before cancelling this task, so
+            # only clear it if it is still ours — otherwise the cancelled loop
+            # would delete the fresh one on its way out and leave the device
+            # with no retry at all.
+            if self._reconnect_tasks.get(device_id) is asyncio.current_task():
+                self._reconnect_tasks.pop(device_id, None)
 
     def _refresh_usb_serial_port(self, device_id: str, driver) -> None:
         """Re-resolve a usb_serial-bound adapter to its current OS path.

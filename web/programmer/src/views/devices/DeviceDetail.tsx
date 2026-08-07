@@ -165,7 +165,6 @@ export function DeviceDetail({
   // The taxonomy lives server-side; this view only renders the message.
   const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
   const offlineReason = String(liveState[`device.${deviceId}.offline_reason`] ?? "");
-  const reconnectAttempt = Number(liveState[`device.${deviceId}.reconnect_attempt`]) || 0;
   const reconnectFailed = Boolean(liveState[`device.${deviceId}.reconnect_failed`]);
   // Optional driver-provided troubleshooting hint (DRIVER_INFO.help.connection),
   // surfaced under the offline reason. The driver supplies device-specific
@@ -511,7 +510,6 @@ export function DeviceDetail({
         <OfflineBanner
           detail={offlineDetail}
           reason={offlineReason}
-          attempt={reconnectAttempt}
           failed={reconnectFailed}
           hint={connectionHint}
         />
@@ -1707,13 +1705,11 @@ const PERMANENT_OFFLINE_REASONS = new Set([
 function OfflineBanner({
   detail,
   reason,
-  attempt,
   failed,
   hint,
 }: {
   detail: string;
   reason?: string;
-  attempt: number;
   failed: boolean;
   hint?: string;
 }) {
@@ -1766,10 +1762,15 @@ function OfflineBanner({
                 // here would read as "we tried everything", sending the
                 // integrator hunting a network problem that isn't there.
                 ? "Not retrying — this won't clear on its own. Fix the cause above, then press Reconnect."
-                : "Automatic reconnection gave up. Use the Reconnect button above to try again."
-            : attempt > 0
-              ? `Reconnecting automatically… (attempt ${attempt})`
-              : "Reconnecting automatically…"}
+                // Only a fault someone has to clear reaches `failed` now, and
+                // both branches above name one. A network fault never lands
+                // here: it retries for as long as the device is in the project.
+                : "Not retrying. Fix the cause above, then press Reconnect."
+            // Deliberately no attempt count. There's no ceiling to count
+            // toward, and a device left off over a weekend would show a number
+            // in the thousands — which tells the integrator nothing except
+            // that something looks broken.
+            : "Reconnecting automatically, and will keep trying until the device comes back."}
         </div>
       </div>
     </div>

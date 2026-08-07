@@ -1,6 +1,7 @@
 """Tests for DeviceManager."""
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -213,7 +214,7 @@ async def test_reconnect_loop_success_on_first_attempt(dm, core):
     driver._connected = False
     dm._devices["test_dev"] = driver
 
-    await dm._reconnect_loop("test_dev", max_attempts=3)
+    await dm._reconnect_loop("test_dev")
     assert driver._connected is True
     assert driver.connect_calls == 1
 
@@ -228,27 +229,51 @@ async def test_reconnect_loop_retries_on_failure(dm, core):
 
     # Patch sleep to make test fast
     with patch("asyncio.sleep", new_callable=AsyncMock):
-        await dm._reconnect_loop("test_dev", max_attempts=5)
+        await dm._reconnect_loop("test_dev")
 
     assert driver._connected is True
     assert driver.connect_calls == 3  # 2 failures + 1 success
 
 
-async def test_reconnect_loop_gives_up_after_max_attempts(dm, core):
-    """Reconnect loop gives up after max_attempts failures."""
+async def test_reconnect_loop_never_gives_up_on_a_network_fault(dm, core):
+    """A device that is merely absent is retried without any ceiling.
+
+    The old loop stopped after 120 attempts (~1 hour) and nothing re-armed it,
+    so a device switched off overnight was still offline the next morning
+    until somebody opened the Programmer IDE. 200 attempts is well past that
+    ceiling; the loop must still be trying and must NOT have flagged failure.
+    """
     state, events = core
     driver = MockDriver("test_dev", {}, state, events)
     driver._connected = False
-    driver.connect_fail_count = 999  # Always fail
+    driver.connect_fail_count = 99999  # never comes back on its own
+    dm._devices["test_dev"] = driver
+
+    async def stop_after_200(delay):
+        if driver.connect_calls >= 200:
+            raise asyncio.CancelledError
+
+    with patch("asyncio.sleep", side_effect=stop_after_200):
+        await dm._reconnect_loop("test_dev")
+
+    assert driver.connect_calls >= 200
+    assert state.get("device.test_dev.reconnect_failed") is None
+
+
+async def test_reconnect_recovers_long_after_the_old_ceiling(dm, core):
+    """The device comes back on attempt 500 and is picked up unaided."""
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    driver._connected = False
+    driver.connect_fail_count = 499
     dm._devices["test_dev"] = driver
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
-        await dm._reconnect_loop("test_dev", max_attempts=3)
+        await dm._reconnect_loop("test_dev")
 
-    assert driver._connected is False
-    assert driver.connect_calls == 3
-    # Should set reconnect_failed state
-    assert state.get("device.test_dev.reconnect_failed") is True
+    assert driver._connected is True
+    assert driver.connect_calls == 500
+    assert state.get("device.test_dev.reconnect_attempt") is None
 
 
 async def test_reconnect_loop_stops_if_device_removed(dm, core):
@@ -269,14 +294,20 @@ async def test_reconnect_loop_stops_if_device_removed(dm, core):
             del dm._devices["test_dev"]
 
     with patch("asyncio.sleep", side_effect=mock_sleep):
-        await dm._reconnect_loop("test_dev", max_attempts=10)
+        await dm._reconnect_loop("test_dev")
 
     # Should have stopped after device was removed
     assert driver.connect_calls < 10
 
 
-async def test_reconnect_loop_exponential_backoff(dm, core):
-    """Reconnect loop uses exponential backoff delays."""
+async def test_reconnect_loop_ramps_then_holds_flat(dm, core):
+    """Short ramp to catch a blip, then the steady interval forever.
+
+    Backoff no longer climbs with absence — a device that is simply gone costs
+    one cheap check, and stretching the gap only delays the recovery of a
+    device somebody is standing in front of. Delays are jittered +/-20%, so
+    these are bands rather than exact values.
+    """
     state, events = core
     driver = MockDriver("test_dev", {}, state, events)
     driver._connected = False
@@ -289,14 +320,165 @@ async def test_reconnect_loop_exponential_backoff(dm, core):
         sleep_delays.append(delay)
 
     with patch("asyncio.sleep", side_effect=mock_sleep):
-        await dm._reconnect_loop("test_dev", max_attempts=6)
+        await dm._reconnect_loop("test_dev")
 
-    # Expected delays: 2, 4, 8, 16, 30, 30 (capped)
-    assert sleep_delays[0] == 2
-    assert sleep_delays[1] == 4
-    assert sleep_delays[2] == 8
-    assert sleep_delays[3] == 16
-    assert sleep_delays[4] == 30  # Capped at max
+    assert 0.8 <= sleep_delays[0] <= 1.2      # ramp: 1s
+    assert 1.6 <= sleep_delays[1] <= 2.4      # ramp: 2s
+    for delay in sleep_delays[2:5]:           # then flat at the 5s interval
+        assert 4.0 <= delay <= 6.0
+    # Jitter is real, not decorative: identical nominal delays must differ, or
+    # a rack of devices redials in lockstep after a switch reboot.
+    assert len(set(sleep_delays[2:5])) > 1
+
+
+async def test_absence_alone_never_escalates_the_delay(dm, core):
+    """A device that is simply gone is checked at a steady rate forever.
+
+    This is the half the old loop got backwards: it stretched the gap on the
+    harmless case until it gave up entirely, so the longer a device had been
+    away the slower it was to notice it return.
+    """
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    driver._connected = False
+    driver.connect_fail_count = 99999
+    dm._devices["test_dev"] = driver
+
+    delays = []
+
+    async def record(delay):
+        delays.append(delay)
+        if len(delays) >= 40:
+            raise asyncio.CancelledError
+
+    with patch("asyncio.sleep", side_effect=record):
+        await dm._reconnect_loop("test_dev")
+
+    # Steady state, from the ramp onward — never climbing.
+    assert max(delays[2:]) <= 6.0
+
+
+async def test_flapping_is_what_earns_a_backoff(dm, core):
+    """Connect / drop / connect inside the flap window escalates the wait.
+
+    An absent device costs one cheap check; a device that comes up and dies on
+    a loop is the one that can actually hurt, so the escalating delay lives
+    here instead.
+    """
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    dm._devices["test_dev"] = driver
+
+    # Pretend it connected a moment ago, then fell over.
+    dm._last_connect_at["test_dev"] = time.monotonic()
+    dm._note_flap("test_dev")
+    dm._note_flap("test_dev")
+    assert dm._flap_counts["test_dev"] == 2
+
+    # Two flaps => the steady interval doubled twice (5 -> 20), jitter aside.
+    steady = dm._reconnect_delay("test_dev", attempt=5)
+    assert 16.0 <= steady <= 24.0
+
+
+async def test_a_clean_reconnect_clears_the_flap_history(dm, core):
+    """A device that stays up past the flap window starts fresh next time."""
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    dm._devices["test_dev"] = driver
+
+    dm._flap_counts["test_dev"] = 3
+    dm._last_connect_at["test_dev"] = time.monotonic() - 600  # up for 10 min
+    dm._note_flap("test_dev")
+
+    assert "test_dev" not in dm._flap_counts
+    assert 4.0 <= dm._reconnect_delay("test_dev", attempt=5) <= 6.0
+
+
+async def test_expensive_transports_probe_before_connecting(dm, core):
+    """An unreachable SSH device must not spawn an ssh subprocess per cycle.
+
+    This is the specific regression the probe/connect split exists to prevent:
+    ssh shells out to the OpenSSH client, so retrying it every few seconds
+    would stack overlapping processes for a device that isn't even there.
+    """
+    state, events = core
+    driver = MockDriver(
+        "sshdev", {"host": "192.0.2.1", "port": 22, "transport": "ssh"},
+        state, events,
+    )
+    driver._connected = False
+    driver.connect_fail_count = 99999
+    dm._devices["sshdev"] = driver
+    dm._device_configs["sshdev"] = {
+        "id": "sshdev", "driver": "mock_driver",
+        "config": {"host": "192.0.2.1", "port": 22, "transport": "ssh"},
+    }
+
+    calls = {"n": 0}
+
+    async def unreachable(device_id, drv):
+        calls["n"] += 1
+        if calls["n"] >= 5:
+            raise asyncio.CancelledError
+        return False
+
+    with patch("asyncio.sleep", new_callable=AsyncMock), \
+            patch.object(dm, "_probe_reachable", side_effect=unreachable):
+        await dm._reconnect_loop("sshdev")
+
+    assert calls["n"] >= 4          # the cheap check ran every cycle
+    assert driver.connect_calls == 0  # the expensive one never did
+    assert state.get("device.sshdev.offline_reason") == "unreachable"
+
+
+async def test_cheap_transports_are_not_probed_twice(dm, core):
+    """TCP connects about as cheaply as any probe, so it isn't gated."""
+    state, events = core
+    driver = MockDriver(
+        "tcpdev", {"host": "192.0.2.1", "port": 4352, "transport": "tcp"},
+        state, events,
+    )
+    dm._devices["tcpdev"] = driver
+    dm._device_configs["tcpdev"] = {
+        "id": "tcpdev", "driver": "mock_driver",
+        "config": {"host": "192.0.2.1", "port": 4352, "transport": "tcp"},
+    }
+
+    assert await dm._probe_reachable("tcpdev", driver) is True
+
+
+async def test_a_command_for_an_offline_device_retries_it_now(dm, core):
+    """The press is the signal. Most people who send one are standing at a
+    panel with no way into the IDE, so it must not just raise and stop."""
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    driver._connected = False
+    driver.connect_fail_count = 99999
+    dm._devices["test_dev"] = driver
+    dm._device_configs["test_dev"] = {"id": "test_dev", "driver": "mock_driver"}
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        dm._start_reconnect("test_dev")
+        await asyncio.sleep(0)
+        first = dm._reconnect_tasks["test_dev"]
+
+        with pytest.raises(ConnectionError):
+            await dm.send_command("test_dev", "power_on")
+
+        # A fresh loop replaced the sleeping one rather than nothing happening.
+        assert dm._reconnect_tasks["test_dev"] is not first
+        await dm._cancel_reconnect("test_dev")
+
+
+async def test_kick_reconnect_ignores_a_device_that_is_not_retrying(dm, core):
+    """A permanent fault stopped the loop deliberately — a press must not
+    restart a login that would trip the device's lockout."""
+    state, events = core
+    driver = MockDriver("test_dev", {}, state, events)
+    dm._devices["test_dev"] = driver
+
+    assert dm.kick_reconnect("test_dev") is False
+    assert dm.kick_reconnect("no_such_device") is False
 
 
 async def test_start_reconnect_creates_task(dm, core):
@@ -434,8 +616,11 @@ async def test_offline_reason_auth_failed_from_permission_denied(dm, core):
     )
     dm._devices["sw"] = driver
 
-    with patch("asyncio.sleep", new_callable=AsyncMock):
-        await dm._reconnect_loop("sw", max_attempts=1)
+    # The reachability probe is stubbed: this test is about how a login
+    # rejection is classified, not about whether the host answers.
+    with patch("asyncio.sleep", new_callable=AsyncMock), \
+            patch.object(dm, "_probe_reachable", AsyncMock(return_value=True)):
+        await dm._reconnect_loop("sw")
 
     assert state.get("device.sw.offline_reason") == "auth_failed"
     detail = state.get("device.sw.offline_detail")
@@ -469,7 +654,7 @@ async def test_offline_reason_cleared_on_reconnect_success(dm, core):
     state.set("device.test_dev.offline_detail", "Authentication failed.", source="test")
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
-        await dm._reconnect_loop("test_dev", max_attempts=1)
+        await dm._reconnect_loop("test_dev")
 
     assert driver._connected is True
     assert state.get("device.test_dev.offline_reason") is None

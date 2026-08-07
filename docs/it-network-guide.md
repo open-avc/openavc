@@ -122,6 +122,8 @@ This is Pi-image-specific. On a generic Linux `install.sh` host, OpenAVC does no
 
 OpenAVC initiates outbound TCP and UDP connections to AV equipment. The specific ports depend entirely on which devices are configured in the project. OpenAVC only communicates with devices explicitly defined in the project configuration, using the ports those devices expect. It does not scan or probe the network during normal operation.
 
+**Offline devices are retried indefinitely.** When a configured device stops answering, OpenAVC keeps trying to reconnect to it, by default every 5 seconds, for as long as that device remains in the project. This is deliberate. A display that is unplugged on Friday has to come back on its own when it is plugged in again on Monday, without anyone opening the configuration interface. The traffic is one connection attempt per offline device per interval, always to that device's own configured address and port, and never to any address that is not already in the project. Nothing is swept, ranged, or discovered by this. If your monitoring flags repeated connection attempts to a host that is powered down, this is the source. The interval is adjustable per installation in `system.json` under `devices.reconnect_interval_seconds` (1 to 300 seconds).
+
 The table below lists common AV control ports. This is not exhaustive. AV manufacturers use a wide range of proprietary and standard ports, and new drivers may use ports not listed here.
 
 | Port | Protocol | Device type | Example |
@@ -168,7 +170,7 @@ When a device can't connect, its card in the Programmer shows an "Offline" banne
 | Device didn't respond as expected | The connection opened, but the device didn't speak the expected protocol. | That the right driver and transport (e.g. SSH vs Telnet, the right port) are selected for this device. |
 | Required client not found | A client OpenAVC shells out to is missing on the host (e.g. the OpenSSH `ssh` client). | That the client is installed and on the system PATH on the OpenAVC host. |
 
-For a network reason (connection refused, can't reach the device, no response), OpenAVC retries automatically with exponential backoff for about an hour before giving up, and the banner shows the current attempt. Reasons that retrying can't fix — authentication failed, SSH host key changed, an untrusted TLS certificate, invalid connection settings, or a missing client — stop the retry loop early instead, and the banner says so rather than showing a climbing attempt count. Fix the cause and press Reconnect. The same reason is also published as the `device.<id>.offline_reason` state key for automation and monitoring.
+For a network reason (connection refused, can't reach the device, no response), OpenAVC retries automatically and does not stop. Attempts start about a second apart and settle to one every 5 seconds, so a device that is repaired, powered back on, or plugged back in comes back by itself within seconds. Reasons that retrying can't fix — authentication failed, SSH host key changed, an untrusted TLS certificate, invalid connection settings, or a missing client — stop the retry loop early instead, and the banner says so. Fix the cause and press Reconnect. The same reason is also published as the `device.<id>.offline_reason` state key for automation and monitoring.
 
 ### Device discovery (on-demand only)
 
