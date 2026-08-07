@@ -1144,6 +1144,75 @@ async def test_add_ui_elements_rejects_a_container_that_is_not_there(handler, mo
 
 
 @pytest.mark.asyncio
+async def test_add_ui_elements_reports_every_offender_at_once(handler, mock_engine):
+    """A rejected batch answers for the whole batch, not just its first mistake.
+
+    The write is atomic either way, so reporting one problem per call turns a
+    thirty-element batch with three mistakes into three round trips. It found
+    them all in one pass already; it just stopped at the first.
+    """
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._add_ui_elements({
+            "page_id": "main",
+            "elements": [
+                {"id": "btn_on", "type": "button", "label": "Taken"},
+                {"id": "btn_fine", "type": "button", "label": "Fine"},
+                {"id": "btn_lost", "type": "button", "parent": "no_such_group"},
+                {"id": "btn_old", "type": "button",
+                 "grid_area": {"col": 1, "row": 1, "col_span": 2, "row_span": 1}},
+                {"id": "btn_fine", "type": "button", "label": "Again"},
+            ],
+        })
+
+    assert len(result["errors"]) == 4
+    joined = result["error"]
+    for expected in ("btn_on", "no_such_group", "grid_area", "appears twice"):
+        assert expected in joined, f"{expected} missing from {joined}"
+    # Atomic: the one good element does not land either.
+    assert not any(el.id == "btn_fine" for el in _page(mock_engine).elements)
+
+
+@pytest.mark.asyncio
+async def test_add_ui_elements_still_takes_a_container_from_the_same_batch(
+    handler, mock_engine,
+):
+    """Checking the whole batch first must not break adding a group with children.
+
+    Elements used to be appended one at a time, so a child could name a
+    container that arrived earlier in the same call. Validating up front would
+    quietly stop that working -- the commonest shape there is.
+    """
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._add_ui_elements({
+                "page_id": "main",
+                "elements": [
+                    {"id": "grp_new", "type": "group", "label": "Zone"},
+                    {"id": "btn_inside", "type": "button", "parent": "grp_new"},
+                ],
+            })
+
+    assert result["status"] == "created"
+    page = _page(mock_engine)
+    assert next(el for el in page.elements if el.id == "btn_inside").parent == "grp_new"
+
+
+@pytest.mark.asyncio
+async def test_delete_ui_elements_names_the_ids_that_were_not_there(handler, mock_engine):
+    """The deletes that landed are kept, and the misses are said out loud."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("server.core.project_loader.save_project"):
+            result = await handler._delete_ui_elements({
+                "element_ids": ["btn_on", "ghost_a", "ghost_b"],
+            })
+
+    assert result["status"] == "deleted"
+    assert result["element_ids"] == ["btn_on"]
+    assert result["not_found"] == ["ghost_a", "ghost_b"]
+    assert len(result["warnings"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_add_ui_page_with_inline_placements_and_a_variant(handler, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("server.core.project_loader.save_project"):

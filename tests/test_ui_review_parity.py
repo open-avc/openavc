@@ -1100,6 +1100,18 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 
 
+def test_a_zero_dimension_is_degenerate_not_uncomfortable(verdicts) -> None:
+    """A 256x0px button is not a control someone will struggle to hit.
+
+    It used to be reported only as "roughly 43.6x0.0mm on a 10-inch panel --
+    under the 9mm comfortable touch minimum on height", which invites making it
+    a little bigger when the thing is not on screen at all.
+    """
+    python_side, _ = verdicts["stress_test"]
+    kinds = [f["kind"] for f in python_side if f["element_id"] == "btn_zero_h"]
+    assert kinds == ["too_small_to_draw"]
+
+
 def test_one_box_over_many_is_one_finding(verdicts) -> None:
     """The check most able to drown out every other one.
 

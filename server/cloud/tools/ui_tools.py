@@ -214,6 +214,31 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     return place
 
 
+def _problem(exc: Exception, el_id: str) -> str:
+    """One rejected element, said the way the single-element path says it."""
+    if isinstance(exc, ToolEditError):
+        return str(exc.result.get("error", exc))
+    return f"Element '{el_id}': {exc}"
+
+
+def _batch_error(problems: list[str], verb: str) -> ToolEditError:
+    """Every offender in one reply, rather than the first one N times over.
+
+    A batch write is atomic, so a rejected call used to teach the caller about
+    exactly one problem while throwing away the other twenty-nine they could
+    have fixed in the same turn. Thirty elements with three mistakes in them
+    cost three round trips; they should cost one.
+
+    The full list goes in ``error`` as well as ``errors``, because a caller that
+    only reads the message would otherwise still be hunting them one at a time.
+    """
+    count = f"{len(problems)} elements" if len(problems) > 1 else "1 element"
+    return ToolEditError({
+        "error": f"{count} could not be {verb}: " + "; ".join(problems),
+        "errors": problems,
+    })
+
+
 def _apply_layouts(page: Any, layouts_input: Any) -> None:
     """Add or edit a page's arrangements.
 
@@ -496,18 +521,24 @@ class UIToolsMixin:
             # call yields bindings that were never validated (buttons silently do
             # nothing), while the identical elements added via add_ui_elements work.
             boxes: dict[str, dict] = {}
+            problems: list[str] = []
             for el_data in elements:
                 if not isinstance(el_data, dict):
                     continue
                 el_id = el_data.get("id", "?")
-                place = _take_placement(el_data, f"Element '{el_id}'")
-                if place is not None:
-                    boxes[el_id] = place
-                if isinstance(el_data.get("bindings"), dict):
-                    el_data["bindings"] = _normalize_bindings(el_data["bindings"])
-                    err = _validate_bindings(el_data["bindings"], project)
-                    if err:
-                        raise ToolEditError({"error": f"Element '{el_id}': {err}"})
+                try:
+                    place = _take_placement(el_data, f"Element '{el_id}'")
+                    if place is not None:
+                        boxes[el_id] = place
+                    if isinstance(el_data.get("bindings"), dict):
+                        el_data["bindings"] = _normalize_bindings(el_data["bindings"])
+                        err = _validate_bindings(el_data["bindings"], project)
+                        if err:
+                            raise ToolEditError({"error": f"Element '{el_id}': {err}"})
+                except (ToolEditError, ValueError) as exc:
+                    problems.append(_problem(exc, el_id))
+            if problems:
+                raise _batch_error(problems, "added")
 
             new_page = UIPage(
                 id=page_id,
@@ -692,39 +723,65 @@ class UIToolsMixin:
             if page is None:
                 raise ToolEditError({"error": f"UI page '{page_id}' not found"})
 
-            # Check for duplicate IDs
+            # Every element is checked before any of them lands, and every
+            # complaint comes back together. The write is atomic either way; the
+            # only question is whether the caller learns about one mistake or
+            # all of them.
             existing_ids = {el.id for el in page.elements}
-            for el in elements:
-                el_id = el.get("id", "")
+            holders = {el.id: el for el in page.elements}
+            problems: list[str] = []
+            prepared: list[tuple[Any, dict | None]] = []
+            seen: set[str] = set()
+
+            for el_data in elements:
+                el_id = el_data.get("id", "?")
                 if el_id in existing_ids:
-                    raise ToolEditError({"error": f"Element '{el_id}' already exists on page '{page_id}'"})
+                    problems.append(f"Element '{el_id}' already exists on page '{page_id}'")
+                    continue
+                if el_id in seen:
+                    # Two elements with one id: the second silently replaced the
+                    # first at render time, and nothing said so.
+                    problems.append(f"Element '{el_id}' appears twice in this batch")
+                    continue
+                seen.add(el_id)
+                try:
+                    place = _take_placement(el_data, f"Element '{el_id}'")
+                    if "bindings" in el_data and isinstance(el_data["bindings"], dict):
+                        el_data["bindings"] = _normalize_bindings(el_data["bindings"])
+                        err = _validate_bindings(el_data["bindings"], project)
+                        if err:
+                            raise ToolEditError({"error": f"Element '{el_id}': {err}"})
+                    element = UIElement(**el_data)
+                    if element.parent is not None:
+                        holder = holders.get(element.parent)
+                        if holder is None:
+                            raise ToolEditError({
+                                "error": f"Element '{el_id}': container '{element.parent}' "
+                                         f"is not an element on page '{page_id}'"
+                            })
+                        if holder.type != "group":
+                            raise ToolEditError({
+                                "error": f"Element '{el_id}': '{element.parent}' is a "
+                                         f"{holder.type}, not a container -- only a group "
+                                         f"element can hold children"
+                            })
+                except (ToolEditError, ValueError) as exc:
+                    problems.append(_problem(exc, el_id))
+                    continue
+                prepared.append((element, place))
+                # A container and its children can arrive in one call, so an
+                # element accepted here is a candidate parent for a later one --
+                # exactly as when each was appended before the next was checked.
+                holders[element.id] = element
+
+            if problems:
+                raise _batch_error(problems, "added")
 
             # A new control exists in every arrangement the moment it exists at
             # all, so its box goes in the primary -- write it into a variant and
             # it would have no box anywhere else.
             primary = primary_layout(page)
-            for el_data in elements:
-                el_id = el_data.get("id", "?")
-                place = _take_placement(el_data, f"Element '{el_id}'")
-                if "bindings" in el_data and isinstance(el_data["bindings"], dict):
-                    el_data["bindings"] = _normalize_bindings(el_data["bindings"])
-                    err = _validate_bindings(el_data["bindings"], project)
-                    if err:
-                        raise ToolEditError({"error": f"Element '{el_id}': {err}"})
-                element = UIElement(**el_data)
-                if element.parent is not None:
-                    holder = next((e for e in page.elements if e.id == element.parent), None)
-                    if holder is None:
-                        raise ToolEditError({
-                            "error": f"Element '{el_id}': container '{element.parent}' "
-                                     f"is not an element on page '{page_id}'"
-                        })
-                    if holder.type != "group":
-                        raise ToolEditError({
-                            "error": f"Element '{el_id}': '{element.parent}' is a "
-                                     f"{holder.type}, not a container -- only a group "
-                                     f"element can hold children"
-                        })
+            for element, place in prepared:
                 page.elements.append(element)
                 if place is not None:
                     primary.placements[element.id] = _rounded_placement(place)
@@ -914,7 +971,18 @@ class UIToolsMixin:
         if err:
             return err
 
-        return {"status": "deleted", "element_ids": sorted(deleted_ids)}
+        result = {"status": "deleted", "element_ids": sorted(deleted_ids)}
+        # The deletes that DID land are kept -- an id that is already gone is not
+        # a reason to put twenty-seven elements back. But it is said, because the
+        # caller otherwise has to diff two lists to notice.
+        missing = sorted(ids_set - set(deleted_ids))
+        if missing:
+            result["not_found"] = missing
+            result["warnings"] = [
+                f"No element with id '{el_id}' on any page, so nothing was deleted for it."
+                for el_id in missing
+            ]
+        return result
 
     async def _add_master_element(self, input: dict) -> Any:
         engine = self._get_engine()

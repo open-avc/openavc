@@ -476,6 +476,13 @@ def touch_finding(
     if el_type not in TOUCHABLE_TYPES:
         return None
     width_px, height_px = box_px
+    if width_px <= 0 or height_px <= 0:
+        # A box with no size is degenerate, not uncomfortable. Reporting
+        # "roughly 43.6x0.0mm on a 10-inch panel -- under the 9mm comfortable
+        # touch minimum" invites someone to make it a little bigger, when the
+        # thing is not on screen at all. The degenerate check has the sentence
+        # for it, and one fix ends both.
+        return None
     narrow = width_px < TOUCH_MIN_PX
     short = height_px < TOUCH_MIN_PX
     if not (narrow or short):

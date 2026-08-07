@@ -3459,6 +3459,11 @@ export function touchFinding(
   boxPx: { width: number; height: number },
 ): ReviewFinding | null {
   if (!TOUCHABLE_TYPES.has(el.type)) return null;
+  // A box with no size is degenerate, not uncomfortable. Reporting "roughly
+  // 43.6x0.0mm on a 10-inch panel -- under the 9mm comfortable touch minimum"
+  // invites someone to make it a little bigger, when the thing is not on screen
+  // at all. The degenerate check has the sentence for it, and one fix ends both.
+  if (boxPx.width <= 0 || boxPx.height <= 0) return null;
   const narrow = boxPx.width < TOUCH_MIN_PX;
   const short = boxPx.height < TOUCH_MIN_PX;
   if (!narrow && !short) return null;
