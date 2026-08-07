@@ -400,6 +400,12 @@ CASES["binding_reach"] = _project([
             # A type the panel cannot draw. It answers about the TYPE and says
             # nothing about the binding: a slot reaching a renderer that does
             # not exist is not a second, separate problem.
+            #
+            # The `plugin:<id>:<type>` spelling is deliberate but NOT a shape
+            # that reaches a project: it is the Builder's palette key, and
+            # createElement turns it into type: "plugin" with both ids before
+            # anything is stored. It is here because it is the most plausible
+            # wrong type anyone could write by hand.
             {"id": "unknown_kind", "type": "plugin:acme:widget",
              "bindings": {"show": {"look": {"key": "device.acme.online"}}}},
             # `plugin` is a real type the panel draws, and the one the Builder's
