@@ -265,6 +265,25 @@ def _holds(page, type_: str, w: float, h: float) -> tuple[bool, str]:
     return result.get("ok", False), result.get("reason", "")
 
 
+def _smallest_holding(page, type_: str, w: float, h: float, *, limit: int = 40) -> str:
+    """The nearest size at or above (w, h) that renders whole, as a sentence.
+
+    A floor that is too small is reported by the machine that noticed, and the
+    machine that noticed is usually not the one that can be asked interactively
+    -- these numbers differ per font stack (see TIGHTNESS_SLACK_PX), so the CI
+    log is frequently the only place the real answer exists. Saying "needs 237"
+    instead of "is too small" is the difference between a one-line edit and
+    another round trip.
+    """
+    for grow in range(1, limit + 1):
+        if _holds(page, type_, w, h + grow)[0]:
+            return f"{w:.0f}x{h + grow:.0f} holds here (+{grow}px tall)"
+    for grow in range(1, limit + 1):
+        if _holds(page, type_, w + grow, h)[0]:
+            return f"{w + grow:.0f}x{h:.0f} holds here (+{grow}px wide)"
+    return f"nothing within +{limit}px on either axis holds here"
+
+
 @pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)
 def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> None:
     box = minimum_box({"type": type_, **SPECIMENS[type_]})
@@ -273,7 +292,8 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
     assert ok, (
         f"{type_} is drawn broken at its recorded minimum "
         f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}. "
-        f"The recorded minimum is too small -- re-measure it."
+        f"The recorded minimum is too small -- "
+        f"{_smallest_holding(panel_page, type_, box.width_px, box.height_px)}."
     )
 
 
@@ -363,12 +383,17 @@ def test_the_overridable_internals_move_the_floor(panel_page) -> None:
             ok, reason = _holds(panel_page, type_, box.width_px, box.height_px)
             assert ok, (
                 f"{type_} with {key}={px:.0f}px is broken at its computed minimum "
-                f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}"
+                f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}. "
+                f"{_smallest_holding(panel_page, type_, box.width_px, box.height_px)}"
             )
-            short_ok, _ = _holds(panel_page, type_, box.width_px, box.height_px - 1)
+            # Same per-machine wobble as the recorded floors, so the same slack:
+            # the scaled floor is checked for gross overstatement, not to the pixel.
+            short = box.height_px - 1 - TIGHTNESS_SLACK_PX
+            short_ok, _ = _holds(panel_page, type_, box.width_px, short)
             assert not short_ok, (
-                f"{type_} with {key}={px:.0f}px still fits one pixel shorter -- "
-                f"the scaling model overstates the floor"
+                f"{type_} with {key}={px:.0f}px still fits at {short:.0f}px tall, more "
+                f"than {TIGHTNESS_SLACK_PX}px under its computed floor "
+                f"{box.height_px:.0f} -- the scaling model overstates it"
             )
         finally:
             del SPECIMENS[type_][key]
