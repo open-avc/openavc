@@ -3658,22 +3658,6 @@ const OVERLAP_MIN_SHARE = 1.0;
  *  rest. All of them are still counted -- the sentence says "and N more". */
 const OVERLAP_NAMED = 3;
 
-/**
- * The boolean half of `overhangFinding`, without the message.
- *
- * The overlap pass needs it: a box hanging out of its container lands on
- * whatever sits beside it, so every collision it causes is the same defect said
- * again, and one fix ends all of them.
- */
-export function leavesItsParent(p: Placement): boolean {
-  return (
-    p.x < -BOUNDS_EPSILON ||
-    p.y < -BOUNDS_EPSILON ||
-    p.x + p.w > 100 + BOUNDS_EPSILON ||
-    p.y + p.h > 100 + BOUNDS_EPSILON
-  );
-}
-
 /** How much two boxes share: pixels on each axis, and share of the smaller.
  *
  *  Null when they do not really collide -- no intersection, an intersection
@@ -4234,15 +4218,13 @@ function layoutFindings(
 
   // Siblings, in the space they share.
   //
-  // Answered for every element rather than only the in-scope ones, because a
-  // box that hangs out of its parent explains the collisions it causes and a
-  // write that touched only the other side still needs that left out.
-  const escaped = new Set<string>();
-  for (const el of page.elements) {
-    if (hidden.has(el.id)) continue;
-    const stored = own(ownBoxes, el.id);
-    if (stored && leavesItsParent(stored)) escaped.add(el.id);
-  }
+  // An element that also hangs out of its container is NOT excused here, which
+  // was tried and was wrong: two boxes can overlap in the middle of a container
+  // while one of them separately runs off the edge, and fixing the overflow does
+  // not touch the collision. Narrow a box from 80% to 70% and it sits inside its
+  // parent while still lying on the neighbour it started at. Reporting both is
+  // right; the volume that suppression was aimed at is what overlapFindings
+  // collapses.
   const types = new Map(page.elements.map((e) => [e.id, e.type]));
   const byParent = new Map<string | null, string[]>();
   for (const el of page.elements) {
@@ -4258,7 +4240,6 @@ function layoutFindings(
     for (let i = 0; i < kids.length; i++) {
       for (let j = i + 1; j < kids.length; j++) {
         if (!ctx.inScope(kids[i]) && !ctx.inScope(kids[j])) continue;
-        if (escaped.has(kids[i]) || escaped.has(kids[j])) continue;
         const a = byId.get(kids[i]) as UIElement;
         const b = byId.get(kids[j]) as UIElement;
         if (mutuallyExclusive(a, b)) continue;

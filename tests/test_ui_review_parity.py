@@ -293,7 +293,9 @@ CASES["overlap_noise"] = _project([
             {"id": "n3", "type": "group"},
             {"id": "n4", "type": "group"},
             {"id": "n5", "type": "group"},
-            # Out of the page, so the collision under it is the same defect.
+            # Out of the page AND lying on a neighbour. Both are said: pulling
+            # it back inside does not move it off `settled`, so treating the
+            # collision as a consequence of the overflow would hide a real one.
             {"id": "runaway", "type": "group"},
             {"id": "settled", "type": "group"},
             # A tab strip: same key, different values, never both on screen.
@@ -1093,7 +1095,6 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "cold", "hot",                         # two bounds with no room between them
         "modes_ab", "modes_cd",                # every branch contradicts every branch
         "on_when", "off_when",                 # truthy against falsy
-        "settled",                             # its neighbour left the page; one fix
         "roomy", "pill",                       # rem measurements a big box can hold
         "gauge_just",                          # exactly on the degenerate threshold
     ):
@@ -1131,6 +1132,14 @@ def test_one_box_over_many_is_one_finding(verdicts) -> None:
     lone = [f for f in overlaps if f["element_id"] == "gated"]
     assert len(lone) == 1
     assert "% of the smaller one) inside the page." in lone[0]["message"]
+    # A box that is BOTH out of its container and on top of a neighbour answers
+    # for both. Pulling it back inside does not move it off the neighbour, so
+    # calling the collision a consequence of the overflow would hide a real one.
+    assert any(f["element_id"] == "runaway" for f in overlaps)
+    assert any(
+        f["kind"] == "outside_its_container" and f["element_id"] == "runaway"
+        for f in python_side
+    )
 
 
 def test_an_unknown_type_answers_once_about_the_type(verdicts) -> None:

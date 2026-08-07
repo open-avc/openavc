@@ -654,27 +654,6 @@ def overhang_finding(
     )
 
 
-def leaves_its_parent(placement: Any) -> bool:
-    """The boolean half of ``overhang_finding``, without the message.
-
-    The overlap pass needs it: a box hanging out of its container lands on
-    whatever sits beside it, so every collision it causes is the same defect
-    said again, and one fix ends all of them.
-    """
-    def _f(name: str, fallback: float) -> float:
-        value = getattr(placement, name, None)
-        return float(value) if value is not None else fallback
-
-    x, y = _f("x", 0.0), _f("y", 0.0)
-    w, h = _f("w", 100.0), _f("h", 100.0)
-    return (
-        x < -_BOUNDS_EPSILON
-        or y < -_BOUNDS_EPSILON
-        or x + w > 100 + _BOUNDS_EPSILON
-        or y + h > 100 + _BOUNDS_EPSILON
-    )
-
-
 def overlap_extent(
     a_box: Mapping[str, float], b_box: Mapping[str, float],
 ) -> tuple[float, float, float] | None:
@@ -1288,13 +1267,13 @@ def _layout_findings(
 
     # Siblings, in the space they share.
     #
-    # Answered for every element rather than only the in-scope ones, because a
-    # box that hangs out of its parent explains the collisions it causes and
-    # a write that touched only the other side still needs that left out.
-    escaped = {
-        el_id for el_id, placement in own.items()
-        if el_id in dumps and el_id not in hidden and leaves_its_parent(placement)
-    }
+    # An element that also hangs out of its container is NOT excused here, which
+    # was tried and was wrong: two boxes can overlap in the middle of a
+    # container while one of them separately runs off the edge, and fixing the
+    # overflow does not touch the collision. Narrow a box from 80% to 70% and it
+    # sits inside its parent while still lying on the neighbour it started at.
+    # Reporting both is right; the volume that suppression was aimed at is what
+    # `overlap_findings` collapses.
     types = {el_id: str(dump.get("type", "?")) for el_id, dump in dumps.items()}
     by_parent: dict[str | None, list[str]] = {}
     for el_id in dumps:
@@ -1307,8 +1286,6 @@ def _layout_findings(
         for i, a_id in enumerate(kids):
             for b_id in kids[i + 1:]:
                 if not (in_scope(a_id) or in_scope(b_id)):
-                    continue
-                if a_id in escaped or b_id in escaped:
                     continue
                 if mutually_exclusive(dumps[a_id], dumps[b_id]):
                     continue
