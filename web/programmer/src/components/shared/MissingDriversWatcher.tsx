@@ -9,10 +9,21 @@ import { MissingDriversModal } from "./MissingDriversModal";
  * install matching community drivers in one click.
  *
  * Triggers a check whenever the project revision changes (initial load,
- * `project.reloaded` WebSocket event, or local force-reload). Dismissals
- * are remembered per project-revision so the modal doesn't reappear on
- * every state-snapshot diff.
+ * `project.reloaded` WebSocket event, or local force-reload).
+ *
+ * A dismissal is remembered against WHAT WAS MISSING, not against the project
+ * revision it was dismissed at. Keying it on the revision meant every edit
+ * re-opened the dialog, because every edit bumps the revision -- and since a
+ * modal traps focus, it took the focus out of whatever field was being edited
+ * at the time. Keying it on the driver list instead means "no thanks" sticks
+ * for the rest of the session, while a driver that goes missing later still
+ * asks.
  */
+/** Which drivers are missing, order-independent. */
+function missingKey(missing: MissingDriver[]): string {
+  return missing.map((m) => m.driver_id).sort().join(",");
+}
+
 export function MissingDriversWatcher() {
   const devices = useProjectStore((s) => s.project?.devices);
   const revision = useProjectStore((s) => s.revision);
@@ -20,7 +31,7 @@ export function MissingDriversWatcher() {
 
   const [missing, setMissing] = useState<MissingDriver[] | null>(null);
   const [open, setOpen] = useState(false);
-  const [dismissedRevision, setDismissedRevision] = useState<number | null>(null);
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
 
   // Quick check from local state to avoid an API call when no orphans exist.
   const orphanCount = devices?.reduce((count, dev) => {
@@ -32,16 +43,13 @@ export function MissingDriversWatcher() {
       setMissing(null);
       return;
     }
-    if (revision !== null && dismissedRevision === revision) {
-      return;
-    }
     let cancelled = false;
     listMissingDrivers()
       .then((data) => {
         if (cancelled) return;
         if (data.length > 0) {
           setMissing(data);
-          setOpen(true);
+          if (missingKey(data) !== dismissedKey) setOpen(true);
         }
       })
       .catch((e) => {
@@ -51,7 +59,7 @@ export function MissingDriversWatcher() {
     return () => {
       cancelled = true;
     };
-  }, [orphanCount, revision, dismissedRevision]);
+  }, [orphanCount, revision, dismissedKey]);
 
   if (!open || !missing) return null;
 
@@ -60,11 +68,11 @@ export function MissingDriversWatcher() {
       missing={missing}
       onClose={() => {
         setOpen(false);
-        setDismissedRevision(revision);
+        setDismissedKey(missingKey(missing));
       }}
       onInstalled={() => {
         setOpen(false);
-        setDismissedRevision(revision);
+        setDismissedKey(missingKey(missing));
       }}
     />
   );
