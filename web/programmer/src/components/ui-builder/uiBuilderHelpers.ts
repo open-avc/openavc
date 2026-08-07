@@ -3454,20 +3454,40 @@ const OVERLAP_MIN_PX = 1.0;
 /** ...and it has to be a visible share of the smaller box, so two controls that
  *  graze a corner do not read like one sitting on top of another. */
 const OVERLAP_MIN_SHARE = 1.0;
+/** How many colliding neighbours a collapsed finding names before it counts the
+ *  rest. All of them are still counted -- the sentence says "and N more". */
+const OVERLAP_NAMED = 3;
 
 /**
- * Two controls in the same space sitting on top of each other.
+ * The boolean half of `overhangFinding`, without the message.
  *
- * Checked between siblings only. Boxes under different containers can
- * legitimately overlap (a group laid over another is a design), and a container
- * always contains its own children -- neither is a defect, and flagging them
- * would bury the case that is.
+ * The overlap pass needs it: a box hanging out of its container lands on
+ * whatever sits beside it, so every collision it causes is the same defect said
+ * again, and one fix ends all of them.
  */
-export function overlapFinding(
-  a: UIElement, aBox: Placement,
-  b: UIElement, bBox: Placement,
-  parentName: string,
-): ReviewFinding | null {
+export function leavesItsParent(p: Placement): boolean {
+  return (
+    p.x < -BOUNDS_EPSILON ||
+    p.y < -BOUNDS_EPSILON ||
+    p.x + p.w > 100 + BOUNDS_EPSILON ||
+    p.y + p.h > 100 + BOUNDS_EPSILON
+  );
+}
+
+/** How much two boxes share: pixels on each axis, and share of the smaller.
+ *
+ *  Null when they do not really collide -- no intersection, an intersection
+ *  under a pixel on either axis (percentages are stored to four decimals, so
+ *  that is rounding), or too small a share of the smaller box to read as one
+ *  control sitting on another rather than two grazing a corner.
+ *
+ *  Checked between siblings only, by the caller. Boxes under different
+ *  containers can legitimately overlap (a group laid over another is a design),
+ *  and a container always contains its own children. */
+export function overlapExtent(
+  aBox: Placement,
+  bBox: Placement,
+): { oxPx: number; oyPx: number; share: number } | null {
   const ox = Math.min(aBox.x + aBox.w, bBox.x + bBox.w) - Math.max(aBox.x, bBox.x);
   const oy = Math.min(aBox.y + aBox.h, bBox.y + bBox.h) - Math.max(aBox.y, bBox.y);
   if (ox <= 0 || oy <= 0) return null;
@@ -3477,14 +3497,263 @@ export function overlapFinding(
   const smaller = Math.min(aBox.w * aBox.h, bBox.w * bBox.h);
   const share = smaller ? (100 * (ox * oy)) / smaller : 100;
   if (share < OVERLAP_MIN_SHARE) return null;
+  return { oxPx, oyPx, share };
+}
+
+/** One colliding pair, before the pairs are attributed to elements. */
+interface OverlapPair {
+  aId: string;
+  bId: string;
+  oxPx: number;
+  oyPx: number;
+  share: number;
+}
+
+/**
+ * One finding per element rather than one per colliding pair.
+ *
+ * A single oversized box collides with everything beneath it, and reporting each
+ * collision on its own line produced 23 warnings out of 56 on one page -- enough
+ * to push the sizing failure that caused all of them out of reading range. The
+ * reader then deletes the offender just to see the next round, which is what
+ * actually happened.
+ *
+ * So the pairs are attributed to whichever element is in most of them and that
+ * element answers for the lot in one sentence. Greedy and re-counted each round,
+ * so the worst offender is named first and nothing is reported twice.
+ *
+ * A lone collision keeps the pairwise sentence and all of its arithmetic. Two
+ * boxes on top of each other is the common case and is worth stating in full;
+ * the collapse is for the case where stating it in full is the problem.
+ */
+export function overlapFindings(
+  pairs: OverlapPair[],
+  types: Map<string, string>,
+  parentName: string,
+): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
+  let remaining = pairs;
+  while (remaining.length) {
+    const counts = new Map<string, number>();
+    for (const { aId, bId } of remaining) {
+      counts.set(aId, (counts.get(aId) ?? 0) + 1);
+      counts.set(bId, (counts.get(bId) ?? 0) + 1);
+    }
+    let owner: string | null = null;
+    let best = 0;
+    for (const [id, count] of counts) {
+      if (owner === null || count > best || (count === best && id < owner)) {
+        owner = id;
+        best = count;
+      }
+    }
+    if (owner === null) break; // unreachable: `remaining` is not empty
+    const mine = remaining.filter((p) => p.aId === owner || p.bId === owner);
+    remaining = remaining.filter((p) => p.aId !== owner && p.bId !== owner);
+    const partners = mine
+      .map((p) => ({
+        id: p.aId === owner ? p.bId : p.aId,
+        oxPx: p.oxPx,
+        oyPx: p.oyPx,
+        share: p.share,
+      }))
+      .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+    findings.push(overlapMessage(owner, partners, types, parentName));
+  }
+  return findings;
+}
+
+function overlapMessage(
+  owner: string,
+  partners: { id: string; oxPx: number; oyPx: number; share: number }[],
+  types: Map<string, string>,
+  parentName: string,
+): ReviewFinding {
+  const ownerType = types.get(owner) ?? "?";
+  const key = `overlap|${owner}|${partners.map((p) => p.id).join("|")}`;
+  if (partners.length === 1) {
+    const { id, oxPx, oyPx, share } = partners[0];
+    return {
+      elementId: owner,
+      kind: "overlap",
+      message:
+        `${owner} (${ownerType}) and ${id} (${types.get(id) ?? "?"}) overlap by ` +
+        `${fixed(oxPx, 0)}x${fixed(oyPx, 0)}px (${fixed(share, 0)}% of the smaller one) ` +
+        `inside ${parentName}.`,
+      key,
+    };
+  }
+  const named = partners
+    .slice(0, OVERLAP_NAMED)
+    .map((p) => `${p.id} by ${fixed(p.oxPx, 0)}x${fixed(p.oyPx, 0)}px`)
+    .join(", ");
+  const rest = partners.length - OVERLAP_NAMED;
+  const tail = rest > 0 ? `, and ${rest} more.` : ".";
   return {
-    elementId: a.id,
+    elementId: owner,
     kind: "overlap",
     message:
-      `${a.id} (${a.type}) and ${b.id} (${b.type}) overlap by ${fixed(oxPx, 0)}x${fixed(oyPx, 0)}px ` +
-      `(${fixed(share, 0)}% of the smaller one) inside ${parentName}.`,
-    key: `overlap|${a.id}|${b.id}`,
+      `${owner} (${ownerType}) overlaps ${partners.length} elements inside ` +
+      `${parentName}: ${named}${tail}`,
+    key,
   };
+}
+
+// --- Deliberately stacked elements ---
+//
+// Two boxes in the same place are usually a mistake and sometimes the entire
+// design: a tab strip is N panels at identical coordinates, each gated by a
+// `visible_when` on the same key. Warning about those fires on every page that
+// uses the pattern, and a checker that cries wolf on correct work teaches people
+// to stop reading it -- which costs more than the collisions it does catch.
+//
+// So an overlap is suppressed only when the two conditions PROVABLY cannot both
+// hold. Everything this cannot prove still warns: a missed collision between two
+// conditionally-shown elements costs one warning, and a false one costs the
+// credibility of every warning printed beside it.
+
+const EQ_OPS = new Set(["eq", "equals", "=="]);
+const NE_OPS = new Set(["ne", "not_equals", "!="]);
+/** Range operators, mapped to whether the bound they set is inclusive. */
+const LOWER_OPS: Record<string, boolean> = { gt: false, ">": false, gte: true, ">=": true };
+const UPPER_OPS: Record<string, boolean> = { lt: false, "<": false, lte: true, "<=": true };
+
+/** One condition, read off a `visible_when`. */
+type Leaf = { key: string; op: string; value: unknown };
+
+/**
+ * Two authored literals, compared the way both surfaces can agree on.
+ *
+ * Not `==`: Python says `1 == True` and JavaScript says `"1" == 1`, and they
+ * disagree about which. Same type family and same value, or different.
+ */
+function sameValue(left: unknown, right: unknown): boolean {
+  if (typeof left === "boolean" || typeof right === "boolean") {
+    return typeof left === "boolean" && typeof right === "boolean" && left === right;
+  }
+  if (typeof left === "number" && typeof right === "number") return left === right;
+  if (typeof left === "string" && typeof right === "string") return left === right;
+  return left === null && right === null;
+}
+
+/** A condition value as a number, or null when it is not one.
+ *
+ *  A numeric string is deliberately not one: the panel compares it with
+ *  JavaScript's coercing `>`, which has no Python equivalent worth mirroring,
+ *  and undecidable here only costs a warning nobody needed suppressed. */
+function conditionNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+/** Whether a key pinned to `value` satisfies `op target`.
+ *
+ *  True for anything undecidable, so an unreadable pair yields no proof of
+ *  exclusivity rather than a false one. */
+function conditionHolds(value: unknown, op: string, target: unknown): boolean {
+  if (EQ_OPS.has(op)) return sameValue(value, target);
+  if (NE_OPS.has(op)) return !sameValue(value, target);
+  if (op === "truthy" || op === "falsy") {
+    const scalar =
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean";
+    if (!scalar) return true;
+    return op === "truthy" ? !!value : !value;
+  }
+  if (op in LOWER_OPS || op in UPPER_OPS) {
+    const left = conditionNumber(value);
+    const right = conditionNumber(target);
+    if (left === null || right === null) return true;
+    if (op in LOWER_OPS) return LOWER_OPS[op] ? left >= right : left > right;
+    return UPPER_OPS[op] ? left <= right : left < right;
+  }
+  return true;
+}
+
+/** Whether condition `a` rules out `b`, read in one direction only. */
+function rulesOut(a: Leaf, b: Leaf): boolean {
+  if (EQ_OPS.has(a.op)) {
+    // `key == a.value` pins the key to one value, so the other condition is
+    // either satisfied by that value or contradicts it outright.
+    return !conditionHolds(a.value, b.op, b.value);
+  }
+  if (a.op === "truthy" && b.op === "falsy") return true;
+  if (a.op in LOWER_OPS && b.op in UPPER_OPS) {
+    const low = conditionNumber(a.value);
+    const high = conditionNumber(b.value);
+    if (low === null || high === null) return false;
+    const closed = LOWER_OPS[a.op] && UPPER_OPS[b.op];
+    return high < low || (high === low && !closed);
+  }
+  return false;
+}
+
+/** One condition as a leaf, or null if it is unreadable. */
+function conditionLeaf(condition: unknown): Leaf | null {
+  if (!condition || typeof condition !== "object" || Array.isArray(condition)) return null;
+  const raw = condition as Record<string, unknown>;
+  if (typeof raw.key !== "string" || !raw.key) return null;
+  return {
+    key: raw.key,
+    op: String(raw.operator || "eq").toLowerCase(),
+    value: raw.value ?? null,
+  };
+}
+
+/**
+ * A `visible_when` as branches of ANDed leaves: visible if any branch is.
+ *
+ * A bare condition and an `all:` block are one branch; an `any:` block is one
+ * branch per condition. Null means there is nothing to reason about, which is
+ * not the same as an empty list -- an empty list of branches is never
+ * satisfiable, and would suppress every overlap on the page.
+ *
+ * An unreadable leaf inside `all:` is dropped, which only widens the set: if the
+ * wider condition is still exclusive, so is the real one. Inside `any:` the same
+ * drop would NARROW it, which could prove an exclusivity that is not there, so
+ * the whole block goes undecidable instead.
+ */
+function visibleWhenBranches(el: UIElement): Leaf[][] | null {
+  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
+    | Record<string, unknown>
+    | undefined;
+  const when = show?.visible_when;
+  if (!when || typeof when !== "object" || Array.isArray(when)) return null;
+  const block = when as Record<string, unknown>;
+
+  if (Array.isArray(block.any)) {
+    const leaves = block.any.map(conditionLeaf);
+    if (!leaves.length || leaves.some((leaf) => leaf === null)) return null;
+    return leaves.map((leaf) => [leaf as Leaf]);
+  }
+  if (Array.isArray(block.all)) {
+    const kept = block.all.map(conditionLeaf).filter((leaf): leaf is Leaf => !!leaf);
+    return kept.length ? [kept] : null;
+  }
+  const leaf = conditionLeaf(block);
+  return leaf ? [[leaf]] : null;
+}
+
+/**
+ * Whether two elements can never be on screen at the same time.
+ *
+ * Proof, not inference: every way `a` can be visible has to contradict every way
+ * `b` can be. Two conditions contradict when they name the same key and no
+ * single value satisfies both -- different `eq` values, an `eq` against its own
+ * `ne`, `truthy` against `falsy`, or two bounds that leave no room between them.
+ */
+export function mutuallyExclusive(a: UIElement, b: UIElement): boolean {
+  const aBranches = visibleWhenBranches(a);
+  const bBranches = visibleWhenBranches(b);
+  if (!aBranches?.length || !bBranches?.length) return false;
+  return aBranches.every((aLeaves) =>
+    bBranches.every((bLeaves) =>
+      aLeaves.some((x) =>
+        bLeaves.some((y) => x.key === y.key && (rulesOut(x, y) || rulesOut(y, x))),
+      ),
+    ),
+  );
 }
 
 /**
@@ -3762,6 +4031,17 @@ function layoutFindings(
   }
 
   // Siblings, in the space they share.
+  //
+  // Answered for every element rather than only the in-scope ones, because a
+  // box that hangs out of its parent explains the collisions it causes and a
+  // write that touched only the other side still needs that left out.
+  const escaped = new Set<string>();
+  for (const el of page.elements) {
+    if (hidden.has(el.id)) continue;
+    const stored = own(ownBoxes, el.id);
+    if (stored && leavesItsParent(stored)) escaped.add(el.id);
+  }
+  const types = new Map(page.elements.map((e) => [e.id, e.type]));
   const byParent = new Map<string | null, string[]>();
   for (const el of page.elements) {
     if (hidden.has(el.id) || !own(absolute, el.id)) continue;
@@ -3772,17 +4052,24 @@ function layoutFindings(
   }
   for (const [parent, kids] of byParent) {
     kids.sort();
+    const pairs: OverlapPair[] = [];
     for (let i = 0; i < kids.length; i++) {
       for (let j = i + 1; j < kids.length; j++) {
         if (!ctx.inScope(kids[i]) && !ctx.inScope(kids[j])) continue;
-        const finding = overlapFinding(
-          byId.get(kids[i]) as UIElement, own(absolute, kids[i]) as Placement,
-          byId.get(kids[j]) as UIElement, own(absolute, kids[j]) as Placement,
-          parent ? `'${parent}'` : "the page",
+        if (escaped.has(kids[i]) || escaped.has(kids[j])) continue;
+        const a = byId.get(kids[i]) as UIElement;
+        const b = byId.get(kids[j]) as UIElement;
+        if (mutuallyExclusive(a, b)) continue;
+        const extent = overlapExtent(
+          own(absolute, kids[i]) as Placement,
+          own(absolute, kids[j]) as Placement,
         );
-        if (finding) findings.push(finding);
+        if (extent) pairs.push({ aId: kids[i], bId: kids[j], ...extent });
       }
     }
+    findings.push(
+      ...overlapFindings(pairs, types, parent ? `'${parent}'` : "the page"),
+    );
   }
   return findings;
 }

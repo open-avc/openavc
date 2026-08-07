@@ -214,6 +214,79 @@ CASES["overlaps"] = _project([
     ),
 ])
 
+def _when(**cond) -> dict:
+    return {"bindings": {"show": {"visible_when": cond}}}
+
+
+# Overlap reporting, which is the check most able to drown out the others: it is
+# the only O(n^2) one, and the only one that fires on a correct page. Everything
+# here is a `group` so nothing has a floor or a finger minimum to trip, and the
+# groups sit far enough apart that each scenario answers on its own.
+CASES["overlap_noise"] = _project([
+    _page(
+        "main",
+        [
+            # One box over five, which used to be five findings.
+            {"id": "huge", "type": "group"},
+            {"id": "n1", "type": "group"},
+            {"id": "n2", "type": "group"},
+            {"id": "n3", "type": "group"},
+            {"id": "n4", "type": "group"},
+            {"id": "n5", "type": "group"},
+            # Out of the page, so the collision under it is the same defect.
+            {"id": "runaway", "type": "group"},
+            {"id": "settled", "type": "group"},
+            # A tab strip: same key, different values, never both on screen.
+            {"id": "tab_audio", "type": "group", **_when(key="var.tab", value="audio")},
+            {"id": "tab_video", "type": "group", **_when(key="var.tab", value="video")},
+            # Gated against ungated proves nothing, so this still warns.
+            {"id": "gated", "type": "group", **_when(key="var.mode", value="x")},
+            {"id": "ungated", "type": "group"},
+            # Same key, and both hold at once for anything at or above zero.
+            {"id": "warm", "type": "group",
+             **_when(key="var.level", operator="gte", value=0)},
+            {"id": "any_level", "type": "group",
+             **_when(key="var.level", operator="gte", value=-10)},
+            # Two bounds with no room between them.
+            {"id": "cold", "type": "group",
+             **_when(key="var.level", operator="lt", value=0)},
+            {"id": "hot", "type": "group",
+             **_when(key="var.level", operator="gte", value=0)},
+            # Every branch of one contradicts every branch of the other.
+            {"id": "modes_ab", "type": "group", "bindings": {"show": {"visible_when": {
+                "any": [{"key": "var.mode", "value": "a"}, {"key": "var.mode", "value": "b"}],
+            }}}},
+            {"id": "modes_cd", "type": "group", "bindings": {"show": {"visible_when": {
+                "any": [{"key": "var.mode", "value": "c"}, {"key": "var.mode", "value": "d"}],
+            }}}},
+            {"id": "on_when", "type": "group", **_when(key="var.on", operator="truthy")},
+            {"id": "off_when", "type": "group", **_when(key="var.on", operator="falsy")},
+        ],
+        [_landscape({
+            "huge": _pct_box(0, 0, 30, 30),
+            "n1": _pct_box(2, 2, 4, 4),
+            "n2": _pct_box(8, 2, 4, 4),
+            "n3": _pct_box(14, 2, 4, 4),
+            "n4": _pct_box(20, 2, 4, 4),
+            "n5": _pct_box(2, 10, 4, 4),
+            "runaway": _pct_box(90, 0, 20, 20),
+            "settled": _pct_box(92, 2, 4, 4),
+            "tab_audio": _pct_box(35, 40, 12, 12),
+            "tab_video": _pct_box(35, 40, 12, 12),
+            "gated": _pct_box(50, 40, 12, 12),
+            "ungated": _pct_box(50, 40, 12, 12),
+            "warm": _pct_box(65, 40, 12, 12),
+            "any_level": _pct_box(65, 40, 12, 12),
+            "cold": _pct_box(35, 60, 12, 12),
+            "hot": _pct_box(35, 60, 12, 12),
+            "modes_ab": _pct_box(50, 60, 12, 12),
+            "modes_cd": _pct_box(50, 60, 12, 12),
+            "on_when": _pct_box(65, 60, 12, 12),
+            "off_when": _pct_box(65, 60, 12, 12),
+        })],
+    ),
+])
+
 # An element the primary arrangement never positions. The renderer fills the
 # parent edge to edge and nothing in the file says so.
 CASES["no_placement"] = _project([
@@ -954,8 +1027,34 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "list_ok", "visible_only",             # bindings the renderer reads
         "plugin_ok",                           # a real type both authoring surfaces omit
         "btn_with_state_labels",               # a button DOES draw state text
+        "tab_audio", "tab_video",              # a tab strip: same key, different values
+        "cold", "hot",                         # two bounds with no room between them
+        "modes_ab", "modes_cd",                # every branch contradicts every branch
+        "on_when", "off_when",                 # truthy against falsy
+        "settled",                             # its neighbour left the page; one fix
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
+
+
+def test_one_box_over_many_is_one_finding(verdicts) -> None:
+    """The check most able to drown out every other one.
+
+    Overlap is the only O(n^2) finding here, so a single oversized box used to
+    answer once per neighbour -- 23 warnings out of 56 on the page this corpus
+    came from, which pushed the sizing failure that caused all of them out of
+    reading range. It answers once now, names the worst offender rather than
+    whichever id sorts first, and counts what it does not list.
+    """
+    python_side, _ = verdicts["overlap_noise"]
+    overlaps = [f for f in python_side if f["kind"] == "overlap"]
+    collapsed = [f for f in overlaps if f["element_id"] == "huge"]
+    assert len(collapsed) == 1, "one box over five should answer once"
+    assert "overlaps 5 elements" in collapsed[0]["message"]
+    assert "and 2 more" in collapsed[0]["message"], "the rest are counted, not dropped"
+    # And a lone collision keeps the pairwise sentence, with its arithmetic.
+    lone = [f for f in overlaps if f["element_id"] == "gated"]
+    assert len(lone) == 1
+    assert "% of the smaller one) inside the page." in lone[0]["message"]
 
 
 def test_an_unknown_type_answers_once_about_the_type(verdicts) -> None:

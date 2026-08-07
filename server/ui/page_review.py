@@ -158,6 +158,13 @@ _OVERLAP_MIN_PX = 1.0
 #: ...and it has to be a visible share of the smaller box, so two controls that
 #: graze a corner do not read like one sitting on top of another.
 _OVERLAP_MIN_SHARE = 1.0
+#: How many colliding neighbours a collapsed overlap finding names before it
+#: counts the rest. Every one of them is still counted in the total -- the
+#: sentence says "and N more" rather than quietly stopping.
+_OVERLAP_NAMED = 3
+#: Percentages are stored to four decimals, so a box is out of its parent only
+#: past this. Mirrors BOUNDS_EPSILON in the Builder.
+_BOUNDS_EPSILON = 0.0001
 
 
 @dataclass(frozen=True)
@@ -437,16 +444,16 @@ def overhang_finding(
     w, h = _f("w", 100.0), _f("h", 100.0)
 
     sides = []
-    if x < -0.0001:
+    if x < -_BOUNDS_EPSILON:
         sides.append(f"{-x / 100 * parent_px[0]:.0f}px past the left (x {_pct(x)}%)")
-    if y < -0.0001:
+    if y < -_BOUNDS_EPSILON:
         sides.append(f"{-y / 100 * parent_px[1]:.0f}px past the top (y {_pct(y)}%)")
-    if x + w > 100.0001:
+    if x + w > 100 + _BOUNDS_EPSILON:
         sides.append(
             f"{(x + w - 100) / 100 * parent_px[0]:.0f}px past the right "
             f"(x {_pct(x)}% + w {_pct(w)}% = {_pct(x + w)}%)"
         )
-    if y + h > 100.0001:
+    if y + h > 100 + _BOUNDS_EPSILON:
         sides.append(
             f"{(y + h - 100) / 100 * parent_px[1]:.0f}px past the bottom "
             f"(y {_pct(y)}% + h {_pct(h)}% = {_pct(y + h)}%)"
@@ -461,17 +468,40 @@ def overhang_finding(
     )
 
 
-def overlap_finding(
-    a_id: str, a_type: str, a_box: Mapping[str, float],
-    b_id: str, b_type: str, b_box: Mapping[str, float],
-    parent_name: str,
-) -> Finding | None:
-    """Two controls in the same space sitting on top of each other.
+def leaves_its_parent(placement: Any) -> bool:
+    """The boolean half of ``overhang_finding``, without the message.
 
-    Checked between siblings only. Boxes under different containers can
-    legitimately overlap (a group laid over another is a design), and a
-    container always contains its own children -- neither is a defect, and
-    flagging them would bury the case that is.
+    The overlap pass needs it: a box hanging out of its container lands on
+    whatever sits beside it, so every collision it causes is the same defect
+    said again, and one fix ends all of them.
+    """
+    def _f(name: str, fallback: float) -> float:
+        value = getattr(placement, name, None)
+        return float(value) if value is not None else fallback
+
+    x, y = _f("x", 0.0), _f("y", 0.0)
+    w, h = _f("w", 100.0), _f("h", 100.0)
+    return (
+        x < -_BOUNDS_EPSILON
+        or y < -_BOUNDS_EPSILON
+        or x + w > 100 + _BOUNDS_EPSILON
+        or y + h > 100 + _BOUNDS_EPSILON
+    )
+
+
+def overlap_extent(
+    a_box: Mapping[str, float], b_box: Mapping[str, float],
+) -> tuple[float, float, float] | None:
+    """How much two boxes share: pixels on each axis, and share of the smaller.
+
+    None when they do not really collide -- no intersection, an intersection
+    under a pixel on either axis (percentages are stored to four decimals, so
+    that is rounding), or too small a share of the smaller box to read as one
+    control sitting on another rather than two grazing a corner.
+
+    Checked between siblings only, by the caller. Boxes under different
+    containers can legitimately overlap (a group laid over another is a design),
+    and a container always contains its own children.
     """
     ox = min(a_box["x"] + a_box["w"], b_box["x"] + b_box["w"]) - max(a_box["x"], b_box["x"])
     oy = min(a_box["y"] + a_box["h"], b_box["y"] + b_box["h"]) - max(a_box["y"], b_box["y"])
@@ -485,12 +515,236 @@ def overlap_finding(
     share = 100.0 * (ox * oy) / smaller if smaller else 100.0
     if share < _OVERLAP_MIN_SHARE:
         return None
+    return ox_px, oy_px, share
+
+
+def overlap_findings(
+    pairs: list[tuple[str, str, float, float, float]],
+    types: Mapping[str, str],
+    parent_name: str,
+) -> list[Finding]:
+    """One finding per element rather than one per colliding pair.
+
+    A single oversized box collides with everything beneath it, and reporting
+    each collision on its own line produced 23 warnings out of 56 on one page --
+    enough to push the sizing failure that caused all of them out of reading
+    range. The reader then deletes the offender just to see the next round,
+    which is what actually happened.
+
+    So the pairs are attributed to whichever element is in most of them and that
+    element answers for the lot in one sentence. Greedy and re-counted each
+    round, so the worst offender is named first and nothing is reported twice.
+
+    A lone collision keeps the pairwise sentence and all of its arithmetic. Two
+    boxes on top of each other is the common case and is worth stating in full;
+    the collapse is for the case where stating it in full is the problem.
+    """
+    findings: list[Finding] = []
+    remaining = list(pairs)
+    while remaining:
+        counts: dict[str, int] = {}
+        for a_id, b_id, *_ in remaining:
+            counts[a_id] = counts.get(a_id, 0) + 1
+            counts[b_id] = counts.get(b_id, 0) + 1
+        owner = min(counts, key=lambda el_id: (-counts[el_id], el_id))
+        mine = [p for p in remaining if owner in (p[0], p[1])]
+        remaining = [p for p in remaining if owner not in (p[0], p[1])]
+        partners = sorted(
+            (b_id if a_id == owner else a_id, ox, oy, share)
+            for a_id, b_id, ox, oy, share in mine
+        )
+        findings.append(_overlap_message(owner, partners, types, parent_name))
+    return findings
+
+
+def _overlap_message(
+    owner: str,
+    partners: list[tuple[str, float, float, float]],
+    types: Mapping[str, str],
+    parent_name: str,
+) -> Finding:
+    owner_type = types.get(owner, "?")
+    key = ("overlap", owner, *(p_id for p_id, _, _, _ in partners))
+    if len(partners) == 1:
+        other, ox, oy, share = partners[0]
+        return Finding(
+            owner,
+            "overlap",
+            f"{owner} ({owner_type}) and {other} ({types.get(other, '?')}) overlap by "
+            f"{ox:.0f}x{oy:.0f}px ({share:.0f}% of the smaller one) inside {parent_name}.",
+            key=key,
+        )
+    named = ", ".join(
+        f"{p_id} by {ox:.0f}x{oy:.0f}px"
+        for p_id, ox, oy, _ in partners[:_OVERLAP_NAMED]
+    )
+    rest = len(partners) - _OVERLAP_NAMED
+    tail = f", and {rest} more." if rest > 0 else "."
     return Finding(
-        a_id,
+        owner,
         "overlap",
-        f"{a_id} ({a_type}) and {b_id} ({b_type}) overlap by {ox_px:.0f}x{oy_px:.0f}px "
-        f"({share:.0f}% of the smaller one) inside {parent_name}.",
-        key=("overlap", a_id, b_id),
+        f"{owner} ({owner_type}) overlaps {len(partners)} elements inside "
+        f"{parent_name}: {named}{tail}",
+        key=key,
+    )
+
+
+# --- Deliberately stacked elements -----------------------------------------
+#
+# Two boxes in the same place are usually a mistake and sometimes the entire
+# design: a tab strip is N panels at identical coordinates, each gated by a
+# `visible_when` on the same key. Warning about those fires on every page that
+# uses the pattern, and a checker that cries wolf on correct work teaches people
+# to stop reading it -- which costs more than the collisions it does catch.
+#
+# So an overlap is suppressed only when the two conditions PROVABLY cannot both
+# hold. Everything this cannot prove still warns: a missed collision between two
+# conditionally-shown elements costs one warning, and a false one costs the
+# credibility of every warning printed beside it.
+
+_EQ = frozenset({"eq", "equals", "=="})
+_NE = frozenset({"ne", "not_equals", "!="})
+#: Range operators, mapped to whether the bound they set is inclusive.
+_LOWER = {"gt": False, ">": False, "gte": True, ">=": True}
+_UPPER = {"lt": False, "<": False, "lte": True, "<=": True}
+
+#: What both surfaces can compare without disagreeing. A list or an object as a
+#: condition value is not something either can reason about, and Python and
+#: JavaScript do not even agree on whether an empty one is truthy.
+_SCALARS = (str, int, float, bool)
+
+
+def _same_value(left: Any, right: Any) -> bool:
+    """Two authored literals, compared the way both surfaces can agree on.
+
+    Not ``==``: Python says ``1 == True`` and JavaScript says ``"1" == 1``, and
+    they disagree about which. Same type family and same value, or different.
+    """
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left is right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return float(left) == float(right)
+    if isinstance(left, str) and isinstance(right, str):
+        return left == right
+    return left is None and right is None
+
+
+def _number(value: Any) -> float | None:
+    """A condition value as a number, or None when it is not one.
+
+    A numeric string is deliberately not one. The panel compares it with
+    JavaScript's coercing ``>``, which has no Python equivalent worth mirroring,
+    and undecidable here only costs a warning nobody needed suppressed.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _holds(value: Any, op: str, target: Any) -> bool:
+    """Whether a key pinned to ``value`` satisfies ``op target``.
+
+    True for anything undecidable, so an unreadable pair yields no proof of
+    exclusivity rather than a false one.
+    """
+    if op in _EQ:
+        return _same_value(value, target)
+    if op in _NE:
+        return not _same_value(value, target)
+    if op in ("truthy", "falsy"):
+        if not isinstance(value, _SCALARS) and value is not None:
+            return True
+        return bool(value) if op == "truthy" else not value
+    if op in _LOWER or op in _UPPER:
+        left, right = _number(value), _number(target)
+        if left is None or right is None:
+            return True
+        if op in _LOWER:
+            return left >= right if _LOWER[op] else left > right
+        return left <= right if _UPPER[op] else left < right
+    return True
+
+
+def _one_way(op_a: str, val_a: Any, op_b: str, val_b: Any) -> bool:
+    """Whether condition ``a`` rules out ``b``, read in one direction only."""
+    if op_a in _EQ:
+        # `key == val_a` pins the key to one value, so the other condition is
+        # either satisfied by that value or contradicts it outright.
+        return not _holds(val_a, op_b, val_b)
+    if op_a == "truthy" and op_b == "falsy":
+        return True
+    if op_a in _LOWER and op_b in _UPPER:
+        low, high = _number(val_a), _number(val_b)
+        if low is None or high is None:
+            return False
+        closed = _LOWER[op_a] and _UPPER[op_b]
+        return high < low or (high == low and not closed)
+    return False
+
+
+def _leaf(condition: Any) -> tuple[str, str, Any] | None:
+    """One condition as ``(key, operator, value)``, or None if unreadable."""
+    if not isinstance(condition, Mapping):
+        return None
+    key = condition.get("key")
+    if not isinstance(key, str) or not key:
+        return None
+    return key, str(condition.get("operator") or "eq").lower(), condition.get("value")
+
+
+def _branches(element: Mapping[str, Any]) -> list[list[tuple[str, str, Any]]] | None:
+    """A ``visible_when`` as branches of ANDed leaves: visible if any branch is.
+
+    A bare condition and an ``all:`` block are one branch; an ``any:`` block is
+    one branch per condition. None means there is nothing to reason about, which
+    is not the same as an empty list -- an empty list of branches is never
+    satisfiable, and would suppress every overlap on the page.
+
+    An unreadable leaf inside ``all:`` is dropped, which only widens the set: if
+    the wider condition is still exclusive, so is the real one. Inside ``any:``
+    the same drop would NARROW it, which could prove an exclusivity that is not
+    there, so the whole block goes undecidable instead.
+    """
+    bindings = element.get("bindings")
+    show = bindings.get("show") if isinstance(bindings, Mapping) else None
+    when = show.get("visible_when") if isinstance(show, Mapping) else None
+    if not isinstance(when, Mapping):
+        return None
+
+    any_of, all_of = when.get("any"), when.get("all")
+    if isinstance(any_of, list):
+        leaves = [_leaf(c) for c in any_of]
+        if not leaves or any(leaf is None for leaf in leaves):
+            return None
+        return [[leaf] for leaf in leaves if leaf]
+    if isinstance(all_of, list):
+        kept = [leaf for c in all_of if (leaf := _leaf(c))]
+        return [kept] if kept else None
+    leaf = _leaf(when)
+    return [[leaf]] if leaf else None
+
+
+def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    """Whether two elements can never be on screen at the same time.
+
+    Proof, not inference: every way ``a`` can be visible has to contradict every
+    way ``b`` can be. Two conditions contradict when they name the same key and
+    no single value satisfies both -- different ``eq`` values, an ``eq`` against
+    its own ``ne``, ``truthy`` against ``falsy``, or two bounds that leave no
+    room between them.
+    """
+    a_branches, b_branches = _branches(a), _branches(b)
+    if not a_branches or not b_branches:
+        return False
+    return all(
+        any(
+            _one_way(a_op, a_val, b_op, b_val) or _one_way(b_op, b_val, a_op, a_val)
+            for a_key, a_op, a_val in a_leaves
+            for b_key, b_op, b_val in b_leaves
+            if a_key == b_key
+        )
+        for a_leaves in a_branches
+        for b_leaves in b_branches
     )
 
 
@@ -843,6 +1097,15 @@ def _layout_findings(
         findings.extend(f for f in candidates if f)
 
     # Siblings, in the space they share.
+    #
+    # Answered for every element rather than only the in-scope ones, because a
+    # box that hangs out of its parent explains the collisions it causes and
+    # a write that touched only the other side still needs that left out.
+    escaped = {
+        el_id for el_id, placement in own.items()
+        if el_id in dumps and el_id not in hidden and leaves_its_parent(placement)
+    }
+    types = {el_id: str(dump.get("type", "?")) for el_id, dump in dumps.items()}
     by_parent: dict[str | None, list[str]] = {}
     for el_id in dumps:
         if el_id in hidden or absolute.get(el_id) is None:
@@ -850,17 +1113,21 @@ def _layout_findings(
         by_parent.setdefault(parent_of(el_id), []).append(el_id)
     for parent_id, kids in by_parent.items():
         kids.sort()
+        pairs = []
         for i, a_id in enumerate(kids):
             for b_id in kids[i + 1:]:
                 if not (in_scope(a_id) or in_scope(b_id)):
                     continue
-                finding = overlap_finding(
-                    a_id, str(dumps[a_id].get("type", "?")), absolute[a_id],
-                    b_id, str(dumps[b_id].get("type", "?")), absolute[b_id],
-                    f"'{parent_id}'" if parent_id else "the page",
-                )
-                if finding:
-                    findings.append(finding)
+                if a_id in escaped or b_id in escaped:
+                    continue
+                if mutually_exclusive(dumps[a_id], dumps[b_id]):
+                    continue
+                extent = overlap_extent(absolute[a_id], absolute[b_id])
+                if extent:
+                    pairs.append((a_id, b_id, *extent))
+        findings.extend(overlap_findings(
+            pairs, types, f"'{parent_id}'" if parent_id else "the page",
+        ))
     return findings
 
 
