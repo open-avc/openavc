@@ -51,12 +51,17 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
     if dispatched:
         return {}
     project = getattr(engine, "project", None)
-    element = None
-    for page in getattr(getattr(project, "ui", None), "pages", []) or []:
-        for candidate in page.elements:
-            if candidate.id == element_id:
-                element = candidate
-                break
+    # First match wins, the way ui_events._find_element resolves it -- so this
+    # describes the element the event actually reached.
+    element = next(
+        (
+            candidate
+            for page in getattr(getattr(project, "ui", None), "pages", []) or []
+            for candidate in page.elements
+            if candidate.id == element_id
+        ),
+        None,
+    )
     if element is None:
         return {"note": f"No element '{element_id}' is on any page, so nothing ran."}
     bindings = element.bindings if isinstance(element.bindings, dict) else {}
