@@ -44,6 +44,7 @@ from typing import Any
 from server.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
+    REM_BASE_PX,
     minimum_box,
     minimum_percent,
 )
@@ -237,6 +238,13 @@ def _to_mm(px: float) -> float:
     return px / TOUCH_PX_PER_INCH * 25.4
 
 
+def _joined(parts: list[str]) -> str:
+    """A list read out loud: one, one and another, or one, another and a third."""
+    if len(parts) < 3:
+        return " and ".join(parts)
+    return ", ".join(parts[:-1]) + f" and {parts[-1]}"
+
+
 def _box_px(box: Mapping[str, float]) -> tuple[float, float]:
     return (
         box["w"] / 100 * REFERENCE_WIDTH_PX,
@@ -420,6 +428,109 @@ def touch_finding(
         f"{el_id} ({el_type}) is about {width_px:.0f}x{height_px:.0f}px, roughly "
         f"{_to_mm(width_px):.1f}x{_to_mm(height_px):.1f}mm on a 10-inch panel -- under the "
         f"{_num(TOUCH_MIN_MM)}mm comfortable touch minimum on {axis} ({TOUCH_MIN_PX:.0f}px).",
+    )
+
+
+def _style_measure(style: Mapping[str, Any], *names: str) -> tuple[str, float] | None:
+    """The first of these fields that is set, as ``(name, value)``.
+
+    Ordered the way the panel resolves them: a specific axis wins over the
+    shorthand, so the message names the field the author would actually edit.
+    """
+    for name in names:
+        value = style.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if value > 0:
+            return name, float(value)
+    return None
+
+
+def style_finding(
+    element: Mapping[str, Any], box_px: tuple[float, float],
+) -> Finding | None:
+    """A ``style`` measurement that renders bigger than the element it is on.
+
+    ``style`` measurements are **rem** -- px / 14, since project format 0.8.0 --
+    and the number an author reaches for is the pixel one. ``font_size: 24`` is
+    24 rem, which is 336px of text, and on a 32px label it is a third of a metre
+    of type overflowing a box the height of a line. Nothing caught it: the write
+    lands, the panel draws it, and it is only wrong to look at.
+
+    Only measurements that cannot fit are reported, which is what makes this a
+    fact rather than a style opinion: 24 rem is perfectly reasonable on a box
+    tall enough to hold it, and this says nothing at all about that one.
+
+    ``border_radius`` and ``margin`` are deliberately absent. CSS clamps a radius
+    to half the box, so an oversized one draws a legal pill rather than a defect;
+    and a margin sits outside a box the layout has already positioned by
+    percentage, so it has no size of its own to exceed.
+    """
+    style = element.get("style")
+    if not isinstance(style, Mapping):
+        return None
+    width_px, height_px = box_px
+    reasons: list[str] = []
+    # Keyed by field, because `padding` is one number governing both axes: when
+    # it breaks the box on each, it still gets one ceiling, the tighter one.
+    limits: dict[str, float] = {}
+
+    def note(reason: str, field: str, limit_px: float) -> None:
+        reasons.append(reason)
+        room = limit_px / REM_BASE_PX
+        limits[field] = min(limits.get(field, room), room)
+
+    font = _style_measure(style, "font_size")
+    if font and height_px > 0 and font[1] * REM_BASE_PX > height_px + 0.5:
+        note(
+            f"font_size {_num(font[1])} draws {font[1] * REM_BASE_PX:.0f}px of text in a box "
+            f"{height_px:.0f}px tall",
+            font[0], height_px,
+        )
+
+    down = _style_measure(style, "padding_vertical", "padding")
+    if down and height_px > 0 and 2 * down[1] * REM_BASE_PX >= height_px:
+        note(
+            f"{down[0]} {_num(down[1])} leaves {down[1] * REM_BASE_PX:.0f}px above and below in a "
+            f"box {height_px:.0f}px tall",
+            down[0], height_px / 2,
+        )
+
+    across = _style_measure(style, "padding_horizontal", "padding")
+    if across and width_px > 0 and 2 * across[1] * REM_BASE_PX >= width_px:
+        note(
+            f"{across[0]} {_num(across[1])} leaves {across[1] * REM_BASE_PX:.0f}px each side in a "
+            f"box {width_px:.0f}px wide",
+            across[0], width_px / 2,
+        )
+
+    edge = _style_measure(style, "border_width")
+    smallest = min(width_px, height_px)
+    if edge and smallest > 0 and 2 * edge[1] * REM_BASE_PX >= smallest:
+        note(
+            f"border_width {_num(edge[1])} draws a {edge[1] * REM_BASE_PX:.0f}px border on a box "
+            f"{width_px:.0f}x{height_px:.0f}px",
+            edge[0], smallest / 2,
+        )
+
+    gap = _style_measure(style, "letter_spacing")
+    if gap and width_px > 0 and gap[1] * REM_BASE_PX > width_px:
+        note(
+            f"letter_spacing {_num(gap[1])} puts {gap[1] * REM_BASE_PX:.0f}px between letters in a "
+            f"box {width_px:.0f}px wide",
+            gap[0], width_px,
+        )
+
+    if not reasons:
+        return None
+    el_id = str(element.get("id", "?"))
+    fixes = _joined([f"{field} at most {_pct(room)}" for field, room in limits.items()])
+    return Finding(
+        el_id,
+        "style_too_large",
+        f"{el_id} ({element.get('type', '?')}) is {width_px:.0f}x{height_px:.0f}px and its style "
+        f"asks for more room than that: {'; '.join(reasons)}. style measurements are rem, not "
+        f"pixels -- px / {_num(REM_BASE_PX)} -- so write {fixes}.",
     )
 
 
@@ -1089,6 +1200,7 @@ def _layout_findings(
                 ancestors_of(el_id),
             ),
             touch_finding(dump, box_px),
+            style_finding(dump, box_px),
         ]
         if own.get(el_id) is not None:
             candidates.append(overhang_finding(
@@ -1173,6 +1285,7 @@ def review_master_element(
                 dump, box_px, (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX), "the page", theme,
             ),
             touch_finding(dump, box_px),
+            style_finding(dump, box_px),
         ):
             if finding and finding.key not in seen:
                 seen.add(finding.key)

@@ -214,6 +214,38 @@ CASES["overlaps"] = _project([
     ),
 ])
 
+# `style` measurements are rem (px / 14), and the number an author reaches for is
+# the pixel one. Reported only where the result cannot fit the element, so the
+# same value on a box big enough to hold it stays silent.
+CASES["style_in_pixels"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "shouty", "type": "label", "text": "Heading",
+             "style": {"font_size": 24, "padding": 8, "border_radius": 12}},
+            {"id": "boxed", "type": "label", "text": "Edged",
+             "style": {"border_width": 3, "letter_spacing": 9}},
+            {"id": "sideways", "type": "label", "text": "Wide",
+             "style": {"padding_horizontal": 6, "padding_vertical": 0.5}},
+            # The same numbers on a box that can hold them. Nothing to say.
+            {"id": "roomy", "type": "label", "text": "Big",
+             "style": {"font_size": 24, "padding": 8, "border_radius": 12}},
+            # A radius past the box draws a legal pill, and a margin is outside
+            # a box the layout already placed. Neither is a defect.
+            {"id": "pill", "type": "label", "text": "Pill",
+             "style": {"border_radius": 40, "margin": 30}},
+        ],
+        [_landscape({
+            "shouty": _box(0, 0, 102, 32),
+            "boxed": _box(20, 0, 102, 32),
+            "sideways": _box(40, 0, 102, 32),
+            "roomy": _pct_box(0, 20, 40, 60),
+            "pill": _box(60, 0, 102, 32),
+        })],
+    ),
+])
+
+
 def _when(**cond) -> dict:
     return {"bindings": {"show": {"visible_when": cond}}}
 
@@ -1000,6 +1032,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "no_placement",
         "binding_not_rendered",
         "unknown_element_type",
+        "style_too_large",
     }
 
 
@@ -1032,6 +1065,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "modes_ab", "modes_cd",                # every branch contradicts every branch
         "on_when", "off_when",                 # truthy against falsy
         "settled",                             # its neighbour left the page; one fix
+        "roomy", "pill",                       # rem measurements a big box can hold
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

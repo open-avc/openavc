@@ -3014,7 +3014,8 @@ export interface ReviewFinding {
     | "overlap"
     | "no_placement"
     | "binding_not_rendered"
-    | "unknown_element_type";
+    | "unknown_element_type"
+    | "style_too_large";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an
@@ -3069,6 +3070,14 @@ function pct(value: number): string {
 
 function toMm(px: number): number {
   return (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
+}
+
+/** An authored bound, without a trailing .0 on whole numbers.
+ *
+ *  The mirror of Python's `_num`, which has to strip one because a JSON `24`
+ *  arrives there as a float. Numbers here are already doubles that print whole. */
+function num(value: number): string {
+  return String(value);
 }
 
 /** A table lookup keyed by an element TYPE, which is authored text.
@@ -3404,6 +3413,123 @@ export function touchFinding(
       `${fixed(toMm(boxPx.width), 1)}x${fixed(toMm(boxPx.height), 1)}mm on a 10-inch panel -- under the ` +
       `${TOUCH_MIN_MM}mm comfortable touch minimum on ${axis} (${fixed(TOUCH_MIN_PX, 0)}px).`,
     key: `small_touch_target|${el.id}`,
+  };
+}
+
+/** A list read out loud: one, one and another, or one, another and a third. */
+function joined(parts: string[]): string {
+  if (parts.length < 3) return parts.join(" and ");
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/** The first of these style fields that is set, as `[name, value]`.
+ *
+ *  Ordered the way the panel resolves them: a specific axis wins over the
+ *  shorthand, so the message names the field the author would actually edit. */
+function styleMeasure(
+  style: Record<string, unknown>,
+  ...names: string[]
+): [string, number] | null {
+  for (const name of names) {
+    const value = style[name];
+    if (typeof value === "number" && value > 0) return [name, value];
+  }
+  return null;
+}
+
+/**
+ * A `style` measurement that renders bigger than the element it is on.
+ *
+ * `style` measurements are **rem** -- px / 14, since project format 0.8.0 -- and
+ * the number an author reaches for is the pixel one. `font_size: 24` is 24 rem,
+ * which is 336px of text, and on a 32px label it is a third of a metre of type
+ * overflowing a box the height of a line. Nothing caught it: the write lands,
+ * the panel draws it, and it is only wrong to look at.
+ *
+ * Only measurements that cannot fit are reported, which is what makes this a
+ * fact rather than a style opinion: 24 rem is perfectly reasonable on a box tall
+ * enough to hold it, and this says nothing at all about that one.
+ *
+ * `border_radius` and `margin` are deliberately absent. CSS clamps a radius to
+ * half the box, so an oversized one draws a legal pill rather than a defect; and
+ * a margin sits outside a box the layout has already positioned by percentage,
+ * so it has no size of its own to exceed.
+ */
+export function styleFinding(
+  el: UIElement,
+  boxPx: { width: number; height: number },
+): ReviewFinding | null {
+  const style = el.style as Record<string, unknown> | undefined;
+  if (!style || typeof style !== "object") return null;
+  const { width, height } = boxPx;
+  const reasons: string[] = [];
+  // Keyed by field, because `padding` is one number governing both axes: when it
+  // breaks the box on each, it still gets one ceiling, the tighter one.
+  const limits = new Map<string, number>();
+  const note = (reason: string, field: string, limitPx: number) => {
+    reasons.push(reason);
+    const room = limitPx / REM_BASE_PX;
+    limits.set(field, Math.min(limits.get(field) ?? room, room));
+  };
+
+  const font = styleMeasure(style, "font_size");
+  if (font && height > 0 && font[1] * REM_BASE_PX > height + 0.5) {
+    note(
+      `font_size ${num(font[1])} draws ${fixed(font[1] * REM_BASE_PX, 0)}px of text in a box ` +
+        `${fixed(height, 0)}px tall`,
+      font[0], height,
+    );
+  }
+
+  const down = styleMeasure(style, "padding_vertical", "padding");
+  if (down && height > 0 && 2 * down[1] * REM_BASE_PX >= height) {
+    note(
+      `${down[0]} ${num(down[1])} leaves ${fixed(down[1] * REM_BASE_PX, 0)}px above and below ` +
+        `in a box ${fixed(height, 0)}px tall`,
+      down[0], height / 2,
+    );
+  }
+
+  const across = styleMeasure(style, "padding_horizontal", "padding");
+  if (across && width > 0 && 2 * across[1] * REM_BASE_PX >= width) {
+    note(
+      `${across[0]} ${num(across[1])} leaves ${fixed(across[1] * REM_BASE_PX, 0)}px each side ` +
+        `in a box ${fixed(width, 0)}px wide`,
+      across[0], width / 2,
+    );
+  }
+
+  const edge = styleMeasure(style, "border_width");
+  const smallest = Math.min(width, height);
+  if (edge && smallest > 0 && 2 * edge[1] * REM_BASE_PX >= smallest) {
+    note(
+      `border_width ${num(edge[1])} draws a ${fixed(edge[1] * REM_BASE_PX, 0)}px border on a ` +
+        `box ${fixed(width, 0)}x${fixed(height, 0)}px`,
+      edge[0], smallest / 2,
+    );
+  }
+
+  const gap = styleMeasure(style, "letter_spacing");
+  if (gap && width > 0 && gap[1] * REM_BASE_PX > width) {
+    note(
+      `letter_spacing ${num(gap[1])} puts ${fixed(gap[1] * REM_BASE_PX, 0)}px between letters ` +
+        `in a box ${fixed(width, 0)}px wide`,
+      gap[0], width,
+    );
+  }
+
+  if (!reasons.length) return null;
+  const fixes = joined(
+    [...limits].map(([field, room]) => `${field} at most ${pct(room)}`),
+  );
+  return {
+    elementId: el.id,
+    kind: "style_too_large",
+    message:
+      `${el.id} (${el.type}) is ${fixed(width, 0)}x${fixed(height, 0)}px and its style asks for ` +
+      `more room than that: ${reasons.join("; ")}. style measurements are rem, not pixels -- ` +
+      `px / ${num(REM_BASE_PX)} -- so write ${fixes}.`,
+    key: `style_too_large|${el.id}`,
   };
 }
 
@@ -4022,6 +4148,7 @@ function layoutFindings(
     const candidates = [
       starvationFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme, ancestorsOf(el.id)),
       touchFinding(el, boxPx),
+      styleFinding(el, boxPx),
     ];
     const stored = own(ownBoxes, el.id);
     if (stored) {
@@ -4106,6 +4233,7 @@ export function reviewMasterElement(
         "the page", theme,
       ),
       touchFinding(master, boxPx),
+      styleFinding(master, boxPx),
     ];
     for (const finding of candidates) {
       if (!finding || seen.has(finding.key)) continue;
