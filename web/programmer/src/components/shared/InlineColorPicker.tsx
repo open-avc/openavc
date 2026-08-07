@@ -1,9 +1,6 @@
 import { HexColorPicker } from "react-colorful";
 import { useAnchoredPanel } from "./AnchoredPanel";
 
-/** Padding + border the popover adds around the colour wheel. */
-const PANEL_CHROME = 10;
-
 interface InlineColorPickerProps {
   value: string;
   onChange: (color: string) => void;
@@ -25,17 +22,13 @@ export function InlineColorPicker({
   const inputPx = size === "md" ? 80 : 72;
   const pickerW = size === "md" ? 180 : 160;
   const pickerH = size === "md" ? 150 : 130;
-  // Unlike the list dropdowns, this popover is exactly as big as the colour
-  // wheel inside it, so it tells the shared panel its real size: no 320px floor
-  // it would never fill, and no flipping up when the space below already fits.
-  const popoverW = pickerW + PANEL_CHROME;
-  const popoverH = pickerH + PANEL_CHROME + 10;
-
-  const panel = useAnchoredPanel<HTMLDivElement>({
-    minWidth: popoverW,
-    wantsHeight: popoverH,
-    minHeight: popoverH,
-    widthMode: "min",
+  // Unlike the list dropdowns this popover is exactly as big as the colour
+  // wheel inside it, so it takes no width from the shared panel and is measured
+  // instead. `pickerH` is the wheel's own declared height, which is all the
+  // flip-up test needs: a 130px popover should not flip up with 200px below it.
+  const panel = useAnchoredPanel<HTMLDivElement, HTMLDivElement>({
+    width: "intrinsic",
+    wantsHeight: pickerH,
   });
   const { open } = panel;
 
@@ -71,7 +64,7 @@ export function InlineColorPicker({
         </button>
       )}
       {open && (
-        <div style={{
+        <div ref={panel.panelRef} style={{
           ...panel.panelStyle,
           background: "var(--bg-elevated)", border: "1px solid var(--border-color)",
           borderRadius: "var(--border-radius)", padding: "var(--space-xs)",

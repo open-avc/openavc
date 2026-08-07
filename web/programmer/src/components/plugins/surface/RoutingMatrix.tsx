@@ -29,9 +29,10 @@ export function RoutingMatrix({
   const [newPresetName, setNewPresetName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [pendingCells, setPendingCells] = useState<Set<string>>(new Set());
-  // A short list of preset names, so it floors at its own readable width and
-  // lets a long name push it wider rather than being clipped to the trigger.
-  const presetPanel = useAnchoredPanel<HTMLButtonElement>({ minWidth: 180, widthMode: "min" });
+  // A short list of preset names that sizes to its longest entry rather than to
+  // the trigger, so the panel is measured and the clamp works off what it
+  // actually is.
+  const presetPanel = useAnchoredPanel<HTMLButtonElement, HTMLDivElement>({ width: "intrinsic" });
   const presetDropdownOpen = presetPanel.open;
 
   // Get row/column labels from state ('*' matches anywhere in the pattern)
@@ -150,8 +151,9 @@ export function RoutingMatrix({
               <ChevronRight size={14} style={{ transform: presetDropdownOpen ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.15s" }} />
             </button>
             {presetDropdownOpen && (
-              <div style={{
+              <div ref={presetPanel.panelRef} style={{
                 ...presetPanel.panelStyle,
+                minWidth: 180,
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border-color)",
                 borderRadius: "var(--border-radius)",

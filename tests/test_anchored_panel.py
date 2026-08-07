@@ -18,6 +18,14 @@ closes on a capture-phase scroll, but four ignored scrolls that started inside
 the panel and the combobox did not, so a list longer than the panel could not be
 scrolled to the bottom.
 
+Two more guard the panels that are NOT list dropdowns. A colour wheel is
+whatever size a colour wheel is, so its panel is measured rather than estimated
+from padding and border by hand -- and the estimate is what the clamp runs off,
+so guessing small leaves the panel hanging off the very edge it was clamped away
+from. And a combobox keeps its input's width, because the 320px floor a state
+key list wants would hang a dropdown wider than the field off every param in the
+properties pane.
+
 Like the other TypeScript harnesses these skip when Node/esbuild/jsdom aren't
 installed, and fail instead when a run promised them (OPENAVC_REQUIRE_NODE=1).
 Run them locally after `npm ci` in web/programmer.
@@ -95,6 +103,12 @@ SCENARIOS = [
     # Why the flip-up threshold is per-panel rather than one constant.
     "a_short_panel_does_not_flip_when_it_fits",
     "a_list_panel_does_flip_in_the_same_spot",
+    # An intrinsically-sized panel is measured, never estimated.
+    "an_intrinsic_panel_is_clamped_by_its_measured_width",
+    "a_combobox_panel_stays_its_input_width",
+    # The two call sites that share only the positioning, executed at last.
+    "the_colour_popover_opens_on_the_shared_panel",
+    "the_surface_preset_list_opens_on_the_shared_panel",
 ]
 
 

@@ -29,7 +29,11 @@ export function ParamCombobox({
   style,
 }: ParamComboboxProps) {
   const [highlight, setHighlight] = useState(0);
-  const panel = useAnchoredPanel<HTMLInputElement>();
+  // A combobox panel is exactly its input's width -- that is the look, and the
+  // 320px floor the two big pickers want would make every param field in the
+  // properties pane sprout a dropdown wider than the field. What it gains from
+  // the shared panel is the viewport clamp and the close rules, not a new size.
+  const panel = useAnchoredPanel<HTMLInputElement, HTMLUListElement>({ minWidth: 0 });
   const { open, containerRef, triggerRef: inputRef } = panel;
 
   // Show the full list when nothing is typed or the text exactly matches an
@@ -120,6 +124,7 @@ export function ParamCombobox({
       />
       {open && filtered.length > 0 && (
         <ul
+          ref={panel.panelRef}
           style={{
             ...panel.panelStyle,
             overflowY: "auto",

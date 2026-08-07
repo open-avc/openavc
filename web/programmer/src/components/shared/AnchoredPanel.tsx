@@ -15,18 +15,22 @@
  * Two things stay parameters rather than becoming constants, because they are
  * facts about the panel and not taste:
  *
- *   - `minWidth` — a list of state keys wants 320px to be readable; a colour
- *     popover is exactly as wide as the colour popover.
+ *   - `width` — a list dropdown fills its trigger (with a readable floor); a
+ *     colour wheel is whatever size a colour wheel is.
  *   - `wantsHeight` — "is there room below?" is really "room for how much?", so
- *     a 150px popover should not flip up with 200px of space beneath it.
+ *     a 130px popover should not flip up with 200px of space beneath it.
  *
- * Everything else is one number for everyone. Horizontal placement is measured
- * once when the panel opens; vertical is recomputed every render from a fresh
- * trigger rect, so the panel stays glued to its trigger when the pane reflows
- * underneath it. That split is inherited from the two big pickers and is
- * load-bearing, not an accident of how they were written.
+ * An intrinsically-sized panel is MEASURED once it has rendered, never
+ * estimated. Guessing it from padding and border by hand is the mistake
+ * `server/ui/control_minimums.py` exists to forbid, and the guess is exactly
+ * what the clamp depends on: too small and the panel still hangs off the edge
+ * the clamp was added to protect.
+ *
+ * Vertical placement is recomputed every render from a fresh trigger rect, so
+ * the panel stays glued to its trigger when the pane reflows underneath it.
+ * That is inherited from the two big pickers and is load-bearing.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { LAYER } from "./layers";
 
@@ -44,30 +48,31 @@ const DEFAULT_WANTS_HEIGHT = 250;
 const DEFAULT_MIN_HEIGHT = 200;
 
 export interface AnchoredPanelOptions {
-  /** Floor for the panel's width; the trigger's own width wins when wider. */
+  /**
+   * `"fill"` (default) sizes the panel to its trigger, floored at `minWidth`,
+   * which is what a list dropdown wants. `"intrinsic"` sets no width at all and
+   * lets the content decide — the panel is then measured, so the clamp works
+   * off its real width instead of a guess.
+   */
+  width?: "fill" | "intrinsic";
+  /** Floor for a `"fill"` panel's width; the trigger wins when wider. */
   minWidth?: number;
   /** Height the panel would like, which is what the flip-up test compares against. */
   wantsHeight?: number;
-  /** Floor for the panel's max-height. */
-  minHeight?: number;
-  /**
-   * `"fixed"` pins the panel to the computed width; `"min"` lets its content
-   * grow past it (the surface preset list, whose entries set the width).
-   */
-  widthMode?: "fixed" | "min";
   /** Reset panel-owned state — a search box, an inline form — as it closes. */
   onClose?: () => void;
 }
 
 interface Anchor {
   left: number;
+  /** The panel's own width: computed for `"fill"`, measured for `"intrinsic"`. */
   width: number;
   flipUp: boolean;
   /** Fallback vertical origin for the render before the trigger can be measured. */
   top: number;
 }
 
-export interface AnchoredPanel<T extends HTMLElement> {
+export interface AnchoredPanel<T extends HTMLElement, P extends HTMLElement = HTMLElement> {
   open: boolean;
   /** Measure the trigger and show the panel. */
   openPanel: () => void;
@@ -78,18 +83,27 @@ export interface AnchoredPanel<T extends HTMLElement> {
   containerRef: RefObject<HTMLDivElement | null>;
   /** The element the panel is measured against. */
   triggerRef: RefObject<T | null>;
+  /** Put on the panel element, so an intrinsic panel can be measured. */
+  panelRef: RefObject<P | null>;
   /** Spread onto the panel element. Empty while closed. */
   panelStyle: CSSProperties;
 }
 
-export function useAnchoredPanel<T extends HTMLElement>(
+/** Keep a panel of this width inside the window. */
+function clampLeft(triggerLeft: number, width: number): number {
+  return Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(triggerLeft, window.innerWidth - width - VIEWPORT_MARGIN),
+  );
+}
+
+export function useAnchoredPanel<T extends HTMLElement, P extends HTMLElement = HTMLElement>(
   options: AnchoredPanelOptions = {},
-): AnchoredPanel<T> {
+): AnchoredPanel<T, P> {
   const {
+    width: widthMode = "fill",
     minWidth = DEFAULT_MIN_WIDTH,
     wantsHeight = DEFAULT_WANTS_HEIGHT,
-    minHeight = DEFAULT_MIN_HEIGHT,
-    widthMode = "fixed",
     onClose,
   } = options;
 
@@ -97,6 +111,7 @@ export function useAnchoredPanel<T extends HTMLElement>(
   const [anchor, setAnchor] = useState<Anchor>({ left: 0, width: 0, flipUp: false, top: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<T>(null);
+  const panelRef = useRef<P>(null);
 
   // The close listeners below subscribe once per open, not once per render, and
   // read the current `onClose` through this ref. A listener re-added *during* a
@@ -115,20 +130,36 @@ export function useAnchoredPanel<T extends HTMLElement>(
     if (rect) {
       const spaceBelow = window.innerHeight - rect.bottom;
       const flipUp = spaceBelow < wantsHeight && rect.top > spaceBelow;
-      const width = Math.max(rect.width, minWidth);
-      const left = Math.max(
-        VIEWPORT_MARGIN,
-        Math.min(rect.left, window.innerWidth - width - VIEWPORT_MARGIN),
-      );
-      setAnchor({ left, width, flipUp, top: rect.bottom });
+      // An intrinsic panel has no width yet -- it has not rendered. It opens at
+      // the trigger's left and the layout effect below corrects it from the
+      // real measurement, before the browser paints.
+      const width = widthMode === "fill" ? Math.max(rect.width, minWidth) : 0;
+      setAnchor({ left: clampLeft(rect.left, width), width, flipUp, top: rect.bottom });
     }
     setOpen(true);
-  }, [minWidth, wantsHeight]);
+  }, [minWidth, wantsHeight, widthMode]);
 
   const toggle = useCallback(() => {
     if (open) close();
     else openPanel();
   }, [open, close, openPanel]);
+
+  // Measure an intrinsically-sized panel and re-clamp off its real width.
+  // useLayoutEffect so the correction lands before paint -- a visible jump is
+  // the panel briefly hanging off the edge it is being clamped away from.
+  useLayoutEffect(() => {
+    if (!open || widthMode === "fill") return;
+    const el = panelRef.current;
+    const trigger = triggerRef.current;
+    if (!el || !trigger) return;
+    const measured = el.getBoundingClientRect().width;
+    const left = clampLeft(trigger.getBoundingClientRect().left, measured);
+    setAnchor((a) =>
+      Math.abs(a.width - measured) < 0.5 && Math.abs(a.left - left) < 0.5
+        ? a
+        : { ...a, width: measured, left },
+    );
+  });
 
   // Close on a click or a scroll that happened outside the panel. Scrolling
   // *inside* it must not close it — the list is the thing being scrolled.
@@ -163,11 +194,12 @@ export function useAnchoredPanel<T extends HTMLElement>(
       top: anchor.flipUp ? undefined : triggerBottom + PANEL_GAP,
       bottom: anchor.flipUp ? window.innerHeight - triggerTop + PANEL_GAP : undefined,
       left: anchor.left,
-      ...(widthMode === "min" ? { minWidth: anchor.width } : { width: anchor.width }),
-      maxHeight: Math.max(minHeight, available),
+      // An intrinsic panel is never given a width -- that is the point of it.
+      ...(widthMode === "fill" ? { width: anchor.width } : {}),
+      maxHeight: Math.max(Math.max(wantsHeight, DEFAULT_MIN_HEIGHT), available),
       zIndex: LAYER.popover,
     };
   }
 
-  return { open, openPanel, close, toggle, containerRef, triggerRef, panelStyle };
+  return { open, openPanel, close, toggle, containerRef, triggerRef, panelRef, panelStyle };
 }
