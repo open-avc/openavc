@@ -1144,6 +1144,34 @@ async def test_add_ui_elements_rejects_a_container_that_is_not_there(handler, mo
 
 
 @pytest.mark.asyncio
+async def test_add_ui_elements_warns_about_what_a_binding_points_at(handler, mock_engine):
+    """A button aimed at a macro that is not there draws, takes a press, and stops.
+
+    The dispatch chain in ui_events ends without an else, so nothing is logged
+    either. The Builder's Validate panel has resolved these for a while; the
+    write door had never looked at any of them.
+    """
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._add_ui_elements({
+            "page_id": "main",
+            "elements": [{
+                "id": "btn_ghost", "type": "button", "label": "Go",
+                "placement": {"x": 0, "y": 0, "w": 20, "h": 10},
+                "bindings": {"do": {"press": [
+                    {"action": "macro", "macro": "no_such_macro"},
+                    {"action": "ui.navigate", "page": "no_such_page"},
+                    {"action": "device.command", "device": "no_such_device", "command": "x"},
+                ]}},
+            }],
+        })
+
+    assert result["status"] == "created", result
+    warnings = " ".join(result["warnings"])
+    for expected in ("no_such_macro", "no_such_page", "no_such_device"):
+        assert expected in warnings, f"{expected} missing from {warnings}"
+
+
+@pytest.mark.asyncio
 async def test_add_ui_elements_reports_every_offender_at_once(handler, mock_engine):
     """A rejected batch answers for the whole batch, not just its first mistake.
 

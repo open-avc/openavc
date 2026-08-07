@@ -10,6 +10,7 @@ from server.ui.page_geometry import (
     primary_layout,
     resolved_placements,
 )
+from server.ui.page_references import reference_findings
 from server.ui.page_review import review_master_element, review_page
 from server.utils.logger import get_logger
 
@@ -36,6 +37,31 @@ _RETIRED_GEOMETRY = {
     "grid": "layouts[] with placements, plus the authoring-only snap increment",
     "grid_gap": "nothing -- pages no longer have a gap",
 }
+
+
+def _declared_commands(devices: Any, device_id: str) -> set[str] | None:
+    """The command names a device's driver declares, or None for no opinion.
+
+    None is the answer far more often than an empty set is, and the difference
+    matters: a device that is disabled, not connected yet, or backed by a driver
+    that enumerates nothing must produce no warning at all. Only a driver that
+    says "these are my commands" can say a name is not one of them.
+
+    Never raises. Nothing advisory may cost a UI write.
+    """
+    if devices is None or not device_id:
+        return None
+    try:
+        driver = devices.get_driver(device_id)
+        if driver is None:
+            return None
+        commands = (getattr(driver, "DRIVER_INFO", None) or {}).get("commands")
+        if not isinstance(commands, dict) or not commands:
+            return None
+        return set(commands)
+    except Exception:  # pragma: no cover - defensive; advisory path only
+        log.debug("Could not resolve declared commands for '%s'", device_id, exc_info=True)
+        return None
 
 
 def _rounded_placement(box: Any) -> Any:
@@ -479,6 +505,14 @@ class UIToolsMixin:
             theme=_theme_defaults(project, "slider"),
             declared_range=declared_range if ranges else None,
         )
+        findings.extend(reference_findings(
+            page,
+            touched=touched,
+            page_ids={p.id for p in project.ui.pages},
+            device_ids=set(device_ids),
+            macro_ids={m.id for m in project.macros},
+            device_commands=lambda device_id: _declared_commands(self._devices, device_id),
+        ))
         if findings:
             log.info(
                 "AI UI write on page '%s': %d element(s) reviewed, %d warning(s), %d filled in",
