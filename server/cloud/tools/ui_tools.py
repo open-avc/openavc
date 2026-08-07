@@ -73,6 +73,40 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
     return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
 
 
+def _declared_panel_elements(engine: Any, plugin_id: str) -> set[str] | None:
+    """The panel-element types a loaded plugin declares, or None for no opinion.
+
+    None means the plugin is not loaded here -- stopped, uninstalled, or simply
+    not commissioned yet. That is a deployment fact, not an authoring mistake,
+    and warning about it would fire on every page written before the plugin is
+    installed.
+
+    Never raises. Nothing advisory may cost a UI write.
+    """
+    if not plugin_id:
+        return None
+    try:
+        loader = getattr(engine, "plugins", None)
+        if loader is None or not hasattr(loader, "get_all_extensions"):
+            return None
+        declared = {
+            str(ext.get("plugin_id")): ext
+            for ext in loader.get_all_extensions().get("panel_elements", [])
+            if isinstance(ext, dict)
+        }
+        if plugin_id not in declared:
+            return None
+        return {
+            str(ext.get("type"))
+            for ext in loader.get_all_extensions().get("panel_elements", [])
+            if isinstance(ext, dict) and str(ext.get("plugin_id")) == plugin_id
+            and ext.get("type")
+        } or None
+    except Exception:  # pragma: no cover - defensive; advisory path only
+        log.debug("Could not resolve panel elements for '%s'", plugin_id, exc_info=True)
+        return None
+
+
 def _declared_commands(devices: Any, device_id: str) -> set[str] | None:
     """The command names a device's driver declares, or None for no opinion.
 
@@ -546,6 +580,9 @@ class UIToolsMixin:
             device_ids=set(device_ids),
             macro_ids={m.id for m in project.macros},
             device_commands=lambda device_id: _declared_commands(self._devices, device_id),
+            plugin_elements=lambda plugin_id: _declared_panel_elements(
+                self._get_engine(), plugin_id,
+            ),
         ))
         if findings:
             log.info(

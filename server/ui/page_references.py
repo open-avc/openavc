@@ -46,6 +46,7 @@ a warning costs nothing.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
@@ -120,6 +121,79 @@ def _device_of(key: str, device_ids: Iterable[str]) -> str | None:
     return None
 
 
+#: What the panel accepts in a plugin element's two ids, character for
+#: character. ``panel.js:3785`` tests both against this and draws its
+#: unconfigured placeholder if either fails, so anything else is decorative.
+_PLUGIN_ID_CHARS = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def plugin_element_finding(
+    dump: Mapping[str, Any],
+    el_id: str,
+    plugin_elements: Callable[[str], set[str] | None] | None,
+) -> Finding | None:
+    """A ``plugin`` element that will draw the unconfigured placeholder.
+
+    ``plugin`` is a real type and passes the type check, so nothing here used to
+    look inside it. But the renderer needs BOTH ``plugin_id`` and
+    ``plugin_type``, both matching ``[A-Za-z0-9_-]+``, and it builds
+    ``/api/plugins/<id>/panel/<type>.html`` out of them. Miss either, or invent a
+    type the plugin does not declare, and the panel draws a dashed grey box that
+    says "Plugin" -- which reads as a loading state, not as a mistake.
+
+    This is the one type the authoring guide singles out as easy to get wrong,
+    which is exactly why leaving it unchecked was the wrong call.
+    """
+    if str(dump.get("type", "")) != "plugin":
+        return None
+    plugin_id = dump.get("plugin_id")
+    plugin_type = dump.get("plugin_type")
+
+    missing = [
+        name for name, value in (("plugin_id", plugin_id), ("plugin_type", plugin_type))
+        if not isinstance(value, str) or not value.strip()
+    ]
+    if missing:
+        return Finding(
+            el_id, "plugin_element_unconfigured",
+            f"{el_id} (plugin) has no {' and no '.join(missing)}, so the panel draws its "
+            f"unconfigured placeholder instead of anything. A plugin element needs both, "
+            f"read off the installed plugin.",
+            key=("plugin_element_unconfigured", el_id, "missing"),
+        )
+
+    malformed = [
+        f"{name} '{value}'"
+        for name, value in (("plugin_id", plugin_id), ("plugin_type", plugin_type))
+        if not _PLUGIN_ID_CHARS.match(str(value))
+    ]
+    if malformed:
+        return Finding(
+            el_id, "plugin_element_unconfigured",
+            f"{el_id} (plugin): {' and '.join(malformed)} is not a name the panel accepts "
+            f"-- letters, digits, underscore and hyphen only -- so it draws its unconfigured "
+            f"placeholder.",
+            key=("plugin_element_unconfigured", el_id, "malformed"),
+        )
+
+    if plugin_elements is None:
+        return None
+    declared = plugin_elements(str(plugin_id))
+    if declared is None:
+        # The plugin is not loaded here. That is a deployment fact, not an
+        # authoring mistake -- it may simply be stopped or not installed yet.
+        return None
+    if str(plugin_type) not in declared:
+        return Finding(
+            el_id, "plugin_element_unconfigured",
+            f"{el_id} (plugin) asks '{plugin_id}' for a '{plugin_type}' element, which it "
+            f"does not declare, so the panel loads a renderer that is not there. "
+            f"{plugin_id} declares: {_listed(declared)}.",
+            key=("plugin_element_unconfigured", el_id, "undeclared"),
+        )
+    return None
+
+
 def reference_findings(
     page: Any,
     *,
@@ -128,6 +202,7 @@ def reference_findings(
     device_ids: set[str],
     macro_ids: set[str],
     device_commands: Callable[[str], set[str] | None] | None = None,
+    plugin_elements: Callable[[str], set[str] | None] | None = None,
 ) -> list[Finding]:
     """Every binding on this page that names something that is not there.
 
@@ -150,6 +225,9 @@ def reference_findings(
         el_id = str(dump.get("id", "?"))
         if not in_scope(el_id):
             continue
+        plugin_issue = plugin_element_finding(dump, el_id, plugin_elements)
+        if plugin_issue:
+            findings.append(plugin_issue)
         findings.extend(_element_findings(
             dump, el_id, page_ids, device_ids, macro_ids, device_commands,
         ))

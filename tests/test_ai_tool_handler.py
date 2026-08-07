@@ -403,6 +403,42 @@ class TestValidatorOperatorAliases:
         assert errs, "Garbage operator should still be rejected"
 
 
+class TestActionShapeValidation:
+    """An `action` field holding anything but a name used to be a crash.
+
+    `action.get("action")` was fed straight to a set membership test, so an
+    action object nested inside another one raised
+    `TypeError: unhashable type: 'dict'` -- an unhandled traceback out of a
+    validator whose entire job is turning bad input into a sentence. It is a
+    documented anti-pattern, so it is exactly the shape that arrives.
+    """
+
+    def test_a_nested_action_object_is_rejected_not_raised(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"do": {"press": [{"action": {
+            "action": "device.command", "device": "amp", "command": "mute_on",
+        }}]}}
+        err = _validate_bindings(b)
+        assert err and "must be the action NAME" in err
+        # The nested name is surfaced, because the nesting is what is hard to
+        # see -- both levels read as a valid action on their own.
+        assert "device.command" in err
+
+    def test_a_list_in_the_action_field_is_rejected_too(self):
+        from server.cloud.ai_tool_handler import _validate_bindings
+        err = _validate_bindings({"do": {"press": [{"action": ["macro"]}]}})
+        assert err and "got list" in err
+
+    def test_a_nested_action_inside_a_value_map_is_rejected(self):
+        """value_map recurses, so the same shape one level down must not crash."""
+        from server.cloud.ai_tool_handler import _validate_bindings
+        b = {"do": {"change": [{"action": "value_map", "map": {
+            "a": {"action": {"action": "macro", "macro": "go"}},
+        }}]}}
+        err = _validate_bindings(b)
+        assert err and "must be the action NAME" in err
+
+
 class TestVisibleWhenBindingValidation:
     """_validate_bindings accepts single, any:[] (OR) and all:[] (AND)
     show.visible_when forms in the show/do model."""

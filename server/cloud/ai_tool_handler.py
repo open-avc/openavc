@@ -262,6 +262,20 @@ def _validate_action(action: dict, path: str) -> str | None:
     action_type = action.get("action", "")
     if not action_type:
         return f"{path}: missing 'action' field"
+    if not isinstance(action_type, str):
+        # `action` holding another action object is a documented anti-pattern,
+        # and it used to take the whole call down with `unhashable type: 'dict'`
+        # -- a raw TypeError from the membership test below, since a dict cannot
+        # be looked up in a set. Naming the shape is the whole value here: the
+        # nesting is invisible in a diff and the crash said nothing about it.
+        nested = action_type.get("action") if isinstance(action_type, dict) else None
+        inner = f" You nested a '{nested}' action inside it." if isinstance(nested, str) else ""
+        return (
+            f"{path}: 'action' must be the action NAME, got "
+            f"{type(action_type).__name__}.{inner} Write the fields flat on this "
+            f"object -- {{\"action\": \"device.command\", \"device\": ..., "
+            f"\"command\": ...}} -- not an action wrapped in another action."
+        )
     if action_type not in _VALID_ACTION_TYPES:
         return (
             f"{path}: action type '{action_type}' is not valid. "

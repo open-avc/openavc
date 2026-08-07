@@ -220,3 +220,62 @@ def test_a_write_answers_only_for_what_it_touched() -> None:
     ]
     findings = _findings(elements, touched={"mine"})
     assert [f.element_id for f in findings] == ["mine"]
+
+
+# --- Plugin elements ------------------------------------------------------
+#
+# `plugin` is a real type, so the type check passes it and nothing looked
+# inside. The renderer needs both ids, both matching [A-Za-z0-9_-]+, and builds
+# /api/plugins/<id>/panel/<type>.html from them -- so a miss draws a dashed grey
+# box that reads as a loading state rather than a mistake.
+
+PLUGIN_ELEMENTS = {"acme": {"meter", "fader"}}
+
+
+def _plugin(**fields) -> list[str]:
+    return _messages(
+        [{"id": "widget", "type": "plugin", **fields}],
+        plugin_elements=PLUGIN_ELEMENTS.get,
+    )
+
+
+def test_a_plugin_element_with_neither_id_is_named() -> None:
+    messages = _plugin()
+    assert len(messages) == 1, messages
+    assert "no plugin_id and no plugin_type" in messages[0]
+
+
+def test_a_plugin_element_missing_one_id_is_named() -> None:
+    messages = _plugin(plugin_id="acme")
+    assert len(messages) == 1, messages
+    assert "no plugin_type" in messages[0]
+    assert "plugin_id" not in messages[0].split("has no")[1].split(",")[0]
+
+
+def test_an_invented_plugin_type_is_caught_against_what_it_declares() -> None:
+    messages = _plugin(plugin_id="acme", plugin_type="invented_widget")
+    assert len(messages) == 1, messages
+    assert "does not declare" in messages[0]
+    assert "fader, meter" in messages[0], "the real ones are named"
+
+
+def test_a_name_the_renderer_cannot_put_in_a_url_is_caught() -> None:
+    """The panel tests both ids against [A-Za-z0-9_-]+ before building the URL."""
+    messages = _plugin(plugin_id="acme", plugin_type="a/b")
+    assert len(messages) == 1, messages
+    assert "not a name the panel accepts" in messages[0]
+
+
+def test_a_plugin_that_is_not_loaded_here_says_nothing() -> None:
+    """Not installed yet is a deployment fact, not an authoring mistake.
+
+    Warning would fire on every page written before commissioning, which is
+    when panels are usually built.
+    """
+    assert _plugin(plugin_id="not_installed", plugin_type="whatever") == []
+    assert _messages([{"id": "widget", "type": "plugin",
+                       "plugin_id": "acme", "plugin_type": "meter"}]) == []
+
+
+def test_a_correctly_configured_plugin_element_is_silent() -> None:
+    assert _plugin(plugin_id="acme", plugin_type="meter") == []
