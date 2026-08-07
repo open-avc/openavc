@@ -3015,7 +3015,8 @@ export interface ReviewFinding {
     | "no_placement"
     | "binding_not_rendered"
     | "unknown_element_type"
-    | "style_too_large";
+    | "style_too_large"
+    | "too_small_to_draw";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an
@@ -3389,6 +3390,63 @@ export function starvationFinding(
   };
 }
 
+/** Below this on either axis an element is not small, it is absent.
+ *
+ *  Deliberately NOT a per-type floor. Two thirds of the element types publish no
+ *  floor at all, because what limits them is their content -- a caption, an
+ *  image, whatever a plugin draws -- which is unbounded and theme dependent, and
+ *  inventing a curve for that would reject layouts that render correctly. That
+ *  reasoning stands. It just does not cover 6x4px, which is not a judgement
+ *  call.
+ *
+ *  10 sits under every measured floor (the lowest is a level meter at 13px
+ *  wide), so this can never contradict one. Mirrored in
+ *  server/ui/page_review.py, with a test asserting both the match and that
+ *  relationship. */
+export const MINIMUM_VISIBLE_PX = 10.0;
+
+/**
+ * A box too small to draw anything, on a type with no floor to breach.
+ *
+ * The gap this closes: a gauge and a clock at 0.5% x 0.5% of the page came back
+ * completely clean. They have no fixed internals, so the starvation check has
+ * nothing to measure them against, and 6x4px sailed through a review whose whole
+ * purpose is catching controls too small to work.
+ *
+ * Runs only where `controlMinimumBox` has no opinion, so it never speaks over a
+ * measured floor and never becomes one.
+ */
+export function degenerateFinding(
+  el: UIElement,
+  boxPx: { width: number; height: number },
+  parentPx: { width: number; height: number },
+  parentName: string,
+  theme?: ElementDefaults,
+): ReviewFinding | null {
+  if (controlMinimumBox(el, theme)) return null;
+  if (boxPx.width >= MINIMUM_VISIBLE_PX && boxPx.height >= MINIMUM_VISIBLE_PX) return null;
+
+  const fixes: string[] = [];
+  if (boxPx.width < MINIMUM_VISIBLE_PX && parentPx.width > 0) {
+    fixes.push(`w at least ${pct((MINIMUM_VISIBLE_PX / parentPx.width) * 100)}%`);
+  }
+  if (boxPx.height < MINIMUM_VISIBLE_PX && parentPx.height > 0) {
+    fixes.push(`h at least ${pct((MINIMUM_VISIBLE_PX / parentPx.height) * 100)}%`);
+  }
+  const fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  return {
+    elementId: el.id,
+    kind: "too_small_to_draw",
+    message:
+      `${el.id} (${el.type}) is ${fixed(boxPx.width, 0)}x${fixed(boxPx.height, 0)}px at the ` +
+      `${TOUCH_REFERENCE.width}x${TOUCH_REFERENCE.height} reference, which is not small, it is ` +
+      `invisible. ${capitalized(article(el.type))} ${el.type} has no fixed floor -- what ` +
+      `limits it is its content -- so ` +
+      `nothing else here measures it.${fix}`,
+    key: `too_small_to_draw|${el.id}`,
+  };
+}
+
 /**
  * A control a finger will struggle to hit. Physical, not pixel.
  *
@@ -3414,6 +3472,17 @@ export function touchFinding(
       `${TOUCH_MIN_MM}mm comfortable touch minimum on ${axis} (${fixed(TOUCH_MIN_PX, 0)}px).`,
     key: `small_touch_target|${el.id}`,
   };
+}
+
+/** `a` or `an`, so a type name reads as a sentence rather than a token. */
+function article(word: string): string {
+  const first = word.slice(0, 1).toLowerCase();
+  return first && "aeiou".includes(first) ? "an" : "a";
+}
+
+/** Python's `str.capitalize` on a word this short: first letter up. */
+function capitalized(word: string): string {
+  return word.slice(0, 1).toUpperCase() + word.slice(1);
 }
 
 /** A list read out loud: one, one and another, or one, another and a third. */
@@ -4147,6 +4216,7 @@ function layoutFindings(
     };
     const candidates = [
       starvationFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme, ancestorsOf(el.id)),
+      degenerateFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme),
       touchFinding(el, boxPx),
       styleFinding(el, boxPx),
     ];
@@ -4228,6 +4298,11 @@ export function reviewMasterElement(
     if (!Number.isFinite(boxPx.width) || !Number.isFinite(boxPx.height)) continue;
     const candidates = [
       starvationFinding(
+        master, boxPx,
+        { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height },
+        "the page", theme,
+      ),
+      degenerateFinding(
         master, boxPx,
         { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height },
         "the page", theme,

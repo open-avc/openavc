@@ -238,6 +238,11 @@ def _to_mm(px: float) -> float:
     return px / TOUCH_PX_PER_INCH * 25.4
 
 
+def _article(word: str) -> str:
+    """``a`` or ``an``, so a type name reads as a sentence rather than a token."""
+    return "an" if word[:1].lower() in "aeiou" else "a"
+
+
 def _joined(parts: list[str]) -> str:
     """A list read out loud: one, one and another, or one, another and a third."""
     if len(parts) < 3:
@@ -400,6 +405,61 @@ def starvation_finding(
         f"{el_id} ({el_type}) is {width_px:.0f}x{height_px:.0f}px at the "
         f"{REFERENCE_WIDTH_PX}x{REFERENCE_HEIGHT_PX} reference, too small for what it "
         f"draws: {'; '.join(reasons)}.{fix}",
+    )
+
+
+#: Below this on either axis an element is not small, it is absent.
+#:
+#: Deliberately NOT a per-type floor. Two thirds of the element types publish no
+#: floor at all, because what limits them is their content -- a caption, an
+#: image, whatever a plugin draws -- which is unbounded and theme dependent, and
+#: inventing a curve for that would reject layouts that render correctly. That
+#: reasoning stands. It just does not cover 6x4px, which is not a judgement call.
+#:
+#: 10 sits under every measured floor in ``control_minimums`` (the lowest is a
+#: level meter at 13px wide), so this can never contradict one, and a test pins
+#: that relationship rather than leaving it to whoever edits the table next.
+MINIMUM_VISIBLE_PX = 10.0
+
+
+def degenerate_finding(
+    element: Mapping[str, Any],
+    box_px: tuple[float, float],
+    parent_px: tuple[float, float],
+    parent_name: str,
+    theme: Mapping[str, Any] | None = None,
+) -> Finding | None:
+    """A box too small to draw anything, on a type with no floor to breach.
+
+    The gap this closes: a gauge and a clock at 0.5% x 0.5% of the page came back
+    completely clean. They have no fixed internals, so the starvation check has
+    nothing to measure them against, and 6x4px sailed through a review whose
+    whole purpose is catching controls too small to work.
+
+    Runs only where ``minimum_box`` has no opinion, so it never speaks over a
+    measured floor and never becomes one.
+    """
+    if minimum_box(element, theme) is not None:
+        return None
+    width_px, height_px = box_px
+    if width_px >= MINIMUM_VISIBLE_PX and height_px >= MINIMUM_VISIBLE_PX:
+        return None
+
+    el_id = str(element.get("id", "?"))
+    el_type = str(element.get("type", "?"))
+    fixes = []
+    if width_px < MINIMUM_VISIBLE_PX and parent_px[0] > 0:
+        fixes.append(f"w at least {_pct(MINIMUM_VISIBLE_PX / parent_px[0] * 100)}%")
+    if height_px < MINIMUM_VISIBLE_PX and parent_px[1] > 0:
+        fixes.append(f"h at least {_pct(MINIMUM_VISIBLE_PX / parent_px[1] * 100)}%")
+    fix = f" Give it {' and '.join(fixes)} of {parent_name}." if fixes else ""
+    return Finding(
+        el_id,
+        "too_small_to_draw",
+        f"{el_id} ({el_type}) is {width_px:.0f}x{height_px:.0f}px at the "
+        f"{REFERENCE_WIDTH_PX}x{REFERENCE_HEIGHT_PX} reference, which is not small, it is "
+        f"invisible. {_article(el_type).capitalize()} {el_type} has no fixed floor -- what limits it is its content -- so "
+        f"nothing else here measures it.{fix}",
     )
 
 
@@ -1199,6 +1259,9 @@ def _layout_findings(
                 dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
                 ancestors_of(el_id),
             ),
+            degenerate_finding(
+                dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
+            ),
             touch_finding(dump, box_px),
             style_finding(dump, box_px),
         ]
@@ -1282,6 +1345,9 @@ def review_master_element(
             continue
         for finding in (
             starvation_finding(
+                dump, box_px, (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX), "the page", theme,
+            ),
+            degenerate_finding(
                 dump, box_px, (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX), "the page", theme,
             ),
             touch_finding(dump, box_px),

@@ -214,6 +214,34 @@ CASES["overlaps"] = _project([
     ),
 ])
 
+# The nine types that publish no floor still cannot be drawn at 6x4px. Sized
+# either side of the degenerate threshold, and once with a floor present, so the
+# silence below means "this check knows to stay out of the way".
+CASES["degenerate_boxes"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "gauge_speck", "type": "gauge"},
+            {"id": "clock_speck", "type": "clock"},
+            {"id": "btn_hairline", "type": "button", "label": "H"},
+            {"id": "img_flat", "type": "image"},
+            # Exactly on the threshold on both axes, so it draws.
+            {"id": "gauge_just", "type": "gauge"},
+            # A type WITH a floor is the starvation check's business, not this
+            # one's, however small it gets.
+            {"id": "led_speck", "type": "status_led"},
+        ],
+        [_landscape({
+            "gauge_speck": _pct_box(0, 0, 0.5, 0.5),
+            "clock_speck": _pct_box(5, 0, 0.5, 0.5),
+            "btn_hairline": _pct_box(10, 0, 20, 0.5),
+            "img_flat": _pct_box(35, 0, 0.5, 20),
+            "gauge_just": _box(40, 0, 10, 10),
+            "led_speck": _box(50, 0, 4, 4),
+        })],
+    ),
+])
+
 # `style` measurements are rem (px / 14), and the number an author reaches for is
 # the pixel one. Reported only where the result cannot fit the element, so the
 # same value on a box big enough to hold it stays silent.
@@ -1033,6 +1061,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "binding_not_rendered",
         "unknown_element_type",
         "style_too_large",
+        "too_small_to_draw",
     }
 
 
@@ -1066,6 +1095,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "on_when", "off_when",                 # truthy against falsy
         "settled",                             # its neighbour left the page; one fix
         "roomy", "pill",                       # rem measurements a big box can hold
+        "gauge_just",                          # exactly on the degenerate threshold
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

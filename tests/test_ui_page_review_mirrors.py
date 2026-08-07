@@ -27,12 +27,13 @@ import pytest
 
 from server.ui.page_review import (
     HONORED_SHOW_SLOTS,
+    MINIMUM_VISIBLE_PX,
     STATE_LABEL_TYPES,
     TOUCH_MIN_MM,
     TOUCH_PX_PER_INCH,
     TOUCHABLE_TYPES,
 )
-from server.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX
+from server.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX, RULES
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "web" / "panel" / "panel.js"
@@ -157,3 +158,29 @@ def test_the_same_types_are_treated_as_touchable(builder_source: str) -> None:
     )
     assert block, "could not find TOUCHABLE_TYPES in the Builder helpers"
     assert frozenset(re.findall(r'"([\w_]+)"', block.group(1))) == TOUCHABLE_TYPES
+
+
+def test_the_degenerate_threshold_matches_the_builders(builder_source: str) -> None:
+    found = re.search(r"MINIMUM_VISIBLE_PX = ([\d.]+)", builder_source)
+    assert found, "could not find MINIMUM_VISIBLE_PX in the Builder helpers"
+    assert float(found.group(1)) == MINIMUM_VISIBLE_PX
+
+
+def test_the_degenerate_threshold_stays_under_every_measured_floor() -> None:
+    """The one relationship that keeps the two size checks from arguing.
+
+    The degenerate check exists for the types with no floor, and it is written to
+    be type-independent so it does not quietly become a floor of its own. If it
+    ever rose above a measured one, an element could be told it is invisible at a
+    size the browser has been observed drawing it whole -- the same inflated-floor
+    failure the e2e minimums test exists to catch, arriving by a different door.
+    """
+    smallest = min(
+        value
+        for rule in RULES.values()
+        for value in (rule.base_width_px, rule.base_height_px)
+    )
+    assert MINIMUM_VISIBLE_PX < smallest, (
+        f"the degenerate threshold ({MINIMUM_VISIBLE_PX}px) has reached the smallest "
+        f"measured floor ({smallest}px); one of them is now wrong"
+    )
