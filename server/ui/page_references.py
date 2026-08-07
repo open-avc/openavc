@@ -31,13 +31,17 @@ a ``value_map`` against the select's own options.
 
 What is deliberately NOT checked
 --------------------------------
-Whether a state key exists past its device id. ``device.amp1.channel.07.fader``
-is a key a driver's child entities produce at runtime, and a key that resolves
-to nothing today resolves fine the moment the device connects and reports it.
-The device id itself IS checkable -- devices are declared in the project and the
-set is closed -- so that is what is checked, and the rest is left alone rather
-than guessed at. Same for ``var.``: a script or a macro can create one, so an
-undeclared variable is not evidence of a mistake.
+``var.`` keys. A script or a macro can create one at any time, so an undeclared
+variable is not evidence of a mistake.
+
+A device key's PROPERTY was on this list too, on the reasoning that child-entity
+keys appear at runtime. That was too broad, and an adversarial pass said so: a
+typo'd property is at least as common as a typo'd device, and the device was
+caught while the property was not. It is checked now, but only where the driver
+declares a set to check against -- and never for the platform's own device
+properties (``online``, ``offline_reason``, ...), which no DRIVER_INFO contains
+and which are the commonest bindings on any panel. A child id is still not
+checked: children appear when the device connects.
 
 Everything here WARNS. The write lands and the findings ride back with it, for
 the same reason as the rest of the review: a rejection costs a whole round trip,
@@ -203,6 +207,7 @@ def reference_findings(
     macro_ids: set[str],
     device_commands: Callable[[str], set[str] | None] | None = None,
     plugin_elements: Callable[[str], set[str] | None] | None = None,
+    undeclared_property: Callable[[str], set[str] | None] | None = None,
 ) -> list[Finding]:
     """Every binding on this page that names something that is not there.
 
@@ -230,6 +235,7 @@ def reference_findings(
             findings.append(plugin_issue)
         findings.extend(_element_findings(
             dump, el_id, page_ids, device_ids, macro_ids, device_commands,
+            undeclared_property,
         ))
     return findings
 
@@ -241,6 +247,7 @@ def _element_findings(
     device_ids: set[str],
     macro_ids: set[str],
     device_commands: Callable[[str], set[str] | None] | None,
+    undeclared_property: Callable[[str], set[str] | None] | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     el_type = str(dump.get("type", "?"))
@@ -268,6 +275,20 @@ def _element_findings(
                 f"{el_id} ({el_type}) reads show.{slot} from '{key}', and no device "
                 f"'{named}' is in this project. The devices are: {_listed(device_ids)}.",
                 key=("dangling_reference", el_id, f"show.{slot}"),
+            ))
+            continue
+        # The device resolved; the property after it is the half that used to
+        # pass silently while a typo'd device, command, macro and page were all
+        # caught. A typo'd property is at least as common as a typo'd device.
+        if undeclared_property is None:
+            continue
+        declared = undeclared_property(key)
+        if declared:
+            findings.append(Finding(
+                el_id, "dangling_reference",
+                f"{el_id} ({el_type}) reads show.{slot} from '{key}', and its driver does "
+                f"not declare that. It declares: {_listed(declared)}.",
+                key=("dangling_reference", el_id, f"show.{slot}.property"),
             ))
 
     do_map = _mapping(bindings.get("do")) or {}

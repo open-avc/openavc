@@ -73,6 +73,79 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
     return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
 
 
+#: Device properties the PLATFORM sets, which no driver declares.
+#:
+#: `device.<id>.online` is the single commonest binding on any panel and it
+#: appears in no DRIVER_INFO anywhere, so a property check that did not know
+#: these would fire on the most correct page in the project. Set by
+#: device_manager and connection_fault, not by the device.
+_PLATFORM_DEVICE_PROPERTIES = frozenset({
+    "connected", "enabled", "host", "name", "offline_detail", "offline_reason",
+    "orphan_reason", "orphaned", "paused", "reconnect_attempt", "reconnect_failed",
+    "online", "status", "last_seen", "error",
+})
+
+
+def _undeclared_state_property(devices: Any, device_ids: list[str], key: str) -> set[str] | None:
+    """The properties a driver DOES declare, when the bound one is not among them.
+
+    None means no opinion, and that is the answer far more often than a set is:
+    no driver loaded, a driver that declares no state at all, a child type it
+    has never heard of, a child id that will not coerce. Only a driver that says
+    "these are my state variables" can say a name is not one of them.
+
+    The device id itself is checked elsewhere; this is the property after it,
+    which is the half that used to pass silently while a typo'd device, command,
+    macro and page were all caught.
+
+    Never raises. Nothing advisory may cost a UI write.
+    """
+    if devices is None or not isinstance(key, str) or not key.startswith("device."):
+        return None
+    try:
+        for device_id in device_ids:
+            prefix = f"device.{device_id}."
+            if not key.startswith(prefix):
+                continue
+            driver = devices.get_driver(device_id)
+            if driver is None:
+                return None
+            info = getattr(driver, "DRIVER_INFO", None) or {}
+            rest = key[len(prefix):]
+            if rest in _PLATFORM_DEVICE_PROPERTIES:
+                return None
+            declared = info.get("state_variables") or {}
+            parts = rest.split(".")
+            if len(parts) < 3:
+                # A plain property. Only answerable if the driver declares any.
+                if not declared or rest in declared:
+                    return None
+                return set(declared)
+            child_type, raw_id, prop = parts[0], parts[1], ".".join(parts[2:])
+            type_def = (info.get("child_entity_types") or {}).get(child_type)
+            if not isinstance(type_def, dict):
+                # Not a child type it knows. Could still be a plain property
+                # containing dots, so only speak if the flat set rules it out.
+                if not declared or rest in declared:
+                    return None
+                return set(declared)
+            from server.drivers.child_ids import coerce_child_local_id
+
+            schema: dict = {}
+            local_id = coerce_child_local_id(type_def, raw_id)
+            if local_id is not None and hasattr(driver, "get_child_schema"):
+                schema = driver.get_child_schema(child_type, local_id) or {}
+            if not schema:
+                schema = type_def.get("state_variables") or {}
+            if not schema or prop in schema:
+                return None
+            return set(schema)
+        return None
+    except Exception:  # pragma: no cover - defensive; advisory path only
+        log.debug("Could not resolve declared properties for '%s'", key, exc_info=True)
+        return None
+
+
 def _declared_panel_elements(engine: Any, plugin_id: str) -> set[str] | None:
     """The panel-element types a loaded plugin declares, or None for no opinion.
 
@@ -582,6 +655,9 @@ class UIToolsMixin:
             device_commands=lambda device_id: _declared_commands(self._devices, device_id),
             plugin_elements=lambda plugin_id: _declared_panel_elements(
                 self._get_engine(), plugin_id,
+            ),
+            undeclared_property=lambda key: _undeclared_state_property(
+                self._devices, device_ids, key,
             ),
         ))
         if findings:

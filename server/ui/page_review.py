@@ -1042,6 +1042,56 @@ def bound_state_key(element: Mapping[str, Any]) -> str | None:
     return key if isinstance(key, str) and key else None
 
 
+#: Types whose renderer prints a bound number RAW when no rounding is set.
+#:
+#: Only ``label``. Every other type that draws a number picks its own fallback
+#: -- a fader uses 1, a slider derives one from its step -- so they cannot show
+#: float64 noise. A label deliberately does not, because most labels are bound to
+#: TEXT (device names, input modes, firmware versions) and reformatting "2.10"
+#: into "2.1" would be wrong. That is the right call for the renderer and it is
+#: what leaves this one case exposed.
+_RAW_NUMBER_TYPES = frozenset({"label"})
+
+#: What a driver calls a value that arrives at float64 width.
+_FLOAT_DECLARED_TYPES = frozenset({"float", "number", "double", "real"})
+
+
+def precision_review(
+    element: Mapping[str, Any],
+    declared: Mapping[str, Any] | None,
+    state_key: str,
+) -> Finding | None:
+    """A label bound to a float with nothing telling it how to round.
+
+    A float32 reading of 0.06 crosses the wire as 0.06000000238418579, and
+    ``_labelValueText`` prints a number unchanged when ``display_decimals`` is
+    absent. So the panel shows twenty characters of noise where a reading should
+    be -- visible from across a room, and on first look.
+
+    Only fires when the DRIVER says the value is a float. A label bound to text,
+    or to a value nothing declares, is left alone: this is not an opinion about
+    labels, it is the one case where the renderer's own default cannot help.
+    """
+    if not declared or str(element.get("type", "")) not in _RAW_NUMBER_TYPES:
+        return None
+    if element.get("display_decimals") is not None:
+        return None
+    kind = str(declared.get("type", "")).strip().lower()
+    if kind not in _FLOAT_DECLARED_TYPES:
+        return None
+    el_id = str(element.get("id", "?"))
+    unit = declared.get("unit")
+    example = f"0.06 {unit}" if isinstance(unit, str) and unit else "0.06"
+    return Finding(
+        el_id, "unrounded_number",
+        f"{el_id} (label) shows {state_key}, which the driver declares as a {kind}, and sets "
+        f"no display_decimals. A label prints a number exactly as it arrives, so {example} "
+        f"reads as 0.06000000238418579. Every other type that draws a number picks its own "
+        f"rounding; a label cannot, because most are bound to text. Set display_decimals.",
+        key=("unrounded_number", el_id),
+    )
+
+
 def range_review(
     element: Mapping[str, Any],
     declared: Mapping[str, Any] | None,
@@ -1153,8 +1203,12 @@ def review_page(
         findings.extend(binding_findings(dump))
         key = bound_state_key(dump)
         if key and declared_range:
-            fills, range_findings = range_review(dump, declared_range(key), key)
+            declared = declared_range(key)
+            fills, range_findings = range_review(dump, declared, key)
             findings.extend(range_findings)
+            rounding = precision_review(dump, declared, key)
+            if rounding:
+                findings.append(rounding)
             for fill in fills:
                 set_field(elements[el_id], fill.field, fill.value)
                 dump[fill.field] = fill.value

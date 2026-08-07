@@ -488,3 +488,87 @@ async def test_a_driver_that_cannot_answer_costs_the_write_nothing(
     }))
     assert result["status"] == "created"
     assert "auto_filled" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_label_on_a_float_is_told_to_round_it(
+    handler, mock_engine, mock_agent,
+):
+    """A float32 reading of 0.06 arrives as 0.06000000238418579.
+
+    `_labelValueText` prints a number unchanged when display_decimals is
+    absent, and a label is the only type that does -- a fader falls back to 1,
+    a slider derives one from its step. So this is the one place the renderer's
+    own default cannot save the author, and it is visible from across a room.
+    """
+    result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "level_readout", "type": "label",
+            "placement": {"x": 0, "y": 0, "w": 20, "h": 10},
+            "bindings": {"show": {"value": {
+                "source": "state", "key": "device.amp.master_level",
+            }}},
+        }],
+    }))
+    warnings = " | ".join(result.get("warnings", []))
+    assert "display_decimals" in warnings, warnings
+
+
+@pytest.mark.asyncio
+async def test_a_typod_property_is_caught_like_a_typod_device(
+    handler, mock_engine, mock_agent,
+):
+    """The half that used to pass silently.
+
+    A bad device, command, macro and page were all caught while the property
+    after the device id was not -- and a typo there is at least as common.
+    """
+    result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "ghost_readout", "type": "label", "display_decimals": 1,
+            "placement": {"x": 0, "y": 0, "w": 20, "h": 10},
+            "bindings": {"show": {"value": {
+                "source": "state", "key": "device.amp.channel.01.no_such_property",
+            }}},
+        }],
+    }))
+    warnings = " | ".join(result.get("warnings", []))
+    assert "does not declare that" in warnings, warnings
+    assert "level" in warnings, "the real ones are named"
+
+
+@pytest.mark.asyncio
+async def test_a_platform_property_no_driver_declares_stays_quiet(
+    handler, mock_engine, mock_agent,
+):
+    """`device.<id>.online` is the commonest binding on any panel.
+
+    It appears in no DRIVER_INFO anywhere, so a property check that did not
+    know the platform-set keys would fire on the most correct page there is.
+    """
+    result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "online_led", "type": "status_led", "label": "Online",
+            "placement": {"x": 0, "y": 0, "w": 5, "h": 8},
+            "bindings": {"show": {"look": {"key": "device.amp.online"}}},
+        }],
+    }))
+    warnings = " | ".join(result.get("warnings", []))
+    assert "does not declare" not in warnings, warnings
+
+
+@pytest.mark.asyncio
+async def test_a_declared_child_property_stays_quiet(handler, mock_engine, mock_agent):
+    result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "ch_readout", "type": "label", "display_decimals": 1,
+            "placement": {"x": 0, "y": 0, "w": 20, "h": 10},
+            "bindings": {"show": {"value": {"key": "device.amp.channel.01.level"}}},
+        }],
+    }))
+    warnings = " | ".join(result.get("warnings", []))
+    assert "does not declare" not in warnings, warnings
