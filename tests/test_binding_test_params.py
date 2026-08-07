@@ -39,7 +39,11 @@ BINDING_EDITOR_DIR = (
 )
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "test_action_params_harness.cjs"
 HELPERS_TS = BINDING_EDITOR_DIR / "testActionParams.ts"
-EDITOR_TSX = BINDING_EDITOR_DIR / "PressBindingEditor.tsx"
+# The Test affordance moved out of PressBindingEditor when both press editors
+# started sharing one action list, so this pin follows it to its new home.
+ACTION_LIST_TSX = (
+    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared" / "ActionListEditor.tsx"
+)
 NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
@@ -101,12 +105,37 @@ def test_binding_test_params(helper_results: dict, scenario: str) -> None:
 
 
 def test_editor_routes_test_send_through_resolver() -> None:
-    """PressBindingEditor's Test must resolve params before sending.
+    """The Test button must resolve params before sending.
 
     A raw ``sendCommand(..., action.params)`` here transmits literal
-    "$value" strings to live hardware.
+    "$value" strings to live hardware. It lives in the shared action list now,
+    which is what put a Test button on a button's press action as well as a
+    slider's on-change -- one implementation, so one place to check.
     """
-    source = EDITOR_TSX.read_text(encoding="utf-8")
+    source = ACTION_LIST_TSX.read_text(encoding="utf-8")
     assert "resolveTestParams(" in source
     assert "testBlockedMessage(" in source
     assert "sendCommand(String(action.device), String(action.command), result.params)" in source
+
+
+def test_no_binding_editor_sends_unresolved_params() -> None:
+    """And nowhere else may grow a second, unresolved copy of it.
+
+    The pin above only guards the one implementation that exists. This one
+    guards against a new caller sending ``action.params`` straight to the
+    device, which is the actual defect -- it would put a literal "$value" on
+    the wire and no test above would notice.
+    """
+    roots = [
+        BINDING_EDITOR_DIR,
+        OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared",
+    ]
+    offenders = []
+    for root in roots:
+        for path in sorted(root.rglob("*.tsx")):
+            text = path.read_text(encoding="utf-8")
+            if "action.params" in text and "resolveTestParams(" not in text:
+                offenders.append(path.relative_to(OPENAVC_ROOT).as_posix())
+    assert not offenders, (
+        "these send a test command without resolving $-refs first: " + ", ".join(offenders)
+    )
