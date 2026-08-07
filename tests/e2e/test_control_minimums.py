@@ -277,25 +277,49 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
     )
 
 
+#: How much bigger than strictly necessary a recorded floor may be.
+#:
+#: These floors are text-driven -- a control's height is its label's line box
+#: plus fixed furniture -- so the true answer moves with the font stack, and the
+#: font stack moves with the machine. The same specimens measured in Chromium in
+#: three places give three answers: taking the fader, 100px on the Windows dev
+#: box where the table was recorded, 99 on the GitHub ubuntu runner, 102 in the
+#: Playwright container. A test demanding the floor be exact to the pixel is
+#: therefore asserting which machine ran it, and it duly failed CI on seven
+#: controls at once the first time it was ever allowed to execute there.
+#:
+#: Three is the widest disagreement actually measured across those three, not a
+#: round number: the fader's height spans 99..102 and the matrix's width 274..277.
+#: The check still does its real job, which is catching a floor inflated far
+#: enough to make the Builder and the AI reject layouts that would render fine.
+TIGHTNESS_SLACK_PX = 3
+
+
 @pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)
 def test_recorded_minimum_is_tight_not_merely_safe(panel_page, type_: str) -> None:
-    """One pixel under, on either axis, must fail.
+    """Comfortably under the floor, on either axis, must fail.
 
     An inflated floor is not a harmless safety margin: it makes the Builder and
     the AI reject layouts that render perfectly well, and nothing signals it.
+    See TIGHTNESS_SLACK_PX for why this is not the exact one-pixel check it
+    reads like it should be.
     """
     box = minimum_box({"type": type_, **SPECIMENS[type_]})
     assert box is not None
 
-    narrow_ok, _ = _holds(panel_page, type_, box.width_px - 1, box.height_px)
-    short_ok, _ = _holds(panel_page, type_, box.width_px, box.height_px - 1)
+    narrow = box.width_px - 1 - TIGHTNESS_SLACK_PX
+    short = box.height_px - 1 - TIGHTNESS_SLACK_PX
+    narrow_ok, _ = _holds(panel_page, type_, narrow, box.height_px)
+    short_ok, _ = _holds(panel_page, type_, box.width_px, short)
     assert not narrow_ok, (
-        f"{type_} still renders whole at {box.width_px - 1:.0f}px wide, so its "
-        f"recorded minimum width {box.width_px:.0f} is too big -- re-measure it."
+        f"{type_} still renders whole at {narrow:.0f}px wide, more than "
+        f"{TIGHTNESS_SLACK_PX}px under its recorded minimum width "
+        f"{box.width_px:.0f}, so that floor is too big -- re-measure it."
     )
     assert not short_ok, (
-        f"{type_} still renders whole at {box.height_px - 1:.0f}px tall, so its "
-        f"recorded minimum height {box.height_px:.0f} is too big -- re-measure it."
+        f"{type_} still renders whole at {short:.0f}px tall, more than "
+        f"{TIGHTNESS_SLACK_PX}px under its recorded minimum height "
+        f"{box.height_px:.0f}, so that floor is too big -- re-measure it."
     )
 
 
