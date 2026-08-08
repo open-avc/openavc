@@ -17,12 +17,12 @@ used to be a silent no-op.
 
 from pathlib import Path
 
-from simulator.validate import (
+from openavc.simulator.validate import (
     ValidationResult,
     _check_python_state_coverage,
     _check_state_coverage,
 )
-from simulator.validate import validate_python_driver
+from openavc.simulator.validate import validate_python_driver
 
 
 def _result() -> ValidationResult:

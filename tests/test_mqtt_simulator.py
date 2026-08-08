@@ -13,8 +13,8 @@ import asyncio
 
 import pytest
 
-from server.transport.mqtt import MQTTTransport
-from simulator.mqtt_simulator import MQTTSimulator
+from openavc.transport.mqtt import MQTTTransport
+from openavc.simulator.mqtt_simulator import MQTTSimulator
 
 
 class _AcmeBroker(MQTTSimulator):

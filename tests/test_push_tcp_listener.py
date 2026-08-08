@@ -13,12 +13,12 @@ import socket
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from server.transport import tcp_listener as tl
-from server.transport.frame_parsers import build_frame_parser
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.transport import tcp_listener as tl
+from openavc.transport.frame_parsers import build_frame_parser
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "cam1"):
@@ -295,7 +295,7 @@ async def test_loopback_subscription_with_failed_enumeration_still_gates(monkeyp
     """A dial-back subscription for a simulator-redirected device narrows to
     loopback when this host's own addresses can't be determined — it must not
     start accepting dial-backs from anywhere on the segment."""
-    import server.discovery.network_scanner as ns
+    import openavc.discovery.network_scanner as ns
 
     def _boom():
         raise RuntimeError("interface enumeration unavailable")
@@ -584,7 +584,7 @@ def _sim_def() -> dict:
 
 
 def test_sim_resolves_tcp_listener_push_block():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
     assert sim._push_tcp is not None
@@ -599,7 +599,7 @@ def test_sim_resolves_tcp_listener_push_block():
 
 
 def test_sim_tracks_subscribers_from_registration_commands():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
     # Registration with no explicit handler still succeeds (empty ack).
@@ -617,7 +617,7 @@ def test_sim_tracks_subscribers_from_registration_commands():
 
 
 def test_sim_wraps_payload_in_declared_struct_frame():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
     framed = sim._wrap_push_tcp_frame(b"\r\nNOTIFY POWER 0\r\n")
@@ -628,7 +628,7 @@ def test_sim_wraps_payload_in_declared_struct_frame():
 
 
 def test_sim_without_frame_declaration_sends_raw():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     d = _sim_def()
     d["push"] = {"type": "tcp_listener", "port": 0}
@@ -638,7 +638,7 @@ def test_sim_without_frame_declaration_sends_raw():
 
 @pytest.mark.asyncio
 async def test_sim_dials_registered_subscriber_on_state_change():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
     received: list[bytes] = []
@@ -662,7 +662,7 @@ async def test_sim_dials_registered_subscriber_on_state_change():
 
 @pytest.mark.asyncio
 async def test_sim_prunes_unreachable_subscriber_after_three_failures():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
     dead_port = _free_tcp_port()  # nothing listening
@@ -680,7 +680,7 @@ async def test_sim_to_platform_end_to_end():
     """Full loop: driver opens the listener, registration is observed by the
     simulator, a simulator state change dials back a framed notification,
     and the driver's response rules write the state."""
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
     port = _free_tcp_port()

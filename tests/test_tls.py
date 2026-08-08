@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from server import tls
+from openavc import tls
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +295,7 @@ def test_load_or_generate_provided_expired_warns_but_loads(tmp_path, caplog):
         TLS_CERT_FILE=str(cert_path), TLS_KEY_FILE=str(key_path)
     )
 
-    with caplog.at_level(logging.WARNING, logger="server.tls"):
+    with caplog.at_level(logging.WARNING, logger="openavc.tls"):
         c, k = tls.load_or_generate(cfg, tmp_path)
     assert c == cert_path
     assert k == key_path

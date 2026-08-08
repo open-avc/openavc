@@ -15,8 +15,8 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from server.api import auth
-from server.system_config import get_system_config
+from openavc.api import auth
+from openavc.system_config import get_system_config
 
 
 @pytest.fixture(autouse=True)
@@ -166,7 +166,7 @@ def test_code_endpoint_200_with_valid_creds():
 
 
 def _auth_api_app() -> FastAPI:
-    from server.api.routes import auth as auth_routes
+    from openavc.api.routes import auth as auth_routes
 
     app = FastAPI()
     app.include_router(auth_routes.open_router, prefix="/api")

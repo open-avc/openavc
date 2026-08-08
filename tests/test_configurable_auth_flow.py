@@ -17,9 +17,9 @@ import re
 
 import pytest
 
-from server.drivers.base import ConnectionFaultError
-from server.drivers.configurable import create_configurable_driver_class
-from server.transport.tcp import TCPTransport
+from openavc.drivers.base import ConnectionFaultError
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.transport.tcp import TCPTransport
 
 AUTH_DEFINITION = {
     "id": "acme_secure",

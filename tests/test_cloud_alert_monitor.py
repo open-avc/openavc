@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from server.cloud.alert_monitor import AlertMonitor, _compare, _extract_device_id
+from openavc.cloud.alert_monitor import AlertMonitor, _compare, _extract_device_id
 
 
 # --- Mock classes ---
@@ -302,7 +302,7 @@ def test_build_alert_removed_from_protocol():
     """A22: The dead `build_alert` builder is gone so no caller can produce
     an alert message without rule_id by accident.
     """
-    from server.cloud import protocol
+    from openavc.cloud import protocol
     assert not hasattr(protocol, "build_alert"), (
         "build_alert was removed in A22 — re-introducing it without rule_id "
         "would silently break alert→rule linking on the cloud side."
@@ -629,7 +629,7 @@ async def test_periodic_loop_survives_tick_exception(monkeypatch):
     async def instant_sleep(_seconds):
         await real_sleep(0)
 
-    monkeypatch.setattr("server.cloud.alert_monitor.asyncio.sleep", instant_sleep)
+    monkeypatch.setattr("openavc.cloud.alert_monitor.asyncio.sleep", instant_sleep)
 
     await monitor._periodic_check_loop()
 

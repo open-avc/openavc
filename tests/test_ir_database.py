@@ -10,8 +10,8 @@ they stay offline too.
 import pytest
 from fastapi import HTTPException
 
-import server.api.routes.ir_db as ir_db_routes
-from server.core.ir_database import parse_csv, parse_index, render_function
+import openavc.api.routes.ir_db as ir_db_routes
+from openavc.core.ir_database import parse_csv, parse_index, render_function
 
 
 def test_parse_index_extracts_fields_and_skips_junk():

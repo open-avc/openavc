@@ -11,8 +11,8 @@ import asyncio
 
 import pytest
 
-from server.api import _engine as engine_mod
-from server.api.routes.system import health_check
+from openavc.api import _engine as engine_mod
+from openavc.api.routes.system import health_check
 
 
 class _FakeState:

@@ -33,7 +33,7 @@ System On and System Off macros handle the full startup and shutdown sequence au
 ## Prerequisites
 
 - OpenAVC installed and running. See [Getting Started](getting-started.md) if you need to set up.
-- Start OpenAVC with `python -m server.main`.
+- Start OpenAVC with `python -m openavc.main`.
 - Open the Programmer IDE at http://localhost:8080/programmer.
 
 No real AV hardware is required. The PJLink simulator responds to power and input commands just like a real projector.

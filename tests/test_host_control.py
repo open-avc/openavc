@@ -17,11 +17,11 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from server import host_control as hc
-from server.api import auth
-from server.api.routes import host as host_routes
-from server.api.routes import system as system_routes
-from server.system_config import get_system_config
+from openavc import host_control as hc
+from openavc.api import auth
+from openavc.api.routes import host as host_routes
+from openavc.api.routes import system as system_routes
+from openavc.system_config import get_system_config
 
 
 @pytest.fixture

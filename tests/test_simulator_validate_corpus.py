@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from simulator.validate import find_drivers, validate_python_driver, validate_yaml_driver
+from openavc.simulator.validate import find_drivers, validate_python_driver, validate_yaml_driver
 from tests import gates
 
 # Same resolution as the round-trip sweep: beside this repo in the workspace,

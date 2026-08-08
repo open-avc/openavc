@@ -16,8 +16,8 @@ These tests pin the contract from
 
 from __future__ import annotations
 
-from server.discovery.result import DeviceState
-from server.discovery.tier_matcher import (
+from openavc.discovery.result import DeviceState
+from openavc.discovery.tier_matcher import (
     SignalIndex,
     SignalRule,
     TierMatcher,

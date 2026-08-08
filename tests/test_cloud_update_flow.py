@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.cloud.command_handler import CommandHandler
+from openavc.cloud.command_handler import CommandHandler
 
 
 # ===========================================================================
@@ -24,7 +24,7 @@ from server.cloud.command_handler import CommandHandler
 @pytest.mark.asyncio
 async def test_verify_hash_correct(tmp_path):
     """_verify_hash passes when checksum matches."""
-    from server.updater.manager import UpdateManager
+    from openavc.updater.manager import UpdateManager
 
     artifact = tmp_path / "test.bin"
     artifact.write_bytes(b"hello world")
@@ -39,7 +39,7 @@ async def test_verify_hash_correct(tmp_path):
 @pytest.mark.asyncio
 async def test_verify_hash_wrong(tmp_path):
     """_verify_hash raises and deletes the file on mismatch."""
-    from server.updater.manager import UpdateManager
+    from openavc.updater.manager import UpdateManager
 
     artifact = tmp_path / "test.bin"
     artifact.write_bytes(b"hello world")
@@ -54,7 +54,7 @@ async def test_verify_hash_wrong(tmp_path):
 @pytest.mark.asyncio
 async def test_verify_hash_case_insensitive(tmp_path):
     """_verify_hash is case-insensitive."""
-    from server.updater.manager import UpdateManager
+    from openavc.updater.manager import UpdateManager
 
     artifact = tmp_path / "test.bin"
     artifact.write_bytes(b"test data")
@@ -73,7 +73,7 @@ async def test_verify_hash_case_insensitive(tmp_path):
 @pytest.mark.asyncio
 async def test_apply_cloud_update_full_flow(tmp_path):
     """apply_cloud_update downloads from URL, verifies hash, and applies."""
-    from server.updater.manager import UpdateManager
+    from openavc.updater.manager import UpdateManager
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -110,11 +110,11 @@ async def test_apply_cloud_update_full_flow(tmp_path):
     mgr._download_artifact = fake_download
 
     # Mock platform checks and apply
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.manager.__version__", "0.2.0"), \
-         patch("server.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
-         patch("server.updater.backup.cleanup_old_backups"), \
-         patch("server.updater.rollback.write_pending_marker"), \
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.manager.__version__", "0.2.0"), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups"), \
+         patch("openavc.updater.rollback.write_pending_marker"), \
          patch.object(mgr, "_apply_windows"), \
          patch.object(mgr, "_restart_process"), \
          patch.object(mgr, "_save_history"):
@@ -145,7 +145,7 @@ async def test_apply_cloud_update_full_flow(tmp_path):
 @pytest.mark.asyncio
 async def test_apply_cloud_update_bad_checksum(tmp_path):
     """apply_cloud_update fails when checksum doesn't match."""
-    from server.updater.manager import UpdateManager
+    from openavc.updater.manager import UpdateManager
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -168,10 +168,10 @@ async def test_apply_cloud_update_bad_checksum(tmp_path):
 
     mgr._download_artifact = fake_download
 
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.manager.__version__", "0.2.0"), \
-         patch("server.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
-         patch("server.updater.backup.cleanup_old_backups"), \
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.manager.__version__", "0.2.0"), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups"), \
          patch.object(mgr, "_save_history"):
 
         result = await mgr.apply_cloud_update(
@@ -193,7 +193,7 @@ async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
     the fix, a missing checksum silently skipped verification and applied
     anyway.
     """
-    from server.updater.manager import UpdateManager
+    from openavc.updater.manager import UpdateManager
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -219,11 +219,11 @@ async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
 
     mgr._download_artifact = fake_download
 
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.manager.__version__", "0.2.0"), \
-         patch("server.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
-         patch("server.updater.backup.cleanup_old_backups"), \
-         patch("server.updater.rollback.write_pending_marker") as write_marker, \
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.manager.__version__", "0.2.0"), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "backup.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups"), \
+         patch("openavc.updater.rollback.write_pending_marker") as write_marker, \
          patch.object(mgr, "_apply_windows") as apply_win, \
          patch.object(mgr, "_apply_linux") as apply_linux, \
          patch.object(mgr, "_restart_process") as restart, \
@@ -253,8 +253,8 @@ async def test_apply_cloud_update_no_checksum_refuses(tmp_path):
 
 def _make_manager_for_download(tmp_path):
     """Build a bare manager wired for _download_update testing (Windows)."""
-    from server.updater.manager import UpdateManager
-    from server.updater.platform import DeploymentType
+    from openavc.updater.manager import UpdateManager
+    from openavc.updater.platform import DeploymentType
 
     mgr = UpdateManager.__new__(UpdateManager)
     mgr._data_dir = tmp_path / "data"
@@ -268,7 +268,7 @@ def _make_manager_for_download(tmp_path):
 async def test_download_update_refuses_without_checksums(tmp_path):
     """C4: _download_update refuses (and deletes the artifact) when the release
     ships no SHA256SUMS.txt — an unverifiable artifact must never be applied."""
-    from server.updater.checker import ReleaseInfo
+    from openavc.updater.checker import ReleaseInfo
 
     mgr = _make_manager_for_download(tmp_path)
     artifact_name = "OpenAVC-Setup-1.0.0.exe"
@@ -299,7 +299,7 @@ async def test_download_update_refuses_without_checksums(tmp_path):
 async def test_download_update_proceeds_with_checksums(tmp_path):
     """The fail-closed gate only blocks the absent-checksum case: a release
     that ships SHA256SUMS.txt still verifies and returns the artifact."""
-    from server.updater.checker import ReleaseInfo
+    from openavc.updater.checker import ReleaseInfo
 
     mgr = _make_manager_for_download(tmp_path)
     artifact_name = "OpenAVC-Setup-1.0.0.exe"
@@ -408,8 +408,8 @@ async def test_command_handler_uses_cloud_url():
         },
     }
 
-    with patch("server.updater.platform.can_self_update", return_value=True), \
-         patch("server.updater.platform.detect_deployment_type"):
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
+         patch("openavc.updater.platform.detect_deployment_type"):
         await handler.handle(msg)
 
     # Verify apply_cloud_update was called with the right args
@@ -452,8 +452,8 @@ async def test_command_handler_falls_back_to_github():
         },
     }
 
-    with patch("server.updater.platform.can_self_update", return_value=True), \
-         patch("server.updater.platform.detect_deployment_type"):
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
+         patch("openavc.updater.platform.detect_deployment_type"):
         await handler.handle(msg)
 
     # apply_cloud_update should NOT have been called
@@ -483,8 +483,8 @@ async def test_command_handler_no_url_no_update_available():
         },
     }
 
-    with patch("server.updater.platform.can_self_update", return_value=True), \
-         patch("server.updater.platform.detect_deployment_type"):
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
+         patch("openavc.updater.platform.detect_deployment_type"):
         await handler.handle(msg)
 
     assert len(agent.sent) == 1
@@ -515,8 +515,8 @@ async def test_command_handler_auto_restart_false():
         },
     }
 
-    with patch("server.updater.platform.can_self_update", return_value=True), \
-         patch("server.updater.platform.detect_deployment_type"):
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
+         patch("openavc.updater.platform.detect_deployment_type"):
         await handler.handle(msg)
 
     # Should NOT have called apply at all — the cloud-provided URL is staged
@@ -566,8 +566,8 @@ async def test_end_to_end_cloud_update_message():
 
     handler = CommandHandler(agent, devices, events, update_manager=update_manager)
 
-    with patch("server.updater.platform.can_self_update", return_value=True), \
-         patch("server.updater.platform.detect_deployment_type"):
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
+         patch("openavc.updater.platform.detect_deployment_type"):
         await handler.handle(msg)
 
     # Step 3: Verify the agent read ALL fields the cloud sent

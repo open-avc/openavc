@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from server.drivers.spec import CATEGORIES
+from openavc.drivers.spec import CATEGORIES
 
 # Repo root = openavc/ (this file is openavc/tests/test_driver_builder_categories.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]

@@ -11,13 +11,13 @@ Schema reference: ``OpenAVC-Discovery-Spec.md`` §2 (workspace root).
 
 import pytest
 
-from server.discovery.hints import (
+from openavc.discovery.hints import (
     DiscoveryHintError,
     build_signal_index,
     load_discovery_hints,
     parse_driver_discovery,
 )
-from server.discovery.tier_matcher import (
+from openavc.discovery.tier_matcher import (
     KIND_ACTIVE_PROBE,
     KIND_AMX_DDP,
     KIND_BROADCAST,
@@ -586,7 +586,7 @@ class TestRequiresGate:
 
     def test_requires_at_platform_version_parses(self, monkeypatch):
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.23.0",
+            "openavc.discovery.hints._platform_version", lambda: "0.23.0",
         )
         h = parse_driver_discovery(_drv(
             "widget", requires="0.23.0", ssdp={
@@ -598,7 +598,7 @@ class TestRequiresGate:
 
     def test_requires_older_than_platform_parses(self, monkeypatch):
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.24.1",
+            "openavc.discovery.hints._platform_version", lambda: "0.24.1",
         )
         h = parse_driver_discovery(_drv("widget", requires="0.23.0", oui=["00:0a:45"]))
         assert h is not None
@@ -607,7 +607,7 @@ class TestRequiresGate:
     def test_requires_newer_than_platform_skips_cleanly(self, monkeypatch, caplog):
         import logging
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.22.0",
+            "openavc.discovery.hints._platform_version", lambda: "0.22.0",
         )
         with caplog.at_level(logging.INFO, logger="discovery.hints"):
             h = parse_driver_discovery(_drv(
@@ -622,7 +622,7 @@ class TestRequiresGate:
         # A future catalog gates a feature this platform doesn't know.
         # The gate must win: skip cleanly, not raise about the unknown key.
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.23.0",
+            "openavc.discovery.hints._platform_version", lambda: "0.23.0",
         )
         h = parse_driver_discovery(_drv(
             "widget", requires="0.99.0", future_fingerprint={"port": 1},
@@ -633,7 +633,7 @@ class TestRequiresGate:
         # The per-driver skip is the whole point: one gated driver must
         # not take the other drivers' hints down with it.
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.22.0",
+            "openavc.discovery.hints._platform_version", lambda: "0.22.0",
         )
         registry = [
             _drv("gated", requires="0.23.0", ssdp={
@@ -648,7 +648,7 @@ class TestRequiresGate:
 
     def test_unparseable_requires_skips_conservatively(self, monkeypatch):
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.23.0",
+            "openavc.discovery.hints._platform_version", lambda: "0.23.0",
         )
         assert parse_driver_discovery(_drv("widget", requires="latest")) is None
 
@@ -658,7 +658,7 @@ class TestRequiresGate:
 
     def test_two_part_requires_compares_correctly(self, monkeypatch):
         monkeypatch.setattr(
-            "server.discovery.hints._platform_version", lambda: "0.23.0",
+            "openavc.discovery.hints._platform_version", lambda: "0.23.0",
         )
         h = parse_driver_discovery(_drv("widget", requires="0.23", oui=["00:0a:45"]))
         assert h is not None

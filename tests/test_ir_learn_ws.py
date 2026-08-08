@@ -14,9 +14,9 @@ import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-import server.api._engine as engine_mod
-from server.api import ir_learn_ws
-from server.api.routes import devices as devices_routes
+import openavc.api._engine as engine_mod
+from openavc.api import ir_learn_ws
+from openavc.api.routes import devices as devices_routes
 
 
 class _FakeLearningBridge:

@@ -21,18 +21,18 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from server.api import rest, ws
-from server.cloud.ai_tool_handler import AIToolHandler
-from server.drivers.registry import register_driver, unregister_driver
-from server.core.engine import Engine
-from server.core.project_loader import (
+from openavc.api import rest, ws
+from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.core.engine import Engine
+from openavc.core.project_loader import (
     DeviceConfig,
     ProjectConfig,
     ProjectMeta,
     load_project,
     save_project,
 )
-from server.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver
 
 _GITHUB_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/acme.avcdriver"
 
@@ -119,7 +119,7 @@ async def test_install_rejects_id_divergence(tmp_path, monkeypatch) -> None:
     id is rejected and the file is removed (not registered under a mismatched
     key that edit/delete can't later find)."""
     repo = tmp_path / "driver_repo"
-    monkeypatch.setattr("server.system_config.DRIVER_REPO_DIR", repo)
+    monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
 
     yaml_text = "id: real_acme\nname: Real Acme\ntransport: tcp\n"
 
@@ -168,10 +168,10 @@ async def test_ai_install_completes_via_rest_path(tmp_path, monkeypatch) -> None
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     # The REST handler reads its repo dir + engine wiring, so target those.
-    monkeypatch.setattr("server.api.routes.drivers._get_driver_repo_dir", lambda: repo)
-    monkeypatch.setattr("server.api.routes.drivers.register_driver", lambda cls: None)
+    monkeypatch.setattr("openavc.api.routes.drivers._get_driver_repo_dir", lambda: repo)
+    monkeypatch.setattr("openavc.api.routes.drivers.register_driver", lambda cls: None)
     monkeypatch.setattr(
-        "server.api.discovery.refresh_all_device_matches",
+        "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),
         raising=False,
     )
@@ -237,8 +237,8 @@ async def test_update_driver_definition_rejects_builtin(tmp_path, monkeypatch) -
     repo = tmp_path / "driver_repo"
     builtin.mkdir()
     repo.mkdir()
-    monkeypatch.setattr("server.system_config.DRIVER_DEFINITIONS_DIR", builtin)
-    monkeypatch.setattr("server.system_config.DRIVER_REPO_DIR", repo)
+    monkeypatch.setattr("openavc.system_config.DRIVER_DEFINITIONS_DIR", builtin)
+    monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
 
     builtin_file = builtin / "ship_acme.avcdriver"
     builtin_file.write_text("id: ship_acme\nname: Ship Acme\ntransport: tcp\n", encoding="utf-8")

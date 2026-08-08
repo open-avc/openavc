@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.state_store import StateStore
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.state_store import StateStore
 
 
 @pytest.fixture

@@ -223,8 +223,8 @@ def client():
     """TestClient with the same mock engine the REST endpoint tests use."""
     from fastapi.testclient import TestClient
 
-    from server.api import rest, ws
-    from server.main import app
+    from openavc.api import rest, ws
+    from openavc.main import app
     from tests.test_api_endpoints import _make_mock_engine
 
     engine = _make_mock_engine()

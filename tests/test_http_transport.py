@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from server.transport.http_client import HTTPClientTransport, HTTPResponse
+from openavc.transport.http_client import HTTPClientTransport, HTTPResponse
 
 
 # --- Helper: mock HTTP handler ---
@@ -439,9 +439,9 @@ async def test_open_idempotent():
 
 async def test_configurable_http_send_command():
     """ConfigurableDriver sends HTTP commands using method/path/body fields."""
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
-    from server.drivers.configurable import create_configurable_driver_class
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.configurable import create_configurable_driver_class
 
     definition = {
         "id": "test_http_device",
@@ -527,7 +527,7 @@ async def test_configurable_http_send_command():
 
 async def test_configurable_http_command_metadata():
     """HTTP command fields appear in DRIVER_INFO commands metadata."""
-    from server.drivers.configurable import create_configurable_driver_class
+    from openavc.drivers.configurable import create_configurable_driver_class
 
     definition = {
         "id": "test_meta",
@@ -557,7 +557,7 @@ async def test_configurable_http_command_metadata():
 def test_base_driver_connect_builds_http_url():
     """Verify that base.py builds the correct base_url for HTTP transport."""
     # Just verify the logic by checking the import works
-    from server.transport.http_client import HTTPClientTransport
+    from openavc.transport.http_client import HTTPClientTransport
     t = HTTPClientTransport(base_url="https://10.0.0.5:443")
     assert t.base_url == "https://10.0.0.5:443"
     assert t.verify_ssl is True
@@ -565,7 +565,7 @@ def test_base_driver_connect_builds_http_url():
 
 def test_base_driver_connect_ssl_disabled():
     """Verify SSL can be disabled."""
-    from server.transport.http_client import HTTPClientTransport
+    from openavc.transport.http_client import HTTPClientTransport
     t = HTTPClientTransport(
         base_url="https://10.0.0.5:443",
         verify_ssl=False,
@@ -577,7 +577,7 @@ def test_base_driver_connect_ssl_disabled():
 
 def test_driver_loader_accepts_http():
     """Driver loader validation accepts 'http' transport."""
-    from server.drivers.driver_loader import validate_driver_definition
+    from openavc.drivers.driver_loader import validate_driver_definition
     errors = validate_driver_definition({
         "id": "test_http",
         "name": "Test HTTP",
@@ -589,7 +589,7 @@ def test_driver_loader_accepts_http():
 
 def test_driver_loader_rejects_invalid():
     """Driver loader validation rejects unknown transport."""
-    from server.drivers.driver_loader import validate_driver_definition
+    from openavc.drivers.driver_loader import validate_driver_definition
     errors = validate_driver_definition({
         "id": "test_bad",
         "name": "Test Bad",

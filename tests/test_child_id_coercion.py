@@ -12,10 +12,10 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from server.api.routes.devices import _coerce_local_id
-from server.core.device_manager import DeviceManager
-from server.drivers.base import CommandParamError
-from server.drivers.child_ids import child_id_kind, coerce_child_local_id
+from openavc.api.routes.devices import _coerce_local_id
+from openavc.core.device_manager import DeviceManager
+from openavc.drivers.base import CommandParamError
+from openavc.drivers.child_ids import child_id_kind, coerce_child_local_id
 
 INT_TYPE = {"id_format": {"type": "integer"}}
 STR_TYPE = {"id_format": {"type": "string"}}

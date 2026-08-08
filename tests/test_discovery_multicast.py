@@ -14,15 +14,15 @@ import socket
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from server.discovery import amx_ddp_scanner, mdns_advertiser, mdns_scanner
-from server.discovery.mdns_advertiser import MDNSAdvertiser
-from server.discovery.mdns_scanner import MDNSScanner
-from server.discovery.multicast import (
+from openavc.discovery import amx_ddp_scanner, mdns_advertiser, mdns_scanner
+from openavc.discovery.mdns_advertiser import MDNSAdvertiser
+from openavc.discovery.mdns_scanner import MDNSScanner
+from openavc.discovery.multicast import (
     ANY_INTERFACE,
     join_group_on_interfaces,
     send_per_interface,
 )
-from server.discovery.ssdp_scanner import SEARCH_TARGETS, SSDPScanner
+from openavc.discovery.ssdp_scanner import SEARCH_TARGETS, SSDPScanner
 
 GROUP = "224.0.0.251"
 

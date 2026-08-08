@@ -15,7 +15,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from server.api.rest import router, set_engine
+from openavc.api.rest import router, set_engine
 
 
 def _old_format_body() -> dict:
@@ -106,8 +106,8 @@ class TestOpenFromLibraryDoor:
     def test_open_writes_already_migrated_file(self, tmp_path):
         """The active file must land migrated at write time — not rely on the
         follow-up disk reload to heal the stored format."""
-        import server.core.project_library as plib
-        from server.core.project_library import open_from_library
+        import openavc.core.project_library as plib
+        from openavc.core.project_library import open_from_library
 
         lib_dir = tmp_path / "saved_projects"
         lib_dir.mkdir()
@@ -131,7 +131,7 @@ class TestOpenFromLibraryDoor:
         """A stored project that fails validation even after migration must
         surface as a friendly 422, not a raw 500 (the route used to catch
         only FileNotFoundError)."""
-        import server.core.project_library as plib
+        import openavc.core.project_library as plib
 
         lib_dir = tmp_path / "saved_projects"
         lib_dir.mkdir()

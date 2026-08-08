@@ -14,12 +14,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.core.engine import Engine
-from server.core.project_loader import load_project
-from server.main import app
-from server.api import rest
-from server.api.routes import root as root_mod
-from server.updater.platform import DeploymentType
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
+from openavc.main import app
+from openavc.api import rest
+from openavc.api.routes import root as root_mod
+from openavc.updater.platform import DeploymentType
 
 
 EMPTY_PROJECT = {

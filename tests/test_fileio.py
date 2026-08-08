@@ -2,7 +2,7 @@
 
 import pytest
 
-from server.utils.fileio import atomic_write_text
+from openavc.utils.fileio import atomic_write_text
 
 
 def test_writes_new_file(tmp_path):
@@ -28,10 +28,10 @@ def test_failed_write_leaves_original_and_no_temp(tmp_path, monkeypatch):
     def boom(src, dst):
         raise OSError("disk full")
 
-    monkeypatch.setattr("server.utils.fileio.os.replace", boom)
+    monkeypatch.setattr("openavc.utils.fileio.os.replace", boom)
     with pytest.raises(OSError):
         atomic_write_text(target, "# new")
-    monkeypatch.setattr("server.utils.fileio.os.replace", real_replace)
+    monkeypatch.setattr("openavc.utils.fileio.os.replace", real_replace)
 
     # Original intact, no stray temp files.
     assert target.read_text(encoding="utf-8") == "# old"

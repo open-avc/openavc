@@ -19,9 +19,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.api import rest
-from server.cloud.ai_tool_handler import AIToolHandler
-from server.core.project_loader import ProjectConfig, ProjectMeta, ScriptConfig
+from openavc.api import rest
+from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.project_loader import ProjectConfig, ProjectMeta, ScriptConfig
 
 
 def _make_handler(tmp_path, scripts=None):

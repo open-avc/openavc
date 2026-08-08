@@ -1,0 +1,2858 @@
+"""
+YAMLAutoSimulator — auto-generates a working simulator from .avcdriver files.
+
+Reverses the driver's command/response definitions to create a simulator
+that handles incoming commands, updates state, and generates responses.
+
+Works at two levels:
+  Level 0: Pure auto-gen from commands + responses + state_variables
+  Level 1: Enhanced with explicit simulator: section (merged on top)
+
+Supports TCP (default), UDP, OSC, and HTTP transports. Each runs on the same
+server the Python simulator bases run on — the TCP one by inheritance, the
+other three through the mixins those bases are built from — so a YAML driver
+and a Python driver of the same transport are simulated by the same code.
+UDP/OSC drivers get a datagram server instead of a TCP stream server. HTTP
+drivers get an aiohttp web server; incoming requests are synthesized to a text
+command line ("METHOD /path?query") and dispatched through the same handler
+machinery as TCP.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import ipaddress
+import logging
+import math
+import re
+import socket
+from pathlib import Path
+from typing import Any
+from urllib.parse import unquote
+
+import yaml
+
+from openavc.drivers.compiled_protocol import (
+    apply_send_frame,
+    build_send_frame,
+    decode_delimiter,
+    emit_literal,
+    emit_template,
+    emit_template_multi,
+    infer_state_var,
+    safe_substitute,
+    send_param_groups,
+    send_param_specs,
+    send_regex,
+    spec_int_base,
+    split_send_frames,
+    state_var_default,
+)
+from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.inline_protocol import (
+    derive_state_vars_from_responses,
+    normalize_config_commands,
+    normalize_config_responses,
+    normalize_config_state_vars,
+)
+from openavc.transport.binary_helpers import encode_escape_sequences
+from openavc.simulator.http_simulator import HTTPServerMixin
+from openavc.simulator.osc_simulator import OSCDispatchMixin
+from openavc.simulator.tcp_simulator import TCPSimulator
+
+logger = logging.getLogger(__name__)
+
+
+# Names exposed to inline `handler:` scripts (both TCP and OSC). This is the
+# documented contract (writing-simulators.md "Script Handlers"): the same set
+# for every transport. The exec sandbox empties __builtins__, so exception
+# types must be injected explicitly — otherwise a handler's `try/except
+# ValueError` raises NameError and the intended error branch is silently lost.
+_SAFE_HANDLER_BUILTINS: dict[str, Any] = {
+    "int": int, "float": float, "str": str, "bool": bool,
+    "max": max, "min": min, "round": round, "abs": abs, "len": len,
+    "re": re, "format": format, "range": range, "list": list,
+    "dict": dict, "set": set, "tuple": tuple, "sorted": sorted,
+    "enumerate": enumerate,
+    "True": True, "False": False, "None": None,
+    # Common exception types — make try/except branches work under the
+    # emptied __builtins__ sandbox.
+    "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
+    "KeyError": KeyError, "IndexError": IndexError,
+    "AttributeError": AttributeError, "ZeroDivisionError": ZeroDivisionError,
+    "RuntimeError": RuntimeError, "StopIteration": StopIteration,
+}
+
+
+def _as_number(value: Any) -> float | None:
+    """Return value as a float, or None if it isn't numeric.
+
+    Used for min/max bounds, which the schema types as numbers but a malformed
+    driver could author as a non-numeric scalar. Returning None lets the caller
+    skip clamping rather than crash on `value < min` (TypeError) or int('abc').
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _encode_line_ending(value: str | bytes) -> bytes:
+    """Encode an auth line_ending the way the driver does.
+
+    A YAML double-quoted "\\r\\n" arrives as the real control characters,
+    but a single-quoted '\\r\\n' arrives as literal backslash text — the
+    driver runs it through encode_escape_sequences, so use the same
+    decoder for byte-exact parity.
+    """
+    if isinstance(value, bytes):
+        return value
+    return encode_escape_sequences(value)
+
+
+def _mappings_to_set(mappings: list[dict]) -> dict[str, Any]:
+    """Convert canonical response mappings to the simulator's ``set`` shorthand.
+
+    ``_build_state_responses`` understands ``match`` + ``set`` (state → a
+    literal value or a ``$N`` capture), so an inline response (which normalizes
+    to ``match`` + ``mappings``) is remapped here: a fixed ``value`` becomes the
+    literal, a ``group`` becomes ``$<n>``.
+    """
+    out: dict[str, Any] = {}
+    for m in mappings:
+        if not isinstance(m, dict):
+            continue
+        state = m.get("state")
+        if not state:
+            continue
+        out[str(state)] = m["value"] if "value" in m else f"${m.get('group', 1)}"
+    return out
+
+
+def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, bool]:
+    """Merge a Generic device's inline protocol (config-authored commands /
+    responses / state_variables) into the definition the auto-simulator builds
+    from. Returns ``(merged_def, had_inline)``.
+
+    Responses are translated to the simulator's ``match`` + ``set`` shorthand so
+    the existing auto-sim machinery (state responses, query handlers) drives
+    them. Commands keep their ``send`` templates with NO line ending appended —
+    the simulator matches the incoming command line after the delimiter is
+    stripped.
+    """
+    cfg = config or {}
+    norm_cmds = normalize_config_commands(cfg.get("commands"))  # no line-ending
+    canonical = normalize_config_responses(cfg.get("responses"))
+    norm_vars = normalize_config_state_vars(cfg.get("state_variables"))
+
+    if not (norm_cmds or canonical or norm_vars):
+        return driver_def, False
+
+    merged = dict(driver_def)
+    merged["commands"] = {**(driver_def.get("commands") or {}), **norm_cmds}
+    sim_responses = [
+        {"match": r["match"], "set": _mappings_to_set(r.get("mappings", []))}
+        for r in canonical
+    ]
+    merged["responses"] = list(driver_def.get("responses") or []) + sim_responses
+    derived = derive_state_vars_from_responses(canonical)
+    merged["state_variables"] = {
+        **(driver_def.get("state_variables") or {}), **derived, **norm_vars,
+    }
+    if isinstance(cfg.get("delimiter"), str):
+        merged["delimiter"] = cfg["delimiter"]
+    return merged, True
+
+
+class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
+    """Auto-generated simulator from a .avcdriver definition.
+
+    The driver's ``transport:`` field decides which server start() runs, and
+    every one of them is the server the matching Python simulator base runs:
+    TCPSimulator by inheritance, and the UDP / OSC / HTTP servers through the
+    same mixins ``UDPSimulator``, ``OSCSimulator`` and ``HTTPSimulator`` are
+    built from. What stays here is the part that is actually this class's job —
+    turning a driver definition into handlers — plus the two places a
+    generated simulator answers differently from a hand-written one: HTTP
+    requests become synthesized command lines (respond_http), and OSC messages
+    resolve through the driver's response address map (handle_message).
+    """
+
+    # Set dynamically per instance (not class-level)
+    SIMULATOR_INFO: dict = {}
+
+    def __init__(
+        self,
+        device_id: str,
+        config: dict | None = None,
+        *,
+        driver_def: dict,
+    ):
+        # Inline protocol: a Generic device authors its commands / responses /
+        # state_variables in the device config (the no-code Commands & Responses
+        # editor). Merge them into the definition the simulator builds from so
+        # the auto-sim machinery drives a config-authored protocol.
+        driver_def, self._inline_protocol = _merge_inline_protocol(driver_def, config)
+
+        # Build SIMULATOR_INFO from driver definition before calling super().__init__
+        self.SIMULATOR_INFO = self._build_info(driver_def)
+        super().__init__(device_id, config)
+
+        # YAML drivers are text-based — always use flexible line reading
+        # so the simulator accepts \r, \n, or \r\n regardless of the
+        # response delimiter configured in the driver definition.
+        self._line_mode = True
+
+        # Send-side packet framing (send_frame): a driver whose commands ride
+        # inside a computed-length binary header (e.g. eISCP) sends frames the
+        # line reader would mis-split (the length byte can be 0x0a/0x0d). When
+        # present, read length-prefixed frames instead and strip the header
+        # before matching / re-wrap it on every response, so a simulated device
+        # answers the framed commands exactly as real hardware does.
+        self._send_frame = self._build_sim_send_frame(driver_def.get("send_frame"))
+        if self._send_frame:
+            self._line_mode = False
+
+        self._driver_def = driver_def
+
+        # UDP/OSC/HTTP transport support — start()/stop() run the datagram or
+        # HTTP server from the mixins instead of the inherited TCP one.
+        transport = driver_def.get("transport", "tcp")
+        self._is_udp = transport == "udp"
+        self._is_osc = transport == "osc"
+        self._is_http = transport == "http"
+
+        # HTTPS-only devices: the driver dials https:// when its config says
+        # ssl, so the simulator terminates TLS and the driver connects here
+        # exactly as it connects in the field (see self_signed_tls.py). The
+        # platform reads this back out of to_info_dict() and leaves such a
+        # device's ssl setting alone while it is redirected.
+        if self._is_http and self._resolve_ssl(driver_def, config):
+            self.SIMULATOR_INFO["tls"] = True
+
+        # Build handlers from driver definition
+        self._command_handlers: list[CommandHandler] = []
+        self._query_handlers: list[QueryHandler] = []
+        self._state_responses: dict[str, StateResponse] = {}
+
+        self._build_state_responses()
+        self._build_command_handlers()
+        self._build_query_handlers()
+
+        # Inline (Generic) devices: also match an incoming command against the
+        # response patterns and apply their state changes. Many such devices use
+        # the same string to set and to report a value (e.g. "PWR ON"), so the
+        # string the panel sends is also the device's status string.
+        self._inline_response_handlers: list[tuple[re.Pattern, dict]] = []
+        if self._inline_protocol:
+            self._build_inline_response_handlers()
+
+        # OSC-specific: build address-based handlers from responses
+        self._osc_address_handlers: list[tuple[str, list[dict]]] = []
+        self._osc_script_handlers: list[OSCScriptHandler] = []
+        # Push notification tracking: prevent echo during command processing
+        self._handling_command = False
+        self._handling_osc = False
+        # OSC push: build the reverse state→address map (the client to push to
+        # is the datagram server's _last_client_addr)
+        self._osc_state_to_address: dict[str, tuple[str, int, str, dict[str, str] | None]] = {}
+        if self._is_osc:
+            self._build_osc_address_handlers()
+            self._build_osc_state_reverse_map()
+
+        # Merge explicit simulator: section if present
+        sim_section = driver_def.get("simulator", {})
+        if sim_section:
+            self._merge_simulator_section(sim_section)
+
+        # v0.5.0 child entities: per-child state lives in the flat state dict
+        # under dotted keys "<type>.<id>.<prop>" (the sim-side mirror of the
+        # runtime's device.<id>.<type>.<id>.<prop> convention). The roster
+        # unions three sources: declared instances: blocks resolved against
+        # this instance's config, dotted keys seeded by the simulator:
+        # section, and the project child_entities the manager delivers via
+        # set_child_entities() after construction.
+        self._child_roster: dict[str, list[str]] = {}
+        self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = {}
+        self._child_query_handlers: list[ChildQueryHandler] = []
+        self._build_child_state_responses()
+        self._seed_declared_children()
+        self._adopt_dotted_state_children()
+        self._build_child_query_handlers()
+
+        # push_state: whether this simulator pushes state changes to connected
+        # drivers (matching real device behavior). Set in simulator: section.
+        # Inline (Generic) devices push by default so driving a variable from
+        # the simulator UI emits the matching string to the panel.
+        self._push_state = sim_section.get("push_state", False) or self._inline_protocol
+
+        # Multicast push emission: when the driver declares
+        # `push: {type: multicast}`, notification templates (the simulator
+        # `notifications:` map) are emitted to the resolved group:port as UDP
+        # multicast — and NOT to connected control clients, matching real
+        # devices whose notice channel is multicast-only. Sender socket is
+        # opened in start() / closed in stop().
+        self._push_multicast = self._resolve_push_multicast(driver_def, config)
+        self._mcast_sock: socket.socket | None = None
+
+        # SSE push emission: when an HTTP driver declares `push: {type: sse}`,
+        # a GET on one of its declared paths with Accept: text/event-stream is
+        # held open and the `notifications:` templates are delivered there as
+        # SSE events (data: <msg>\n\n) — the HTTP analogue of the multicast
+        # channel above. `sse_paths` is the HTTP server's own name for the
+        # paths it holds open, so the resolved list goes straight into it.
+        self.sse_paths = self._resolve_push_sse(driver_def, config)
+
+        # Dial-out push emission: when the driver declares
+        # `push: {type: tcp_listener}`, the simulator watches for the
+        # driver's register/unregister commands (recognized by their
+        # {listener_port} templates), tracks the registered subscribers, and
+        # on each notification dials out a TCP connection per subscriber and
+        # sends the `notifications:` template wrapped in the declared frame
+        # container — matching real devices that push one framed notification
+        # per outbound connection.
+        self._push_tcp = self._resolve_push_tcp_listener(driver_def)
+        # (host, port) -> consecutive delivery failures. Real devices prune
+        # subscribers they can't reach; the simulator drops one after 3
+        # straight failures so a departed platform doesn't get dialed forever.
+        self._push_tcp_subscribers: dict[tuple[str, int], int] = {}
+        self._push_tcp_tasks: set[asyncio.Task] = set()
+        # HTTP-callback push emission: when the driver declares
+        # `push: {type: http_listener}`, script handlers record the callback
+        # URL the (simulated) controller registers — via register_callback()
+        # in the handler namespace — and the `notifications:` templates are
+        # POSTed to every registered URL, exactly like a real device's
+        # webhook delivery.
+        push = driver_def.get("push")
+        self._push_http = (
+            isinstance(push, dict) and push.get("type") == "http_listener"
+        )
+        self._http_push_callbacks: list[str] = []
+
+        logger.info(
+            "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
+            self.driver_id,
+            len(self._command_handlers),
+            len(self._query_handlers),
+            len(self._state_responses),
+        )
+
+    @classmethod
+    def from_avcdriver(
+        cls,
+        path: Path,
+        device_id: str,
+        config: dict | None = None,
+    ) -> YAMLAutoSimulator:
+        """Create a simulator from an .avcdriver file path."""
+        with open(path, encoding="utf-8") as f:
+            driver_def = yaml.safe_load(f)
+        return cls(device_id=device_id, config=config, driver_def=driver_def)
+
+    async def authenticate_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        client_id: str,
+    ) -> bool:
+        """Mirror the driver-side login handshake declared in `auth:`.
+
+        For round-trip testing: send the prompts in order, read the
+        credential lines, then send the success_pattern (if defined) and
+        admit the client. Credentials aren't validated against a store —
+        with one exception: a username or password of ``"invalid"`` is the
+        designated bad credential, and makes the simulator play out the
+        failure path (emit ``failure_pattern`` when declared, otherwise
+        re-prompt for the username the way a real telnet daemon does) so
+        drivers' auth-rejection handling can be exercised end-to-end.
+
+        The handshake is also skipped when the *driver* would skip it:
+        with ``skip_if_empty`` (default true) and a blank/absent username
+        in this device's config, the driver never authenticates — if the
+        simulator prompted anyway it would eat the first two real commands
+        as credentials.
+        """
+        auth_def = self._driver_def.get("auth")
+        if not isinstance(auth_def, dict):
+            return True
+        if auth_def.get("type", "telnet_login") != "telnet_login":
+            return True
+
+        username_field = auth_def.get("username_field", "username")
+        configured_user = str(self.config.get(username_field, "") or "")
+        if auth_def.get("skip_if_empty", True) and not configured_user:
+            return True
+
+        username_prompt = auth_def.get("username_prompt", "")
+        password_prompt = auth_def.get("password_prompt", "")
+        success_pattern = auth_def.get("success_pattern")
+        failure_pattern = auth_def.get("failure_pattern")
+        line_ending = auth_def.get("line_ending", "\r\n")
+        timeout = float(auth_def.get("timeout_seconds", 10))
+
+        # Strip regex anchors / escapes for emission — what the driver
+        # sees on the wire is the literal string the device would print.
+        # The driver matches it with regex so we just send a sensible
+        # rendering. For typical prompts ("login: ", "Password: ") the
+        # YAML carries the literal text and no regex metachars.
+        prompt_user = self._render_prompt_literal(username_prompt)
+        prompt_pass = self._render_prompt_literal(password_prompt)
+        success_text = self._render_prompt_literal(success_pattern) if success_pattern else None
+        failure_text = self._render_prompt_literal(failure_pattern) if failure_pattern else None
+
+        ending = _encode_line_ending(line_ending)
+
+        async def read_credential() -> str:
+            # The driver terminates each credential with the declared
+            # line_ending. readline() only returns on "\n", so for an
+            # ending like "\r" it would hang until the timeout — read
+            # up to the actual terminator instead.
+            if ending.endswith(b"\n"):
+                raw = await asyncio.wait_for(reader.readline(), timeout=timeout)
+            else:
+                try:
+                    raw = await asyncio.wait_for(
+                        reader.readuntil(ending), timeout=timeout
+                    )
+                except asyncio.IncompleteReadError as e:
+                    raw = e.partial
+                except asyncio.LimitOverrunError:
+                    raw = b""
+            return raw.decode("utf-8", errors="replace").strip("\r\n")
+
+        async def emit(data: bytes) -> None:
+            writer.write(data)
+            await writer.drain()
+            self.log_protocol("out", data, client_id)
+
+        try:
+            # Send username prompt, read the username line.
+            await emit(prompt_user.encode("utf-8"))
+            username = await read_credential()
+
+            # Send password prompt, read the password line.
+            await emit(prompt_pass.encode("utf-8"))
+            password = await read_credential()
+
+            if username == "invalid" or password == "invalid":
+                if failure_text:
+                    await emit(failure_text.encode("utf-8") + ending)
+                else:
+                    # No declared failure banner: re-prompt for the
+                    # username like a real telnet daemon. The driver
+                    # treats a missing success banner / post-password
+                    # re-prompt as a rejected login.
+                    await emit(ending + prompt_user.encode("utf-8"))
+                logger.info(
+                    "%s: client %s sent the designated bad credential — "
+                    "rejecting login",
+                    self.name,
+                    client_id,
+                )
+                return False
+
+            # Send success indicator if declared.
+            if success_text:
+                await emit(success_text.encode("utf-8") + ending)
+
+            return True
+        except asyncio.TimeoutError:
+            logger.warning("%s: client %s auth timed out", self.name, client_id)
+            return False
+        except (ConnectionError, OSError):
+            return False
+
+    @staticmethod
+    def _render_prompt_literal(pattern: str) -> str:
+        """Best-effort regex→literal: strip common regex metacharacters.
+
+        For YAML auth prompts we expect literal text in 95% of cases
+        ("login: ", "Password: "). If a driver author writes a fancy
+        regex, the simulator will still emit something readable; the
+        exact wire format isn't important since we accept any input.
+        """
+        if pattern is None:
+            return ""
+        # Strip regex anchors and escapes.
+        out = pattern
+        out = re.sub(r"\\[brnt]", " ", out)
+        out = re.sub(r"^\^", "", out)
+        out = re.sub(r"\$$", "", out)
+        out = out.replace("\\", "")
+        return out
+
+    # ── Transport resolution ──
+
+    @staticmethod
+    def _resolve_ssl(driver_def: dict, config: dict | None) -> bool:
+        """True when this device's HTTP connection is https.
+
+        Same layering the platform resolves the device's config with — the
+        instance's own setting wins over the driver's default — so the
+        simulator serves the scheme the driver is about to dial.
+        """
+        defaults = driver_def.get("default_config") or {}
+        cfg = config or {}
+        return bool(cfg.get("ssl", defaults.get("ssl", False)))
+
+    @staticmethod
+    def _resolve_push_multicast(
+        driver_def: dict, config: dict | None
+    ) -> tuple[str, int] | None:
+        """Resolve the driver's `push: {type: multicast}` block to a concrete
+        (group, port) emission target, or None. `{config_field}` templates
+        resolve against default_config overlaid with the instance config —
+        the same fields the real driver resolves them from."""
+        push = driver_def.get("push")
+        if not isinstance(push, dict) or push.get("type") != "multicast":
+            return None
+        merged = dict(driver_def.get("default_config") or {})
+        merged.update(config or {})
+
+        def resolve(value: Any) -> Any:
+            if isinstance(value, str) and "{" in value:
+                return safe_substitute(value, merged)
+            return value
+
+        group = str(resolve(push.get("group", "")) or "").strip()
+        try:
+            port = int(str(resolve(push.get("port"))).strip())
+        except (TypeError, ValueError):
+            port = 0
+        try:
+            is_mcast = ipaddress.IPv4Address(group).is_multicast
+        except (ipaddress.AddressValueError, ValueError):
+            is_mcast = False
+        if not is_mcast or not (0 < port < 65536):
+            logger.warning(
+                "push block did not resolve to a multicast group/port "
+                "(group=%r port=%r) — simulator will not emit notifications",
+                group, push.get("port"),
+            )
+            return None
+        return (group, port)
+
+    @staticmethod
+    def _resolve_push_sse(driver_def: dict, config: dict | None) -> list[str]:
+        """Resolve the driver's `push: {type: sse}` block to the list of
+        event-stream paths the simulator should serve. `{config_field}`
+        templates resolve against default_config overlaid with the instance
+        config — the same fields the real driver resolves them from."""
+        push = driver_def.get("push")
+        if not isinstance(push, dict) or push.get("type") != "sse":
+            return []
+        merged = dict(driver_def.get("default_config") or {})
+        merged.update(config or {})
+
+        def resolve(value: Any) -> str:
+            if isinstance(value, str) and "{" in value:
+                return safe_substitute(value, merged)
+            return str(value)
+
+        raw = push.get("path")
+        raw_paths = [raw] if isinstance(raw, str) else list(raw or [])
+        paths = [resolve(p).strip() for p in raw_paths]
+        good = [p for p in paths if p.startswith("/")]
+        if not good:
+            logger.warning(
+                "push block did not resolve to event-stream path(s) "
+                "(path=%r) — simulator will not emit notifications",
+                push.get("path"),
+            )
+        return good
+
+    def _resolve_push_tcp_listener(self, driver_def: dict) -> dict | None:
+        """Resolve a `push: {type: tcp_listener}` block for dial-out emission.
+
+        Returns ``{"frame": <frame_parser cfg or None>, "register": <compiled
+        regex or None>, "unregister": ...}``. The register/unregister matchers
+        are built from the named commands' own path/send templates, with the
+        ``{listener_port}`` token becoming a port capture group — so the
+        simulator recognizes the registration exactly as the driver sends it.
+        """
+        push = driver_def.get("push")
+        if not isinstance(push, dict) or push.get("type") != "tcp_listener":
+            return None
+        commands = driver_def.get("commands") or {}
+
+        def build_matcher(cmd_name: Any) -> re.Pattern | None:
+            cmd = commands.get(cmd_name) if isinstance(cmd_name, str) else None
+            if not isinstance(cmd, dict):
+                return None
+            if "path" in cmd or "method" in cmd:
+                template = (
+                    f"{cmd.get('method', 'GET').upper()} {cmd.get('path', '/')}"
+                )
+            else:
+                template = str(cmd.get("send", ""))
+            if not template:
+                return None
+            pattern = re.escape(template)
+            pattern = pattern.replace(
+                re.escape("{listener_port}"), r"(?P<lport>\d+)"
+            )
+            # Other {tokens} in the template match any non-separator run.
+            pattern = re.sub(r"\\\{\w+\\\}", r"[^&\\s|]+", pattern)
+            # Allow a trailing "|body" (HTTP POST synthesis) or whitespace.
+            return re.compile(r"^" + pattern + r"\s*(?:\|.*)?$")
+
+        return {
+            "frame": push.get("frame_parser")
+            if isinstance(push.get("frame_parser"), dict)
+            else None,
+            "register": build_matcher(push.get("register")),
+            "unregister": build_matcher(push.get("unregister")),
+        }
+
+    def _watch_push_registration(self, text: str) -> bool:
+        """Track dial-back subscribers from register/unregister commands.
+
+        Observe-only bookkeeping run before normal dispatch; returns True
+        when ``text`` was a registration command (callers use that to give
+        an empty-success default response if no handler answers it).
+        """
+        if not self._push_tcp:
+            return False
+        for key, add in (("register", True), ("unregister", False)):
+            matcher = self._push_tcp.get(key)
+            m = matcher.match(text) if matcher else None
+            if not m:
+                continue
+            try:
+                port = int(m.group("lport"))
+            except (IndexError, ValueError):
+                # Template carried no {listener_port}; nothing to track.
+                return True
+            target = (self._last_peer_ip or "127.0.0.1", port)
+            if add:
+                self._push_tcp_subscribers.setdefault(target, 0)
+                self._push_tcp_subscribers[target] = 0
+                self.log_protocol(
+                    "in", f"(push subscriber registered: {target[0]}:{port})"
+                )
+            else:
+                self._push_tcp_subscribers.pop(target, None)
+                self.log_protocol(
+                    "in", f"(push subscriber removed: {target[0]}:{port})"
+                )
+            return True
+        return False
+
+    def _wrap_push_tcp_frame(self, payload: bytes) -> bytes:
+        """Wrap a notification payload in the declared frame container.
+
+        Inverse of the platform's StructFrameParser: zeroed reserve regions
+        around a length field that counts ``len(payload) - length_adjust``.
+        Without a struct_frame declaration the payload goes out raw.
+        """
+        frame = (self._push_tcp or {}).get("frame")
+        if not frame or frame.get("type") != "struct_frame":
+            return payload
+        length_size = int(frame.get("length_size", 2))
+        endian = "little" if frame.get("length_endian") == "little" else "big"
+        length_value = len(payload) - int(frame.get("length_adjust", 0))
+        return (
+            bytes(int(frame.get("header_reserve", 0)))
+            + max(0, length_value).to_bytes(length_size, endian)
+            + bytes(int(frame.get("mid_reserve", 0)))
+            + payload
+            + bytes(int(frame.get("trailer_reserve", 0)))
+        )
+
+    def _emit_push_tcp(self, payload: bytes) -> None:
+        """Dial each registered subscriber and push one framed notification."""
+        framed = self._wrap_push_tcp_frame(payload)
+        for target in list(self._push_tcp_subscribers):
+            task = asyncio.ensure_future(self._dial_push_tcp(target, framed))
+            self._push_tcp_tasks.add(task)
+            task.add_done_callback(self._push_tcp_tasks.discard)
+
+    async def _dial_push_tcp(self, target: tuple[str, int], framed: bytes) -> None:
+        """One outbound notification connection: connect, send, close.
+
+        Mirrors real dial-back devices, which prune subscribers they cannot
+        reach — three consecutive failed deliveries drop the registration.
+        """
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(target[0], target[1]), timeout=2.0
+            )
+            writer.write(framed)
+            await writer.drain()
+            writer.close()
+            if target in self._push_tcp_subscribers:
+                self._push_tcp_subscribers[target] = 0
+            self.log_protocol("out", framed)
+        except (OSError, asyncio.TimeoutError):
+            failures = self._push_tcp_subscribers.get(target)
+            if failures is None:
+                return
+            if failures + 1 >= 3:
+                del self._push_tcp_subscribers[target]
+                logger.info(
+                    "%s: push subscriber %s:%d unreachable 3 times — removed",
+                    self.name, target[0], target[1],
+                )
+            else:
+                self._push_tcp_subscribers[target] = failures + 1
+    # ── HTTP-callback push (push: {type: http_listener}) ──
+
+    def register_callback(self, url: Any) -> None:
+        """Record a notification callback URL (script-handler namespace).
+
+        A handler matching the device's registration command calls this with
+        the URL the controller supplied; subsequent state-change
+        notifications POST there. Registering an already-known URL is a
+        no-op, matching re-registration on reconnect.
+        """
+        url = str(url or "").strip()
+        if url and url not in self._http_push_callbacks:
+            self._http_push_callbacks.append(url)
+            self.log_protocol("in", f"(callback registered: {url})")
+
+    def unregister_callback(self, url: Any) -> None:
+        """Drop a previously registered callback URL (script-handler
+        namespace — for handlers matching the device's deregistration
+        command)."""
+        url = str(url or "").strip()
+        if url in self._http_push_callbacks:
+            self._http_push_callbacks.remove(url)
+            self.log_protocol("in", f"(callback unregistered: {url})")
+
+    @staticmethod
+    def _callback_content_type(msg: str) -> str:
+        """Content type for a rendered notification, from the payload's shape.
+
+        Purely for protocol-log realism — the platform's dispatch reads only
+        the body.
+        """
+        stripped = msg.lstrip()
+        if stripped.startswith("<"):
+            return "text/xml"
+        if stripped.startswith(("{", "[")):
+            return "application/json"
+        return "text/plain"
+
+    def _open_multicast_sender(self) -> None:
+        """Open the multicast emission socket (TTL 1, loopback enabled so a
+        same-host platform listener receives the frames)."""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+            sock.setblocking(False)
+            self._mcast_sock = sock
+            logger.info(
+                "%s multicast notifications to %s:%d",
+                self.name, self._push_multicast[0], self._push_multicast[1],
+            )
+        except OSError as e:
+            self._mcast_sock = None
+            logger.warning("Could not open multicast sender: %s", e)
+
+    async def start(self, port: int) -> None:
+        """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP)."""
+        if self._push_multicast:
+            self._open_multicast_sender()
+        if self._is_http:
+            await self.start_http_server(port)
+        elif self._is_udp or self._is_osc:
+            await self.start_datagram_server(port)
+        else:
+            await super().start(port)
+
+    async def stop(self) -> None:
+        """Stop whichever server start() ran."""
+        self._cancel_push_tcp_tasks()
+        if self._mcast_sock is not None:
+            try:
+                self._mcast_sock.close()
+            except OSError:
+                pass
+            self._mcast_sock = None
+        if self._is_http:
+            await self.stop_http_server()
+        elif self._is_udp or self._is_osc:
+            await self.stop_datagram_server()
+        else:
+            await super().stop()
+
+    def _cancel_push_tcp_tasks(self) -> None:
+        """Abandon in-flight dial-out notification connections."""
+        for task in list(self._push_tcp_tasks):
+            task.cancel()
+        self._push_tcp_tasks.clear()
+
+    # ── HTTP transport ──
+
+    def decode_request_path(self, path: str) -> str:
+        """URL-decode the path so handlers match the un-encoded form.
+
+        Command handlers are regexes built from the driver's own `path:`
+        fields, which are written the way a human writes them ("#" not "%23").
+        """
+        return unquote(path)
+
+    async def respond_http(
+        self,
+        request: Any,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        body: str,
+    ) -> Any:
+        """Answer an HTTP request through the same handler chain TCP uses.
+
+        The request is synthesized into a command line:
+            "METHOD /path?query|<body>"   (body section omitted when empty)
+        so one set of generated handlers serves every transport. Status is 200
+        when a handler matched and 404 when none did; the body is whatever the
+        handler returned via respond().
+        """
+        from aiohttp import web
+
+        command_line = f"{method} {path}|{body}" if body else f"{method} {path}"
+
+        try:
+            response_bytes = self.handle_command(command_line.encode("utf-8"))
+        except Exception:
+            logger.exception("%s: error in handle_command", self.name)
+            return web.Response(status=500, text="Simulator error")
+
+        if response_bytes is None:
+            self.log_protocol("out", "404")
+            return web.Response(status=404, text="")
+
+        response_text = response_bytes.decode("utf-8", errors="replace")
+        self.log_protocol("out", f"200 | {response_text[:200]}")
+        return web.Response(status=200, text=response_text)
+
+    # ── UDP / OSC transport ──
+
+    async def dispatch_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
+        """Route a datagram to the OSC or the plain command pipeline.
+
+        Which one is a per-instance fact here (the driver's transport), where
+        for a Python simulator it is the class it subclassed.
+        """
+        if not self._is_osc:
+            await self.dispatch_command_datagram(data, addr)
+            return
+        # Suppress the push echo for the whole OSC exchange: state written
+        # while answering a message is a reply, not an unsolicited notice.
+        self._handling_osc = True
+        try:
+            await self.dispatch_osc_datagram(data, addr)
+        finally:
+            self._handling_osc = False
+
+    def handle_message(
+        self, address: str, args: list[tuple[str, Any]]
+    ) -> list[tuple[str, list[tuple[str, Any]]]] | None:
+        """Handle a decoded OSC message using the response address mappings.
+
+        The OSC override point a Python simulator implements by hand; here it
+        is answered from the driver's own response definitions.
+
+        Two behaviors:
+        - Message WITH args: update state from arg values, echo back
+        - Message WITHOUT args: respond with current state values (query)
+
+        Also checks script handlers from the simulator: section.
+        """
+        import fnmatch
+
+        # Special system addresses (handle before address handlers so they
+        # aren't intercepted by response patterns)
+        if address == "/xremote":
+            # Real X32 starts pushing state changes after /xremote. Send back
+            # a heartbeat so the connection watchdog sees activity.
+            return [("/xremote", [])]
+        if address == "/info":
+            model = self._state.get("console_model", "Simulator")
+            firmware = self._state.get("firmware_version", "1.0.0")
+            return [("/info", [
+                ("s", "V2.07"), ("s", "osc-server"),
+                ("s", model), ("s", firmware),
+            ])]
+        if address == "/status":
+            return [("/status", [
+                ("s", "active"), ("s", "127.0.0.1"), ("s", "osc-server"),
+            ])]
+        if address.startswith("/-action/") or address.startswith("/-show/"):
+            return [(address, args)] if args else [(address, [])]
+
+        # Try script handlers first (from simulator: command_handlers with address:)
+        for handler in self._osc_script_handlers:
+            if fnmatch.fnmatch(address, handler.address_pattern):
+                return self._execute_osc_script_handler(handler, address, args)
+
+        # Match against response address patterns
+        for addr_pattern, mappings in self._osc_address_handlers:
+            if not fnmatch.fnmatch(address, addr_pattern):
+                continue
+
+            if args:
+                # SET: update state from incoming args
+                for mapping in mappings:
+                    arg_idx = mapping.get("arg", 0)
+                    state_key = mapping.get("state")
+                    if state_key and arg_idx < len(args):
+                        _, value = args[arg_idx]
+                        value_map = mapping.get("map")
+                        if value_map:
+                            mapped = value_map.get(str(value))
+                            if mapped is not None:
+                                value = mapped
+                        self.set_state(state_key, self._coerce_value(state_key, value))
+                # Echo the message back (standard OSC feedback pattern)
+                return [(address, args)]
+            else:
+                # QUERY: respond with current state values
+                resp_args: list[tuple[str, Any]] = []
+                for mapping in mappings:
+                    state_key = mapping.get("state")
+                    value_type = mapping.get("type", "float")
+                    if state_key:
+                        value = self._state.get(state_key, 0)
+                        tag = _type_to_osc_tag(value_type)
+                        # Apply reverse value map (e.g., mute false → OSC 1)
+                        reverse_info = self._osc_state_to_address.get(state_key)
+                        if reverse_info:
+                            _, _, _, reverse_map = reverse_info
+                            if reverse_map:
+                                raw = reverse_map.get(str(value).lower())
+                                if raw is not None:
+                                    value = int(raw) if tag == "i" else float(raw) if tag == "f" else raw
+                        resp_args.append((tag, value))
+                if resp_args:
+                    return [(address, resp_args)]
+                return [(address, [])]
+
+        logger.debug("%s: unmatched OSC address: %s", self.device_id, address)
+        return None
+
+    def _execute_osc_script_handler(
+        self, handler: OSCScriptHandler, address: str, args: list[tuple[str, Any]]
+    ) -> list[tuple[str, list[tuple[str, Any]]]] | None:
+        """Execute a script handler for OSC messages."""
+        response_data: list[tuple[str, list[tuple[str, Any]]]] = []
+
+        def respond(resp_address: str, resp_args: Any = None) -> None:
+            response_data.append((resp_address, _normalize_osc_args(resp_args)))
+
+        state_proxy = _StateProxy(self._state, self.set_state)
+
+        namespace = {
+            "address": address,
+            "args": args,
+            "state": state_proxy,
+            "config": self.config,
+            "respond": respond,
+            **_SAFE_HANDLER_BUILTINS,
+        }
+
+        try:
+            exec_ns = {"__builtins__": {}, **namespace}
+            exec(handler.code, exec_ns, exec_ns)  # noqa: S102
+        except Exception:
+            logger.exception(
+                "%s: OSC script handler error for %s",
+                self.device_id, handler.address_pattern,
+            )
+            return None
+
+        return response_data if response_data else None
+
+    # ── Protocol handling ──
+
+    # Precompute send_frame header bytes for build/strip — the same shared
+    # builder the driver side uses, so the simulator frames exactly what the
+    # driver's frame_parser expects.
+    _build_sim_send_frame = staticmethod(build_send_frame)
+
+    def _wrap_send_frame(self, data: bytes) -> bytes:
+        """Wrap a response body in the send_frame packet header (computed length)."""
+        return apply_send_frame(self._send_frame, data)
+
+    async def _read_send_frame_messages(
+        self, reader: asyncio.StreamReader, buffer: bytearray | None,
+    ) -> list[bytes] | None:
+        """Read length-prefixed send_frame frames; return the stripped bodies.
+
+        The send_frame binary header can carry 0x0a/0x0d bytes in its length
+        field, which the line reader would treat as terminators and mis-split —
+        so length-framed drivers read here instead. Skips the fixed header,
+        reads the computed-length body, and hands the bare payload (e.g. the
+        ISCP "!1PWR01\\r") to the normal dispatch, exactly as the driver's
+        receive-side LengthPrefixFrameParser does.
+        """
+        if buffer is None:
+            buffer = bytearray()
+        try:
+            raw = await asyncio.wait_for(reader.read(4096), timeout=30.0)
+        except asyncio.TimeoutError:
+            return []
+        if not raw:
+            return None
+        buffer.extend(raw)
+        return split_send_frames(self._send_frame, buffer)
+
+    async def _read_messages(
+        self, reader: asyncio.StreamReader, buffer: bytearray | None = None,
+    ) -> list[bytes] | None:
+        if self._send_frame:
+            return await self._read_send_frame_messages(reader, buffer)
+        return await super()._read_messages(reader, buffer)
+
+    def handle_command(self, data: bytes) -> bytes | None:
+        self._handling_command = True
+        try:
+            resp = self._dispatch_command(data)
+            # Re-wrap the reply in the send_frame packet header so the driver's
+            # receive-side length-prefix parser can read it (build/strip parity).
+            if resp is not None and self._send_frame:
+                resp = self._wrap_send_frame(resp)
+            return resp
+        finally:
+            self._handling_command = False
+
+    def _dispatch_command(self, data: bytes) -> bytes | None:
+        text = data.decode("utf-8", errors="replace").strip()
+        if not text:
+            return None
+
+        # Dial-back subscriber bookkeeping (push: {type: tcp_listener}) —
+        # observe-only; the command still dispatches normally below so the
+        # driver YAML can shape the response with an explicit handler.
+        was_registration = self._watch_push_registration(text)
+
+        # Try explicit handlers first (from simulator: command_handlers)
+        for handler in self._explicit_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._with_remainder(text, m, self._execute_explicit_handler(handler, m))
+
+        # Try script handlers (match: + handler: with inline Python)
+        for handler in self._script_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._with_remainder(text, m, self._execute_script_handler(handler, m))
+
+        # Inline (Generic) devices: match the incoming string against the
+        # response patterns and apply their state changes + echo a confirmation.
+        for pattern, set_dict in self._inline_response_handlers:
+            m = pattern.match(text)
+            if m:
+                return self._with_remainder(text, m, self._apply_inline_response(text, m, set_dict))
+
+        # Child-addressed poll queries answer from the addressed child's own
+        # state. They dispatch ahead of the auto command handlers on purpose:
+        # a protocol whose bare per-output view collides with a single-output
+        # command form (SIS "1Z") resolves by roster — children modeled means
+        # the matrix dialect wins, exactly like the real hardware.
+        for handler in self._child_query_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._with_remainder(
+                    text, m, self._execute_child_query_handler(handler)
+                )
+
+        # Try auto-generated command handlers
+        for handler in self._command_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._with_remainder(text, m, self._execute_command_handler(handler, m))
+
+        # Try query handlers
+        for handler in self._query_handlers:
+            m = handler.pattern.match(text)
+            if m:
+                return self._with_remainder(text, m, self._execute_query_handler(handler))
+
+        # A registration command with no handler of its own still succeeds —
+        # the empty body means "204-style ack" (real dial-back devices answer
+        # registrations with No Content), so drivers don't need boilerplate
+        # simulator handlers for the subscribe/unsubscribe pair.
+        if was_registration:
+            return b""
+
+        # Nothing matched the whole line. Unterminated protocols are
+        # self-delimiting, and with no terminator on the wire back-to-back
+        # writes can coalesce into one line ("N?*R4") whose first command's
+        # end-anchored pattern then never matches. If the entire line
+        # decomposes into known commands, dispatch each piece; plain garbage
+        # does not decompose and stays unrecognized.
+        segments = self._plan_segments(text) if len(text) <= 256 else None
+        if segments and len(segments) > 1:
+            replies = [self._dispatch_command(s.encode()) for s in segments]
+            parts = [r for r in replies if r]
+            return b"".join(parts) if parts else b""
+
+        logger.debug("%s: unrecognized command: %r", self.device_id, text)
+        return None
+
+    def _with_remainder(self, text: str, m: re.Match, head: bytes | None) -> bytes | None:
+        """Dispatch whatever a prefix-matching handler left unconsumed.
+
+        Handlers whose patterns aren't end-anchored (an explicit `match: 'I'`)
+        legitimately claim just the front of a coalesced line; the rest of the
+        line is the next command, not junk to swallow. Recursing keeps
+        first-match-wins order per piece. Trailing text that matches nothing
+        dispatches to None and the head's reply stands alone, exactly as
+        before.
+        """
+        end = m.end()
+        if end <= 0 or end >= len(text):
+            return head
+        rest = text[end:].strip()
+        if not rest:
+            return head
+        tail = self._dispatch_command(rest.encode())
+        if head and tail:
+            return head + tail
+        return tail if tail else head
+
+    def _plan_segments(self, text: str, _depth: int = 0) -> list[str] | None:
+        """Decompose a line into a sequence of fully-matchable commands.
+
+        Longest-prefix-first with backtracking; every byte must land in some
+        segment (full decomposition or None). fullmatch keeps a segment from
+        claiming trailing characters a shorter split needs.
+        """
+        if not text:
+            return []
+        if _depth > 16:
+            return None
+        for end in range(len(text), 0, -1):
+            prefix = text[:end]
+            if self._any_handler_fullmatch(prefix):
+                rest = self._plan_segments(text[end:], _depth + 1)
+                if rest is not None:
+                    return [prefix, *rest]
+        return None
+
+    def _any_handler_fullmatch(self, text: str) -> bool:
+        for handler in self._explicit_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        for handler in self._script_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        for pattern, _set_dict in self._inline_response_handlers:
+            if pattern.fullmatch(text):
+                return True
+        for handler in self._child_query_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        for handler in self._command_handlers:
+            if handler.pattern.fullmatch(text):
+                return True
+        return any(h.pattern.fullmatch(text) for h in self._query_handlers)
+
+    def _execute_command_handler(self, handler: CommandHandler, m: re.Match) -> bytes | None:
+        """Execute a command handler: update state and generate response."""
+        delimiter = self._get_delimiter()
+
+        # Drive any state machines with this command name (the documented
+        # trigger contract). A machine that rejects the command in its current
+        # state (e.g. during cooldown) suppresses the response entirely.
+        if self._state_machines and self._fire_state_machine_triggers(handler.name):
+            return None
+
+        # A child-addressed command resolves the captured id to a rostered
+        # child; an id the roster doesn't know goes unanswered (the device
+        # analog of addressing a port that isn't there).
+        child_id: str | None = None
+        if handler.child_type:
+            try:
+                raw_id = m.group(handler.child_id_group)
+            except (IndexError, re.error):
+                raw_id = None
+            if raw_id is None:
+                return None
+            raw_id = str(raw_id).strip()
+            if handler.child_wire_map is not None:
+                raw_id = handler.child_wire_map.get(raw_id, raw_id)
+            child_id = str(int(raw_id)) if raw_id.isdigit() else raw_id
+            if child_id not in self._child_roster.get(handler.child_type, []):
+                logger.debug(
+                    "%s: %s addressed unknown %s %r",
+                    self.device_id, handler.name, handler.child_type, child_id,
+                )
+                return None
+
+        # Apply state changes
+        for state_key, source in handler.state_changes.items():
+            target_key = (
+                f"{handler.child_type}.{child_id}.{state_key}"
+                if child_id is not None and state_key in handler.child_state_keys
+                else state_key
+            )
+            if isinstance(source, tuple) and source[0] == "literal":
+                # Declared literal from a command's sets: block — wrapped so
+                # an integer literal can't read as a capture-group index.
+                value: Any = self._coerce_value(target_key, source[1])
+            elif isinstance(source, int) and not isinstance(source, bool):
+                # Capture group index
+                value = m.group(source)
+                base = handler.group_bases.get(source)
+                if base and self._numeric_state_var(target_key):
+                    # The wire value was formatted with a non-decimal spec —
+                    # decode it back before coercion, or an integer var would
+                    # end up holding the raw hex string. String-typed vars
+                    # keep the wire form: hex-code protocols (eISCP) declare
+                    # the code itself as the state value.
+                    try:
+                        value = int(value, base)
+                    except ValueError:
+                        pass
+                value = self._coerce_value(target_key, value)
+            else:
+                # Literal value (heuristic booleans arrive bare)
+                value = source
+            self.set_state(target_key, value)
+
+        # Generate response for the primary state variable
+        if handler.response_var and handler.response_is_child and child_id is not None:
+            resp = self._child_state_responses.get(
+                (handler.child_type, handler.response_var)
+            )
+            if resp is not None:
+                value = self._state.get(
+                    f"{handler.child_type}.{child_id}.{handler.response_var}"
+                )
+                response_text = resp.format(child_id, value)
+                if response_text is not None:
+                    return (response_text + delimiter).encode()
+            return None
+        if handler.response_var and handler.response_var in self._state_responses:
+            resp = self._state_responses[handler.response_var]
+            response_text = resp.format(self._state.get(handler.response_var))
+            return (response_text + delimiter).encode()
+
+        return None
+
+    def _fire_state_machine_triggers(self, trigger_name: str) -> bool:
+        """Drive every state machine with a command-name trigger.
+
+        Returns True if any machine rejects the command in its current state,
+        in which case the caller suppresses the response and no machine
+        transitions (reject is all-or-nothing).
+        """
+        if any(
+            sm.is_rejected(trigger_name) for sm in self._state_machines.values()
+        ):
+            return True
+        for sm in self._state_machines.values():
+            sm.trigger(trigger_name)
+        return False
+
+    def _execute_query_handler(self, handler: QueryHandler) -> bytes | None:
+        """Execute a query handler: respond with current state."""
+        delimiter = self._get_delimiter()
+        resp = self._state_responses.get(handler.response_var)
+        if resp:
+            value = self._state.get(handler.response_var)
+            response_text = resp.format(value)
+            return (response_text + delimiter).encode()
+        return None
+
+    def _execute_explicit_handler(self, handler: ExplicitHandler, m: re.Match) -> bytes | None:
+        """Execute an explicit command_handler from the simulator: section."""
+        # Apply state changes
+        for key, val in handler.set_state.items():
+            resolved = self._resolve_template(str(val), m)
+            self.set_state(key, self._coerce_value(key, resolved))
+
+        # Generate response
+        if handler.respond:
+            response_text = self._resolve_template(handler.respond, m)
+            return response_text.encode()
+
+        return None
+
+    def _execute_script_handler(self, handler: ScriptHandler, m: re.Match) -> bytes | None:
+        """Execute a script handler (match: + handler: with inline Python).
+
+        Scripts get: match (regex match), state (proxy dict that notifies on
+        writes), config (device config), respond(text) (send response).
+        """
+        response_data: list[str] = []
+
+        def respond(text: str) -> None:
+            response_data.append(text)
+
+        # Wrap state in a proxy so writes go through set_state (triggers UI)
+        state_proxy = _StateProxy(self._state, self.set_state)
+
+        namespace = {
+            "match": m,
+            "state": state_proxy,
+            "config": self.config,
+            "respond": respond,
+            # http_listener push: a handler matching the device's
+            # registration command records where to deliver notifications
+            # (e.g. the ServerUrl a codec's feedback registration carries).
+            "register_callback": self.register_callback,
+            "unregister_callback": self.unregister_callback,
+            **_SAFE_HANDLER_BUILTINS,
+        }
+
+        try:
+            # Use a single dict for both globals and locals so nested function
+            # definitions (def get_int, etc.) can see variables set by earlier
+            # lines in the handler (e.g., 'text'). Python closures in exec
+            # only see globals, not exec-locals.
+            exec_ns = {"__builtins__": {}, **namespace}
+            exec(handler.code, exec_ns, exec_ns)  # noqa: S102
+        except Exception:
+            logger.exception(
+                "%s: script handler error for pattern %s",
+                self.device_id, handler.pattern.pattern,
+            )
+            return None
+
+        if response_data:
+            return response_data[0].encode()
+        return None
+
+    # ── Build handlers from driver definition ──
+
+    def _build_state_responses(self) -> None:
+        """Build state_var → response format mapping from responses: section."""
+        responses = self._driver_def.get("responses", [])
+
+        for resp_def in responses:
+            # JSON-body responses populate state from a parsed object, not a
+            # regex template, so there's no literal to reconstruct here.
+            # Auto-generating JSON query replies is a separate follow-on;
+            # drivers that need JSON simulation ship an explicit simulator:
+            # section. Skip so json rules don't create empty response entries.
+            if resp_def.get("json"):
+                continue
+            match_pattern = resp_def.get("match", "")
+            set_dict = resp_def.get("set", {})
+
+            # Canonical mappings: form (what the Driver Builder persists) —
+            # derive the set shorthand so those rules feed the same loop
+            # below. OSC address rules carry no match pattern (they're built
+            # into address handlers instead), so they're skipped here.
+            map_reversals: list[dict] = []
+            mappings = resp_def.get("mappings")
+            if (
+                not set_dict
+                and match_pattern
+                and not resp_def.get("address")
+                and isinstance(mappings, list)
+            ):
+                set_dict = _mappings_to_set(mappings)
+                map_reversals = [
+                    m for m in mappings
+                    if isinstance(m, dict)
+                    and m.get("state")
+                    and "value" not in m
+                    and isinstance(m.get("map"), dict)
+                ]
+
+            for state_key, set_value in set_dict.items():
+                # Normalize like StateResponse.format() normalizes its lookup
+                # key, or a YAML bare `true` (Python True) stores a "True"
+                # key that a boolean state value can never hit.
+                set_value_str = (
+                    str(set_value).lower()
+                    if isinstance(set_value, bool)
+                    else str(set_value)
+                )
+
+                if state_key not in self._state_responses:
+                    self._state_responses[state_key] = StateResponse(state_key)
+
+                sr = self._state_responses[state_key]
+
+                # Check if the response has capture groups (template-based)
+                # vs fixed text (value-mapped)
+                has_groups = bool(re.search(r"\(.*\)", match_pattern))
+
+                if has_groups and set_value_str.startswith("$"):
+                    # Template-based: In(\d+) All with set: { input: "$1" }
+                    # → template: In{value} All. The $N picks which capture
+                    # group becomes {value}, so a multi-group pattern puts
+                    # the value where this state key actually reads it.
+                    try:
+                        group = int(set_value_str[1:])
+                    except ValueError:
+                        group = 0
+                    template = (
+                        emit_template(match_pattern, group) if group > 0 else None
+                    )
+                    if template and not sr.template:
+                        sr.template = template
+                else:
+                    # Value-mapped: Amt1 with set: { mute: "true" }
+                    # → value "true" maps to response text "Amt1"
+                    # Reconstruct the literal response text from the regex
+                    literal = emit_literal(match_pattern)
+                    if literal:
+                        sr.value_map[set_value_str] = literal
+
+            # A mapping's map: stores the friendly value in state (raw wire
+            # token → friendly), so emitting the template with the state value
+            # would put the friendly text on the wire. Reverse each pair
+            # instead: friendly value → the wire text with the raw token at
+            # the mapping's group. First writer wins, like the template guard.
+            for mapping in map_reversals:
+                try:
+                    group = int(mapping.get("group", 1))
+                except (TypeError, ValueError):
+                    continue
+                template = (
+                    emit_template(match_pattern, group) if group > 0 else None
+                )
+                if not template:
+                    continue
+                sr = self._state_responses.get(str(mapping["state"]))
+                if sr is None:
+                    continue
+                for raw, friendly in mapping["map"].items():
+                    key = (
+                        str(friendly).lower()
+                        if isinstance(friendly, bool)
+                        else str(friendly)
+                    )
+                    sr.value_map.setdefault(
+                        key, template.replace("{value}", str(raw))
+                    )
+
+    def _build_command_handlers(self) -> None:
+        """Build command handlers from commands: section."""
+        commands = self._driver_def.get("commands", {})
+        state_vars = set(self._driver_def.get("state_variables", {}).keys())
+        # Match the framed form the real driver puts on the wire: a driver-level
+        # command_prefix is prepended to every command (the trailing
+        # command_suffix/terminator is whitespace, already stripped from the
+        # incoming line in _dispatch_command). A raw: true command is unframed.
+        prefix = self._driver_def.get("command_prefix") or ""
+
+        for cmd_name, cmd_def in commands.items():
+            send_template = cmd_def.get("send", "")
+            if not send_template:
+                continue
+            if (
+                prefix
+                and not cmd_def.get("raw")
+                and not send_template.startswith(prefix)
+            ):
+                send_template = prefix + send_template
+
+            params = cmd_def.get("params", {})
+
+            # Convert send template to regex — the shared inversion of the
+            # same placeholder shapes the runtime substitutes on send.
+            pattern_str = send_regex(send_template, params)
+            try:
+                pattern = re.compile(f"^{pattern_str}$")
+            except re.error:
+                logger.warning("Invalid regex from command '%s': %s", cmd_name, pattern_str)
+                continue
+
+            # A command carrying exactly one child_id param is addressed to
+            # that child: its state effect routes to the child's own dotted
+            # state, with the flat variables as fallback for anything the
+            # child type doesn't declare. Two child_id params (a router's
+            # input AND output) are ambiguous — no child routing.
+            child_id_params = [
+                (pname, pdef) for pname, pdef in params.items()
+                if isinstance(pdef, dict)
+                and pdef.get("type") == "child_id"
+                and pdef.get("child_type") in self._child_types()
+            ]
+            child_ctype: str | None = None
+            child_param_name: str | None = None
+            child_wire_map: dict[str, str] | None = None
+            child_vars: dict[str, dict] = {}
+            if len(child_id_params) == 1:
+                child_param_name, cpdef = child_id_params[0]
+                child_ctype = cpdef.get("child_type")
+                child_vars = self._child_vars(child_ctype)
+                raw_map = cpdef.get("map")
+                if isinstance(raw_map, dict) and raw_map:
+                    # Param map: local id -> wire token; the sim sees the
+                    # wire token and needs the local id back.
+                    child_wire_map = {str(v): str(k) for k, v in raw_map.items()}
+
+            # Determine state changes
+            state_changes: dict[str, int | Any] = {}
+            child_state_keys: set[str] = set()
+            response_var: str | None = None
+            response_is_child = False
+            child_id_group = 0
+            specs = send_param_specs(send_template, params)
+            group_bases: dict[int, int] = {}
+
+            declared_sets = cmd_def.get("sets")
+            declared_query_for = cmd_def.get("query_for")
+            if isinstance(declared_sets, dict) or declared_query_for:
+                # Declared semantics: the driver says what this command does,
+                # so wire the handler exactly as authored — no name-guessing.
+                # Group indices come from placeholder order in the template
+                # (that's how send_regex numbers its captures).
+                param_groups = send_param_groups(send_template, params)
+                if child_param_name:
+                    child_id_group = param_groups.get(child_param_name, 0)
+                for param_name, param_def in params.items():
+                    ptype = (
+                        param_def.get("type", "string")
+                        if isinstance(param_def, dict)
+                        else "string"
+                    )
+                    if ptype in ("integer", "child_id"):
+                        base = spec_int_base(specs.get(param_name, ""))
+                        if base and param_name in param_groups:
+                            group_bases[param_groups[param_name]] = base
+                if isinstance(declared_sets, dict):
+                    for var_name, set_value in declared_sets.items():
+                        # On a child-addressed command the child type's own
+                        # variables win the name; flat vars stay reachable
+                        # for names the child type doesn't declare.
+                        if child_ctype and var_name in child_vars:
+                            child_state_keys.add(var_name)
+                        ref = (
+                            re.fullmatch(r"\{([^{}]+)\}", set_value)
+                            if isinstance(set_value, str)
+                            else None
+                        )
+                        if ref:
+                            group = param_groups.get(ref.group(1))
+                            if group:
+                                state_changes[var_name] = group  # capture group
+                            # An unresolvable "{param}" reference declares
+                            # nothing (the validator flags it at load).
+                        else:
+                            # Literal, wrapped so an integer literal can't be
+                            # mistaken for a capture-group index.
+                            state_changes[var_name] = ("literal", set_value)
+                response_var = declared_query_for or next(iter(state_changes), None)
+                response_is_child = bool(
+                    child_ctype
+                    and response_var is not None
+                    and (
+                        response_var in child_state_keys
+                        or (declared_query_for and response_var in child_vars)
+                    )
+                )
+            else:
+                # Heuristic 1: param name matches a state variable — the
+                # addressed child type's variables first, flat second.
+                group_idx = 1
+                for param_name, param_def in params.items():
+                    ptype = (
+                        param_def.get("type", "string")
+                        if isinstance(param_def, dict)
+                        else "string"
+                    )
+                    if ptype in ("integer", "child_id"):
+                        # A non-decimal format spec ({level:02X}) put hex on the
+                        # wire; remember the base so the capture decodes back to
+                        # the number the driver sent.
+                        base = spec_int_base(specs.get(param_name, ""))
+                        if base:
+                            group_bases[group_idx] = base
+                    if param_name == child_param_name:
+                        child_id_group = group_idx
+                    elif child_ctype and param_name in child_vars:
+                        state_changes[param_name] = group_idx
+                        child_state_keys.add(param_name)
+                        if not response_var:
+                            response_var = param_name
+                            response_is_child = True
+                    elif param_name in state_vars:
+                        state_changes[param_name] = group_idx  # capture group
+                        if not response_var:
+                            response_var = param_name
+                    group_idx += 1
+
+                # Heuristic 2: command name patterns (against the addressed
+                # child type's variables when the command targets a child)
+                if not state_changes:
+                    target = infer_state_var(
+                        cmd_name, set(child_vars) if child_ctype else state_vars
+                    )
+                    if not target and child_ctype:
+                        target = infer_state_var(cmd_name, state_vars)
+                    if target:
+                        response_var = target
+                        response_is_child = bool(child_ctype and target in child_vars)
+                        if response_is_child:
+                            child_state_keys.add(target)
+                        if cmd_name.endswith("_on") or cmd_name.startswith("enable_"):
+                            state_changes[target] = True
+                        elif cmd_name.endswith("_off") or cmd_name.startswith("disable_"):
+                            state_changes[target] = False
+                        elif cmd_name.endswith("_toggle"):
+                            # Toggle handled specially — for now, just report current
+                            pass
+                        elif params:
+                            # set_X with params → first non-child-id param is
+                            # the value
+                            value_group = next(
+                                (
+                                    idx
+                                    for idx, pname in enumerate(params, start=1)
+                                    if pname != child_param_name
+                                ),
+                                0,
+                            )
+                            if value_group:
+                                state_changes[target] = value_group
+                            else:
+                                state_changes.pop(target, None)
+                                child_state_keys.discard(target)
+
+                # Heuristic 3: if still no response var, try command name
+                # for queries
+                if not response_var and not params:
+                    target = infer_state_var(cmd_name, state_vars)
+                    if target:
+                        response_var = target
+
+            # A child-addressed handler needs the id capture to route by;
+            # without it, fall back to plain flat behavior.
+            if not child_id_group:
+                child_ctype = None
+                child_wire_map = None
+                if child_state_keys:
+                    for var_name in child_state_keys:
+                        state_changes.pop(var_name, None)
+                    child_state_keys = set()
+                    response_is_child = False
+
+            handler = CommandHandler(
+                name=cmd_name,
+                pattern=pattern,
+                state_changes=state_changes,
+                response_var=response_var,
+                group_bases=group_bases,
+                child_type=child_ctype if child_state_keys or response_is_child else None,
+                child_id_group=child_id_group,
+                child_wire_map=child_wire_map,
+                child_state_keys=child_state_keys,
+                response_is_child=response_is_child,
+            )
+            self._command_handlers.append(handler)
+
+            if not state_changes and not response_var:
+                logger.debug(
+                    "Auto-sim %s: could not infer behavior for command '%s'",
+                    self.driver_id, cmd_name,
+                )
+
+    def _build_query_handlers(self) -> None:
+        """Build query handlers from polling.queries (+ declared on_connect).
+
+        A mapping entry's declared ``query_for`` names the state variable
+        the reply reports and wins outright. Otherwise the query text is
+        matched to a command with the same send template and the variable
+        comes from that command's declared ``query_for`` or, failing that,
+        its name (the shared inference fallback).
+        """
+        polling = self._driver_def.get("polling", {})
+        queries = polling.get("queries", [])
+        state_vars = set(self._driver_def.get("state_variables", {}).keys())
+
+        # Also check commands for query-like commands without params
+        commands = self._driver_def.get("commands", {})
+
+        for query in queries:
+            declared = None
+            if isinstance(query, dict):
+                if "each_child" in query:
+                    # Per-child queries build per-child handlers instead
+                    # (_build_child_query_handlers) — a flat handler from a
+                    # {child_id} template could never match a real wire.
+                    continue
+                query_text = query.get("send", "")
+                qf = query.get("query_for")
+                if isinstance(qf, str) and qf:
+                    declared = qf
+            else:
+                query_text = str(query)
+
+            if not query_text:
+                continue
+
+            response_var = declared
+            if not response_var:
+                # Look for a command with this exact send template
+                for cmd_name, cmd_def in commands.items():
+                    if cmd_def.get("send") == query_text and not cmd_def.get("params"):
+                        cmd_qf = cmd_def.get("query_for")
+                        target = (
+                            cmd_qf
+                            if isinstance(cmd_qf, str) and cmd_qf
+                            else infer_state_var(cmd_name, state_vars)
+                        )
+                        if target:
+                            response_var = target
+                            break
+
+            if response_var:
+                self._query_handlers.append(QueryHandler(
+                    pattern=re.compile(f"^{re.escape(self._query_wire_line(query_text))}$"),
+                    response_var=response_var,
+                ))
+
+        # on_connect entries participate only when they declare query_for —
+        # an initial-status query the device should answer in simulation too.
+        # No name inference here: on_connect never fed the handler table, so
+        # only declared semantics add to it.
+        for entry in self._driver_def.get("on_connect", []) or []:
+            if not isinstance(entry, dict) or "each_child" in entry:
+                continue
+            qf = entry.get("query_for")
+            send = entry.get("send", "")
+            if (
+                isinstance(qf, str) and qf
+                and isinstance(send, str) and send
+                and "address" not in entry
+            ):
+                self._query_handlers.append(QueryHandler(
+                    pattern=re.compile(f"^{re.escape(self._query_wire_line(send))}$"),
+                    response_var=qf,
+                ))
+
+    def _query_wire_line(self, query_text: str) -> str:
+        """The stripped line a raw poll query actually arrives as.
+
+        The driver sends raw queries with ``{config_field}`` placeholders
+        substituted and backslash escape sequences encoded to real bytes;
+        inbound dispatch then strips terminators and surrounding whitespace
+        (``_dispatch_command``). A query handler built from the as-authored
+        text (``"Status_Audio 1 \\r"``) could therefore never match the line
+        it arrives as (``"Status_Audio 1"``) — normalize the same way here.
+        """
+        if "{" in query_text:
+            merged = dict(self._driver_def.get("default_config") or {})
+            merged.update(self.config or {})
+            query_text = safe_substitute(query_text, merged)
+        return decode_delimiter(query_text).strip()
+
+    # ── Child-entity modeling ──
+
+    def _child_types(self) -> dict[str, dict]:
+        types = self._driver_def.get("child_entity_types")
+        return types if isinstance(types, dict) else {}
+
+    def _child_vars(self, ctype: str) -> dict[str, dict]:
+        tdef = self._child_types().get(ctype)
+        cvars = tdef.get("state_variables") if isinstance(tdef, dict) else None
+        return cvars if isinstance(cvars, dict) else {}
+
+    @staticmethod
+    def _default_child_value(var_def: dict) -> Any:
+        """Default for a child state variable — the same call _build_info
+        makes for the flat initial_state, so the two cannot drift."""
+        return state_var_default(var_def)
+
+    def _register_sim_children(self, ctype: str, ids: list) -> None:
+        """Add children to the sim roster and seed their state defaults.
+
+        Ids are stored as unpadded strings — the wire form a regex capture
+        or an expanded {child_id} query carries. Existing state (a dotted
+        simulator: initial_state seed) is never overwritten.
+        """
+        cvars = self._child_vars(ctype)
+        roster = self._child_roster.setdefault(ctype, [])
+        for local_id in ids:
+            cid = str(local_id)
+            if cid not in roster:
+                roster.append(cid)
+            for var, var_def in cvars.items():
+                key = f"{ctype}.{cid}.{var}"
+                if key not in self._state:
+                    self._state[key] = self._default_child_value(var_def)
+
+    def _seed_declared_children(self) -> None:
+        """Resolve each child type's ``instances:`` roster against this
+        instance's config — the sim-side twin of the driver's
+        _register_declared_children (count_from_state is skipped: the sim IS
+        the device, there is no reported count to read yet)."""
+        merged = dict(self._driver_def.get("default_config") or {})
+        merged.update(self.config or {})
+        for ctype, tdef in self._child_types().items():
+            if not isinstance(tdef, dict):
+                continue
+            inst = tdef.get("instances")
+            if not isinstance(inst, dict):
+                continue
+            ids: list[Any] = []
+            if isinstance(inst.get("ids"), list):
+                ids = [i for i in inst["ids"] if isinstance(i, (str, int)) and not isinstance(i, bool)]
+            elif "count" in inst or "count_from" in inst or "count_from_state" in inst:
+                raw = inst.get("count")
+                if raw is None and inst.get("count_from"):
+                    raw = merged.get(inst.get("count_from"), "")
+                try:
+                    n = int(str(raw).strip()) if str(raw).strip() != "" else 0
+                except (TypeError, ValueError):
+                    n = 0
+                ids = list(range(1, n + 1))
+            elif isinstance(inst.get("ids_from"), str):
+                raw_list = str(merged.get(inst["ids_from"], "") or "")
+                ids = [t.strip() for t in raw_list.split(",") if t.strip()]
+            if ids:
+                self._register_sim_children(ctype, ids)
+
+    def _adopt_dotted_state_children(self) -> None:
+        """A simulator: section that seeds dotted child keys
+        ("output.2.input: 5") implies those children exist — adopt them into
+        the roster so their queries answer even with default config counts."""
+        child_types = self._child_types()
+        if not child_types:
+            return
+        for key in list(self._state):
+            parts = key.split(".")
+            if len(parts) != 3:
+                continue
+            ctype, cid, prop = parts
+            if ctype in child_types and prop in self._child_vars(ctype):
+                self._register_sim_children(ctype, [cid])
+
+    def set_child_entities(self, child_entities: dict[str, dict[str, dict]]) -> None:
+        """Project children extend the roster (labels ride along for the UI).
+
+        The manager calls this after construction with the padded ids the
+        platform uses in state keys; the roster stores the unpadded wire form.
+        """
+        super().set_child_entities(child_entities)
+        for ctype, entries in (child_entities or {}).items():
+            if ctype not in self._child_types() or not isinstance(entries, dict):
+                continue
+            tdef = self._child_types().get(ctype)
+            ids = []
+            for padded in entries:
+                # The shared rule returns None for "can't be that kind of id",
+                # leaving each caller its own failure. Here an id the driver
+                # couldn't route still names a child in the roster, so keep
+                # the raw text rather than dropping it. `is not None` and not
+                # `or`: local id 0 is a real id and falsy.
+                local = coerce_child_local_id(tdef, padded)
+                ids.append(local if local is not None else str(padded))
+            self._register_sim_children(ctype, ids)
+        self._build_child_query_handlers()
+
+    def to_info_dict(self) -> dict:
+        """Extend the base payload with the modeled child roster so the UI
+        can group the dotted per-child state keys into a Children section.
+        Values are NOT duplicated here — the UI reads them live from the
+        state dict, which the per-key WS updates keep current."""
+        info = super().to_info_dict()
+        if not self._child_roster:
+            return info
+        children: dict[str, Any] = {}
+        for ctype, ids in self._child_roster.items():
+            tdef = self._child_types().get(ctype) or {}
+            cvars = self._child_vars(ctype)
+            inst = tdef.get("instances") if isinstance(tdef.get("instances"), dict) else {}
+            label_template = inst.get("label") if isinstance(inst.get("label"), str) else None
+            type_label = tdef.get("label") or ctype.replace("_", " ").title()
+            # Project labels are keyed by the padded id form; normalize
+            # integer ids so "001" finds roster entry "1".
+            project_labels: dict[str, str] = {}
+            for pid, meta in (self._child_entities.get(ctype) or {}).items():
+                label = meta.get("label") if isinstance(meta, dict) else None
+                if not label:
+                    continue
+                pid_norm = str(pid).strip()
+                if pid_norm.isdigit():
+                    pid_norm = str(int(pid_norm))
+                project_labels[pid_norm] = str(label)
+            entries = []
+            for cid in ids:
+                label = project_labels.get(cid)
+                if not label and label_template:
+                    label = label_template.replace("{id}", cid)
+                entries.append({"id": cid, "label": label or f"{type_label} {cid}"})
+            children[ctype] = {
+                "label": type_label,
+                "entries": entries,
+                "props": list(cvars.keys()),
+            }
+        info["children"] = children
+        return info
+
+    def _build_child_state_responses(self) -> None:
+        """Derive per-(child type, variable) reply formatting from the
+        driver's ``child_set:`` response rules — the child twin of
+        _build_state_responses.
+
+        Two passes: rules whose child_set touches exactly one property bind
+        first (a per-property view reply like "Out2 In1 Vid"), then broader
+        rules fill remaining gaps ("Out2 In1 All" sets input AND
+        audio_input). Only capture-ref ids derive anything — a literal id
+        rule serves one hardwired child and has no generic form.
+        """
+        responses = self._driver_def.get("responses", [])
+        child_types = self._child_types()
+        if not child_types or not isinstance(responses, list):
+            return
+        for exact_only in (True, False):
+            for resp in responses:
+                if not isinstance(resp, dict):
+                    continue
+                raw = resp.get("child_set")
+                pattern = resp.get("match", "")
+                if not isinstance(raw, list) or not pattern:
+                    continue
+                for entry in raw:
+                    if not isinstance(entry, dict):
+                        continue
+                    ctype = entry.get("type")
+                    state_map = entry.get("state")
+                    if ctype not in child_types or not isinstance(state_map, dict):
+                        continue
+                    if exact_only != (len(state_map) == 1):
+                        continue
+                    id_group, wire_id_map = self._child_set_id_group(entry)
+                    if id_group is None:
+                        continue
+                    for prop, expr in state_map.items():
+                        self._absorb_child_rule(
+                            ctype, prop, pattern, id_group, wire_id_map, expr
+                        )
+
+    @staticmethod
+    def _child_set_id_group(entry: dict) -> tuple[int | None, dict[str, str] | None]:
+        """The capture group holding a child_set rule's child id, plus the
+        local-id -> wire-id map (the reverse of the rule's wire -> local
+        ``map:``) a reply must apply to put the device's own id form back on
+        the wire."""
+        cid = entry.get("id")
+        wire_map: dict[str, str] | None = None
+        if isinstance(cid, dict):
+            gref = cid.get("group")
+            if isinstance(gref, str) and gref.startswith("$"):
+                gref = gref[1:]
+            try:
+                group = int(gref)
+            except (TypeError, ValueError):
+                return None, None
+            raw_map = cid.get("map")
+            if isinstance(raw_map, dict) and raw_map:
+                wire_map = {str(v): str(k) for k, v in raw_map.items()}
+            return group, wire_map
+        if isinstance(cid, str) and cid.startswith("$"):
+            try:
+                return int(cid[1:]), None
+            except ValueError:
+                return None, None
+        return None, None
+
+    def _absorb_child_rule(
+        self,
+        ctype: str,
+        prop: str,
+        pattern: str,
+        id_group: int,
+        wire_id_map: dict[str, str] | None,
+        expr: Any,
+    ) -> None:
+        """Fold one child_set property expression into the (ctype, prop)
+        reply table: a capture ref becomes the {value} template, a mapped
+        capture becomes one value_map entry per mapped value, and a static
+        value becomes a whole-reply value_map entry."""
+        key = (ctype, prop)
+        if key not in self._child_state_responses:
+            self._child_state_responses[key] = ChildStateResponse(ctype, prop)
+        sr = self._child_state_responses[key]
+
+        def norm(value: Any) -> str:
+            return str(value).lower() if isinstance(value, bool) else str(value)
+
+        if isinstance(expr, str) and expr.startswith("$"):
+            try:
+                group = int(expr[1:])
+            except ValueError:
+                return
+            if sr.template is None:
+                template = emit_template_multi(
+                    pattern, {id_group: "{child_id}", group: "{value}"}
+                )
+                if template:
+                    sr.template = template
+                    sr.id_wire_map = wire_id_map
+            return
+        if isinstance(expr, dict):
+            if "group" in expr:
+                try:
+                    group = int(expr["group"])
+                except (TypeError, ValueError):
+                    return
+                value_map = expr.get("map")
+                if isinstance(value_map, dict) and value_map:
+                    for wire_tok, value in value_map.items():
+                        vkey = norm(value)
+                        if vkey in sr.value_map:
+                            continue
+                        reply = emit_template_multi(
+                            pattern,
+                            {id_group: "{child_id}", group: str(wire_tok)},
+                        )
+                        if reply:
+                            sr.value_map[vkey] = reply
+                            if sr.id_wire_map is None:
+                                sr.id_wire_map = wire_id_map
+                elif sr.template is None:
+                    template = emit_template_multi(
+                        pattern, {id_group: "{child_id}", group: "{value}"}
+                    )
+                    if template:
+                        sr.template = template
+                        sr.id_wire_map = wire_id_map
+                return
+            if "value" in expr:
+                expr = expr["value"]
+            else:
+                return
+        # Static value (bare or {value: ...}): the whole reply is a literal
+        # carrying only the child id slot.
+        vkey = norm(expr)
+        if vkey not in sr.value_map:
+            reply = emit_template_multi(pattern, {id_group: "{child_id}"})
+            if reply:
+                sr.value_map[vkey] = reply
+                if sr.id_wire_map is None:
+                    sr.id_wire_map = wire_id_map
+
+    def _build_child_query_handlers(self) -> None:
+        """One handler per (each_child query x rostered child). Declared
+        semantics only: the entry's ``query_for`` names which child variable
+        the reply reports — without it there is nothing to derive."""
+        self._child_query_handlers = []
+        entries: list[Any] = []
+        polling = self._driver_def.get("polling")
+        if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
+            entries += polling["queries"]
+        if isinstance(self._driver_def.get("on_connect"), list):
+            entries += self._driver_def["on_connect"]
+        for q in entries:
+            if not isinstance(q, dict) or "each_child" not in q:
+                continue
+            ctype = q.get("each_child")
+            template = q.get("send")
+            qf = q.get("query_for")
+            if not (
+                isinstance(ctype, str)
+                and isinstance(template, str) and template
+                and isinstance(qf, str) and qf
+            ):
+                continue
+            for cid in self._child_roster.get(ctype, []):
+                sub: Any = int(cid) if cid.isdigit() else cid
+                wire = self._query_wire_line(
+                    safe_substitute(template, {"child_id": sub})
+                )
+                if not wire:
+                    continue
+                self._child_query_handlers.append(ChildQueryHandler(
+                    pattern=re.compile(f"^{re.escape(wire)}$"),
+                    child_type=ctype,
+                    child_id=cid,
+                    response_var=qf,
+                ))
+
+    def _execute_child_query_handler(self, handler: ChildQueryHandler) -> bytes | None:
+        """Answer a per-child query from the addressed child's own state."""
+        resp = self._child_state_responses.get(
+            (handler.child_type, handler.response_var)
+        )
+        if resp is None:
+            return None
+        value = self._state.get(
+            f"{handler.child_type}.{handler.child_id}.{handler.response_var}"
+        )
+        text = resp.format(handler.child_id, value)
+        if text is None:
+            return None
+        return (text + self._get_delimiter()).encode()
+
+    def _build_inline_response_handlers(self) -> None:
+        """Compile (pattern, set) handlers from the merged inline responses.
+
+        Used only by Generic (inline-protocol) devices to react to an incoming
+        command that matches one of the device's own response patterns.
+        """
+        for resp in self._driver_def.get("responses", []):
+            match_pattern = resp.get("match", "")
+            set_dict = resp.get("set", {})
+            if not match_pattern or not set_dict:
+                continue
+            try:
+                pattern = re.compile(f"^{match_pattern}$")
+            except re.error:
+                logger.warning(
+                    "%s: skipping bad inline response pattern %r",
+                    self.driver_id, match_pattern,
+                )
+                continue
+            self._inline_response_handlers.append((pattern, set_dict))
+
+    def _apply_inline_response(
+        self, text: str, m: re.Match, set_dict: dict
+    ) -> bytes | None:
+        """Apply an inline response's state changes for an incoming command and
+        echo the command back as the device's confirmation."""
+        for state_key, src in set_dict.items():
+            if isinstance(src, str) and src.startswith("$"):
+                try:
+                    value: Any = m.group(int(src[1:]))
+                except (ValueError, IndexError):
+                    continue
+            else:
+                value = src
+            self.set_state(state_key, self._coerce_value(state_key, value))
+        return (text + self._get_delimiter()).encode()
+
+    def _build_osc_address_handlers(self) -> None:
+        """Build OSC address → state mapping from responses with 'address' key."""
+        responses = self._driver_def.get("responses", [])
+        for resp_def in responses:
+            address = resp_def.get("address")
+            if not address:
+                continue
+            mappings = resp_def.get("mappings", [])
+            if mappings:
+                self._osc_address_handlers.append((address, mappings))
+
+        logger.info(
+            "Auto-gen OSC simulator for %s: %d address handlers",
+            self.driver_id, len(self._osc_address_handlers),
+        )
+
+    def _build_osc_state_reverse_map(self) -> None:
+        """Build reverse map: state_key → (osc_address, arg_idx, tag, reverse_value_map).
+
+        Used to push state changes from the simulator UI to the connected driver
+        via OSC messages (the OSC equivalent of TCP notifications).
+        """
+        for addr_pattern, mappings in self._osc_address_handlers:
+            for mapping in mappings:
+                state_key = mapping.get("state")
+                if not state_key:
+                    continue
+                arg_idx = mapping.get("arg", 0)
+                value_type = mapping.get("type", "float")
+                tag = _type_to_osc_tag(value_type)
+
+                reverse_map: dict[str, str] | None = None
+                value_map = mapping.get("map")
+                if value_map:
+                    reverse_map = {
+                        str(state_val).lower(): str(osc_val)
+                        for osc_val, state_val in value_map.items()
+                    }
+
+                self._osc_state_to_address[state_key] = (
+                    addr_pattern, arg_idx, tag, reverse_map,
+                )
+
+    # ── Merge explicit simulator: section ──
+
+    def _merge_simulator_section(self, sim: dict) -> None:
+        """Merge explicit simulator: enhancements onto auto-generated behavior."""
+        # Override initial state
+        for key, value in sim.get("initial_state", {}).items():
+            self._state[key] = value
+
+        # Override delays
+        for key, value in sim.get("delays", {}).items():
+            self._delays[key] = value
+
+        # Add error modes
+        for mode, mode_def in sim.get("error_modes", {}).items():
+            self._error_modes[mode] = mode_def
+
+        # Add declarative controls schema
+        controls = sim.get("controls")
+        if controls:
+            self.SIMULATOR_INFO["controls"] = controls
+
+        # Build state machines. Skip malformed entries with a warning rather
+        # than letting a missing key raise a KeyError that aborts the whole
+        # device's construction (the validator flags these up front).
+        from openavc.simulator.base import StateMachine
+        for name, sm_def in sim.get("state_machines", {}).items():
+            if not (isinstance(sm_def, dict)
+                    and {"states", "initial", "transitions"} <= sm_def.keys()):
+                logger.warning(
+                    "%s: skipping malformed state_machine '%s' "
+                    "(needs states, initial, transitions)", self.driver_id, name,
+                )
+                continue
+            self._state_machines[name] = StateMachine(
+                name=name,
+                states=sm_def["states"],
+                initial=sm_def["initial"],
+                transitions=sm_def["transitions"],
+                on_change=lambda key, val: self.set_state(key, val),
+            )
+            self._state[name] = sm_def["initial"]
+
+        # Build command handlers from simulator: section
+        # Two formats supported:
+        #   receive: + respond:/set_state: → ExplicitHandler (template-based)
+        #   match: + handler: → ScriptHandler (inline Python)
+        self._explicit_handlers: list[ExplicitHandler] = []
+        self._script_handlers: list[ScriptHandler] = []
+        for handler_def in sim.get("command_handlers", []):
+            # OSC handlers use "address" key (fnmatch pattern)
+            if "address" in handler_def and "handler" in handler_def:
+                try:
+                    code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                except SyntaxError as e:
+                    logger.warning(
+                        "%s: skipping OSC handler for %s — handler code has a "
+                        "syntax error: %s",
+                        self.driver_id, handler_def["address"], e,
+                    )
+                    continue
+                self._osc_script_handlers.append(OSCScriptHandler(
+                    address_pattern=handler_def["address"],
+                    code=code,
+                ))
+                continue
+
+            # TCP/UDP handlers use "receive" or "match" as regex pattern
+            pattern_str = handler_def.get("receive") or handler_def.get("match", "")
+            if not pattern_str:
+                continue
+            try:
+                pattern = re.compile(f"^{pattern_str}$")
+            except re.error:
+                logger.warning("Invalid regex in simulator command_handler: %s", pattern_str)
+                continue
+
+            if "handler" in handler_def:
+                try:
+                    code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
+                except SyntaxError as e:
+                    logger.warning(
+                        "%s: skipping command handler %r — handler code has a "
+                        "syntax error: %s", self.driver_id, pattern_str, e,
+                    )
+                    continue
+                self._script_handlers.append(ScriptHandler(
+                    pattern=pattern,
+                    code=code,
+                ))
+            else:
+                self._explicit_handlers.append(ExplicitHandler(
+                    pattern=pattern,
+                    respond=handler_def.get("respond"),
+                    set_state=handler_def.get("set_state", {}),
+                ))
+
+        # Parse notification templates — maps state changes to unsolicited messages
+        # Format: notifications: { "state_key": { "value": "message template", ... } }
+        # Template variables: {key} = state key name, {value} = new value
+        self._notification_map: dict[str, dict[str, str]] = {}
+        for key, value_map in sim.get("notifications", {}).items():
+            if isinstance(value_map, dict):
+                self._notification_map[key] = {
+                    str(k): str(v) for k, v in value_map.items()
+                }
+            elif isinstance(value_map, str):
+                # Simple template for any value: notifications: { key: "template with {value}" }
+                self._notification_map[key] = {"*": value_map}
+
+    # Ensure handler lists exist even without simulator: section
+    _explicit_handlers: list[ExplicitHandler] = []
+    _script_handlers: list[ScriptHandler] = []
+    _notification_map: dict[str, dict[str, str]] = {}
+    # ...and the child tables before __init__ reaches their assignment
+    # (set_state can fire during construction).
+    _child_roster: dict[str, list[str]] = {}
+    _child_state_responses: dict[tuple[str, str], ChildStateResponse] = {}
+    _child_query_handlers: list[ChildQueryHandler] = []
+
+    # ── State change notifications ──
+
+    def set_state(self, key: str, value: Any) -> None:
+        """Override to broadcast state changes to connected clients (TCP, UDP, and OSC)."""
+        # Clamp numeric values to declared min/max before storing. Bounds are
+        # typed as numbers, but a malformed driver could author a non-numeric
+        # scalar — _as_number returns None for those so we skip clamping rather
+        # than raise on `value < min`. For an integer value, round a fractional
+        # bound inward (ceil a lower bound, floor an upper bound) so the clamped
+        # value still respects the bound instead of truncating past it.
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            var_def = self._var_def_for_key(key)
+            v_min = _as_number(var_def.get("min"))
+            v_max = _as_number(var_def.get("max"))
+            if v_min is not None and value < v_min:
+                value = math.ceil(v_min) if isinstance(value, int) else v_min
+            if v_max is not None and value > v_max:
+                value = math.floor(v_max) if isinstance(value, int) else v_max
+
+        old = self._state.get(key)
+        super().set_state(key, value)
+        if old == value:
+            return
+
+        # Push state changes to connected drivers — only when push_state is
+        # enabled (matching real device behavior) and the change came from a
+        # non-protocol source (simulator UI, API, error injection).
+        if not self._push_state:
+            pass
+        elif (
+            self._is_osc
+            and not self._handling_osc
+            and self._last_client_addr
+            and self._udp_transport
+            and key in self._osc_state_to_address
+        ):
+            self._push_osc_state(key, value)
+        elif (
+            not self._is_udp
+            and not self._is_osc
+            and not self._handling_command
+            and self._clients
+            and (push_text := self._format_state_reply(key, value)) is not None
+        ):
+            delimiter = self._get_delimiter()
+            push_data = (push_text + delimiter).encode()
+            asyncio.ensure_future(self.push(push_data))
+        elif (
+            self._is_udp
+            and not self._is_osc
+            and not self._handling_command
+            and self._last_client_addr
+            and self._udp_transport
+            and (push_text := self._format_state_reply(key, value)) is not None
+        ):
+            delimiter = self._get_delimiter()
+            push_data = (push_text + delimiter).encode()
+            self._udp_transport.sendto(push_data, self._last_client_addr)
+            self.log_protocol("out", push_data)
+
+        # Manual TCP notification (legacy: explicit notifications: section in simulator YAML)
+        if not self._notification_map or key not in self._notification_map:
+            return
+
+        value_map = self._notification_map[key]
+        # Normalize the value for lookup
+        if isinstance(value, bool):
+            lookup = str(value).lower()
+        else:
+            lookup = str(value)
+
+        template = value_map.get(lookup) or value_map.get("*")
+        if not template:
+            return
+
+        msg = self._render_notification(template, key, value)
+        delimiter = self._get_delimiter()
+        data = (msg + delimiter).encode()
+
+        # A driver with a multicast, SSE, or dial-back push channel gets its
+        # notifications on that channel ONLY — real devices with a dedicated
+        # notice feed never send those frames on the control connection.
+        if self._push_multicast:
+            if self._mcast_sock is not None:
+                try:
+                    self._mcast_sock.sendto(data, self._push_multicast)
+                    self.log_protocol("out", data)
+                except OSError:
+                    logger.debug(
+                        "Multicast notification send failed", exc_info=True
+                    )
+        elif self.sse_paths:
+            # SSE events are self-framed — no delimiter appended.
+            self.push_sse_event(msg)
+        elif self._push_tcp:
+            # One outbound connection per registered subscriber, each
+            # carrying one framed notification (the dial-back pattern).
+            if self._push_tcp_subscribers:
+                self._emit_push_tcp(data)
+        elif self._push_http:
+            # HTTP-callback bodies are self-framed — no delimiter appended.
+            # No registered callback (controller never sent its registration
+            # command) means no delivery, matching a real device.
+            for url in list(self._http_push_callbacks):
+                asyncio.ensure_future(self.post_http_callback(
+                    url, msg,
+                    headers={"Content-Type": self._callback_content_type(msg)},
+                ))
+        elif self._clients:
+            asyncio.ensure_future(self.push(data))
+
+    @staticmethod
+    def _render_notification(template: str, key: str, value: Any) -> str:
+        """Render a notification template. `{value}` / `{key}` substitute as
+        before; an optional format spec (`{value:d}`, `{value:04X}`) formats
+        the value — booleans coerce to int first so `{value:d}` renders a
+        protocol's 0/1 instead of 'True'/'False'."""
+
+        def repl(m: re.Match) -> str:
+            val: Any = value if m.group(1) == "value" else key
+            spec = m.group(2)
+            if not spec:
+                return str(val)
+            if isinstance(val, bool):
+                val = int(val)
+            try:
+                return format(val, spec)
+            except (ValueError, TypeError):
+                # A numeric spec on a numeric string: coerce, then format.
+                if isinstance(val, str):
+                    for conv in (int, float):
+                        try:
+                            return format(conv(val), spec)
+                        except (ValueError, TypeError):
+                            continue
+                return str(val)
+
+        return re.sub(r"\{(value|key)(?::([^{}]*))?\}", repl, template)
+
+    def _push_osc_state(self, key: str, value: Any) -> None:
+        """Send an OSC message to the connected driver for a state change."""
+        from openavc.transport.osc_codec import osc_encode_message
+
+        addr, _arg_idx, tag, reverse_map = self._osc_state_to_address[key]
+
+        if reverse_map:
+            lookup = str(value).lower()
+            raw = reverse_map.get(lookup)
+            if raw is None:
+                return
+            if tag == "i":
+                osc_value: Any = int(raw)
+            elif tag == "f":
+                osc_value = float(raw)
+            else:
+                osc_value = raw
+        else:
+            if tag == "f":
+                osc_value = float(value)
+            elif tag == "i":
+                osc_value = int(value) if not isinstance(value, bool) else (1 if value else 0)
+            elif tag == "s":
+                osc_value = str(value)
+            else:
+                osc_value = value
+
+        data = osc_encode_message(addr, [(tag, osc_value)])
+        self._udp_transport.sendto(data, self._last_client_addr)
+        self.log_protocol("out", data)
+
+    def _format_state_reply(self, key: str, value: Any) -> str | None:
+        """Reply/push text for a state key — flat keys through their
+        StateResponse, dotted child keys through the (type, prop) child
+        table. None when nothing derivable represents the value."""
+        if key in self._state_responses:
+            return self._state_responses[key].format(value)
+        parts = key.split(".")
+        if len(parts) == 3:
+            resp = self._child_state_responses.get((parts[0], parts[2]))
+            if resp is not None and parts[1] in self._child_roster.get(parts[0], []):
+                return resp.format(parts[1], value)
+        return None
+
+    # ── Helpers ──
+
+    def _get_delimiter(self) -> str:
+        """Get the line delimiter as a string.
+
+        HTTP responses don't have a line delimiter — the response body is
+        whatever the handler returned, with no trailing CRLF.
+        """
+        if self._is_http:
+            return ""
+        return decode_delimiter(self._driver_def.get("delimiter", "\r\n"))
+
+    def _var_def_for_key(self, state_key: str) -> dict:
+        """Variable definition for a flat key, or for a dotted child key
+        ("<type>.<id>.<prop>") the child type's own declaration."""
+        parts = state_key.split(".")
+        if len(parts) == 3:
+            var_def = self._child_vars(parts[0]).get(parts[2])
+            if isinstance(var_def, dict):
+                return var_def
+        var_def = self._driver_def.get("state_variables", {}).get(state_key)
+        return var_def if isinstance(var_def, dict) else {}
+
+    def _numeric_state_var(self, state_key: str) -> bool:
+        """True when the state variable's declared type is numeric."""
+        vtype = self._var_def_for_key(state_key).get("type", "string")
+        return vtype in ("integer", "number", "float")
+
+    def _coerce_value(self, state_key: str, value: Any) -> Any:
+        """Coerce a value to the state variable's declared type and clamp to range."""
+        var_def = self._var_def_for_key(state_key)
+        var_type = var_def.get("type", "string")
+
+        if var_type == "integer":
+            try:
+                result = int(value)
+            except (ValueError, TypeError):
+                # Parity with ConfigurableDriver._coerce_value: a non-integer
+                # value is returned raw (so bindings/conditions see what the
+                # real device would send) rather than silently coerced to 0.
+                return value
+            v_min = _as_number(var_def.get("min"))
+            v_max = _as_number(var_def.get("max"))
+            if v_min is not None:
+                result = max(math.ceil(v_min), result)
+            if v_max is not None:
+                result = min(math.floor(v_max), result)
+            return result
+        elif var_type == "number":
+            try:
+                result = float(value)
+            except (ValueError, TypeError):
+                return value
+            v_min = _as_number(var_def.get("min"))
+            v_max = _as_number(var_def.get("max"))
+            if v_min is not None:
+                result = max(v_min, result)
+            if v_max is not None:
+                result = min(v_max, result)
+            return result
+        elif var_type == "boolean":
+            if isinstance(value, bool):
+                return value
+            return str(value).lower() in ("true", "1", "on", "yes")
+        else:
+            return str(value)
+
+    def _resolve_template(self, template: str, match: re.Match | None = None) -> str:
+        """Resolve {1}, {2}, {state.key} placeholders in a template."""
+        result = template
+
+        # Replace capture group references {1}, {2}
+        if match:
+            for i in range(1, match.lastindex + 1 if match.lastindex else 1):
+                try:
+                    result = result.replace(f"{{{i}}}", match.group(i) or "")
+                except IndexError:
+                    pass
+
+        # Replace state references {state.key}
+        for key, value in self._state.items():
+            result = result.replace(f"{{state.{key}}}", str(value))
+
+        return result
+
+    @staticmethod
+    def _build_info(driver_def: dict) -> dict:
+        """Build SIMULATOR_INFO from driver definition."""
+        state_vars = driver_def.get("state_variables", {})
+        initial_state = {}
+        controls = []
+        for key, var_def in state_vars.items():
+            var_type = var_def.get("type", "string")
+            label = var_def.get("label", key.replace("_", " ").title())
+            # The seed value is the shared rule; the branches below decide
+            # only which control the UI gets.
+            initial_state[key] = state_var_default(var_def)
+            if var_type == "integer":
+                v_min = var_def.get("min")
+                v_max = var_def.get("max")
+                if v_min is not None and v_max is not None:
+                    ctl = {"type": "slider", "key": key, "label": label,
+                           "min": v_min, "max": v_max}
+                    if var_def.get("step") is not None:
+                        ctl["step"] = var_def["step"]
+                    if var_def.get("unit"):
+                        ctl["unit"] = var_def["unit"]
+                    controls.append(ctl)
+                else:
+                    controls.append({"type": "indicator", "key": key, "label": label})
+            elif var_type == "number":
+                v_min = var_def.get("min")
+                v_max = var_def.get("max")
+                if v_min is not None and v_max is not None:
+                    ctl = {"type": "slider", "key": key, "label": label,
+                           "min": v_min, "max": v_max,
+                           "step": var_def.get("step", 0.1)}
+                    if var_def.get("unit"):
+                        ctl["unit"] = var_def["unit"]
+                    controls.append(ctl)
+                else:
+                    controls.append({"type": "indicator", "key": key, "label": label})
+            elif var_type == "boolean":
+                controls.append({"type": "toggle", "key": key, "label": label})
+            elif var_type == "enum":
+                values = var_def.get("values", [])
+                if key == "power":
+                    controls.append({"type": "power", "key": key})
+                elif values:
+                    controls.append({"type": "select", "key": key, "label": label,
+                                     "options": values})
+                else:
+                    controls.append({"type": "indicator", "key": key, "label": label})
+            else:
+                controls.append({"type": "indicator", "key": key, "label": label})
+
+        info: dict = {
+            "driver_id": driver_def.get("id", "unknown"),
+            "name": driver_def.get("name", "Unknown") + " Simulator",
+            "category": driver_def.get("category", "generic"),
+            "transport": driver_def.get("transport", "tcp"),
+            "default_port": driver_def.get("default_config", {}).get("port", 0),
+            "delimiter": driver_def.get("delimiter"),
+            "initial_state": initial_state,
+            "delays": {
+                "command_response": driver_def.get("default_config", {}).get(
+                    "inter_command_delay", 0.05
+                ),
+            },
+        }
+        # Auto-generated controls from state_variables. These are the Level 0
+        # default — if the simulator: section defines explicit controls, those
+        # replace these in _merge_simulator_section().
+        if controls:
+            info["controls"] = controls
+        return info
+
+
+# ── Data classes ──
+
+class CommandHandler:
+    """Auto-generated handler for a driver command."""
+    def __init__(
+        self,
+        name: str,
+        pattern: re.Pattern,
+        state_changes: dict,
+        response_var: str | None,
+        group_bases: dict[int, int] | None = None,
+        child_type: str | None = None,
+        child_id_group: int = 0,
+        child_wire_map: dict[str, str] | None = None,
+        child_state_keys: set[str] | None = None,
+        response_is_child: bool = False,
+    ):
+        self.name = name
+        self.pattern = pattern
+        self.state_changes = state_changes
+        self.response_var = response_var
+        # Capture groups whose wire form is non-decimal ({level:02X}),
+        # mapped to the int base that decodes them.
+        self.group_bases = group_bases or {}
+        # Child-addressed command (exactly one child_id param): the capture
+        # group holding the child id, the wire->local id translation from the
+        # param's map:, and which state_changes keys are the child's own
+        # variables (routed to its dotted state) vs flat fallbacks.
+        self.child_type = child_type
+        self.child_id_group = child_id_group
+        self.child_wire_map = child_wire_map
+        self.child_state_keys = child_state_keys or set()
+        self.response_is_child = response_is_child
+
+
+class QueryHandler:
+    """Auto-generated handler for a polling query."""
+    def __init__(self, pattern: re.Pattern, response_var: str):
+        self.pattern = pattern
+        self.response_var = response_var
+
+
+class ChildQueryHandler:
+    """Auto-generated handler for one child's each_child poll query."""
+    def __init__(
+        self,
+        pattern: re.Pattern,
+        child_type: str,
+        child_id: str,
+        response_var: str,
+    ):
+        self.pattern = pattern
+        self.child_type = child_type
+        self.child_id = child_id          # unpadded id, as the wire carries it
+        self.response_var = response_var  # a child state variable
+
+
+class ChildStateResponse:
+    """Reply formatting for one (child type, state variable) pair, derived
+    from the driver's child_set: response rules. The template carries a
+    {child_id} slot alongside {value}; value_map entries carry {child_id}
+    inside each mapped reply."""
+
+    def __init__(self, child_type: str, var: str):
+        self.child_type = child_type
+        self.var = var
+        self.template: str | None = None     # e.g. "Out{child_id} In{value} Vid"
+        self.value_map: dict[str, str] = {}  # e.g. {"true": "Vmt{child_id}*1"}
+        # local id -> wire id, from the child_set rule's id map: reversed —
+        # a device that reports 0-based ids must answer with them too.
+        self.id_wire_map: dict[str, str] | None = None
+
+    def format(self, child_id: str, value: Any) -> str | None:
+        """Reply text for this child/value, or None when nothing derivable
+        represents the value (unlike flat replies, a bare value with no id
+        slot would be garbage on the wire)."""
+        wire_id = child_id
+        if self.id_wire_map is not None:
+            wire_id = self.id_wire_map.get(str(child_id), str(child_id))
+        value_str = str(value).lower() if isinstance(value, bool) else str(value)
+        if value_str in self.value_map:
+            return self.value_map[value_str].replace("{child_id}", str(wire_id))
+        if self.template:
+            return (
+                self.template
+                .replace("{child_id}", str(wire_id))
+                .replace("{value}", str(value))
+            )
+        return None
+
+
+class ExplicitHandler:
+    """Explicit handler from simulator: command_handlers section."""
+    def __init__(self, pattern: re.Pattern, respond: str | None, set_state: dict):
+        self.pattern = pattern
+        self.respond = respond
+        self.set_state = set_state
+
+
+class ScriptHandler:
+    """Script handler from simulator: command_handlers with inline Python."""
+    def __init__(self, pattern: re.Pattern, code: Any):
+        self.pattern = pattern
+        self.code = code
+
+
+class _StateProxy(dict):
+    """Dict proxy that routes writes through set_state for change notification."""
+
+    def __init__(self, state: dict, set_state_fn: Any):
+        super().__init__(state)
+        self._real = state
+        self._set_state = set_state_fn
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._set_state(key, value)
+        super().__setitem__(key, value)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._real[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._real.get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._real
+
+
+class StateResponse:
+    """Tracks how to format a response for a state variable."""
+    def __init__(self, state_key: str):
+        self.state_key = state_key
+        self.template: str | None = None  # e.g., "In{value} All"
+        self.value_map: dict[str, str] = {}  # e.g., {"true": "Amt1", "false": "Amt0"}
+
+    def format(self, value: Any) -> str:
+        """Generate response text for the given value."""
+        value_str = str(value).lower() if isinstance(value, bool) else str(value)
+
+        # Check value map first (for boolean/enum values)
+        if value_str in self.value_map:
+            return self.value_map[value_str]
+
+        # Use template
+        if self.template:
+            return self.template.replace("{value}", str(value))
+
+        # Fallback
+        return str(value)
+
+
+# ── Utility functions ──
+
+class OSCScriptHandler:
+    """Script handler for OSC simulator: command_handlers with address pattern."""
+    def __init__(self, address_pattern: str, code: Any):
+        self.address_pattern = address_pattern
+        self.code = code
+
+
+def _type_to_osc_tag(value_type: str) -> str:
+    """Map a state variable type to an OSC type tag."""
+    return {
+        "float": "f",
+        "number": "f",
+        "integer": "i",
+        "boolean": "i",
+        "string": "s",
+    }.get(value_type, "f")
+
+
+# The type tags osc_encode_message understands.
+_OSC_TYPE_TAGS = frozenset("fishdbTFN")
+
+
+def _osc_tag_for(value: Any) -> str:
+    """The OSC type tag a bare Python value implies.
+
+    Booleans send ``i`` as 1/0 rather than OSC's payload-free ``T``/``F``,
+    because that is what AV gear expects and what ``_type_to_osc_tag`` already
+    picks for a boolean state variable.
+    """
+    if isinstance(value, bool):
+        return "i"
+    if isinstance(value, int):
+        return "i"
+    if isinstance(value, float):
+        return "f"
+    if isinstance(value, (bytes, bytearray)):
+        return "b"
+    if value is None:
+        return "N"
+    return "s"
+
+
+def _normalize_osc_args(args: Any) -> list[tuple[str, Any]]:
+    """Coerce a script handler's ``respond`` arguments into (tag, value) pairs.
+
+    ``osc_encode_message`` wants ``(type_tag, value)`` pairs, but the author
+    guide describes the OSC handler contract as "``respond(address, args)``
+    sends an OSC message" with an ``args`` *list* — which reads as a list of
+    values, so handlers get written as ``respond(addr, [cue])``. That used to
+    reach the encoder untouched, where ``for tag, value in args`` unpacked the
+    two-character string ``"12"`` into tag ``"1"`` and value ``"2"``: no branch
+    matched the bogus tag, so the message went out with a garbage type tag and
+    **no payload at all**. The driver's ``arg: 0`` mapping then found nothing,
+    and a simulator that answers every request with an empty reply is
+    indistinguishable from one that works.
+
+    So accept both shapes. An already-typed pair passes through; a bare value
+    gets the tag its Python type implies. A sequence that is neither raises,
+    which the caller's ``except Exception`` logs — loud beats silent here.
+
+    One ambiguity is unavoidable and deliberate: ``["s", "hello"]`` reads as a
+    typed pair, not as two strings. The typed form is the documented one, and a
+    bare data value that happens to be a lone type-tag letter is far less
+    likely than a handler passing a pair.
+    """
+    if args is None:
+        return []
+    if not isinstance(args, (list, tuple)):
+        args = [args]
+
+    normalized: list[tuple[str, Any]] = []
+    for arg in args:
+        if isinstance(arg, (tuple, list)):
+            if len(arg) == 2 and isinstance(arg[0], str) and arg[0] in _OSC_TYPE_TAGS:
+                normalized.append((arg[0], arg[1]))
+                continue
+            raise ValueError(
+                f"OSC respond() argument {arg!r} is not a (type_tag, value) "
+                f"pair — the type tag must be one of {sorted(_OSC_TYPE_TAGS)}. "
+                f"Pass a bare value to have its type inferred."
+            )
+        normalized.append((_osc_tag_for(arg), arg))
+    return normalized

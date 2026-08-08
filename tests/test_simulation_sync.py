@@ -10,7 +10,7 @@ Covers the hardening of the openavc-side simulator lifecycle:
 
 import pytest
 
-from server.core.simulation import SimulationManager
+from openavc.core.simulation import SimulationManager
 
 
 # ── Fakes ──────────────────────────────────────────────────────────────────

@@ -24,14 +24,14 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.avcdriver_semantic import (
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.avcdriver_semantic import (
     child_param_reference_errors,
     undeclared_child_type_reason,
 )
-from server.drivers.base import (
+from openavc.drivers.base import (
     BaseDriver,
     CommandParamError,
     UnknownCommandError,

@@ -21,15 +21,15 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from server.api.routes import drivers as drivers_routes
-from server.api.models import DriverDefinitionRequest
-from server.api.routes.drivers import (
+from openavc.api.routes import drivers as drivers_routes
+from openavc.api.models import DriverDefinitionRequest
+from openavc.api.routes.drivers import (
     _merge_patch,
     create_driver_definition,
     patch_driver_definition,
     update_driver_definition,
 )
-from server.drivers.driver_loader import save_driver_definition
+from openavc.drivers.driver_loader import save_driver_definition
 
 from fastapi import HTTPException
 
@@ -138,7 +138,7 @@ async def test_patch_builtin_is_rejected_and_untouched(driver_dirs, monkeypatch)
 
     # Built-ins are recognized by living under the real bundled definitions
     # tree; treat this test's definitions dir as that tree.
-    from server.drivers import driver_loader
+    from openavc.drivers import driver_loader
 
     monkeypatch.setattr(
         driver_loader,

@@ -22,9 +22,9 @@ import pytest
 
 from tests import gates
 
-from server.updater.manager import UpdateManager
-from server.updater.platform import DeploymentType
-from server.updater.rollback import (
+from openavc.updater.manager import UpdateManager
+from openavc.updater.platform import DeploymentType
+from openavc.updater.rollback import (
     confirm_startup,
     write_pending_marker,
     read_pending_marker,
@@ -257,7 +257,7 @@ class TestApplyLinuxWritesInstruction:
         artifact.write_bytes(b"fake tarball content")
 
         mgr = UpdateManager(state_store=None, data_dir=data_dir)
-        with patch("server.updater.manager.__version__", "1.0.0"):
+        with patch("openavc.updater.manager.__version__", "1.0.0"):
             mgr._apply_linux(artifact, "2.0.0")
 
         instruction_path = data_dir / "apply-update.json"
@@ -343,7 +343,7 @@ class TestRollbackLinuxWritesMarker:
         nothing may be left behind — a marker on disk while the caller was
         told rollback failed (so it keeps running) would downgrade the
         install on the next unrelated restart."""
-        with patch("server.updater.rollback.os.replace",
+        with patch("openavc.updater.rollback.os.replace",
                    side_effect=OSError("disk full")):
             result = _rollback_linux(tmp_path, "1.0.0", "2.0.0")
         assert result is False
@@ -424,8 +424,8 @@ class TestConfirmStartup:
 
     def test_reaching_the_target_clears_and_logs_success(self, tmp_path, caplog):
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
-        with patch("server.version.__version__", "2.0.0"):
-            with caplog.at_level(logging.INFO, logger="server.updater.rollback"):
+        with patch("openavc.version.__version__", "2.0.0"):
+            with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
                 confirm_startup(tmp_path)
         assert read_pending_marker(tmp_path) is None
         assert "confirmed successful" in caplog.text
@@ -435,8 +435,8 @@ class TestConfirmStartup:
         """Release-tag / pyproject skew: the running version isn't the target
         but is no longer what we updated from, so the update did apply."""
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
-        with patch("server.version.__version__", "2.0.1"):
-            with caplog.at_level(logging.INFO, logger="server.updater.rollback"):
+        with patch("openavc.version.__version__", "2.0.1"):
+            with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
                 confirm_startup(tmp_path)
         assert read_pending_marker(tmp_path) is None
         assert "confirmed successful" in caplog.text
@@ -446,8 +446,8 @@ class TestConfirmStartup:
         marker must go (so it can't trip a later restart) without claiming the
         update landed."""
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
-        with patch("server.version.__version__", "1.0.0"):
-            with caplog.at_level(logging.INFO, logger="server.updater.rollback"):
+        with patch("openavc.version.__version__", "1.0.0"):
+            with caplog.at_level(logging.INFO, logger="openavc.updater.rollback"):
                 confirm_startup(tmp_path)
         assert read_pending_marker(tmp_path) is None
         assert "did not take effect" in caplog.text
@@ -519,7 +519,7 @@ class TestStartupRollbackExitsProcess:
         assert check_rollback_needed(tmp_path) is True
 
         # perform_rollback on Linux writes the marker
-        with patch("server.updater.rollback.sys") as mock_sys:
+        with patch("openavc.updater.rollback.sys") as mock_sys:
             mock_sys.platform = "linux"
             success = perform_rollback(tmp_path)
         assert success is True
@@ -538,7 +538,7 @@ class TestStartupRollbackExitsProcess:
 
         engine_started = False
 
-        with patch("server.updater.rollback.sys") as mock_sys:
+        with patch("openavc.updater.rollback.sys") as mock_sys:
             mock_sys.platform = "linux"
             success = perform_rollback(tmp_path)
 
@@ -574,9 +574,9 @@ class TestRollbackAPISchedulesRestart:
         mock_state.set = MagicMock()
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
 
-        with patch("server.updater.rollback.can_rollback", return_value=True), \
-             patch("server.updater.rollback.perform_rollback", return_value=True), \
-             patch("server.updater.manager.asyncio") as mock_asyncio:
+        with patch("openavc.updater.rollback.can_rollback", return_value=True), \
+             patch("openavc.updater.rollback.perform_rollback", return_value=True), \
+             patch("openavc.updater.manager.asyncio") as mock_asyncio:
             mock_loop = MagicMock()
             mock_asyncio.get_running_loop.return_value = mock_loop
 
@@ -616,8 +616,8 @@ class TestWindowsInstallerCaching:
         # UpdateManager downloaded this during the v2.0.0 update
         (cache_dir / "OpenAVC-Setup-2.0.0.exe").write_bytes(b"v2 installer")
 
-        with patch("server.updater.rollback.sys") as mock_sys, \
-             patch("server.updater.rollback._launch_installer_via_scheduler", return_value=True) as mock_launcher:
+        with patch("openavc.updater.rollback.sys") as mock_sys, \
+             patch("openavc.updater.rollback._launch_installer_via_scheduler", return_value=True) as mock_launcher:
             mock_sys.platform = "win32"
 
             result = perform_rollback(tmp_path)
@@ -635,7 +635,7 @@ class TestWindowsInstallerCaching:
         # Only the update installer is cached — no v1.0.0
         (cache_dir / "OpenAVC-Setup-2.0.0.exe").write_bytes(b"v2 only")
 
-        with patch("server.updater.rollback.sys") as mock_sys:
+        with patch("openavc.updater.rollback.sys") as mock_sys:
             mock_sys.platform = "win32"
             result = perform_rollback(tmp_path)
 
@@ -646,7 +646,7 @@ class TestWindowsInstallerCaching:
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         # No update-cache directory at all
 
-        with patch("server.updater.rollback.sys") as mock_sys:
+        with patch("openavc.updater.rollback.sys") as mock_sys:
             mock_sys.platform = "win32"
             result = perform_rollback(tmp_path)
 
@@ -1125,7 +1125,7 @@ class TestFullLinuxUpdateLifecycle:
 
         # --- Step 1: Server writes instruction (what _apply_linux does) ---
         mgr = UpdateManager(state_store=None, data_dir=data_dir)
-        with patch("server.updater.manager.__version__", "1.0.0"):
+        with patch("openavc.updater.manager.__version__", "1.0.0"):
             mgr._apply_linux(tarball, "2.0.0")
 
         # --- Step 2: Server writes pending-update marker ---
@@ -1164,7 +1164,7 @@ class TestFullLinuxUpdateLifecycle:
 
         # === Phase 1: Apply update ===
         mgr = UpdateManager(state_store=None, data_dir=data_dir)
-        with patch("server.updater.manager.__version__", "1.0.0"):
+        with patch("openavc.updater.manager.__version__", "1.0.0"):
             mgr._apply_linux(tarball, "2.0.0")
         write_pending_marker(data_dir, "1.0.0", "2.0.0")
         result = _run_helper(data_dir, app_dir)
@@ -1180,7 +1180,7 @@ class TestFullLinuxUpdateLifecycle:
         assert check_rollback_needed(data_dir) is True
 
         # === Phase 3: Rollback ===
-        with patch("server.updater.rollback.sys") as mock_sys:
+        with patch("openavc.updater.rollback.sys") as mock_sys:
             mock_sys.platform = "linux"
             success = perform_rollback(data_dir)
         assert success is True

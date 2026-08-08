@@ -9,13 +9,13 @@ from unittest.mock import patch
 
 import pytest
 
-from server.discovery.amx_ddp_scanner import (
+from openavc.discovery.amx_ddp_scanner import (
     AMXDDPScanner,
     DDPBeacon,
     MAX_BEACON_SOURCES,
     parse_ddp_beacon,
 )
-from server.discovery.result import SignalTier
+from openavc.discovery.result import SignalTier
 
 
 # ===== Parser =====
@@ -153,7 +153,7 @@ class TestAMXDDPScannerLifecycle:
     async def test_socket_creation_failure_is_handled(self):
         scanner = AMXDDPScanner()
         with patch(
-            "server.discovery.amx_ddp_scanner._create_ddp_socket",
+            "openavc.discovery.amx_ddp_scanner._create_ddp_socket",
             side_effect=OSError("permission denied"),
         ):
             results = await scanner.start(duration=0.1)

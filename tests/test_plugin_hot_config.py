@@ -9,16 +9,16 @@ import asyncio
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.plugin_api import PluginAPI
-from server.core.plugin_loader import PluginLoader
-from server.core.plugin_registry import PluginRegistry
-from server.core.plugin_test_harness import (
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_api import PluginAPI
+from openavc.core.plugin_loader import PluginLoader
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.plugin_test_harness import (
     MockDeviceManager,
     MockMacroEngine,
     PluginTestHarness,
 )
-from server.core.state_store import StateStore
+from openavc.core.state_store import StateStore
 
 
 class _HotPlugin:
@@ -160,7 +160,7 @@ async def test_apply_config_hung_hook_times_out(monkeypatch):
     """A hook that never returns must not wedge apply_config — restart_or_apply
     holds the per-plugin lifecycle lock across it, so an unbounded await would
     block every future stop/start of that plugin."""
-    from server.core import plugin_loader as pl
+    from openavc.core import plugin_loader as pl
 
     monkeypatch.setattr(pl, "PLUGIN_APPLY_TIMEOUT", 0.05)
 
@@ -195,7 +195,7 @@ async def test_restart_or_apply_serializes_overlapping_updates(monkeypatch):
     back up on A's config while the project file holds B's — runtime and disk
     silently diverged (the cloud AI layer fans tool calls out as tasks, so
     this overlap is real, not theoretical)."""
-    from server.core import plugin_loader as pl
+    from openavc.core import plugin_loader as pl
 
     entered_stop = asyncio.Event()
     release_stop = asyncio.Event()

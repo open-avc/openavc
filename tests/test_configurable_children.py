@@ -11,10 +11,10 @@ import asyncio
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
 
 ACME_MATRIX = {
     "id": "acme_matrix",
@@ -856,7 +856,7 @@ def _make_osc_driver(definition=ACME_OSC_MIXER):
 
 
 def _osc(address, *args):
-    from server.transport.osc_codec import osc_encode_message
+    from openavc.transport.osc_codec import osc_encode_message
 
     return osc_encode_message(address, list(args))
 
@@ -948,7 +948,7 @@ async def test_osc_child_id_param_pads_via_format_spec():
 
     # OSC commands require the OSCTransport type; substitute the encoder
     # check by calling the substitution path directly.
-    from server.core.device_manager import DeviceManager
+    from openavc.core.device_manager import DeviceManager
 
     params = DeviceManager._coerce_child_id_params(
         driver, "set_channel_fader", {"channel": "02", "level": 0.5}

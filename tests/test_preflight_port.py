@@ -10,8 +10,8 @@ import socket
 
 import pytest
 
-from server import config
-from server.main import _preflight_port
+from openavc import config
+from openavc.main import _preflight_port
 
 
 def _free_port() -> int:

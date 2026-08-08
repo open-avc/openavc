@@ -21,7 +21,7 @@ from __future__ import annotations
 import io
 import zipfile
 
-from server.core import project_library
+from openavc.core import project_library
 
 
 def _make_zip(members: dict[str, bytes]) -> zipfile.ZipFile:

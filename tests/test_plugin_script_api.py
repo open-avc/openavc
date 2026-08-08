@@ -14,18 +14,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.plugin_loader import (
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.plugin_loader import (
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
     _REGISTRY_LOCK,
     register_plugin_class,
     validate_script_api,
 )
-from server.core.script_api import plugins as plugins_proxy
-from server.core.state_store import StateStore
+from openavc.core.script_api import plugins as plugins_proxy
+from openavc.core.state_store import StateStore
 
 
 # ──── Fixtures ────

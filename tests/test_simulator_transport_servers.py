@@ -21,12 +21,12 @@ import socket
 import httpx
 import pytest
 
-from server.transport.osc_codec import osc_decode_message, osc_encode_message
-from simulator.datagram_server import DatagramServerMixin
-from simulator.http_simulator import HTTPServerMixin, HTTPSimulator
-from simulator.osc_simulator import OSCDispatchMixin, OSCSimulator
-from simulator.udp_simulator import UDPSimulator
-from simulator.yaml_auto import YAMLAutoSimulator
+from openavc.transport.osc_codec import osc_decode_message, osc_encode_message
+from openavc.simulator.datagram_server import DatagramServerMixin
+from openavc.simulator.http_simulator import HTTPServerMixin, HTTPSimulator
+from openavc.simulator.osc_simulator import OSCDispatchMixin, OSCSimulator
+from openavc.simulator.udp_simulator import UDPSimulator
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 # ── Fixtures: one invented driver per transport ─────────────────────────────
 
@@ -160,7 +160,7 @@ def test_transport_plumbing_is_not_redefined_by_the_generator(method):
 def test_response_corruption_has_one_home():
     """``corrupt_bytes`` was defined three times, byte-identically, and
     imported across module boundaries as a private."""
-    from simulator import network_conditions, osc_simulator, tcp_simulator, udp_simulator
+    from openavc.simulator import network_conditions, osc_simulator, tcp_simulator, udp_simulator
 
     assert callable(network_conditions.corrupt_bytes)
     for module in (tcp_simulator, udp_simulator, osc_simulator):

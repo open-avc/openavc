@@ -22,7 +22,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _silence_logging_for_perf():
     """Raise log level to WARNING for the perf test (auto-applied)."""
-    state_logger = logging.getLogger("server.core.state_store")
+    state_logger = logging.getLogger("openavc.core.state_store")
     root_logger = logging.getLogger()
     prior_state = state_logger.level
     prior_root = root_logger.level

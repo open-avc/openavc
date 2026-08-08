@@ -25,10 +25,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from server.drivers.registry import register_driver, unregister_driver
-from server.core.engine import Engine
-from server.core.project_loader import load_project
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
+from openavc.drivers.configurable import create_configurable_driver_class
 
 
 def _write_project(path, *, name="P", variables=None, devices=None,
@@ -457,8 +457,8 @@ async def test_put_project_persists_bytes_and_hot_reloads(tmp_path):
     """The full PUT path against a real engine — nothing stubbed. The request
     must write the new project to disk (with the crash-protection backup) and
     the running engine must pick up the change."""
-    from server.api import rest, ws
-    from server.main import app
+    from openavc.api import rest, ws
+    from openavc.main import app
 
     eng = _engine(tmp_path)
     rest.set_engine(eng)

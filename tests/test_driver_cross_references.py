@@ -22,13 +22,13 @@ import copy
 
 import pytest
 
-from server.drivers.avcdriver_semantic import (
+from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
     validate_substitutions,
     validate_actions,
 )
-from server.drivers.python_info import (
+from openavc.drivers.python_info import (
     python_driver_info_issues,
     python_driver_reference_skips,
 )
@@ -114,7 +114,7 @@ def test_a_dangling_child_type_reads_the_same_on_the_python_surface():
     definition = _definition()
     definition["commands"]["set_block_gain"]["params"]["block"]["child_type"] = "blok"
 
-    from server.drivers.driver_loader import validate_driver_definition
+    from openavc.drivers.driver_loader import validate_driver_definition
 
     yaml_errors = [
         e for e in validate_driver_definition(definition, strict=False)
@@ -302,7 +302,7 @@ def test_a_dangling_state_key_reads_the_same_on_both_surfaces():
     """A typo'd state_key loads fine and shows "(not set)" forever while the
     write still fires — a setting that looks like it works and never reads
     back. The rule was YAML-only; the Python surface reaches it now."""
-    from server.drivers.driver_loader import validate_driver_definition
+    from openavc.drivers.driver_loader import validate_driver_definition
 
     definition = _with_setting(state_key="powr")
     yaml_errors = [

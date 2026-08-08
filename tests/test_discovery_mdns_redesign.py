@@ -6,10 +6,10 @@ binding. Existing mDNS tests in test_discovery_passive.py remain green
 unchanged.
 """
 
-from server.discovery.mdns_scanner import MDNSResult, MDNSScanner
-from server.discovery.result import SignalTier
-from server.discovery.ssdp_scanner import SSDPResult, SSDPScanner
-from server.discovery.tier_matcher import KIND_SSDP
+from openavc.discovery.mdns_scanner import MDNSResult, MDNSScanner
+from openavc.discovery.result import SignalTier
+from openavc.discovery.ssdp_scanner import SSDPResult, SSDPScanner
+from openavc.discovery.tier_matcher import KIND_SSDP
 
 
 class TestMDNSResultEvidence:
@@ -182,7 +182,7 @@ class TestSSDPResultEvidence:
         assert r.device_types == ["urn:foo:device:AcmeFamily:1"]
 
     def test_note_device_type_bounded(self):
-        from server.discovery.ssdp_scanner import MAX_DEVICE_TYPES_PER_IP
+        from openavc.discovery.ssdp_scanner import MAX_DEVICE_TYPES_PER_IP
         r = SSDPResult(ip="10.0.0.50")
         for i in range(MAX_DEVICE_TYPES_PER_IP + 10):
             r.note_device_type(f"urn:foo:device:Type{i}:1")
@@ -200,7 +200,7 @@ class TestDriverDeclaredServiceTypes:
     """
 
     def test_scanner_queries_declared_types(self):
-        from server.discovery.mdns_scanner import MDNSScanner
+        from openavc.discovery.mdns_scanner import MDNSScanner
 
         declared = [
             "_netaudio-cmc._udp.local.",
@@ -214,13 +214,13 @@ class TestDriverDeclaredServiceTypes:
             assert st in scanner._service_types
 
     def test_dns_sd_meta_query_included_even_when_caller_omits_it(self):
-        from server.discovery.mdns_scanner import MDNSScanner, DNS_SD_META_QUERY
+        from openavc.discovery.mdns_scanner import MDNSScanner, DNS_SD_META_QUERY
 
         scanner = MDNSScanner(service_types=["_ndi._tcp.local."])
         assert DNS_SD_META_QUERY in scanner._service_types
 
     def test_normalization_adds_trailing_dot_and_dedupes(self):
-        from server.discovery.mdns_scanner import MDNSScanner
+        from openavc.discovery.mdns_scanner import MDNSScanner
 
         scanner = MDNSScanner(service_types=[
             "_FOO._tcp.local",     # missing trailing dot, mixed case
@@ -231,7 +231,7 @@ class TestDriverDeclaredServiceTypes:
         assert "_bar._udp.local." in scanner._service_types
 
     def test_unknown_service_filter_uses_configured_list(self):
-        from server.discovery.mdns_scanner import MDNSScanner
+        from openavc.discovery.mdns_scanner import MDNSScanner
 
         scanner = MDNSScanner(service_types=["_known._tcp.local."])
         # A type configured for the scanner is "known" — never logged.

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from server.core.engine import Engine
+from openavc.core.engine import Engine
 from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
 
 

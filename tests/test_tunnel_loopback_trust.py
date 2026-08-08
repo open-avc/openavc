@@ -25,16 +25,16 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-import server.api.auth as auth_mod
-from server.main import app
-from server.middleware.rate_limit import (
+import openavc.api.auth as auth_mod
+from openavc.main import app
+from openavc.middleware.rate_limit import (
     TUNNEL_BUCKET_KEY,
     RateLimitMiddleware,
     _ip_buckets,
     _warn_dedup,
 )
-from server.system import network as netmod
-from server.utils.request_origin import TUNNEL_HEADER
+from openavc.system import network as netmod
+from openavc.utils.request_origin import TUNNEL_HEADER
 
 TUNNEL_HEADERS = {TUNNEL_HEADER: "1"}
 
@@ -46,7 +46,7 @@ TUNNEL_HEADERS = {TUNNEL_HEADER: "1"}
 
 @pytest.fixture
 def tunnel_handler():
-    from server.cloud.tunnel import TunnelHandler
+    from openavc.cloud.tunnel import TunnelHandler
 
     agent = MagicMock()
     agent.send_message = AsyncMock()
@@ -54,7 +54,7 @@ def tunnel_handler():
 
 
 def _http_conn(handler, tunnel_id="t-mark"):
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
 
     conn = TunnelConnection(
         tunnel_id=tunnel_id, target_port=8080, data_ws=AsyncMock()
@@ -117,7 +117,7 @@ async def test_upstream_cannot_suppress_or_forge_the_marker(tunnel_handler):
 async def test_proxied_websocket_open_is_marked(tunnel_handler):
     """Nothing on the WS surface trusts loopback today; the marker is there so
     that stays a choice rather than an accident."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
 
     conn = TunnelConnection(tunnel_id="t-ws", target_port=8080, data_ws=AsyncMock())
     tunnel_handler._tunnels["t-ws"] = conn
@@ -127,7 +127,7 @@ async def test_proxied_websocket_open_is_marked(tunnel_handler):
     local_ws.__anext__ = AsyncMock(side_effect=StopAsyncIteration)
 
     with patch(
-        "server.cloud.tunnel.websockets.connect", new=AsyncMock(return_value=local_ws)
+        "openavc.cloud.tunnel.websockets.connect", new=AsyncMock(return_value=local_ws)
     ) as connect:
         await tunnel_handler._handle_ws_open(
             conn,
@@ -210,7 +210,7 @@ async def test_authenticated_tunneled_caller_keeps_the_capability(claimed_no_bac
 async def test_forwarded_header_cannot_buy_console_trust(claimed_no_backend, monkeypatch):
     """A reverse proxy also delivers everything from loopback. Console access is
     credential-free, so it must not rest on a header anyone can set."""
-    monkeypatch.setattr("server.config.TRUST_FORWARDED_FOR", True)
+    monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", True)
     resp = await _loopback_get(
         "/api/system/network", headers={"X-Forwarded-For": "203.0.113.9"}
     )
@@ -258,7 +258,7 @@ def _clean_buckets():
 
 def test_tunneled_traffic_is_rate_limited():
     client = _loopback_client(_limited_app())
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         assert client.get("/api/devices", headers=TUNNEL_HEADERS).status_code == 200
         assert client.get("/api/devices", headers=TUNNEL_HEADERS).status_code == 429
 
@@ -267,7 +267,7 @@ def test_console_traffic_is_still_exempt():
     """The exemption exists because the primary deployment is one person on the
     box. That must survive the fix."""
     client = _loopback_client(_limited_app())
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         for _ in range(5):
             assert client.get("/api/devices").status_code == 200
     assert TUNNEL_BUCKET_KEY not in _ip_buckets
@@ -277,7 +277,7 @@ def test_tunneled_401s_feed_the_brute_force_counter():
     """The sharp end of the finding: password guessing through the tunnel was
     metered by nothing at all."""
     client = _loopback_client(_limited_app(status=401))
-    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         assert client.get("/api/needs-auth", headers=TUNNEL_HEADERS).status_code == 401
         assert client.get("/api/needs-auth", headers=TUNNEL_HEADERS).status_code == 401
         # Third attempt is refused by the counter, not by the endpoint.
@@ -288,7 +288,7 @@ def test_lan_client_cannot_claim_the_tunnel_bucket():
     """Believing the marker from any source would let any LAN client exhaust
     the tunnel's shared budget and take remote access down."""
     client = TestClient(_limited_app(), client=("203.0.113.9", 5555))
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 2):
         assert client.get("/api/devices", headers=TUNNEL_HEADERS).status_code == 200
     assert TUNNEL_BUCKET_KEY not in _ip_buckets
     assert "203.0.113.9" in _ip_buckets
@@ -345,7 +345,7 @@ async def test_marker_reaches_the_local_server_as_the_agent_sent_it(tunnel_handl
         "client": ("127.0.0.1", 50000),
         "query_string": b"",
     }
-    from server.utils.request_origin import is_local_console_request, is_tunneled_request
+    from openavc.utils.request_origin import is_local_console_request, is_tunneled_request
 
     assert is_tunneled_request(Request(scope)) is True
     assert is_local_console_request(Request(scope)) is False

@@ -18,7 +18,7 @@ Platform tests: invented device ("acme_secure"), synthetic payloads.
 
 import asyncio
 
-from simulator.yaml_auto import YAMLAutoSimulator
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
 def _driver_def(auth_overrides: dict | None = None, **auth_removals) -> dict:

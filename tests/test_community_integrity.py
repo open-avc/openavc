@@ -12,7 +12,7 @@ import hashlib
 
 import pytest
 
-from server.utils.community_integrity import (
+from openavc.utils.community_integrity import (
     DRIVERS_OWNER_REPO,
     PLUGINS_OWNER_REPO,
     ArtifactHashes,

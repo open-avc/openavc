@@ -18,10 +18,10 @@ from typing import Any
 
 import pytest
 
-from server.drivers.registry import register_driver, unregister_driver
-from server.core.engine import Engine
-from server.core.project_loader import load_project
-from server.drivers.base import BaseDriver
+from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
+from openavc.drivers.base import BaseDriver
 from tests.helpers import wait_for_condition
 
 
@@ -126,7 +126,7 @@ async def test_pending_settings_persist_from_inside_reconcile_no_deadlock(
         "device.pending_settings_applied", eng._on_pending_settings_applied
     )
 
-    from server.core.project_loader import DeviceConfig
+    from openavc.core.project_loader import DeviceConfig
 
     new_project = eng.project.model_copy(deep=True)
     new_project.devices.append(DeviceConfig(
@@ -292,7 +292,7 @@ async def test_plugin_save_config_failure_reverts_in_memory(tmp_path, monkeypatc
     async def boom(path, project):
         raise OSError("disk full")
 
-    monkeypatch.setattr("server.core.engine.save_project_async", boom)
+    monkeypatch.setattr("openavc.core.engine.save_project_async", boom)
 
     with pytest.raises(OSError):
         await eng._save_plugin_config("plug1", {"x": 2})

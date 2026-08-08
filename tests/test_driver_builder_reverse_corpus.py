@@ -50,7 +50,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from server.drivers.driver_loader import validate_driver_issues
+from openavc.drivers.driver_loader import validate_driver_issues
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]

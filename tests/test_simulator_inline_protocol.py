@@ -6,7 +6,7 @@ that config into the definition it builds from, so it can simulate a no-code
 device. Platform tests: invented device ("acme_generic"), synthetic payloads.
 """
 
-from simulator.yaml_auto import (
+from openavc.simulator.yaml_auto import (
     YAMLAutoSimulator,
     _merge_inline_protocol,
     _mappings_to_set,

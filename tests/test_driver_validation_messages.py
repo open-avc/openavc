@@ -41,7 +41,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 def _validate(driver_def: Any) -> list[str]:
     if str(_ROOT) not in sys.path:
         sys.path.insert(0, str(_ROOT))
-    from server.drivers.driver_loader import validate_driver_definition
+    from openavc.drivers.driver_loader import validate_driver_definition
 
     # strict, because the corpus is "what an authoring gate refuses" — the
     # bar the Builder, the save routes, import, the AI tool and catalog CI

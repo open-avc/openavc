@@ -6,8 +6,8 @@ the precise warn-only-on-unknown-state rule, and StateStore.has().
 
 import logging
 
-from server.core.state_store import StateStore
-from server.core.value_resolver import resolve_ref
+from openavc.core.state_store import StateStore
+from openavc.core.value_resolver import resolve_ref
 
 
 def make_state(values: dict) -> StateStore:

@@ -158,7 +158,7 @@ The virtual environment isolates OpenAVC's Python dependencies from your system 
 With the venv still activated:
 
 ```bash
-python -m server.main
+python -m openavc.main
 ```
 
 This starts the OpenAVC server on port 8080, bound to localhost only.

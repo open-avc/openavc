@@ -12,10 +12,10 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-import server.core.macro_engine as macro_engine
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.state_store import StateStore
+import openavc.core.macro_engine as macro_engine
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.state_store import StateStore
 
 
 @pytest.fixture

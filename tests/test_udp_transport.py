@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from server.transport.udp import UDPTransport, _format_data
+from openavc.transport.udp import UDPTransport, _format_data
 
 
 class _UDPReceiver(asyncio.DatagramProtocol):

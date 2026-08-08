@@ -1,6 +1,6 @@
 """E2E test fixtures for the Programmer IDE.
 
-Each test boots a real ``python -m server.main`` subprocess pointed at a
+Each test boots a real ``python -m openavc.main`` subprocess pointed at a
 temp project + temp data dir, listening on a free localhost port. The
 ``E2ETestController`` driver (copied into ``driver_repo/`` for the test
 session) declares one child entity type and synthesizes an ``initial_children``
@@ -271,7 +271,7 @@ def _start_server(tmp_root: Path, *, initial_children: int):
     log_path = tmp_root / "server.log"
     log = open(log_path, "wb")
     proc = subprocess.Popen(
-        [sys.executable, "-m", "server.main"],
+        [sys.executable, "-m", "openavc.main"],
         cwd=str(OPENAVC_ROOT),
         env=env,
         stdout=log,

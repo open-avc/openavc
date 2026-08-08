@@ -9,7 +9,7 @@ exercise that transport handling with a synthetic driver (no real vendor).
 
 import pytest
 
-from server.core.simulation import SimulationManager
+from openavc.core.simulation import SimulationManager
 
 
 # ── Fakes ──────────────────────────────────────────────────────────────────

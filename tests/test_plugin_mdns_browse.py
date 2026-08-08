@@ -2,10 +2,10 @@
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.plugin_api import PluginAPI, PluginPermissionError
-from server.core.plugin_registry import PluginRegistry
-from server.core.state_store import StateStore
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_api import PluginAPI, PluginPermissionError
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.state_store import StateStore
 
 
 def _api(capabilities):
@@ -40,7 +40,7 @@ async def test_mdns_browse_validates_service_types():
 
 @pytest.mark.asyncio
 async def test_mdns_browse_maps_results(monkeypatch):
-    from server.discovery import mdns_scanner
+    from openavc.discovery import mdns_scanner
 
     class FakeScanner:
         def __init__(self, control_ip="", service_types=None):

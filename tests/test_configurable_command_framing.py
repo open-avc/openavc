@@ -10,10 +10,10 @@ invented receiver so no real product is named.
 
 import copy
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
 
 # Invented text-protocol receiver: a constant "!1" packet header and a "\r"
 # terminator wrap every command (the shape of many AV receiver protocols).
@@ -155,7 +155,7 @@ def test_simulator_matches_framed_command():
     # The auto-generated simulator must recognize the framed wire form the real
     # driver sends (command_prefix prepended; the whitespace suffix is stripped
     # from the incoming line), and must NOT match the unframed command.
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     definition = {
         "id": "acme_receiver",

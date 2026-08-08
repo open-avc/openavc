@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from server.core.engine import Engine
-from server.core.project_loader import load_project
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
 
 
 def _project(tmp_path: Path, elements: list[dict], macros: list[dict] | None = None) -> Path:

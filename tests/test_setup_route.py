@@ -16,11 +16,11 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-import server.api.auth as auth_mod
-from server.core.engine import Engine
-from server.core.project_loader import load_project
-from server.main import app
-from server.api import rest
+import openavc.api.auth as auth_mod
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
+from openavc.main import app
+from openavc.api import rest
 
 
 EMPTY_PROJECT = {
@@ -125,7 +125,7 @@ async def test_status_redacted_for_tunneled_caller(claimed):
     """A cloud-tunnel request arrives from loopback but is not the device's own
     screen — the anti-reconnaissance gate has to tell them apart. Full contract
     in tests/test_tunnel_loopback_trust.py."""
-    from server.utils.request_origin import TUNNEL_HEADER
+    from openavc.utils.request_origin import TUNNEL_HEADER
 
     transport = ASGITransport(app=app, client=("127.0.0.1", 50000))
     async with AsyncClient(transport=transport, base_url="http://testserver") as c:
@@ -136,7 +136,7 @@ async def test_status_redacted_for_tunneled_caller(claimed):
 
 async def test_status_full_for_authenticated_tunneled_caller(claimed):
     """Credentials still buy the disclosure — the tunnel is remote, not blind."""
-    from server.utils.request_origin import TUNNEL_HEADER
+    from openavc.utils.request_origin import TUNNEL_HEADER
 
     transport = ASGITransport(app=app, client=("127.0.0.1", 50000))
     async with AsyncClient(transport=transport, base_url="http://testserver") as c:
@@ -217,8 +217,8 @@ async def test_empty_project_has_no_panel_content(claimed, remote_client):
 # cert is active), port-less when the port-80 listener is up, and the direct
 # https URL only when TLS is on with the redirect listener disabled.
 
-from server import runtime_flags  # noqa: E402
-from server.api.routes import setup as setup_mod  # noqa: E402
+from openavc import runtime_flags  # noqa: E402
+from openavc.api.routes import setup as setup_mod  # noqa: E402
 
 
 class _CfgStub:

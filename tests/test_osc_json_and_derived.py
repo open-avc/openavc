@@ -16,15 +16,15 @@ import asyncio
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import (
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import (
     ConfigurableDriver,
     create_configurable_driver_class,
 )
-from server.transport.frame_parsers import SlipFrameParser, slip_encode
-from server.transport.osc import OSCTransport
-from server.transport.osc_codec import osc_decode_message, osc_encode_message
+from openavc.transport.frame_parsers import SlipFrameParser, slip_encode
+from openavc.transport.osc import OSCTransport
+from openavc.transport.osc_codec import osc_decode_message, osc_encode_message
 
 
 def _make_driver(definition, config=None, device_id="dev1"):

@@ -25,8 +25,8 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-import server.api.auth as auth_mod
-from server.api.plugin_ext import (
+import openavc.api.auth as auth_mod
+from openavc.api.plugin_ext import (
     mint_guest_token,
     mint_plugin_token,
     mount_plugin_guest_router,
@@ -36,17 +36,17 @@ from server.api.plugin_ext import (
     verify_guest_token,
     verify_plugin_token,
 )
-from server.core.event_bus import EventBus
-from server.core.plugin_api import PluginAPI, PluginPermissionError
-from server.core.plugin_loader import (
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_api import PluginAPI, PluginPermissionError
+from openavc.core.plugin_loader import (
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
     _REGISTRY_LOCK,
     register_plugin_class,
 )
-from server.core.plugin_registry import PluginRegistry
-from server.core.state_store import StateStore
-from server.middleware import rate_limit as rate_limit_mod
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.state_store import StateStore
+from openavc.middleware import rate_limit as rate_limit_mod
 
 
 def _set_auth(monkeypatch, password="", api_key="", username=""):

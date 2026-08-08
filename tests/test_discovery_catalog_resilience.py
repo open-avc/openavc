@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import logging
 
-from server.discovery import community_index as ci
-from server.discovery.engine import DiscoveryEngine
-from server.discovery.tier_matcher import KIND_ACTIVE_PROBE, KIND_SSDP
+from openavc.discovery import community_index as ci
+from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.tier_matcher import KIND_ACTIVE_PROBE, KIND_SSDP
 
 
 def _catalog_entry(driver_id: str, discovery: dict) -> dict:
@@ -85,7 +85,7 @@ def test_requires_gated_catalog_entry_skips_without_side_effects(monkeypatch, ca
     # A catalog entry gated on a newer platform contributes nothing on
     # this one — and the rest of the catalog folds in normally.
     monkeypatch.setattr(
-        "server.discovery.hints._platform_version", lambda: "0.22.0",
+        "openavc.discovery.hints._platform_version", lambda: "0.22.0",
     )
     engine = DiscoveryEngine()
     engine._installed_registry = []

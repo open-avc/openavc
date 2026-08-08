@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.updater.manager import UpdateManager
-from server.updater.platform import DeploymentType
+from openavc.updater.manager import UpdateManager
+from openavc.updater.platform import DeploymentType
 
 
 def _bare_manager(tmp_path, deployment=DeploymentType.LINUX_PACKAGE):
@@ -70,7 +70,7 @@ def test_resolve_tz_valid():
 def test_in_window_same_day(tmp_path):
     mgr = _bare_manager(tmp_path)
     start, end = dt_time(2, 0), dt_time(3, 0)
-    with patch("server.updater.manager.datetime") as mock_dt:
+    with patch("openavc.updater.manager.datetime") as mock_dt:
         # 02:30 UTC -> inside
         mock_dt.now.return_value = _utc(2, 30)
         assert mgr._in_window(start, end, None) is True
@@ -85,7 +85,7 @@ def test_in_window_same_day(tmp_path):
 def test_in_window_overnight(tmp_path):
     mgr = _bare_manager(tmp_path)
     start, end = dt_time(23, 0), dt_time(2, 0)
-    with patch("server.updater.manager.datetime") as mock_dt:
+    with patch("openavc.updater.manager.datetime") as mock_dt:
         mock_dt.now.return_value = _utc(23, 30)
         assert mgr._in_window(start, end, None) is True   # after start
         mock_dt.now.return_value = _utc(1, 0)
@@ -105,7 +105,7 @@ def _utc(hour, minute):
 @pytest.mark.asyncio
 async def test_apply_policy_garbage_does_not_schedule(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("server.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.manager.can_self_update", return_value=True):
         # unknown policy -> manual, no task
         await mgr.apply_update_policy({"policy": "destroy_everything"})
         assert mgr._maintenance_task is None
@@ -130,7 +130,7 @@ async def test_apply_policy_valid_schedules_one_task_and_reconfigures(tmp_path):
         await asyncio.sleep(3600)
     mgr._maintenance_window_loop = _never
 
-    with patch("server.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.manager.can_self_update", return_value=True):
         policy = {
             "policy": "auto",
             "maintenance_window_start": "02:00",
@@ -162,7 +162,7 @@ def test_history_marks_success_despite_tag_pyproject_skew(tmp_path):
     mgr = _bare_manager(tmp_path)
     # Pending update FROM 0.13.0 TO release tag 0.15.0; running pyproject is 0.14.0.
     _write_history(mgr, {"from_version": "0.13.0", "to_version": "0.15.0", "status": "pending"})
-    with patch("server.updater.manager.__version__", "0.14.0"):
+    with patch("openavc.updater.manager.__version__", "0.14.0"):
         mgr._load_history()
     assert mgr._history[0]["status"] == "success"  # version changed -> applied (H-013)
 
@@ -170,7 +170,7 @@ def test_history_marks_success_despite_tag_pyproject_skew(tmp_path):
 def test_history_marks_failed_when_version_unchanged(tmp_path):
     mgr = _bare_manager(tmp_path)
     _write_history(mgr, {"from_version": "0.13.0", "to_version": "0.14.0", "status": "pending"})
-    with patch("server.updater.manager.__version__", "0.13.0"):
+    with patch("openavc.updater.manager.__version__", "0.13.0"):
         mgr._load_history()
     assert mgr._history[0]["status"] == "failed"  # still on from_version -> really failed
 
@@ -194,11 +194,11 @@ async def test_rollback_clears_staged_update(tmp_path):
     assert mgr.get_staged_update() is not None
 
     cleanup = MagicMock()
-    with patch("server.updater.rollback.can_rollback", return_value=True), \
-         patch("server.updater.rollback.perform_rollback", return_value=True), \
-         patch("server.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
-         patch("server.updater.backup.cleanup_old_backups", cleanup), \
-         patch("server.system_config.APP_DIR", tmp_path), \
+    with patch("openavc.updater.rollback.can_rollback", return_value=True), \
+         patch("openavc.updater.rollback.perform_rollback", return_value=True), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups", cleanup), \
+         patch("openavc.system_config.APP_DIR", tmp_path), \
          patch.object(mgr, "_restart_process"), \
          patch.object(mgr, "_save_history"):
         result = await mgr.rollback()
@@ -214,10 +214,10 @@ def test_get_status_rollback_version_from_real_target(tmp_path):
     mgr = _bare_manager(tmp_path)
     # A prior rollback success entry would mislead a history-based derivation.
     mgr._history = [{"from_version": "0.14.0", "to_version": "rollback", "status": "success"}]
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.rollback.can_rollback", return_value=True), \
-         patch("server.updater.rollback.rollback_target_version", return_value="0.12.0") as rtv, \
-         patch("server.system_config.APP_DIR", tmp_path):
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.rollback.can_rollback", return_value=True), \
+         patch("openavc.updater.rollback.rollback_target_version", return_value="0.12.0") as rtv, \
+         patch("openavc.system_config.APP_DIR", tmp_path):
         status = mgr.get_status()
     rtv.assert_called_once()
     assert status["rollback_version"] == "0.12.0"  # not "0.14.0" from history
@@ -228,8 +228,8 @@ def test_get_status_rollback_version_from_real_target(tmp_path):
 def test_cleanup_failed_apply_clears_linux_instruction(tmp_path):
     mgr = _bare_manager(tmp_path)
     (mgr._data_dir / "apply-update.json").write_text("{}", encoding="utf-8")
-    with patch("server.updater.rollback.clear_pending_marker"), \
-         patch("server.updater.manager.__version__", "0.13.0"), \
+    with patch("openavc.updater.rollback.clear_pending_marker"), \
+         patch("openavc.updater.manager.__version__", "0.13.0"), \
          patch.object(mgr, "_save_history"):
         mgr._cleanup_failed_apply("0.14.0", "boom")
     assert not (mgr._data_dir / "apply-update.json").exists()      # H-012
@@ -245,11 +245,11 @@ async def test_cancelled_apply_records_failed_and_propagates(tmp_path):
         raise asyncio.CancelledError()
     mgr._download_update = _cancel
 
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.manager.__version__", "0.9.0"), \
-         patch("server.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
-         patch("server.updater.backup.cleanup_old_backups"), \
-         patch("server.updater.rollback.clear_pending_marker"), \
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.manager.__version__", "0.9.0"), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups"), \
+         patch("openavc.updater.rollback.clear_pending_marker"), \
          patch.object(mgr, "_save_history"):
         with pytest.raises(asyncio.CancelledError):
             await mgr.apply_update()
@@ -268,7 +268,7 @@ async def test_staged_update_kept_on_apply_failure(tmp_path):
     async def _fail(*_a, **_k):
         return {"success": False, "error": "network blip"}
     mgr.apply_cloud_update = _fail
-    with patch("server.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.manager.can_self_update", return_value=True):
         result = await mgr.apply_update()
     assert result["success"] is False
     assert mgr.get_staged_update() is not None   # retained for retry (L-011)
@@ -302,7 +302,7 @@ async def test_download_removes_partial_on_error(tmp_path, monkeypatch):
         def stream(self, method, url):
             return _FailStream()
 
-    monkeypatch.setattr("server.updater.manager.httpx.AsyncClient", _Client)
+    monkeypatch.setattr("openavc.updater.manager.httpx.AsyncClient", _Client)
     with pytest.raises(OSError):
         await mgr._download_artifact("https://x/a.tar.gz", "a.tar.gz")
     assert not (mgr._data_dir / "update-cache" / "a.tar.gz").exists()  # L-012
@@ -311,7 +311,7 @@ async def test_download_removes_partial_on_error(tmp_path, monkeypatch):
 # ── L-014: a mid-write backup failure leaves no countable .zip ──
 
 def test_backup_atomic_on_write_failure(tmp_path, monkeypatch):
-    from server.updater import backup
+    from openavc.updater import backup
     data_dir = tmp_path / "data"
     (data_dir / "projects").mkdir(parents=True)
     (data_dir / "projects" / "p.avc").write_text("{}", encoding="utf-8")
@@ -340,7 +340,7 @@ async def test_check_does_not_touch_status_during_apply(tmp_path):
     sets = []
     mgr._state.set = lambda k, v, source="system": sets.append((k, v))
 
-    with patch("server.system_config.get_system_config"):
+    with patch("openavc.system_config.get_system_config"):
         await mgr.check_for_updates(channel="stable")
 
     keys = {k for k, _ in sets}
@@ -367,8 +367,8 @@ async def test_auto_check_interval_coerced(tmp_path):
         ("updates", "auto_check_interval_hours"): "not-a-number",
     }.get((section, key), default)
 
-    with patch("server.system_config.get_system_config", return_value=cfg), \
-         patch("server.updater.manager.asyncio.create_task", _capture):
+    with patch("openavc.system_config.get_system_config", return_value=cfg), \
+         patch("openavc.updater.manager.asyncio.create_task", _capture):
         await mgr.start_auto_check()
     assert captured.get("scheduled") is True  # didn't raise on the bad interval (M-015)
 
@@ -378,7 +378,7 @@ async def test_auto_check_interval_coerced(tmp_path):
 @pytest.mark.asyncio
 async def test_apply_cloud_update_rejects_non_https(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("server.updater.manager.can_self_update", return_value=True):
+    with patch("openavc.updater.manager.can_self_update", return_value=True):
         result = await mgr.apply_cloud_update("1.0.0", "http://evil/u.tar.gz", "abc")
     assert result["success"] is False
     assert "HTTPS" in result["error"] or "https" in result["error"]
@@ -404,15 +404,15 @@ def test_safe_artifact_filename(tmp_path, url_path, version, deployment, expecte
 
 def test_get_status_includes_staged_version(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.rollback.can_rollback", return_value=False), \
-         patch("server.system_config.APP_DIR", tmp_path):
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.rollback.can_rollback", return_value=False), \
+         patch("openavc.system_config.APP_DIR", tmp_path):
         assert mgr.get_status()["staged_version"] == ""
 
     mgr.stage_update("9.9.9", "https://x/u.tar.gz", "deadbeef")
-    with patch("server.updater.manager.can_self_update", return_value=True), \
-         patch("server.updater.rollback.can_rollback", return_value=False), \
-         patch("server.system_config.APP_DIR", tmp_path):
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+         patch("openavc.updater.rollback.can_rollback", return_value=False), \
+         patch("openavc.system_config.APP_DIR", tmp_path):
         assert mgr.get_status()["staged_version"] == "9.9.9"
 
 
@@ -455,13 +455,13 @@ def test_init_without_staged_file_does_not_touch_key(tmp_path):
 @pytest.mark.asyncio
 async def test_rollback_history_records_target_and_flag(tmp_path):
     mgr = _bare_manager(tmp_path)
-    with patch("server.updater.rollback.can_rollback", return_value=True), \
-         patch("server.updater.rollback.perform_rollback", return_value=True), \
-         patch("server.updater.rollback.rollback_target_version", return_value="0.12.0"), \
-         patch("server.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
-         patch("server.updater.backup.cleanup_old_backups", MagicMock()), \
-         patch("server.system_config.APP_DIR", tmp_path), \
-         patch("server.updater.manager.__version__", "0.13.0"), \
+    with patch("openavc.updater.rollback.can_rollback", return_value=True), \
+         patch("openavc.updater.rollback.perform_rollback", return_value=True), \
+         patch("openavc.updater.rollback.rollback_target_version", return_value="0.12.0"), \
+         patch("openavc.updater.backup.create_backup", return_value=tmp_path / "b.zip"), \
+         patch("openavc.updater.backup.cleanup_old_backups", MagicMock()), \
+         patch("openavc.system_config.APP_DIR", tmp_path), \
+         patch("openavc.updater.manager.__version__", "0.13.0"), \
          patch.object(mgr, "_restart_process"), \
          patch.object(mgr, "_save_history"):
         result = await mgr.rollback()

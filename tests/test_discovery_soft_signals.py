@@ -14,9 +14,9 @@ in matching lives next to that driver in openavc-drivers. See CLAUDE.md.
 
 from __future__ import annotations
 
-from server.discovery.hints import build_signal_index, parse_driver_discovery
-from server.discovery.result import DeviceState
-from server.discovery.tier_matcher import (
+from openavc.discovery.hints import build_signal_index, parse_driver_discovery
+from openavc.discovery.result import DeviceState
+from openavc.discovery.tier_matcher import (
     TierMatcher,
     evidence_hostname,
     evidence_open_port,

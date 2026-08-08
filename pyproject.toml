@@ -51,8 +51,8 @@ pi = [
 [project.scripts]
 # The `openavc` CLI command maps to the main() function in server/main.py, which starts the server.
 # This allows users to run `openavc` from the command line if the package is installed.
-# The original `python -m server.main` entry point is still available however.
-openavc = "server.main:main"
+# The original `python -m openavc.main` entry point is still available however.
+openavc = "openavc.main:main"
 
 
 [build-system]

@@ -16,17 +16,17 @@ from unittest.mock import patch
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
-from server.core.setup_actions import (
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
+from openavc.core.setup_actions import (
     SetupActionContext,
     SetupActionInProgress,
     SetupActionRunner,
 )
-from server.core.state_store import StateStore
-from server.drivers.actions import resolve_device_actions
-from server.drivers.base import BaseDriver
+from openavc.core.state_store import StateStore
+from openavc.drivers.actions import resolve_device_actions
+from openavc.drivers.base import BaseDriver
 
 pytestmark = pytest.mark.usefixtures("_patch_save_project")
 
@@ -34,7 +34,7 @@ pytestmark = pytest.mark.usefixtures("_patch_save_project")
 @pytest.fixture
 def _patch_save_project():
     # apply_config_update persists the project; we don't need real file I/O here.
-    with patch("server.core.project_loader.save_project") as m:
+    with patch("openavc.core.project_loader.save_project") as m:
         yield m
 
 
@@ -244,8 +244,8 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
     config is updated first, so the device compare stays convergent and the
     running handler's ``self`` stays valid.
     """
-    from server.drivers.registry import register_driver, unregister_driver
-    from server.core.engine import Engine
+    from openavc.drivers.registry import register_driver, unregister_driver
+    from openavc.core.engine import Engine
 
     register_driver(_ProvisionDriver)
     engine = Engine(str(tmp_path / "p.avc"))

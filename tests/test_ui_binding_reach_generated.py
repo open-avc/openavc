@@ -1,6 +1,6 @@
 """The generated binding-reach table must match the reviewer's.
 
-``server/ui/page_review.py`` holds the tables; ``python -m server.ui.review_gen``
+``server/ui/page_review.py`` holds the tables; ``python -m openavc.ui.review_gen``
 renders them into the Programmer IDE's ``uiBindingReach.gen.ts``. This re-renders
 and compares byte-for-byte, so editing a table without regenerating -- or
 hand-editing the artifact -- fails CI instead of letting the AI door and the
@@ -17,19 +17,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from server.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
-from server.ui.review_gen import ARTIFACT, render
+from openavc.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
+from openavc.ui.review_gen import ARTIFACT, render
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_committed_artifact_matches_the_tables() -> None:
     path = REPO_ROOT / ARTIFACT
-    assert path.is_file(), f"{ARTIFACT} is missing -- run 'python -m server.ui.review_gen'"
+    assert path.is_file(), f"{ARTIFACT} is missing -- run 'python -m openavc.ui.review_gen'"
     committed = path.read_text(encoding="utf-8").replace("\r\n", "\n")
     assert committed == render(), (
         f"{ARTIFACT} does not match the tables -- regenerate with "
-        f"'python -m server.ui.review_gen' (never edit it by hand)"
+        f"'python -m openavc.ui.review_gen' (never edit it by hand)"
     )
 
 

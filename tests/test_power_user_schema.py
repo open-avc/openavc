@@ -19,8 +19,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from server.api.rest import router, set_engine
-from server.core.project_loader import ProjectConfig, UIConfig, UIPage
+from openavc.api.rest import router, set_engine
+from openavc.core.project_loader import ProjectConfig, UIConfig, UIPage
 
 
 def _project_with_power_fields() -> dict:
@@ -155,7 +155,7 @@ class TestDeclaredNotMerelyTolerated:
     def test_fields_are_declared_on_their_models(self):
         assert "render_mode" in UIPage.model_fields
         assert "custom_css" in UIConfig.model_fields
-        from server.core.project_loader import UIElement
+        from openavc.core.project_loader import UIElement
         assert "css_class" in UIElement.model_fields
         # The image element's fit mode: written by the Builder, read by the
         # renderer, and undeclared until an audit caught it riding the escape
@@ -171,8 +171,8 @@ class TestDeclaredNotMerelyTolerated:
         the 0.7->0.8 migration re-run on its next save -- placements collapse
         to the 1x1 cell and every rem value is divided by 14 again.
         """
-        from server.core.project_migration import CURRENT_VERSION
-        from server.core.project_loader import ProjectMeta
+        from openavc.core.project_migration import CURRENT_VERSION
+        from openavc.core.project_loader import ProjectMeta
         fresh = ProjectConfig(project=ProjectMeta(id="x", name="x"))
         assert fresh.openavc_version == CURRENT_VERSION
 

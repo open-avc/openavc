@@ -7,7 +7,7 @@ generated `_sim.py` fails to load with `NameError: name 'Any' is not
 defined` the first time the simulator tries to import it.
 """
 
-from simulator.scaffold import generate_skeleton
+from openavc.simulator.scaffold import generate_skeleton
 
 
 def _sample_driver_info(transport: str) -> dict:

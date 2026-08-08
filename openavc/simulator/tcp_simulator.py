@@ -1,0 +1,343 @@
+"""
+TCPSimulator — async TCP server base for device simulators.
+
+Handles server lifecycle, client connections, and message framing.
+Subclasses implement handle_command() to define protocol behavior.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+import uuid
+from abc import abstractmethod
+
+from openavc.simulator.base import BaseSimulator
+from openavc.simulator.network_conditions import corrupt_bytes
+
+logger = logging.getLogger(__name__)
+
+
+class TCPSimulator(BaseSimulator):
+    """TCP protocol simulator. You implement handle_command(); the framework does the rest."""
+
+    # Line-ending bytes — protocols that use these get flexible line reading
+    _LINE_DELIMITERS = (b"\r\n", b"\r", b"\n")
+
+    def __init__(self, device_id: str, config: dict | None = None):
+        super().__init__(device_id, config)
+        self._server: asyncio.Server | None = None
+        self._clients: dict[str, asyncio.StreamWriter] = {}
+        self._delimiter: bytes | None = None
+        self._line_mode = False  # True = flexible line reading
+
+        # Determine delimiter from SIMULATOR_INFO or config
+        delim = self.SIMULATOR_INFO.get("delimiter") or self.config.get("delimiter")
+        if delim:
+            self._delimiter = delim.encode() if isinstance(delim, str) else delim
+            # Most AV text protocols use line endings (\r\n, \r, \n).
+            # Drivers may send a different terminator than the response delimiter
+            # (e.g., Kramer sends \r, responses use \r\n). Use flexible line
+            # reading for these instead of strict readuntil.
+            if self._delimiter in self._LINE_DELIMITERS:
+                self._line_mode = True
+
+    # ── Override points for subclasses ──
+
+    async def on_client_connected(self, client_id: str) -> bytes | None:
+        """Called when a new client connects. Return greeting bytes or None.
+
+        Override for protocols that send a banner on connect (e.g., PJLink).
+        """
+        return None
+
+    async def authenticate_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        client_id: str,
+    ) -> bool:
+        """Optional pre-read-loop auth gate. Default: pass-through.
+
+        Subclasses that simulate Telnet-style login override this to drive
+        the prompt/credential exchange before the normal command read loop
+        starts. Return True to admit the client, False to drop it.
+        """
+        return True
+
+    @abstractmethod
+    def handle_command(self, data: bytes) -> bytes | None:
+        """Handle incoming data from the driver, return response bytes or None.
+
+        This is the main method to implement. The framework calls it once per
+        received message (line-delimited for text protocols, or raw chunks
+        for binary protocols when no delimiter is set).
+
+        Use self.state to read current state, self.set_state(k, v) to update it.
+        Use self.active_errors to check for injected error conditions.
+        """
+
+    async def push(self, data: bytes) -> None:
+        """Send unsolicited data to all connected clients.
+
+        Use for push notifications (e.g., state change notifications,
+        subscription updates).
+        """
+        dead = []
+        for client_id, writer in self._clients.items():
+            try:
+                writer.write(data)
+                await writer.drain()
+                self.log_protocol("out", data, client_id)
+            except (ConnectionError, OSError):
+                dead.append(client_id)
+        for cid in dead:
+            self._clients.pop(cid, None)
+
+    async def push_to(self, client_id: str, data: bytes) -> None:
+        """Send data to a specific client."""
+        writer = self._clients.get(client_id)
+        if writer:
+            try:
+                writer.write(data)
+                await writer.drain()
+                self.log_protocol("out", data, client_id)
+            except (ConnectionError, OSError):
+                self._clients.pop(client_id, None)
+
+    # ── Lifecycle ──
+
+    async def start(self, port: int) -> None:
+        """Start the TCP server. Port 0 binds an ephemeral port; the real
+        bound port is read back so ``self.port`` is always meaningful."""
+        self._server = await asyncio.start_server(
+            self._handle_client,
+            host="127.0.0.1",
+            port=port,
+        )
+        if port == 0 and self._server.sockets:
+            port = self._server.sockets[0].getsockname()[1]
+        self._port = port
+        self._running = True
+        logger.info(
+            "%s started on port %d (driver: %s)",
+            self.name, port, self.driver_id,
+        )
+
+    async def stop(self) -> None:
+        """Stop the TCP server and disconnect all clients."""
+        self._running = False
+        self._cancel_state_machine_timers()
+        # Close all client connections
+        for client_id, writer in list(self._clients.items()):
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+        self._clients.clear()
+        # Close server
+        if self._server:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
+        logger.info("%s stopped", self.name)
+
+    # ── Internal ──
+
+    async def _read_messages(
+        self, reader: asyncio.StreamReader,
+        buffer: bytearray | None = None,
+    ) -> list[bytes] | None:
+        """Read one or more messages from the stream.
+
+        Returns:
+            list[bytes] — one or more messages to process
+            []          — timeout, no data (caller should continue)
+            None        — connection closed (caller should break)
+
+        In line mode the optional `buffer` is used to preserve a partial
+        trailing line across reads — TCP can deliver a single command in
+        multiple chunks, especially during high-burst phases like a driver's
+        on-connect subscribe loop. Without the buffer, a chunk that ends
+        mid-line would be misinterpreted as a complete command and the next
+        chunk's leading fragment would be treated as a fresh command.
+        Drivers that fire a few commands at a time never hit this; bursty
+        drivers (e.g. Biamp Tesira's ~80-line subscribe-on-connect) do.
+        Callers in _handle_client own the buffer and pass it in.
+        """
+        if self._line_mode:
+            # Flexible line reading: accept \r, \n, or \r\n as terminators.
+            # Uses read() instead of readuntil() because drivers may send a
+            # different terminator than the response delimiter (e.g., Kramer
+            # sends \r but response delimiter is \r\n).
+            if buffer is None:
+                buffer = bytearray()
+            # Each read() result is remembered as its own chunk so a
+            # quiet-window flush can dispatch one message per client write.
+            chunks: list[bytes] = [bytes(buffer)] if buffer else []
+            while True:
+                # With bytes already buffered, read with a short quiet window
+                # instead of the long idle timeout: some text protocols are
+                # genuinely unterminated (single-character queries with no
+                # CR), and holding those bytes until more data arrives means
+                # they never dispatch at all. The window sits below the
+                # command pacing unterminated protocols configure (e.g.
+                # 100 ms) and far above genuine TCP fragmentation gaps.
+                try:
+                    raw = await asyncio.wait_for(
+                        reader.read(4096), timeout=0.08 if buffer else 30.0
+                    )
+                except asyncio.TimeoutError:
+                    if buffer:
+                        # No terminator ever arrived. A fragmented line that
+                        # HAS a terminator completes through the delimiter
+                        # branch below before this fires; what's left here is
+                        # an unterminated protocol, where the client's write
+                        # boundary is the only message boundary there is.
+                        # Dispatch one message per original write so
+                        # back-to-back bare commands don't merge.
+                        buffer.clear()
+                        return [c for c in chunks if c]
+                    return []
+                if not raw:
+                    return None
+                # Append to the persistent partial-line buffer. If the chunk
+                # doesn't end with a delimiter, the trailing bytes stay in the
+                # buffer so we don't fragment a command across read boundaries.
+                buffer.extend(raw)
+                chunks.append(raw)
+                # Find the last delimiter byte; everything after it is partial
+                # and waits for the next read (or the quiet-window flush).
+                last_delim = max(buffer.rfind(b"\r"), buffer.rfind(b"\n"))
+                if last_delim < 0:
+                    continue
+                complete = bytes(buffer[: last_delim + 1])
+                tail = bytes(buffer[last_delim + 1:])
+                buffer.clear()
+                buffer.extend(tail)
+                parts = re.split(rb"[\r\n]+", complete)
+                return [p for p in parts if p]
+
+        if self._delimiter:
+            # Custom delimiter (non-line, e.g., "x" for LG, ">" for Shure)
+            try:
+                data = await asyncio.wait_for(
+                    reader.readuntil(self._delimiter),
+                    timeout=30.0,
+                )
+            except asyncio.IncompleteReadError:
+                return None
+            except asyncio.TimeoutError:
+                return []
+            return [data]
+
+        # No delimiter — binary mode, read available data
+        try:
+            data = await asyncio.wait_for(reader.read(4096), timeout=30.0)
+        except asyncio.TimeoutError:
+            return []
+        if not data:
+            return None
+        return [data]
+
+    async def _handle_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        client_id = uuid.uuid4().hex[:8]
+        self._clients[client_id] = writer
+        peer = writer.get_extra_info("peername")
+        logger.info("%s: client connected from %s (id=%s)", self.name, peer, client_id)
+
+        # Per-client partial-line buffer for line-mode reads. _read_messages
+        # treats this as authoritative — any trailing bytes that don't end
+        # with a delimiter stay here and concatenate with the next chunk.
+        line_buffer: bytearray = bytearray()
+
+        try:
+            # Send greeting if defined
+            greeting = await self.on_client_connected(client_id)
+            if greeting:
+                writer.write(greeting)
+                await writer.drain()
+                self.log_protocol("out", greeting, client_id)
+
+            # Auth gate (no-op by default; YAMLAutoSimulator implements it
+            # for drivers declaring an `auth:` section).
+            if not await self.authenticate_client(reader, writer, client_id):
+                logger.info("%s: client %s failed auth — disconnecting", self.name, client_id)
+                return
+
+            # Read loop
+            while self._running:
+                messages = await self._read_messages(reader, buffer=line_buffer)
+                if messages is None:
+                    break  # Connection closed
+                if not messages:
+                    continue  # Timeout, no data
+
+                disconnect = False
+                for data in messages:
+                    self.log_protocol("in", data, client_id)
+
+                    # Network conditions: check for drop
+                    if self._network_layer and self._network_layer.should_drop(self.device_id):
+                        continue
+
+                    # Network conditions: check for random disconnect
+                    if self._network_layer and self._network_layer.should_disconnect(self.device_id):
+                        logger.info("%s: network instability — dropping connection", self.name)
+                        disconnect = True
+                        break
+
+                    # Check for no_response error behavior
+                    if self.has_error_behavior("no_response"):
+                        continue
+
+                    # Apply network latency (before device response delay)
+                    if self._network_layer:
+                        await self._network_layer.apply_latency(self.device_id)
+
+                    # Apply command response delay
+                    delay = self._delays.get("command_response", 0)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+
+                    # Handle the command
+                    try:
+                        response = self.handle_command(data)
+                    except Exception:
+                        logger.exception("%s: error in handle_command", self.name)
+                        response = None
+
+                    # Check for corrupt_response error behavior
+                    if response and self.has_error_behavior("corrupt_response"):
+                        response = corrupt_bytes(response)
+
+                    if response:
+                        writer.write(response)
+                        await writer.drain()
+                        self.log_protocol("out", response, client_id)
+
+                if disconnect:
+                    break
+
+        except (ConnectionError, OSError) as e:
+            logger.info(
+                "%s: client %s connection error: %s", self.name, client_id, e
+            )
+        except Exception:
+            logger.exception(
+                "%s: client %s unexpected error", self.name, client_id
+            )
+        finally:
+            self._clients.pop(client_id, None)
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+            logger.info("%s: client disconnected (id=%s)", self.name, client_id)

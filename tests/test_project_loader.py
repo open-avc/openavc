@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from server.core.project_loader import ProjectConfig, load_project, save_project
+from openavc.core.project_loader import ProjectConfig, load_project, save_project
 
 
 # --- Test fixture project (never use the live project.avc) ---
@@ -610,7 +610,7 @@ def test_list_element():
 
 @pytest.mark.parametrize("bad_id", ["enc[oder]", "dev*", "q?", "a[1]"])
 def test_device_id_rejects_glob_metachars(bad_id):
-    from server.core.project_loader import DeviceConfig
+    from openavc.core.project_loader import DeviceConfig
 
     with pytest.raises(ValidationError):
         DeviceConfig(id=bad_id, driver="x", name="X")
@@ -618,7 +618,7 @@ def test_device_id_rejects_glob_metachars(bad_id):
 
 @pytest.mark.parametrize("bad_id", ["a[1]", "v*", "q?"])
 def test_variable_id_rejects_glob_metachars(bad_id):
-    from server.core.project_loader import VariableConfig
+    from openavc.core.project_loader import VariableConfig
 
     with pytest.raises(ValidationError):
         VariableConfig(id=bad_id, type="string")
@@ -626,7 +626,7 @@ def test_variable_id_rejects_glob_metachars(bad_id):
 
 @pytest.mark.parametrize("bad_id", ["btn[1]", "slider*", "x?"])
 def test_ui_element_id_rejects_glob_metachars(bad_id):
-    from server.core.project_loader import UIElement
+    from openavc.core.project_loader import UIElement
 
     with pytest.raises(ValidationError):
         UIElement(id=bad_id, type="button")
@@ -635,7 +635,7 @@ def test_ui_element_id_rejects_glob_metachars(bad_id):
 def test_ids_accept_normal_names():
     """Ordinary identifiers (incl. the numeric/underscore child-style names)
     still validate — the guard only rejects dots and glob metachars."""
-    from server.core.project_loader import DeviceConfig, UIElement, VariableConfig
+    from openavc.core.project_loader import DeviceConfig, UIElement, VariableConfig
 
     DeviceConfig(id="encoder_5", driver="x", name="X")
     VariableConfig(id="room_active", type="boolean")
@@ -648,7 +648,7 @@ def test_all_state_key_models_reject_dots_and_glob(bad_id):
     metachars, through the one shared validator, so the rule can't drift
     between models. UIPage previously had no id guard and UIElement rejected
     glob but not dots."""
-    from server.core.project_loader import (
+    from openavc.core.project_loader import (
         DeviceGroup,
         MacroConfig,
         TriggerConfig,
@@ -681,14 +681,14 @@ def test_script_config_id_rejects_unsafe(bad_id):
     loader only rejected dots, so an imported project could smuggle ids with
     slashes/spaces/uppercase/dashes that become odd sys.modules keys and
     thread names."""
-    from server.core.project_loader import ScriptConfig
+    from openavc.core.project_loader import ScriptConfig
 
     with pytest.raises(ValidationError):
         ScriptConfig(id=bad_id, file="x.py")
 
 
 def test_script_config_id_accepts_safe():
-    from server.core.project_loader import ScriptConfig
+    from openavc.core.project_loader import ScriptConfig
 
     s = ScriptConfig(id="room_logic_2", file="room_logic_2.py")
     assert s.id == "room_logic_2"
@@ -701,7 +701,7 @@ def test_script_config_id_accepts_safe():
 async def test_save_project_async_persists(tmp_path):
     """The async wrapper writes the same file the sync save_project does
     (it runs the blocking body via asyncio.to_thread)."""
-    from server.core.project_loader import save_project_async
+    from openavc.core.project_loader import save_project_async
 
     proj = ProjectConfig(**TEST_PROJECT)
     path = tmp_path / "p.avc"
@@ -718,8 +718,8 @@ def test_driver_source_resolves_by_declared_id_not_stem(tmp_path, monkeypatch):
     be classified 'community', not mis-stamped 'builtin' (which would drop
     it from the export bundle). Uploads keep their original filename, so
     stem != id is a real case."""
-    import server.system_config as sc
-    from server.core.project_loader import _get_driver_source
+    import openavc.system_config as sc
+    from openavc.core.project_loader import _get_driver_source
 
     defs = tmp_path / "definitions"
     defs.mkdir()
@@ -735,8 +735,8 @@ def test_driver_source_resolves_by_declared_id_not_stem(tmp_path, monkeypatch):
 
 
 def test_driver_source_stem_match_still_classifies_community(tmp_path, monkeypatch):
-    import server.system_config as sc
-    from server.core.project_loader import _get_driver_source
+    import openavc.system_config as sc
+    from openavc.core.project_loader import _get_driver_source
 
     defs = tmp_path / "definitions"
     defs.mkdir()
@@ -759,8 +759,8 @@ def test_driver_source_reflects_the_current_definitions_tree(tmp_path, monkeypat
     earlier tree must not leak. A stale answer here would mis-stamp a driver's
     source, and source drives which driver files the export bundler carries.
     """
-    import server.system_config as sc
-    from server.core.project_loader import _get_driver_source
+    import openavc.system_config as sc
+    from openavc.core.project_loader import _get_driver_source
 
     served = tmp_path / "served"
     served.mkdir()
@@ -795,8 +795,8 @@ def test_driver_source_detects_add_when_directory_mtime_is_frozen(tmp_path, monk
     """
     import os
 
-    import server.system_config as sc
-    from server.core.project_loader import _get_driver_source
+    import openavc.system_config as sc
+    from openavc.core.project_loader import _get_driver_source
 
     tree = tmp_path / "defs"
     tree.mkdir()

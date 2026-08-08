@@ -14,8 +14,8 @@ import stat
 
 import pytest
 
-import server.config as cfg
-from server.cloud import config as cloud_config
+import openavc.config as cfg
+from openavc.cloud import config as cloud_config
 
 
 @pytest.fixture

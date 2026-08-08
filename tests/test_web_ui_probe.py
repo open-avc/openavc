@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from server.core.web_ui_probe import (
+from openavc.core.web_ui_probe import (
     probe_web_ui,
     web_ui_url_for_http_config,
     web_ui_url_from_open_ports,

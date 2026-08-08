@@ -8,12 +8,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPBasicCredentials
 from fastapi.testclient import TestClient
 
-from server.api.auth import (
+from openavc.api.auth import (
     check_ws_auth,
     get_ws_auth_subprotocol,
     require_programmer_auth,
 )
-import server.api.auth as auth_mod
+import openavc.api.auth as auth_mod
 
 
 # ---------------------------------------------------------------------------

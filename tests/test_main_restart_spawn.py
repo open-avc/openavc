@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from server.main import _spawn_replacement
+from openavc.main import _spawn_replacement
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def spawn_capture(monkeypatch, tmp_path):
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     # Keep the breadcrumb log out of the real data dir.
-    import server.system_config as system_config
+    import openavc.system_config as system_config
     monkeypatch.setattr(system_config, "get_data_dir", lambda: tmp_path)
     return calls
 
@@ -39,7 +39,7 @@ def test_replaces_argv0_with_running_interpreter(spawn_capture, monkeypatch):
     """A framework-binary argv[0] (macOS re-exec) is swapped for sys.executable."""
     monkeypatch.setattr(
         sys, "orig_argv",
-        ["/opt/homebrew/Frameworks/Python.framework/Python", "-m", "server.main"],
+        ["/opt/homebrew/Frameworks/Python.framework/Python", "-m", "openavc.main"],
         raising=False,
     )
     monkeypatch.delattr(sys, "frozen", raising=False)
@@ -49,14 +49,14 @@ def test_replaces_argv0_with_running_interpreter(spawn_capture, monkeypatch):
     assert len(spawn_capture) == 1
     cmd = spawn_capture[0]["cmd"]
     assert cmd[0] == sys.executable
-    assert cmd[1:] == ["-m", "server.main"]
+    assert cmd[1:] == ["-m", "openavc.main"]
 
 
 def test_preserves_arguments_and_sets_restart_flag(spawn_capture, monkeypatch):
     """Extra CLI flags survive the relaunch and the child gets the retry hint."""
     monkeypatch.setattr(
         sys, "orig_argv",
-        [sys.executable, "-m", "server.main", "--simulator"],
+        [sys.executable, "-m", "openavc.main", "--simulator"],
         raising=False,
     )
     monkeypatch.delattr(sys, "frozen", raising=False)
@@ -64,7 +64,7 @@ def test_preserves_arguments_and_sets_restart_flag(spawn_capture, monkeypatch):
     _spawn_replacement()
 
     cmd = spawn_capture[0]["cmd"]
-    assert cmd == [sys.executable, "-m", "server.main", "--simulator"]
+    assert cmd == [sys.executable, "-m", "openavc.main", "--simulator"]
     assert spawn_capture[0]["env"]["OPENAVC_RESTARTING"] == "1"
 
 

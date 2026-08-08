@@ -23,18 +23,18 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from server.api.routes.drivers import (
+from openavc.api.routes.drivers import (
     _try_download_python_companion,
     install_community_driver,
     uninstall_driver,
     update_driver,
     upload_driver_bundle,
 )
-from server.api.routes.python_drivers import (
+from openavc.api.routes.python_drivers import (
     delete_python_driver,
     export_python_driver_bundle,
 )
-from server.api.models import CommunityDriverInstallRequest
+from openavc.api.models import CommunityDriverInstallRequest
 
 
 # --- fixtures --------------------------------------------------------------
@@ -51,9 +51,9 @@ def driver_repo(tmp_path, monkeypatch):
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     monkeypatch.setattr(
-        "server.api.routes.drivers._get_driver_repo_dir", lambda: repo
+        "openavc.api.routes.drivers._get_driver_repo_dir", lambda: repo
     )
-    monkeypatch.setattr("server.system_config.DRIVER_REPO_DIR", repo)
+    monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
     return repo
 
 
@@ -65,13 +65,13 @@ def stub_engine_wiring(monkeypatch):
     # twice below).
     for module in ("drivers", "python_drivers"):
         monkeypatch.setattr(
-            f"server.api.routes.{module}.register_driver", lambda cls: None
+            f"openavc.api.routes.{module}.register_driver", lambda cls: None
         )
         monkeypatch.setattr(
-            f"server.api.routes.{module}.unregister_driver", lambda driver_id: None
+            f"openavc.api.routes.{module}.unregister_driver", lambda driver_id: None
         )
     monkeypatch.setattr(
-        "server.api.discovery.refresh_all_device_matches",
+        "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),
         raising=False,
     )
@@ -84,22 +84,22 @@ def stub_engine_wiring(monkeypatch):
     # routes.python_drivers — so a single patch would leave one of them
     # reaching for the real (unstarted) engine.
     monkeypatch.setattr(
-        "server.api.routes.drivers._get_engine", lambda: fake_engine
+        "openavc.api.routes.drivers._get_engine", lambda: fake_engine
     )
     monkeypatch.setattr(
-        "server.api.routes.python_drivers._get_engine", lambda: fake_engine
+        "openavc.api.routes.python_drivers._get_engine", lambda: fake_engine
     )
 
     # Skip the install path's catalog-hash lookup. These tests drive the
     # companion fetch with a queue of mocked responses, and the real lookup
     # would fetch the catalog through that same mock, consuming one. Integrity
     # behaviour has its own tests in test_community_artifact_integrity.py.
-    from server.utils.community_integrity import ArtifactHashes
+    from openavc.utils.community_integrity import ArtifactHashes
 
     async def _no_hashes(driver_id):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
-    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _no_hashes)
+    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _no_hashes)
     yield
 
 
@@ -229,7 +229,7 @@ def _mock_three(main_src: str, disc_src: str, sim_src: str) -> MagicMock:
 @pytest.mark.asyncio
 async def test_install_python_driver_pulls_both_companions(driver_repo, monkeypatch):
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_python_driver_file",
+        "openavc.drivers.driver_loader.load_python_driver_file",
         lambda p: _fake_driver_class("chazy_control_pro"),
     )
     body = CommunityDriverInstallRequest(
@@ -249,7 +249,7 @@ async def test_install_python_driver_pulls_both_companions(driver_repo, monkeypa
 @pytest.mark.asyncio
 async def test_install_python_driver_tolerates_missing_companions(driver_repo, monkeypatch):
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_python_driver_file",
+        "openavc.drivers.driver_loader.load_python_driver_file",
         lambda p: _fake_driver_class("solo_driver"),
     )
     body = CommunityDriverInstallRequest(
@@ -280,7 +280,7 @@ async def test_install_python_driver_tolerates_missing_companions(driver_repo, m
 @pytest.mark.asyncio
 async def test_bundle_round_trip_lands_all_files(driver_repo, monkeypatch):
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_python_driver_file",
+        "openavc.drivers.driver_loader.load_python_driver_file",
         lambda p: _fake_driver_class("chazy_control_pro"),
     )
     zip_bytes = _make_zip({
@@ -355,7 +355,7 @@ async def test_bundle_strips_directory_paths(driver_repo, monkeypatch):
     # traversal attempt lands flat in driver_repo (and only if it's a valid
     # driver-file name).
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_python_driver_file",
+        "openavc.drivers.driver_loader.load_python_driver_file",
         lambda p: _fake_driver_class("foo"),
     )
     zip_bytes = _make_zip({"nested/dir/foo.py": b"# m\n"})
@@ -488,7 +488,7 @@ _UPDATE_URL = (
 
 async def _run_update(monkeypatch, repo, client):
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_python_driver_file",
+        "openavc.drivers.driver_loader.load_python_driver_file",
         lambda p: type("D", (), {"DRIVER_INFO": {"id": "foo"}}),
     )
     req = MagicMock()
@@ -562,7 +562,7 @@ async def test_update_refuses_a_companion_that_fails_the_catalog_hash(
     # catalog publishes stops the update rather than landing quietly.
     import hashlib
 
-    from server.utils.community_integrity import ArtifactHashes
+    from openavc.utils.community_integrity import ArtifactHashes
 
     repo = driver_repo
     _seed_installed_python_driver(repo, disc=None)
@@ -578,7 +578,7 @@ async def test_update_refuses_a_companion_that_fails_the_catalog_hash(
             source="the community driver catalog",
         )
 
-    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _hashes)
+    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _hashes)
     client = _update_client(
         _ok(main_src),
         _missing(),
@@ -600,11 +600,11 @@ async def test_update_of_a_yaml_driver_fetches_no_python_companions(
     yaml_text = "id: foo\nname: Foo\ntransport: tcp\n"
     (repo / "foo.avcdriver").write_text(yaml_text, encoding="utf-8")
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_driver_file",
+        "openavc.drivers.driver_loader.load_driver_file",
         lambda p: {"id": "foo", "name": "Foo", "transport": "tcp"},
     )
     monkeypatch.setattr(
-        "server.api.routes.drivers.create_configurable_driver_class",
+        "openavc.api.routes.drivers.create_configurable_driver_class",
         lambda d: type("D", (), {"DRIVER_INFO": {"id": "foo"}}),
         raising=False,
     )

@@ -11,8 +11,8 @@ hide behind the same code in the test.
 
 import pytest
 
-from server.transport.ir_codec import parse_pronto
-from server.transport.ir_render import (
+from openavc.transport.ir_codec import parse_pronto
+from openavc.transport.ir_render import (
     UnsupportedProtocolError,
     is_supported,
     render,

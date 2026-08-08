@@ -20,14 +20,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.plugin_api import PluginAPI
-from server.core.plugin_registry import PluginRegistry
-from server.core.script_engine import ScriptEngine
-from server.core.state_store import StateStore
-from server.core.trigger_engine import TriggerEngine
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.plugin_api import PluginAPI
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.script_engine import ScriptEngine
+from openavc.core.state_store import StateStore
+from openavc.core.trigger_engine import TriggerEngine
 
 
 CHILD_KEY = "device.ctrl1.encoder.005.signal_present"

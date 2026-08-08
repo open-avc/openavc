@@ -9,7 +9,7 @@ If one of these tests fails, do not update the expected constants —
 restore the behavior. The constants are the contract.
 """
 
-from server.cloud.crypto import (
+from openavc.cloud.crypto import (
     canonical_json,
     compute_auth_proof,
     derive_auth_key,

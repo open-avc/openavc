@@ -1,7 +1,7 @@
 """The generated driver-contract artifacts must match the registry.
 
 The field registry in ``server/drivers/spec.py`` is the single source of
-the .avcdriver contract. ``python -m server.drivers.contract_gen`` renders
+the .avcdriver contract. ``python -m openavc.drivers.contract_gen`` renders
 it into three committed artifacts: the published JSON Schema, its
 Python-driver variant, and the Programmer IDE's generated types. These
 tests re-render each artifact and compare byte-for-byte, so editing the
@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from server.api.models import DriverDefinitionRequest
-from server.drivers import spec
-from server.drivers.contract_gen import artifacts, build_schema
+from openavc.api.models import DriverDefinitionRequest
+from openavc.drivers import spec
+from openavc.drivers.contract_gen import artifacts, build_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,7 +38,7 @@ def test_committed_artifact_matches_registry(rel_path: str) -> None:
     committed = path.read_text(encoding="utf-8").replace("\r\n", "\n")
     assert committed == rendered[path], (
         f"{rel_path} does not match the registry — regenerate with "
-        f"'python -m server.drivers.contract_gen' (never edit it by hand)"
+        f"'python -m openavc.drivers.contract_gen' (never edit it by hand)"
     )
 
 

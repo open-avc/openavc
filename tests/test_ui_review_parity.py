@@ -32,8 +32,8 @@ import pytest
 
 from tests import gates
 
-from server.core.project_loader import ProjectConfig
-from server.ui.page_review import review_master_element, review_page
+from openavc.core.project_loader import ProjectConfig
+from openavc.ui.page_review import review_master_element, review_page
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "ui_review_parity_harness.cjs"

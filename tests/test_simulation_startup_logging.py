@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.core.simulation import (
+from openavc.core.simulation import (
     SIMULATOR_UI_PORT,
     SimulationManager,
     _port_is_taken,
@@ -66,7 +66,7 @@ async def test_startup_stderr_lines_are_logged(caplog):
     )
     mgr = _manager()
 
-    with caplog.at_level(logging.INFO, logger="server.core.simulation"):
+    with caplog.at_level(logging.INFO, logger="openavc.core.simulation"):
         await mgr._await_simulator_ready(proc)
 
     log_messages = [r.getMessage() for r in caplog.records]
@@ -83,7 +83,7 @@ async def test_startup_ignores_blank_lines(caplog):
     )
     mgr = _manager()
 
-    with caplog.at_level(logging.INFO, logger="server.core.simulation"):
+    with caplog.at_level(logging.INFO, logger="openavc.core.simulation"):
         await mgr._await_simulator_ready(proc)
 
     log_messages = [r.getMessage() for r in caplog.records if "simulator.stderr" in r.getMessage()]
@@ -116,7 +116,7 @@ async def test_no_ready_marker_warns_but_does_not_raise(caplog):
     proc = _FakeProcess(stderr_chunks=[])  # nothing emitted
     mgr = _manager()
 
-    with caplog.at_level(logging.WARNING, logger="server.core.simulation"):
+    with caplog.at_level(logging.WARNING, logger="openavc.core.simulation"):
         await mgr._await_simulator_ready(proc)
 
     assert any("readiness not confirmed" in r.getMessage() for r in caplog.records)
@@ -237,7 +237,7 @@ async def test_start_refuses_before_spawning_when_the_ui_port_is_held(monkeypatc
     simulator."""
     spawned = []
     monkeypatch.setattr(
-        "server.core.simulation._port_is_taken", lambda port, host="127.0.0.1": True
+        "openavc.core.simulation._port_is_taken", lambda port, host="127.0.0.1": True
     )
     monkeypatch.setattr(
         asyncio, "create_subprocess_exec", lambda *a, **k: spawned.append(a)

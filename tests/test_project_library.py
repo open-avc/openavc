@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-import server.core.project_library as plib
-from server.core.project_library import (
+import openavc.core.project_library as plib
+from openavc.core.project_library import (
     sanitize_id,
     list_projects,
     get_project,
@@ -35,7 +35,7 @@ def tmp_lib(tmp_path):
     """Patch SAVED_PROJECTS_DIR to a temp directory for isolation."""
     lib_dir = tmp_path / "saved_projects"
     lib_dir.mkdir()
-    with patch("server.core.project_library.config") as mock_config:
+    with patch("openavc.core.project_library.config") as mock_config:
         mock_config.SAVED_PROJECTS_DIR = lib_dir
         yield lib_dir
 
@@ -354,7 +354,7 @@ class TestDuplicateProject:
 
 class TestCreateBlankProject:
     def test_creates_valid_project(self):
-        from server.core.project_migration import CURRENT_VERSION
+        from openavc.core.project_migration import CURRENT_VERSION
         project = create_blank_project("lobby", "Lobby")
         assert project.project.id == "lobby"
         assert project.project.name == "Lobby"
@@ -409,7 +409,7 @@ class TestEnsureStarterProjects:
             json.dumps(sample_project_data), encoding="utf-8"
         )
 
-        with patch("server.core.project_library._SEED_DIR", seed_dir):
+        with patch("openavc.core.project_library._SEED_DIR", seed_dir):
             ensure_starter_projects()
 
         assert (tmp_lib / "starter" / "project.avc").exists()
@@ -427,7 +427,7 @@ class TestEnsureStarterProjects:
         # Create marker
         (tmp_lib / ".seeded").touch()
 
-        with patch("server.core.project_library._SEED_DIR", seed_dir):
+        with patch("openavc.core.project_library._SEED_DIR", seed_dir):
             ensure_starter_projects()
 
         # Should NOT have seeded
@@ -435,7 +435,7 @@ class TestEnsureStarterProjects:
 
     def test_no_templates_dir_is_noop(self, tmp_lib):
         """If templates dir doesn't exist, nothing happens."""
-        with patch("server.core.project_library._SEED_DIR", tmp_lib / "nonexistent"):
+        with patch("openavc.core.project_library._SEED_DIR", tmp_lib / "nonexistent"):
             ensure_starter_projects()
         # No marker either
         assert not (tmp_lib / ".seeded").exists()
@@ -451,7 +451,7 @@ class TestEnsureStarterProjects:
         scripts_seed.mkdir()
         (scripts_seed / "boot.py").write_text("# boot script", encoding="utf-8")
 
-        with patch("server.core.project_library._SEED_DIR", seed_dir):
+        with patch("openavc.core.project_library._SEED_DIR", seed_dir):
             ensure_starter_projects()
 
         assert (tmp_lib / "starter" / "scripts" / "boot.py").exists()
@@ -615,7 +615,7 @@ class TestMissingPluginParity:
 
 class TestBundledDriverIdDedup:
     def test_bundled_driver_does_not_clobber_existing_id(self, tmp_path, monkeypatch):
-        from server.drivers.registry import _DRIVER_REGISTRY
+        from openavc.drivers.registry import _DRIVER_REGISTRY
 
         repo = tmp_path / "driver_repo"
         repo.mkdir()
@@ -627,7 +627,7 @@ class TestBundledDriverIdDedup:
         # A bundle file under a NEW name but declaring the already-registered id.
         new_class = type("NewDriver", (), {"DRIVER_INFO": {"id": "dup_id"}})
         monkeypatch.setattr(
-            "server.drivers.driver_loader.load_python_driver_file", lambda path: new_class
+            "openavc.drivers.driver_loader.load_python_driver_file", lambda path: new_class
         )
 
         with zipfile.ZipFile(io.BytesIO(_zip_bytes({"drivers/renamed.py": "# x"}))) as zf:
@@ -644,7 +644,7 @@ class TestFindDriverFilesById:
         differ from its declared id. The export bundler must still find it
         (by declared id) — a stem-only match would drop it from the .zip and
         produce a broken handoff."""
-        from server.core.project_library import _find_driver_files
+        from openavc.core.project_library import _find_driver_files
 
         repo = tmp_path / "driver_repo"
         repo.mkdir()
@@ -658,7 +658,7 @@ class TestFindDriverFilesById:
         assert found == [("uploaded_file.avcdriver", repo / "uploaded_file.avcdriver")]
 
     def test_skips_builtin_source(self, tmp_path, monkeypatch):
-        from server.core.project_library import _find_driver_files
+        from openavc.core.project_library import _find_driver_files
 
         repo = tmp_path / "driver_repo"
         repo.mkdir()

@@ -13,16 +13,16 @@ import re
 import httpx
 import pytest
 
-from server.core.connection_fault import ConnectionFaultError
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.transport.http_client import HTTPResponse
-from server.drivers.configurable import (
+from openavc.core.connection_fault import ConnectionFaultError
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.transport.http_client import HTTPResponse
+from openavc.drivers.configurable import (
     _AUTH_MAX_BUFFER,
     ConfigurableDriver,
     create_configurable_driver_class,
 )
-from server.drivers.driver_loader import validate_driver_definition
+from openavc.drivers.driver_loader import validate_driver_definition
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "dev1"):

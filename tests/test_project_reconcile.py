@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pytest
 
-from server.core.engine import Engine, ProjectRevisionConflictError
-from server.core.project_diff import ProjectDiff
-from server.core.project_loader import ProjectConfig, load_project
+from openavc.core.engine import Engine, ProjectRevisionConflictError
+from openavc.core.project_diff import ProjectDiff
+from openavc.core.project_loader import ProjectConfig, load_project
 from tests.helpers import wait_for_condition
 
 STARTUP_MACRO = {
@@ -118,7 +118,7 @@ def test_diff_identical_projects_marks_nothing_dirty():
 
 
 def test_diff_ignores_derived_dependency_lists():
-    from server.core.project_loader import DriverDependency
+    from openavc.core.project_loader import DriverDependency
 
     old = ProjectConfig(**_project_dict())
     new = ProjectConfig(**_project_dict())

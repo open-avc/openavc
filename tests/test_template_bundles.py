@@ -241,10 +241,10 @@ def _load_template_scripts(scripts: dict[str, bytes], workdir: Path) -> tuple[in
     """
     import sys as _sys
 
-    from server.core.device_manager import DeviceManager
-    from server.core.event_bus import EventBus
-    from server.core.script_engine import ScriptEngine
-    from server.core.state_store import StateStore
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.script_engine import ScriptEngine
+    from openavc.core.state_store import StateStore
 
     scripts_dir = workdir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)

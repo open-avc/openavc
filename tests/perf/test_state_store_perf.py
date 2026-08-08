@@ -30,7 +30,7 @@ import time
 
 import pytest
 
-from server.core.state_store import StateStore
+from openavc.core.state_store import StateStore
 
 
 pytestmark = pytest.mark.perf

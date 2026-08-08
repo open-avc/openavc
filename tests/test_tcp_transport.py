@@ -5,8 +5,8 @@ import tempfile
 
 import pytest
 
-from server.transport.tcp import TCPTransport
-from server.transport.frame_parsers import (
+from openavc.transport.tcp import TCPTransport
+from openavc.transport.frame_parsers import (
     DelimiterFrameParser,
     LengthPrefixFrameParser,
     FixedLengthFrameParser,
@@ -210,7 +210,7 @@ async def test_last_error_captured_and_classified_on_connect_failure():
     is not. The precise string->code mapping is covered in
     test_connection_fault.py.
     """
-    from server.core.connection_fault import (
+    from openavc.core.connection_fault import (
         TRANSPORT_DISCONNECTED,
         classify_connection_fault,
     )

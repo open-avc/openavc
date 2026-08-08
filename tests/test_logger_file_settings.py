@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from logging.handlers import RotatingFileHandler
 
-from server.utils import logger as lg
+from openavc.utils import logger as lg
 
 
 def _patch_cfg(monkeypatch, tmp_path, settings: dict) -> None:
@@ -19,8 +19,8 @@ def _patch_cfg(monkeypatch, tmp_path, settings: dict) -> None:
         def get(self, section, key, default=None):
             return settings.get(key, default)
 
-    monkeypatch.setattr("server.system_config.get_system_config", lambda: _Cfg())
-    monkeypatch.setattr("server.system_config.get_log_dir", lambda: tmp_path)
+    monkeypatch.setattr("openavc.system_config.get_system_config", lambda: _Cfg())
+    monkeypatch.setattr("openavc.system_config.get_log_dir", lambda: tmp_path)
 
 
 _FMT = logging.Formatter("%(message)s")

@@ -16,8 +16,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from server.drivers.base import BaseDriver
-from server.transport.udp import UDPTransport
+from openavc.drivers.base import BaseDriver
+from openavc.transport.udp import UDPTransport
 
 log = logging.getLogger(__name__)
 

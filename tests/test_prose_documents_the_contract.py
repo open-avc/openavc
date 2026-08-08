@@ -50,7 +50,7 @@ from pathlib import Path
 
 import yaml
 
-from server.drivers import spec
+from openavc.drivers import spec
 from tests.test_driver_contract_field_implemented import _contract_field_names
 
 DOC_PATH = Path(__file__).resolve().parents[1] / "docs" / "creating-drivers.md"

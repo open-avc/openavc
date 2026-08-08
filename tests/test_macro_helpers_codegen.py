@@ -36,8 +36,8 @@ import pytest
 
 from tests import gates
 
-from server.core.condition_eval import eval_operator
-from server.core.script_api import compare as script_compare
+from openavc.core.condition_eval import eval_operator
+from openavc.core.script_api import compare as script_compare
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 

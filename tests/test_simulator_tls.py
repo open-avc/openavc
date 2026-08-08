@@ -17,8 +17,8 @@ import ssl
 import httpx
 import pytest
 
-from simulator.http_simulator import HTTPSimulator
-from simulator.self_signed_tls import build_optional_tls, remove_cert_files, wants_tls
+from openavc.simulator.http_simulator import HTTPSimulator
+from openavc.simulator.self_signed_tls import build_optional_tls, remove_cert_files, wants_tls
 
 
 class _AcmeWidgetSim(HTTPSimulator):

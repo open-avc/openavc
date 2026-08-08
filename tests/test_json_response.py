@@ -9,8 +9,8 @@ Platform features, exercised with an invented HTTP/JSON device (no real product)
 
 import pytest
 
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.inline_protocol import _normalize_one_response
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.inline_protocol import _normalize_one_response
 
 # Invented JSON-over-HTTP device. One status endpoint returns several fields in
 # a single JSON body — the shape that broke under first-match-wins regex rules.
@@ -129,8 +129,8 @@ async def test_json_falls_through_to_regex():
     ]
     cls = create_configurable_driver_class(definition)
 
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     events = EventBus()
     st = StateStore()
@@ -169,8 +169,8 @@ def _scoped_driver():
     ]
     cls = create_configurable_driver_class(definition)
 
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     events = EventBus()
     st = StateStore()
@@ -203,8 +203,8 @@ async def test_json_require_list_needs_every_key():
     ]
     cls = create_configurable_driver_class(definition)
 
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     events = EventBus()
     st = StateStore()
@@ -218,7 +218,7 @@ async def test_json_require_list_needs_every_key():
 
 
 def test_loader_validates_require():
-    from server.drivers.driver_loader import validate_driver_definition
+    from openavc.drivers.driver_loader import validate_driver_definition
 
     base = dict(JSON_DEFINITION, id="acme_v")
     base["name"] = "Acme V"

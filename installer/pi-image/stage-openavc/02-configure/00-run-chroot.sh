@@ -378,7 +378,7 @@ if [ ! -s "$DATA_DIR/projects/default/project.avc" ]; then
     errors=$((errors + 1))
 fi
 
-# The service runs /opt/openavc/venv/bin/python -m server.main as the openavc
+# The service runs /opt/openavc/venv/bin/python -m openavc.main as the openavc
 # user. Prove that interpreter can import the server and its dependencies —
 # an install that landed anywhere but this venv (or not at all) would ship an
 # image whose service crash-loops on import at first boot. Run as the service

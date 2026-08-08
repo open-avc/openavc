@@ -2,7 +2,7 @@
 
 import pytest
 
-from server.utils.net_safety import assert_safe_outbound_url, ip_is_internal
+from openavc.utils.net_safety import assert_safe_outbound_url, ip_is_internal
 
 
 def test_ip_is_internal_classification():

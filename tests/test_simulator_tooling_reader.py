@@ -20,7 +20,7 @@ import textwrap
 
 import pytest
 
-from simulator.scaffold import extract_driver_info, generate_skeleton
+from openavc.simulator.scaffold import extract_driver_info, generate_skeleton
 
 
 def _write(tmp_path, source: str):

@@ -30,19 +30,19 @@ from unittest.mock import patch
 
 import pytest
 
-from server.discovery.companion import (
+from openavc.discovery.companion import (
     DEFAULT_PROBE_TIMEOUT_SECONDS,
     ProbeContext,
     load_discovery_companions,
     run_companion,
 )
-from server.discovery.hints import (
+from openavc.discovery.hints import (
     DiscoveryHintError,
     build_signal_index,
     parse_driver_discovery,
 )
-from server.discovery import probe_runner as probe_runner_mod
-from server.discovery.probe_runner import (
+from openavc.discovery import probe_runner as probe_runner_mod
+from openavc.discovery.probe_runner import (
     _MAX_PROBE_RESPONDERS,
     RateLimiter,
     _apply_extract,
@@ -51,8 +51,8 @@ from server.discovery.probe_runner import (
     run_tcp_active_probe,
     run_udp_broadcast_probe,
 )
-from server.discovery.result import DeviceState, Evidence
-from server.discovery.tier_matcher import (
+from openavc.discovery.result import DeviceState, Evidence
+from openavc.discovery.tier_matcher import (
     TierMatcher,
     extract_vendor_strings,
 )
@@ -895,7 +895,7 @@ class TestCompanionThreadIsolation:
         # test in this class so a companion abandoned by one test can't make
         # the next one skip (the tests reuse the "block" driver_id). getattr
         # keeps this a no-op if the registry doesn't exist.
-        import server.discovery.companion as companion_mod
+        import openavc.discovery.companion as companion_mod
 
         getattr(companion_mod, "_wedged_threads", {}).clear()
         yield
@@ -1156,7 +1156,7 @@ class TestTLSProbe:
         """End-to-end: handshake a real self-signed TLS server, read its
         landing page, match the fingerprint. A non-None evidence return only
         happens when the expect string matched over the encrypted channel."""
-        from server.tls import generate_self_signed
+        from openavc.tls import generate_self_signed
 
         certs = generate_self_signed(tmp_path, hostnames=["localhost"], ips=["127.0.0.1"])
         server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -1292,7 +1292,7 @@ class TestCertSubjectProbe:
             })
 
     async def _serve_tls(self, tmp_path, cn):
-        from server.tls import generate_self_signed
+        from openavc.tls import generate_self_signed
         certs = generate_self_signed(tmp_path, hostnames=[cn], ips=["127.0.0.1"])
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certs.cert_path, certs.key_path)

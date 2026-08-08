@@ -2,8 +2,8 @@
 
 import json
 
-from server.core.engine import Engine
-from server.core.project_loader import ProjectConfig, ProjectMeta, save_project
+from openavc.core.engine import Engine
+from openavc.core.project_loader import ProjectConfig, ProjectMeta, save_project
 
 
 def test_recovery_creates_parent_directory(tmp_path, monkeypatch):
@@ -18,7 +18,7 @@ def test_recovery_creates_parent_directory(tmp_path, monkeypatch):
     specifically (a real checkout ships a canonical seed that would
     otherwise take over the missing-file branch — see the seeding tests).
     """
-    monkeypatch.setattr("server.system_config.get_seed_project_path", lambda: None)
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     missing_parent = tmp_path / "missing" / "nested" / "tree"
     project_path = missing_parent / "project.avc"
     assert not missing_parent.exists(), "precondition: parent must not exist"
@@ -40,7 +40,7 @@ def test_recovery_existing_parent_dir_still_works(tmp_path, monkeypatch):
     """Sanity check: the mkdir call must be idempotent for the common
     case where the parent dir already exists.
     """
-    monkeypatch.setattr("server.system_config.get_seed_project_path", lambda: None)
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     project_path = tmp_path / "project.avc"  # tmp_path already exists
     eng = Engine(str(project_path))
     project = eng._load_project_safe()
@@ -69,7 +69,7 @@ def test_missing_project_seeds_from_canonical_seed(tmp_path, monkeypatch):
     seed_path = tmp_path / "bundle" / "seed" / "default" / "project.avc"
     _write_seed(seed_path)
     monkeypatch.setattr(
-        "server.system_config.get_seed_project_path", lambda: seed_path
+        "openavc.system_config.get_seed_project_path", lambda: seed_path
     )
 
     # Missing project AND missing parent dir, mimicking a fresh bind mount.
@@ -89,7 +89,7 @@ def test_missing_project_no_seed_falls_back_to_recovery(tmp_path, monkeypatch):
     """With no canonical seed available, a missing project still yields the
     empty Recovery Project — the seed is a net, not a hard dependency.
     """
-    monkeypatch.setattr("server.system_config.get_seed_project_path", lambda: None)
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     project_path = tmp_path / "projects" / "default" / "project.avc"
 
     eng = Engine(str(project_path))
@@ -108,7 +108,7 @@ def test_corrupt_project_does_not_seed(tmp_path, monkeypatch):
     seed_path = tmp_path / "bundle" / "seed" / "default" / "project.avc"
     _write_seed(seed_path)
     monkeypatch.setattr(
-        "server.system_config.get_seed_project_path", lambda: seed_path
+        "openavc.system_config.get_seed_project_path", lambda: seed_path
     )
 
     project_path = tmp_path / "projects" / "default" / "project.avc"

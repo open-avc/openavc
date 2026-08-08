@@ -2,7 +2,7 @@
 
 import pytest
 
-from server.transport.binary_helpers import (
+from openavc.transport.binary_helpers import (
     checksum_sum,
     checksum_xor,
     crc16_ccitt,

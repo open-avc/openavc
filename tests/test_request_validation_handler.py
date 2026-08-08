@@ -13,7 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from server.api.errors import (
+from openavc.api.errors import (
     format_request_validation_errors,
     request_validation_exception_handler,
 )

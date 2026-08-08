@@ -16,8 +16,8 @@ import re
 
 import pytest
 
-from server.main import app
-from server.middleware.rate_limit import _classify
+from openavc.main import app
+from openavc.middleware.rate_limit import _classify
 
 # --- The intended non-standard tiers -----------------------------------------
 # Anything not listed here is expected to land on the standard budget, which is
@@ -151,10 +151,10 @@ def test_open_tier_routes_are_actually_unauthenticated():
     authenticated route there just widens its budget for no reason, and would
     mean the tier table and the auth posture disagree about what "open" means.
     """
-    from server.api import assets as assets_api
-    from server.api import plugins as plugins_api
-    from server.api import rest
-    from server.api import themes as themes_api
+    from openavc.api import assets as assets_api
+    from openavc.api import plugins as plugins_api
+    from openavc.api import rest
+    from openavc.api import themes as themes_api
 
     open_paths = set()
     for module in (rest, plugins_api, assets_api, themes_api):

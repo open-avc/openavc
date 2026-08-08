@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from server.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
+from openavc.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
 
 # Skip-gate only: the browser itself comes from pytest-playwright's session
 # fixtures, never from a second sync_playwright() of our own.

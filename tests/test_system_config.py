@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-from server.system_config import (
+from openavc.system_config import (
     APP_DIR,
     DRIVER_DEFINITIONS_DIR,
     DRIVER_REPO_DIR,
@@ -492,7 +492,7 @@ class TestMigrateLegacyRepos:
             for name, content in dest_driver_existing.items():
                 (data_root / "driver_repo" / name).write_text(content)
 
-        from server import system_config as sc
+        from openavc import system_config as sc
         with patch.object(sc, "_LEGACY_PLUGIN_REPO_DIR", legacy_root / "plugin_repo"), \
              patch.object(sc, "_LEGACY_DRIVER_REPO_DIR", legacy_root / "driver_repo"), \
              patch.object(sc, "PLUGIN_REPO_DIR", data_root / "plugin_repo"), \
@@ -538,7 +538,7 @@ class TestMigrateLegacyRepos:
 
     def test_idempotent(self, tmp_path):
         # First call moves content. Re-running with empty legacy should no-op.
-        from server import system_config as sc
+        from openavc import system_config as sc
         legacy_dir = tmp_path / "app" / "plugin_repo"
         data_dir = tmp_path / "data" / "plugin_repo"
         legacy_dir.mkdir(parents=True)
@@ -556,7 +556,7 @@ class TestMigrateLegacyRepos:
     def test_same_path_short_circuits(self, tmp_path):
         # When OPENAVC_DATA_DIR points at APP_DIR, legacy == target. Migration
         # must not delete content or otherwise mangle the directory.
-        from server import system_config as sc
+        from openavc import system_config as sc
         shared = tmp_path / "plugin_repo"
         shared.mkdir()
         (shared / "p.py").write_text("ok")
@@ -681,7 +681,7 @@ class TestPlatformDirDefaults:
     """Platform-default data/log dirs (the non-env, non-docker, non-dev path)."""
 
     def _force_platform_default(self, monkeypatch, platform):
-        import server.system_config as sc
+        import openavc.system_config as sc
         monkeypatch.delenv("OPENAVC_DATA_DIR", raising=False)
         monkeypatch.delenv("OPENAVC_LOG_DIR", raising=False)
         monkeypatch.setattr(sc, "_is_docker", lambda: False)

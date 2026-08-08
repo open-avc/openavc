@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from server.api.models import CommunityDriverInstallRequest
-from server.api.routes.drivers import install_community_driver
+from openavc.api.models import CommunityDriverInstallRequest
+from openavc.api.routes.drivers import install_community_driver
 
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
 
@@ -73,7 +73,7 @@ def driver_repo(tmp_path, monkeypatch):
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     monkeypatch.setattr(
-        "server.api.routes.drivers._get_driver_repo_dir", lambda: repo
+        "openavc.api.routes.drivers._get_driver_repo_dir", lambda: repo
     )
     return repo
 
@@ -81,30 +81,30 @@ def driver_repo(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def silence_engine(monkeypatch):
     monkeypatch.setattr(
-        "server.api.routes.drivers.refresh_all_device_matches",
+        "openavc.api.routes.drivers.refresh_all_device_matches",
         AsyncMock(return_value=None),
         raising=False,
     )
     monkeypatch.setattr(
-        "server.api.discovery.refresh_all_device_matches",
+        "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),
         raising=False,
     )
     monkeypatch.setattr(
-        "server.api.routes.drivers.register_driver", lambda cls: None
+        "openavc.api.routes.drivers.register_driver", lambda cls: None
     )
 
 
 def _catalog_says(monkeypatch, files):
     """Pin what the community catalog publishes for acme_widget."""
-    from server.utils.community_integrity import ArtifactHashes
+    from openavc.utils.community_integrity import ArtifactHashes
 
     async def _hashes(driver_id):
         return ArtifactHashes(
             f"Driver '{driver_id}'", files, source="the community driver catalog"
         )
 
-    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _hashes)
+    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _hashes)
 
 
 # --- Source pinning --------------------------------------------------------
@@ -263,11 +263,11 @@ async def test_optional_python_companion_with_wrong_bytes_is_not_swallowed(
         },
     )
     monkeypatch.setattr(
-        "server.drivers.driver_loader.load_python_driver_file",
+        "openavc.drivers.driver_loader.load_python_driver_file",
         lambda p: type("D", (), {"DRIVER_INFO": {"id": "acme_widget"}}),
     )
     monkeypatch.setattr(
-        "server.api.routes.drivers._enforce_driver_id_match",
+        "openavc.api.routes.drivers._enforce_driver_id_match",
         lambda *a, **k: None,
     )
     url = f"{CATALOG}/audio/acme_widget.py"
@@ -297,7 +297,7 @@ async def test_catalog_hashes_are_not_taken_from_the_request(driver_repo):
 # why per-file hashes alone aren't enough: the manifest also has to say that
 # nothing extra came along and nothing went missing.
 
-import server.core.plugin_installer as pi  # noqa: E402
+import openavc.core.plugin_installer as pi  # noqa: E402
 
 PLUGIN_CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-plugins/main"
 
@@ -372,9 +372,9 @@ def _entry(name: str) -> dict:
 
 
 async def _install(client):
-    with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
-        with patch("server.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
-            with patch("server.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
+    with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
+            with patch("openavc.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
                 return await pi.install_plugin(
                     "acme_thing", f"{PLUGIN_CATALOG}/utility/acme_thing"
                 )

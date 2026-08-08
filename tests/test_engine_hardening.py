@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.core.engine import Engine
-from server.core.project_loader import load_project
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
 
 
 def _write_project(tmp_path, *, variables=None, devices=None, ui_pages=None,
@@ -216,8 +216,8 @@ def test_init_variable_values_restores_persistent_value(tmp_path):
 
 
 def test_update_keys_prunes_depersisted_from_disk(tmp_path):
-    from server.core.state_persister import StatePersister
-    from server.core.state_store import StateStore
+    from openavc.core.state_persister import StatePersister
+    from openavc.core.state_store import StateStore
 
     store = StateStore()
     store.set("var.a", "aval", source="system")
@@ -294,9 +294,9 @@ def test_detect_network_info_caches(tmp_path, monkeypatch):
         count["enum"] += 1
         return ["192.168.1.50", "10.50.0.50"]
 
-    monkeypatch.setattr("server.core.engine.network_scanner.get_ranked_interface_ips",
+    monkeypatch.setattr("openavc.core.engine.network_scanner.get_ranked_interface_ips",
                         fake_enum)
-    monkeypatch.setattr("server.core.engine.socket.gethostname",
+    monkeypatch.setattr("openavc.core.engine.socket.gethostname",
                         lambda: count.__setitem__("host", count["host"] + 1) or "myhost")
 
     first = eng._detect_network_info()
@@ -333,11 +333,11 @@ def test_detect_network_info_closes_socket_on_connect_failure(tmp_path, monkeypa
             return ("x", 0)
 
     # The route lookup lives with the rest of the adapter enumeration now.
-    monkeypatch.setattr("server.discovery.network_scanner.socket.socket",
+    monkeypatch.setattr("openavc.discovery.network_scanner.socket.socket",
                         lambda *a, **k: FakeSock())
-    monkeypatch.setattr("server.discovery.network_scanner.get_interface_ips",
+    monkeypatch.setattr("openavc.discovery.network_scanner.get_interface_ips",
                         lambda: [])
-    monkeypatch.setattr("server.core.engine.socket.gethostname", lambda: "h")
+    monkeypatch.setattr("openavc.core.engine.socket.gethostname", lambda: "h")
 
     ip, host, ips = eng._detect_network_info()
 
@@ -500,7 +500,7 @@ async def test_periodic_backup_runs_off_event_loop(tmp_path, monkeypatch):
         seen["thread"] = threading.current_thread()
         seen["reason"] = reason
 
-    monkeypatch.setattr("server.core.backup_manager.create_backup", fake_create_backup)
+    monkeypatch.setattr("openavc.core.backup_manager.create_backup", fake_create_backup)
 
     real_sleep = asyncio.sleep
     n = {"v": 0}
@@ -511,7 +511,7 @@ async def test_periodic_backup_runs_off_event_loop(tmp_path, monkeypatch):
             raise asyncio.CancelledError()  # break out after one backup
         await real_sleep(0)
 
-    monkeypatch.setattr("server.core.engine.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("openavc.core.engine.asyncio.sleep", fake_sleep)
 
     eng._dirty_since_backup = True
     eng._last_backup_time = 0
@@ -527,7 +527,7 @@ async def test_periodic_backup_runs_off_event_loop(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reconcile_runtime_services_stops_mdns_when_disabled(tmp_path):
-    from server.system_config import get_system_config
+    from openavc.system_config import get_system_config
 
     eng = Engine(_write_project(tmp_path))
     eng.project = load_project(eng.project_path)

@@ -10,7 +10,7 @@ Two coupled guarantees for openavc/simulator/engine.py:
 
 import pytest
 
-from simulator.engine import (
+from openavc.simulator.engine import (
     PORT_RANGE_END,
     PORT_RANGE_START,
     SimulatorInfo,

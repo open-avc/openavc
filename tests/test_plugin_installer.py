@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from server.core.plugin_installer import (
+from openavc.core.plugin_installer import (
     CommunityPluginCache,
     _install_pip_deps,
     _register_installed_plugin,
@@ -23,11 +23,11 @@ from server.core.plugin_installer import (
     list_installed_plugins,
     uninstall_plugin,
 )
-from server.core.plugin_native_deps import (
+from openavc.core.plugin_native_deps import (
     _detect_archive_format,
     _install_native_dep_archive,
 )
-from server.core.plugin_wheels import (
+from openavc.core.plugin_wheels import (
     _install_deps_from_pypi,
     _normalize_pkg_name,
     _parse_requirement,
@@ -35,7 +35,7 @@ from server.core.plugin_wheels import (
     _resolve_version,
     _version_tuple,
 )
-from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, register_plugin_class
+from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, register_plugin_class
 
 
 # ──── Helpers ────
@@ -155,10 +155,10 @@ def _patch_plugin_dirs(tmp_path, monkeypatch):
     data_dir = tmp_path / "_plugin_data"
     data_dir.mkdir()
     monkeypatch.setattr(
-        "server.core.plugin_installer.PLUGIN_REPO_DIR", tmp_path
+        "openavc.core.plugin_installer.PLUGIN_REPO_DIR", tmp_path
     )
     monkeypatch.setattr(
-        "server.core.plugin_installer.PLUGIN_DATA_DIR", data_dir
+        "openavc.core.plugin_installer.PLUGIN_DATA_DIR", data_dir
     )
 
 
@@ -195,7 +195,7 @@ class TestCommunityPluginCache:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             plugins, error = await cache.get()
 
         assert error is None
@@ -214,7 +214,7 @@ class TestCommunityPluginCache:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             # First call: fetches
             plugins1, _ = await cache.get()
             # Second call: should use cache
@@ -236,7 +236,7 @@ class TestCommunityPluginCache:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             await cache.get()
             await cache.get(force=True)
 
@@ -254,7 +254,7 @@ class TestCommunityPluginCache:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             await cache.get()
             await cache.get()
 
@@ -269,7 +269,7 @@ class TestCommunityPluginCache:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             plugins, error = await cache.get()
 
         assert error is not None
@@ -327,7 +327,7 @@ class TestListInstalledPlugins:
     def test_nonexistent_dir(self, plugin_repo, monkeypatch):
         """If plugin_repo doesn't exist, returns empty list."""
         monkeypatch.setattr(
-            "server.core.plugin_installer.PLUGIN_REPO_DIR",
+            "openavc.core.plugin_installer.PLUGIN_REPO_DIR",
             plugin_repo / "nonexistent",
         )
         result = list_installed_plugins()
@@ -376,7 +376,7 @@ class TestInstallPlugin:
         zip_bytes = _make_plugin_zip("sample_community", SAMPLE_PLUGIN_SOURCE)
         mock_client = _download_client(stream=zip_bytes)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
                 "sample_community",
                 "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/sample_community.zip",
@@ -397,7 +397,7 @@ class TestInstallPlugin:
         """
         mock_client = _download_client(stream=SAMPLE_PLUGIN_SOURCE.encode())
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
                 "sample_community",
                 "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/sample_community_plugin.py",
@@ -418,7 +418,7 @@ class TestInstallPlugin:
         err = httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock())
         mock_client = _download_client(stream=_make_stream_response(error=err))
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             with pytest.raises(httpx.HTTPStatusError):
                 await install_plugin("bad_download", "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/bad.zip")
 
@@ -434,7 +434,7 @@ class TestInstallPlugin:
         zip_bytes = _make_plugin_zip("broken_load", broken_source)
         mock_client = _download_client(stream=zip_bytes)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
                 "broken_load",
                 "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/broken_load.zip",
@@ -466,7 +466,7 @@ class TestInstallPlugin:
         zip_bytes = _make_plugin_zip("sample_community", SAMPLE_PLUGIN_SOURCE)
         mock_client = _download_client(stream=zip_bytes)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             result = await install_plugin(
                 "sample_community",
                 "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/sample_community.zip",
@@ -513,9 +513,9 @@ class GenericPlugin:
             stream=[valid_plugin_source.encode(), b'{"some": "config"}'],
         )
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
-            with patch("server.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
-                with patch("server.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+            with patch("openavc.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
+                with patch("openavc.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
                     result = await install_plugin(
                         "generic_plugin",
                         "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/plugins/generic_plugin",
@@ -992,7 +992,7 @@ class TestInstallDepsFromPyPI:
 
         mock_client = _download_client(get=pypi_resp, stream=wheel_bytes)
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=mock_client):
             await _install_deps_from_pypi(["fake-pkg"], deps_dir, "test_plugin")
 
         assert (deps_dir / "fake_pkg" / "__init__.py").exists()
@@ -1006,8 +1006,8 @@ class TestInstallDepsFromPyPI:
         )
 
         with (
-            patch("server.core.plugin_wheels.sys") as mock_sys,
-            patch("server.core.plugin_wheels._install_deps_from_pypi") as mock_pypi,
+            patch("openavc.core.plugin_wheels.sys") as mock_sys,
+            patch("openavc.core.plugin_wheels._install_deps_from_pypi") as mock_pypi,
         ):
             mock_sys.frozen = True
             mock_sys.version_info = MagicMock(major=3, minor=12)
@@ -1029,12 +1029,12 @@ class TestInstallDepsFromPyPI:
 class TestSanitizeFilename:
 
     def test_removes_unsafe_chars(self):
-        from server.core.plugin_installer import _sanitize_filename
+        from openavc.core.plugin_installer import _sanitize_filename
 
         assert _sanitize_filename("my plugin!@#$.py") == "myplugin.py"
 
     def test_allows_safe_chars(self):
-        from server.core.plugin_installer import _sanitize_filename
+        from openavc.core.plugin_installer import _sanitize_filename
 
         assert _sanitize_filename("my_plugin-v2.py") == "my_plugin-v2.py"
 
@@ -1095,7 +1095,7 @@ class TestInstallNativeDepArchive:
         """The SSRF guard resolves the URL host; these extraction tests use
         unresolvable example hosts, so stub it out (it has its own tests)."""
         with patch(
-            "server.core.plugin_native_deps._validate_download_url",
+            "openavc.core.plugin_native_deps._validate_download_url",
             new_callable=AsyncMock,
         ):
             yield
@@ -1112,7 +1112,7 @@ class TestInstallNativeDepArchive:
             "extract": "mediamtx-dir/mediamtx.exe",
         }
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             await _install_native_dep_archive("mediamtx", info, deps_dir)
 
         assert (deps_dir / "mediamtx.exe").read_bytes() == b"BINARY"
@@ -1128,7 +1128,7 @@ class TestInstallNativeDepArchive:
             "extract": "mediamtx",
         }
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             await _install_native_dep_archive("mediamtx", info, deps_dir)
 
         target = deps_dir / "mediamtx"
@@ -1151,7 +1151,7 @@ class TestInstallNativeDepArchive:
             "extract": "ffmpeg-lgpl/bin/ffmpeg",
         }
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             await _install_native_dep_archive("ffmpeg", info, deps_dir)
 
         assert (deps_dir / "ffmpeg").read_bytes() == b"FFMPEG"
@@ -1163,7 +1163,7 @@ class TestInstallNativeDepArchive:
         client = _archive_mock_client(archive)
         info = {"type": "tar.gz", "url": "https://x/a.tar.gz", "extract": "not_there"}
 
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             with pytest.raises(ValueError, match="not found in archive"):
                 await _install_native_dep_archive("mediamtx", info, deps_dir)
 

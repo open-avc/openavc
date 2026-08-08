@@ -7,7 +7,7 @@ SRV port must point at the TLS listener when TLS is on.
 
 from __future__ import annotations
 
-from server.discovery.mdns_advertiser import MDNSAdvertiser
+from openavc.discovery.mdns_advertiser import MDNSAdvertiser
 
 
 def _make_advertiser(**overrides) -> MDNSAdvertiser:
@@ -72,8 +72,8 @@ def test_tls_port_zero_default_when_tls_off():
 import asyncio  # noqa: E402
 import struct  # noqa: E402
 
-from server.discovery.mdns_advertiser import SERVICE_TYPE  # noqa: E402
-from server.discovery.mdns_scanner import (  # noqa: E402
+from openavc.discovery.mdns_advertiser import SERVICE_TYPE  # noqa: E402
+from openavc.discovery.mdns_scanner import (  # noqa: E402
     DNS_TYPE_A,
     DNS_TYPE_PTR,
     encode_dns_name,

@@ -9,9 +9,9 @@ and synthetic payloads, never a real driver or captured fixtures.
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import (
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import (
     normalize_config_commands,
     normalize_config_responses,
     create_configurable_driver_class,

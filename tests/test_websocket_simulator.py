@@ -13,7 +13,7 @@ import socket
 
 import websockets
 
-from simulator.websocket_simulator import WebSocketSimulator
+from openavc.simulator.websocket_simulator import WebSocketSimulator
 
 
 class _EchoWSSimulator(WebSocketSimulator):

@@ -16,8 +16,8 @@ import sys
 
 import pytest
 
-from server.core.plugin_installer import _register_installed_plugin
-from server.core.plugin_loader import unregister_plugin_class
+from openavc.core.plugin_installer import _register_installed_plugin
+from openavc.core.plugin_loader import unregister_plugin_class
 
 
 def _make_plugin(tmp_path, name: str, content: str, extra: dict | None = None):
@@ -169,7 +169,7 @@ class BetaPlugin:
         assert _register_installed_plugin("alpha", alpha_dir) is None
         assert _register_installed_plugin("beta", beta_dir) is None
 
-        from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+        from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
 
         # Each plugin captured its OWN helper's value — no cross-contamination.
         assert _PLUGIN_CLASS_REGISTRY["alpha"].VALUE == "alpha"

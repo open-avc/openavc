@@ -14,7 +14,7 @@ from starlette.routing import WebSocketRoute
 def test_simulator_app_imports_and_registers_ws():
     # The import itself is half the assertion — a bad websocket registration
     # raises AttributeError here, exactly as the frozen build did.
-    from simulator.server import app
+    from openavc.simulator.server import app
 
     ws_paths = {
         route.path for route in app.routes if isinstance(route, WebSocketRoute)

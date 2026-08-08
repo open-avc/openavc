@@ -32,19 +32,19 @@ from typing import Any
 
 import pytest
 
-from server.api.routes import drivers as drivers_routes
-from server.api.routes.drivers import (
+from openavc.api.routes import drivers as drivers_routes
+from openavc.api.routes.drivers import (
     create_driver_definition,
     validate_driver_definition_draft,
 )
-from server.api.models import DriverDefinitionRequest
-from server.drivers import avcdriver_semantic
+from openavc.api.models import DriverDefinitionRequest
+from openavc.drivers import avcdriver_semantic
 
 # Through the loader's wrappers, not the rules module directly: the loader is
 # what wires the discovery-block check (it needs the discovery engine's
 # parser), and it is what the endpoint calls. Validating without it silently
 # accepts a malformed `discovery:` block.
-from server.drivers.driver_loader import (
+from openavc.drivers.driver_loader import (
     validate_driver_definition,
     validate_driver_issues,
 )
@@ -533,7 +533,7 @@ async def test_endpoint_agrees_with_what_the_save_route_accepts(driver_dirs):
 
 
 async def test_endpoint_flags_what_the_save_route_would_refuse():
-    from server.api.errors import StructuredApiError
+    from openavc.api.errors import StructuredApiError
 
     broken = _d(commands={"broken": {}})
     result = await validate_driver_definition_draft(broken)

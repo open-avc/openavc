@@ -98,7 +98,7 @@ OpenAVC separates two surfaces with different access rules:
 
 **Code-writing endpoints are never open.** The endpoints that create or edit Python drivers and scripts (which execute code on the host) always require the admin credential, even on an instance that is otherwise configured for open access.
 
-**Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m server.main` from source) binds to `127.0.0.1` (localhost only). To force localhost-only on a packaged deployment, set `OPENAVC_BIND=127.0.0.1` (e.g. `sudo systemctl edit openavc` on Linux, or the `network.bind_address` field in `system.json`).
+**Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m openavc.main` from source) binds to `127.0.0.1` (localhost only). To force localhost-only on a packaged deployment, set `OPENAVC_BIND=127.0.0.1` (e.g. `sudo systemctl edit openavc` on Linux, or the `network.bind_address` field in `system.json`).
 
 **Credentials.** The admin password set during first-run setup is stored in `system.json` on the host. It can be changed later in **Settings > Security**. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`) or an `OPENAVC_API_KEY` for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen.
 

@@ -9,7 +9,7 @@ repo. See CLAUDE.md.
 
 from __future__ import annotations
 
-from server.discovery.oui_database import OUIDatabase, normalize_oui_prefix
+from openavc.discovery.oui_database import OUIDatabase, normalize_oui_prefix
 
 
 def test_normalize_accepts_common_formats():

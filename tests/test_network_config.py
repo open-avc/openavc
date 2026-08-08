@@ -14,10 +14,10 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-import server.api.auth as auth_mod
-from server.main import app
-from server.system import network as netmod
-from server.system.network import (
+import openavc.api.auth as auth_mod
+from openavc.main import app
+from openavc.system import network as netmod
+from openavc.system.network import (
     NmcliBackend,
     parse_keyed_terse,
     split_terse_line,
@@ -385,7 +385,7 @@ async def test_deployment_backend_module_wins(monkeypatch):
     module.create_backend = lambda: _ProvidedBackend()
     monkeypatch.setitem(sys.modules, "fake_net_backend", module)
 
-    import server.system_config as syscfg
+    import openavc.system_config as syscfg
     cfg = syscfg.get_system_config()
     monkeypatch.setattr(
         cfg, "get",
@@ -402,7 +402,7 @@ async def test_deployment_backend_module_wins(monkeypatch):
 
 async def test_broken_backend_module_falls_through(monkeypatch):
     """A module that fails to import or create never breaks detection."""
-    import server.system_config as syscfg
+    import openavc.system_config as syscfg
     cfg = syscfg.get_system_config()
     monkeypatch.setattr(
         cfg, "get",

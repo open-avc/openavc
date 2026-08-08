@@ -91,7 +91,7 @@ from pathlib import Path
 
 import pytest
 
-from server.drivers import spec
+from openavc.drivers import spec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

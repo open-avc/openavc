@@ -19,23 +19,23 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-import server.system_config as system_config
-from server.api.models import DriverDefinitionRequest
-from server.api.routes import drivers as drivers_routes
-from server.api.routes.drivers import (
+import openavc.system_config as system_config
+from openavc.api.models import DriverDefinitionRequest
+from openavc.api.routes import drivers as drivers_routes
+from openavc.api.routes.drivers import (
     delete_driver_definition_endpoint,
     list_driver_definitions as list_definitions_endpoint,
     patch_driver_definition,
     update_driver_definition,
 )
-from server.drivers.registry import (
+from openavc.drivers.registry import (
     is_driver_registered,
     list_registered_drivers,
     register_driver,
     unregister_driver,
 )
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import save_driver_definition
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import save_driver_definition
 
 
 BUILTIN_DEF = {

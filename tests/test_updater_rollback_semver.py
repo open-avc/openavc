@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-from server.updater import rollback
+from openavc.updater import rollback
 
 
 pytestmark = pytest.mark.skipif(
@@ -40,14 +40,14 @@ def _make_cache(tmp_path, *versions):
 def _patch_data_dir(tmp_path):
     class _Cfg:
         data_dir = tmp_path
-    return patch("server.system_config.get_system_config", return_value=_Cfg)
+    return patch("openavc.system_config.get_system_config", return_value=_Cfg)
 
 
 def test_can_rollback_true_when_other_version_cached(tmp_path):
     """A different cached version is a rollback target."""
     _make_cache(tmp_path, "0.10.2", "0.10.3")
     with _patch_data_dir(tmp_path), \
-         patch("server.version.__version__", "0.10.3"):
+         patch("openavc.version.__version__", "0.10.3"):
         assert rollback.can_rollback(tmp_path) is True
 
 
@@ -57,7 +57,7 @@ def test_can_rollback_false_when_only_current_version_cached(tmp_path):
     """
     _make_cache(tmp_path, "0.10.3")
     with _patch_data_dir(tmp_path), \
-         patch("server.version.__version__", "0.10.3"):
+         patch("openavc.version.__version__", "0.10.3"):
         assert rollback.can_rollback(tmp_path) is False
 
 
@@ -73,7 +73,7 @@ def test_can_rollback_false_when_prerelease_match_only(tmp_path):
     # Both representations parse to the same semver tuple.
     _make_cache(tmp_path, "0.10.3-rc.1")
     with _patch_data_dir(tmp_path), \
-         patch("server.version.__version__", "0.10.3-rc.1"):
+         patch("openavc.version.__version__", "0.10.3-rc.1"):
         assert rollback.can_rollback(tmp_path) is False
 
 

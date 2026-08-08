@@ -9,8 +9,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
-from server.discovery import network_scanner
-from server.discovery.network_scanner import (
+from openavc.discovery import network_scanner
+from openavc.discovery.network_scanner import (
     _harvest_arp_linux,
     _parse_bsd_arp,
     _parse_proc_net_arp,

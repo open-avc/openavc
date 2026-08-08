@@ -4,19 +4,19 @@ import asyncio
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from server.discovery.oui_database import OUIDatabase
-from server.discovery.oui_data import AV_OUI_TABLE
-from server.discovery.result import (
+from openavc.discovery.oui_database import OUIDatabase
+from openavc.discovery.oui_data import AV_OUI_TABLE
+from openavc.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
 )
-from server.discovery.network_scanner import (
+from openavc.discovery.network_scanner import (
     get_local_subnets,
     get_ranked_interface_ips,
     _parse_cidr,
 )
-from server.discovery.port_scanner import BANNER_PORTS, BASELINE_PORTS
-from server.discovery.engine import DiscoveryEngine, ScanStatus
+from openavc.discovery.port_scanner import BANNER_PORTS, BASELINE_PORTS
+from openavc.discovery.engine import DiscoveryEngine, ScanStatus
 
 
 # ===== OUI Database Tests =====
@@ -219,7 +219,7 @@ class TestDiscoveryEngine:
         assert d is d2
 
     def test_results_sorted_identified_first(self):
-        from server.discovery.result import IdentificationMatch
+        from openavc.discovery.result import IdentificationMatch
 
         self.engine.results["192.168.1.1"] = DiscoveredDevice(ip="192.168.1.1")
         self.engine.results["192.168.1.2"] = DiscoveredDevice(
@@ -239,13 +239,13 @@ class TestDiscoveryEngine:
 
     @pytest.mark.asyncio
     async def test_start_scan_no_subnets_raises(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=[]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=[]):
             with pytest.raises(ValueError, match="No subnets"):
                 await self.engine.start_scan(subnets=[])
 
     @pytest.mark.asyncio
     async def test_start_scan_returns_scan_id(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             with patch.object(self.engine, "_run_scan", new_callable=AsyncMock):
                 scan_id = await self.engine.start_scan(subnets=["192.168.1.0/30"])
                 assert scan_id.startswith("scan_")
@@ -253,7 +253,7 @@ class TestDiscoveryEngine:
     @pytest.mark.asyncio
     async def test_double_start_raises(self):
         """Cannot start a scan while one is running."""
-        with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             # Create a mock that doesn't complete immediately
             never_done = asyncio.Future()
             with patch.object(self.engine, "_run_scan", return_value=never_done):
@@ -265,7 +265,7 @@ class TestDiscoveryEngine:
 
     @pytest.mark.asyncio
     async def test_stop_scan(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             with patch.object(self.engine, "_run_scan", new_callable=AsyncMock):
                 await self.engine.start_scan(subnets=["192.168.1.0/30"])
                 await self.engine.stop_scan()
@@ -280,34 +280,34 @@ class TestDiscoveryEngine:
     @pytest.mark.asyncio
     async def test_scan_pipeline_with_mocked_network(self):
         """Full pipeline test with mocked network calls."""
-        with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping:
+        with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping:
             mock_ping.return_value = ["192.168.1.50", "192.168.1.72"]
 
-            with patch("server.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp:
+            with patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp:
                 mock_arp.return_value = {
                     "192.168.1.50": "00:05:a6:12:34:56",
                     "192.168.1.72": "04:fe:31:aa:bb:cc",
                 }
 
-                with patch("server.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports:
+                with patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports:
                     mock_ports.side_effect = lambda ip, *a, **kw: {
                         "192.168.1.50": [23],
                         "192.168.1.72": [4352, 80],
                     }.get(ip, [])
 
-                    with patch("server.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners:
+                    with patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners:
                         mock_banners.return_value = {}
 
                         # Mock passive listeners + SNMP. Mock the community
                         # catalog fetch so the signal index is deterministically
                         # empty — otherwise the live GitHub fetch leaks 50+
                         # drivers into the index.
-                        with patch("server.discovery.engine.MDNSScanner") as mock_mdns_cls, \
-                             patch("server.discovery.engine.SSDPScanner") as mock_ssdp_cls, \
-                             patch("server.discovery.engine.AMXDDPScanner") as mock_amx_cls, \
-                             patch("server.discovery.engine.SNMPScanner") as mock_snmp_cls, \
+                        with patch("openavc.discovery.engine.MDNSScanner") as mock_mdns_cls, \
+                             patch("openavc.discovery.engine.SSDPScanner") as mock_ssdp_cls, \
+                             patch("openavc.discovery.engine.AMXDDPScanner") as mock_amx_cls, \
+                             patch("openavc.discovery.engine.SNMPScanner") as mock_snmp_cls, \
                              patch.object(self.engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
-                             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+                             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
                             mock_mdns = MagicMock()
                             mock_mdns.start = AsyncMock(return_value={})
                             mock_mdns_cls.return_value = mock_mdns
@@ -375,9 +375,9 @@ class TestGetRankedInterfaceIps:
 
     def _ranked(self, ips, default_ip):
         with patch(
-            "server.discovery.network_scanner.get_interface_ips", return_value=ips
+            "openavc.discovery.network_scanner.get_interface_ips", return_value=ips
         ), patch(
-            "server.discovery.network_scanner.get_default_route_ip",
+            "openavc.discovery.network_scanner.get_default_route_ip",
             return_value=default_ip,
         ):
             return get_ranked_interface_ips()

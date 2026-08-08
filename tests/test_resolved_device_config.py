@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import pytest
 
-from server.drivers.registry import get_driver_default_config, register_driver, unregister_driver
-from server.core.engine import Engine
-from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
-from server.drivers.base import BaseDriver
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.registry import get_driver_default_config, register_driver, unregister_driver
+from openavc.core.engine import Engine
+from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
+from openavc.drivers.base import BaseDriver
+from openavc.drivers.configurable import create_configurable_driver_class
 
 
 # ---------------------------------------------------------------------------
@@ -249,8 +249,8 @@ class _PortOnlyDriver(BaseDriver):
 
 
 def _make_driver(config):
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     return _PortOnlyDriver("test_dev", config, StateStore(), EventBus())
 
@@ -330,7 +330,7 @@ def _wire_add_device_env(tmp_path, monkeypatch):
     """
     from unittest.mock import MagicMock
 
-    from server.api import discovery as discovery_api
+    from openavc.api import discovery as discovery_api
 
     fake_discovery = MagicMock()
     fake_discovery.results = {}
@@ -343,7 +343,7 @@ def _wire_add_device_env(tmp_path, monkeypatch):
         connections={},
     )
     monkeypatch.setattr(
-        "server.core.project_loader.save_project", lambda *a, **k: None
+        "openavc.core.project_loader.save_project", lambda *a, **k: None
     )
 
     discovery_api.set_app_engine(engine)
@@ -358,7 +358,7 @@ async def test_discovery_add_device_pulls_in_driver_defaults_on_first_add(
     them to the runtime device on first add — without requiring a server
     restart.
     """
-    from server.api.discovery import AddDeviceRequest, add_device
+    from openavc.api.discovery import AddDeviceRequest, add_device
 
     engine = _wire_add_device_env(tmp_path, monkeypatch)
 
@@ -398,7 +398,7 @@ async def test_discovery_add_device_bumps_revision_and_broadcasts(
     ETag stayed valid and its next full-project PUT silently deleted the
     just-discovered device.
     """
-    from server.api.discovery import AddDeviceRequest, add_device
+    from openavc.api.discovery import AddDeviceRequest, add_device
 
     engine = _wire_add_device_env(tmp_path, monkeypatch)
 
@@ -429,7 +429,7 @@ async def test_discovery_add_device_rejects_duplicate(
     """
     from fastapi import HTTPException
 
-    from server.api.discovery import AddDeviceRequest, add_device
+    from openavc.api.discovery import AddDeviceRequest, add_device
 
     engine = _wire_add_device_env(tmp_path, monkeypatch)
 
@@ -461,7 +461,7 @@ async def test_discovery_add_device_rejects_nested_config(
     """
     from fastapi import HTTPException
 
-    from server.api.discovery import AddDeviceRequest, add_device
+    from openavc.api.discovery import AddDeviceRequest, add_device
 
     engine = _wire_add_device_env(tmp_path, monkeypatch)
 
@@ -493,7 +493,7 @@ async def test_discovery_add_device_accepts_flat_primitive_config(
     """A flat primitive config (string/number/bool/None) is accepted and
     merged into the saved device.
     """
-    from server.api.discovery import AddDeviceRequest, add_device
+    from openavc.api.discovery import AddDeviceRequest, add_device
 
     engine = _wire_add_device_env(tmp_path, monkeypatch)
 
@@ -516,7 +516,7 @@ def test_add_device_request_forbids_unknown_fields():
     """
     from pydantic import ValidationError
 
-    from server.api.discovery import AddDeviceRequest
+    from openavc.api.discovery import AddDeviceRequest
 
     with pytest.raises(ValidationError):
         AddDeviceRequest(ip="192.0.2.54", driver_id="fake_kramer_test", group="A/V")
@@ -587,7 +587,7 @@ def fake_serial_device_driver():
 
 
 def test_get_driver_bridge_ports_reads_declaration(fake_bridge_driver):
-    from server.drivers.registry import get_driver_bridge_ports
+    from openavc.drivers.registry import get_driver_bridge_ports
 
     ports = get_driver_bridge_ports("fake_bridge_test")
     assert "serial:1" in ports
@@ -596,7 +596,7 @@ def test_get_driver_bridge_ports_reads_declaration(fake_bridge_driver):
 
 
 def test_get_driver_bridge_ports_non_bridge_returns_empty(fake_tcp_driver):
-    from server.drivers.registry import get_driver_bridge_ports
+    from openavc.drivers.registry import get_driver_bridge_ports
 
     assert get_driver_bridge_ports("fake_kramer_test") == {}
 

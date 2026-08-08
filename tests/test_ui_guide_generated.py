@@ -18,14 +18,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from server.ui.control_minimums import (
+from openavc.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     RULES,
     minimum_box,
 )
-from server.ui.guide_gen import ARTIFACT, render
-from server.ui.page_review import (
+from openavc.ui.guide_gen import ARTIFACT, render
+from openavc.ui.page_review import (
     HONORED_SHOW_SLOTS,
     TOUCH_MIN_MM,
     TOUCHABLE_TYPES,
@@ -84,10 +84,10 @@ FLOOR_SECTIONS = (
 
 def test_committed_guide_matches_a_fresh_render():
     path = REPO_ROOT / ARTIFACT
-    assert path.is_file(), f"{ARTIFACT} is missing -- run 'python -m server.ui.guide_gen'"
+    assert path.is_file(), f"{ARTIFACT} is missing -- run 'python -m openavc.ui.guide_gen'"
     assert path.read_text(encoding="utf-8") == render(), (
         f"{ARTIFACT} is stale. Regenerate it with "
-        f"'python -m server.ui.guide_gen' (never edit it by hand)"
+        f"'python -m openavc.ui.guide_gen' (never edit it by hand)"
     )
 
 

@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-import server.transport.serial_transport as st
-from server.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
-from server.transport.frame_parsers import FixedLengthFrameParser
-from server.transport.serial_transport import SerialTransport
+import openavc.transport.serial_transport as st
+from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
+from openavc.transport.frame_parsers import FixedLengthFrameParser
+from openavc.transport.serial_transport import SerialTransport
 
 
 async def test_invalid_serial_settings_raise_invalid_config_fault(monkeypatch):

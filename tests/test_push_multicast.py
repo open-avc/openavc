@@ -12,11 +12,11 @@ import socket
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from server.transport import multicast_listener as ml
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.transport import multicast_listener as ml
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "dev1"):
@@ -215,7 +215,7 @@ async def test_loopback_subscription_matches_local_sources():
 def _break_interface_enumeration(monkeypatch, default_route=None):
     """Make this host's own addresses undiscoverable, as on a frozen build
     whose bundle dropped the enumeration dependency."""
-    import server.discovery.network_scanner as ns
+    import openavc.discovery.network_scanner as ns
 
     def _boom():
         raise RuntimeError("interface enumeration unavailable")
@@ -422,7 +422,7 @@ async def test_throttle_on_json_rule():
 
 @pytest.mark.asyncio
 async def test_throttle_on_osc_rule():
-    from server.transport.osc_codec import osc_encode_message
+    from openavc.transport.osc_codec import osc_encode_message
 
     d = _mixer_def()
     d["transport"] = "osc"
@@ -468,7 +468,7 @@ def _sim_def() -> dict:
 
 
 def test_sim_resolves_push_block_from_config_templates():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     assert sim._push_multicast == ("239.10.10.10", 17000)
@@ -482,7 +482,7 @@ def test_sim_resolves_push_block_from_config_templates():
 
 
 def test_sim_render_notification_specs():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     render = YAMLAutoSimulator._render_notification
     assert render("V {value}", "k", 42) == "V 42"
@@ -494,7 +494,7 @@ def test_sim_render_notification_specs():
 
 
 def test_sim_emits_notification_via_multicast_not_tcp():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     fake = _FakeSock()
@@ -508,7 +508,7 @@ def test_sim_emits_notification_via_multicast_not_tcp():
 
 
 def test_sim_without_push_block_keeps_tcp_notifications():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     d = _sim_def()
     d.pop("push")

@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from server.core.engine import Engine
+from openavc.core.engine import Engine
 
 
 def _project_with_state_trigger(tmp_path):
@@ -58,7 +58,7 @@ async def test_rollback_does_not_double_register_trigger_listeners(tmp_path, mon
     eng = Engine(str(project_path))
 
     # Load the project synchronously so we can drive reload_project later.
-    from server.core.project_loader import load_project
+    from openavc.core.project_loader import load_project
     eng.project = load_project(project_path)
     eng._running = True
 

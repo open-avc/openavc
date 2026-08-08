@@ -37,10 +37,10 @@ def test_osc_modules_are_hidden_imports():
     """
     hidden = _hidden_imports()
     required = {
-        "server.transport.osc",
-        "server.transport.osc_codec",
-        "simulator.osc_simulator",
-        "simulator.udp_simulator",
+        "openavc.transport.osc",
+        "openavc.transport.osc_codec",
+        "openavc.simulator.osc_simulator",
+        "openavc.simulator.udp_simulator",
     }
     missing = required - hidden
     assert not missing, f"openavc.spec is missing OSC hidden imports: {missing}"

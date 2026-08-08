@@ -7,11 +7,11 @@ regardless of where rules come from.
 
 import pytest
 
-from server.discovery.result import (
+from openavc.discovery.result import (
     DeviceState,
     SignalTier,
 )
-from server.discovery.tier_matcher import (
+from openavc.discovery.tier_matcher import (
     KIND_AMX_DDP,
     KIND_BROADCAST,
     KIND_MDNS,
@@ -313,7 +313,7 @@ class TestTierMatcherIdentified:
         # Two drivers share one family URN; the scanner's device-description
         # fields (SSDPResult.to_evidence_records -> data["txt"]) pick the
         # right one.
-        from server.discovery.ssdp_scanner import SSDPResult
+        from openavc.discovery.ssdp_scanner import SSDPResult
 
         idx = SignalIndex()
         idx.add_rule(SignalRule.for_ssdp(
@@ -346,7 +346,7 @@ class TestTierMatcherIdentified:
         # a generic upnp:rootdevice, and the family URN reached the record
         # only via an earlier response / the devdesc deviceType. Matching
         # must consider every observed type, not just the most recent ST.
-        from server.discovery.ssdp_scanner import SSDPResult, _parse_upnp_xml
+        from openavc.discovery.ssdp_scanner import SSDPResult, _parse_upnp_xml
 
         idx = SignalIndex()
         idx.add_rule(SignalRule.for_ssdp(

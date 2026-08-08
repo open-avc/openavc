@@ -24,8 +24,8 @@ from typing import Any
 import pytest
 import yaml
 
-from server.api.models import TestCommandRequest
-from server.api.routes.driver_test import _dry_run_command
+from openavc.api.models import TestCommandRequest
+from openavc.api.routes.driver_test import _dry_run_command
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]

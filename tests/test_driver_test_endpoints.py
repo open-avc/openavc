@@ -20,9 +20,9 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from server.api.models import TestCommandRequest
-from server.api.routes import devices as devices_routes
-from server.api.routes.driver_test import _test_http_raw
+from openavc.api.models import TestCommandRequest
+from openavc.api.routes import devices as devices_routes
+from openavc.api.routes.driver_test import _test_http_raw
 
 
 # --- timeout bounds ----------------------------------------------------------
@@ -136,7 +136,7 @@ def test_describe_outgoing_substitutes_osc_arg_values():
     The address was substituted but arg values showed the raw {placeholder}
     template, contradicting the summary's purpose.
     """
-    from server.api.routes.driver_test import _describe_outgoing
+    from openavc.api.routes.driver_test import _describe_outgoing
 
     definition = {"transport": "osc"}
     cmd_def = {

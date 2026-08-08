@@ -8,14 +8,14 @@ is named.
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import (
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import (
     DeviceSettingValueError,
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.configurable import create_configurable_driver_class
 
 DSP_OPTIONS = [
     {"value": "00", "label": "Stereo"},

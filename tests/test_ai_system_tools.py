@@ -17,10 +17,10 @@ import asyncio
 import time
 from types import SimpleNamespace
 
-import server.api.discovery as discovery_module
-import server.utils.log_buffer as log_buffer_module
-from server.cloud.tools.system_tools import SystemToolsMixin
-from server.utils.log_buffer import LogBuffer, LogEntry
+import openavc.api.discovery as discovery_module
+import openavc.utils.log_buffer as log_buffer_module
+from openavc.cloud.tools.system_tools import SystemToolsMixin
+from openavc.utils.log_buffer import LogBuffer, LogEntry
 
 
 class _Handler(SystemToolsMixin):
@@ -45,7 +45,7 @@ def _entry(message: str, *, level: str = "INFO", age_seconds: float = 0.0) -> Lo
     return LogEntry(
         timestamp=time.time() - age_seconds,
         level=level,
-        source="server.transport.tcp",
+        source="openavc.transport.tcp",
         category="device",
         message=message,
     )
@@ -93,7 +93,7 @@ async def test_get_logs_redacts_plugin_config_secrets(monkeypatch):
     # Plugin entries in a loaded project are PluginConfig models, not dicts —
     # the harvest must read .config off the model, or plugin credentials in
     # DEBUG transport lines ship to the cloud unscrubbed.
-    from server.core.project_loader import PluginConfig
+    from openavc.core.project_loader import PluginConfig
 
     project = SimpleNamespace(
         devices=[],

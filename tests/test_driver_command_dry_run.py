@@ -21,13 +21,13 @@ import asyncio
 
 import pytest
 
-from server.api.models import TestCommandRequest
-from server.api.routes.driver_test import (
+from openavc.api.models import TestCommandRequest
+from openavc.api.routes.driver_test import (
     _dry_run_command,
     _test_via_configurable_driver,
 )
 # Aliased on import: pytest would otherwise collect the route handler itself.
-from server.api.routes.driver_test import test_driver_command as command_endpoint
+from openavc.api.routes.driver_test import test_driver_command as command_endpoint
 
 
 def _definition(**overrides) -> dict:
@@ -244,7 +244,7 @@ async def test_http_json_body_is_encoded_the_way_it_is_sent():
 
 async def test_dry_run_opens_no_transport(monkeypatch):
     """No socket is created — the capture stands in before anything connects."""
-    from server.transport.tcp import TCPTransport
+    from openavc.transport.tcp import TCPTransport
 
     async def _explode(*args, **kwargs):
         raise AssertionError("a dry run must not open a transport")
@@ -266,7 +266,7 @@ async def test_dry_run_is_not_rate_limited():
 
 async def test_dry_run_does_not_consume_the_live_send_allowance():
     """A preview must not make the next real send 429."""
-    from server.api import _engine
+    from openavc.api import _engine
 
     _engine._test_endpoint_last_call.pop("test_command:acme_rate", None)
     await command_endpoint(
@@ -346,7 +346,7 @@ def test_dry_run_round_trips_over_http():
     """
     from fastapi.testclient import TestClient
 
-    from server.main import app
+    from openavc.main import app
 
     client = TestClient(app)
     payload = {
@@ -374,7 +374,7 @@ def test_dry_run_round_trips_over_http():
 def test_dry_run_over_http_requires_a_command():
     from fastapi.testclient import TestClient
 
-    from server.main import app
+    from openavc.main import app
 
     client = TestClient(app)
     response = client.post(

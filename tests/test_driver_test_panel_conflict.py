@@ -18,11 +18,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.drivers.registry import _DRIVER_REGISTRY
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver
+from openavc.drivers.registry import _DRIVER_REGISTRY
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver
 
 
 class MockTCPDriver(BaseDriver):
@@ -330,7 +330,7 @@ def conflict_engine():
 
 
 async def test_check_conflict_returns_matching_device(monkeypatch, conflict_engine):
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     conflict_engine.state.set("device.proj_main.connected", True, source="test")
@@ -347,7 +347,7 @@ async def test_check_conflict_returns_matching_device(monkeypatch, conflict_engi
 
 
 async def test_check_conflict_skips_disabled_devices(monkeypatch, conflict_engine):
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     result = await driver_test_routes.check_connection_conflict(
@@ -359,7 +359,7 @@ async def test_check_conflict_skips_disabled_devices(monkeypatch, conflict_engin
 
 
 async def test_check_conflict_no_match(monkeypatch, conflict_engine):
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     result = await driver_test_routes.check_connection_conflict(
@@ -371,7 +371,7 @@ async def test_check_conflict_no_match(monkeypatch, conflict_engine):
 async def test_check_conflict_non_tcp_returns_empty(monkeypatch, conflict_engine):
     """Single-session poaching is a TCP issue; HTTP/UDP/serial return [] so
     the UI doesn't surface false-alarm warnings."""
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     for transport in ("http", "udp", "serial", "osc"):
@@ -382,7 +382,7 @@ async def test_check_conflict_non_tcp_returns_empty(monkeypatch, conflict_engine
 
 
 async def test_check_conflict_invalid_port(monkeypatch, conflict_engine):
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     result = await driver_test_routes.check_connection_conflict(
@@ -394,7 +394,7 @@ async def test_check_conflict_invalid_port(monkeypatch, conflict_engine):
 async def test_check_conflict_honors_connection_overrides(monkeypatch, conflict_engine):
     """connections[device_id] overrides device.config — the conflict check
     must compare against the merged effective host:port."""
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     conflict_engine.project.connections["proj_main"] = {
@@ -410,7 +410,7 @@ async def test_check_conflict_honors_connection_overrides(monkeypatch, conflict_
 
 
 async def test_check_conflict_surfaces_paused_state(monkeypatch, conflict_engine):
-    from server.api.routes import driver_test as driver_test_routes
+    from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
     conflict_engine.state.set("device.proj_main.paused", True, source="test")

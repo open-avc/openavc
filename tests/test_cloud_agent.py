@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from server.cloud.crypto import (
+from openavc.cloud.crypto import (
     hkdf_sha256,
     derive_auth_key,
     derive_signing_key,
@@ -25,7 +25,7 @@ from server.cloud.crypto import (
     generate_system_key,
     hash_system_key,
 )
-from server.cloud.protocol import (
+from openavc.cloud.protocol import (
     PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
     HELLO, CHALLENGE, AUTHENTICATE, SESSION_START,
     AUTH_FAILED, VERSION_MISMATCH, RESUME, RESUME_FROM,
@@ -44,9 +44,9 @@ from server.cloud.protocol import (
     verify_steady_state_message, extract_payload,
     ProtocolError,
 )
-from server.cloud.handshake import Handshake, HandshakeResult, HandshakeError
-from server.cloud.session import Session, SessionInvalid
-from server.cloud.sequencer import Sequencer
+from openavc.cloud.handshake import Handshake, HandshakeResult, HandshakeError
+from openavc.cloud.session import Session, SessionInvalid
+from openavc.cloud.sequencer import Sequencer
 
 
 # ===========================================================================
@@ -569,7 +569,7 @@ class TestHandshake:
         then hands it a session_start that settled on 1. Under the old
         exact-match rule that was a refused handshake.
         """
-        import server.cloud.handshake as handshake_mod
+        import openavc.cloud.handshake as handshake_mod
         monkeypatch.setattr(
             handshake_mod, "SUPPORTED_PROTOCOL_VERSIONS", [1, 2], raising=False
         )
@@ -647,7 +647,7 @@ class TestHandshake:
             return ""
 
         # Override timeout for test speed
-        from server.cloud import handshake as hs_module
+        from openavc.cloud import handshake as hs_module
         orig_timeout = hs_module.HANDSHAKE_TIMEOUT
         hs_module.HANDSHAKE_TIMEOUT = 0.1
 
@@ -952,10 +952,10 @@ class TestHeartbeat:
     @pytest.mark.asyncio
     async def test_collect_basic_metrics(self):
         """HeartbeatCollector returns expected fields even without psutil."""
-        from server.core.state_store import StateStore
-        from server.core.device_manager import DeviceManager
-        from server.core.event_bus import EventBus
-        from server.cloud.heartbeat import HeartbeatCollector
+        from openavc.core.state_store import StateStore
+        from openavc.core.device_manager import DeviceManager
+        from openavc.core.event_bus import EventBus
+        from openavc.cloud.heartbeat import HeartbeatCollector
 
         state = StateStore()
         events = EventBus()
@@ -981,8 +981,8 @@ class TestHeartbeat:
         writes (device errors are events), so it always reported 0 to the
         cloud even with faulting hardware.
         """
-        from server.core.state_store import StateStore
-        from server.cloud.heartbeat import HeartbeatCollector
+        from openavc.core.state_store import StateStore
+        from openavc.cloud.heartbeat import HeartbeatCollector
 
         class FakeDevices:
             def list_devices(self):
@@ -1009,8 +1009,8 @@ class TestHeartbeat:
         """
         from unittest.mock import patch
 
-        from server.core.state_store import StateStore
-        from server.cloud import heartbeat as hb
+        from openavc.core.state_store import StateStore
+        from openavc.cloud import heartbeat as hb
 
         if not hb.HAS_PSUTIL:
             pytest.skip("psutil not installed")
@@ -1043,10 +1043,10 @@ class TestCommandHandler:
     @pytest.mark.asyncio
     async def test_handle_device_command(self):
         """Command handler delegates device commands to DeviceManager."""
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
-        from server.cloud.command_handler import CommandHandler
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
 
         state = StateStore()
         events = EventBus()
@@ -1088,10 +1088,10 @@ class TestCommandHandler:
     @pytest.mark.asyncio
     async def test_handle_restart(self):
         """Restart handler sends result before requesting restart."""
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
-        from server.cloud.command_handler import CommandHandler
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
 
         state = StateStore()
         events = EventBus()
@@ -1132,10 +1132,10 @@ class TestCommandHandler:
         current format before it's validated and saved — not persisted with
         stale field placement to be re-migrated only on the next disk reload."""
         import json
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
-        from server.cloud.command_handler import CommandHandler
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
 
         state = StateStore()
         events = EventBus()
@@ -1164,7 +1164,7 @@ class TestCommandHandler:
         # Mirror the seam contract: apply_project persists the pushed project
         # (the reconcile itself is pinned by the engine tests).
         async def apply_fn(project, **kwargs):
-            from server.core.project_loader import save_project
+            from openavc.core.project_loader import save_project
             save_project(project_path, project)
             applied.append(kwargs)
             return 1
@@ -1188,7 +1188,7 @@ class TestCommandHandler:
         # The push went through the seam — LOAD origin, no OCC check (a fleet
         # push wins by design, but the apply bumps + broadcasts so an open IDE
         # 409s instead of silently reverting it). No double reload-from-disk.
-        from server.core.project_diff import ProjectOrigin
+        from openavc.core.project_diff import ProjectOrigin
         assert applied == [{"origin": ProjectOrigin.LOAD, "persist": True}]
         assert reloaded == []
         assert sent and sent[-1][1]["success"] is True
@@ -1197,10 +1197,10 @@ class TestCommandHandler:
     async def test_bare_config_push_reloads_from_disk(self, tmp_path):
         """A config_push with no project_json is a plain reload-from-disk."""
         import json
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
-        from server.cloud.command_handler import CommandHandler
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
 
         state = StateStore()
         events = EventBus()
@@ -1250,8 +1250,8 @@ class TestStateRelay:
 
     def test_on_state_change_batches(self):
         """State changes are collected into the top-tier batch."""
-        from server.core.state_store import StateStore
-        from server.cloud.state_relay import StateRelay
+        from openavc.core.state_store import StateStore
+        from openavc.cloud.state_relay import StateRelay
 
         state = StateStore()
         agent = type("MockAgent", (), {"_config": {}})()
@@ -1273,8 +1273,8 @@ class TestStateRelay:
 
     def test_skips_cloud_internal_state(self):
         """Cloud-internal state keys are not relayed."""
-        from server.core.state_store import StateStore
-        from server.cloud.state_relay import StateRelay
+        from openavc.core.state_store import StateStore
+        from openavc.cloud.state_relay import StateRelay
 
         state = StateStore()
         agent = type("MockAgent", (), {"_config": {}})()
@@ -1285,8 +1285,8 @@ class TestStateRelay:
 
     def test_skips_isc_state(self):
         """ISC remote state is not relayed (prevents echo loops)."""
-        from server.core.state_store import StateStore
-        from server.cloud.state_relay import StateRelay
+        from openavc.core.state_store import StateStore
+        from openavc.cloud.state_relay import StateRelay
 
         state = StateStore()
         agent = type("MockAgent", (), {"_config": {}})()
@@ -1297,7 +1297,7 @@ class TestStateRelay:
 
     def test_format_ts(self):
         """Timestamp formatting produces ISO 8601 with Z suffix."""
-        from server.cloud.state_relay import StateRelay
+        from openavc.cloud.state_relay import StateRelay
 
         ts = 1711724400.123  # Fixed epoch
         formatted = StateRelay._format_ts(ts)
@@ -1307,9 +1307,9 @@ class TestStateRelay:
     @pytest.mark.asyncio
     async def test_start_stop_lifecycle(self):
         """Start subscribes to state, stop unsubscribes."""
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.cloud.state_relay import StateRelay
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.cloud.state_relay import StateRelay
 
         state = StateStore()
         events = EventBus()
@@ -1358,7 +1358,7 @@ class TestAgentThrottle:
     @pytest.mark.asyncio
     async def test_unthrottle_removes_entry(self):
         """_unthrottle releases the event and removes all per-type tracking."""
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         # Create a minimal agent instance without actually connecting
         agent = CloudAgent.__new__(CloudAgent)
@@ -1394,7 +1394,7 @@ class TestAgentCapabilityGating:
 
     def _make_agent(self, enabled_capabilities: list[str]):
         """Build a minimal CloudAgent for dispatch testing."""
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._session = None  # Skip signature verification path
@@ -1505,7 +1505,7 @@ class TestAgentCapabilityGating:
         Regression for A44: cloud and agent must agree on the capability vocabulary,
         otherwise capability gating silently blocks everything.
         """
-        from server.cloud.agent import DEFAULT_CAPABILITIES, _CAPABILITY_GATED
+        from openavc.cloud.agent import DEFAULT_CAPABILITIES, _CAPABILITY_GATED
 
         for required in _CAPABILITY_GATED.values():
             assert required in DEFAULT_CAPABILITIES, (
@@ -1516,7 +1516,7 @@ class TestAgentCapabilityGating:
     def test_software_update_gated_on_fleet_update(self):
         """A59: software_update is gated on the 'fleet_update' capability so a
         cloud with features_disabled=['fleet_update'] can disable updates."""
-        from server.cloud.agent import _CAPABILITY_GATED
+        from openavc.cloud.agent import _CAPABILITY_GATED
         assert _CAPABILITY_GATED.get("software_update") == "fleet_update"
 
     @pytest.mark.asyncio
@@ -1558,7 +1558,7 @@ class TestAgentRefusalNacks:
     """Tests for CloudAgent._nack_undispatched wiring in _handle_message."""
 
     def _make_agent(self, enabled_capabilities, with_handlers=True):
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._session = None
@@ -1697,7 +1697,7 @@ class TestFeaturesDisabledSubtraction:
         features_disabled: list[str] | None = None,
     ):
         """Build a HandshakeResult with optional upgrade_required."""
-        from server.cloud.handshake import HandshakeResult
+        from openavc.cloud.handshake import HandshakeResult
         upgrade = None
         if features_disabled is not None:
             upgrade = {
@@ -1729,7 +1729,7 @@ class TestFeaturesDisabledSubtraction:
 
     def test_features_disabled_subtracts_from_enabled_capabilities(self):
         """A59: features in features_disabled are removed from the active list."""
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
         agent = CloudAgent.__new__(CloudAgent)
         agent._enabled_capabilities = []
 
@@ -1747,7 +1747,7 @@ class TestFeaturesDisabledSubtraction:
 
     def test_no_upgrade_required_keeps_all_capabilities(self):
         """When upgrade_required is absent, the full list is kept."""
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
         agent = CloudAgent.__new__(CloudAgent)
         agent._enabled_capabilities = []
 
@@ -1761,7 +1761,7 @@ class TestFeaturesDisabledSubtraction:
 
     def test_empty_features_disabled_keeps_all(self):
         """An empty features_disabled list is a no-op."""
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
         agent = CloudAgent.__new__(CloudAgent)
         agent._enabled_capabilities = []
 
@@ -1786,7 +1786,7 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_dns_lookup_resolves(self):
         """DNS lookup returns at least one address for a well-known host."""
-        from server.cloud.command_handler import _diagnostic_dns_lookup
+        from openavc.cloud.command_handler import _diagnostic_dns_lookup
         result = await _diagnostic_dns_lookup("localhost", {"record_type": "A"})
         assert result["resolved"] is True
         assert result["host"] == "localhost"
@@ -1795,7 +1795,7 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_dns_lookup_fails_gracefully(self):
         """Unresolvable hostname returns resolved=False with the error string."""
-        from server.cloud.command_handler import _diagnostic_dns_lookup
+        from openavc.cloud.command_handler import _diagnostic_dns_lookup
         result = await _diagnostic_dns_lookup(
             "definitely-not-a-real-host-12345.invalid", {"record_type": "A"},
         )
@@ -1805,7 +1805,7 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_tcp_check_requires_port(self):
         """tcp_check returns an error if `port` is missing from params."""
-        from server.cloud.command_handler import _diagnostic_tcp_check
+        from openavc.cloud.command_handler import _diagnostic_tcp_check
         result = await _diagnostic_tcp_check("127.0.0.1", {})
         assert result["open"] is False
         assert "port required" in result["error"]
@@ -1813,7 +1813,7 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_tcp_check_to_closed_port(self):
         """tcp_check returns open=False for a port that's almost certainly closed locally."""
-        from server.cloud.command_handler import _diagnostic_tcp_check
+        from openavc.cloud.command_handler import _diagnostic_tcp_check
         result = await _diagnostic_tcp_check("127.0.0.1", {"port": 1, "timeout": 1})
         assert result["open"] is False
 
@@ -1821,7 +1821,7 @@ class TestDiagnosticActions:
     async def test_tcp_check_to_open_port(self):
         """tcp_check returns open=True when an asyncio server is bound to the port."""
         import asyncio
-        from server.cloud.command_handler import _diagnostic_tcp_check
+        from openavc.cloud.command_handler import _diagnostic_tcp_check
 
         async def _handle(reader, writer):
             writer.close()
@@ -1841,7 +1841,7 @@ class TestDiagnosticActions:
     async def test_tcp_check_rejects_port_zero(self):
         """A literal port 0 is an invalid request — clear error, not a probe of
         port 1 (which the old clamp produced)."""
-        from server.cloud.command_handler import _diagnostic_tcp_check
+        from openavc.cloud.command_handler import _diagnostic_tcp_check
         result = await _diagnostic_tcp_check("127.0.0.1", {"port": 0})
         assert result["open"] is False
         assert "invalid port" in result["error"]
@@ -1850,20 +1850,20 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_tcp_check_rejects_out_of_range_port(self):
         """A port above 65535 is rejected with a clear error, not clamped."""
-        from server.cloud.command_handler import _diagnostic_tcp_check
+        from openavc.cloud.command_handler import _diagnostic_tcp_check
         result = await _diagnostic_tcp_check("127.0.0.1", {"port": 70000})
         assert result["open"] is False
         assert "invalid port" in result["error"]
 
     def test_validate_exec_target_accepts_hostnames_and_ips(self):
         """Hostnames and IPs (v4/v6) are valid diagnostic targets."""
-        from server.cloud.command_handler import _validate_exec_target
+        from openavc.cloud.command_handler import _validate_exec_target
         for good in ("example.com", "device-1.local", "192.168.1.10", "2001:db8::1"):
             assert _validate_exec_target(good) is None, good
 
     def test_validate_exec_target_rejects_dash_and_junk(self):
         """A leading dash (option injection) and non-host characters are rejected."""
-        from server.cloud.command_handler import _validate_exec_target
+        from openavc.cloud.command_handler import _validate_exec_target
         assert _validate_exec_target("") is not None
         assert _validate_exec_target("-oProxyCommand=x") is not None
         assert _validate_exec_target("--flood") is not None
@@ -1873,7 +1873,7 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_ping_rejects_dash_target(self):
         """ping never spawns a subprocess for a dash-prefixed target."""
-        from server.cloud.command_handler import _diagnostic_ping
+        from openavc.cloud.command_handler import _diagnostic_ping
         result = await _diagnostic_ping("-c1000", {})
         assert result["reachable"] is False
         assert "must not start with '-'" in result["error"]
@@ -1881,7 +1881,7 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_traceroute_rejects_dash_target(self):
         """traceroute never spawns a subprocess for a dash-prefixed target."""
-        from server.cloud.command_handler import _diagnostic_traceroute
+        from openavc.cloud.command_handler import _diagnostic_traceroute
         result = await _diagnostic_traceroute("-x", {})
         assert "must not start with '-'" in result["error"]
 
@@ -1890,7 +1890,7 @@ class TestDiagnosticActions:
         """A subprocess that never returns is killed and reaped, and the overall
         bound raises TimeoutError instead of hanging the diagnostic task."""
         import asyncio
-        from server.cloud.command_handler import _communicate_bounded
+        from openavc.cloud.command_handler import _communicate_bounded
 
         class _HungProc:
             def __init__(self):
@@ -1916,7 +1916,7 @@ class TestDiagnosticActions:
     async def test_port_scan_finds_open_port(self):
         """port_scan returns the open ports from the requested list."""
         import asyncio
-        from server.cloud.command_handler import _diagnostic_port_scan
+        from openavc.cloud.command_handler import _diagnostic_port_scan
 
         async def _handle(reader, writer):
             writer.close()
@@ -1937,11 +1937,11 @@ class TestDiagnosticActions:
     async def test_handle_diagnostic_dispatches_action(self):
         """_handle_diagnostic in CommandHandler routes to the right action and
         sends a DIAGNOSTIC_RESULT (not COMMAND_RESULT) message back."""
-        from server.cloud.command_handler import CommandHandler
-        from server.cloud.protocol import DIAGNOSTIC_RESULT
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
+        from openavc.cloud.protocol import DIAGNOSTIC_RESULT
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
 
         state = StateStore()
         events = EventBus()
@@ -1979,10 +1979,10 @@ class TestDiagnosticActions:
     @pytest.mark.asyncio
     async def test_handle_diagnostic_unknown_action(self):
         """Unknown action returns success=False with a descriptive error."""
-        from server.cloud.command_handler import CommandHandler
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
 
         state = StateStore()
         events = EventBus()
@@ -2026,7 +2026,7 @@ class TestLivenessWatchdog:
     def _make_agent(self, silence_seconds: float):
         import time
 
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._running = True
@@ -2045,7 +2045,7 @@ class TestLivenessWatchdog:
 
     @pytest.mark.asyncio
     async def test_watchdog_closes_connection_after_silence(self, monkeypatch):
-        import server.cloud.agent as agent_mod
+        import openavc.cloud.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "_WATCHDOG_CHECK_INTERVAL", 0.01)
         agent = self._make_agent(
@@ -2058,7 +2058,7 @@ class TestLivenessWatchdog:
 
     @pytest.mark.asyncio
     async def test_watchdog_quiet_while_traffic_is_fresh(self, monkeypatch):
-        import server.cloud.agent as agent_mod
+        import openavc.cloud.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "_WATCHDOG_CHECK_INTERVAL", 0.01)
         agent = self._make_agent(silence_seconds=0)
@@ -2075,7 +2075,7 @@ class TestLivenessWatchdog:
     async def test_receive_loop_records_downstream_traffic(self):
         from websockets.exceptions import ConnectionClosed
 
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._running = True
@@ -2125,7 +2125,7 @@ class _FakeSubsystem:
 
 class TestFeatureSwitchboard:
     def _make_agent(self, features: dict):
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._connected = True
@@ -2142,7 +2142,7 @@ class TestFeatureSwitchboard:
         api/ws/handler.py) sends exactly these keys; a renamed or extra key
         on either side silently detaches that switch from its subsystem.
         """
-        from server.cloud.agent import CloudAgent
+        from openavc.cloud.agent import CloudAgent
 
         agent = CloudAgent(None, None, None, {})
         assert set(agent._config["features"]) == {"state_forwarding", "alerts"}
@@ -2225,8 +2225,8 @@ class TestFeatureSwitchboard:
 class TestMessageSizeLimits:
     def _make_send_agent(self):
         """Agent with a real sequencer and a recording raw-send."""
-        from server.cloud.agent import CloudAgent
-        from server.cloud.sequencer import Sequencer
+        from openavc.cloud.agent import CloudAgent
+        from openavc.cloud.sequencer import Sequencer
 
         agent = CloudAgent.__new__(CloudAgent)
         agent._sequencer = Sequencer(100)
@@ -2250,7 +2250,7 @@ class TestMessageSizeLimits:
         """An over-cap message is dropped BEFORE sequencing — if it entered
         the replay buffer it would be re-sent and re-rejected on every
         reconnect forever (the poisoned-buffer failure mode)."""
-        from server.cloud.protocol import MAX_MESSAGE_BYTES
+        from openavc.cloud.protocol import MAX_MESSAGE_BYTES
 
         agent = self._make_send_agent()
         big = "x" * (MAX_MESSAGE_BYTES + 1)
@@ -2270,11 +2270,11 @@ class TestMessageSizeLimits:
         """An over-cap project answers project_data success=false instead of
         an oversize send the cloud would drop (opaque fetcher timeout)."""
         import json as _json
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
-        from server.cloud.command_handler import CommandHandler
-        from server.cloud.protocol import MAX_EMBED_BYTES
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
+        from openavc.cloud.protocol import MAX_EMBED_BYTES
 
         state = StateStore()
         events = EventBus()
@@ -2313,11 +2313,11 @@ class TestMessageSizeLimits:
         strands on a system already running the new config with the
         rollback snapshot lost."""
         import json as _json
-        from server.core.state_store import StateStore
-        from server.core.event_bus import EventBus
-        from server.core.device_manager import DeviceManager
-        from server.cloud.command_handler import CommandHandler
-        from server.cloud.protocol import MAX_EMBED_BYTES
+        from openavc.core.state_store import StateStore
+        from openavc.core.event_bus import EventBus
+        from openavc.core.device_manager import DeviceManager
+        from openavc.cloud.command_handler import CommandHandler
+        from openavc.cloud.protocol import MAX_EMBED_BYTES
 
         state = StateStore()
         events = EventBus()

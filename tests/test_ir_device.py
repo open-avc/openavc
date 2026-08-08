@@ -18,12 +18,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from server.core.connection_fault import BRIDGE_OFFLINE
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.core.connection_fault import BRIDGE_OFFLINE
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver
+from openavc.drivers.configurable import create_configurable_driver_class
 
 
 def _acme_ir_class(default_codes: dict[str, Any] | None = None):

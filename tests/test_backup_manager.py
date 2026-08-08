@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.core import backup_manager
-from server.core.backup_manager import (
+from openavc.core import backup_manager
+from openavc.core.backup_manager import (
     cleanup_backups,
     create_backup,
     list_backups,
@@ -421,9 +421,9 @@ def test_reload_persisted_state_applies_restore(tmp_path: Path):
     """M-083: after a restore, reload_persisted_state re-loads state.json into the
     store (and falls back to a variable's default when the backup had no value),
     so the persister can't write stale pre-restore values back over the restore."""
-    from server.core.engine import Engine
-    from server.core.project_loader import ProjectConfig, ProjectMeta, VariableConfig
-    from server.core.state_persister import StatePersister
+    from openavc.core.engine import Engine
+    from openavc.core.project_loader import ProjectConfig, ProjectMeta, VariableConfig
+    from openavc.core.state_persister import StatePersister
 
     project_path = tmp_path / "project.avc"
     project_path.write_text('{"project": {"id": "p", "name": "P"}}', encoding="utf-8")

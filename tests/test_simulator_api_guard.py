@@ -17,7 +17,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
-from simulator.server import LoopbackGuardMiddleware, app
+from openavc.simulator.server import LoopbackGuardMiddleware, app
 
 
 def _client() -> httpx.AsyncClient:

@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from server.cloud.ai_tool_handler import AIToolHandler
+from openavc.cloud.ai_tool_handler import AIToolHandler
 
 
 def _make_handler() -> AIToolHandler:

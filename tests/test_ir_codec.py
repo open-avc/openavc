@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from server.transport.ir_codec import (
+from openavc.transport.ir_codec import (
     IRCode,
     build_pronto,
     frequency_to_pronto_word,

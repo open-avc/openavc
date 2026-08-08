@@ -15,8 +15,8 @@ from types import SimpleNamespace
 
 import serial.tools.list_ports as list_ports_mod
 
-import server.transport.serial_transport as st
-from server.core.engine import Engine
+import openavc.transport.serial_transport as st
+from openavc.core.engine import Engine
 
 
 def _fake_port(
@@ -176,9 +176,9 @@ def test_stray_usb_serial_on_network_device_does_not_clobber_port(monkeypatch):
     (tcp) driver must not rewrite its numeric port to a serial path, even when
     the config carries no explicit transport. The resolver consults the driver's
     declared transport so the empty-transport case no longer passes the gate."""
-    from server.drivers.registry import register_driver, unregister_driver
-    from server.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
-    from server.drivers.base import BaseDriver
+    from openavc.drivers.registry import register_driver, unregister_driver
+    from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
+    from openavc.drivers.base import BaseDriver
 
     class _NetDriver(BaseDriver):
         DRIVER_INFO = {
@@ -229,9 +229,9 @@ def test_reconnect_refreshes_moved_usb_port(monkeypatch):
     """A replug can move the adapter's OS path while the server runs; every
     reconnect attempt must follow the stable usb_serial to the current path
     instead of redialing the stale one."""
-    from server.core.device_manager import DeviceManager
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     dm = DeviceManager(StateStore(), EventBus())
     driver = SimpleNamespace(
@@ -257,9 +257,9 @@ def test_reconnect_refreshes_moved_usb_port(monkeypatch):
 def test_reconnect_refresh_ignores_non_serial_devices(monkeypatch):
     """A stray usb_serial on a network device must not hijack its port
     during reconnect (mirrors the resolver gate)."""
-    from server.core.device_manager import DeviceManager
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     dm = DeviceManager(StateStore(), EventBus())
     driver = SimpleNamespace(

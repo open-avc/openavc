@@ -14,7 +14,7 @@ import errno
 
 import pytest
 
-from server.core.connection_fault import (
+from openavc.core.connection_fault import (
     AUTH_FAILED,
     CLIENT_MISSING,
     CONNECTION_REFUSED,
@@ -439,7 +439,7 @@ def test_typed_fault_bridge_offline_not_declarable():
 # right?"). It was; nothing was listening.
 
 def test_no_simulator_fault_names_the_driver_and_the_fix():
-    from server.core.connection_fault import NO_SIMULATOR, no_simulator_fault
+    from openavc.core.connection_fault import NO_SIMULATOR, no_simulator_fault
 
     fault = no_simulator_fault("acme_widget")
     assert fault.code == NO_SIMULATOR
@@ -449,7 +449,7 @@ def test_no_simulator_fault_names_the_driver_and_the_fix():
 
 
 def test_no_simulator_fault_reads_without_a_driver_id():
-    from server.core.connection_fault import no_simulator_fault
+    from openavc.core.connection_fault import no_simulator_fault
 
     message = no_simulator_fault("").message
     assert "''" not in message and "  " not in message
@@ -458,10 +458,10 @@ def test_no_simulator_fault_reads_without_a_driver_id():
 def test_the_simulation_gap_wins_over_a_refused_socket():
     """The device really was refused, so every other signal is accurate and
     misleading at once. The gap has to be checked before them."""
-    from server.core.connection_fault import NO_SIMULATOR
-    from server.core.device_manager import DeviceManager
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.connection_fault import NO_SIMULATOR
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     state = StateStore()
     manager = DeviceManager(state, EventBus())
@@ -478,9 +478,9 @@ def test_the_simulation_gap_wins_over_a_refused_socket():
 def test_a_simulated_device_is_left_to_the_normal_classifier():
     """The hook answers None for a device that did get a simulator, so a real
     fault inside a simulated bench still classifies normally."""
-    from server.core.device_manager import DeviceManager
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
 
     manager = DeviceManager(StateStore(), EventBus())
     manager.unsimulated_driver = lambda device_id: None

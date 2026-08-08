@@ -71,7 +71,7 @@ npm run build
 cd ../..
 
 # Start the server
-python -m server.main
+python -m openavc.main
 ```
 
 The Programmer IDE is at http://localhost:8080/programmer and the touch

@@ -20,9 +20,9 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from server.api import rest
-from server.api.themes import _safe_theme_path
-from server.cloud.ai_tool_handler import AIToolHandler
+from openavc.api import rest
+from openavc.api.themes import _safe_theme_path
+from openavc.cloud.ai_tool_handler import AIToolHandler
 
 
 def _make_handler(tmp_path):

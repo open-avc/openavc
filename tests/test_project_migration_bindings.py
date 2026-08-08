@@ -7,7 +7,7 @@ load, so it gets real binding-shape fixtures here (not just a version-bump
 smoke test) to lock the behavior in.
 """
 
-from server.core.project_migration import migrate_project
+from openavc.core.project_migration import migrate_project
 
 
 def _migrate(elements, master_elements=None):

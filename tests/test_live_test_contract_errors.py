@@ -28,9 +28,9 @@ import pytest
 
 # Aliased: pytest tries to collect anything named Test* and warns on a class
 # with an __init__.
-from server.api.models import TestCommandRequest as CommandRequest
-from server.api.routes.driver_test import _test_via_configurable_driver
-from server.drivers.avcdriver_semantic import validate_driver_definition
+from openavc.api.models import TestCommandRequest as CommandRequest
+from openavc.api.routes.driver_test import _test_via_configurable_driver
+from openavc.drivers.avcdriver_semantic import validate_driver_definition
 
 
 def _definition(reply_var: str) -> dict:
@@ -143,9 +143,9 @@ async def test_the_live_test_does_not_make_the_rest_of_the_server_strict(
     A driver instantiated alongside the test — as every polled device on a
     live server is — must be unaffected while the test runs.
     """
-    from server.core.event_bus import EventBus
-    from server.core.state_store import StateStore
-    from server.drivers.base import STRICT_DRIVER_STATE_ENV, BaseDriver
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import STRICT_DRIVER_STATE_ENV, BaseDriver
 
     monkeypatch.setenv(STRICT_DRIVER_STATE_ENV, "0")
 

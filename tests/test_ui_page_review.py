@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.project_loader import Layout, Placement, UIElement, UIPage
-from server.ui.page_review import (
+from openavc.core.project_loader import Layout, Placement, UIElement, UIPage
+from openavc.ui.page_review import (
     Finding,
     review_master_element,
     review_page,
@@ -585,7 +585,7 @@ def test_an_element_hidden_in_an_arrangement_is_not_measured_there():
 
 
 def test_a_master_element_is_measured_against_the_viewport():
-    from server.core.project_loader import MasterElement
+    from openavc.core.project_loader import MasterElement
 
     master = MasterElement(
         id="conn_led", type="status_led", label="Online",
@@ -597,7 +597,7 @@ def test_a_master_element_is_measured_against_the_viewport():
 
 
 def test_a_master_element_wide_enough_is_left_alone():
-    from server.core.project_loader import MasterElement
+    from openavc.core.project_loader import MasterElement
 
     master = MasterElement(
         id="conn_led", type="status_led", label="Online",

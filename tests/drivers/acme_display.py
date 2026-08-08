@@ -18,7 +18,7 @@ import asyncio
 import hashlib
 from typing import Any
 
-from server.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver
 
 # Wire power code -> state value.
 _POWER = {"off": "off", "warm": "warming", "on": "on", "cool": "cooling"}

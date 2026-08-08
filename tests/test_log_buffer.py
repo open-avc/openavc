@@ -6,7 +6,8 @@ import time
 
 import pytest
 
-from server.utils.log_buffer import (
+from openavc.utils.log_buffer import (
+    USER_SCRIPT_NAMESPACE,
     LogBuffer,
     LogEntry,
     BufferHandler,
@@ -21,7 +22,7 @@ def test_log_entry_to_dict():
     entry = LogEntry(
         timestamp=1000.0,
         level="INFO",
-        source="server.core.engine",
+        source="openavc.core.engine",
         category="system",
         message="Hello",
     )
@@ -35,28 +36,48 @@ def test_log_entry_to_dict():
 
 
 def test_categorize_macro():
-    assert _categorize_source("server.core.macro_engine", "") == "macro"
+    assert _categorize_source("openavc.core.macro_engine", "") == "macro"
 
 
 def test_categorize_device_drivers():
-    assert _categorize_source("server.drivers.pjlink", "") == "device"
+    assert _categorize_source("openavc.drivers.pjlink", "") == "device"
 
 
 def test_categorize_device_manager():
-    assert _categorize_source("server.core.device_manager", "") == "device"
+    assert _categorize_source("openavc.core.device_manager", "") == "device"
 
 
-def test_categorize_script_openavc():
-    assert _categorize_source("openavc.script_api", "") == "script"
+def test_categorize_script_api_proxy():
+    """A script's own log.* output goes through script_api's logger."""
+    assert _categorize_source("openavc.core.script_api", "") == "script"
 
 
 def test_categorize_script_engine():
-    assert _categorize_source("server.core.script_engine", "") == "script"
+    assert _categorize_source("openavc.core.script_engine", "") == "script"
+
+
+def test_categorize_a_loaded_user_script():
+    """A script that calls getLogger(__name__) is named off the script namespace."""
+    assert _categorize_source(f"{USER_SCRIPT_NAMESPACE}.room_lights", "") == "script"
+
+
+def test_the_platform_prefix_alone_is_not_a_script():
+    """The whole platform is named openavc.* now, so the prefix means nothing.
+
+    This is the guard on the failure this rename could have introduced silently:
+    the categoriser used to read a bare "openavc" prefix as "user script",
+    because back then that name was conjured at runtime and only scripts wore
+    it. Restore that test and every platform line below collapses into the
+    script category — the System Log view goes quietly wrong and nothing fails.
+    """
+    assert _categorize_source("openavc", "") == "system"
+    assert _categorize_source("openavc.core.engine", "") == "system"
+    assert _categorize_source("openavc.cloud.agent", "") == "system"
 
 
 def test_categorize_system_default():
-    assert _categorize_source("server.core.engine", "") == "system"
-    assert _categorize_source("server.api.rest", "") == "system"
+    assert _categorize_source("openavc.core.engine", "") == "system"
+    assert _categorize_source("openavc.api.rest", "") == "system"
     assert _categorize_source("uvicorn", "") == "system"
 
 
@@ -212,7 +233,7 @@ def test_buffer_handler_categorizes_from_logger_name():
     handler = BufferHandler(buf)
     # Simulate a macro engine log record
     record = logging.LogRecord(
-        name="server.core.macro_engine",
+        name="openavc.core.macro_engine",
         level=logging.INFO,
         pathname="",
         lineno=0,
@@ -245,19 +266,19 @@ def _emit(buf: LogBuffer, name: str, msg: str) -> dict:
 
 def test_device_extracted_from_driver_prefix():
     buf = LogBuffer()
-    entry = _emit(buf, "server.drivers.pjlink", "[proj1] Poll failed - not connected")
+    entry = _emit(buf, "openavc.drivers.pjlink", "[proj1] Poll failed - not connected")
     assert entry["device"] == "proj1"
 
 
 def test_device_extracted_from_transport_prefix():
     buf = LogBuffer()
-    entry = _emit(buf, "server.transport.tcp", "[hdmi_matrix] Connected")
+    entry = _emit(buf, "openavc.transport.tcp", "[hdmi_matrix] Connected")
     assert entry["device"] == "hdmi_matrix"
 
 
 def test_device_empty_without_prefix():
     buf = LogBuffer()
-    entry = _emit(buf, "server.core.device_manager", "Failed to connect 'proj1': timeout")
+    entry = _emit(buf, "openavc.core.device_manager", "Failed to connect 'proj1': timeout")
     assert entry["device"] == ""
 
 
@@ -265,15 +286,15 @@ def test_device_not_extracted_for_non_device_categories():
     # Macro/script/system lines may use their own [tag] prefixes — those are
     # not device ids and must not populate the device field
     buf = LogBuffer()
-    entry = _emit(buf, "server.core.macro_engine", "[room_on] Executing step 2")
+    entry = _emit(buf, "openavc.core.macro_engine", "[room_on] Executing step 2")
     assert entry["device"] == ""
-    entry = _emit(buf, "server.core.engine", "[startup] Ready")
+    entry = _emit(buf, "openavc.core.engine", "[startup] Ready")
     assert entry["device"] == ""
 
 
 def test_device_prefix_with_spaces_not_treated_as_id():
     buf = LogBuffer()
-    entry = _emit(buf, "server.drivers.pjlink", "[not an id] message")
+    entry = _emit(buf, "openavc.drivers.pjlink", "[not an id] message")
     assert entry["device"] == ""
 
 
@@ -281,7 +302,7 @@ def test_device_field_in_to_dict():
     entry = LogEntry(
         timestamp=1000.0,
         level="INFO",
-        source="server.drivers.pjlink",
+        source="openavc.drivers.pjlink",
         category="device",
         message="[proj1] Connected",
         device="proj1",

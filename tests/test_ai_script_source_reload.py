@@ -16,13 +16,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.api import rest
-from server.cloud.ai_tool_handler import AIToolHandler
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.project_loader import ProjectConfig, ProjectMeta, ScriptConfig
-from server.core.script_engine import ScriptEngine
-from server.core.state_store import StateStore
+from openavc.api import rest
+from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.project_loader import ProjectConfig, ProjectMeta, ScriptConfig
+from openavc.core.script_engine import ScriptEngine
+from openavc.core.state_store import StateStore
 
 V1_SOURCE = textwrap.dedent("""\
     from openavc import on_event, state

@@ -181,7 +181,7 @@ def test_delete_appends_history(state):
 
 def test_variable_config_source_fields():
     """VariableConfig accepts optional source_key and source_map."""
-    from server.core.project_loader import VariableConfig
+    from openavc.core.project_loader import VariableConfig
 
     var = VariableConfig(id="test", type="string", default="")
     assert var.source_key is None
@@ -200,7 +200,7 @@ def test_variable_config_source_fields():
 
 def test_variable_config_backward_compat():
     """Existing variables without source fields load fine."""
-    from server.core.project_loader import VariableConfig
+    from openavc.core.project_loader import VariableConfig
 
     var = VariableConfig.model_validate({
         "id": "room_active",

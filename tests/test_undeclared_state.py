@@ -31,9 +31,9 @@ from typing import Any
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import (
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import (
     STRICT_DRIVER_STATE_ENV,
     BaseDriver,
     UndeclaredStateError,
@@ -67,7 +67,7 @@ def _reports(caplog) -> list[str]:
     return [
         r.getMessage()
         for r in caplog.records
-        if r.name == "server.drivers.base" and r.levelno >= logging.WARNING
+        if r.name == "openavc.drivers.base" and r.levelno >= logging.WARNING
     ]
 
 
@@ -90,14 +90,14 @@ def strict(monkeypatch):
 def test_undeclared_write_still_lands(lenient, caplog):
     """The device keeps working. That is the whole reason this is a warning."""
     drv = _mk()
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_state("output_5_mute", True)
     assert drv.state.get("device.amp_1.output_5_mute") is True
 
 
 def test_undeclared_write_warns_and_names_what_is_wrong(lenient, caplog):
     drv = _mk()
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_state("output_5_mute", True)
     (msg,) = _reports(caplog)
     assert "amp_1" in msg                      # which device
@@ -111,7 +111,7 @@ def test_warns_once_per_key_not_once_per_poll(lenient, caplog):
     per-write warning is a log flood, and a flooded channel is an ignored one.
     """
     drv = _mk()
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         for _ in range(50):
             drv.set_state("output_5_mute", True)
             drv.set_state("output_6_mute", False)
@@ -123,7 +123,7 @@ def test_warns_once_per_key_not_once_per_poll(lenient, caplog):
 
 def test_declared_write_is_silent(lenient, caplog):
     drv = _mk()
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_state("output_1_mute", True)
         drv.set_state("level", 7)
     assert _reports(caplog) == []
@@ -135,7 +135,7 @@ def test_platform_managed_connected_is_never_an_authoring_error(lenient, caplog)
     warning fire on every driver ever written, which is how a check gets
     turned off.
     """
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv = _mk()                       # __init__ seeds it
         drv.set_state("connected", True)
     assert _reports(caplog) == []
@@ -145,7 +145,7 @@ def test_platform_managed_connected_is_never_an_authoring_error(lenient, caplog)
 def test_seeding_declared_defaults_is_silent(lenient, caplog):
     """_init_state_variables writes every declared variable through set_state;
     if that tripped the check, every driver would warn at construction."""
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         _mk()
     assert _reports(caplog) == []
 
@@ -210,7 +210,7 @@ def test_strict_is_read_per_call_not_cached_at_import(monkeypatch):
 
 def test_set_states_reports_each_undeclared_key(lenient, caplog):
     drv = _mk()
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_states({"level": 1, "output_5_mute": True, "output_6_mute": False})
     assert len(_reports(caplog)) == 2
     assert drv.state.get("device.amp_1.output_5_mute") is True
@@ -261,13 +261,13 @@ def test_the_three_postures_are_deliberate(lenient, caplog):
         drv.set_child_state("zone", 1, "not_a_prop", 1)
 
     # An unregistered child: nothing lists it, so the write is dropped.
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_child_state("zone", 99, "level", 1.0)
     assert drv.state.get("device.amp_2.zone.99.level") is None
 
     # A flat key: it lands, correct and live, and is reported once.
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_state("firmware", "1.2.3")
     assert drv.state.get("device.amp_2.firmware") == "1.2.3"
     assert len(_reports(caplog)) == 1
@@ -294,7 +294,7 @@ def test_strict_can_be_turned_on_for_one_driver_while_the_process_is_lenient(
         tested.set_state("output_5_mute", True)
 
     # The device the operator is actually running is untouched by the test.
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         production.set_state("output_5_mute", True)
     assert production.state.get("device.in_production.output_5_mute") is True
 
@@ -303,7 +303,7 @@ def test_a_driver_can_opt_out_while_the_process_is_strict(strict, caplog):
     """The override answers in both directions, so it is a scope, not a switch."""
     drv = _mk()
     drv.strict_state = False
-    with caplog.at_level(logging.WARNING, logger="server.drivers.base"):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
         drv.set_state("output_5_mute", True)
     assert drv.state.get("device.amp_1.output_5_mute") is True
     assert len(_reports(caplog)) == 1

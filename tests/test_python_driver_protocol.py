@@ -27,8 +27,8 @@ import asyncio
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
 from tests.drivers.acme_display import AcmeDisplayDriver
 from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
 

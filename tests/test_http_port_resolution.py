@@ -12,9 +12,9 @@ from unittest.mock import patch
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
 
 
 def _build_http_driver(host="192.0.2.1", port=None, ssl=False):
@@ -72,7 +72,7 @@ def _reset_capture():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_explicit_port_80_with_ssl_is_honored():
     """Explicit port:80, ssl:true must build https://host:80, not :443 (A66)."""
     driver = _build_http_driver(port=80, ssl=True)
@@ -81,7 +81,7 @@ async def test_explicit_port_80_with_ssl_is_honored():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_explicit_port_443_with_ssl_is_honored():
     """Explicit port:443, ssl:true builds https://host:443."""
     driver = _build_http_driver(port=443, ssl=True)
@@ -90,7 +90,7 @@ async def test_explicit_port_443_with_ssl_is_honored():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_explicit_port_8080_with_ssl():
     """Non-standard HTTPS port (e.g., :8080 behind a reverse proxy)."""
     driver = _build_http_driver(port=8080, ssl=True)
@@ -99,7 +99,7 @@ async def test_explicit_port_8080_with_ssl():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_unset_port_with_ssl_defaults_to_443():
     """Port omitted + ssl:true falls back to 443."""
     driver = _build_http_driver(ssl=True)
@@ -108,7 +108,7 @@ async def test_unset_port_with_ssl_defaults_to_443():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_unset_port_without_ssl_defaults_to_80():
     """Port omitted + ssl unset falls back to 80 (plain HTTP)."""
     driver = _build_http_driver()
@@ -117,7 +117,7 @@ async def test_unset_port_without_ssl_defaults_to_80():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_explicit_port_80_plain_http():
     """Explicit port:80 without ssl is unchanged from the sentinel-default era."""
     driver = _build_http_driver(port=80, ssl=False)
@@ -126,10 +126,10 @@ async def test_explicit_port_80_plain_http():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_max_response_bytes_defaults_when_config_omits_it():
     """No config key → the transport keeps the module default cap."""
-    from server.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
+    from openavc.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
 
     driver = _build_http_driver()
     await driver.connect()
@@ -137,7 +137,7 @@ async def test_max_response_bytes_defaults_when_config_omits_it():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_max_response_bytes_from_config_flows_through():
     """A device that legitimately returns a larger body (firmware/log export)
     raises the cap via the config key — previously constructor-only."""
@@ -148,11 +148,11 @@ async def test_max_response_bytes_from_config_flows_through():
 
 
 @pytest.mark.asyncio
-@patch("server.transport.http_client.HTTPClientTransport", _FakeTransport)
+@patch("openavc.transport.http_client.HTTPClientTransport", _FakeTransport)
 async def test_max_response_bytes_invalid_config_falls_back_to_default():
     """A junk value (non-numeric or non-positive) falls back to the default
     rather than passing a nonsense cap to the transport."""
-    from server.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
+    from openavc.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
 
     driver = _build_http_driver()
     driver.config["max_response_bytes"] = "lots"

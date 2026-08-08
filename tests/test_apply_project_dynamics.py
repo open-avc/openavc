@@ -24,11 +24,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from server.drivers.registry import register_driver, unregister_driver
-from server.core.engine import Engine, ProjectRevisionConflictError
-from server.core.project_diff import ProjectDiff
-from server.core.project_loader import ProjectConfig, VariableConfig, load_project
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.core.engine import Engine, ProjectRevisionConflictError
+from openavc.core.project_diff import ProjectDiff
+from openavc.core.project_loader import ProjectConfig, VariableConfig, load_project
+from openavc.drivers.configurable import create_configurable_driver_class
 
 DIFF_SECTIONS = (
     "devices", "connections", "device_groups", "variables", "macros",
@@ -324,8 +324,8 @@ async def test_concurrent_writers_no_lost_update_and_gapless_revisions(tmp_path)
     project under the reconcile lock, so a commit landing while the
     route request is in flight cannot be reverted by a stale copy. This
     is the regression pin for that window."""
-    from server.api import rest, ws
-    from server.main import app
+    from openavc.api import rest, ws
+    from openavc.main import app
 
     base = _small_project(
         plugins={"acme_plugin": {"enabled": False, "config": {}}},

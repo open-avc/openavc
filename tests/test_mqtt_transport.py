@@ -12,7 +12,7 @@ import ssl
 
 import pytest
 
-from server.transport.mqtt import MQTTTransport
+from openavc.transport.mqtt import MQTTTransport
 
 
 # --- Fake gmqtt client -----------------------------------------------------

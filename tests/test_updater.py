@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from server.updater.checker import UpdateChecker, ReleaseInfo, parse_semver, is_newer, is_valid_semver
-from server.updater.platform import (
+from openavc.updater.checker import UpdateChecker, ReleaseInfo, parse_semver, is_newer, is_valid_semver
+from openavc.updater.platform import (
     DeploymentType,
     detect_deployment_type,
     can_self_update,
     update_instructions,
 )
-from server.updater.backup import create_backup, list_backups, cleanup_old_backups
-from server.updater.rollback import (
+from openavc.updater.backup import create_backup, list_backups, cleanup_old_backups
+from openavc.updater.rollback import (
     write_pending_marker,
     read_pending_marker,
     increment_marker_attempts,
@@ -25,7 +25,7 @@ from server.updater.rollback import (
     can_rollback,
     _macos_previous_bundle,
 )
-from server.updater.manager import UpdateManager
+from openavc.updater.manager import UpdateManager
 
 
 # --- Semver Parsing ---
@@ -134,7 +134,7 @@ class TestUpdateChecker:
             }
         ]
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             mock_client.return_value = self._make_mock_client(releases)
             result = await checker.check("stable")
 
@@ -166,7 +166,7 @@ class TestUpdateChecker:
             },
         ]
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             mock_client.return_value = self._make_mock_client(releases)
             result = await checker.check("stable")
 
@@ -197,9 +197,9 @@ class TestUpdateChecker:
             },
         ]
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             mock_client.return_value = self._make_mock_client(releases)
-            with caplog.at_level(logging.WARNING, logger="server.updater.checker"):
+            with caplog.at_level(logging.WARNING, logger="openavc.updater.checker"):
                 result = await checker.check("stable")
 
         assert result is not None
@@ -218,7 +218,7 @@ class TestUpdateChecker:
             },
         ]
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             mock_client.return_value = self._make_mock_client(releases)
             result = await checker.check("stable")
 
@@ -236,7 +236,7 @@ class TestUpdateChecker:
             },
         ]
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             mock_client.return_value = self._make_mock_client(releases)
             result = await checker.check("beta")
 
@@ -255,7 +255,7 @@ class TestUpdateChecker:
             },
         ]
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             mock_client.return_value = self._make_mock_client(releases)
             result = await checker.check("stable")
 
@@ -264,7 +264,7 @@ class TestUpdateChecker:
     async def test_check_network_error(self, checker):
         import httpx
 
-        with patch("server.updater.checker.httpx.AsyncClient") as mock_client:
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
             instance = AsyncMock()
             instance.get.side_effect = httpx.ConnectError("Connection refused")
             instance.__aenter__ = AsyncMock(return_value=instance)
@@ -299,7 +299,7 @@ class TestPlatformDetection:
 
     def test_is_macos_app_detects_frozen_bundle(self, monkeypatch):
         import sys
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         monkeypatch.setattr(sys, "platform", "darwin")
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         inside = Path("/Applications/OpenAVC.app/Contents/MacOS/_internal")
@@ -307,7 +307,7 @@ class TestPlatformDetection:
 
     def test_is_macos_app_false_when_not_frozen(self, monkeypatch):
         import sys
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         monkeypatch.setattr(sys, "platform", "darwin")
         monkeypatch.setattr(sys, "frozen", False, raising=False)
         # A source/dev run on macOS is not an .app install.
@@ -316,14 +316,14 @@ class TestPlatformDetection:
 
     def test_is_macos_app_false_off_darwin(self, monkeypatch):
         import sys
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         monkeypatch.setattr(sys, "platform", "linux")
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         assert platform_mod._is_macos_app(Path("/x/OpenAVC.app/y")) is False
 
     def test_detects_macos_app_end_to_end(self, tmp_path, monkeypatch):
         import sys
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         monkeypatch.setattr(sys, "platform", "darwin")
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(platform_mod, "_is_docker", lambda: False)
@@ -334,7 +334,7 @@ class TestPlatformDetection:
     def test_explicit_marker_wins(self, tmp_path, monkeypatch):
         """A provisioning-time /etc/openavc-deployment marker beats every
         filesystem heuristic."""
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         marker = tmp_path / "openavc-deployment"
         marker.write_text("android_appliance\n")
         monkeypatch.setattr(platform_mod, "_DEPLOYMENT_MARKER", marker)
@@ -342,7 +342,7 @@ class TestPlatformDetection:
         assert detect_deployment_type(app_dir) == DeploymentType.ANDROID_APPLIANCE
 
     def test_invalid_marker_ignored(self, tmp_path, monkeypatch):
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         marker = tmp_path / "openavc-deployment"
         marker.write_text("not-a-real-type")
         monkeypatch.setattr(platform_mod, "_DEPLOYMENT_MARKER", marker)
@@ -350,7 +350,7 @@ class TestPlatformDetection:
         assert detect_deployment_type(app_dir) == DeploymentType.GIT_DEV
 
     def test_missing_marker_falls_through(self, tmp_path, monkeypatch):
-        import server.updater.platform as platform_mod
+        import openavc.updater.platform as platform_mod
         monkeypatch.setattr(
             platform_mod, "_DEPLOYMENT_MARKER", tmp_path / "absent"
         )
@@ -565,7 +565,7 @@ class TestRestoreUserData:
         return project_dir
 
     def test_restore_swaps_projects_tree_back(self, tmp_path):
-        from server.updater.backup import restore_user_data
+        from openavc.updater.backup import restore_user_data
 
         project_dir = self._make_data_dir(tmp_path)
         backup = create_backup(tmp_path, "0.7.0")
@@ -584,7 +584,7 @@ class TestRestoreUserData:
         assert displaced.read_text() == '{"openavc_version": "0.8.0"}'
 
     def test_restore_carries_user_backups_over(self, tmp_path):
-        from server.updater.backup import restore_user_data
+        from openavc.updater.backup import restore_user_data
 
         project_dir = self._make_data_dir(tmp_path)
         backup = create_backup(tmp_path, "0.7.0")
@@ -599,7 +599,7 @@ class TestRestoreUserData:
         assert (user_backups / "backup-20260101T000000Z.zip").read_bytes() == b"user-zip"
 
     def test_restore_external_project_files(self, tmp_path):
-        from server.updater.backup import restore_user_data
+        from openavc.updater.backup import restore_user_data
 
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -615,14 +615,14 @@ class TestRestoreUserData:
         assert project_path.read_text() == '{"openavc_version": "0.7.0"}'
 
     def test_restore_bad_zip_returns_false(self, tmp_path):
-        from server.updater.backup import restore_user_data
+        from openavc.updater.backup import restore_user_data
 
         bad = tmp_path / "pre-update-v0.1.0-x.zip"
         bad.write_bytes(b"not a zip")
         assert restore_user_data(tmp_path, bad) is False
 
     def test_restore_pre_update_data_uses_marker_backup(self, tmp_path):
-        from server.updater.rollback import restore_pre_update_data
+        from openavc.updater.rollback import restore_pre_update_data
 
         project_dir = self._make_data_dir(tmp_path)
         backup = create_backup(tmp_path, "0.7.0")
@@ -636,7 +636,7 @@ class TestRestoreUserData:
     def test_restore_pre_update_data_falls_back_to_version_glob(self, tmp_path):
         # A marker written by an older version has no backup field; the
         # newest pre-update zip matching from_version is used instead.
-        from server.updater.rollback import restore_pre_update_data
+        from openavc.updater.rollback import restore_pre_update_data
 
         project_dir = self._make_data_dir(tmp_path)
         create_backup(tmp_path, "0.7.0")
@@ -648,11 +648,11 @@ class TestRestoreUserData:
         assert (project_dir / "project.avc").read_text() == '{"openavc_version": "0.7.0"}'
 
     def test_restore_pre_update_data_no_marker_is_noop(self, tmp_path):
-        from server.updater.rollback import restore_pre_update_data
+        from openavc.updater.rollback import restore_pre_update_data
         assert restore_pre_update_data(tmp_path) is False
 
     def test_restore_pre_update_data_no_backup_is_noop(self, tmp_path):
-        from server.updater.rollback import restore_pre_update_data
+        from openavc.updater.rollback import restore_pre_update_data
 
         project_dir = self._make_data_dir(tmp_path)
         write_pending_marker(tmp_path, "0.7.0", "0.8.0")
@@ -680,7 +680,7 @@ class TestUpdateManager:
         mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
         status = mgr.get_status()
 
-        from server.version import __version__
+        from openavc.version import __version__
         assert status["current_version"] == __version__
         assert status["deployment_type"] == "git_dev"
         assert status["can_self_update"] is False
@@ -749,10 +749,10 @@ class TestUpdateManager:
         artifact.write_bytes(b"fake")
 
         with patch(
-            "server.updater.backup.create_backup",
+            "openavc.updater.backup.create_backup",
             return_value=tmp_path / "backup.zip",
         ), patch(
-            "server.updater.backup.cleanup_old_backups",
+            "openavc.updater.backup.cleanup_old_backups",
         ), patch.object(
             mgr, "_download_update", new_callable=AsyncMock, return_value=artifact
         ), patch.object(
@@ -788,10 +788,10 @@ class TestUpdateManager:
         good_checksum = hashlib.sha256(b"fake").hexdigest()
 
         with patch(
-            "server.updater.backup.create_backup",
+            "openavc.updater.backup.create_backup",
             return_value=tmp_path / "backup.zip",
         ), patch(
-            "server.updater.backup.cleanup_old_backups",
+            "openavc.updater.backup.cleanup_old_backups",
         ), patch.object(
             mgr,
             "_download_artifact",

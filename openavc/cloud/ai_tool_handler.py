@@ -1,0 +1,918 @@
+"""
+OpenAVC Cloud — AI tool call handler.
+
+Handles AI_TOOL_CALL messages from the cloud platform. Each tool call
+is dispatched to the appropriate local function — reading project state,
+controlling devices, modifying configurations, installing drivers, etc.
+Results are sent back as AI_TOOL_RESULT messages.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from pathlib import Path
+from typing import Any, TYPE_CHECKING
+
+from openavc.cloud.protocol import (
+    AI_TOOL_RESULT, build_ai_tool_result_payload, extract_payload,
+)
+from openavc.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from openavc.cloud.agent import CloudAgent
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+
+log = get_logger(__name__)
+
+# Standard config format for control surface plugins (Stream Deck, X-Keys, etc.).
+# The Surface Configurator writes this format; the platform documents it once so
+# the AI can configure any surface plugin without plugin-specific hardcoding.
+SURFACE_BUTTONS_FORMAT = """\
+Control surface buttons are stored in a top-level "buttons" array (NOT under "pages").
+Each entry in the array represents one physical button:
+
+{
+  "index": 0,            // Button position (0-based, left-to-right then top-to-bottom)
+  "page": 0,             // Page number (0-based, for multi-page surfaces)
+  "label": "Power",      // Text shown on the button (optional)
+  "icon": "power",       // Lucide icon name, e.g. "power", "volume-2", "play" (optional)
+  "bg_color": "#1a1a2e", // Per-button default background color, hex (optional)
+  "text_color": "#e0e0e0", // Per-button default text color, hex (optional)
+  "label_source": "var.x",   // State key whose live value replaces the label (optional)
+  "value_source": "var.lvl", // State key shown live under the label (optional)
+  "unit": "dB",              // Appended to the live value (optional)
+  "meter": { "min": 0, "max": 100, "color": "#8ab493",   // Level bar along the
+    "thresholds": [{ "above": 90, "color": "#e05341" }] }, // bottom edge (optional)
+  "bindings": {          // Action and feedback configuration
+    "press": [{            // MUST be an array of action objects
+      "action": "macro",           // Action type: "macro", "device.command", "state.set", "navigate"
+      "macro": "macro_name"        // For macro action
+      // OR for device.command:
+      // "action": "device.command", "device": "device_id", "command": "cmd", "params": {}
+      // OR for state.set:
+      // "action": "state.set", "key": "var.my_var", "value": "new_value"
+      // OR for deck-page navigation:
+      // "action": "navigate", "page": "__next_page__" (next), "__prev_page__" (previous),
+      //   or a 0-based page index, e.g. "page": 2
+
+      // Optional mode (default is "tap"):
+      // "mode": "toggle",  — requires toggle_key, toggle_value, off_action
+      // "mode": "hold_repeat", — requires hold_repeat_ms (default 200)
+      // "mode": "tap_hold", — requires hold_action, hold_threshold_ms (default 500)
+    }],
+    "feedback": {         // Visual feedback based on state (optional)
+      "source": "state",
+      "key": "device.my_device.power",   // State key to watch
+      "condition": { "equals": true },   // When this matches, button shows active style
+      "style_active": { "bg_color": "#ff0606", "text_color": "#ffffff" },
+      "style_inactive": { "bg_color": "#56aa02", "text_color": "#ffffff" },
+      "label_active": "OFF",             // Condition matches (device IS on) — show what pressing WILL DO
+      "label_inactive": "ON"            // Condition doesn't match (device is off) — show what pressing WILL DO
+    },
+    "visible_when": {     // Hide the button unless this state condition holds (optional)
+      "key": "device.projector_1.power",
+      "operator": "eq",   // eq, ne, gt, lt, gte, lte, truthy, falsy
+      "value": "on"       // omit value for truthy/falsy; use "any":[...] for OR logic
+    }
+  }
+}
+
+Color priority: feedback style > per-button defaults > global plugin config defaults.
+A hidden button (visible_when false) renders as a blank black key and ignores presses.
+Only include fields you need. Unassigned buttons can be omitted from the array.
+
+Locked buttons (optional): entries that must stay identical on every page (page
+switchers, mute-all, help) go in a top-level "global_buttons" array. Same entry shape
+as "buttons" but with NO "page" field. A global_buttons entry at an index wins over
+any per-page button at that index, on every page. A button navigating to a specific
+page index is automatically highlighted while that page is showing.
+
+Pages exist by being used (there is no page-count setting): placing a button, paging
+rule, page name, or numeric navigate target on page N creates pages 0 through N.
+
+Automatic paging (optional): add a top-level "auto_page" array alongside "buttons" to
+switch pages automatically when state changes:
+
+"auto_page": [
+  { "page": 1, "when": { "key": "device.projector_1.power", "operator": "eq", "value": "on" } },
+  { "page": 0, "when": { "key": "device.projector_1.power", "operator": "ne", "value": "on" } }
+]
+
+Each "when" uses the same operator schema (and supports "any":[...] for OR). Rules are
+evaluated in order; the first match wins, so list more specific conditions first.
+
+Dials (optional): surfaces with rotary encoders report a dial_count in their plugin
+state. Configure them with a top-level "dials" array (dials are not paged):
+
+"dials": [
+  {
+    "index": 0,            // Dial position (0-based)
+    "label": "Volume",     // Shown on the surface's display if it has one
+    "icon": "volume-2",    // Optional icon on the dial's strip readout
+    "unit": "%",           // Optional unit appended to the live value
+    "meter": {...},        // Optional level-bar override (automatic when the
+                           // adjust has min+max; false disables)
+    "adjust": {            // Optional: turn increments a numeric state value
+      "key": "var.volume", // var.* variable or the plugin's own plugin.<id>.* state
+      "step": 2,           // Added per detent turned (negative when turned back)
+      "min": 0, "max": 100 // Optional clamp
+    },
+    "cw": [{...}],         // Optional actions, fired once per detent turned
+    "ccw": [{...}],        // (capped at 8 per event for fast spins)
+    "press": [{...}],      // Optional actions on dial push
+    "long_press": [{...}], // Optional: hold then release fires these instead
+    "hold_threshold_ms": 500,
+    "pressed_adjust": {...}, // Optional: turning WHILE pushed adjusts this
+                             // (fine trim); pressed_cw/pressed_ccw also exist.
+                             // A push that turned never fires press/long_press.
+    "touch": [{...}],        // Optional: tapping the dial's strip readout
+                             // (default: tap presses the dial)
+    "long_touch": [{...}],   // Optional long-tap override
+    "fader": true            // Optional: taps/swipes on the readout jump the
+                             // adjust value to the touched position
+  }
+]
+
+Action objects use the same format as button "press" actions. A macro or trigger
+watching the adjust key turns the dial into a device control (volume, gain, pan).
+
+Touchscreen strip (optional): surfaces reporting has_touchscreen render one zone per
+dial by default — the dial's label, icon, live adjust value, and an automatic level
+bar when the adjust has bounds; tapping a dial's zone presses the dial. With nothing
+configured at all the strip shows a clock ({"touchscreen": {"idle": "blank"}} opts
+out). Take over the strip with a top-level "touchscreen" object:
+
+"touchscreen": {
+  "zones": [
+    {
+      "label": "Mics",                 // Static label (label_source state key overrides)
+      "value_source": "var.mic_gain",  // State key whose live value is displayed
+      "unit": "dB",                    // Optional unit appended to the value
+      "icon": "mic",                   // Optional Lucide icon
+      "meter": { "min": 0, "max": 100, "thresholds": [{...}] },  // Level bar
+      "feedback": {...},               // Optional state-driven colors (same
+                                       // schema as button feedback)
+      "touch": [{...}],                // Optional actions when the zone is tapped
+      "long_touch": [{...}],           // Optional actions on long-press (falls back to touch)
+      "drag_adjust": {                 // Optional: a horizontal swipe steps a value
+        "key": "var.mic_gain", "step": 1, "min": 0, "max": 100,
+        "fader": true                  // Taps/swipes jump to the touched position
+      },
+      "bg_color": "#1a1a2e", "text_color": "#e0e0e0"  // Optional colors
+    }
+  ]
+}
+
+Zones split the strip evenly; explicit "x"/"w" pixel bounds override (strip is
+800x100). Default per-dial zones wire drag_adjust to the dial's adjust
+automatically, so swiping under a dial does what turning it does. Every touch
+briefly flashes the touched zone. Custom zones replace ALL default per-dial
+zones — carry over any readouts that should stay.
+
+Touch keys (optional): surfaces reporting touch_key_count in plugin state have
+color-only keys at the indices after the LCD keys (key_count .. key_count +
+touch_key_count - 1). Configure them as ordinary "buttons" entries at those
+indices: presses and feedback work normally, but the key shows only its
+bg_color (or feedback bg colors) as an RGB glow — label and icon are ignored.
+
+Info screen (optional): surfaces reporting has_info_screen accept a top-level
+"info_strip" object that renders their small secondary screen:
+
+"info_strip": { "source": "state", "key": "var.room_temp", "label": "Temp" }
+// or static text:
+"info_strip": { "source": "text", "text": "Room A", "label": "" }
+// or two elements side by side:
+"info_strip": { "items": [
+  { "label": "Temp", "key": "var.room_temp", "unit": "F" },
+  { "source": "text", "text": "Room A" }
+] }
+
+A "state" source shows the key's live value and refreshes when it changes.
+Info elements accept the same display fields as zones (icon, unit, meter,
+feedback). With no info_strip configured the screen shows a clock;
+{"source": "clock"} asks for it explicitly, {"source": "blank"} turns it off.
+"""
+
+
+# --- Binding normalization and validation ---
+
+# Touch-panel element bindings use the show/do model: `show` is what the
+# element reflects from state (value / items / look / visible_when), `do` is the
+# action lists keyed by interaction kind. (Control-surface buttons keep their
+# own flat format — see SURFACE_BUTTONS_FORMAT.)
+_DO_INTERACTIONS = frozenset((
+    "press", "release", "hold", "change", "submit", "select",
+    "route", "audio_route", "mute_route", "audio_mute_route",
+))
+
+# v0.6 flat slot names. If any appear at the top level of an element's bindings
+# the AI is using the retired model; we reject and point it at show/do.
+_LEGACY_FLAT_KEYS = frozenset((
+    "press", "release", "hold", "change", "submit", "select", "route",
+    "audio_route", "mute_route", "audio_mute_route",
+    "value", "variable", "text", "feedback", "color", "items",
+    "selected", "visible_when", "meter",
+))
+
+
+def _normalize_bindings(bindings: dict) -> dict:
+    """Normalize a touch-panel element's show/do bindings to canonical format.
+
+    Each ``do.<interaction>`` must be an array of action objects; the AI
+    sometimes sends a single action as a plain object — wrap it in an array.
+    """
+    do = bindings.get("do")
+    if isinstance(do, dict):
+        for interaction in _DO_INTERACTIONS:
+            val = do.get(interaction)
+            if isinstance(val, dict):
+                do[interaction] = [val]
+    return bindings
+
+
+_VALID_VISIBLE_WHEN_OPS = frozenset((
+    "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
+))
+# Panel UI element `do` bindings. The page move is "ui.navigate" here, matching
+# the macro step and the WS frame — one spelling for one concept. A control
+# surface's deck-page action is a separate thing (see SURFACE_BUTTONS_FORMAT)
+# and is still "navigate": it moves the deck's own pages, not a panel page.
+_VALID_ACTION_TYPES = frozenset((
+    "macro", "device.command", "state.set", "ui.navigate",
+    "script.call", "value_map",
+))
+_VALID_MODES = frozenset(("tap", "toggle", "hold_repeat", "tap_hold"))
+
+# Required fields per action type (beyond "action" itself)
+_ACTION_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "macro": ("macro",),
+    "device.command": ("device", "command"),
+    "state.set": ("key",),
+    "ui.navigate": ("page",),
+    "script.call": ("function",),
+    "value_map": ("map",),
+}
+
+
+def _validate_action(action: dict, path: str) -> str | None:
+    """Validate a single action object. Returns error string or None."""
+    action_type = action.get("action", "")
+    if not action_type:
+        return f"{path}: missing 'action' field"
+    if not isinstance(action_type, str):
+        # `action` holding another action object is a documented anti-pattern,
+        # and it used to take the whole call down with `unhashable type: 'dict'`
+        # -- a raw TypeError from the membership test below, since a dict cannot
+        # be looked up in a set. Naming the shape is the whole value here: the
+        # nesting is invisible in a diff and the crash said nothing about it.
+        nested = action_type.get("action") if isinstance(action_type, dict) else None
+        inner = f" You nested a '{nested}' action inside it." if isinstance(nested, str) else ""
+        return (
+            f"{path}: 'action' must be the action NAME, got "
+            f"{type(action_type).__name__}.{inner} Write the fields flat on this "
+            f"object -- {{\"action\": \"device.command\", \"device\": ..., "
+            f"\"command\": ...}} -- not an action wrapped in another action."
+        )
+    if action_type not in _VALID_ACTION_TYPES:
+        return (
+            f"{path}: action type '{action_type}' is not valid. "
+            f"Use: macro, device.command, state.set, ui.navigate, script.call, value_map"
+        )
+    required = _ACTION_REQUIRED_FIELDS.get(action_type, ())
+    for field in required:
+        if field not in action or action[field] is None or action[field] == "":
+            return f"{path}: {action_type} action requires '{field}'"
+    # Device state is read-only: never write a device.* key with state.set. To
+    # drive a device, use a device.command action with $value. This makes the
+    # device-two-way footgun unrepresentable.
+    if action_type == "state.set":
+        key = action.get("key", "")
+        if isinstance(key, str) and key.startswith("device."):
+            return (
+                f"{path}: state.set cannot target a device key ('{key}'). Device "
+                f"state is read-only — drive the device with a device.command "
+                f"action using $value instead."
+            )
+    if action_type == "value_map":
+        vmap = action.get("map")
+        if not isinstance(vmap, dict):
+            return f"{path}: value_map action requires 'map' to be an object"
+        # Each option maps to an action (or a list of actions). Recurse so the
+        # device-key rule and field checks apply to per-option actions too.
+        for opt, mapped in vmap.items():
+            sub_actions = mapped if isinstance(mapped, list) else [mapped]
+            for j, sub in enumerate(sub_actions):
+                if not isinstance(sub, dict):
+                    continue
+                suffix = f"[{j}]" if isinstance(mapped, list) else ""
+                err = _validate_action(sub, f"{path}.map[{opt}]{suffix}")
+                if err:
+                    return err
+    return None
+
+
+def _validate_bindings(bindings: dict, project: Any = None) -> str | None:
+    """Validate UI element bindings after normalization.
+
+    Returns an error message string on failure, or None if valid.
+    The project parameter enables soft reference checks (warn-level).
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # Steer the AI off the retired flat model: every interaction action belongs
+    # under `do`, every state read under `show`.
+    legacy = sorted(k for k in bindings if k in _LEGACY_FLAT_KEYS)
+    if legacy:
+        return (
+            "Binding validation failed: bindings use the show/do model. Put "
+            "interaction actions under 'do' (do.press, do.change, do.route, ...) "
+            "and state reads under 'show' (show.value, show.look, show.visible_when, "
+            "show.items). Remove top-level: " + ", ".join(legacy)
+        )
+
+    for key in bindings:
+        if key not in ("show", "do"):
+            warnings.append(f"unknown top-level binding key '{key}' (expected 'show' or 'do')")
+
+    do = bindings.get("do")
+    if do is not None and not isinstance(do, dict):
+        errors.append(f"'do' must be an object, got {type(do).__name__}")
+        do = None
+    if isinstance(do, dict):
+        for interaction, val in do.items():
+            if interaction not in _DO_INTERACTIONS:
+                errors.append(
+                    f"do.{interaction}: not a valid interaction. Use: "
+                    + ", ".join(sorted(_DO_INTERACTIONS))
+                )
+                continue
+            if not isinstance(val, list):
+                errors.append(
+                    f"do.{interaction} must be an array of action objects, "
+                    f"got {type(val).__name__}"
+                )
+                continue
+            for i, item in enumerate(val):
+                if not isinstance(item, dict):
+                    errors.append(
+                        f"do.{interaction}[{i}]: expected an action object, "
+                        f"got {type(item).__name__}"
+                    )
+                    continue
+                err = _validate_action(item, f"do.{interaction}[{i}]")
+                if err:
+                    errors.append(err)
+
+        # Mode-specific validation on the first press action (button behavior).
+        press = do.get("press")
+        if isinstance(press, list) and press and isinstance(press[0], dict):
+            first = press[0]
+            mode = first.get("mode", "tap")
+            if mode and mode not in _VALID_MODES:
+                errors.append(
+                    f"do.press[0]: mode '{mode}' is not valid. "
+                    f"Use: tap, toggle, hold_repeat, tap_hold"
+                )
+            elif mode == "toggle":
+                if "toggle_key" not in first or not first["toggle_key"]:
+                    errors.append("do.press[0]: toggle mode requires 'toggle_key'")
+                if "off_action" not in first or not isinstance(first.get("off_action"), dict):
+                    errors.append("do.press[0]: toggle mode requires 'off_action' (an action object)")
+                elif first.get("off_action"):
+                    err = _validate_action(first["off_action"], "do.press[0].off_action")
+                    if err:
+                        errors.append(err)
+            elif mode == "tap_hold":
+                if "hold_action" not in first or not isinstance(first.get("hold_action"), dict):
+                    errors.append("do.press[0]: tap_hold mode requires 'hold_action' (an action object)")
+                elif first.get("hold_action"):
+                    err = _validate_action(first["hold_action"], "do.press[0].hold_action")
+                    if err:
+                        errors.append(err)
+
+    show = bindings.get("show")
+    if show is not None and not isinstance(show, dict):
+        errors.append(f"'show' must be an object, got {type(show).__name__}")
+        show = None
+    if isinstance(show, dict):
+        _validate_show(show, errors)
+
+    # Soft reference checks — collect warnings but don't block.
+    if project and not errors and isinstance(do, dict):
+        macro_ids = {m.id for m in project.macros} if hasattr(project, "macros") else set()
+        device_ids = {d.id for d in project.devices} if hasattr(project, "devices") else set()
+
+        for interaction, val in do.items():
+            if not isinstance(val, list):
+                continue
+            for i, item in enumerate(val):
+                if not isinstance(item, dict):
+                    continue
+                if item.get("action") == "macro" and item.get("macro"):
+                    if item["macro"] not in macro_ids:
+                        warnings.append(
+                            f"do.{interaction}[{i}]: macro '{item['macro']}' not found in project"
+                        )
+                if item.get("action") == "device.command" and item.get("device"):
+                    if item["device"] not in device_ids:
+                        warnings.append(
+                            f"do.{interaction}[{i}]: device '{item['device']}' not found in project"
+                        )
+
+    if errors:
+        return "Binding validation failed: " + "; ".join(errors)
+
+    if warnings:
+        log.warning("Binding reference warnings: %s", "; ".join(warnings))
+
+    return None
+
+
+def _validate_show(show: dict, errors: list[str]) -> None:
+    """Validate the ``show`` half of an element's bindings (value / items / look /
+    visible_when). Appends any problems to ``errors`` in place."""
+    # value — the thing the control IS (numeric / selection / label text).
+    val = show.get("value")
+    if val is not None:
+        if not isinstance(val, dict):
+            errors.append(f"show.value must be an object, got {type(val).__name__}")
+        else:
+            source = val.get("source", "state")
+            if source == "macro_progress":
+                if not val.get("macro"):
+                    errors.append("show.value: macro_progress source requires 'macro'")
+            elif source in ("state", "conditional", ""):
+                if not val.get("key"):
+                    errors.append("show.value: requires 'key' (the state key to read)")
+                if "condition" in val:
+                    for field in ("text_true", "text_false"):
+                        if field not in val:
+                            errors.append(f"show.value: conditional text requires '{field}'")
+                if val.get("write_back"):
+                    key = val.get("key", "")
+                    if not (isinstance(key, str) and key.startswith("var.")):
+                        errors.append(
+                            "show.value: write_back (two-way) is only valid for var.* keys. "
+                            f"'{key}' is read-only — to drive a device add a do.change "
+                            "device.command using $value."
+                        )
+            else:
+                errors.append(
+                    f"show.value: source '{source}' is not valid. Use: state, macro_progress"
+                )
+
+    # items — list row population.
+    itm = show.get("items")
+    if itm is not None:
+        if not isinstance(itm, dict):
+            errors.append(f"show.items must be an object, got {type(itm).__name__}")
+        elif not (itm.get("key") or itm.get("key_pattern")):
+            errors.append("show.items: requires 'key' or 'key_pattern' (the state providing items)")
+
+    # look — state-driven appearance (feedback / LED color map / per-option style).
+    look = show.get("look")
+    if look is not None:
+        if not isinstance(look, dict):
+            errors.append(f"show.look must be an object, got {type(look).__name__}")
+        else:
+            if not look.get("key"):
+                errors.append("show.look: missing 'key' (state key to watch)")
+            if "states" in look:
+                if not isinstance(look["states"], dict):
+                    errors.append("show.look.states must be an object mapping state values to style props")
+                else:
+                    # Properties must be flat, not nested inside a 'style' object.
+                    for state_name, state_val in look["states"].items():
+                        if isinstance(state_val, dict) and "style" in state_val:
+                            errors.append(
+                                f"show.look.states.{state_name}: properties (label, bg_color, etc.) "
+                                f"must be flat, not nested inside 'style'"
+                            )
+                            break
+            elif "condition" in look:
+                if not isinstance(look["condition"], dict):
+                    errors.append("show.look.condition must be an object (e.g. {\"equals\": \"on\"})")
+            elif "map" in look:
+                if not isinstance(look["map"], dict):
+                    errors.append("show.look.map must be an object mapping values to colors")
+            elif "style_map" in look:
+                if not isinstance(look["style_map"], dict):
+                    errors.append("show.look.style_map must be an object mapping option values to styles")
+
+    # visible_when — single condition, or any:[] (OR) / all:[] (AND) groups.
+    vw = show.get("visible_when")
+    if vw is not None and not isinstance(vw, dict):
+        errors.append(f"show.visible_when must be an object, got {type(vw).__name__}")
+    elif isinstance(vw, dict):
+        group_key = "any" if "any" in vw else ("all" if "all" in vw else None)
+        if group_key:
+            conditions = vw[group_key] if isinstance(vw[group_key], list) else []
+            for i, cond in enumerate(conditions):
+                if isinstance(cond, dict):
+                    if not cond.get("key"):
+                        errors.append(f"show.visible_when.{group_key}[{i}]: missing 'key'")
+                    op = cond.get("operator")
+                    if op and op not in _VALID_VISIBLE_WHEN_OPS:
+                        errors.append(
+                            f"show.visible_when.{group_key}[{i}]: operator '{op}' is not valid. "
+                            f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
+                        )
+        else:
+            if not vw.get("key"):
+                errors.append("show.visible_when: missing 'key' (state key to evaluate)")
+            op = vw.get("operator")
+            if op and op not in _VALID_VISIBLE_WHEN_OPS:
+                errors.append(
+                    f"show.visible_when: operator '{op}' is not valid. "
+                    f"Use: eq, ne, gt, lt, gte, lte, truthy, falsy"
+                )
+
+
+# --- Variable validation ---
+
+_VALID_VARIABLE_TYPES = frozenset(("string", "number", "boolean"))
+
+
+def _validate_variable(var_type: str, default: Any = None) -> str | None:
+    """Validate variable type and default value. Returns error string or None."""
+    if var_type not in _VALID_VARIABLE_TYPES:
+        return (
+            f"Variable type '{var_type}' is not valid. "
+            f"Use: string, number, boolean"
+        )
+    if default is not None:
+        if var_type == "number" and not isinstance(default, (int, float)):
+            return f"Variable type is 'number' but default '{default}' is {type(default).__name__}"
+        if var_type == "boolean" and not isinstance(default, bool):
+            return f"Variable type is 'boolean' but default '{default}' is {type(default).__name__}"
+        if var_type == "string" and not isinstance(default, str):
+            return f"Variable type is 'string' but default '{default}' is {type(default).__name__}"
+    return None
+
+
+# --- Script syntax validation ---
+
+def _validate_script_syntax(source: str, filename: str = "<script>") -> str | None:
+    """Validate Python script syntax. Returns error string or None."""
+    try:
+        compile(source, filename, "exec")
+    except SyntaxError as e:
+        line_info = f" (line {e.lineno})" if e.lineno else ""
+        return f"Python syntax error{line_info}: {e.msg}"
+    return None
+
+
+# --- Plugin config schema validation ---
+# Moved to server/core/plugin_config.py so the REST config endpoint and the
+# cloud AI tool accept/reject identical shapes.
+
+
+# --- State key validation ---
+# The key/value rules live in server.core.state_store.check_state_write, shared
+# with the REST and WebSocket doors — this layer used to keep its own copy of
+# the prefix list and the flat-primitive check, which is how the three doors
+# came to disagree about what a valid write was.
+
+
+# --- Tool result classification ---
+
+def _tool_result_is_error(result: Any) -> bool:
+    """Decide whether a tool's return value represents a failure.
+
+    The tool mixins signal failure in two ways: an explicit ``success: False``
+    in the returned dict, or (the common convention) a dict whose only failure
+    signal is a truthy ``error`` key. Both must be reported back to the model
+    with ``success=False`` so a failed mutation isn't delivered as a success
+    with the error buried in the result body (the cloud sets ``is_error`` on
+    the Anthropic tool_result from this flag).
+
+    An explicit ``success`` key always wins, so a tool that returns
+    ``{"success": True, "error": None, ...}`` is never misread as a failure.
+    Non-dict returns (lists, scalars) are always treated as success.
+    """
+    if not isinstance(result, dict):
+        return False
+    if "success" in result:
+        return not result["success"]
+    return bool(result.get("error"))
+
+
+from openavc.cloud.tools.device_tools import DeviceToolsMixin
+from openavc.cloud.tools.macro_tools import MacroToolsMixin
+from openavc.cloud.tools.plugin_tools import PluginToolsMixin
+from openavc.cloud.tools.project_tools import ProjectToolsMixin
+from openavc.cloud.tools.system_tools import SystemToolsMixin
+from openavc.cloud.tools.ui_tools import UIToolsMixin
+
+
+class AIToolHandler(
+    ProjectToolsMixin,
+    DeviceToolsMixin,
+    UIToolsMixin,
+    PluginToolsMixin,
+    MacroToolsMixin,
+    SystemToolsMixin,
+):
+    """
+    Handles AI tool calls from the cloud and dispatches to local subsystems.
+
+    Every tool maps to an existing local REST API operation or engine call,
+    ensuring the AI has the same capabilities as the Programmer IDE.
+
+    Tool handler methods are organized into domain-specific mixins under
+    cloud/tools/ — this class provides the dispatch table and execution
+    infrastructure.
+    """
+
+    # Tools that only read data and never modify the project
+    _READ_ONLY_TOOLS: set[str] = {
+        "get_project_summary", "get_project_state", "get_state_value",
+        "get_state_history", "list_devices", "get_device_info",
+        "list_drivers", "search_community_drivers", "get_community_driver_detail",
+        "find_driver_for_device", "get_installed_drivers",
+        "get_driver_definition", "get_script_source", "get_logs",
+        "list_triggers", "get_macro", "get_ui_page",
+        "list_plugins", "browse_community_plugins", "get_plugin_config",
+        "list_themes", "get_theme", "list_assets",
+        "get_isc_status", "list_isc_peers",
+        "get_device_settings", "check_references",
+        "get_discovery_results", "wait",
+    }
+
+    # Tools that may run without the project-serialization lock: every
+    # read-only tool, plus execute_macro — it awaits a full (possibly long)
+    # macro run but never mutates engine.project, so holding the lock would
+    # needlessly block project edits behind a running macro. Everything else
+    # (all project-mutating tools, and unclassified tools) takes the lock by
+    # default, so a new write tool is serialized automatically.
+    _CONCURRENT_SAFE_TOOLS = _READ_ONLY_TOOLS | {"execute_macro"}
+
+    # Idle timeout before resetting the AI backup flag (seconds)
+    _AI_BACKUP_IDLE_TIMEOUT = 300  # 5 minutes
+
+    def __init__(
+        self,
+        agent: CloudAgent,
+        devices: DeviceManager,
+        events: EventBus,
+        project_path=None,
+    ):
+        self._agent = agent
+        self._devices = devices
+        self._events = events
+        self._project_path = project_path
+
+        # Backup tracking: create one backup before the first write in a conversation
+        self._ai_backup_created: bool = False
+        self._ai_last_write_time: float = 0
+
+        # Serialize project-mutating tools so concurrent tool tasks can't
+        # interleave on the shared engine.project (lost updates). Hold strong
+        # refs to in-flight tasks so they aren't GC'd mid-run and can be
+        # cancelled on shutdown.
+        self._project_lock = asyncio.Lock()
+        self._pending_tasks: set[asyncio.Task] = set()
+
+        # Tool dispatch table
+        self._tools: dict[str, Any] = {
+            # Reading / Searching
+            "get_project_summary": self._get_project_summary,
+            "get_project_state": self._get_project_state,
+            "get_state_value": self._get_state_value,
+            "get_state_history": self._get_state_history,
+            "list_devices": self._list_devices,
+            "get_device_info": self._get_device_info,
+            "list_drivers": self._list_drivers,
+            "search_community_drivers": self._search_community_drivers,
+            "get_community_driver_detail": self._get_community_driver_detail,
+            "find_driver_for_device": self._find_driver_for_device,
+            "get_installed_drivers": self._get_installed_drivers,
+            "get_driver_definition": self._get_driver_definition,
+            "get_script_source": self._get_script_source,
+            "get_logs": self._get_logs,
+            "list_triggers": self._list_triggers,
+            "get_macro": self._get_macro,
+            "get_ui_page": self._get_ui_page,
+            # Writing / Creating
+            "update_project_metadata": self._update_project_metadata,
+            "update_device": self._update_device,
+            "delete_device": self._delete_device,
+            "add_device": self._add_device,
+            "add_device_group": self._add_device_group,
+            "update_device_group": self._update_device_group,
+            "delete_device_group": self._delete_device_group,
+            "add_variable": self._add_variable,
+            "update_variable": self._update_variable,
+            "delete_variable": self._delete_variable,
+            "add_macro": self._add_macro,
+            "update_macro": self._update_macro,
+            "delete_macro": self._delete_macro,
+            "add_ui_page": self._add_ui_page,
+            "update_ui_page": self._update_ui_page,
+            "delete_ui_page": self._delete_ui_page,
+            "add_ui_elements": self._add_ui_elements,
+            "update_ui_element": self._update_ui_element,
+            "delete_ui_elements": self._delete_ui_elements,
+            "add_master_element": self._add_master_element,
+            "delete_master_element": self._delete_master_element,
+            "install_community_driver": self._install_community_driver,
+            "create_driver_definition": self._create_driver_definition,
+            "update_driver_definition": self._update_driver_definition,
+            "create_script": self._create_script,
+            "update_script_source": self._update_script_source,
+            "delete_script": self._delete_script,
+            # Plugins
+            "list_plugins": self._list_plugins,
+            "browse_community_plugins": self._browse_community_plugins,
+            "install_plugin": self._install_plugin,
+            "uninstall_plugin": self._uninstall_plugin,
+            "enable_plugin": self._enable_plugin,
+            "disable_plugin": self._disable_plugin,
+            "get_plugin_config": self._get_plugin_config,
+            "update_plugin_config": self._update_plugin_config,
+            # Discovery
+            "start_discovery_scan": self._start_discovery_scan,
+            "get_discovery_results": self._get_discovery_results,
+            # Themes
+            "list_themes": self._list_themes,
+            "get_theme": self._get_theme,
+            "apply_theme": self._apply_theme,
+            # Assets
+            "list_assets": self._list_assets,
+            "delete_asset": self._delete_asset,
+            # ISC
+            "get_isc_status": self._get_isc_status,
+            "list_isc_peers": self._list_isc_peers,
+            "send_isc_command": self._send_isc_command,
+            # Device settings
+            "get_device_settings": self._get_device_settings,
+            "set_device_setting": self._set_device_setting,
+            # UI simulation
+            "simulate_ui_action": self._simulate_ui_action,
+            # Impact checking
+            "check_references": self._check_references,
+            # Async / Waiting
+            "wait": self._wait,
+            # Actions
+            "send_device_command": self._send_device_command,
+            "test_device_connection": self._test_device_connection,
+            "test_driver_command": self._test_driver_command,
+            "execute_macro": self._execute_macro,
+            "cancel_macro": self._cancel_macro,
+            "set_state_value": self._set_state_value,
+            "test_trigger": self._test_trigger,
+        }
+
+    async def handle(self, msg: dict[str, Any]) -> None:
+        """Route an incoming AI_TOOL_CALL message to the appropriate handler.
+
+        Dispatches tool execution as a background task so long-running tools
+        (discovery scans, wait) don't block the agent's receive loop.
+        """
+        payload = extract_payload(msg)
+        request_id = payload.get("request_id", "")
+        tool_name = payload.get("tool_name", "")
+        tool_input = payload.get("tool_input", {})
+
+        log.info(f"AI tool call: {tool_name} (request_id={request_id})")
+
+        handler = self._tools.get(tool_name)
+        if not handler:
+            await self._send_result(
+                request_id, False,
+                error=f"Unknown tool: {tool_name}",
+            )
+            return
+
+        # Run in background so the receive loop stays responsive to pings/acks.
+        # Keep a strong ref (GC-safety) and track it so shutdown() can cancel
+        # in-flight tools when the agent stops.
+        task = asyncio.create_task(self._execute_tool(request_id, tool_name, handler, tool_input))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _execute_tool(
+        self, request_id: str, tool_name: str, handler: Any, tool_input: dict
+    ) -> None:
+        """Execute a tool handler and send the result back to the cloud."""
+        try:
+            if tool_name in self._CONCURRENT_SAFE_TOOLS:
+                result = await handler(tool_input)
+            else:
+                # Project-mutating tool: serialize on the project lock so two
+                # concurrent tools can't interleave on engine.project, and run
+                # the one-time pre-AI backup under the same lock so it happens
+                # exactly once even under concurrency.
+                async with self._project_lock:
+                    await self._maybe_create_pre_ai_backup()
+                    result = await handler(tool_input)
+            # A tool that returns an {"error": ...} / {"success": False} dict
+            # has failed even though it didn't raise — report it as a failure
+            # (carrying the body) so the model gets a structured error signal
+            # instead of a success with the error hidden in the result.
+            if _tool_result_is_error(result):
+                err = result.get("error") if isinstance(result, dict) else None
+                await self._send_result(
+                    request_id, False, result=result,
+                    error=str(err) if err else "The tool reported an error.",
+                )
+            else:
+                await self._send_result(request_id, True, result=result)
+        except Exception as e:
+            log.exception(f"AI tool handler: error executing {tool_name}")
+            # Map to a user-facing message before it leaves the local trust
+            # boundary — raw str(e) can carry local paths / network topology
+            # and is persisted in cloud chat history. Full detail stays in the
+            # local log above.
+            from openavc.api.error_messages import friendly_error
+            await self._send_result(request_id, False, error=friendly_error(e))
+
+    async def _maybe_create_pre_ai_backup(self) -> None:
+        """Create one backup before the first project-mutating tool in an AI
+        conversation. The caller holds ``self._project_lock`` so the flag
+        check and the backup are atomic (no double backup under concurrency).
+        """
+        # Reset the flag if idle for too long (treat as a new conversation).
+        if (self._ai_last_write_time
+                and time.monotonic() - self._ai_last_write_time > self._AI_BACKUP_IDLE_TIMEOUT):
+            self._ai_backup_created = False
+
+        if not self._ai_backup_created and self._project_path:
+            try:
+                from openavc.core.backup_manager import create_backup
+                await asyncio.to_thread(create_backup, Path(self._project_path).parent, "Before AI changes")
+            except Exception:
+                # Leave the flag unset so the next mutating tool retries the
+                # backup. Latching it True on failure would silently disable
+                # the safety net for the rest of the AI editing session.
+                log.warning(
+                    "Could not create pre-AI backup; will retry before the next change",
+                    exc_info=True,
+                )
+            else:
+                self._ai_backup_created = True
+
+        self._ai_last_write_time = time.monotonic()
+
+    async def shutdown(self) -> None:
+        """Cancel any in-flight tool tasks.
+
+        Called when the cloud agent stops so background tool execution doesn't
+        outlive the agent, write to a torn-down engine, or leak tasks.
+        """
+        tasks = list(self._pending_tasks)
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._pending_tasks.clear()
+
+    # Tool handler methods are defined in the domain-specific mixins:
+    # - ProjectToolsMixin: project state, metadata
+    # - DeviceToolsMixin: devices, drivers, scripts
+    # - UIToolsMixin: UI pages, elements
+    # - PluginToolsMixin: plugin management
+    # - MacroToolsMixin: macros, triggers, variables
+    # - SystemToolsMixin: logs, discovery, themes, assets, ISC
+
+    # ===== HELPERS =====
+
+    def _get_engine(self):
+        try:
+            from openavc.api.rest import _engine
+            return _engine
+        except ImportError:
+            return None
+
+    def _get_driver_repo_dir(self) -> Path:
+        from openavc.system_config import DRIVER_REPO_DIR
+        return DRIVER_REPO_DIR
+
+    def _get_driver_dirs(self) -> list[Path]:
+        from openavc.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
+        return [
+            DRIVER_DEFINITIONS_DIR,
+            DRIVER_REPO_DIR,
+        ]
+
+    async def _send_result(
+        self, request_id: str, success: bool,
+        result: Any = None, error: str | None = None
+    ) -> None:
+        if not request_id:
+            return
+        if result is not None:
+            try:
+                json.dumps(result)
+            except (TypeError, ValueError):
+                result = str(result)
+        await self._agent.send_message(AI_TOOL_RESULT, build_ai_tool_result_payload(
+            request_id, success, result=result, error=error,
+        ))

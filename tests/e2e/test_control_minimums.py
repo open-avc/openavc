@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from server.ui.control_minimums import TYPES_WITH_MINIMUMS, minimum_box
+from openavc.ui.control_minimums import TYPES_WITH_MINIMUMS, minimum_box
 
 # Skip-gate only: the browser itself comes from pytest-playwright's session
 # fixtures, never from a second sync_playwright() of our own.

@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from server.core.project_loader import (
+from openavc.core.project_loader import (
     ProjectConfig,
     ProjectMeta,
     load_project,
@@ -68,7 +68,7 @@ def test_save_aborts_when_bak_copy_fails(tmp_path, monkeypatch):
         raise OSError("simulated backup failure")
 
     monkeypatch.setattr(
-        "server.core.project_loader.shutil.copy2", failing_copy2
+        "openavc.core.project_loader.shutil.copy2", failing_copy2
     )
 
     with pytest.raises(OSError):
@@ -89,7 +89,7 @@ def test_failure_at_replace_leaves_original_and_cleans_tmp(tmp_path, monkeypatch
         raise OSError("simulated failure at swap")
 
     monkeypatch.setattr(
-        "server.core.project_loader.os.replace", failing_replace
+        "openavc.core.project_loader.os.replace", failing_replace
     )
 
     with pytest.raises(OSError):
@@ -110,7 +110,7 @@ def test_failure_during_write_leaves_original_and_cleans_tmp(tmp_path, monkeypat
         raise OSError("simulated disk full")
 
     monkeypatch.setattr(
-        "server.core.project_loader.os.write", failing_write
+        "openavc.core.project_loader.os.write", failing_write
     )
 
     with pytest.raises(OSError):

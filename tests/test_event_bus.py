@@ -2,7 +2,7 @@
 
 import asyncio
 
-from server.core import event_bus
+from openavc.core import event_bus
 
 
 

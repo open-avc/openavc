@@ -15,9 +15,9 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from server import tls
-from server.cloud import cert_manager as cm
-from server.cloud.cert_manager import CertificateManager, generate_key_and_csr
+from openavc import tls
+from openavc.cloud import cert_manager as cm
+from openavc.cloud.cert_manager import CertificateManager, generate_key_and_csr
 from tests.helpers import make_cloud_cert_pem, sign_csr_like_cloud
 
 LABEL = "ab12cd34ef56ab78"
@@ -499,7 +499,7 @@ class DispatchSpy:
 
 
 def make_dispatch_agent(enabled_capabilities):
-    from server.cloud.agent import CloudAgent
+    from openavc.cloud.agent import CloudAgent
 
     agent = CloudAgent.__new__(CloudAgent)
     agent._session = None  # skip signature verification path

@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-from server.core.engine import Engine
-from server.core.script_api import isc as isc_proxy
+from openavc.core.engine import Engine
+from openavc.core.script_api import isc as isc_proxy
 
 
 def _project_with_isc(tmp_path, enabled: bool) -> str:
@@ -55,8 +55,8 @@ async def test_disable_isc_on_reload_unbinds_script_proxy(tmp_path):
     script API proxy so isc.send_to() raises "ISC not enabled" instead of
     reaching the stopped manager.
     """
-    from server.core.project_loader import load_project
-    from server.system_config import get_system_config
+    from openavc.core.project_loader import load_project
+    from openavc.system_config import get_system_config
 
     project_path = _project_with_isc(tmp_path, enabled=False)
     eng = Engine(project_path)

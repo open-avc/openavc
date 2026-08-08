@@ -13,8 +13,8 @@ style conversion for an element whose font size is not the base 14.
 
 import pytest
 
-from server.core.project_loader import ProjectConfig
-from server.core.project_migration import (
+from openavc.core.project_loader import ProjectConfig
+from openavc.core.project_migration import (
     DEFAULT_GRID_GAP,
     REFERENCE_HEIGHT,
     REFERENCE_WIDTH,

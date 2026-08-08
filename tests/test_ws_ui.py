@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.core.engine import Engine
-from server.main import app
-from server.api import rest, ws
+from openavc.core.engine import Engine
+from openavc.main import app
+from openavc.api import rest, ws
 
 
 TEST_PROJECT = {
@@ -163,7 +163,7 @@ async def engine_and_client():
 
     engine = Engine(tmp_path)
 
-    from server.core.project_loader import load_project
+    from openavc.core.project_loader import load_project
     engine.project = load_project(tmp_path)
     engine._running = True
 

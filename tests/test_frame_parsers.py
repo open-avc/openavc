@@ -2,7 +2,7 @@
 
 import pytest
 
-from server.transport.frame_parsers import (
+from openavc.transport.frame_parsers import (
     CallableFrameParser,
     DelimiterFrameParser,
     FixedLengthFrameParser,
@@ -540,7 +540,7 @@ def test_slip_buffer_overflow_clears():
 
 def test_slip_carries_a_real_osc_message():
     # The actual use: an OSC packet survives SLIP framing intact.
-    from server.transport.osc_codec import osc_decode_message, osc_encode_message
+    from openavc.transport.osc_codec import osc_decode_message, osc_encode_message
 
     packet = osc_encode_message("/workspace/ABC/cue/1/start", [("f", 1.0)])
     p = SlipFrameParser()

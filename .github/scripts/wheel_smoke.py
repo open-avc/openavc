@@ -35,7 +35,7 @@ def fail(msg: str) -> None:
 
 # --- 1. Static: the wheel bundles the UI + themes, and the package imports ---
 
-from server.system_config import (  # noqa: E402 — imported here to prove the wheel resolves it
+from openavc.system_config import (  # noqa: E402 — imported here to prove the wheel resolves it
     THEMES_DIR,
     WEB_PANEL_DIR,
     WEB_PROGRAMMER_DIR,
@@ -52,7 +52,7 @@ if not (WEB_PANEL_DIR / "panel.js").is_file():
 if not any(THEMES_DIR.glob("*.json")):
     fail(f"no themes bundled in wheel under {THEMES_DIR}")
 
-import server.main  # noqa: E402,F401 — proves the package imports from the wheel
+import openavc.main  # noqa: E402,F401 — proves the package imports from the wheel
 
 print("static OK: programmer UI + panel + themes bundled; server.main imports")
 

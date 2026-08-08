@@ -11,9 +11,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from server.discovery import scan_budget as budgeting
-from server.discovery.engine import DiscoveryEngine
-from server.discovery.scan_budget import ScanBudget, resolve_policy
+from openavc.discovery import scan_budget as budgeting
+from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.scan_budget import ScanBudget, resolve_policy
 
 
 def _mock_passive_scanners():
@@ -93,24 +93,24 @@ class _Pipeline:
     async def run(self, subnets=("10.77.0.0/24",)):
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = _mock_passive_scanners()
         engine = self.engine
-        with patch("server.discovery.engine.ping_sweep", side_effect=self._fake_ping), \
-             patch("server.discovery.engine.scan_host_ports",
+        with patch("openavc.discovery.engine.ping_sweep", side_effect=self._fake_ping), \
+             patch("openavc.discovery.engine.scan_host_ports",
                    side_effect=self._fake_scan_host_ports), \
-             patch("server.discovery.engine.grab_banners",
+             patch("openavc.discovery.engine.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine.harvest_arp_table",
+             patch("openavc.discovery.engine.harvest_arp_table",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine.netbios_sweep",
+             patch("openavc.discovery.engine.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.engine._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}), \
              patch.object(engine, "_run_custom_probes", side_effect=self._fake_probes), \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", snmp_cls):
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
             await engine._scan_pipeline_inner(list(subnets))
 
 

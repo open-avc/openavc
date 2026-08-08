@@ -6,7 +6,7 @@ unified ``show`` / ``do`` shape, that two-way collapses to
 orphan ``meter`` slot is dropped.
 """
 
-from server.core.project_migration import (
+from openavc.core.project_migration import (
     CURRENT_VERSION,
     migrate_0_6_to_0_7,
     migrate_project,

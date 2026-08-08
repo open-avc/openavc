@@ -59,8 +59,8 @@ from pathlib import Path
 
 import pytest
 
-from server.drivers import base as driver_base
-from server.transport import (
+from openavc.drivers import base as driver_base
+from openavc.transport import (
     http_client,
     mqtt,
     osc,

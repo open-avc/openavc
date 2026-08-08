@@ -18,22 +18,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import server.core.plugin_artifacts as artifacts
-import server.core.plugin_native_deps as native_deps
-import server.core.plugin_installer as pi
-from server.core.plugin_artifacts import (
+import openavc.core.plugin_artifacts as artifacts
+import openavc.core.plugin_native_deps as native_deps
+import openavc.core.plugin_installer as pi
+from openavc.core.plugin_artifacts import (
     _check_zip_bomb,
     _DownloadBudget,
     _download_capped,
     _validate_download_url,
 )
-from server.core.plugin_installer import (
+from openavc.core.plugin_installer import (
     _is_safe_entry_name,
     _validate_catalog_url,
     install_plugin,
     update_plugin,
 )
-from server.core.plugin_wheels import _is_safe_requirement
+from openavc.core.plugin_wheels import _is_safe_requirement
 
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-plugins/main"
 
@@ -281,7 +281,7 @@ class TestUpdateRollback:
     async def _install_v1(self, pid, version="1.0.0"):
         src = _plugin_src(pid, version)
         client = _download_client(stream=_plugin_zip(pid, src))
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             result = await install_plugin(pid, f"{CATALOG}/{pid}.zip")
         assert result["status"] == "installed"
         return src
@@ -293,7 +293,7 @@ class TestUpdateRollback:
         import httpx
         err = httpx.ConnectError("network down")
         client = _download_client(stream=_make_stream_response(error=err))
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             result = await update_plugin("updnet", f"{CATALOG}/updnet.zip")
 
         assert result["status"] == "update_failed"
@@ -309,7 +309,7 @@ class TestUpdateRollback:
         # New version is syntactically broken -> _do_install returns load_failed.
         broken = _plugin_zip("updbad", "class Broken(\n  # missing paren\n")
         client = _download_client(stream=broken)
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
             result = await update_plugin("updbad", f"{CATALOG}/updbad.zip")
 
         assert result["status"] == "update_failed"
@@ -322,7 +322,7 @@ class TestUpdateRollback:
     async def test_update_success_swaps_version(self, tmp_path):
         await self._install_v1("updok", "1.0.0")
         v2 = _download_client(stream=_plugin_zip("updok", _plugin_src("updok", "2.0.0")))
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=v2):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=v2):
             result = await update_plugin("updok", f"{CATALOG}/updok.zip")
 
         assert result["status"] == "installed"
@@ -353,7 +353,7 @@ class TestPluginLock:
             _download_client(stream=_plugin_zip("racey", src)),
             _download_client(stream=_plugin_zip("racey", src)),
         ]
-        with patch("server.core.plugin_installer.httpx.AsyncClient", side_effect=clients):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", side_effect=clients):
             results = await asyncio.gather(
                 install_plugin("racey", f"{CATALOG}/racey.zip"),
                 install_plugin("racey", f"{CATALOG}/racey.zip"),
@@ -384,9 +384,9 @@ class TestDirectoryInstallSafety:
         client = _download_client(
             get=[_empty_manifest_response(), listing], stream=b"payload"
         )
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
-            with patch("server.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
-                with patch("server.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            with patch("openavc.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
+                with patch("openavc.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
                     with pytest.raises(ValueError, match="open-avc/openavc-plugins|catalog|path under"):
                         await install_plugin("direvil", f"{CATALOG}/plugins/direvil")
         # Partial install cleaned up.
@@ -417,9 +417,9 @@ class TestDirectoryInstallSafety:
             get=[_empty_manifest_response(), listing],
             stream=_plugin_src("dirsafe").encode(),
         )
-        with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
-            with patch("server.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
-                with patch("server.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
+        with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            with patch("openavc.core.plugin_installer._install_pip_deps", new_callable=AsyncMock):
+                with patch("openavc.core.plugin_installer._install_native_deps", new_callable=AsyncMock):
                     result = await install_plugin("dirsafe", f"{CATALOG}/plugins/dirsafe")
 
         assert result["status"] == "installed"
@@ -490,7 +490,7 @@ class TestDownloadCaps:
             zf.writestr("bomb/bomb_plugin.py", b"x" * 100)
         client = _download_client(stream=buf.getvalue())
         with patch.object(artifacts, "_MAX_UNCOMPRESSED_BYTES", 10):
-            with patch("server.core.plugin_installer.httpx.AsyncClient", return_value=client):
+            with patch("openavc.core.plugin_installer.httpx.AsyncClient", return_value=client):
                 with pytest.raises(ValueError, match="too large uncompressed"):
                     await install_plugin("bomb", f"{CATALOG}/bomb.zip")
         assert not (tmp_path / "bomb").exists()

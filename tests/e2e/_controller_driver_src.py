@@ -20,7 +20,7 @@ import json
 import os
 from typing import Any
 
-from server.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver
 
 
 class E2ETestController(BaseDriver):

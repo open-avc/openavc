@@ -7,8 +7,8 @@ attributes to exercise both schemes.
 
 from __future__ import annotations
 
-from server import config
-from server.cloud.tunnel import TunnelHandler
+from openavc import config
+from openavc.cloud.tunnel import TunnelHandler
 
 
 # ---------------------------------------------------------------------------

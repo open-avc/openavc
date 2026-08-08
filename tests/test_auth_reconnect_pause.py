@@ -20,11 +20,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.drivers.registry import _DRIVER_REGISTRY
-from server.core.device_manager import DeviceManager, _MAX_PERMANENT_FAULT_ATTEMPTS
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver, ConnectionFaultError
+from openavc.drivers.registry import _DRIVER_REGISTRY
+from openavc.core.device_manager import DeviceManager, _MAX_PERMANENT_FAULT_ATTEMPTS
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver, ConnectionFaultError
 
 
 class _AuthRejectDriver(BaseDriver):
@@ -138,7 +138,7 @@ async def test_reconnect_loop_stops_when_auth_failure_appears(dm):
     dm._devices["d1"] = driver
     dm._device_configs["d1"] = {"id": "d1", "driver": "acme_auth", "config": {}}
 
-    with patch("server.core.device_manager.asyncio.sleep", new=AsyncMock()):
+    with patch("openavc.core.device_manager.asyncio.sleep", new=AsyncMock()):
         await dm._reconnect_loop("d1")
 
     # 2 unreachable attempts + the 1 that discovered the rejection — not 10.
@@ -200,7 +200,7 @@ async def test_reconnect_loop_stops_early_on_permanent_fault(
     dm._devices["d1"] = driver
     dm._device_configs["d1"] = {"id": "d1", "driver": "acme_perm", "config": {}}
 
-    with patch("server.core.device_manager.asyncio.sleep", new=AsyncMock()):
+    with patch("openavc.core.device_manager.asyncio.sleep", new=AsyncMock()):
         await dm._reconnect_loop("d1")
 
     assert driver.connect_attempts == _MAX_PERMANENT_FAULT_ATTEMPTS
@@ -223,7 +223,7 @@ async def test_network_faults_keep_retrying_indefinitely(dm):
         if driver.connect_attempts >= 150:
             raise asyncio.CancelledError
 
-    with patch("server.core.device_manager.asyncio.sleep", side_effect=stop_at_150):
+    with patch("openavc.core.device_manager.asyncio.sleep", side_effect=stop_at_150):
         await dm._reconnect_loop("d1")
 
     assert driver.connect_attempts >= 150
@@ -251,7 +251,7 @@ async def test_transient_permanent_fault_does_not_stop_a_recovering_device(dm):
         if driver.connect_attempts >= 6:
             raise asyncio.CancelledError
 
-    with patch("server.core.device_manager.asyncio.sleep", side_effect=stop_at_6):
+    with patch("openavc.core.device_manager.asyncio.sleep", side_effect=stop_at_6):
         await dm._reconnect_loop("d1")
 
     assert driver.connect_attempts == 6

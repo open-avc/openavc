@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from server.api.rest import router, set_engine
-from server.core.project_loader import ProjectConfig, ScriptConfig, ProjectMeta
+from openavc.api.rest import router, set_engine
+from openavc.core.project_loader import ProjectConfig, ScriptConfig, ProjectMeta
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def client(mock_engine):
     """Create a test client with the mock engine."""
     from fastapi import FastAPI
 
-    from server.api.auth import require_claimed_auth
+    from openavc.api.auth import require_claimed_auth
 
     app = FastAPI()
     app.include_router(router)

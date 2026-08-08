@@ -22,15 +22,15 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from server.api.routes import python_drivers as driver_routes
-from server.drivers.driver_loader import (
+from openavc.api.routes import python_drivers as driver_routes
+from openavc.drivers.driver_loader import (
     python_source_syntax_error,
     reload_python_driver,
 )
 
 
 GOOD_SOURCE = '''\
-from server.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver
 
 
 class AcmeWidget(BaseDriver):
@@ -58,7 +58,7 @@ UNIMPORTABLE_SOURCE = GOOD_SOURCE.replace(
 @pytest.fixture
 def driver_repo(tmp_path, monkeypatch):
     """Point the save route's driver_repo/ at a scratch directory."""
-    import server.system_config as system_config
+    import openavc.system_config as system_config
 
     repo = tmp_path / "driver_repo"
     repo.mkdir()

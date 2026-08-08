@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.drivers.registry import _DRIVER_REGISTRY
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver, ConnectionFaultError
+from openavc.drivers.registry import _DRIVER_REGISTRY
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver, ConnectionFaultError
 
 @pytest.fixture
 def core():

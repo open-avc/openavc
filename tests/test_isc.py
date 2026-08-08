@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from server.core.isc import (
+from openavc.core.isc import (
     MAX_AUTH_FAIL_ENTRIES,
     ISCManager,
     PeerConnection,
@@ -864,10 +864,10 @@ async def test_peer_connection_has_monotonic_id():
 
 def test_beacon_omits_scheme_when_tls_off(isc, monkeypatch):
     """A v1-shape beacon — no scheme/tls_port — is emitted when TLS is off."""
-    from server import config
+    from openavc import config
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     raw = isc._build_beacon()
-    from server.core.isc import DISCOVERY_MAGIC
+    from openavc.core.isc import DISCOVERY_MAGIC
     payload = json.loads(raw[len(DISCOVERY_MAGIC):])
     assert "scheme" not in payload
     assert "tls_port" not in payload
@@ -877,11 +877,11 @@ def test_beacon_omits_scheme_when_tls_off(isc, monkeypatch):
 
 def test_beacon_emits_scheme_when_tls_on(isc, monkeypatch):
     """TLS-on beacons advertise scheme=https + tls_port."""
-    from server import config
+    from openavc import config
     monkeypatch.setattr(config, "TLS_ENABLED", True)
     monkeypatch.setattr(config, "TLS_PORT", 8443)
     raw = isc._build_beacon()
-    from server.core.isc import DISCOVERY_MAGIC
+    from openavc.core.isc import DISCOVERY_MAGIC
     payload = json.loads(raw[len(DISCOVERY_MAGIC):])
     assert payload["scheme"] == "https"
     assert payload["tls_port"] == 8443
@@ -891,7 +891,7 @@ def test_handle_beacon_v1_defaults_to_http(isc, monkeypatch):
     """A beacon with no scheme field is treated as http (backward compat)."""
     captured = []
     monkeypatch.setattr(isc, "_schedule_connect", lambda *args: captured.append(args))
-    from server.core.isc import DISCOVERY_MAGIC
+    from openavc.core.isc import DISCOVERY_MAGIC
     payload = DISCOVERY_MAGIC + json.dumps({
         "instance_id": "zzzz-9999",
         "name": "Old Peer",
@@ -912,7 +912,7 @@ def test_handle_beacon_v2_with_https_uses_tls_port(isc, monkeypatch):
     """A beacon with scheme=https + tls_port routes outbound to the TLS port."""
     captured = []
     monkeypatch.setattr(isc, "_schedule_connect", lambda *args: captured.append(args))
-    from server.core.isc import DISCOVERY_MAGIC
+    from openavc.core.isc import DISCOVERY_MAGIC
     payload = DISCOVERY_MAGIC + json.dumps({
         "instance_id": "yyyy-8888",
         "name": "New Peer",
@@ -934,7 +934,7 @@ def test_handle_beacon_https_falls_back_to_port_when_tls_port_missing(isc, monke
     """scheme=https but no tls_port: fall back to the regular port field."""
     captured = []
     monkeypatch.setattr(isc, "_schedule_connect", lambda *args: captured.append(args))
-    from server.core.isc import DISCOVERY_MAGIC
+    from openavc.core.isc import DISCOVERY_MAGIC
     payload = DISCOVERY_MAGIC + json.dumps({
         "instance_id": "xxxx-7777",
         "name": "Mid-Migration Peer",
@@ -1310,7 +1310,7 @@ async def test_accept_inbound_unregisters_on_welcome_failure(isc_with_auth):
 async def test_remote_command_in_flight_cap(isc, monkeypatch):
     """Concurrent isc.command executions are capped globally; over-cap
     requests get an error result instead of piling onto device I/O."""
-    from server.core import isc as isc_mod
+    from openavc.core import isc as isc_mod
     monkeypatch.setattr(isc_mod, "MAX_REMOTE_COMMANDS_IN_FLIGHT", 1)
 
     release = asyncio.Event()
@@ -1393,7 +1393,7 @@ class ScriptedWS(FakeWebSocket):
 async def test_isc_ws_rate_limit_survives_reconnect(isc, state, monkeypatch):
     """The per-peer message budget is keyed by peer id, not connection —
     reconnect-cycling must not reset the sliding window."""
-    from server.api import isc_ws
+    from openavc.api import isc_ws
     monkeypatch.setattr(isc_ws, "_ISC_MAX_MESSAGES_PER_MINUTE", 3)
     monkeypatch.setattr(isc_ws, "_isc_manager", isc)
     monkeypatch.setattr(isc_ws, "_peer_msg_times", {})

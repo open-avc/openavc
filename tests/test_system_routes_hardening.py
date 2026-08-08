@@ -28,12 +28,12 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-import server.api.routes.cloud as cloud_routes
-from server.api import rest, ws
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.main import app
-from server.system_config import get_system_config, reset_system_config
+import openavc.api.routes.cloud as cloud_routes
+from openavc.api import rest, ws
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.main import app
+from openavc.system_config import get_system_config, reset_system_config
 
 
 # ── Mock engine + clients ──────────────────────────────────────────────────
@@ -101,14 +101,14 @@ def test_ssrf_blocks_non_http_scheme():
 
 
 def test_ssrf_blocks_loopback_on_shipped_deployment(monkeypatch):
-    monkeypatch.setattr("server.api.auth._deployment_is_dev", lambda: False)
+    monkeypatch.setattr("openavc.api.auth._deployment_is_dev", lambda: False)
     with pytest.raises(HTTPException) as e:
         _validate("http://127.0.0.1:8080/api")
     assert e.value.status_code == 400
 
 
 def test_ssrf_allows_loopback_in_dev(monkeypatch):
-    monkeypatch.setattr("server.api.auth._deployment_is_dev", lambda: True)
+    monkeypatch.setattr("openavc.api.auth._deployment_is_dev", lambda: True)
     assert _validate("http://127.0.0.1:8000/") == "http://127.0.0.1:8000"
 
 
@@ -159,10 +159,10 @@ def _pair_env(monkeypatch, *, save=None):
 
     monkeypatch.setattr(cloud_routes, "_validate_cloud_api_url", _passthrough)
     monkeypatch.setattr(
-        "server.cloud.config.save_cloud_config", save or (lambda cfg: None)
+        "openavc.cloud.config.save_cloud_config", save or (lambda cfg: None)
     )
     # Don't leak runtime config mutations across tests.
-    import server.config as cfg
+    import openavc.config as cfg
     for name in ("CLOUD_ENABLED", "CLOUD_ENDPOINT", "CLOUD_SYSTEM_KEY", "CLOUD_SYSTEM_ID"):
         monkeypatch.setattr(cfg, name, getattr(cfg, name), raising=False)
 
@@ -313,7 +313,7 @@ def test_patch_update_channel_mirrors_state(client, isolated_config):
 
 def test_patch_log_level_applies_live(client, isolated_config):
     c, engine = client
-    from server.utils import logger as lg
+    from openavc.utils import logger as lg
 
     lg.get_logger("test")  # ensure the console handler exists
     resp = c.patch("/api/system/config", json={"logging": {"level": "warning"}})

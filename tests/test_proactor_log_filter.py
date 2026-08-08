@@ -11,7 +11,7 @@ everywhere so a regression can't hide until someone opens a Windows log.
 
 import logging
 
-from server.utils.logger import _ProactorResetFilter
+from openavc.utils.logger import _ProactorResetFilter
 
 
 def _record(msg: str, exc: BaseException | None) -> logging.LogRecord:

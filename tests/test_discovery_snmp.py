@@ -5,7 +5,7 @@ import contextlib
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from server.discovery.snmp_scanner import (
+from openavc.discovery.snmp_scanner import (
     SNMPScanner,
     SNMPInfo,
     _SNMPQueryProtocol,
@@ -39,11 +39,11 @@ from server.discovery.snmp_scanner import (
     SNMP_GET_RESPONSE,
     SNMP_VERSION_2C,
 )
-from server.discovery.result import (
+from openavc.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
 )
-from server.discovery.engine import DiscoveryEngine, _resolve_hostnames
+from openavc.discovery.engine import DiscoveryEngine, _resolve_hostnames
 
 
 # ============================================================
@@ -587,7 +587,7 @@ class TestSNMPScanner:
 class TestResolveHostnames:
     @pytest.mark.asyncio
     async def test_resolves_known_hosts(self):
-        with patch("server.discovery.engine._socket.gethostbyaddr") as mock_resolve:
+        with patch("openavc.discovery.engine._socket.gethostbyaddr") as mock_resolve:
             mock_resolve.side_effect = lambda ip: {
                 "192.168.1.1": ("gateway.local", [], ["192.168.1.1"]),
                 "192.168.1.50": ("extron-switch.local", [], ["192.168.1.50"]),
@@ -601,14 +601,14 @@ class TestResolveHostnames:
 
     @pytest.mark.asyncio
     async def test_handles_all_failures(self):
-        with patch("server.discovery.engine._socket.gethostbyaddr", side_effect=OSError):
+        with patch("openavc.discovery.engine._socket.gethostbyaddr", side_effect=OSError):
             results = await _resolve_hostnames(["192.168.1.1"])
         assert results == {}
 
     @pytest.mark.asyncio
     async def test_excludes_ip_as_hostname(self):
         """If gethostbyaddr returns the IP itself, skip it."""
-        with patch("server.discovery.engine._socket.gethostbyaddr") as mock_resolve:
+        with patch("openavc.discovery.engine._socket.gethostbyaddr") as mock_resolve:
             mock_resolve.return_value = ("192.168.1.1", [], ["192.168.1.1"])
             results = await _resolve_hostnames(["192.168.1.1"])
         assert results == {}
@@ -635,7 +635,7 @@ class TestEngineSNMPIntegration:
         Manufacturer comes from Entity MIB self-report when present,
         not from sysDescr parsing — that's now driver hint territory.
         """
-        from server.discovery.snmp_scanner import SNMPInfo
+        from openavc.discovery.snmp_scanner import SNMPInfo
 
         snmp_results = {
             "192.168.1.72": SNMPInfo(
@@ -682,7 +682,7 @@ class TestEngineSNMPIntegration:
         firmware come from Entity MIB self-report rather than from
         sysDescr regex parsing.
         """
-        from server.discovery.snmp_scanner import SNMPInfo
+        from openavc.discovery.snmp_scanner import SNMPInfo
 
         # Pre-populate from an earlier active scan.
         self.engine.results["192.168.1.50"] = DiscoveredDevice(
@@ -926,7 +926,7 @@ class TestSnmpTransportSecurity:
         """Full round trip over real UDP through the datagram endpoint."""
         agent = _FakeSnmpAgent(scalars=dict(_MIB2_SCALARS))
         async with _run_agent(agent) as port:
-            with patch("server.discovery.snmp_scanner.SNMP_PORT", port):
+            with patch("openavc.discovery.snmp_scanner.SNMP_PORT", port):
                 result = await SNMPScanner().query_device("127.0.0.1", timeout=2.0)
         assert result is not None
         assert result.sys_descr == "Acme Widget 9000, V2.0"
@@ -938,7 +938,7 @@ class TestSnmpTransportSecurity:
         to the query — the scanner keeps waiting for the real response."""
         agent = _FakeSnmpAgent(scalars=dict(_MIB2_SCALARS), wrong_id_first=True)
         async with _run_agent(agent) as port:
-            with patch("server.discovery.snmp_scanner.SNMP_PORT", port):
+            with patch("openavc.discovery.snmp_scanner.SNMP_PORT", port):
                 result = await SNMPScanner().query_device("127.0.0.1", timeout=2.0)
         assert result is not None
         assert result.sys_name == "Widget-Lab"
@@ -950,7 +950,7 @@ class TestSnmpTransportSecurity:
         hard-coded socket timeout) still lands when the caller allows it."""
         agent = _FakeSnmpAgent(scalars=dict(_MIB2_SCALARS), reply_delay=2.6)
         async with _run_agent(agent) as port:
-            with patch("server.discovery.snmp_scanner.SNMP_PORT", port):
+            with patch("openavc.discovery.snmp_scanner.SNMP_PORT", port):
                 result = await SNMPScanner().query_device("127.0.0.1", timeout=4.0)
         assert result is not None
         assert result.sys_name == "Widget-Lab"
@@ -959,7 +959,7 @@ class TestSnmpTransportSecurity:
     async def test_silent_agent_times_out(self):
         agent = _FakeSnmpAgent(silent=True)
         async with _run_agent(agent) as port:
-            with patch("server.discovery.snmp_scanner.SNMP_PORT", port):
+            with patch("openavc.discovery.snmp_scanner.SNMP_PORT", port):
                 result = await SNMPScanner().query_device("127.0.0.1", timeout=0.3)
         assert result is None
 
@@ -977,7 +977,7 @@ class TestEntityMibIndexDiscovery:
 
     async def _query(self, agent: _FakeSnmpAgent) -> SNMPInfo | None:
         async with _run_agent(agent) as port:
-            with patch("server.discovery.snmp_scanner.SNMP_PORT", port):
+            with patch("openavc.discovery.snmp_scanner.SNMP_PORT", port):
                 return await SNMPScanner().query_device(
                     "127.0.0.1", timeout=2.0, entity_mib=True)
 

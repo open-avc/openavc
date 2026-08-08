@@ -11,11 +11,11 @@ import asyncio
 import pytest
 from aiohttp import web
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from server.transport.http_client import HTTPClientTransport
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.transport.http_client import HTTPClientTransport
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "dev1"):
@@ -422,7 +422,7 @@ def _sim_def() -> dict:
 
 
 def test_sim_resolves_sse_paths_from_templates():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
     assert sim.sse_paths == ["/api/events"]
@@ -436,7 +436,7 @@ def test_sim_resolves_sse_paths_from_templates():
 
 
 def test_sim_without_push_block_has_no_sse_paths():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     d = _sim_def()
     d.pop("push")
@@ -448,7 +448,7 @@ def test_sim_without_push_block_has_no_sse_paths():
 async def test_sim_serves_event_stream_and_normal_requests():
     import httpx
 
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
     port = _free_tcp_port()
@@ -492,7 +492,7 @@ async def test_sim_serves_event_stream_and_normal_requests():
 async def test_sim_stop_completes_with_open_subscription():
     import httpx
 
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
     port = _free_tcp_port()
@@ -525,7 +525,7 @@ async def test_sim_stop_completes_with_open_subscription():
 
 @pytest.mark.asyncio
 async def test_e2e_driver_state_follows_sim_changes():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
     port = _free_tcp_port()

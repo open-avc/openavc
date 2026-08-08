@@ -20,8 +20,8 @@ import pathlib
 
 import pytest
 
-from server import config
-from server.system_config import DEFAULTS
+from openavc import config
+from openavc.system_config import DEFAULTS
 
 CONFIG_PY = pathlib.Path(config.__file__)
 

@@ -7,11 +7,11 @@ import threading
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.core.device_manager import DeviceManager
-from server.core import script_api
-from server.core.script_engine import ScriptEngine
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.core.device_manager import DeviceManager
+from openavc.core import script_api
+from openavc.core.script_engine import ScriptEngine
 
 
 @pytest.fixture
@@ -698,7 +698,7 @@ async def test_cancel_script_timers_is_scoped():
 async def test_macro_chain_survives_script_boundary(subsystems):
     """A macro that drives a handler which re-enters the same macro via the
     script proxy must hit the engine's circular guard, not restart the chain."""
-    from server.core.macro_engine import MacroEngine
+    from openavc.core.macro_engine import MacroEngine
 
     state, events, devices = subsystems
     macro_engine = MacroEngine(state, events, devices)
@@ -733,7 +733,7 @@ async def test_macro_chain_survives_script_boundary(subsystems):
 
 async def test_macro_proxy_outside_macro_context_unaffected(subsystems):
     """macros.execute from a plain handler (no active macro) still works."""
-    from server.core.macro_engine import MacroEngine
+    from openavc.core.macro_engine import MacroEngine
 
     state, events, devices = subsystems
     macro_engine = MacroEngine(state, events, devices)

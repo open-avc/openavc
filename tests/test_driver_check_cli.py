@@ -1,4 +1,4 @@
-"""Tests for ``python -m server.drivers.check`` — the standalone contract check.
+"""Tests for ``python -m openavc.drivers.check`` — the standalone contract check.
 
 The command's whole value is that it defines no rules of its own: it is a front
 end over the functions the save doors, the runtime loader and the community
@@ -17,10 +17,10 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from server.drivers.avcdriver_semantic import unknown_key_errors
-from server.drivers.check import check_driver_file, main, scan_for_drivers
-from server.drivers.driver_loader import validate_driver_definition
-from server.drivers.python_info import python_driver_info_issues
+from openavc.drivers.avcdriver_semantic import unknown_key_errors
+from openavc.drivers.check import check_driver_file, main, scan_for_drivers
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.drivers.python_info import python_driver_info_issues
 
 CLEAN_YAML = """\
     id: acme_widget
@@ -37,7 +37,7 @@ CLEAN_YAML = """\
 """
 
 CLEAN_PYTHON = '''\
-    from server.drivers.base import BaseDriver
+    from openavc.drivers.base import BaseDriver
 
 
     class AcmeWidgetDriver(BaseDriver):
@@ -162,7 +162,7 @@ def test_printed_paths_use_native_separators(tmp_path):
     are identical, so this pins the function rather than the separator — a
     re-introduced ``as_posix()`` fails on Windows and is at least legible here.
     """
-    from server.drivers.check import _display_path
+    from openavc.drivers.check import _display_path
 
     nested = tmp_path / "drivers" / "acme_widget.py"
     assert _display_path(nested, tmp_path) == str(Path("drivers/acme_widget.py"))
@@ -319,7 +319,7 @@ def test_simulator_validate_reports_contract_errors_above_parity(tmp_path, capsy
     contract — and meets it in the same words, above the parity findings."""
     import pytest
 
-    from simulator.validate import main as validate_main
+    from openavc.simulator.validate import main as validate_main
 
     driver = _write(
         tmp_path / "acme_widget.py",
@@ -344,7 +344,7 @@ def test_simulator_validate_reports_contract_errors_above_parity(tmp_path, capsy
 def test_simulator_validate_stays_green_on_a_clean_driver(tmp_path, capsys):
     import pytest
 
-    from simulator.validate import main as validate_main
+    from openavc.simulator.validate import main as validate_main
 
     driver = _write(tmp_path / "acme_widget.py", CLEAN_PYTHON)
     with pytest.raises(SystemExit) as exit_info:

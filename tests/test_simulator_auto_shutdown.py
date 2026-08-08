@@ -11,9 +11,9 @@ simulated connection.
 import signal
 import sys
 
-from simulator import _runtime
-from simulator import __main__ as sim_main
-from simulator import api
+from openavc.simulator import _runtime
+from openavc.simulator import __main__ as sim_main
+from openavc.simulator import api
 
 
 def test_set_auto_shutdown_updates_module_flag():

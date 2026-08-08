@@ -4,9 +4,9 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.state_store import StateStore
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.state_store import StateStore
 
 
 @pytest.fixture
@@ -115,7 +115,7 @@ async def test_cancel_warns_when_task_does_not_stop(engine, caplog, monkeypatch)
     cancellation — it inspects the still-pending set and logs a warning."""
     import logging
 
-    from server.core import macro_engine as me
+    from openavc.core import macro_engine as me
 
     monkeypatch.setattr(me, "_CANCEL_GRACE_SECONDS", 0.1)
 
@@ -147,7 +147,7 @@ async def test_cancel_all_warns_when_task_does_not_stop(engine, caplog, monkeypa
     grace period rather than swallowing the asyncio.wait result."""
     import logging
 
-    from server.core import macro_engine as me
+    from openavc.core import macro_engine as me
 
     monkeypatch.setattr(me, "_CANCEL_GRACE_SECONDS", 0.1)
 
@@ -175,7 +175,7 @@ async def test_cancel_no_warning_when_task_stops_cleanly(engine, caplog, monkeyp
     """A well-behaved macro that honours cancellation produces no warning."""
     import logging
 
-    from server.core import macro_engine as me
+    from openavc.core import macro_engine as me
 
     monkeypatch.setattr(me, "_CANCEL_GRACE_SECONDS", 0.5)
 
@@ -352,13 +352,13 @@ async def test_cancel_all(engine, state):
 
 
 def test_macro_config_cancel_group():
-    from server.core.project_loader import MacroConfig
+    from openavc.core.project_loader import MacroConfig
     macro = MacroConfig(id="test", name="Test", cancel_group="system_power")
     assert macro.cancel_group == "system_power"
 
 
 def test_macro_config_cancel_group_default():
-    from server.core.project_loader import MacroConfig
+    from openavc.core.project_loader import MacroConfig
     macro = MacroConfig(id="test", name="Test")
     assert macro.cancel_group is None
 

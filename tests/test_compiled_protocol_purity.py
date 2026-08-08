@@ -17,19 +17,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 ALLOWED = {
     "server",
-    "server.drivers",
-    "server.drivers.compiled_protocol",
-    "server.transport",
-    "server.transport.binary_helpers",
-    "server.utils",
-    "server.utils.logger",
+    "openavc.drivers",
+    "openavc.drivers.compiled_protocol",
+    "openavc.transport",
+    "openavc.transport.binary_helpers",
+    "openavc.utils",
+    "openavc.utils.logger",
     # Pulled in by server.utils.logger (same closure inline_protocol has).
-    "server.utils.log_buffer",
+    "openavc.utils.log_buffer",
     # Also pulled in by server.utils.logger: the credential-redaction filter it
     # installs on every handler. Stdlib-only (logging + re), so it does not
     # widen what the simulator or the validator has to be able to import.
-    "server.utils.log_redaction",
-    "server.system_config",
+    "openavc.utils.log_redaction",
+    "openavc.system_config",
 }
 
 

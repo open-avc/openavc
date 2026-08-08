@@ -24,14 +24,14 @@ import pytest
 import yaml as _yaml
 from fastapi import HTTPException
 
-from server.api.routes.drivers import (
+from openavc.api.routes.drivers import (
     _companion_relpath_from_yaml,
     _download_companion,
     install_community_driver,
     uninstall_driver,
     update_driver,
 )
-from server.api.models import CommunityDriverInstallRequest
+from openavc.api.models import CommunityDriverInstallRequest
 
 
 # --- _companion_relpath_from_yaml -----------------------------------------
@@ -224,7 +224,7 @@ def driver_repo(tmp_path, monkeypatch):
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     monkeypatch.setattr(
-        "server.api.routes.drivers._get_driver_repo_dir",
+        "openavc.api.routes.drivers._get_driver_repo_dir",
         lambda: repo,
     )
     return repo
@@ -240,12 +240,12 @@ def no_catalog_hashes(monkeypatch):
     changing the call counts these tests assert on. Integrity behaviour has its
     own tests in test_community_artifact_integrity.py.
     """
-    from server.utils.community_integrity import ArtifactHashes
+    from openavc.utils.community_integrity import ArtifactHashes
 
     async def _none(driver_id):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
-    monkeypatch.setattr("server.api.routes.drivers._catalog_hashes", _none)
+    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _none)
 
 
 @pytest.fixture(autouse=True)
@@ -258,7 +258,7 @@ def silence_register_and_refresh(monkeypatch):
     companion-fetch logic is what's under test.
     """
     monkeypatch.setattr(
-        "server.api.routes.drivers.refresh_all_device_matches",
+        "openavc.api.routes.drivers.refresh_all_device_matches",
         AsyncMock(return_value=None),
         raising=False,
     )
@@ -266,11 +266,11 @@ def silence_register_and_refresh(monkeypatch):
     # route imports both names at module scope, so that binding is what
     # the handler actually calls.
     monkeypatch.setattr(
-        "server.api.routes.drivers.register_driver",
+        "openavc.api.routes.drivers.register_driver",
         lambda cls: None,
     )
     monkeypatch.setattr(
-        "server.api.routes.drivers.unregister_driver",
+        "openavc.api.routes.drivers.unregister_driver",
         lambda driver_id: None,
     )
     yield
@@ -290,7 +290,7 @@ async def test_install_yaml_with_companion_lands_both_files(driver_repo):
         mock_client_cls.return_value = _mock_two_responses(yaml_text, companion_text)
         # Patch the discovery refresh inside the route module.
         with patch(
-            "server.api.discovery.refresh_all_device_matches",
+            "openavc.api.discovery.refresh_all_device_matches",
             AsyncMock(return_value=None),
         ):
             result = await install_community_driver(body)
@@ -322,7 +322,7 @@ async def test_install_yaml_without_companion_lands_only_yaml(driver_repo):
 
     with patch("httpx.AsyncClient", return_value=mock_client):
         with patch(
-            "server.api.discovery.refresh_all_device_matches",
+            "openavc.api.discovery.refresh_all_device_matches",
             AsyncMock(return_value=None),
         ):
             result = await install_community_driver(body)
@@ -384,12 +384,12 @@ async def test_uninstall_drops_companion_alongside_yaml(driver_repo, monkeypatch
     fake_engine = MagicMock()
     fake_engine.project = None
     monkeypatch.setattr(
-        "server.api.routes.drivers._get_engine",
+        "openavc.api.routes.drivers._get_engine",
         lambda: fake_engine,
     )
 
     with patch(
-        "server.api.discovery.refresh_all_device_matches",
+        "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),
     ):
         result = await uninstall_driver("crestron_cip")
@@ -413,12 +413,12 @@ async def test_uninstall_leaves_unrelated_py_files_alone(driver_repo, monkeypatc
     fake_engine = MagicMock()
     fake_engine.project = None
     monkeypatch.setattr(
-        "server.api.routes.drivers._get_engine",
+        "openavc.api.routes.drivers._get_engine",
         lambda: fake_engine,
     )
 
     with patch(
-        "server.api.discovery.refresh_all_device_matches",
+        "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),
     ):
         await uninstall_driver("plain_widget")
@@ -466,7 +466,7 @@ async def test_update_swaps_companion_when_new_yaml_changes_filename(
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value = _mock_two_responses(new_yaml, new_companion_text)
         with patch(
-            "server.api.discovery.refresh_all_device_matches",
+            "openavc.api.discovery.refresh_all_device_matches",
             AsyncMock(return_value=None),
         ):
             result = await update_driver("crestron_cip", fake_request)

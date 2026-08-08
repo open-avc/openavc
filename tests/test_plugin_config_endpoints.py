@@ -16,13 +16,13 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-import server.core.plugin_loader as pl
-from server.api.plugins import emit_context_action, update_plugin_config
-from server.core.event_bus import EventBus
-from server.core.plugin_config import missing_required_fields, validate_plugin_config
-from server.core.plugin_loader import PluginLoader
-from server.core.project_loader import PluginConfig, ProjectConfig, ProjectMeta
-from server.core.state_store import StateStore
+import openavc.core.plugin_loader as pl
+from openavc.api.plugins import emit_context_action, update_plugin_config
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_config import missing_required_fields, validate_plugin_config
+from openavc.core.plugin_loader import PluginLoader
+from openavc.core.project_loader import PluginConfig, ProjectConfig, ProjectMeta
+from openavc.core.state_store import StateStore
 
 
 class _AcmeWidgetPlugin:
@@ -89,7 +89,7 @@ def _engine(monkeypatch, *, restart_outcome="restarted"):
         return engine._project_revision
 
     engine.apply_project_edit = _apply_edit
-    monkeypatch.setattr("server.api.plugins._engine", engine)
+    monkeypatch.setattr("openavc.api.plugins._engine", engine)
     return engine
 
 
@@ -129,10 +129,10 @@ def test_cloud_path_uses_shared_validator():
     """The cloud AI path must use the identical validator (parity pin)."""
     import inspect
 
-    from server.cloud.tools import plugin_tools
+    from openavc.cloud.tools import plugin_tools
 
     src = inspect.getsource(plugin_tools)
-    assert "server.core.plugin_config" in src
+    assert "openavc.core.plugin_config" in src
     assert "validate_config_for_plugin" in src
     assert "missing_required_for_plugin" in src
 
@@ -299,7 +299,7 @@ def _removal_engine(monkeypatch):
     test_engine_reload_behavior). What the route owns is handing the seam a
     project without the entry.
     """
-    from server.core.project_loader import PluginDependency
+    from openavc.core.project_loader import PluginDependency
 
     calls = {"applied": []}
 
@@ -324,13 +324,13 @@ def _removal_engine(monkeypatch):
         return engine._project_revision
 
     engine.apply_project_edit = _apply_edit
-    monkeypatch.setattr("server.api.plugins._engine", engine)
+    monkeypatch.setattr("openavc.api.plugins._engine", engine)
     return engine, calls
 
 
 @pytest.mark.asyncio
 async def test_remove_config_deletes_reference_and_dependencies(monkeypatch):
-    from server.api.plugins import remove_plugin_config
+    from openavc.api.plugins import remove_plugin_config
 
     engine, calls = _removal_engine(monkeypatch)
     result = await remove_plugin_config("acme_widget")
@@ -346,7 +346,7 @@ async def test_remove_config_deletes_reference_and_dependencies(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_remove_config_404s_when_not_in_project(monkeypatch):
-    from server.api.plugins import remove_plugin_config
+    from openavc.api.plugins import remove_plugin_config
 
     engine, calls = _removal_engine(monkeypatch)
     with pytest.raises(HTTPException) as exc:

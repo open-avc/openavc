@@ -23,11 +23,11 @@ import logging
 
 import pytest
 
-from server.core.state_store import StateStore
-from server.core.event_bus import EventBus
-from server.drivers.base import BaseDriver
-from server.transport.wire_log import format_wire_data
-from server.utils.log_redaction import (
+from openavc.core.state_store import StateStore
+from openavc.core.event_bus import EventBus
+from openavc.drivers.base import BaseDriver
+from openavc.transport.wire_log import format_wire_data
+from openavc.utils.log_redaction import (
     MIN_SECRET_LEN,
     SecretRedactionFilter,
     SecretRegistry,
@@ -74,7 +74,7 @@ def test_every_transport_formats_through_the_shared_function():
     would format the bytes and never consult the registry — so the check is
     that each transport's formatter body is a delegation, not a reimplementation.
     """
-    from server.transport import serial_transport, tcp, udp
+    from openavc.transport import serial_transport, tcp, udp
 
     formatters = {
         "tcp": tcp.TCPTransport._format_data,
@@ -267,7 +267,7 @@ def test_forgetting_a_device_stops_masking_its_credential(clean_registry):
 
 def _record(message: str, *args) -> logging.LogRecord:
     return logging.LogRecord(
-        name="server.drivers.acme_widget",
+        name="openavc.drivers.acme_widget",
         level=logging.INFO,
         pathname=__file__,
         lineno=1,
@@ -329,8 +329,8 @@ def test_filter_is_installed_on_every_live_handler():
     and the Log view's Download serve — and it is the one a filter attached to
     a logger rather than a handler would miss.
     """
-    from server.utils import logger as logger_module
-    from server.utils.log_buffer import BufferHandler
+    from openavc.utils import logger as logger_module
+    from openavc.utils.log_buffer import BufferHandler
 
     logger_module._configure_root()
     root = logging.getLogger()
@@ -360,14 +360,14 @@ def test_filter_is_installed_on_every_live_handler():
 
 
 def _buffer_with(message: str):
-    from server.utils.log_buffer import LogBuffer, LogEntry
+    from openavc.utils.log_buffer import LogBuffer, LogEntry
 
     buffer = LogBuffer()
     buffer.append(
         LogEntry(
             timestamp=0.0,
             level="DEBUG",
-            source="server.transport.tcp",
+            source="openavc.transport.tcp",
             category="device",
             message=message,
             device="acme_1",
@@ -409,21 +409,21 @@ def test_reading_the_buffer_does_not_rewrite_the_stored_entry(clean_registry):
 
 def test_device_manager_masks_configs_with_the_shared_rule():
     """A second credential-name list is what this consolidation removed."""
-    from server.core import device_manager
+    from openavc.core import device_manager
 
     assert device_manager._redact_config is redact_config
 
 
 def test_the_cloud_log_tool_masks_with_the_shared_rule():
     """The cloud AI's view of a log line and the log itself agree on "secret"."""
-    from server.cloud.tools import system_tools
+    from openavc.cloud.tools import system_tools
 
     assert system_tools._redact_log_message is redact_text
     assert system_tools._looks_secret is is_secret_key
 
 
 def test_min_secret_length_is_one_constant():
-    from server.cloud.tools import system_tools
+    from openavc.cloud.tools import system_tools
 
     assert system_tools.MIN_SECRET_LEN is MIN_SECRET_LEN
 

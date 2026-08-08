@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from server.utils.regex_safety import _regex_search_exceeds
-from server.drivers.driver_loader import (
+from openavc.utils.regex_safety import _regex_search_exceeds
+from openavc.drivers.driver_loader import (
     DRIVER_EXTENSION,
     delete_driver_definition,
     find_driver_file_by_id,
@@ -319,7 +319,7 @@ def test_load_driver_files_registers(tmp_path):
     assert count >= 1
 
     # Verify it's in the registry
-    from server.drivers.registry import list_registered_drivers
+    from openavc.drivers.registry import list_registered_drivers
     registry = list_registered_drivers()
     ids = [d["id"] for d in registry]
     assert "test_loader_driver" in ids
@@ -620,7 +620,7 @@ def test_bad_driver_file_does_not_abort_the_pass(tmp_path):
 
     count = load_driver_files([tmp_path])  # must not raise
 
-    from server.drivers.registry import list_registered_drivers, unregister_driver
+    from openavc.drivers.registry import list_registered_drivers, unregister_driver
 
     try:
         ids = [d["id"] for d in list_registered_drivers()]
@@ -635,7 +635,7 @@ def test_bad_driver_file_does_not_abort_the_pass(tmp_path):
 
 
 def test_is_builtin_driver_and_delete_guard(tmp_path, monkeypatch):
-    import server.system_config as sc
+    import openavc.system_config as sc
 
     builtin_dir = tmp_path / "definitions"
     repo_dir = tmp_path / "repo"
@@ -664,7 +664,7 @@ def test_is_builtin_driver_and_delete_guard(tmp_path, monkeypatch):
 
 
 def _registry_info(driver_id):
-    from server.drivers.registry import list_registered_drivers
+    from openavc.drivers.registry import list_registered_drivers
 
     for info in list_registered_drivers():
         if info["id"] == driver_id:
@@ -686,7 +686,7 @@ def test_load_driver_files_user_copy_overrides_builtin(tmp_path):
         {**VALID_DEFINITION, "id": "acme_dup", "name": "User Copy"},
     )
 
-    from server.drivers.registry import unregister_driver
+    from openavc.drivers.registry import unregister_driver
 
     count = load_driver_files([builtin, user])
     try:
@@ -706,7 +706,7 @@ def test_load_driver_files_same_directory_duplicate_first_wins(tmp_path):
         {**VALID_DEFINITION, "id": "acme_dup", "name": "Second"},
     )
 
-    from server.drivers.registry import unregister_driver
+    from openavc.drivers.registry import unregister_driver
 
     count = load_driver_files([tmp_path])
     try:
@@ -727,7 +727,7 @@ def test_load_driver_files_invalid_user_copy_keeps_builtin(tmp_path):
     )
     (user / "d.avcdriver").write_text("{{{{not yaml!!", encoding="utf-8")
 
-    from server.drivers.registry import unregister_driver
+    from openavc.drivers.registry import unregister_driver
 
     count = load_driver_files([builtin, user])
     try:
@@ -754,7 +754,7 @@ def test_load_python_drivers_user_copy_overrides_builtin(tmp_path):
         template.format(name="User Copy"), encoding="utf-8"
     )
 
-    from server.drivers.registry import unregister_driver
+    from openavc.drivers.registry import unregister_driver
 
     count = load_python_drivers([builtin, user])
     try:
@@ -776,7 +776,7 @@ def test_restore_driver_registration_restores_builtin(tmp_path):
         {**VALID_DEFINITION, "id": "acme_dup", "name": "Built-in"},
     )
 
-    from server.drivers.registry import is_driver_registered, unregister_driver
+    from openavc.drivers.registry import is_driver_registered, unregister_driver
 
     try:
         # As after deleting a user override: the built-in file remains.
@@ -850,7 +850,7 @@ def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
 
     # Simulate the canonical re-import failing after Step-1 validation passed
     # (a TOCTOU edit/delete of the file between validation and reload).
-    import server.drivers.driver_loader as dl
+    import openavc.drivers.driver_loader as dl
 
     monkeypatch.setattr(dl, "load_python_driver_file", lambda fp: None)
 
@@ -880,7 +880,7 @@ def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeyp
     module_name = "openavc_driver_ghost_driver"
     sys.modules[module_name] = object()  # stand-in resident module
     monkeypatch.setattr(
-        "server.drivers.driver_loader.is_driver_registered", lambda _id: False
+        "openavc.drivers.driver_loader.is_driver_registered", lambda _id: False
     )
     try:
         listed = list_python_drivers([tmp_path])
@@ -901,7 +901,7 @@ def test_list_python_drivers_reports_not_loaded(tmp_path, monkeypatch):
     filepath.write_text(src, encoding="utf-8")
     sys.modules.pop("openavc_driver_absent_driver", None)
     monkeypatch.setattr(
-        "server.drivers.driver_loader.is_driver_registered", lambda _id: False
+        "openavc.drivers.driver_loader.is_driver_registered", lambda _id: False
     )
 
     listed = list_python_drivers([tmp_path])
@@ -952,7 +952,7 @@ def test_regex_search_fast_pattern_within_budget():
 
 
 def test_driver_id_from_file_yaml(tmp_path):
-    from server.drivers.driver_loader import driver_id_from_file
+    from openavc.drivers.driver_loader import driver_id_from_file
 
     f = tmp_path / "weird_name.avcdriver"
     f.write_text("id: acme_widget\nname: Acme\ntransport: tcp\n", encoding="utf-8")
@@ -960,7 +960,7 @@ def test_driver_id_from_file_yaml(tmp_path):
 
 
 def test_driver_id_from_file_python(tmp_path):
-    from server.drivers.driver_loader import driver_id_from_file
+    from openavc.drivers.driver_loader import driver_id_from_file
 
     f = tmp_path / "weird_name.py"
     f.write_text(
@@ -975,7 +975,7 @@ def test_driver_id_from_file_python(tmp_path):
 def test_driver_id_from_file_python_does_not_execute_module(tmp_path):
     """The id is read via AST — a .py whose import would raise still yields
     its declared id (we never exec it)."""
-    from server.drivers.driver_loader import driver_id_from_file
+    from openavc.drivers.driver_loader import driver_id_from_file
 
     f = tmp_path / "boom.py"
     f.write_text(
@@ -987,7 +987,7 @@ def test_driver_id_from_file_python_does_not_execute_module(tmp_path):
 
 
 def test_driver_id_from_file_returns_none_on_garbage(tmp_path):
-    from server.drivers.driver_loader import driver_id_from_file
+    from openavc.drivers.driver_loader import driver_id_from_file
 
     bad_py = tmp_path / "bad.py"
     bad_py.write_text("this is (not valid python\n", encoding="utf-8")
@@ -1329,7 +1329,7 @@ def _write(tmp_path: Path, text: str, name: str = "acme_widget") -> Path:
 
 
 def test_count_comment_lines_counts_whole_line_comments(tmp_path):
-    from server.drivers.driver_loader import count_comment_lines
+    from openavc.drivers.driver_loader import count_comment_lines
 
     path = _write(tmp_path, COMMENTED_DRIVER)
     # The two leading `#` lines only — a trailing comment after a value is part
@@ -1338,21 +1338,21 @@ def test_count_comment_lines_counts_whole_line_comments(tmp_path):
 
 
 def test_count_comment_lines_counts_indented_comments(tmp_path):
-    from server.drivers.driver_loader import count_comment_lines
+    from openavc.drivers.driver_loader import count_comment_lines
 
     path = _write(tmp_path, "id: a\nname: A\ntransport: tcp\n    # indented\n")
     assert count_comment_lines(path) == 1
 
 
 def test_count_comment_lines_is_zero_for_a_file_without_any(tmp_path):
-    from server.drivers.driver_loader import count_comment_lines
+    from openavc.drivers.driver_loader import count_comment_lines
 
     path = _write(tmp_path, "id: a\nname: A\ntransport: tcp\n")
     assert count_comment_lines(path) == 0
 
 
 def test_count_comment_lines_on_a_missing_file_is_zero(tmp_path):
-    from server.drivers.driver_loader import count_comment_lines
+    from openavc.drivers.driver_loader import count_comment_lines
 
     assert count_comment_lines(tmp_path / "nope.avcdriver") == 0
 
@@ -1367,7 +1367,7 @@ def test_listing_reports_the_comment_count(tmp_path):
 def test_the_comment_count_is_stripped_before_a_save(tmp_path):
     """It is bookkeeping the server added, not a driver-format key. The save
     doors are strict about undeclared keys, so it has to come back off."""
-    from server.api.routes.drivers import _strip_listing_decorations
+    from openavc.api.routes.drivers import _strip_listing_decorations
 
     _write(tmp_path, COMMENTED_DRIVER)
     listed = list_driver_definitions([tmp_path])
@@ -1385,8 +1385,8 @@ def test_load_builtin_drivers_registers_the_generic_devices(monkeypatch):
     call is the only thing standing between a fresh process and an empty
     registry.
     """
-    from server.drivers import registry
-    from server.drivers.driver_loader import load_builtin_drivers
+    from openavc.drivers import registry
+    from openavc.drivers.driver_loader import load_builtin_drivers
 
     saved = dict(registry._DRIVER_REGISTRY)
     registry._DRIVER_REGISTRY.clear()
@@ -1408,8 +1408,8 @@ async def test_engine_start_registers_the_drivers_on_disk(tmp_path):
     look healthy and control nothing. Registered before the project loads,
     too, since resolving a device's config asks the registry what exists.
     """
-    from server.core.engine import Engine
-    from server.drivers import registry
+    from openavc.core.engine import Engine
+    from openavc.drivers import registry
 
     saved = dict(registry._DRIVER_REGISTRY)
     registry._DRIVER_REGISTRY.clear()

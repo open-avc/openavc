@@ -22,10 +22,10 @@ between them.
 
 import math
 
-from server.drivers.base import BaseDriver
-from server.drivers.compiled_protocol import state_var_default
-from simulator.validate import _default_for_type
-from simulator.yaml_auto import YAMLAutoSimulator
+from openavc.drivers.base import BaseDriver
+from openavc.drivers.compiled_protocol import state_var_default
+from openavc.simulator.validate import _default_for_type
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
 def _runtime(var_def):

@@ -5,14 +5,14 @@ that serves ``server.main:app`` (and therefore the ``/ws`` and ``/isc/ws``
 endpoints) must pin an explicit, tighter cap so the unauthenticated /
 pre-auth socket paths can't be handed a needlessly large frame. The aux
 HTTP->HTTPS redirect listener serves no WebSocket, so it is exempt (it is
-constructed from a passed-in ``app`` variable, not the ``"server.main:app"``
+constructed from a passed-in ``app`` variable, not the ``"openavc.main:app"``
 import string, so the AST filter below skips it).
 """
 
 import ast
 from pathlib import Path
 
-from server.main import _WS_MAX_SIZE
+from openavc.main import _WS_MAX_SIZE
 
 MAIN_PY = Path(__file__).resolve().parents[1] / "server" / "main.py"
 
@@ -30,7 +30,7 @@ def test_ws_max_size_is_tighter_than_uvicorn_default():
 
 def _app_listener_calls(tree):
     """Yield every uvicorn.Config / uvicorn.run Call node whose first positional
-    arg is the ``"server.main:app"`` string — i.e. a WebSocket-serving listener."""
+    arg is the ``"openavc.main:app"`` string — i.e. a WebSocket-serving listener."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -45,7 +45,7 @@ def _app_listener_calls(tree):
         if (
             node.args
             and isinstance(node.args[0], ast.Constant)
-            and node.args[0].value == "server.main:app"
+            and node.args[0].value == "openavc.main:app"
         ):
             yield node
 

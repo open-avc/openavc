@@ -14,11 +14,11 @@ is a public binary framing, not a device.
 
 import copy
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from server.transport.frame_parsers import LengthPrefixFrameParser
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.transport.frame_parsers import LengthPrefixFrameParser
 
 # Invented receiver over an eISCP-style transport: "!1"/"\r" inner ISCP framing,
 # wrapped in a 16-byte binary header (magic + header-size + 4-byte computed data
@@ -199,7 +199,7 @@ async def test_simulator_strips_and_wraps_send_frame():
     # End-to-end simulator parity: the auto-sim must strip the packet header on
     # read (or the binary length byte would mis-split a line reader) and re-wrap
     # its reply so the driver's frame parser can read it back.
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="dev1", config={}, driver_def=ACME_EISCP)
 

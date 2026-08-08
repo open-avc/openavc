@@ -16,7 +16,7 @@ pin both halves, including the one that must keep firing.
 
 from __future__ import annotations
 
-from simulator.validate import (
+from openavc.simulator.validate import (
     ValidationResult,
     _check_response_parsing,
     _extract_respond_calls,

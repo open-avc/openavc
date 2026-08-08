@@ -40,7 +40,7 @@ def _toolchain_reason() -> str | None:
     if not HARNESS.is_file():
         return "ui minimums harness missing"
     if not ARTIFACT.is_file():
-        return "uiMinimums.gen.ts missing (run python -m server.ui.minimums_gen)"
+        return "uiMinimums.gen.ts missing (run python -m openavc.ui.minimums_gen)"
     return None
 
 
@@ -76,14 +76,14 @@ def _value(results: dict, name: str):
 
 
 def test_the_table_loads_and_lists_every_type(harness_results: dict) -> None:
-    from server.ui.control_minimums import RULES
+    from openavc.ui.control_minimums import RULES
 
     assert _value(harness_results, "exports_the_table") == sorted(RULES)
     assert _value(harness_results, "exports_the_type_list") == sorted(RULES)
 
 
 def test_the_reference_screen_survives_generation(harness_results: dict) -> None:
-    from server.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX
+    from openavc.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX
 
     assert _value(harness_results, "reference_screen") == {
         "widthPx": REFERENCE_WIDTH_PX,

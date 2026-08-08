@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from server.drivers.registry import _DRIVER_REGISTRY, register_driver, unregister_driver
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.drivers.base import BaseDriver
-from server.core.project_loader import (
+from openavc.drivers.registry import _DRIVER_REGISTRY, register_driver, unregister_driver
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.drivers.base import BaseDriver
+from openavc.core.project_loader import (
     ProjectConfig,
     build_driver_dependencies,
     load_project,
     save_project,
 )
-from server.core.project_migration import CURRENT_VERSION, migrate_project
-from server.core.state_store import StateStore
+from openavc.core.project_migration import CURRENT_VERSION, migrate_project
+from openavc.core.state_store import StateStore
 
 
 # ---------------------------------------------------------------------------
@@ -541,7 +541,7 @@ class TestDriverDependencies:
         It runs once per unique driver on every save; globbing and parsing the
         library per call made saving a large project take seconds.
         """
-        import server.system_config as sc
+        import openavc.system_config as sc
 
         monkeypatch.setattr(sc, "DRIVER_REPO_DIR", Path("/nonexistent/driver_repo"))
 

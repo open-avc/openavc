@@ -12,26 +12,26 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.plugin_api import PluginAPI, PluginPermissionError
-from server.core.plugin_loader import (
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_api import PluginAPI, PluginPermissionError
+from openavc.core.plugin_loader import (
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
     get_platform_id,
     register_plugin_class,
     unregister_plugin_class,
 )
-from server.core.plugin_registry import PluginRegistry
-from server.core.plugin_test_harness import PluginTestHarness
-from server.core.project_loader import (
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.plugin_test_harness import PluginTestHarness
+from openavc.core.project_loader import (
     PluginConfig,
     PluginDependency,
     ProjectConfig,
     build_default_plugin_config,
     get_plugin_setup_fields,
 )
-from server.core.project_migration import CURRENT_VERSION, migrate_project
-from server.core.state_store import StateStore
+from openavc.core.project_migration import CURRENT_VERSION, migrate_project
+from openavc.core.state_store import StateStore
 
 
 # ──── Test Plugin Classes ────
@@ -542,7 +542,7 @@ class TestPluginAPI:
     def test_data_dir_creates_per_plugin_subdir(self, plugin_api, tmp_path, monkeypatch):
         """api.data_dir resolves to PLUGIN_DATA_DIR / <plugin_id>, mkdir-ed on first access."""
         data_root = tmp_path / "plugin_data"
-        monkeypatch.setattr("server.system_config.PLUGIN_DATA_DIR", data_root)
+        monkeypatch.setattr("openavc.system_config.PLUGIN_DATA_DIR", data_root)
         # The data dir for this plugin should not exist yet
         assert not (data_root / "sample").exists()
 
@@ -554,7 +554,7 @@ class TestPluginAPI:
     def test_data_dir_is_cached_after_first_access(self, plugin_api, tmp_path, monkeypatch):
         """Subsequent accesses return the same Path without re-mkdir-ing."""
         data_root = tmp_path / "plugin_data"
-        monkeypatch.setattr("server.system_config.PLUGIN_DATA_DIR", data_root)
+        monkeypatch.setattr("openavc.system_config.PLUGIN_DATA_DIR", data_root)
         first = plugin_api.data_dir
         # Even if the dir is removed externally, the cached path is returned.
         # (Real plugins won't see this — exercises the cache semantics.)
@@ -565,7 +565,7 @@ class TestPluginAPI:
 
     def test_data_dir_does_not_require_capability(self, wired, mock_macros, mock_devices):
         """data_dir is unconditional — file I/O is the plugin's responsibility."""
-        from server.core.plugin_registry import PluginRegistry
+        from openavc.core.plugin_registry import PluginRegistry
         state, events = wired
         reg = PluginRegistry("no_caps")
         api_no_caps = PluginAPI(
@@ -960,7 +960,7 @@ class TestPluginLoader:
         assert "Invalid category" in error
 
     def test_validate_manifest_rejects_too_new_min_version(self, loader, monkeypatch):
-        monkeypatch.setattr("server.version.__version__", "0.5.0")
+        monkeypatch.setattr("openavc.version.__version__", "0.5.0")
 
         class FuturePlugin:
             PLUGIN_INFO = {
@@ -984,7 +984,7 @@ class TestPluginLoader:
         skipped rather than raising. Regression: a missing 'packaging' dep
         turned plugin-enable into a 500 because validate_manifest imported it
         unguarded, before start_plugin's try/except."""
-        monkeypatch.setattr("server.version.__version__", "0.5.0")
+        monkeypatch.setattr("openavc.version.__version__", "0.5.0")
         monkeypatch.setitem(sys.modules, "packaging", None)
         monkeypatch.setitem(sys.modules, "packaging.version", None)
 

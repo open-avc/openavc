@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from server.main import app
-from server.api import rest, ws
-from server.core.state_store import StateStore
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
+from openavc.main import app
+from openavc.api import rest, ws
+from openavc.core.state_store import StateStore
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
 
 
 def _make_mock_engine():
@@ -202,7 +202,7 @@ def test_device_update_preserves_pending_settings(client, tmp_path):
     _apply_pending_settings() would then have nothing to apply.
     """
     from unittest.mock import patch
-    from server.core.project_loader import DeviceConfig
+    from openavc.core.project_loader import DeviceConfig
 
     c, engine = client
     existing = DeviceConfig(
@@ -221,7 +221,7 @@ def test_device_update_preserves_pending_settings(client, tmp_path):
     )
     engine.devices.update_device = AsyncMock()
 
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.patch("/api/devices/dev1", json={"name": "Renamed"})
 
     assert resp.status_code == 200
@@ -239,7 +239,7 @@ def test_device_update_preserves_forward_compat_extra_fields(client, tmp_path):
     silently dropped by rebuilding a fresh DeviceConfig from known fields only.
     """
     from unittest.mock import patch
-    from server.core.project_loader import DeviceConfig
+    from openavc.core.project_loader import DeviceConfig
 
     c, engine = client
     # extra='allow' parks an unknown top-level field in __pydantic_extra__.
@@ -260,7 +260,7 @@ def test_device_update_preserves_forward_compat_extra_fields(client, tmp_path):
     )
     engine.devices.update_device = AsyncMock()
 
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.patch("/api/devices/dev1", json={"name": "Renamed"})
 
     assert resp.status_code == 200
@@ -332,7 +332,7 @@ def test_bulk_connections_drops_unknown_device_ids(client, tmp_path):
         "real2": {"host": "10.0.0.2"},
         "ghost": {"host": "10.0.0.9"},
     }
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.put("/api/connections", json=table)
 
     assert resp.status_code == 200
@@ -359,7 +359,7 @@ def test_import_connections_drops_unknown_device_ids(client, tmp_path):
         "real1": {"host": "10.0.0.1", "_device_name": "Projector"},
         "stale": {"host": "10.0.0.9"},
     }
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.post("/api/connections/import", json=table)
 
     assert resp.status_code == 200
@@ -451,7 +451,7 @@ def test_logs_recent_category_scans_whole_buffer(client):
     """category must filter the whole buffer before the count slice — a busy
     log otherwise returns zero matches once newer entries push the requested
     category out of the newest `count` window."""
-    from server.utils.log_buffer import LogEntry, get_log_buffer
+    from openavc.utils.log_buffer import LogEntry, get_log_buffer
 
     c, engine = client
     buf = get_log_buffer()

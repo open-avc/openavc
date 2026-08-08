@@ -3,7 +3,7 @@
 import copy
 
 
-from server.core.project_migration import (
+from openavc.core.project_migration import (
     CURRENT_VERSION,
     migrate_0_1_to_0_2,
     migrate_0_2_to_0_3,
@@ -232,7 +232,7 @@ class TestMigrate03To04:
         # A group named "Row.1" must not produce a dotted id — DeviceGroup's
         # validator rejects dots, which previously made the whole project
         # unloadable after auto-migration.
-        from server.core.project_loader import DeviceGroup
+        from openavc.core.project_loader import DeviceGroup
 
         data = make_v03_project()
         data["devices"][0]["group"] = "Row.1"

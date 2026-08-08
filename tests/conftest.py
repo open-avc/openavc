@@ -38,10 +38,10 @@ os.environ.setdefault("OPENAVC_STRICT_DRIVER_STATE", "1")
 
 import pytest
 
-from server.drivers.driver_loader import load_builtin_drivers
-from server.drivers.registry import register_driver
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
+from openavc.drivers.driver_loader import load_builtin_drivers
+from openavc.drivers.registry import register_driver
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
 from tests.drivers.acme_display import AcmeDisplayDriver
 from tests.drivers.acme_power_relay import AcmePowerRelayDriver
 from tests.simulators.acme_display_simulator import AcmeDisplaySimulator
@@ -88,7 +88,7 @@ def _isolated_system_config(tmp_path_factory):
     tidy per-session tmp dir (auto-cleaned by pytest) and resets the config
     singleton so ``get_system_config()`` callers see the same isolation.
     """
-    from server.system_config import reset_system_config
+    from openavc.system_config import reset_system_config
     data_dir = tmp_path_factory.mktemp("openavc_test_data")
     prior = os.environ.get("OPENAVC_DATA_DIR")
     os.environ["OPENAVC_DATA_DIR"] = str(data_dir)
@@ -106,7 +106,7 @@ def _reset_global_state():
     """Reset all global module-level state after each test to prevent leakage."""
     yield
     # Reset API module engine references
-    from server.api import rest, ws, plugins, themes, assets
+    from openavc.api import rest, ws, plugins, themes, assets
     rest.set_engine(None)
     ws.set_engine(None)
     ws._log_subscriptions.clear()
@@ -115,12 +115,12 @@ def _reset_global_state():
     assets.set_engine(None)
     # Reset discovery engine reference
     try:
-        from server.api import discovery
+        from openavc.api import discovery
         discovery._app_engine = None
     except (ImportError, AttributeError):
         pass
     # Reset plugin class registry to prevent test cross-contamination
-    from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, _REGISTRY_LOCK
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, _REGISTRY_LOCK
     with _REGISTRY_LOCK:
         _PLUGIN_CLASS_REGISTRY.clear()
 
@@ -138,14 +138,14 @@ def _reset_rate_limit_buckets():
     itself (test_rate_limit.py) trip the limit from a clean bucket within their
     own test, so this stays compatible with them.
     """
-    from server.middleware.rate_limit import _ip_buckets, _warn_dedup
+    from openavc.middleware.rate_limit import _ip_buckets, _warn_dedup
     _ip_buckets.clear()
     _warn_dedup.clear()
     # Also clear the per-key macro/trigger "fire now" debounce (a separate
     # module-level window in api/_engine). Two tests firing the same macro or
     # trigger id within 2s would otherwise spill a 429 / throttle-error into
     # the second one.
-    from server.api._engine import _test_endpoint_last_call
+    from openavc.api._engine import _test_endpoint_last_call
     _test_endpoint_last_call.clear()
     yield
 

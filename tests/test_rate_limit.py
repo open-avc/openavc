@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from server.middleware.rate_limit import (
+from openavc.middleware.rate_limit import (
     RateLimitMiddleware,
     _classify,
     _ip_buckets,
@@ -110,11 +110,11 @@ def _clean_state():
 @pytest.fixture(autouse=True)
 def _patch_config(monkeypatch):
     """Ensure consistent config for all tests."""
-    monkeypatch.setattr("server.config.RATE_LIMIT_ENABLED", True)
-    monkeypatch.setattr("server.config.RATE_LIMIT_OPEN_PER_MINUTE", 120)
-    monkeypatch.setattr("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 60)
-    monkeypatch.setattr("server.config.RATE_LIMIT_CONTROL_PER_MINUTE", 120)
-    monkeypatch.setattr("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 10)
+    monkeypatch.setattr("openavc.config.RATE_LIMIT_ENABLED", True)
+    monkeypatch.setattr("openavc.config.RATE_LIMIT_OPEN_PER_MINUTE", 120)
+    monkeypatch.setattr("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 60)
+    monkeypatch.setattr("openavc.config.RATE_LIMIT_CONTROL_PER_MINUTE", 120)
+    monkeypatch.setattr("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 10)
 
 
 # --- Path classification ---
@@ -188,7 +188,7 @@ def test_open_tier_high_limit():
     app = _make_app(open_limit=5)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_OPEN_PER_MINUTE", 5):
+    with patch("openavc.config.RATE_LIMIT_OPEN_PER_MINUTE", 5):
         _reset_state()
         for i in range(5):
             r = client.get("/api/status")
@@ -201,7 +201,7 @@ def test_standard_tier_limit():
     app = _make_app(standard_limit=3)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 3):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 3):
         _reset_state()
         for _ in range(3):
             r = client.get("/api/devices")
@@ -214,7 +214,7 @@ def test_strict_tier_limit():
     app = _make_app(strict_limit=2)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         for _ in range(2):
             r = client.post("/api/cloud/pair")
@@ -228,7 +228,7 @@ def test_strict_exceeded_blocks_only_strict():
     app = _make_app(strict_limit=2)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         # Exhaust strict tier
         for _ in range(2):
@@ -251,7 +251,7 @@ def test_auth_failure_throttles_every_tier_at_strict_rate():
     app = _make_app(auth_status=401, strict_limit=2)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         # Two auth failures (the strict/brute-force limit).
         for _ in range(2):
@@ -273,8 +273,8 @@ def test_brute_force_probing_throttled_at_strict_rate_not_standard():
     app = _make_app(auth_status=401, standard_limit=60, strict_limit=3)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 60), \
-         patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 3):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 60), \
+         patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 3):
         _reset_state()
         # /api/protected classifies as standard, but only 3 probes get through.
         for _ in range(3):
@@ -290,7 +290,7 @@ def test_legit_strict_usage_does_not_trip_brute_force_counter():
     app = _make_app(strict_limit=2)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         for _ in range(2):
             assert client.post("/api/cloud/pair").status_code == 200
@@ -305,7 +305,7 @@ def test_429_response_format():
     app = _make_app(standard_limit=1)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         client.get("/api/devices")
         r = client.get("/api/devices")
@@ -318,11 +318,11 @@ def test_429_response_format():
 
 
 def test_disabled_via_config(monkeypatch):
-    monkeypatch.setattr("server.config.RATE_LIMIT_ENABLED", False)
+    monkeypatch.setattr("openavc.config.RATE_LIMIT_ENABLED", False)
     app = _make_app(standard_limit=1)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         # Should not be rate-limited even though limit is 1
         client.get("/api/devices")
@@ -335,7 +335,7 @@ def test_options_not_limited():
     app = _make_app(standard_limit=1)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         # Exhaust the limit
         client.get("/api/devices")
@@ -353,7 +353,7 @@ def test_commissioning_traffic_does_not_share_the_strict_bucket():
     app = _make_app()
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STRICT_PER_MINUTE", 2):
         _reset_state()
         # Exhaust the strict/security window
         for _ in range(2):
@@ -370,7 +370,7 @@ def test_control_tier_has_its_own_limit():
     app = _make_app()
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_CONTROL_PER_MINUTE", 3):
+    with patch("openavc.config.RATE_LIMIT_CONTROL_PER_MINUTE", 3):
         _reset_state()
         for _ in range(3):
             assert client.post("/api/devices/d1/command").status_code == 200
@@ -385,7 +385,7 @@ def test_tiers_are_independent():
     app = _make_app()
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_OPEN_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_OPEN_PER_MINUTE", 2):
         _reset_state()
         # Exhaust open tier
         for _ in range(2):
@@ -403,7 +403,7 @@ def test_library_routes_are_standard_tier():
     app = _make_app()
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 2):
         _reset_state()
         # First two library hits succeed (standard limit = 2)
         assert client.get("/api/library").status_code == 200
@@ -433,18 +433,18 @@ def _req_with_xff(peer_host: str, xff: str | None) -> Request:
 def test_xff_ignored_by_default(monkeypatch):
     """Default posture: X-Forwarded-For is NOT trusted, so the real TCP peer is
     used and a client can't spoof its source IP."""
-    from server.middleware.rate_limit import _get_client_ip
+    from openavc.middleware.rate_limit import _get_client_ip
 
-    monkeypatch.setattr("server.config.TRUST_FORWARDED_FOR", False)
+    monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", False)
     req = _req_with_xff("203.0.113.9", "127.0.0.1")
     assert _get_client_ip(req) == "203.0.113.9"
 
 
 def test_xff_honored_when_trusted(monkeypatch):
     """When explicitly behind a trusted proxy, the first XFF hop is used."""
-    from server.middleware.rate_limit import _get_client_ip
+    from openavc.middleware.rate_limit import _get_client_ip
 
-    monkeypatch.setattr("server.config.TRUST_FORWARDED_FOR", True)
+    monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", True)
     req = _req_with_xff("10.0.0.1", "198.51.100.7, 10.0.0.1")
     assert _get_client_ip(req) == "198.51.100.7"
 
@@ -453,11 +453,11 @@ def test_spoofed_xff_localhost_does_not_exempt(monkeypatch):
     """Security regression: a client must not be able to spoof
     `X-Forwarded-For: 127.0.0.1` to claim the localhost rate-limit exemption
     (which would also defeat the 401 brute-force counter)."""
-    monkeypatch.setattr("server.config.TRUST_FORWARDED_FOR", False)
+    monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", False)
     app = _make_app(standard_limit=1)
     client = TestClient(app)
 
-    with patch("server.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         spoof = {"X-Forwarded-For": "127.0.0.1"}
         assert client.get("/api/devices", headers=spoof).status_code == 200

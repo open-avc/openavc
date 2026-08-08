@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import server.core.trigger_engine as te
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.state_store import StateStore
-from server.core.trigger_engine import TriggerEngine
+import openavc.core.trigger_engine as te
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.state_store import StateStore
+from openavc.core.trigger_engine import TriggerEngine
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def trigger_engine(core, macro_engine):
 
 
 def test_eval_operator():
-    from server.core.condition_eval import eval_operator as ev_fn
+    from openavc.core.condition_eval import eval_operator as ev_fn
     ev = ev_fn
     assert ev("eq", 42, 42) is True
     assert ev("eq", 42, 43) is False

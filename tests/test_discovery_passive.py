@@ -6,7 +6,7 @@ import struct
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from server.discovery.mdns_scanner import (
+from openavc.discovery.mdns_scanner import (
     MDNSScanner,
     MDNSResult,
     encode_dns_name,
@@ -26,8 +26,8 @@ from server.discovery.mdns_scanner import (
     _parse_txt_rdata,
     _extract_instance_name,
 )
-from server.discovery.amx_ddp_scanner import AMXDDPScanner
-from server.discovery.ssdp_scanner import (
+from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
+from openavc.discovery.ssdp_scanner import (
     SSDPScanner,
     SSDPResult,
     parse_ssdp_response,
@@ -42,11 +42,11 @@ from server.discovery.ssdp_scanner import (
     SSDP_ADDR,
     SSDP_PORT,
 )
-from server.discovery.result import (
+from openavc.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
 )
-from server.discovery.engine import DiscoveryEngine
+from openavc.discovery.engine import DiscoveryEngine
 
 
 # ============================================================
@@ -584,7 +584,7 @@ class TestMDNSScanner:
         """Should return empty results if socket creation fails."""
         scanner = MDNSScanner()
         with patch(
-            "server.discovery.mdns_scanner._create_mdns_socket",
+            "openavc.discovery.mdns_scanner._create_mdns_socket",
             side_effect=OSError("Permission denied"),
         ):
             results = await scanner.start(duration=0.1)
@@ -778,7 +778,7 @@ class TestMDNSFloodGuards:
         scanner._cap_warned = True
         scanner._pending_cap_warned = True
         with patch(
-            "server.discovery.mdns_scanner._create_mdns_socket",
+            "openavc.discovery.mdns_scanner._create_mdns_socket",
             side_effect=OSError("no socket"),
         ):
             await scanner.start(duration=0.1)
@@ -1056,7 +1056,7 @@ class TestSSDPScanner:
         """
         scanner = SSDPScanner()
         with patch(
-            "server.discovery.ssdp_scanner._create_search_socket",
+            "openavc.discovery.ssdp_scanner._create_search_socket",
             side_effect=OSError("Permission denied"),
         ):
             results = await scanner.scan(timeout=0.1)
@@ -1194,7 +1194,7 @@ class TestSSDPHttpGet:
         </root>"""
 
         with patch(
-            "server.discovery.ssdp_scanner._http_get",
+            "openavc.discovery.ssdp_scanner._http_get",
             new_callable=AsyncMock,
             return_value=xml_body,
         ):
@@ -1212,7 +1212,7 @@ class TestSSDPHttpGet:
             location="http://192.168.1.50:49152/desc.xml"
         )
         with patch(
-            "server.discovery.ssdp_scanner._http_get",
+            "openavc.discovery.ssdp_scanner._http_get",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -1318,7 +1318,7 @@ class TestSSDPLocationSSRFGuard:
             location="http://10.0.0.5:6379/desc.xml",
         )
         with patch(
-            "server.discovery.ssdp_scanner._http_get",
+            "openavc.discovery.ssdp_scanner._http_get",
             new_callable=AsyncMock,
         ) as mock_get:
             await scanner._fetch_single_description(result)
@@ -1338,7 +1338,7 @@ class TestSSDPLocationSSRFGuard:
             "<friendlyName>Own Device</friendlyName></device></root>"
         )
         with patch(
-            "server.discovery.ssdp_scanner._http_get",
+            "openavc.discovery.ssdp_scanner._http_get",
             new_callable=AsyncMock,
             return_value=xml_body,
         ) as mock_get:
@@ -1369,7 +1369,7 @@ class TestSSDPLocationSSRFGuard:
             return None
 
         with patch(
-            "server.discovery.ssdp_scanner._http_get",
+            "openavc.discovery.ssdp_scanner._http_get",
             side_effect=fake_get,
         ):
             await scanner._fetch_descriptions()
@@ -1438,7 +1438,7 @@ class TestSSDPSocketJoinsGroup:
     """The listening socket must join the SSDP group, not just bind ephemeral."""
 
     def test_socket_binds_port_and_joins_group(self):
-        from server.discovery import ssdp_scanner as mod
+        from openavc.discovery import ssdp_scanner as mod
 
         created = {}
 
@@ -1473,7 +1473,7 @@ class TestSSDPSocketJoinsGroup:
         assert mock_join.call_args.args[1] == SSDP_ADDR
 
     def test_socket_raises_when_no_interface_joins(self):
-        from server.discovery import ssdp_scanner as mod
+        from openavc.discovery import ssdp_scanner as mod
 
         class FakeSocket:
             def __init__(self, *a, **k):

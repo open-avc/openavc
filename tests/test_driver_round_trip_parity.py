@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from server.api.models import DriverDefinitionRequest
+from openavc.api.models import DriverDefinitionRequest
 from tests import gates
 
 # The community driver library normally sits beside this repo in the

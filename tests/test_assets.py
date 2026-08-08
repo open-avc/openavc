@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.core.engine import Engine
-from server.main import app
-from server.api import rest, assets as assets_api
+from openavc.core.engine import Engine
+from openavc.main import app
+from openavc.api import rest, assets as assets_api
 
 
 TEST_PROJECT = {
@@ -33,7 +33,7 @@ async def client():
 
     engine = Engine(tmp_path)
 
-    from server.core.project_loader import load_project
+    from openavc.core.project_loader import load_project
     engine.project = load_project(tmp_path)
     engine._running = True
 
@@ -288,8 +288,8 @@ async def test_delete_audio(client):
 
 def _seed_library_project(monkeypatch, tmp_path, project_id, files):
     """Create a saved library project with the given assets under a temp lib dir."""
-    from server import config
-    from server.core.project_library import sanitize_id
+    from openavc import config
+    from openavc.core.project_library import sanitize_id
 
     lib_root = tmp_path / "saved_projects"
     monkeypatch.setattr(config, "SAVED_PROJECTS_DIR", lib_root)
@@ -316,7 +316,7 @@ async def test_list_scoped_to_library_project(client, monkeypatch, tmp_path):
 
 
 async def test_list_unknown_project_is_empty(client, monkeypatch, tmp_path):
-    from server import config
+    from openavc import config
     monkeypatch.setattr(config, "SAVED_PROJECTS_DIR", tmp_path / "saved_projects")
     resp = client.get("/api/projects/does-not-exist/assets")
     assert resp.status_code == 200

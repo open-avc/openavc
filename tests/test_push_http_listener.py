@@ -14,11 +14,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from server.transport import http_listener as hl
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.transport import http_listener as hl
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "dev1"):
@@ -170,7 +170,7 @@ async def test_loopback_subscription_accepts_local_sources():
 def _break_interface_enumeration(monkeypatch, default_route=None):
     """Make this host's own addresses undiscoverable, as on a frozen build
     whose bundle dropped the enumeration dependency."""
-    import server.discovery.network_scanner as ns
+    import openavc.discovery.network_scanner as ns
 
     def _boom():
         raise RuntimeError("interface enumeration unavailable")
@@ -288,7 +288,7 @@ class _StubSystemConfig:
 
 @pytest.fixture
 def _no_pin(monkeypatch):
-    import server.system_config as system_config
+    import openavc.system_config as system_config
 
     monkeypatch.setattr(
         system_config, "get_system_config", lambda: _StubSystemConfig("")
@@ -296,7 +296,7 @@ def _no_pin(monkeypatch):
 
 
 def test_callback_url_plain_http(monkeypatch, _no_pin):
-    from server import config
+    from openavc import config
 
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     monkeypatch.setattr(config, "HTTP_PORT", 8080)
@@ -307,7 +307,7 @@ def test_callback_url_plain_http(monkeypatch, _no_pin):
 def test_callback_url_tls_with_redirect_stays_http(monkeypatch, _no_pin):
     """With the redirect listener up, devices deliver plain HTTP to the HTTP
     port — the push pass-through serves them there."""
-    from server import config
+    from openavc import config
 
     monkeypatch.setattr(config, "TLS_ENABLED", True)
     monkeypatch.setattr(config, "TLS_REDIRECT_HTTP", True)
@@ -317,7 +317,7 @@ def test_callback_url_tls_with_redirect_stays_http(monkeypatch, _no_pin):
 
 
 def test_callback_url_https_only(monkeypatch, _no_pin):
-    from server import config
+    from openavc import config
 
     monkeypatch.setattr(config, "TLS_ENABLED", True)
     monkeypatch.setattr(config, "TLS_REDIRECT_HTTP", False)
@@ -327,8 +327,8 @@ def test_callback_url_https_only(monkeypatch, _no_pin):
 
 
 def test_callback_url_honors_control_interface_pin(monkeypatch):
-    import server.system_config as system_config
-    from server import config
+    import openavc.system_config as system_config
+    from openavc import config
 
     monkeypatch.setattr(
         system_config,
@@ -342,7 +342,7 @@ def test_callback_url_honors_control_interface_pin(monkeypatch):
 
 
 def test_callback_url_loopback_device_gets_loopback(monkeypatch, _no_pin):
-    from server import config
+    from openavc import config
 
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     monkeypatch.setattr(config, "HTTP_PORT", 8080)
@@ -356,7 +356,7 @@ def test_callback_url_loopback_device_gets_loopback(monkeypatch, _no_pin):
 
 
 def _push_app() -> FastAPI:
-    from server.api.routes import push as push_routes
+    from openavc.api.routes import push as push_routes
 
     app = FastAPI()
     app.include_router(push_routes.open_router, prefix="/api")
@@ -409,7 +409,7 @@ async def test_redirect_listener_passes_push_through(monkeypatch):
     """With HTTPS + redirect enabled, the HTTP listener redirects everything
     EXCEPT /api/push/, which it serves in-process — devices don't follow
     redirects."""
-    from server.main import _build_redirect_app
+    from openavc.main import _build_redirect_app
 
     drv = _make_driver(_codec_def(), {"host": "127.0.0.1"})
     await drv._start_push()
@@ -434,7 +434,7 @@ async def test_redirect_listener_passes_push_through(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_push_sets_callback_url(monkeypatch, _no_pin):
-    from server import config
+    from openavc import config
 
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     monkeypatch.setattr(config, "HTTP_PORT", 8080)
@@ -451,7 +451,7 @@ async def test_start_push_sets_callback_url(monkeypatch, _no_pin):
 
 @pytest.mark.asyncio
 async def test_push_callback_url_substitutes_in_commands(monkeypatch, _no_pin):
-    from server import config
+    from openavc import config
 
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     monkeypatch.setattr(config, "HTTP_PORT", 8080)
@@ -525,7 +525,7 @@ def _sim_def() -> dict:
 
 
 def test_sim_detects_http_listener_push():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     assert sim._push_http is True
@@ -533,7 +533,7 @@ def test_sim_detects_http_listener_push():
 
 
 def test_sim_register_callback_via_script_handler():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     resp = sim.handle_command(
@@ -550,7 +550,7 @@ def test_sim_register_callback_via_script_handler():
 
 @pytest.mark.asyncio
 async def test_sim_posts_notification_to_registered_callback(monkeypatch):
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     posted: list[tuple[str, str, dict]] = []
@@ -574,7 +574,7 @@ async def test_sim_posts_notification_to_registered_callback(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_sim_without_registration_posts_nothing(monkeypatch):
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     posted: list[tuple[str, str]] = []
@@ -589,7 +589,7 @@ async def test_sim_without_registration_posts_nothing(monkeypatch):
 
 
 def test_sim_unregister_callback():
-    from simulator.yaml_auto import YAMLAutoSimulator
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=_sim_def())
     sim.register_callback("http://10.0.0.2:8080/api/push/dev1")

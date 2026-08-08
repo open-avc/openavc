@@ -1,7 +1,7 @@
 """The generated control-minimum types must match the rules.
 
 ``server/ui/control_minimums.py`` holds the rules; ``python -m
-server.ui.minimums_gen`` renders them into the Programmer IDE's
+openavc.ui.minimums_gen`` renders them into the Programmer IDE's
 ``uiMinimums.gen.ts``. This re-renders and compares byte-for-byte, so editing
 the rules without regenerating -- or hand-editing the artifact -- fails CI
 instead of letting the two surfaces quietly hold different numbers.
@@ -13,19 +13,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from server.ui.control_minimums import RULES
-from server.ui.minimums_gen import ARTIFACT, render
+from openavc.ui.control_minimums import RULES
+from openavc.ui.minimums_gen import ARTIFACT, render
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_committed_artifact_matches_the_rules() -> None:
     path = REPO_ROOT / ARTIFACT
-    assert path.is_file(), f"{ARTIFACT} is missing -- run 'python -m server.ui.minimums_gen'"
+    assert path.is_file(), f"{ARTIFACT} is missing -- run 'python -m openavc.ui.minimums_gen'"
     committed = path.read_text(encoding="utf-8").replace("\r\n", "\n")
     assert committed == render(), (
         f"{ARTIFACT} does not match the rules -- regenerate with "
-        f"'python -m server.ui.minimums_gen' (never edit it by hand)"
+        f"'python -m openavc.ui.minimums_gen' (never edit it by hand)"
     )
 
 

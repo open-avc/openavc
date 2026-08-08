@@ -22,9 +22,9 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 
-from server.discovery import engine as engine_mod
-from server.discovery.engine import DiscoveryEngine, _ip_in_subnets
-from server.discovery.result import (
+from openavc.discovery import engine as engine_mod
+from openavc.discovery.engine import DiscoveryEngine, _ip_in_subnets
+from openavc.discovery.result import (
     DiscoveredDevice,
     Evidence,
     SignalTier,
@@ -91,24 +91,24 @@ class TestBackgroundTaskCleanup:
         captured = _spy_on_cleanup(engine)
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = _hanging_scanner_mocks()
 
-        with patch("server.discovery.engine.ping_sweep",
+        with patch("openavc.discovery.engine.ping_sweep",
                    new_callable=AsyncMock, return_value=["10.77.0.10"]), \
-             patch("server.discovery.engine.harvest_arp_table",
+             patch("openavc.discovery.engine.harvest_arp_table",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine.netbios_sweep",
+             patch("openavc.discovery.engine.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine.scan_host_ports",
+             patch("openavc.discovery.engine.scan_host_ports",
                    new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.grab_banners",
+             patch("openavc.discovery.engine.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.engine._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}), \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
              patch.object(engine, "_collect_passive_results",
                           side_effect=RuntimeError("boom")):
             with pytest.raises(RuntimeError, match="boom"):
@@ -128,11 +128,11 @@ class TestBackgroundTaskCleanup:
         async def ping_boom(*a, **kw):
             raise RuntimeError("ping failed")
 
-        with patch("server.discovery.engine.ping_sweep", side_effect=ping_boom), \
-             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", snmp_cls):
+        with patch("openavc.discovery.engine.ping_sweep", side_effect=ping_boom), \
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
             with pytest.raises(RuntimeError, match="ping failed"):
                 await engine._scan_pipeline_inner(["10.77.0.0/24"])
 
@@ -199,25 +199,25 @@ class TestEvidenceResetOnScanStart:
 
         async def run_one():
             with patch.object(engine, "_run_scan", fake_run_scan), \
-                 patch("server.discovery.engine.ping_sweep",
+                 patch("openavc.discovery.engine.ping_sweep",
                        side_effect=fake_ping), \
-                 patch("server.discovery.engine.harvest_arp_table",
+                 patch("openavc.discovery.engine.harvest_arp_table",
                        new_callable=AsyncMock,
                        return_value={"10.77.0.7": "aa:bb:cc:dd:ee:ff"}), \
-                 patch("server.discovery.engine.netbios_sweep",
+                 patch("openavc.discovery.engine.netbios_sweep",
                        new_callable=AsyncMock, return_value={}), \
-                 patch("server.discovery.engine.scan_host_ports",
+                 patch("openavc.discovery.engine.scan_host_ports",
                        new_callable=AsyncMock, return_value=[]), \
-                 patch("server.discovery.engine.grab_banners",
+                 patch("openavc.discovery.engine.grab_banners",
                        new_callable=AsyncMock, return_value={}), \
-                 patch("server.discovery.engine._resolve_hostnames",
+                 patch("openavc.discovery.engine._resolve_hostnames",
                        new_callable=AsyncMock, return_value={}), \
                  patch.object(engine.community_index, "get_drivers",
                               new_callable=AsyncMock, return_value=[]), \
-                 patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-                 patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-                 patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-                 patch("server.discovery.engine.SNMPScanner", snmp_cls):
+                 patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+                 patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+                 patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+                 patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
                 await engine.start_scan(subnets=["10.77.0.0/24"])
                 await engine._scan_task  # run the inline pipeline to completion
 
@@ -362,7 +362,7 @@ class TestMergePriority:
         dev.category = "projector"
         assert not dev.mac             # eligible for the late harvest
 
-        with patch("server.discovery.engine.harvest_arp_table",
+        with patch("openavc.discovery.engine.harvest_arp_table",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "AA:BB:CC:DD:EE:FF"}), \
              patch.object(engine.oui_db, "lookup",
@@ -392,28 +392,28 @@ class TestMergePriority:
         amx_cls.return_value.start = AsyncMock(return_value={})
         snmp_cls.return_value.scan_devices = AsyncMock(return_value={})
 
-        with patch("server.discovery.engine.ping_sweep",
+        with patch("openavc.discovery.engine.ping_sweep",
                    new_callable=AsyncMock, return_value=["10.77.0.61"]), \
-             patch("server.discovery.engine.harvest_arp_table",
+             patch("openavc.discovery.engine.harvest_arp_table",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "AA:BB:CC:DD:EE:FF"}), \
-             patch("server.discovery.engine.netbios_sweep",
+             patch("openavc.discovery.engine.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine.scan_host_ports",
+             patch("openavc.discovery.engine.scan_host_ports",
                    new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.grab_banners",
+             patch("openavc.discovery.engine.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.engine._resolve_hostnames",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "projector-b.example.edu"}), \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
              patch.object(engine.oui_db, "lookup",
                           return_value=("ASUSTek COMPUTER INC.", "networking")), \
-             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", snmp_cls):
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
             await engine._scan_pipeline_inner(["10.77.0.0/24"])
 
         d = engine.results["10.77.0.61"]
@@ -433,8 +433,8 @@ class TestTcpProbeRateLimit:
     limiter to the TCP active probe."""
 
     async def test_engine_hands_rate_limiter_to_tcp_probe(self):
-        from server.discovery.hints import parse_driver_discovery
-        from server.discovery.probe_runner import RateLimiter
+        from openavc.discovery.hints import parse_driver_discovery
+        from openavc.discovery.probe_runner import RateLimiter
 
         engine = DiscoveryEngine()
         hint = parse_driver_discovery({
@@ -482,15 +482,15 @@ class TestPingTotalAccounting:
 
         subnets = ["10.77.0.0/24", "10.0.0.0/16", "garbage/99"]
 
-        with patch("server.discovery.engine.ping_sweep",
+        with patch("openavc.discovery.engine.ping_sweep",
                    new_callable=AsyncMock, return_value=[]) as mock_ping, \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", snmp_cls), \
-             patch("server.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.engine._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}):
             # Must NOT raise on the malformed CIDR.
             await engine._scan_pipeline_inner(subnets)

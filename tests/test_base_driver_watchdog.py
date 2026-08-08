@@ -12,9 +12,9 @@ from typing import Any
 import httpx
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver
 
 
 class _CountingDriver(BaseDriver):
@@ -169,7 +169,7 @@ async def test_watchdog_classifies_specific_fault_from_poll_error() -> None:
     """A plain ConnectionError whose message names a specific cause is
     classified (connection_refused) rather than defaulting to no_response, so a
     state-change trigger sees the right offline edge."""
-    from server.core.connection_fault import CONNECTION_REFUSED
+    from openavc.core.connection_fault import CONNECTION_REFUSED
 
     drv = _make_driver()
     drv.config["host"] = "192.0.2.1"
@@ -192,7 +192,7 @@ async def test_watchdog_uses_no_response_for_a_generic_drop() -> None:
     no_response wording (the classifier's generic transport_disconnected
     fallback would read as 'connection dropped', which is less accurate for a
     device that was answering and then went quiet)."""
-    from server.core.connection_fault import NO_RESPONSE
+    from openavc.core.connection_fault import NO_RESPONSE
 
     drv = _make_driver()
     drv._connected = True

@@ -51,7 +51,7 @@ def test_every_spawn_passes_creationflags():
 
     assert not offenders, (
         "Child-process spawn(s) missing creationflags — pass "
-        "server.utils.spawn.CREATE_NO_WINDOW so a console-less server on "
+        "openavc.utils.spawn.CREATE_NO_WINDOW so a console-less server on "
         "Windows doesn't pop a console window per child: "
         + ", ".join(offenders)
     )

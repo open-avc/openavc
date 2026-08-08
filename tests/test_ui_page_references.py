@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.project_loader import ProjectConfig
-from server.ui.page_references import reference_findings
+from openavc.core.project_loader import ProjectConfig
+from openavc.ui.page_references import reference_findings
 
 PAGES = {"main", "audio"}
 DEVICES = {"acme_amp", "acme_switcher"}

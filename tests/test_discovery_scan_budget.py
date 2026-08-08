@@ -15,7 +15,7 @@ work is dropped it is named."
 
 from __future__ import annotations
 
-from server.discovery.scan_budget import (
+from openavc.discovery.scan_budget import (
     PHASE_ARP,
     PHASE_PING,
     PHASE_PORT,

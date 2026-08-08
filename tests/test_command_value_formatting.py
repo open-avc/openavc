@@ -10,12 +10,12 @@ and synthetic values; no real product, driver file, or captured fixture.
 
 from types import SimpleNamespace
 
-from server.core.ui_events import UIEventRuntime
-from server.drivers.configurable import (
+from openavc.core.ui_events import UIEventRuntime
+from openavc.drivers.configurable import (
     ConfigurableDriver,
     _normalize_and_validate_command_params,
 )
-from server.drivers.driver_loader import validate_driver_definition
+from openavc.drivers.driver_loader import validate_driver_definition
 
 
 # --- command param type coercion ----------------------------------------

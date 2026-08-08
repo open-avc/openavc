@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from server.discovery import icmp
-from server.discovery.engine import DiscoveryEngine, ScanStatus
+from openavc.discovery import icmp
+from openavc.discovery.engine import DiscoveryEngine, ScanStatus
 
 
 def _mock_passive_scanners(
@@ -66,12 +66,12 @@ class TestScanWarnings:
 
     async def _run_pipeline(self, fake_ping, scanner_mocks):
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = scanner_mocks
-        with patch("server.discovery.engine.ping_sweep", side_effect=fake_ping), \
-             patch("server.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", snmp_cls), \
-             patch("server.discovery.engine._resolve_hostnames",
+        with patch("openavc.discovery.engine.ping_sweep", side_effect=fake_ping), \
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.engine._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline_inner(["192.168.1.0/30"])
 

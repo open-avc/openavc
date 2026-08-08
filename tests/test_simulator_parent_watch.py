@@ -18,7 +18,7 @@ import sys
 
 import pytest
 
-from simulator.parent_watch import parent_is_alive, watch_parent
+from openavc.simulator.parent_watch import parent_is_alive, watch_parent
 
 
 def test_own_process_reads_as_alive():
@@ -34,7 +34,7 @@ def test_reaped_child_reads_as_gone():
     """
     import subprocess
 
-    from server.utils.spawn import CREATE_NO_WINDOW
+    from openavc.utils.spawn import CREATE_NO_WINDOW
 
     proc = subprocess.Popen(
         [sys.executable, "-c", "pass"], creationflags=CREATE_NO_WINDOW,
@@ -56,7 +56,7 @@ def test_the_probe_does_not_kill_what_it_inspects():
     import subprocess
     import time
 
-    from server.utils.spawn import CREATE_NO_WINDOW
+    from openavc.utils.spawn import CREATE_NO_WINDOW
 
     # A child that outlives the probe by a wide margin.
     proc = subprocess.Popen(
@@ -86,7 +86,7 @@ def test_the_probe_never_calls_os_kill_on_windows():
     """
     from pathlib import Path
 
-    import simulator.parent_watch as pw
+    import openavc.simulator.parent_watch as pw
 
     source = Path(pw.__file__).read_text(encoding="utf-8")
     windows_branch = source.split("def _parent_is_alive_windows")[1]
@@ -113,7 +113,7 @@ async def test_watch_calls_back_once_the_parent_is_gone():
     def fake_alive(_pid):
         return alive["value"]
 
-    import simulator.parent_watch as pw
+    import openavc.simulator.parent_watch as pw
 
     original = pw.parent_is_alive
     pw.parent_is_alive = fake_alive
@@ -152,7 +152,7 @@ def test_the_server_passes_its_own_pid_to_the_simulator():
     """
     from pathlib import Path
 
-    import server.core.simulation as simulation
+    import openavc.core.simulation as simulation
 
     source = Path(simulation.__file__).read_text(encoding="utf-8")
     assert '"parent_pid": os.getpid()' in source

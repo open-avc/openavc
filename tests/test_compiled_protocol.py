@@ -8,7 +8,7 @@ implementation.
 """
 from __future__ import annotations
 
-from server.drivers.compiled_protocol import (
+from openavc.drivers.compiled_protocol import (
     apply_send_frame,
     build_send_frame,
     compile_driver,
@@ -339,7 +339,7 @@ def test_compile_driver_skips_invalid_regex_and_keeps_rule_order():
 
 
 def test_send_param_groups_follow_template_order():
-    from server.drivers.compiled_protocol import send_param_groups
+    from openavc.drivers.compiled_protocol import send_param_groups
 
     params = {"inp": {"type": "integer"}, "out": {"type": "integer"}}
     # Template references out first — groups number by template position.
@@ -347,7 +347,7 @@ def test_send_param_groups_follow_template_order():
 
 
 def test_send_param_groups_repeated_param_uses_first_occurrence():
-    from server.drivers.compiled_protocol import send_param_groups
+    from openavc.drivers.compiled_protocol import send_param_groups
 
     params = {"n": {"type": "integer"}, "m": {"type": "integer"}}
     groups = send_param_groups("{n}+{m}={n}", params)
@@ -356,14 +356,14 @@ def test_send_param_groups_repeated_param_uses_first_occurrence():
 
 
 def test_send_param_groups_ignores_absent_params():
-    from server.drivers.compiled_protocol import send_param_groups
+    from openavc.drivers.compiled_protocol import send_param_groups
 
     params = {"used": {"type": "string"}, "unused": {"type": "string"}}
     assert send_param_groups("GO {used}", params) == {"used": 1}
 
 
 def test_emit_template_multi_substitutes_every_targeted_group():
-    from server.drivers.compiled_protocol import emit_template_multi
+    from openavc.drivers.compiled_protocol import emit_template_multi
 
     assert emit_template_multi(
         r"^Out(\d+) In(\d+) Vid$", {1: "{child_id}", 2: "{value}"}
@@ -379,7 +379,7 @@ def test_emit_template_multi_substitutes_every_targeted_group():
 
 
 def test_emit_template_multi_optional_target_survives_and_missing_fails():
-    from server.drivers.compiled_protocol import emit_template_multi
+    from openavc.drivers.compiled_protocol import emit_template_multi
 
     # An optional atom carrying a target is kept, never dropped.
     assert emit_template_multi(
@@ -390,7 +390,7 @@ def test_emit_template_multi_optional_target_survives_and_missing_fails():
 
 
 def test_emit_template_multi_single_group_matches_emit_template():
-    from server.drivers.compiled_protocol import emit_template, emit_template_multi
+    from openavc.drivers.compiled_protocol import emit_template, emit_template_multi
 
     for pattern in (r"In(\d+) All", r"^VOL([0-9A-F]{2})$", r"^Sig([01])\b"):
         assert emit_template_multi(pattern, {1: "{value}"}) == emit_template(pattern)
@@ -404,7 +404,7 @@ def test_boolean_reads_a_zero_padded_flag_by_its_value():
     that pad every field are common enough that the padded form has to mean
     what the bare digit means.
     """
-    from server.drivers.compiled_protocol import (
+    from openavc.drivers.compiled_protocol import (
         coerce_json_value,
         coerce_osc_value,
         coerce_value,

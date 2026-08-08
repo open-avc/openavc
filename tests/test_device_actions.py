@@ -12,19 +12,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from server.api import rest, ws
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.actions import resolve_device_actions, validate_actions
-from server.drivers.base import (
+from openavc.api import rest, ws
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.actions import resolve_device_actions, validate_actions
+from openavc.drivers.base import (
     BaseDriver,
     CommandParamError,
     UnknownCommandError,
 )
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from server.main import app
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.main import app
 
 
 def _driver_info_with(**extra):

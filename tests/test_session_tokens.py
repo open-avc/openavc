@@ -16,11 +16,11 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-import server.api.auth as auth_mod
-import server.api.session_tokens as st_mod
-from server.api.auth import check_ws_auth, require_programmer_auth
-from server.api.session_tokens import SessionTokenStore
-from server.middleware.rate_limit import _classify
+import openavc.api.auth as auth_mod
+import openavc.api.session_tokens as st_mod
+from openavc.api.auth import check_ws_auth, require_programmer_auth
+from openavc.api.session_tokens import SessionTokenStore
+from openavc.middleware.rate_limit import _classify
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ def _basic_header(user: str, password: str) -> dict:
 
 def _make_app() -> TestClient:
     """App with the real auth/session routes plus one protected route."""
-    from server.api.routes.auth import open_router
+    from openavc.api.routes.auth import open_router
 
     app = FastAPI()
     app.include_router(open_router, prefix="/api")

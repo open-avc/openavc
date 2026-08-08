@@ -29,7 +29,7 @@ See [Getting Started](getting-started.md) for detailed installation steps coveri
 | **macOS Installer** | Download the `.pkg` from [GitHub Releases](https://github.com/open-avc/openavc/releases) (Apple Silicon or Intel) and double-click it |
 | **Docker** | `curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml && docker compose up -d` |
 | **Linux** | `curl -sSL https://get.openavc.com \| sudo bash` |
-| **From Source** | `git clone`, `pip install`, `npm run build`, `python -m server.main` |
+| **From Source** | `git clone`, `pip install`, `npm run build`, `python -m openavc.main` |
 
 ## Network Configuration
 
@@ -235,7 +235,7 @@ Type=exec
 User=openavc
 Group=openavc
 WorkingDirectory=/opt/openavc
-ExecStart=/opt/openavc/venv/bin/python -m server.main
+ExecStart=/opt/openavc/venv/bin/python -m openavc.main
 Restart=always
 RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc

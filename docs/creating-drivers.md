@@ -1488,7 +1488,7 @@ When you bump a driver to use a new schema field your platform target may lack, 
 You don't have to work that version out by hand. Every field that arrived in a particular release says so in its description — "Requires platform 0.23.0" — and the checks read the same annotation, so the floor is computed from the driver rather than remembered:
 
 ```bash
-python -m server.drivers.check switchers/acme_widget.avcdriver
+python -m openavc.drivers.check switchers/acme_widget.avcdriver
 ```
 
 A `min_platform_version` lower than a field the driver uses is an error, and the message names the field. Declaring too low is not a style problem: the install gate believes the declaration, so the driver installs on a release that reads the file, ignores the fields it doesn't recognise, and runs wrong — a push subscription that never arms, a command whose framing is quietly dropped. Raising the floor costs something in the other direction (nobody on an older release can install the driver at all), so it's worth knowing which field is buying it.
@@ -1969,7 +1969,7 @@ If your device uses a text protocol over TCP with `\r` delimiters, you can rely 
 ```python
 # server/drivers/my_switcher.py
 
-from server.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver
 from typing import Any
 
 
@@ -2053,7 +2053,7 @@ MQTT is a **Python-only transport** (like SSH). It isn't offered in the Driver B
 Because MQTT is pub/sub rather than a single byte stream, inbound messages arrive **topic-tagged**: override `on_mqtt_message(topic, payload)` instead of `on_data_received(data)`, and subscribe to the topics you care about in `_post_connect()` (which also runs again after a reconnect).
 
 ```python
-from server.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver
 
 
 class MyMqttDeviceDriver(BaseDriver):
@@ -2158,9 +2158,9 @@ For binary protocols, you override `_create_frame_parser()` and `_resolve_delimi
 ```python
 # displays/samsung_mdc.py — a Python driver in your driver library
 
-from server.drivers.base import BaseDriver
-from server.transport.binary_helpers import checksum_sum
-from server.transport.frame_parsers import CallableFrameParser, FrameParser
+from openavc.drivers.base import BaseDriver
+from openavc.transport.binary_helpers import checksum_sum
+from openavc.transport.frame_parsers import CallableFrameParser, FrameParser
 from typing import Any, Optional
 
 # MDC command constants
@@ -2494,7 +2494,7 @@ async def connect(self) -> None:
 **Declaring the offline reason.** When a device is offline, the platform publishes `device.<id>.offline_reason` (a stable code: `auth_failed`, `connection_refused`, `unreachable`, `no_response`, ...) and `device.<id>.offline_detail` (the sentence shown on the device card). Standard transport failures classify automatically. When your driver detects a failure the transport can't see — a rejected login, a device that accepts the socket but never speaks your protocol — raise a typed fault so the reason is exact:
 
 ```python
-from server.drivers.base import BaseDriver, ConnectionFaultError
+from openavc.drivers.base import BaseDriver, ConnectionFaultError
 
 raise ConnectionFaultError(
     f"Login rejected for {host}:{port} — check the username and password.",
@@ -2637,7 +2637,7 @@ All transport types (TCP, serial, HTTP, UDP) automatically log every send and re
 **When to add your own logging**: Use `log.info(f"[{self.device_id}] ...")` for semantic events that add meaning beyond the raw protocol. For example, interpreting a power state code into a human-readable value:
 
 ```python
-from server.utils.logger import get_logger
+from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 async def on_data_received(self, data: bytes) -> None:
@@ -2732,7 +2732,7 @@ gets bounced from the catalog:
 
 The example below shows the load bar, so the "Optional metadata" block is
 optional *for you* and mandatory *for a submission*. Run
-`python -m server.drivers.check <path>` (see [Checking the file against the
+`python -m openavc.drivers.check <path>` (see [Checking the file against the
 driver contract](#checking-the-file-against-the-driver-contract)) to be told
 which bar a file currently clears, and see
 [contributing-drivers.md](https://github.com/open-avc/openavc-drivers/blob/main/docs/contributing-drivers.md)
@@ -2844,9 +2844,9 @@ DRIVER_INFO = {
 Before you run anything, check the file itself:
 
 ```bash
-python -m server.drivers.check path/to/my_driver.py
-python -m server.drivers.check path/to/my_driver.avcdriver
-python -m server.drivers.check data/driver_repo/          # a whole folder
+python -m openavc.drivers.check path/to/my_driver.py
+python -m openavc.drivers.check path/to/my_driver.avcdriver
+python -m openavc.drivers.check data/driver_repo/          # a whole folder
 ```
 
 It reads the file without running it and reports keys the contract does not
@@ -2866,7 +2866,7 @@ than a YAML one: a `.avcdriver` gets live feedback in an editor from its
 The command exits non-zero when anything is wrong and prints nothing when a
 single file is clean. It needs no project, no server and no particular folder
 layout, so it works on a driver you will never publish. `python -m
-simulator.validate` runs the same check before its own, so you get it either
+openavc.simulator.validate` runs the same check before its own, so you get it either
 way.
 
 It also checks that the parts of your driver agree with each other. Several
@@ -2931,7 +2931,7 @@ The simulator auto-generates behavior for all YAML drivers. For more realistic s
 ### With the server
 
 ```bash
-python -m server.main
+python -m openavc.main
 ```
 
 Then open the Programmer UI at `http://localhost:8080/programmer`:

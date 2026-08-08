@@ -9,8 +9,8 @@ to confirm the file actually defines a top-level DRIVER_INFO assignment.
 
 from pathlib import Path
 
-from server.drivers.python_info import declares_driver_info
-from simulator.validate import find_drivers
+from openavc.drivers.python_info import declares_driver_info
+from openavc.simulator.validate import find_drivers
 
 
 def _write(path: Path, content: str) -> Path:
@@ -117,7 +117,7 @@ def test_named_file_is_always_returned_so_the_checker_can_speak(tmp_path):
     that would have explained the problem: the contract check runs on
     whatever this returns, and it is the thing that says *why* a file isn't a
     driver. Both spellings of the rule now come from the checker, so the
-    documented command and `python -m server.drivers.check` agree.
+    documented command and `python -m openavc.drivers.check` agree.
     """
     companion = _write(tmp_path / "thing_sim.py", "class Sim:\n    pass\n")
     assert find_drivers(companion) == [(companion, "python")]

@@ -9,7 +9,7 @@ import struct
 
 import pytest
 
-from server.transport.osc_codec import (
+from openavc.transport.osc_codec import (
     _MAX_BUNDLE_DEPTH,
     osc_decode_bundle,
     osc_decode_message,

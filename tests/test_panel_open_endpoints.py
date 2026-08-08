@@ -21,11 +21,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import server.api.auth as auth_mod
-from server.core.engine import Engine
-from server.core.project_loader import load_project
-from server.main import app
-from server.api import rest, themes as themes_api, plugins as plugins_api
+import openavc.api.auth as auth_mod
+from openavc.core.engine import Engine
+from openavc.core.project_loader import load_project
+from openavc.main import app
+from openavc.api import rest, themes as themes_api, plugins as plugins_api
 
 
 TEST_PROJECT = {
@@ -133,13 +133,13 @@ async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_cl
     opens only the declared routes, so plugin CRUD stays programmer-only."""
     from fastapi import APIRouter
 
-    from server.api.plugin_ext import (
+    from openavc.api.plugin_ext import (
         mount_plugin_router,
         unmount_plugin_router,
         verify_panel_token,
         verify_plugin_token,
     )
-    from server.main import app as main_app
+    from openavc.main import app as main_app
 
     router = APIRouter()
 

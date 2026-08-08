@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.cloud.ai_tool_handler import AIToolHandler
-from server.cloud.protocol import AI_TOOL_CALL, _now_iso
+from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.cloud.protocol import AI_TOOL_CALL, _now_iso
 
 
 def _make_tool_call_msg(tool_name, tool_input=None, request_id="req-1"):
@@ -54,7 +54,7 @@ async def _drain():
 
 def _make_project():
     """Create a mock ProjectConfig with realistic data."""
-    from server.core.project_loader import (
+    from openavc.core.project_loader import (
         ProjectConfig, ProjectMeta, DeviceConfig, VariableConfig,
         MacroConfig, MacroStep, TriggerConfig, UIConfig, UIPage,
         UIElement, Layout, Placement, ScriptConfig,
@@ -156,7 +156,7 @@ def mock_engine():
 @pytest.fixture(autouse=True)
 def _patch_save_project():
     """Patch save_project globally so write tools don't hit the filesystem."""
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         yield
 
 
@@ -287,7 +287,7 @@ async def test_get_ui_page_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_add_device(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_device", {
                 "id": "display1",
                 "driver": "samsung_mdc",
@@ -333,7 +333,7 @@ async def test_add_device_duplicate(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_add_variable(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_variable", {
                 "id": "volume_level",
                 "type": "number",
@@ -371,7 +371,7 @@ async def test_add_variable_duplicate(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_update_variable(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("update_variable", {
                 "id": "room_mode",
                 "label": "Current Mode",
@@ -407,7 +407,7 @@ async def test_update_variable_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_delete_variable(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("delete_variable", {"id": "is_occupied"})
             await handler.handle(msg)
         await _drain()
@@ -436,7 +436,7 @@ async def test_delete_variable_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_add_macro(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_macro", {
                 "id": "lights_on",
                 "name": "Lights On",
@@ -467,7 +467,7 @@ async def test_add_macro(handler, mock_agent, mock_engine):
 async def test_add_macro_with_cancel_group(handler, mock_agent, mock_engine):
     """A11: add_macro must persist cancel_group when provided."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_macro", {
                 "id": "system_on",
                 "name": "System On",
@@ -488,7 +488,7 @@ async def test_add_macro_with_ui_navigate_step(handler, mock_agent, mock_engine)
     """M-133: the AI can author a macro containing a ui.navigate step (the
     runtime supports it; the validator used to reject it)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_macro", {
                 "id": "go_controls",
                 "name": "Go To Controls",
@@ -523,7 +523,7 @@ async def test_add_macro_duplicate(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_update_macro(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("update_macro", {
                 "macro_id": "all_off",
                 "name": "Everything Off",
@@ -553,7 +553,7 @@ async def test_update_macro_preserves_existing_cancel_group(handler, mock_agent,
     target.cancel_group = "system_power"
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             # Only change the name — cancel_group not provided.
             msg = _make_tool_call_msg("update_macro", {
                 "macro_id": "all_off",
@@ -572,7 +572,7 @@ async def test_update_macro_preserves_existing_cancel_group(handler, mock_agent,
 async def test_update_macro_sets_cancel_group(handler, mock_agent, mock_engine):
     """A11: update_macro must apply cancel_group when explicitly set."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("update_macro", {
                 "macro_id": "all_off",
                 "cancel_group": "system_power",
@@ -664,7 +664,7 @@ async def test_update_macro_can_edit_a_macro_using_a_plugin_action(
 @pytest.mark.asyncio
 async def test_delete_macro(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("delete_macro", {"macro_id": "presentation"})
             await handler.handle(msg)
         await _drain()
@@ -693,7 +693,7 @@ async def test_delete_macro_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_add_ui_page(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_ui_page", {
                 "id": "lighting",
                 "name": "Lighting Control",
@@ -726,7 +726,7 @@ async def test_add_ui_page_duplicate(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_delete_ui_page(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("delete_ui_page", {"page_id": "settings"})
             await handler.handle(msg)
         await _drain()
@@ -755,7 +755,7 @@ async def test_delete_ui_page_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_add_ui_elements(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_ui_elements", {
                 "page_id": "main",
                 "elements": [
@@ -813,7 +813,7 @@ async def test_add_ui_elements_page_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_update_ui_element(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("update_ui_element", {
                 "element_id": "btn_on",
                 "label": "Power On",
@@ -838,7 +838,7 @@ async def test_update_ui_element(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_update_ui_element_placement(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("update_ui_element", {
                 "element_id": "btn_on",
                 "placement": {"x": 30.0, "y": 12.5, "w": 25.0, "h": 22.75},
@@ -875,7 +875,7 @@ async def test_update_ui_element_not_found(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_delete_ui_elements(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("delete_ui_elements", {
                 "element_ids": ["btn_on", "btn_off"],
             })
@@ -933,7 +933,7 @@ async def test_update_ui_element_rejects_non_dict_bindings(handler, mock_engine)
 async def test_add_ui_page_validates_inline_element_bindings(handler, mock_engine):
     """M-134: inline elements get the same binding validation as add_ui_elements."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_ui_page({
                 "id": "bad_page",
                 "name": "Bad",
@@ -952,7 +952,7 @@ async def test_add_ui_page_validates_inline_element_bindings(handler, mock_engin
 @pytest.mark.asyncio
 async def test_add_ui_page_accepts_valid_inline_bindings(handler, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_ui_page({
                 "id": "good_page",
                 "name": "Good",
@@ -983,7 +983,7 @@ async def test_simulate_navigate_broadcasts_ui_navigate(handler, mock_engine):
 async def test_simulate_action_filters_background_state_changes(handler, mock_agent, mock_engine):
     """M-136: only changes the action plausibly caused are reported — background
     activity (heartbeat/system/cloud/ai/isc/discovered) is filtered out."""
-    from server.core.state_store import StateStore
+    from openavc.core.state_store import StateStore
 
     store = StateStore()
     mock_agent.state = store  # real store: subscribe/unsubscribe + listener fire
@@ -1050,13 +1050,13 @@ async def test_simulate_says_why_nothing_ran(handler, mock_agent, mock_engine):
 @pytest.mark.asyncio
 async def test_update_ui_page_snap_partial_merge(handler, mock_engine):
     """M-137: a partial grid update keeps omitted fields + forward-compat keys."""
-    from server.core.project_loader import SnapConfig
+    from openavc.core.project_loader import SnapConfig
 
     page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
     page.snap = SnapConfig(enabled=True, x=12.5, y=20.0, custom_hint="keep-me")  # non-default + extra
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._update_ui_page({"page_id": "main", "snap": {"x": 25.0}})
 
     assert result.get("status") == "updated"
@@ -1070,7 +1070,7 @@ async def test_update_ui_page_snap_partial_merge(handler, mock_engine):
 async def test_update_ui_element_placement_partial_merge(handler, mock_engine):
     """M-137: a partial placement update keeps omitted fields (no snap to 0)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             # btn_on starts at col=1,row=1,col_span=2,row_span=1; move col only.
             result = await handler._update_ui_element({"element_id": "btn_on", "placement": {"x": 50.0}})
 
@@ -1112,7 +1112,7 @@ def _drawn(page, element_id, layout_id=None):
     Computed here from the stored numbers rather than by calling the helper
     under test, so a reparent that quietly changed the drawn position fails.
     """
-    from server.core.project_loader import Placement
+    from openavc.core.project_loader import Placement
 
     placements: dict = {}
     by_id = {lay.id: lay for lay in page.layouts}
@@ -1142,7 +1142,7 @@ def _drawn(page, element_id, layout_id=None):
 async def test_add_ui_elements_places_into_the_primary_layout(handler, mock_engine):
     """A new control's box belongs in the primary -- every variant inherits it."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_ui_elements({
                 "page_id": "main",
                 "elements": [{
@@ -1255,7 +1255,7 @@ async def test_add_ui_elements_still_takes_a_container_from_the_same_batch(
     quietly stop that working -- the commonest shape there is.
     """
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_ui_elements({
                 "page_id": "main",
                 "elements": [
@@ -1273,7 +1273,7 @@ async def test_add_ui_elements_still_takes_a_container_from_the_same_batch(
 async def test_delete_ui_elements_names_the_ids_that_were_not_there(handler, mock_engine):
     """The deletes that landed are kept, and the misses are said out loud."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._delete_ui_elements({
                 "element_ids": ["btn_on", "ghost_a", "ghost_b"],
             })
@@ -1287,7 +1287,7 @@ async def test_delete_ui_elements_names_the_ids_that_were_not_there(handler, moc
 @pytest.mark.asyncio
 async def test_add_ui_page_with_inline_placements_and_a_variant(handler, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_ui_page({
                 "id": "lighting", "name": "Lighting",
                 "elements": [{"id": "btn_scene", "type": "button",
@@ -1309,7 +1309,7 @@ async def test_add_ui_page_with_inline_placements_and_a_variant(handler, mock_en
 @pytest.mark.asyncio
 async def test_update_ui_page_adds_a_variant_that_inherits_the_primary(handler, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._update_ui_page({
                 "page_id": "main",
                 "layouts": [{"id": "portrait", "orientation": "portrait"}],
@@ -1338,14 +1338,14 @@ async def test_update_ui_page_refuses_to_move_the_primary(handler, mock_engine):
 
 @pytest.mark.asyncio
 async def test_update_ui_element_writes_a_variant_delta_only(handler, mock_engine):
-    from server.core.project_loader import Layout
+    from openavc.core.project_loader import Layout
 
     page = _page(mock_engine)
     page.layouts.append(Layout(id="portrait", orientation="portrait", inherits="landscape"))
     before = dict(_layout(page, "landscape").placements)
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._update_ui_element({
                 "element_id": "vol_slider", "layout_id": "portrait",
                 "placement": {"x": 5.0, "y": 70.0, "w": 90.0, "h": 10.0},
@@ -1360,14 +1360,14 @@ async def test_update_ui_element_writes_a_variant_delta_only(handler, mock_engin
 @pytest.mark.asyncio
 async def test_update_ui_element_variant_placement_merges_over_the_inherited_box(handler, mock_engine):
     """A partial edit in a variant keeps what it inherited, not the model defaults."""
-    from server.core.project_loader import Layout
+    from openavc.core.project_loader import Layout
 
     _page(mock_engine).layouts.append(
         Layout(id="portrait", orientation="portrait", inherits="landscape")
     )
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             await handler._update_ui_element({
                 "element_id": "btn_on", "layout_id": "portrait", "placement": {"y": 80.0},
             })
@@ -1391,14 +1391,14 @@ async def test_update_ui_element_unknown_layout_names_the_ones_that_exist(handle
 
 @pytest.mark.asyncio
 async def test_update_ui_element_hides_in_one_arrangement_only(handler, mock_engine):
-    from server.core.project_loader import Layout
+    from openavc.core.project_loader import Layout
 
     _page(mock_engine).layouts.append(
         Layout(id="portrait", orientation="portrait", inherits="landscape")
     )
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             await handler._update_ui_element({
                 "element_id": "btn_off", "layout_id": "portrait", "hidden": True,
             })
@@ -1412,7 +1412,7 @@ async def test_update_ui_element_hides_in_one_arrangement_only(handler, mock_eng
 @pytest.mark.asyncio
 async def test_update_ui_element_cannot_unhide_what_it_inherited(handler, mock_engine):
     """`hidden` unions down the chain, so say where the hide came from."""
-    from server.core.project_loader import Layout
+    from openavc.core.project_loader import Layout
 
     page = _page(mock_engine)
     _layout(page, "landscape").hidden = ["btn_off"]
@@ -1430,7 +1430,7 @@ async def test_update_ui_element_cannot_unhide_what_it_inherited(handler, mock_e
 @pytest.mark.asyncio
 async def test_update_ui_element_reparent_keeps_the_drawn_box(handler, mock_engine):
     """Percentages are of the parent, so a reparent converts instead of teleporting."""
-    from server.core.project_loader import Placement, UIElement
+    from openavc.core.project_loader import Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_audio", type="group", label="Audio"))
@@ -1438,7 +1438,7 @@ async def test_update_ui_element_reparent_keeps_the_drawn_box(handler, mock_engi
     before = _drawn(page, "btn_off")
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._update_ui_element({
                 "element_id": "btn_off", "parent": "grp_audio",
             })
@@ -1453,7 +1453,7 @@ async def test_update_ui_element_reparent_keeps_the_drawn_box(handler, mock_engi
 @pytest.mark.asyncio
 async def test_update_ui_element_reparent_converts_every_arrangement(handler, mock_engine):
     """Nothing shifts in the layout the caller is not looking at."""
-    from server.core.project_loader import Layout, Placement, UIElement
+    from openavc.core.project_loader import Layout, Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_audio", type="group"))
@@ -1468,7 +1468,7 @@ async def test_update_ui_element_reparent_converts_every_arrangement(handler, mo
     before = {lay.id: _drawn(page, "btn_off", lay.id) for lay in page.layouts}
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             await handler._update_ui_element({"element_id": "btn_off", "parent": "grp_audio"})
 
     page = _page(mock_engine)
@@ -1479,14 +1479,14 @@ async def test_update_ui_element_reparent_converts_every_arrangement(handler, mo
 @pytest.mark.asyncio
 async def test_update_ui_element_reparent_with_an_explicit_box_is_taken_literally(handler, mock_engine):
     """Given both, the caller has already said where it goes in the new parent."""
-    from server.core.project_loader import Placement, UIElement
+    from openavc.core.project_loader import Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_audio", type="group"))
     _layout(page, "landscape").placements["grp_audio"] = Placement(x=50.0, y=40.0, w=40.0, h=40.0)
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             await handler._update_ui_element({
                 "element_id": "btn_off", "parent": "grp_audio",
                 "placement": {"x": 0.0, "y": 0.0, "w": 100.0, "h": 25.0},
@@ -1500,7 +1500,7 @@ async def test_update_ui_element_reparent_with_an_explicit_box_is_taken_literall
 
 @pytest.mark.asyncio
 async def test_update_ui_element_refuses_a_container_cycle(handler, mock_engine):
-    from server.core.project_loader import Placement, UIElement
+    from openavc.core.project_loader import Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_outer", type="group"))
@@ -1519,7 +1519,7 @@ async def test_update_ui_element_refuses_a_container_cycle(handler, mock_engine)
 
 @pytest.mark.asyncio
 async def test_delete_ui_elements_clears_the_layout_entries(handler, mock_engine):
-    from server.core.project_loader import Layout
+    from openavc.core.project_loader import Layout
 
     page = _page(mock_engine)
     page.layouts.append(Layout(
@@ -1527,7 +1527,7 @@ async def test_delete_ui_elements_clears_the_layout_entries(handler, mock_engine
     ))
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             await handler._delete_ui_elements({"element_ids": ["btn_off"]})
 
     page = _page(mock_engine)
@@ -1537,7 +1537,7 @@ async def test_delete_ui_elements_clears_the_layout_entries(handler, mock_engine
 
 @pytest.mark.asyncio
 async def test_delete_a_container_leaves_its_contents_where_they_were(handler, mock_engine):
-    from server.core.project_loader import Placement, UIElement
+    from openavc.core.project_loader import Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_audio", type="group"))
@@ -1548,7 +1548,7 @@ async def test_delete_a_container_leaves_its_contents_where_they_were(handler, m
     before = _drawn(page, "btn_off")
 
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             await handler._delete_ui_elements({"element_ids": ["grp_audio"]})
 
     page = _page(mock_engine)
@@ -1559,7 +1559,7 @@ async def test_delete_a_container_leaves_its_contents_where_they_were(handler, m
 @pytest.mark.asyncio
 async def test_add_master_element_takes_placements_keyed_by_orientation(handler, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_master_element({
                 "id": "home_btn", "type": "page_nav", "target_page": "main", "pages": "*",
                 "placements": {
@@ -1592,7 +1592,7 @@ async def test_layout_round_trip_through_the_tool_handlers(handler, mock_engine)
     """The §11 round trip, entirely through the tools: create, add, move,
     reparent, hide in a variant, and read it back."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             assert (await handler._add_ui_page({
                 "id": "av", "name": "AV",
                 "elements": [
@@ -1677,7 +1677,7 @@ def _assert_edit_origin_apply(mock_engine):
 async def test_variable_tools_apply_through_seam(handler, mock_agent, mock_engine):
     """Variable tools apply through the seam once, EDIT origin."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_variable", {"id": "test_var"})
             await handler.handle(msg)
         await _drain()
@@ -1689,7 +1689,7 @@ async def test_variable_tools_apply_through_seam(handler, mock_agent, mock_engin
 async def test_device_add_applies_through_seam(handler, mock_agent, mock_engine):
     """add_device applies through the seam (the devices reconcile hot-adds)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_device", {
                 "id": "test_dev",
                 "driver": "test",
@@ -1706,7 +1706,7 @@ async def test_macro_tools_apply_through_seam(handler, mock_agent, mock_engine):
     """Macro tools apply through the seam — EDIT origin, so trigger
     registration happens without re-firing startup triggers."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_macro", {"id": "test_macro", "name": "Test"})
             await handler.handle(msg)
         await _drain()
@@ -1718,7 +1718,7 @@ async def test_macro_tools_apply_through_seam(handler, mock_agent, mock_engine):
 async def test_ui_tools_apply_through_seam(handler, mock_agent, mock_engine):
     """UI tools apply through the seam (broadcast-only reconcile)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
-        with patch("server.core.project_loader.save_project"):
+        with patch("openavc.core.project_loader.save_project"):
             msg = _make_tool_call_msg("add_ui_elements", {
                 "page_id": "main",
                 "elements": [{"id": "new_btn", "type": "button"}],
@@ -1802,7 +1802,7 @@ def test_find_references_scans_scripts_beside_project(handler, mock_engine, tmp_
 
 def test_find_references_skips_escaping_script_paths(handler, mock_engine, tmp_path):
     """A script entry whose file escapes the scripts dir is skipped, not read."""
-    from server.core.project_loader import ScriptConfig
+    from openavc.core.project_loader import ScriptConfig
 
     project_dir = tmp_path / "deployed_site"
     (project_dir / "scripts").mkdir(parents=True)
@@ -1823,7 +1823,7 @@ def test_find_references_skips_escaping_script_paths(handler, mock_engine, tmp_p
 async def test_update_macro_preserves_forward_compat_fields(handler, mock_agent, mock_engine):
     """Editing a macro must not strip extra='allow' fields a newer platform
     version stored on it."""
-    from server.core.project_loader import MacroConfig
+    from openavc.core.project_loader import MacroConfig
 
     mock_engine.project.macros[1] = MacroConfig(**{
         "id": "presentation",
@@ -1851,7 +1851,7 @@ async def test_update_macro_preserves_forward_compat_fields(handler, mock_agent,
 async def test_plugin_config_update_bumps_revision(handler, mock_agent, mock_engine):
     """Plugin config updates apply through the seam; without the revision bump
     an open IDE's stale ETag still matches and its next save clobbers the edit."""
-    from server.core.project_loader import PluginConfig
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {"some_plugin": PluginConfig(enabled=True, config={})}
     # Async loader surface broad enough for either restart shape (stop/start
@@ -1882,7 +1882,7 @@ async def test_plugin_config_update_bumps_revision(handler, mock_agent, mock_eng
 
 @pytest.mark.asyncio
 async def test_disable_plugin_bumps_revision(handler, mock_agent, mock_engine):
-    from server.core.project_loader import PluginConfig
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {"some_plugin": PluginConfig(enabled=True, config={})}
     mock_engine.plugin_loader = MagicMock()
@@ -1922,8 +1922,8 @@ async def test_enable_plugin_rolls_back_on_start_failure(handler, mock_agent, mo
     """A failed enable must not persist enabled=True — start_plugins() retries
     every enabled entry at startup, so a broken plugin would retry on every
     boot (the REST enable endpoint rolls back; the AI tool must match)."""
-    from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
-    from server.core.project_loader import PluginConfig
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {
         "stub_plugin": PluginConfig(enabled=False, config={"keep": "me"})
@@ -1952,7 +1952,7 @@ async def test_enable_plugin_first_time_failure_keeps_entry_disabled(
 ):
     """First-time enable that fails persists the new entry disabled, so the
     default config is kept for a later fix-and-retry but never auto-started."""
-    from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
 
     mock_engine.project.plugins = {}
     mock_engine.plugin_loader = _plugin_loader_mock(start_ok=False)
@@ -1970,8 +1970,8 @@ async def test_enable_plugin_first_time_failure_keeps_entry_disabled(
 
 @pytest.mark.asyncio
 async def test_enable_plugin_success_persists_enabled(handler, mock_agent, mock_engine):
-    from server.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
-    from server.core.project_loader import PluginConfig
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {
         "stub_plugin": PluginConfig(enabled=False, config={"keep": "me"})
@@ -1993,7 +1993,7 @@ async def test_enable_plugin_success_persists_enabled(handler, mock_agent, mock_
 @pytest.mark.asyncio
 async def test_update_plugin_config_rejects_missing_config(handler, mock_agent, mock_engine):
     """Omitting 'config' must be an error, not a silent wipe-to-{} + restart."""
-    from server.core.project_loader import PluginConfig
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {
         "some_plugin": PluginConfig(enabled=True, config={"brightness": 80})
@@ -2016,7 +2016,7 @@ async def test_update_plugin_config_rejects_missing_config(handler, mock_agent, 
 
 @pytest.mark.asyncio
 async def test_update_plugin_config_rejects_non_dict_config(handler, mock_agent, mock_engine):
-    from server.core.project_loader import PluginConfig
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {
         "some_plugin": PluginConfig(enabled=True, config={"brightness": 80})
@@ -2043,7 +2043,7 @@ async def test_update_plugin_config_allows_explicit_empty_object(
 ):
     """An explicit {} is a legitimate complete config (schema with no required
     fields) — only the *omitted* key is rejected."""
-    from server.core.project_loader import PluginConfig
+    from openavc.core.project_loader import PluginConfig
 
     mock_engine.project.plugins = {
         "some_plugin": PluginConfig(enabled=True, config={"brightness": 80})
@@ -2073,7 +2073,7 @@ async def test_update_plugin_config_allows_explicit_empty_object(
 
 def _make_state_store():
     """Real StateStore seeded with normal + cloud-excluded keys."""
-    from server.core.state_store import StateStore
+    from openavc.core.state_store import StateStore
     store = StateStore()
     store.set("device.projector1.power", "on", source="test")
     store.set("var.room_mode", "normal", source="test")
@@ -2144,7 +2144,7 @@ async def test_get_state_history_excludes_cloud_internal_and_isc(handler, mock_a
 async def test_get_state_history_validates_count(handler, mock_agent):
     # No cloud-excluded keys here — the count assertions below need the
     # returned length to reflect count alone, not the exclusion filter.
-    from server.core.state_store import StateStore
+    from openavc.core.state_store import StateStore
     store = StateStore()
     for name, value in (("a", 1), ("b", 2), ("c", 3)):
         store.set(f"var.{name}", value, source="test")
@@ -2210,7 +2210,7 @@ async def test_add_ui_elements_refuses_a_non_group_parent(handler, mock_engine):
 async def test_reparent_with_explicit_box_refuses_a_cycle(handler, mock_engine):
     """The stated-box path used to skip the guards entirely — a parent cycle
     went in and nothing could take it back out."""
-    from server.core.project_loader import Placement, UIElement
+    from openavc.core.project_loader import Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_outer", type="group"))
@@ -2234,7 +2234,7 @@ async def test_reparent_with_explicit_box_refuses_a_cycle(handler, mock_engine):
 async def test_reparent_with_explicit_box_converts_other_arrangements(handler, mock_engine):
     """The stated box lands in the resolved layout; a variant's own delta is
     converted so it keeps drawing where it drew."""
-    from server.core.project_loader import Layout, Placement, UIElement
+    from openavc.core.project_loader import Layout, Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_audio", type="group"))
@@ -2264,7 +2264,7 @@ async def test_reparent_with_explicit_box_converts_other_arrangements(handler, m
 async def test_geometry_writes_are_rounded_to_4dp(handler, mock_engine):
     """Every stored percentage is quantized exactly like the Builder's writes,
     so an AI edit and the identical Builder edit produce the same bytes."""
-    from server.core.project_loader import Placement, UIElement
+    from openavc.core.project_loader import Placement, UIElement
 
     page = _page(mock_engine)
     page.elements.append(UIElement(id="grp_audio", type="group"))
@@ -2338,7 +2338,7 @@ async def test_apply_layouts_refuses_an_inherits_loop(handler, mock_engine):
 @pytest.mark.asyncio
 async def test_delete_ui_page_scrubs_references(handler, mock_engine):
     """An AI page delete scrubs the same set the Builder's delete scrubs."""
-    from server.core.project_loader import (
+    from openavc.core.project_loader import (
         MasterElement, PageGroup, StepCondition, UIElement,
     )
 
@@ -2382,7 +2382,7 @@ async def test_delete_ui_page_scrubs_references(handler, mock_engine):
 
 @pytest.mark.asyncio
 async def test_delete_ui_page_masters_shown_nowhere_fall_back_to_everywhere(handler, mock_engine):
-    from server.core.project_loader import MasterElement
+    from openavc.core.project_loader import MasterElement
 
     mock_engine.project.ui.master_elements.append(MasterElement(
         id="m_solo", type="label", pages=["settings"],

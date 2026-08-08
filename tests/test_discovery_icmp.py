@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.discovery import icmp
-from server.discovery.network_scanner import ping_sweep
+from openavc.discovery import icmp
+from openavc.discovery.network_scanner import ping_sweep
 
 
 def _make_reply(request: bytes) -> bytes:

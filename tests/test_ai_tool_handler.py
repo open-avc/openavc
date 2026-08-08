@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.cloud.ai_tool_handler import AIToolHandler
-from server.cloud.protocol import (
+from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.cloud.protocol import (
     AI_TOOL_CALL, AI_TOOL_RESULT,
     build_ai_tool_result_payload, _now_iso,
 )
@@ -152,7 +152,7 @@ async def test_execute_macro(handler, mock_agent):
     mock_engine.macros = MagicMock()
     mock_engine.macros.execute = AsyncMock()
 
-    with patch("server.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
+    with patch("openavc.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
         msg = _make_tool_call_msg("execute_macro", {"macro_id": "all_off"})
         await _handle_and_wait(handler, msg)
 
@@ -169,7 +169,7 @@ async def test_execute_macro_rate_limited(handler, mock_agent):
     mock_engine.macros = MagicMock()
     mock_engine.macros.execute = AsyncMock()
 
-    with patch("server.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
+    with patch("openavc.cloud.ai_tool_handler.AIToolHandler._get_engine", return_value=mock_engine):
         await _handle_and_wait(handler, _make_tool_call_msg(
             "execute_macro", {"macro_id": "rl_all_off"}, request_id="req-1"))
         await _handle_and_wait(handler, _make_tool_call_msg(
@@ -238,7 +238,7 @@ async def test_get_discovery_results_envelope_includes_identification_summary(ha
     ]
     mock_engine.get_status.return_value = {"status": "complete", "duration": 12.5}
 
-    with patch("server.api.discovery._engine", mock_engine):
+    with patch("openavc.api.discovery._engine", mock_engine):
         msg = _make_tool_call_msg("get_discovery_results")
         await _handle_and_wait(handler, msg)
 
@@ -270,7 +270,7 @@ async def test_get_discovery_results_summary_respects_category_filter(handler, m
     ]
     mock_engine.get_status.return_value = {"status": "complete", "duration": 1.0}
 
-    with patch("server.api.discovery._engine", mock_engine):
+    with patch("openavc.api.discovery._engine", mock_engine):
         msg = _make_tool_call_msg("get_discovery_results", {"category": "projector"})
         await _handle_and_wait(handler, msg)
 
@@ -288,22 +288,22 @@ async def test_get_discovery_results_summary_respects_category_filter(handler, m
 
 
 def test_ai_tool_call_constant():
-    from server.cloud.protocol import AI_TOOL_CALL
+    from openavc.cloud.protocol import AI_TOOL_CALL
     assert AI_TOOL_CALL == "ai_tool_call"
 
 
 def test_ai_tool_result_constant():
-    from server.cloud.protocol import AI_TOOL_RESULT
+    from openavc.cloud.protocol import AI_TOOL_RESULT
     assert AI_TOOL_RESULT == "ai_tool_result"
 
 
 def test_ai_tool_result_in_upstream_types():
-    from server.cloud.protocol import UPSTREAM_TYPES, AI_TOOL_RESULT
+    from openavc.cloud.protocol import UPSTREAM_TYPES, AI_TOOL_RESULT
     assert AI_TOOL_RESULT in UPSTREAM_TYPES
 
 
 def test_ai_tool_call_in_downstream_types():
-    from server.cloud.protocol import DOWNSTREAM_TYPES, AI_TOOL_CALL
+    from openavc.cloud.protocol import DOWNSTREAM_TYPES, AI_TOOL_CALL
     assert AI_TOOL_CALL in DOWNSTREAM_TYPES
 
 
@@ -332,8 +332,8 @@ class TestValidatorOperatorAliases:
     """Validator should accept all canonical names plus condition_eval aliases."""
 
     def test_condition_eval_aliases_in_valid_set(self):
-        from server.core.condition_eval import _OPERATOR_ALIASES
-        from server.core.macro_validation import VALID_CONDITION_OPS, VALID_STATE_TRIGGER_OPS
+        from openavc.core.condition_eval import _OPERATOR_ALIASES
+        from openavc.core.macro_validation import VALID_CONDITION_OPS, VALID_STATE_TRIGGER_OPS
 
         for alias in _OPERATOR_ALIASES:
             assert alias in VALID_CONDITION_OPS, (
@@ -344,7 +344,7 @@ class TestValidatorOperatorAliases:
             assert alias in VALID_STATE_TRIGGER_OPS
 
     def test_conditional_step_accepts_alias(self):
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         for op in ("equals", "==", "greater_than", ">=", "!=", "less_or_equal"):
             step = {
                 "action": "conditional",
@@ -356,7 +356,7 @@ class TestValidatorOperatorAliases:
             assert not errs, f"alias '{op}' rejected: {errs}"
 
     def test_wait_until_step_accepts_alias(self):
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         step = {
             "action": "wait_until",
             "condition": {"key": "device.proj1.power", "operator": "==", "value": "on"},
@@ -366,7 +366,7 @@ class TestValidatorOperatorAliases:
         assert not errs, f"alias rejected: {errs}"
 
     def test_skip_if_accepts_alias(self):
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         step = {
             "action": "device.command",
             "device": "proj1",
@@ -377,7 +377,7 @@ class TestValidatorOperatorAliases:
         assert not errs, f"alias rejected in skip_if: {errs}"
 
     def test_trigger_guards_accept_alias(self):
-        from server.core.macro_validation import validate_trigger
+        from openavc.core.macro_validation import validate_trigger
         trigger = {
             "type": "state_change",
             "state_key": "device.proj1.power",
@@ -392,7 +392,7 @@ class TestValidatorOperatorAliases:
 
     def test_unknown_operator_still_rejected(self):
         """Sanity check: the widening doesn't accept arbitrary strings."""
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         step = {
             "action": "conditional",
             "condition": {"key": "var.foo", "operator": "snorgle", "value": 1},
@@ -414,7 +414,7 @@ class TestActionShapeValidation:
     """
 
     def test_a_nested_action_object_is_rejected_not_raised(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"press": [{"action": {
             "action": "device.command", "device": "amp", "command": "mute_on",
         }}]}}
@@ -425,13 +425,13 @@ class TestActionShapeValidation:
         assert "device.command" in err
 
     def test_a_list_in_the_action_field_is_rejected_too(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         err = _validate_bindings({"do": {"press": [{"action": ["macro"]}]}})
         assert err and "got list" in err
 
     def test_a_nested_action_inside_a_value_map_is_rejected(self):
         """value_map recurses, so the same shape one level down must not crash."""
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"change": [{"action": "value_map", "map": {
             "a": {"action": {"action": "macro", "macro": "go"}},
         }}]}}
@@ -444,12 +444,12 @@ class TestVisibleWhenBindingValidation:
     show.visible_when forms in the show/do model."""
 
     def test_single_condition_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"visible_when": {"key": "device.proj.power", "operator": "eq", "value": "on"}}}
         assert _validate_bindings(b) is None
 
     def test_any_group_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"visible_when": {"any": [
             {"key": "device.a.power", "operator": "eq", "value": "on"},
             {"key": "device.b.power", "operator": "truthy"},
@@ -457,7 +457,7 @@ class TestVisibleWhenBindingValidation:
         assert _validate_bindings(b) is None
 
     def test_all_group_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"visible_when": {"all": [
             {"key": "device.a.power", "operator": "eq", "value": "on"},
             {"key": "device.b.online", "operator": "truthy"},
@@ -465,19 +465,19 @@ class TestVisibleWhenBindingValidation:
         assert _validate_bindings(b) is None
 
     def test_all_group_bad_operator_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"visible_when": {"all": [{"key": "device.a.power", "operator": "snorgle"}]}}}
         err = _validate_bindings(b)
         assert err and "all[0]" in err
 
     def test_group_missing_key_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"visible_when": {"any": [{"operator": "truthy"}]}}}
         err = _validate_bindings(b)
         assert err and "any[0]" in err
 
     def test_single_missing_key_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"visible_when": {"operator": "eq", "value": "on"}}}
         err = _validate_bindings(b)
         assert err and "visible_when" in err
@@ -488,42 +488,42 @@ class TestShowDoBindingValidation:
     show.look / show.items, and the device-two-way safety rule."""
 
     def test_do_press_macro_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"press": [{"action": "macro", "macro": "m1"}]}}
         assert _validate_bindings(b) is None
 
     def test_do_change_device_command_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"change": [{"action": "device.command", "device": "amp",
                                 "command": "setVolume", "params": {"level": "$value"}}]}}
         assert _validate_bindings(b) is None
 
     def test_legacy_flat_press_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"press": [{"action": "macro", "macro": "m1"}]}
         err = _validate_bindings(b)
         assert err and "show/do model" in err and "press" in err
 
     def test_unknown_interaction_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"wiggle": [{"action": "macro", "macro": "m1"}]}}
         err = _validate_bindings(b)
         assert err and "wiggle" in err
 
     def test_state_set_to_device_rejected(self):
         # The central device-safety rule: never write a device.* key directly.
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"change": [{"action": "state.set", "key": "device.amp.level", "value": "$value"}]}}
         err = _validate_bindings(b)
         assert err and "device.command" in err
 
     def test_state_set_to_var_allowed(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"change": [{"action": "state.set", "key": "var.volume", "value": "$value"}]}}
         assert _validate_bindings(b) is None
 
     def test_value_map_inner_device_state_set_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"change": [{"action": "value_map", "map": {
             "hi": {"action": "state.set", "key": "device.x.mode", "value": "h"},
         }}]}}
@@ -531,54 +531,54 @@ class TestShowDoBindingValidation:
         assert err and "device.command" in err
 
     def test_show_value_two_way_var_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"value": {"source": "state", "key": "var.vol", "write_back": True}}}
         assert _validate_bindings(b) is None
 
     def test_show_value_write_back_on_device_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"value": {"source": "state", "key": "device.amp.level", "write_back": True}}}
         err = _validate_bindings(b)
         assert err and "write_back" in err
 
     def test_show_value_missing_key_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"value": {"source": "state"}}}
         err = _validate_bindings(b)
         assert err and "show.value" in err
 
     def test_show_value_macro_progress_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"value": {"source": "macro_progress", "macro": "m1", "idle_text": "Ready"}}}
         assert _validate_bindings(b) is None
 
     def test_show_look_feedback_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"look": {"source": "state", "key": "device.x.power",
                                "condition": {"equals": True},
                                "style_active": {"bg_color": "#0f0"}}}}
         assert _validate_bindings(b) is None
 
     def test_show_look_nested_style_rejected(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"look": {"key": "var.s", "states": {"on": {"style": {"bg_color": "#0f0"}}}}}}
         err = _validate_bindings(b)
         assert err and "flat" in err
 
     def test_show_items_key_pattern_valid(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"show": {"items": {"source": "state", "key_pattern": "device.m.input_*_name"}}}
         assert _validate_bindings(b) is None
 
     def test_do_toggle_requires_off_action(self):
-        from server.cloud.ai_tool_handler import _validate_bindings
+        from openavc.cloud.ai_tool_handler import _validate_bindings
         b = {"do": {"press": [{"action": "macro", "macro": "m", "mode": "toggle",
                                "toggle_key": "var.x"}]}}
         err = _validate_bindings(b)
         assert err and "off_action" in err
 
     def test_normalize_wraps_do_single_action(self):
-        from server.cloud.ai_tool_handler import _normalize_bindings
+        from openavc.cloud.ai_tool_handler import _normalize_bindings
         b = {"do": {"press": {"action": "macro", "macro": "m1"}}}
         out = _normalize_bindings(b)
         assert out["do"]["press"] == [{"action": "macro", "macro": "m1"}]
@@ -594,35 +594,35 @@ class TestShowDoBindingValidation:
 
 class TestToolResultErrorSignaling:
     def test_classifier_pure_error_dict_is_error(self):
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error({"error": "boom"}) is True
 
     def test_classifier_data_dict_is_not_error(self):
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error({"devices": [], "total": 0}) is False
 
     def test_classifier_explicit_success_true_with_null_error(self):
         # {"success": True, "error": None, ...} — the explicit flag wins.
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error({"success": True, "error": None, "latency_ms": 5}) is False
 
     def test_classifier_explicit_success_false(self):
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error({"success": False, "error": "nope", "response": None}) is True
 
     def test_classifier_non_dict_is_not_error(self):
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error([1, 2, 3]) is False
         assert _tool_result_is_error("ok") is False
         assert _tool_result_is_error(None) is False
 
     def test_classifier_data_with_truthy_error_is_error(self):
         # Partial result: data plus a soft error (e.g. stale catalog + fetch failure).
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error({"plugins": [{"id": "x"}], "error": "fetch failed"}) is True
 
     def test_classifier_data_with_null_error_is_not_error(self):
-        from server.cloud.ai_tool_handler import _tool_result_is_error
+        from openavc.cloud.ai_tool_handler import _tool_result_is_error
         assert _tool_result_is_error({"plugins": [{"id": "x"}], "error": None}) is False
 
     @pytest.mark.asyncio
@@ -685,7 +685,7 @@ class TestPreAIBackupSafetyNet:
             calls["n"] += 1
             raise OSError("disk full")
 
-        with patch("server.core.backup_manager.create_backup", _failing):
+        with patch("openavc.core.backup_manager.create_backup", _failing):
             await handler._maybe_create_pre_ai_backup()
         # Failure must leave the flag unset so the next change retries.
         assert handler._ai_backup_created is False
@@ -694,14 +694,14 @@ class TestPreAIBackupSafetyNet:
         def _ok(*_a, **_k):
             calls["n"] += 1
 
-        with patch("server.core.backup_manager.create_backup", _ok):
+        with patch("openavc.core.backup_manager.create_backup", _ok):
             await handler._maybe_create_pre_ai_backup()
         # The retry happened (proves the net wasn't disabled) and succeeded.
         assert handler._ai_backup_created is True
         assert calls["n"] == 2
 
         # Now that a backup exists, no further attempts are made this session.
-        with patch("server.core.backup_manager.create_backup", _ok):
+        with patch("openavc.core.backup_manager.create_backup", _ok):
             await handler._maybe_create_pre_ai_backup()
         assert calls["n"] == 2
 
@@ -718,7 +718,7 @@ class TestPreAIBackupSafetyNet:
         def _ok(*_a, **_k):
             calls["n"] += 1
 
-        with patch("server.core.backup_manager.create_backup", _ok):
+        with patch("openavc.core.backup_manager.create_backup", _ok):
             await handler._maybe_create_pre_ai_backup()
             await handler._maybe_create_pre_ai_backup()
         assert handler._ai_backup_created is True
@@ -733,27 +733,27 @@ class TestPreAIBackupSafetyNet:
 
 class TestUINavigateMacroStep:
     def test_ui_navigate_in_valid_step_actions(self):
-        from server.core.macro_validation import BUILTIN_STEP_ACTIONS
+        from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
         assert "ui.navigate" in BUILTIN_STEP_ACTIONS
 
     def test_ui_navigate_with_page_valid(self):
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         errs = validate_macro_step({"action": "ui.navigate", "page": "home"}, "steps[0]")
         assert errs == []
 
     def test_ui_navigate_overlay_controls_valid(self):
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         for page in ("$back", "$dismiss"):
             errs = validate_macro_step({"action": "ui.navigate", "page": page}, "steps[0]")
             assert errs == [], f"'{page}' rejected: {errs}"
 
     def test_ui_navigate_missing_page_rejected(self):
-        from server.core.macro_validation import validate_macro_step
+        from openavc.core.macro_validation import validate_macro_step
         errs = validate_macro_step({"action": "ui.navigate"}, "steps[0]")
         assert errs and any("page" in e for e in errs)
 
     def test_macro_with_ui_navigate_step_validates(self):
-        from server.core.macro_validation import validate_macro
+        from openavc.core.macro_validation import validate_macro
         steps = [
             {"action": "device.command", "device": "proj1", "command": "power_on"},
             {"action": "ui.navigate", "page": "controls"},
@@ -769,22 +769,22 @@ class TestUINavigateMacroStep:
 
 class TestStateKeyISCPrefix:
     def test_isc_prefix_accepted(self):
-        from server.core.state_store import check_state_write
+        from openavc.core.state_store import check_state_write
         assert check_state_write("isc.room1.scene", "movie") is None
 
     def test_isc_listed_in_error_message(self):
-        from server.core.state_store import check_state_write
+        from openavc.core.state_store import check_state_write
         err = check_state_write("bogus.key", 1)
         assert err and "isc." in err
 
     def test_unknown_prefix_still_rejected(self):
-        from server.core.state_store import check_state_write
+        from openavc.core.state_store import check_state_write
         assert check_state_write("bogus.key", 1) is not None
 
     def test_every_door_gives_the_same_verdict(self):
         """The point of the shared policy: no write succeeds through one door
         and fails through another. Q-053 — REST used to have no prefix gate."""
-        from server.core.state_store import (
+        from openavc.core.state_store import (
             PANEL_WRITABLE_PREFIXES, VALID_KEY_PREFIXES, check_state_write,
         )
         # The unauthenticated door is a strict subset of the authenticated one,

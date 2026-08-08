@@ -2,7 +2,7 @@
 
 import pytest
 
-from server.core.condition_eval import eval_operator
+from openavc.core.condition_eval import eval_operator
 
 
 # ---------------------------------------------------------------------------

@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import pytest
 
-from server.discovery.hints import DiscoveryHintError, parse_driver_discovery
-from server.discovery.probe_runner import _apply_extract, _matches
+from openavc.discovery.hints import DiscoveryHintError, parse_driver_discovery
+from openavc.discovery.probe_runner import _apply_extract, _matches
 
 
 def _driver(discovery: dict, driver_id: str = "acme_widget") -> dict:

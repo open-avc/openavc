@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-from server.core.state_store import (
+from openavc.core.state_store import (
     PANEL_WRITABLE_PREFIXES,
     VALID_KEY_PREFIXES,
     check_state_write,
@@ -72,8 +72,8 @@ def test_rejection_names_what_is_allowed():
 def client():
     from fastapi.testclient import TestClient
 
-    from server.api import rest, ws
-    from server.main import app
+    from openavc.api import rest, ws
+    from openavc.main import app
     from tests.test_api_endpoints import _make_mock_engine
 
     engine = _make_mock_engine()
@@ -115,7 +115,7 @@ async def test_ws_programmer_rejects_an_off_namespace_key():
 
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_ws(ws, {"type": "state.set", "key": "foo.bar", "value": 1}, "programmer")
     engine.state.set.assert_not_called()
     assert ws.sent[0]["type"] == "error"
@@ -127,7 +127,7 @@ async def test_ws_programmer_still_writes_a_namespaced_key():
 
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_ws(
             ws, {"type": "state.set", "key": "device.proj1.power", "value": "on"}, "programmer"
         )
@@ -135,7 +135,7 @@ async def test_ws_programmer_still_writes_a_namespaced_key():
 
 
 async def _handle_ws(ws, msg, client_type):
-    from server.api.ws import _handle_message
+    from openavc.api.ws import _handle_message
 
     await _handle_message(ws, msg, client_type)
 
@@ -143,7 +143,7 @@ async def _handle_ws(ws, msg, client_type):
 @pytest.mark.asyncio
 async def test_ai_tool_gives_the_same_verdict_as_rest():
     """Same input, same answer — the drift this item closed."""
-    from server.cloud.tools.macro_tools import MacroToolsMixin
+    from openavc.cloud.tools.macro_tools import MacroToolsMixin
 
     class _Tools(MacroToolsMixin):
         def __init__(self):
@@ -202,7 +202,7 @@ def test_the_flat_primitive_predicate_has_exactly_one_definition():
                 offenders.append(f"{rel}:{node.lineno}")
     assert not offenders, (
         "These re-implement the flat-primitive predicate instead of importing "
-        "server.core.state_store.is_flat_primitive:\n  " + "\n  ".join(offenders)
+        "openavc.core.state_store.is_flat_primitive:\n  " + "\n  ".join(offenders)
     )
 
 

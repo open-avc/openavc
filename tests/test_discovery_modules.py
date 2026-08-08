@@ -1,7 +1,7 @@
 """Unit tests for discovery's OUI database / static data tables."""
 
-from server.discovery.oui_database import OUIDatabase
-from server.discovery.oui_data import AV_OUI_TABLE
+from openavc.discovery.oui_database import OUIDatabase
+from openavc.discovery.oui_data import AV_OUI_TABLE
 
 
 # =============================================================================

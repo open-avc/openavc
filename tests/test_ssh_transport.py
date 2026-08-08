@@ -13,7 +13,7 @@ import os
 
 import pytest
 
-from server.transport.ssh import SSHTransport, _write_askpass_helper
+from openavc.transport.ssh import SSHTransport, _write_askpass_helper
 
 HOST = "acme-switch.invalid"
 USER = "avc"
@@ -80,7 +80,7 @@ def test_extra_ssh_options_are_appended():
 
 
 def test_resolve_binary_missing(monkeypatch):
-    monkeypatch.setattr("server.transport.ssh.shutil.which", lambda _x: None)
+    monkeypatch.setattr("openavc.transport.ssh.shutil.which", lambda _x: None)
     t = SSHTransport(HOST, 22, USER, _noop, _noop)  # no ssh_binary -> PATH lookup
     with pytest.raises(ConnectionError, match="OpenSSH client"):
         t.build_argv()
@@ -174,7 +174,7 @@ async def test_async_on_data_exception_is_logged(caplog):
     t = SSHTransport(
         HOST, 22, USER, failing_handler, _noop, ssh_binary="/usr/bin/ssh"
     )
-    with caplog.at_level(logging.ERROR, logger="server.transport.ssh"):
+    with caplog.at_level(logging.ERROR, logger="openavc.transport.ssh"):
         t._deliver(b"payload")
         assert t._bg_tasks, "async handler task must be strongly referenced"
         for _ in range(10):

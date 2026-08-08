@@ -4,7 +4,7 @@ See ``server/discovery/result.py`` for the type definitions and
 ``OpenAVC-Discovery-Spec.md`` §5 for the matcher contract.
 """
 
-from server.discovery.result import (
+from openavc.discovery.result import (
     DeviceState,
     DiscoveredDevice,
     Evidence,

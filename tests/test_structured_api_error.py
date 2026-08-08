@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from server.api.errors import StructuredApiError, structured_api_error_handler
+from openavc.api.errors import StructuredApiError, structured_api_error_handler
 
 
 def _app() -> FastAPI:
@@ -55,8 +55,8 @@ def test_reads_like_any_other_error_with_no_extra_fields() -> None:
 
 @pytest.fixture
 def client():
-    from server.api import rest, ws
-    from server.main import app
+    from openavc.api import rest, ws
+    from openavc.main import app
     from tests.test_api_endpoints import _make_mock_engine
 
     engine = _make_mock_engine()

@@ -23,9 +23,9 @@ import socket
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
 from tests.drivers.acme_power_relay import AcmePowerRelayDriver, build_wake_payload
 
 

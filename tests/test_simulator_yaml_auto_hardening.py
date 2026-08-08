@@ -10,14 +10,14 @@ import asyncio
 
 import pytest
 
-from server.drivers.compiled_protocol import send_regex
-from simulator.base import StateMachine
-from simulator.validate import (
+from openavc.drivers.compiled_protocol import send_regex
+from openavc.simulator.base import StateMachine
+from openavc.simulator.validate import (
     ValidationResult,
     _build_auto_pattern,
     _check_state_machines,
 )
-from simulator.yaml_auto import YAMLAutoSimulator
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
 def _make_sim(driver_def: dict, device_id: str = "dev1") -> YAMLAutoSimulator:
@@ -1041,7 +1041,7 @@ def test_osc_handler_bare_value_reaches_the_wire_as_a_typed_argument():
 
 def test_osc_handler_bare_value_survives_encoding():
     """The end the driver actually sees: a real OSC packet with one argument."""
-    from server.transport.osc_codec import osc_decode_message, osc_encode_message
+    from openavc.transport.osc_codec import osc_decode_message, osc_encode_message
 
     sim = _make_sim(OSC_DEFINITION)
     address, args = sim.handle_message("/acme/go", [])[0]
@@ -1061,26 +1061,26 @@ def test_osc_handler_bare_value_survives_encoding():
     ],
 )
 def test_bare_values_take_the_tag_their_type_implies(value, expected):
-    from simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.yaml_auto import _normalize_osc_args
 
     assert _normalize_osc_args([value]) == [expected]
 
 
 def test_a_typed_pair_passes_through_untouched():
-    from simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.yaml_auto import _normalize_osc_args
 
     assert _normalize_osc_args([("f", 0.25)]) == [("f", 0.25)]
     assert _normalize_osc_args([["i", 3]]) == [("i", 3)]
 
 
 def test_a_lone_value_outside_a_list_is_accepted():
-    from simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.yaml_auto import _normalize_osc_args
 
     assert _normalize_osc_args("hello") == [("s", "hello")]
 
 
 def test_no_args_is_still_no_args():
-    from simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.yaml_auto import _normalize_osc_args
 
     assert _normalize_osc_args(None) == []
     assert _normalize_osc_args([]) == []
@@ -1089,7 +1089,7 @@ def test_no_args_is_still_no_args():
 def test_a_pair_with_an_unknown_type_tag_is_loud():
     """Loud beats silent: the old behavior turned this into a garbage type tag
     and an empty payload, which looked like a working simulator."""
-    from simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.yaml_auto import _normalize_osc_args
 
     with pytest.raises(ValueError, match="type_tag"):
         _normalize_osc_args([("zz", 1)])

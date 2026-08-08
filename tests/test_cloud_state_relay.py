@@ -25,10 +25,10 @@ from typing import Any
 
 import pytest
 
-from server.cloud.protocol import STATE_BATCH
-from server.cloud.state_relay import StateRelay
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
+from openavc.cloud.protocol import STATE_BATCH
+from openavc.cloud.state_relay import StateRelay
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
 
 
 # ---------------------------------------------------------------------------

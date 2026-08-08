@@ -60,18 +60,18 @@ results.metric_plain_passthrough = H.formatMetric(42, "number") === "42";
 const mkEntry = (i, msg, source) => ({
   timestamp: 1000 + i,
   level: "INFO",
-  source: source || "server.core.engine",
+  source: source || "openavc.core.engine",
   message: msg,
 });
 const entries = [];
 for (let i = 0; i < 200; i++) entries.push(mkEntry(i, `[Plugin:foo] line ${i}`));
 entries.push(mkEntry(500, "unrelated line"));
-entries.push(mkEntry(501, "loader line", "server.core.plugin_loader"));
+entries.push(mkEntry(501, "loader line", "openavc.core.plugin_loader"));
 const filtered = H.filterPluginLog(entries, "foo");
 results.log_filter_caps_50 = filtered.length === 50;
 results.log_filter_excludes_unrelated =
-  filtered.every((e) => e.message.includes("[Plugin:foo]") || e.source === "server.core.plugin_loader");
-results.log_filter_keeps_loader = filtered.some((e) => e.source === "server.core.plugin_loader");
+  filtered.every((e) => e.message.includes("[Plugin:foo]") || e.source === "openavc.core.plugin_loader");
+results.log_filter_keeps_loader = filtered.some((e) => e.source === "openavc.core.plugin_loader");
 results.log_filter_other_plugin =
   H.filterPluginLog([mkEntry(0, "[Plugin:bar] x")], "foo").length === 0;
 

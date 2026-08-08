@@ -9,7 +9,7 @@ be missing from the pre-update backup.
 
 import zipfile
 
-from server.updater.backup import create_backup
+from openavc.updater.backup import create_backup
 
 
 def _write(path, content: str = "") -> None:

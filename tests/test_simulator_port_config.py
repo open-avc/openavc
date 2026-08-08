@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.simulation import (
+from openavc.core.simulation import (
     SIMULATOR_DEVICE_PORT_BASE,
     SIMULATOR_UI_PORT,
     _port_in_use_message,
     simulator_device_port_base,
     simulator_ui_port,
 )
-from simulator.engine import PORT_RANGE_START, PORT_RANGE_WIDTH, SimulatorManager
+from openavc.simulator.engine import PORT_RANGE_START, PORT_RANGE_WIDTH, SimulatorManager
 
 
 def test_defaults_match_the_shipped_numbers():
@@ -26,7 +26,7 @@ def test_defaults_match_the_shipped_numbers():
 
 def test_env_override_moves_the_ui_port(monkeypatch):
     monkeypatch.setenv("OPENAVC_SIMULATOR_UI_PORT", "29500")
-    from server import system_config
+    from openavc import system_config
 
     system_config.reset_system_config()
     try:
@@ -38,7 +38,7 @@ def test_env_override_moves_the_ui_port(monkeypatch):
 
 def test_env_override_moves_the_device_port_base(monkeypatch):
     monkeypatch.setenv("OPENAVC_SIMULATOR_DEVICE_PORT_BASE", "29000")
-    from server import system_config
+    from openavc import system_config
 
     system_config.reset_system_config()
     try:
@@ -55,7 +55,7 @@ def test_a_junk_value_falls_back_rather_than_crashing_start(monkeypatch):
     which is a worse outcome than ignoring the setting.
     """
     monkeypatch.setenv("OPENAVC_SIMULATOR_UI_PORT", "not-a-port")
-    from server import system_config
+    from openavc import system_config
 
     system_config.reset_system_config()
     try:
@@ -67,7 +67,7 @@ def test_a_junk_value_falls_back_rather_than_crashing_start(monkeypatch):
 
 def test_the_section_is_in_defaults_so_it_round_trips_through_the_api():
     """system.json PATCH only writes keys already present in the section."""
-    from server.system_config import DEFAULTS
+    from openavc.system_config import DEFAULTS
 
     assert DEFAULTS["simulation"]["ui_port"] == 19500
     assert DEFAULTS["simulation"]["device_port_base"] == 19000

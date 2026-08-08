@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.plugin_api import PluginAPI, PluginPermissionError
-from server.core.plugin_loader import (
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_api import PluginAPI, PluginPermissionError
+from openavc.core.plugin_loader import (
     MAX_CALLBACK_FAILURES,
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
@@ -23,8 +23,8 @@ from server.core.plugin_loader import (
     register_plugin_class,
     validate_extensions,
 )
-from server.core.plugin_registry import PluginRegistry
-from server.core.state_store import StateStore
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.state_store import StateStore
 
 
 # ──── Mock Plugin Classes ────
@@ -1449,7 +1449,7 @@ class TestGetAllExtensionsIsolation:
 class TestLifecycleTimeouts:
     @pytest.mark.asyncio
     async def test_start_hook_timeout_fails_cleanly(self, loader, monkeypatch):
-        monkeypatch.setattr("server.core.plugin_loader.PLUGIN_START_TIMEOUT", 0.05)
+        monkeypatch.setattr("openavc.core.plugin_loader.PLUGIN_START_TIMEOUT", 0.05)
 
         class HangStart:
             PLUGIN_INFO = _valid_info("hang_start")
@@ -1469,7 +1469,7 @@ class TestLifecycleTimeouts:
 
     @pytest.mark.asyncio
     async def test_stop_hook_timeout_still_tears_down(self, loader, monkeypatch):
-        monkeypatch.setattr("server.core.plugin_loader.PLUGIN_STOP_TIMEOUT", 0.05)
+        monkeypatch.setattr("openavc.core.plugin_loader.PLUGIN_STOP_TIMEOUT", 0.05)
 
         class HangStop:
             PLUGIN_INFO = _valid_info("hang_stop")
@@ -1491,7 +1491,7 @@ class TestLifecycleTimeouts:
 
     @pytest.mark.asyncio
     async def test_health_check_timeout(self, loader, monkeypatch):
-        monkeypatch.setattr("server.core.plugin_loader.PLUGIN_HEALTH_TIMEOUT", 0.05)
+        monkeypatch.setattr("openavc.core.plugin_loader.PLUGIN_HEALTH_TIMEOUT", 0.05)
 
         class HangHealth:
             PLUGIN_INFO = _valid_info("hang_health")
@@ -1736,7 +1736,7 @@ class TestStateKeyHygiene:
     async def test_plugin_log_tasks_are_bounded(self, loader, monkeypatch):
         """L-031: a plugin logging in a tight loop can't spawn unbounded
         one-shot event tasks."""
-        monkeypatch.setattr("server.core.plugin_loader.MAX_PENDING_LOG_EVENTS", 5)
+        monkeypatch.setattr("openavc.core.plugin_loader.MAX_PENDING_LOG_EVENTS", 5)
 
         for i in range(50):
             loader._plugin_log("noisy", f"msg {i}")

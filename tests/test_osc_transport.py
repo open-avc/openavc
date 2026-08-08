@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from server.transport.osc import OSCTransport, _OSCListenProtocol
-from server.transport.osc_codec import osc_encode_message
+from openavc.transport.osc import OSCTransport, _OSCListenProtocol
+from openavc.transport.osc_codec import osc_encode_message
 
 
 class _StubParent:
@@ -227,7 +227,7 @@ async def test_verify_dual_socket_ignores_baseline_traffic(silent_remote):
 async def test_listen_async_on_data_task_held_until_done():
     """The dedicated OSC listen socket strong-refs an async on_data task while
     it is in flight (so it can't be GC'd mid-await) and clears it when done."""
-    from server.transport.osc import _OSCListenProtocol
+    from openavc.transport.osc import _OSCListenProtocol
 
     release = asyncio.Event()
     started = asyncio.Event()

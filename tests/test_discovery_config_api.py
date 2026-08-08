@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from server.main import app
-from server.api import discovery as discovery_api
+from openavc.main import app
+from openavc.api import discovery as discovery_api
 
 
 def _make_stub_engine(community: str = "s3cret"):

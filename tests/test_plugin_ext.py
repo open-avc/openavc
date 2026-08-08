@@ -19,8 +19,8 @@ import pytest
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.testclient import TestClient
 
-import server.api.auth as auth_mod
-from server.api.plugin_ext import (
+import openavc.api.auth as auth_mod
+from openavc.api.plugin_ext import (
     PLUGIN_TOKEN_HEADER,
     PLUGIN_TOKEN_QUERY,
     _AccessLogRedactionFilter,
@@ -31,16 +31,16 @@ from server.api.plugin_ext import (
     unmount_plugin_router,
     verify_plugin_token,
 )
-from server.core.event_bus import EventBus
-from server.core.plugin_api import PluginAPI, PluginPermissionError
-from server.core.plugin_loader import (
+from openavc.core.event_bus import EventBus
+from openavc.core.plugin_api import PluginAPI, PluginPermissionError
+from openavc.core.plugin_loader import (
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
     _REGISTRY_LOCK,
     register_plugin_class,
 )
-from server.core.plugin_registry import PluginRegistry
-from server.core.state_store import StateStore
+from openavc.core.plugin_registry import PluginRegistry
+from openavc.core.state_store import StateStore
 
 
 def _set_auth(monkeypatch, password="", api_key="", username=""):
@@ -403,7 +403,7 @@ class TestProxyTo:
     def test_requires_http_endpoints_capability(self):
         """proxy_to is egress; a plugin that didn't declare http_endpoints
         can't make outbound requests (auditability)."""
-        from server.core.plugin_api import PluginPermissionError
+        from openavc.core.plugin_api import PluginPermissionError
 
         api, _ = _make_api("p", capabilities=[])
 
@@ -447,7 +447,7 @@ class TestSaveConfig:
     async def test_rejects_non_serializable_config(self):
         """A non-JSON-serializable config is refused before it can poison the
         in-memory project; api.config is left unchanged."""
-        from server.core.plugin_api import PluginPermissionError
+        from openavc.core.plugin_api import PluginPermissionError
 
         api, _ = _make_api("p", capabilities=[])
         with pytest.raises(PluginPermissionError):
@@ -456,7 +456,7 @@ class TestSaveConfig:
 
     @pytest.mark.asyncio
     async def test_rejects_cyclic_config(self):
-        from server.core.plugin_api import PluginPermissionError
+        from openavc.core.plugin_api import PluginPermissionError
 
         api, _ = _make_api("p", capabilities=[])
         cyclic: dict = {}
@@ -482,7 +482,7 @@ class TestVariableCleanup:
     async def test_created_vars_cleaned_declared_preserved(self):
         """A plugin's ad-hoc var.* keys are removed on cleanup; a declared user
         variable the plugin merely wrote to is left intact."""
-        from server.core.plugin_api import _MISSING
+        from openavc.core.plugin_api import _MISSING
 
         api, reg = _make_api("p", capabilities=["variable_write"])
         # A declared user variable is seeded by the engine before plugins run.
@@ -698,7 +698,7 @@ def test_panel_element_capabilities_default_empty():
 # ═══════════════════════════════════════════════════════════
 
 
-from server.api.plugin_ext import (  # noqa: E402
+from openavc.api.plugin_ext import (  # noqa: E402
     has_panel_paths,
     mint_guest_token,
     mint_panel_token,

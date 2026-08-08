@@ -4,9 +4,9 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.state_store import StateStore
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.state_store import StateStore
 
 
 @pytest.fixture
@@ -497,7 +497,7 @@ async def test_wait_until_subscription_cleanup_on_success(engine, state):
 
 def test_macro_step_wait_until_schema():
     """MacroStep accepts wait_until fields."""
-    from server.core.project_loader import MacroStep
+    from openavc.core.project_loader import MacroStep
     step = MacroStep(
         action="wait_until",
         condition={"key": "device.p.power", "operator": "eq", "value": "on"},
@@ -512,7 +512,7 @@ def test_macro_step_wait_until_schema():
 
 def test_macro_step_wait_until_null_timeout():
     """MacroStep accepts timeout=None for 'never time out'."""
-    from server.core.project_loader import MacroStep
+    from openavc.core.project_loader import MacroStep
     step = MacroStep(
         action="wait_until",
         condition={"key": "var.x", "operator": "eq", "value": True},

@@ -106,4 +106,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import ssl,urllib.request; urllib.request.urlopen('http://localhost:8080/api/health', context=ssl._create_unverified_context())"
 
-ENTRYPOINT ["python", "-m", "server.main"]
+ENTRYPOINT ["python", "-m", "openavc.main"]

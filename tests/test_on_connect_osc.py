@@ -17,11 +17,11 @@ on the encoded bytes.
 """
 from __future__ import annotations
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers import base as base_mod
-from server.drivers.configurable import create_configurable_driver_class
-from server.transport.osc_codec import osc_encode_message
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers import base as base_mod
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.transport.osc_codec import osc_encode_message
 
 
 class FakeTransport:

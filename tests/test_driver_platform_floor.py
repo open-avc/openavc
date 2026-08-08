@@ -22,13 +22,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from server.drivers import spec
-from server.drivers.avcdriver_semantic import (
+from openavc.drivers import spec
+from openavc.drivers.avcdriver_semantic import (
     platform_version_errors,
     validate_driver_definition,
 )
-from server.drivers.python_info import python_driver_info_issues
-from server.drivers.spec import (
+from openavc.drivers.python_info import python_driver_info_issues
+from openavc.drivers.spec import (
     parse_version,
     platform_requirements,
     required_platform_version,

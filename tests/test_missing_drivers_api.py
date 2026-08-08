@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from server.core.engine import Engine
-from server.main import app
-from server.api import rest, ws
+from openavc.core.engine import Engine
+from openavc.main import app
+from openavc.api import rest, ws
 
 
 # Project with two orphans (drivers don't exist) and one real device using
@@ -88,7 +88,7 @@ async def running_app():
     # middleware's localhost exemption doesn't apply. Earlier tests in the
     # suite leave entries in the per-IP rate-limit buckets that can spill
     # over and 429 our requests on CI. Clear before yielding.
-    from server.middleware.rate_limit import _ip_buckets
+    from openavc.middleware.rate_limit import _ip_buckets
     _ip_buckets.clear()
 
     project = json.loads(json.dumps(TEST_PROJECT))
@@ -99,7 +99,7 @@ async def running_app():
         tmp_path = f.name
 
     engine = Engine(tmp_path)
-    from server.core.project_loader import load_project
+    from openavc.core.project_loader import load_project
     engine.project = load_project(tmp_path)
 
     for device in engine.project.devices:
@@ -113,7 +113,7 @@ async def running_app():
     # endpoints construct their own CommunityIndexCache, so we patch the
     # cache class's get_drivers method.
     with patch(
-        "server.discovery.community_index.CommunityIndexCache.get_drivers",
+        "openavc.discovery.community_index.CommunityIndexCache.get_drivers",
         new=AsyncMock(return_value=MOCK_CATALOG),
     ):
         yield TestClient(app)
@@ -169,7 +169,7 @@ async def test_install_missing_reports_uncatalogued_failures(running_app):
     reason; the rest of the batch isn't aborted."""
     # Skip the actual GitHub download by also mocking install_community_driver
     with patch(
-        "server.api.routes.drivers.install_community_driver",
+        "openavc.api.routes.drivers.install_community_driver",
         new=AsyncMock(return_value={"status": "installed"}),
     ):
         resp = running_app.post(
@@ -198,8 +198,8 @@ async def test_install_missing_empty_batch_returns_empty_lists(running_app):
 async def test_install_missing_activates_orphans(running_app):
     """End-to-end happy path: install registers the driver, retry sweep
     promotes the matching orphan, response lists it under activated_devices."""
-    from server.drivers.registry import _DRIVER_REGISTRY
-    from server.drivers.base import BaseDriver
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+    from openavc.drivers.base import BaseDriver
 
     class _MockSamsung(BaseDriver):
         DRIVER_INFO = {
@@ -234,7 +234,7 @@ async def test_install_missing_activates_orphans(running_app):
         return {"status": "installed", "driver_id": req.driver_id, "file": "x"}
 
     with patch(
-        "server.api.routes.drivers.install_community_driver",
+        "openavc.api.routes.drivers.install_community_driver",
         new=fake_install,
     ):
         try:

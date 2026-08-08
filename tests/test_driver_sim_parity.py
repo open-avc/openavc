@@ -27,11 +27,11 @@ import asyncio
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.configurable import create_configurable_driver_class
-from server.drivers.driver_loader import validate_driver_definition
-from simulator.yaml_auto import YAMLAutoSimulator
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
 def _display_def() -> dict:

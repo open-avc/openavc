@@ -2,10 +2,10 @@
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import CommandParamError
-from server.drivers.configurable import (
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import CommandParamError
+from openavc.drivers.configurable import (
     ConfigurableDriver,
     _normalize_and_validate_command_params,
     create_configurable_driver_class,

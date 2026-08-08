@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from server.core.engine import Engine
+from openavc.core.engine import Engine
 
 
 @pytest.fixture

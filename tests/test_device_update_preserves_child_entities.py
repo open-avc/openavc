@@ -21,12 +21,12 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from server.api import rest, ws
-from server.api.models import DeviceUpdateRequest
-from server.cloud.ai_tool_handler import AIToolHandler
-from server.drivers.registry import register_driver, unregister_driver
-from server.core.engine import Engine
-from server.core.project_loader import (
+from openavc.api import rest, ws
+from openavc.api.models import DeviceUpdateRequest
+from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.core.engine import Engine
+from openavc.core.project_loader import (
     ChildEntityConfig,
     DeviceConfig,
     ProjectConfig,
@@ -34,8 +34,8 @@ from server.core.project_loader import (
     load_project,
     save_project,
 )
-from server.drivers.base import BaseDriver
-from server.main import app
+from openavc.drivers.base import BaseDriver
+from openavc.main import app
 
 
 class _ChildTCPController(BaseDriver):

@@ -12,7 +12,7 @@ All drivers here are invented (acme_widget) with synthetic payloads.
 
 import textwrap
 
-from simulator.validate import validate_yaml_driver
+from openavc.simulator.validate import validate_yaml_driver
 
 
 def _validate(tmp_path, yaml_text):

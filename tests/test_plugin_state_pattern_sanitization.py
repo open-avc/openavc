@@ -2,7 +2,7 @@
 ``plugin.<id>.*`` namespace so a plugin sidebar can't scrape unrelated state.
 """
 
-from server.core.plugin_loader import PluginLoader
+from openavc.core.plugin_loader import PluginLoader
 
 
 def _san(pattern, plugin_id="dante"):

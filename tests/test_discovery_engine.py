@@ -9,8 +9,8 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 
-from server.discovery.engine import DiscoveryEngine, ScanStatus
-from server.discovery.result import DiscoveredDevice
+from openavc.discovery.engine import DiscoveryEngine, ScanStatus
+from openavc.discovery.result import DiscoveredDevice
 
 
 # --- ScanStatus tests ---
@@ -92,7 +92,7 @@ class TestDiscoveryEngineBasic:
         assert self.engine.scan_status.status == "idle"
 
     def test_results_sorted_identified_first(self):
-        from server.discovery.result import IdentificationMatch
+        from openavc.discovery.result import IdentificationMatch
 
         self.engine.results["a"] = DiscoveredDevice(ip="10.0.0.1")
         self.engine.results["b"] = DiscoveredDevice(
@@ -148,25 +148,25 @@ class TestStartScan:
             assert self.engine.scan_status.subnets == ["10.0.0.0/24", "192.168.1.0/24"]
 
     async def test_no_subnets_raises(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=[]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=[]):
             with pytest.raises(ValueError, match="No subnets"):
                 await self.engine.start_scan(subnets=[])
 
     async def test_auto_detect_subnets(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             with patch.object(self.engine, "_run_scan", new_callable=AsyncMock):
                 await self.engine.start_scan()
                 assert self.engine.scan_status.subnets == ["192.168.1.0/24"]
 
     async def test_extra_subnets_appended(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             with patch.object(self.engine, "_run_scan", new_callable=AsyncMock):
                 await self.engine.start_scan(extra_subnets=["10.0.0.0/24"])
                 assert "10.0.0.0/24" in self.engine.scan_status.subnets
                 assert "192.168.1.0/24" in self.engine.scan_status.subnets
 
     async def test_extra_subnets_no_duplicates(self):
-        with patch("server.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
+        with patch("openavc.discovery.engine.get_local_subnets", return_value=["192.168.1.0/24"]):
             with patch.object(self.engine, "_run_scan", new_callable=AsyncMock):
                 await self.engine.start_scan(extra_subnets=["192.168.1.0/24"])
                 assert self.engine.scan_status.subnets.count("192.168.1.0/24") == 1
@@ -546,12 +546,12 @@ class TestScanPipeline:
         """Pipeline completes when no hosts respond to ping."""
         mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
-        with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+        with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
+             patch("openavc.discovery.engine.MDNSScanner", mock_mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/30"])
 
         # Should complete without error, even with no devices
@@ -561,15 +561,15 @@ class TestScanPipeline:
         """Pipeline discovers devices through ping + port + ARP."""
         mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
-        with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping, \
-             patch("server.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
-             patch("server.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports, \
-             patch("server.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
-             patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+        with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping, \
+             patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
+             patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports, \
+             patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.engine.MDNSScanner", mock_mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
 
             mock_ping.return_value = ["192.168.1.10", "192.168.1.20"]
             mock_arp.return_value = {"192.168.1.10": "00:05:A6:11:22:33"}
@@ -598,12 +598,12 @@ class TestScanPipeline:
 
         mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
-        with patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+        with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
+             patch("openavc.discovery.engine.MDNSScanner", mock_mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/24"])
             # Stale removal is part of phase 8, which _run_scan drives
             # separately so it survives a deadline overrun.
@@ -619,11 +619,11 @@ class TestScanPipeline:
         async def cancel_during_ping(*args, **kwargs):
             raise asyncio.CancelledError()
 
-        with patch("server.discovery.engine.ping_sweep", side_effect=cancel_during_ping), \
-             patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", mock_snmp_cls):
+        with patch("openavc.discovery.engine.ping_sweep", side_effect=cancel_during_ping), \
+             patch("openavc.discovery.engine.MDNSScanner", mock_mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls):
             with pytest.raises(asyncio.CancelledError):
                 await self.engine._scan_pipeline(["192.168.1.0/24"])
 
@@ -639,12 +639,12 @@ class TestScanPipeline:
         mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
         with patch.object(self.engine, "_get_control_interface", return_value="10.20.30.40"), \
-             patch("server.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
-             patch("server.discovery.engine.MDNSScanner", mock_mdns_cls), \
-             patch("server.discovery.engine.SSDPScanner", mock_ssdp_cls), \
-             patch("server.discovery.engine.AMXDDPScanner", mock_amx_cls), \
-             patch("server.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("server.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+             patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
+             patch("openavc.discovery.engine.MDNSScanner", mock_mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
+             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/30"])
 
         # All three constructors should have received the control_ip.
@@ -776,7 +776,7 @@ class TestEmptySubnetErrors:
     @pytest.mark.asyncio
     async def test_stale_control_interface_named_in_error(self):
         with patch.object(self.engine, "_get_control_interface", return_value="192.0.2.77"), \
-             patch("server.discovery.engine.get_local_subnets", return_value=[]):
+             patch("openavc.discovery.engine.get_local_subnets", return_value=[]):
             with pytest.raises(ValueError) as exc:
                 await self.engine.start_scan()
         assert "192.0.2.77" in str(exc.value)
@@ -785,7 +785,7 @@ class TestEmptySubnetErrors:
     @pytest.mark.asyncio
     async def test_no_pin_keeps_generic_message(self):
         with patch.object(self.engine, "_get_control_interface", return_value=""), \
-             patch("server.discovery.engine.get_local_subnets", return_value=[]):
+             patch("openavc.discovery.engine.get_local_subnets", return_value=[]):
             with pytest.raises(ValueError) as exc:
                 await self.engine.start_scan()
         assert str(exc.value) == "No subnets to scan. Specify subnets manually."
@@ -802,7 +802,7 @@ class TestEmptySubnetErrors:
             return ["192.0.2.0/24"]
 
         with patch.object(self.engine, "_get_control_interface", return_value="192.0.2.77"), \
-             patch("server.discovery.engine.get_local_subnets", side_effect=fake_subnets), \
+             patch("openavc.discovery.engine.get_local_subnets", side_effect=fake_subnets), \
              patch.object(self.engine, "_run_scan", new=AsyncMock()):
             scan_id = await self.engine.start_scan(ignore_control_interface=True)
         assert scan_id

@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient, ASGITransport
 
-from server.api.ai_proxy import (
+from openavc.api.ai_proxy import (
     router,
     set_engine,
     _get_cloud_api_url,
@@ -51,22 +51,22 @@ def reset_engine():
 
 class TestGetCloudApiUrl:
     def test_wss_to_https(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENDPOINT = "wss://cloud.openavc.com/agent/v1"
             assert _get_cloud_api_url() == "https://cloud.openavc.com"
 
     def test_ws_to_http(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENDPOINT = "ws://localhost:8000/agent/v1"
             assert _get_cloud_api_url() == "http://localhost:8000"
 
     def test_empty_endpoint(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENDPOINT = ""
             assert _get_cloud_api_url() == ""
 
     def test_no_agent_path(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENDPOINT = "wss://cloud.openavc.com"
             assert _get_cloud_api_url() == "https://cloud.openavc.com"
 
@@ -76,23 +76,23 @@ class TestGetCloudApiUrl:
 
 class TestGetSystemKeyBytes:
     def test_empty_key(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_SYSTEM_KEY = ""
             assert _get_system_key_bytes() == b""
 
     def test_hex_key(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_SYSTEM_KEY = "abcdef0123456789"
             result = _get_system_key_bytes()
             assert result == bytes.fromhex("abcdef0123456789")
 
     def test_bytes_key(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_SYSTEM_KEY = b"\x01\x02\x03"
             assert _get_system_key_bytes() == b"\x01\x02\x03"
 
     def test_non_hex_string_key(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_SYSTEM_KEY = "not-hex-key"
             result = _get_system_key_bytes()
             assert result == b"not-hex-key"
@@ -135,7 +135,7 @@ class TestSignRequest:
 
 class TestCheckCloudReady:
     def test_cloud_not_enabled_raises_503(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             from fastapi import HTTPException
             with pytest.raises(HTTPException) as exc_info:
@@ -144,7 +144,7 @@ class TestCheckCloudReady:
             assert "not enabled" in exc_info.value.detail
 
     def test_missing_system_id_raises_503(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = ""
             mock_cfg.CLOUD_SYSTEM_KEY = "abcd"
@@ -155,7 +155,7 @@ class TestCheckCloudReady:
             assert exc_info.value.status_code == 503
 
     def test_success_returns_tuple(self):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aabb"
@@ -217,7 +217,7 @@ class TestErrorMessage:
 
 class TestAiStatusEndpoint:
     async def test_cloud_not_enabled(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             mock_cfg.CLOUD_SYSTEM_ID = ""
             resp = await client.get("/api/ai/status")
@@ -226,7 +226,7 @@ class TestAiStatusEndpoint:
         assert data["available"] is False
 
     async def test_cloud_enabled_but_no_agent(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             set_engine(None)
@@ -238,7 +238,7 @@ class TestAiStatusEndpoint:
         engine = MagicMock()
         engine.cloud_agent.get_status.return_value = {"connected": True}
         set_engine(engine)
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             resp = await client.get("/api/ai/status")
@@ -249,7 +249,7 @@ class TestAiStatusEndpoint:
         engine = MagicMock()
         engine.cloud_agent.get_status.return_value = {"connected": False}
         set_engine(engine)
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             resp = await client.get("/api/ai/status")
@@ -259,7 +259,7 @@ class TestAiStatusEndpoint:
 
 class TestAiChatEndpoint:
     async def test_cloud_not_ready_returns_503(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             resp = await client.post("/api/ai/chat", content=b'{"message": "hi"}')
         assert resp.status_code == 503
@@ -270,7 +270,7 @@ class TestAiChatEndpoint:
         mock_response.status_code = 200
         mock_response.json.return_value = {"response": "hello"}
 
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
@@ -295,7 +295,7 @@ class TestAiChatEndpoint:
         mock_response.status_code = 429
         mock_response.content = b"Rate limited: account 4c9f... over quota"
 
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
@@ -321,7 +321,7 @@ class TestAiChatEndpoint:
         a raw 500 (L-167)."""
         import httpx as _httpx
 
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
@@ -343,7 +343,7 @@ class TestAiChatEndpoint:
         """A cloud connection failure yields a graceful 502, not a raw 500 (L-167)."""
         import httpx as _httpx
 
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
@@ -364,19 +364,19 @@ class TestAiChatEndpoint:
 
 class TestConversationsEndpoints:
     async def test_list_conversations_cloud_not_ready(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             resp = await client.get("/api/ai/conversations")
         assert resp.status_code == 503
 
     async def test_get_conversation_cloud_not_ready(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             resp = await client.get("/api/ai/conversations/conv-123")
         assert resp.status_code == 503
 
     async def test_delete_conversation_cloud_not_ready(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             resp = await client.delete("/api/ai/conversations/conv-123")
         assert resp.status_code == 503
@@ -386,7 +386,7 @@ class TestConversationsEndpoints:
         mock_response.status_code = 200
         mock_response.json.return_value = [{"id": "conv-1"}]
 
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
@@ -407,7 +407,7 @@ class TestConversationsEndpoints:
 
 class TestUsageEndpoint:
     async def test_usage_cloud_not_ready(self, client):
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = False
             resp = await client.get("/api/ai/usage")
         assert resp.status_code == 503
@@ -417,7 +417,7 @@ class TestUsageEndpoint:
         mock_response.status_code = 200
         mock_response.json.return_value = {"tokens_used": 1000, "limit": 50000}
 
-        with patch("server.api.ai_proxy.cfg") as mock_cfg:
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
             mock_cfg.CLOUD_ENABLED = True
             mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
             mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32

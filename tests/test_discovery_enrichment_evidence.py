@@ -8,9 +8,9 @@ helpers in tier_matcher used by the engine for OUI and hostname
 enrichment - emit shape-correct records.
 """
 
-from server.discovery.result import SignalTier
-from server.discovery.snmp_scanner import SNMPInfo
-from server.discovery.tier_matcher import (
+from openavc.discovery.result import SignalTier
+from openavc.discovery.snmp_scanner import SNMPInfo
+from openavc.discovery.tier_matcher import (
     KIND_HOSTNAME,
     KIND_OUI,
     KIND_SNMP_PEN,
@@ -128,8 +128,8 @@ class TestRoundTrip:
     """Verify the evidence emitters produce records the matcher consumes."""
 
     def test_snmp_pen_round_trip(self):
-        from server.discovery.result import DeviceState
-        from server.discovery.tier_matcher import (
+        from openavc.discovery.result import DeviceState
+        from openavc.discovery.tier_matcher import (
             SignalIndex,
             SignalRule,
             TierMatcher,
@@ -147,8 +147,8 @@ class TestRoundTrip:
         assert result.candidates == ["extron_sis"]
 
     def test_oui_round_trip(self):
-        from server.discovery.result import DeviceState
-        from server.discovery.tier_matcher import (
+        from openavc.discovery.result import DeviceState
+        from openavc.discovery.tier_matcher import (
             SignalIndex,
             SignalRule,
             TierMatcher,
@@ -165,8 +165,8 @@ class TestRoundTrip:
         assert result.candidates == ["qsc_qrc"]
 
     def test_hostname_round_trip(self):
-        from server.discovery.result import DeviceState
-        from server.discovery.tier_matcher import (
+        from openavc.discovery.result import DeviceState
+        from openavc.discovery.tier_matcher import (
             SignalIndex,
             SignalRule,
             TierMatcher,
@@ -196,7 +196,7 @@ class TestSSDPManufacturerVendorString:
     """
 
     def _ssdp_evidence(self):
-        from server.discovery.ssdp_scanner import SSDPResult
+        from openavc.discovery.ssdp_scanner import SSDPResult
 
         (ev,) = SSDPResult(
             ip="192.0.2.10",
@@ -210,7 +210,7 @@ class TestSSDPManufacturerVendorString:
         return ev
 
     def test_extract_mines_top_level_manufacturer(self):
-        from server.discovery.tier_matcher import (
+        from openavc.discovery.tier_matcher import (
             KIND_VENDOR_STRING,
             extract_vendor_strings,
         )
@@ -226,8 +226,8 @@ class TestSSDPManufacturerVendorString:
     def test_generic_device_type_alone_does_not_identify(self):
         # Without mining the manufacturer, the generic device type yields no
         # strong match — proving the vendor string is what produces a result.
-        from server.discovery.result import DeviceState
-        from server.discovery.tier_matcher import (
+        from openavc.discovery.result import DeviceState
+        from openavc.discovery.tier_matcher import (
             SignalIndex,
             SignalRule,
             TierMatcher,
@@ -243,8 +243,8 @@ class TestSSDPManufacturerVendorString:
     def test_ssdp_manufacturer_round_trip_to_possible(self):
         # Mirrors discovery engine phase 8: append mined vendor strings to the
         # evidence log, then match. The manufacturer_alias rule fires.
-        from server.discovery.result import DeviceState
-        from server.discovery.tier_matcher import (
+        from openavc.discovery.result import DeviceState
+        from openavc.discovery.tier_matcher import (
             SignalIndex,
             SignalRule,
             TierMatcher,

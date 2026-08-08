@@ -9,10 +9,10 @@ isn't unit-testable; this exercises the harvest step in isolation with a stubbed
 ARP table.
 """
 
-from server.discovery import engine as engine_mod
-from server.discovery.engine import DiscoveryEngine
-from server.discovery.result import DeviceState, DiscoveredDevice
-from server.discovery.tier_matcher import (
+from openavc.discovery import engine as engine_mod
+from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.result import DeviceState, DiscoveredDevice
+from openavc.discovery.tier_matcher import (
     KIND_OUI,
     SignalRule,
     TierMatcher,

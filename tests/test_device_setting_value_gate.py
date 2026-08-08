@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import (
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import (
     BaseDriver,
     DeviceSettingValueError,
     validate_device_setting_value,
@@ -277,7 +277,7 @@ async def test_child_id_param_coerced_to_int_for_integer_types(core):
 
 
 async def test_child_id_param_junk_rejected_with_actionable_error(core):
-    from server.drivers.base import CommandParamError
+    from openavc.drivers.base import CommandParamError
 
     state, events = core
     dm = DeviceManager(state, events)
@@ -356,7 +356,7 @@ async def _bounded(core, device_id="amp1"):
 
 
 async def test_python_driver_bounds_enforced_at_dispatch(core):
-    from server.drivers.base import CommandParamError
+    from openavc.drivers.base import CommandParamError
 
     dm, driver = await _bounded(core)
 
@@ -374,7 +374,7 @@ async def test_python_driver_bounds_enforced_at_dispatch(core):
 
 
 async def test_python_driver_pattern_enforced_at_dispatch(core):
-    from server.drivers.base import CommandParamError
+    from openavc.drivers.base import CommandParamError
 
     dm, driver = await _bounded(core, "amp2")
 
@@ -416,7 +416,7 @@ async def test_runtime_populated_command_schemas_gated(core):
     """Drivers that build their command set per-instance (the discovered-
     controls pattern) shadow DRIVER_INFO on the instance — the gate reads
     that, so runtime-built bounds are enforced too."""
-    from server.drivers.base import CommandParamError
+    from openavc.drivers.base import CommandParamError
 
     state, events = core
     dm = DeviceManager(state, events)

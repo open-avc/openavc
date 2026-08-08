@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 from cryptography import x509
 
-from server import tls
+from openavc import tls
 from tests.helpers import make_cloud_cert_pem
 
 LABEL = "ab12cd34ef56ab78"
@@ -69,7 +69,7 @@ def test_load_expired_cert_serves_self_signed_only(tmp_path, caplog):
     cert_path.write_bytes(cert_pem)
     key_path.write_bytes(key_pem)
 
-    with caplog.at_level(logging.WARNING, logger="server.tls"):
+    with caplog.at_level(logging.WARNING, logger="openavc.tls"):
         assert tls.load_cloud_cert(tmp_path) is None
     assert tls.cloud_cert_holder().get() is None
     assert any("expired" in r.message for r in caplog.records)
@@ -81,7 +81,7 @@ def test_load_garbage_cert_serves_self_signed_only(tmp_path, caplog):
     cert_path.write_bytes(b"not a pem")
     key_path.write_bytes(b"not a key")
 
-    with caplog.at_level(logging.WARNING, logger="server.tls"):
+    with caplog.at_level(logging.WARNING, logger="openavc.tls"):
         assert tls.load_cloud_cert(tmp_path) is None
     assert tls.cloud_cert_holder().get() is None
 
@@ -280,7 +280,7 @@ def test_sni_callback_expired_at_handshake_falls_back_and_clears(tmp_path, caplo
     cb = tls.make_sni_callback(holder)
 
     sslobj = _fake_sslobj()
-    with caplog.at_level(logging.WARNING, logger="server.tls"):
+    with caplog.at_level(logging.WARNING, logger="openavc.tls"):
         cb(sslobj, f"present.{BASE}", None)
     assert sslobj.context == "default-context"
     assert holder.get() is None

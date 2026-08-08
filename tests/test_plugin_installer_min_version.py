@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from server.core.plugin_installer import (
+from openavc.core.plugin_installer import (
     _check_min_openavc_version,
     _extract_min_openavc_version,
 )
@@ -69,7 +69,7 @@ def test_check_passes_for_matching_version(tmp_path):
 class FakePlugin:
     PLUGIN_INFO = {"id": "fake", "min_openavc_version": "1.2.3"}
 ''')
-    with patch("server.version.__version__", "1.2.3"):
+    with patch("openavc.version.__version__", "1.2.3"):
         # Same version → "less than" is False → must not raise.
         _check_min_openavc_version("fake", plugin_dir)
 

@@ -8,7 +8,7 @@ talks to a single endpoint that has to handle both shapes.
 import pytest
 from pydantic import ValidationError
 
-from server.api.models import TestCommandRequest
+from openavc.api.models import TestCommandRequest
 
 
 def test_accepts_int_port_for_tcp():

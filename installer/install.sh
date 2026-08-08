@@ -521,7 +521,7 @@ Group=openavc
 WorkingDirectory=/opt/openavc
 ExecStartPre=-+/opt/openavc/update-helper.sh /var/lib/openavc
 ExecStartPre=-+/opt/openavc/firewall-sync.sh /var/lib/openavc
-ExecStart=/opt/openavc/venv/bin/python -m server.main
+ExecStart=/opt/openavc/venv/bin/python -m openavc.main
 Restart=always
 RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc

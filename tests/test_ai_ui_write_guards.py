@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.cloud.ai_tool_handler import AIToolHandler, _tool_result_is_error
+from openavc.cloud.ai_tool_handler import AIToolHandler, _tool_result_is_error
 
 
 class _FakeDriver:
@@ -54,7 +54,7 @@ class _FakeDriver:
 
 
 def _make_project():
-    from server.core.project_loader import (
+    from openavc.core.project_loader import (
         DeviceConfig, Layout, Placement, ProjectConfig, ProjectMeta,
         UIConfig, UIElement, UIPage,
     )
@@ -78,7 +78,7 @@ def _make_project():
 
 
 def _tool_call(tool_name, tool_input=None, request_id="req-1"):
-    from server.cloud.protocol import AI_TOOL_CALL, _now_iso
+    from openavc.cloud.protocol import AI_TOOL_CALL, _now_iso
 
     return {
         "type": AI_TOOL_CALL,
@@ -143,7 +143,7 @@ def mock_engine():
 
 @pytest.fixture(autouse=True)
 def _patch_save_project():
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         yield
 
 

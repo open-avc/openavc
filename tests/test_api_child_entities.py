@@ -17,13 +17,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from server.api import rest, ws
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.project_loader import ChildEntityConfig, DeviceConfig
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver
-from server.main import app
+from openavc.api import rest, ws
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver
+from openavc.main import app
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +389,7 @@ def test_patch_label_persists_to_project_and_state(child_client):
     c, engine, driver, _device_cfg = child_client
     driver.register_child("encoder", 7, initial_state={"name": "Original"})
 
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.patch(
             "/api/devices/ctrl1/children/encoder/7",
             json={"label": "Stage Right TX"},
@@ -412,7 +412,7 @@ def test_patch_label_persists_to_project_and_state(child_client):
 def test_patch_config_only_preserves_existing_label(child_client):
     c, engine, _driver, _device_cfg = child_client
     # Project pre-seeds encoder 005 with label "Lobby TX" + room=Lobby.
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.patch(
             "/api/devices/ctrl1/children/encoder/5",
             json={"config": {"room": "Stage", "tag": "primary"}},
@@ -435,7 +435,7 @@ def test_patch_label_works_on_unregistered_child(child_client):
     c, engine, driver, _device_cfg = child_client
     assert not driver.is_child_registered("encoder", 42)
 
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.patch(
             "/api/devices/ctrl1/children/encoder/42",
             json={"label": "Future TX"},
@@ -623,7 +623,7 @@ def test_get_dynamic_child_by_string_id(dsp_client):
 
 def test_patch_dynamic_child_string_id_persists_label(dsp_client):
     c, engine, driver, _cfg = dsp_client
-    with patch("server.core.project_loader.save_project"):
+    with patch("openavc.core.project_loader.save_project"):
         resp = c.patch(
             "/api/devices/dsp1/children/component/PgmGain",
             json={"label": "Program Gain"},

@@ -41,7 +41,7 @@ from pathlib import Path
 
 import pytest
 
-from server.drivers.spec import FIELDS
+from openavc.drivers.spec import FIELDS
 from tests import gates
 
 # Repo root = openavc/ (this file is openavc/tests/test_driver_builder_validate.py).

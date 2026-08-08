@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from server.ui.page_review import (
+from openavc.ui.page_review import (
     HONORED_SHOW_SLOTS,
     MINIMUM_VISIBLE_PX,
     STATE_LABEL_TYPES,
@@ -33,7 +33,7 @@ from server.ui.page_review import (
     TOUCH_PX_PER_INCH,
     TOUCHABLE_TYPES,
 )
-from server.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX, RULES
+from openavc.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX, RULES
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "web" / "panel" / "panel.js"

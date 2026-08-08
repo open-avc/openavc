@@ -14,8 +14,8 @@ import ssl
 import pytest
 from starlette.testclient import TestClient
 
-from server import tls
-from server.main import _build_redirect_app
+from openavc import tls
+from openavc.main import _build_redirect_app
 from tests.helpers import make_cloud_cert_pem
 
 LABEL = "ab12cd34ef56ab78"
@@ -246,7 +246,7 @@ def test_enrollment_while_running_flips_redirect(tmp_path):
 
 
 def test_certified_host_for_active_cert(tmp_path):
-    from server.main import _certified_host_for
+    from openavc.main import _certified_host_for
 
     _install_cloud_cert(tmp_path)
     assert _certified_host_for("192.168.4.45") == f"192-168-4-45.{LABEL}.{ZONE}"
@@ -257,7 +257,7 @@ def test_certified_host_for_active_cert(tmp_path):
 
 
 def test_certified_host_for_without_cert():
-    from server.main import _certified_host_for
+    from openavc.main import _certified_host_for
 
     assert _certified_host_for("192.168.4.45") is None
 

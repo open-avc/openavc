@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.api.ws import (
+from openavc.api.ws import (
     _handle_message,
     _send_ws,
     _PANEL_ALLOWED_TYPES,
 )
-from server.core.state_store import PANEL_WRITABLE_PREFIXES, is_flat_primitive
-import server.api.ws as ws_module
-from server.api.ws import _dispatch_text
+from openavc.core.state_store import PANEL_WRITABLE_PREFIXES, is_flat_primitive
+import openavc.api.ws as ws_module
+from openavc.api.ws import _dispatch_text
 
 
 # ── is_flat_primitive tests ──
@@ -86,7 +86,7 @@ async def test_panel_can_set_state():
     ws = FakeWS()
     engine = _make_engine()
     engine.state.get.return_value = None
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "state.set", "key": "var.foo", "value": 1}, "panel")
     assert len(ws.sent) == 1
     assert ws.sent[0]["type"] == "state.set.ack"
@@ -97,7 +97,7 @@ async def test_panel_can_set_plugin_namespace():
     """Panel clients can set plugin.* keys (plugin iframe state)."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "state.set", "key": "plugin.my_plugin.foo", "value": "bar"}, "panel"
         )
@@ -111,7 +111,7 @@ async def test_panel_cannot_set_device_namespace():
     """Panel clients cannot overwrite device state (e.g. device.<id>.connected)."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "state.set", "key": "device.proj1.connected", "value": True},
@@ -129,7 +129,7 @@ async def test_panel_cannot_set_system_namespace():
     """Panel clients cannot overwrite system state (e.g. trigger cooldown markers)."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "state.set", "key": "system.trigger.t1.last_fired", "value": 0},
@@ -144,7 +144,7 @@ async def test_panel_cannot_set_isc_namespace():
     """Panel clients cannot pollute ISC mesh state."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "state.set", "key": "isc.peer1.foo", "value": "bar"},
@@ -159,7 +159,7 @@ async def test_panel_cannot_set_ui_namespace():
     """Panel clients cannot directly write ui.* keys (only ui.* events)."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "state.set", "key": "ui.element1.value", "value": 42},
@@ -174,7 +174,7 @@ async def test_programmer_can_set_any_namespace():
     """Programmer clients are not restricted by the panel namespace allowlist."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "state.set", "key": "device.proj1.connected", "value": True},
@@ -193,7 +193,7 @@ async def test_panel_can_execute_macro():
     """Panel clients can send macro.execute (needed for presets)."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "test"}, "panel")
         await asyncio.sleep(0)  # the macro runs in a background task
     engine.macros.execute.assert_called_once()
@@ -211,7 +211,7 @@ async def test_repeated_panel_macro_presses_are_never_throttled():
     are the control that belongs at this layer.
     """
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         for _ in range(12):
             ws = FakeWS()
             await _handle_message(ws, {"type": "macro.execute", "macro_id": "lights"}, "panel")
@@ -224,7 +224,7 @@ async def test_repeated_panel_macro_presses_are_never_throttled():
 async def test_panel_cannot_reload_project():
     """Panel clients cannot send project.reload messages."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "project.reload"}, "panel")
     assert ws.sent[0]["type"] == "error"
 
@@ -234,7 +234,7 @@ async def test_panel_can_send_ui_press():
     """Panel clients CAN send UI interaction messages."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "ui.press", "element_id": "btn1"}, "panel")
     engine.handle_ui_event.assert_awaited_once_with("press", "btn1")
 
@@ -243,7 +243,7 @@ async def test_panel_can_send_ui_press():
 async def test_panel_can_send_pong():
     """Panel clients can respond to heartbeat pings."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "pong"}, "panel")
     assert len(ws.sent) == 0  # pong is a no-op
 
@@ -253,7 +253,7 @@ async def test_panel_can_send_command():
     """Panel clients can send device commands."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "command", "device_id": "proj1", "command": "power_on", "params": {}},
@@ -270,7 +270,7 @@ async def test_programmer_can_set_state():
     """Programmer clients can set state."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "state.set", "key": "var.foo", "value": 42}, "programmer")
     engine.state.set.assert_called_once_with("var.foo", 42, source="ws")
 
@@ -280,7 +280,7 @@ async def test_programmer_can_execute_macro():
     """Programmer clients can execute macros."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "system_on"}, "programmer")
         await asyncio.sleep(0)  # the macro runs in a background task
     engine.macros.execute.assert_awaited_once_with("system_on")
@@ -291,7 +291,7 @@ async def test_programmer_can_reload_project():
     """Programmer clients can reload the project."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "project.reload"}, "programmer")
     engine.reload_project.assert_awaited_once()
 
@@ -303,7 +303,7 @@ async def test_programmer_can_reload_project():
 async def test_ui_press_missing_element_id():
     """ui.press without element_id returns error."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "ui.press"}, "programmer")
     assert ws.sent[0]["type"] == "error"
     assert "element_id" in ws.sent[0]["message"]
@@ -313,7 +313,7 @@ async def test_ui_press_missing_element_id():
 async def test_state_set_missing_key():
     """state.set without key returns error."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "state.set", "value": 1}, "programmer")
     assert ws.sent[0]["type"] == "error"
     assert "key" in ws.sent[0]["message"].lower()
@@ -323,7 +323,7 @@ async def test_state_set_missing_key():
 async def test_state_set_rejects_dict_value():
     """state.set rejects non-primitive values."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(
             ws, {"type": "state.set", "key": "var.test", "value": {"nested": True}}, "programmer"
         )
@@ -335,7 +335,7 @@ async def test_state_set_rejects_dict_value():
 async def test_ui_change_rejects_list_value():
     """ui.change rejects non-primitive values."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(
             ws, {"type": "ui.change", "element_id": "slider1", "value": [1, 2]}, "programmer"
         )
@@ -346,7 +346,7 @@ async def test_ui_change_rejects_list_value():
 async def test_command_missing_device_id():
     """command without device_id returns error."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "command", "command": "power_on"}, "programmer")
     assert ws.sent[0]["type"] == "error"
     assert "device_id" in ws.sent[0]["message"].lower()
@@ -356,7 +356,7 @@ async def test_command_missing_device_id():
 async def test_macro_execute_missing_macro_id():
     """macro.execute without macro_id returns error."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "macro.execute"}, "programmer")
     assert ws.sent[0]["type"] == "error"
 
@@ -366,7 +366,7 @@ async def test_ui_page_sends_navigate_to_sender():
     """ui.page emits event and sends navigation back to the sender only."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "ui.page", "page_id": "page2"}, "panel")
     engine.events.emit.assert_awaited_once_with("ui.page.page2")
     engine.broadcast_ws.assert_not_awaited()
@@ -377,7 +377,7 @@ async def test_ui_page_sends_navigate_to_sender():
 async def test_unknown_message_type_is_silent():
     """Unknown message types are logged but no error sent to client."""
     ws = FakeWS()
-    with patch("server.api._engine._engine", _make_engine()):
+    with patch("openavc.api._engine._engine", _make_engine()):
         await _handle_message(ws, {"type": "totally.unknown"}, "programmer")
     assert len(ws.sent) == 0
 
@@ -387,7 +387,7 @@ async def test_ui_change_valid_value():
     """ui.change with valid value dispatches to engine."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.change", "element_id": "slider1", "value": 75}, "panel"
         )
@@ -399,7 +399,7 @@ async def test_ui_select_dispatches():
     """ui.select (list item tap) dispatches the select event to the engine."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.select", "element_id": "src_list", "value": "hdmi_1"}, "panel"
         )
@@ -417,7 +417,7 @@ async def test_ui_route_dispatches():
     """ui.route without audio/mute dispatches to the route binding."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.route", "element_id": "matrix1", "input": 1, "output": 3}, "panel"
         )
@@ -429,7 +429,7 @@ async def test_ui_route_audio_dispatches_to_audio_route():
     """ui.route with audio=true dispatches to the audio_route binding."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "ui.route", "element_id": "matrix1", "input": 2, "output": 4, "audio": True},
@@ -445,7 +445,7 @@ async def test_ui_route_mute_dispatches_to_mute_route():
     """ui.route with mute present dispatches to the mute_route binding with $mute data."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.route", "element_id": "matrix1", "output": 2, "mute": True}, "panel"
         )
@@ -459,7 +459,7 @@ async def test_ui_route_unmute_dispatches_to_mute_route():
     """ui.route with mute=false (unmute) still routes to mute_route, not the plain route."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.route", "element_id": "matrix1", "output": 2, "mute": False}, "panel"
         )
@@ -473,7 +473,7 @@ async def test_ui_route_audio_and_mute_dispatches_to_audio_mute_route():
     """ui.route with both audio=true and mute present dispatches to audio_mute_route."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "ui.route", "element_id": "matrix1", "output": 2, "mute": True, "audio": True},
@@ -489,7 +489,7 @@ async def test_ui_route_audio_and_unmute_dispatches_to_audio_mute_route():
     """ui.route with audio=true and mute=false still routes to audio_mute_route."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "ui.route", "element_id": "matrix1", "output": 2, "mute": False, "audio": True},
@@ -526,11 +526,11 @@ def test_programmer_only_types_excluded_from_panel():
 @pytest.mark.asyncio
 async def test_panel_cannot_subscribe_to_logs():
     """Panel log.subscribe is rejected: no history, no subscription started."""
-    from server.api.ws import _log_subscriptions
+    from openavc.api.ws import _log_subscriptions
 
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "log.subscribe"}, "panel")
     assert id(ws) not in _log_subscriptions
     assert len(ws.sent) == 1
@@ -541,11 +541,11 @@ async def test_panel_cannot_subscribe_to_logs():
 @pytest.mark.asyncio
 async def test_programmer_can_subscribe_to_logs():
     """Programmer log.subscribe still gets history and a live subscription."""
-    from server.api.ws import _cleanup_log_subscription, _log_subscriptions
+    from openavc.api.ws import _cleanup_log_subscription, _log_subscriptions
 
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "log.subscribe"}, "programmer")
     try:
         assert ws.sent[0]["type"] == "log.history"
@@ -562,7 +562,7 @@ async def test_ui_submit_rejects_dict_value():
     """ui.submit rejects non-primitive values (same rule as ui.change)."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.submit", "element_id": "kp1", "value": {"nested": True}}, "panel"
         )
@@ -576,7 +576,7 @@ async def test_ui_submit_rejects_list_value():
     """ui.submit rejects list values."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.submit", "element_id": "kp1", "value": [1, 2]}, "panel"
         )
@@ -589,7 +589,7 @@ async def test_ui_submit_valid_value_dispatches():
     """ui.submit with a primitive value dispatches to the engine."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "ui.submit", "element_id": "kp1", "value": "123"}, "panel"
         )
@@ -601,7 +601,7 @@ async def test_ui_route_rejects_nested_input():
     """ui.route rejects non-primitive input/output indices."""
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws,
             {"type": "ui.route", "element_id": "matrix1", "input": {"i": 1}, "output": 2},
@@ -629,7 +629,7 @@ async def test_send_ws_swallows_disconnect_silently(caplog):
     """Disconnect-class send failures are expected and stay silent."""
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="server.api.ws"):
+    with caplog.at_level(logging.DEBUG, logger="openavc.api.ws"):
         await _send_ws(_RaisingWS(ConnectionResetError("gone")), {"type": "x"})
     assert not caplog.records
 
@@ -639,7 +639,7 @@ async def test_send_ws_logs_unexpected_send_failure(caplog):
     """Non-disconnect send failures are debug-logged instead of vanishing."""
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="server.api.ws"):
+    with caplog.at_level(logging.DEBUG, logger="openavc.api.ws"):
         await _send_ws(_RaisingWS(ValueError("encode boom")), {"type": "x"})
     assert any("send failed" in r.message.lower() for r in caplog.records)
 
@@ -654,8 +654,8 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
     into its queue instead of being missed."""
     from fastapi import WebSocketDisconnect
 
-    from server.api.ws import _run_ws_connection
-    from server.core.engine import Engine
+    from openavc.api.ws import _run_ws_connection
+    from openavc.core.engine import Engine
 
     eng = Engine(str(tmp_path / "no_project.avc"))
     order: list[str] = []
@@ -684,7 +684,7 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
         async def close(self, code=1000, reason=None):
             pass
 
-    with patch("server.api._engine._engine", eng):
+    with patch("openavc.api._engine._engine", eng):
         await _run_ws_connection(HandshakeWS(), {}, {}, "programmer")
 
     assert "register" in order
@@ -711,7 +711,7 @@ async def test_macro_execute_returns_before_macro_completes():
         await release.wait()
 
     engine.macros.execute = slow_macro
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         # Pre-fix this awaited the macro to completion and timed out here.
         await asyncio.wait_for(
             _handle_message(ws, {"type": "macro.execute", "macro_id": "warmup"}, "panel"),
@@ -729,7 +729,7 @@ async def test_macro_execute_failure_still_reaches_client():
     ws = FakeWS()
     engine = _make_engine()
     engine.macros.execute = AsyncMock(side_effect=ValueError("no such macro"))
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "ghost"}, "panel")
         for _ in range(10):
             await asyncio.sleep(0)
@@ -771,7 +771,7 @@ def test_send_ws_error_is_the_only_error_frame_producer():
 async def test_error_frame_carries_source_type_when_known():
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "ui.change", "element_id": ""}, "panel")
     assert ws.sent[0] == {
         "type": "error",
@@ -797,7 +797,7 @@ async def test_handler_crash_reports_the_message_type_that_failed():
     ws = FakeWS()
     engine = _make_engine()
     engine.handle_ui_event = AsyncMock(side_effect=RuntimeError("boom"))
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         # ui.press swallows handler exceptions itself, so drive the loop-level
         # catch-all the way it really happens: a handler that raises out.
         with patch.object(ws_module, "_handle_message", side_effect=RuntimeError("boom")):
@@ -824,7 +824,7 @@ async def test_isc_send_answers_when_isc_is_disabled():
     "ISC never ran"."""
     ws = FakeWS()
     engine = _make_engine()  # engine.isc is None
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(
             ws, {"type": "isc.send", "instance_id": "room2", "event": "scene"}, "programmer"
         )
@@ -837,7 +837,7 @@ async def test_isc_send_answers_when_isc_is_disabled():
 async def test_isc_broadcast_answers_when_isc_is_disabled():
     ws = FakeWS()
     engine = _make_engine()
-    with patch("server.api._engine._engine", engine):
+    with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "isc.broadcast", "event": "scene"}, "programmer")
     assert ws.sent[0]["type"] == "error"
     assert "not enabled" in ws.sent[0]["message"]

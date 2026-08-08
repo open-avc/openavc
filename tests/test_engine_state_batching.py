@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from server.core.engine import Engine
+from openavc.core.engine import Engine
 
 
 @pytest.fixture
@@ -328,7 +328,7 @@ async def test_broadcast_returns_promptly_with_stuck_client(engine):
 @pytest.mark.asyncio
 async def test_stuck_client_dropped_on_queue_overflow(engine):
     """A client whose send queue overflows is dropped and its socket closed."""
-    from server.core.ws_hub import _WS_SEND_QUEUE_MAX
+    from openavc.core.ws_hub import _WS_SEND_QUEUE_MAX
 
     stuck = _StuckWS()
     good = _CollectingWS()

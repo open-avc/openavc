@@ -9,21 +9,21 @@ import asyncio
 
 import pytest
 
-from server.cloud.agent import (
+from openavc.cloud.agent import (
     CloudAgent,
     BACKOFF_INITIAL,
     BACKOFF_MULTIPLIER,
     BACKOFF_MAX,
 )
-from server.cloud.handshake import HandshakeError
-from server.cloud.session import Session, SessionInvalid
-from server.cloud.sequencer import Sequencer
-from server.cloud.crypto import (
+from openavc.cloud.handshake import HandshakeError
+from openavc.cloud.session import Session, SessionInvalid
+from openavc.cloud.sequencer import Sequencer
+from openavc.cloud.crypto import (
     derive_signing_key,
     generate_system_key,
     generate_nonce,
 )
-from server.cloud.protocol import SESSION_ROTATE, SESSION_INVALID
+from openavc.cloud.protocol import SESSION_ROTATE, SESSION_INVALID
 
 
 # ===========================================================================

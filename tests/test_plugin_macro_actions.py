@@ -14,17 +14,17 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.plugin_loader import (
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.plugin_loader import (
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
     _REGISTRY_LOCK,
     register_plugin_class,
     validate_macro_actions,
 )
-from server.core.state_store import StateStore
+from openavc.core.state_store import StateStore
 
 
 # ──── Fixtures ────
@@ -561,7 +561,7 @@ class TestPluginActionTypesAccessor:
         assert macro_engine.plugin_action_types() == frozenset({"other.thing"})
 
     def test_the_validator_accepts_a_registered_action(self, macro_engine):
-        from server.core.macro_validation import validate_macro
+        from openavc.core.macro_validation import validate_macro
 
         async def handler(params, context):
             pass

@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from server.core.state_persister import StatePersister
-from server.core.state_store import StateStore
+from openavc.core.state_persister import StatePersister
+from openavc.core.state_store import StateStore
 
 
 @pytest.fixture

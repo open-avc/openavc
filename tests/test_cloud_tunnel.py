@@ -17,7 +17,7 @@ def mock_agent():
 
 @pytest.fixture
 def tunnel_handler(mock_agent):
-    from server.cloud.tunnel import TunnelHandler
+    from openavc.cloud.tunnel import TunnelHandler
     return TunnelHandler(mock_agent)
 
 
@@ -38,7 +38,7 @@ async def test_handle_tunnel_open_sends_ready(tunnel_handler, mock_agent):
         },
     }
 
-    with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+    with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
         await tunnel_handler.handle_tunnel_open(msg)
 
     # Should have sent tunnel_ready
@@ -71,7 +71,7 @@ async def test_handle_tunnel_close(tunnel_handler, mock_agent):
         },
     }
 
-    with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+    with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
         await tunnel_handler.handle_tunnel_open(msg_open)
 
     assert "t-456" in tunnel_handler._tunnels
@@ -121,7 +121,7 @@ async def test_handle_tunnel_open_honors_target_port(tunnel_handler, mock_agent)
             "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-port",
         },
     }
-    with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+    with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
         await tunnel_handler.handle_tunnel_open(msg)
 
     assert tunnel_handler._tunnels["t-port"].target_port == 9090
@@ -131,7 +131,7 @@ async def test_handle_tunnel_open_honors_target_port(tunnel_handler, mock_agent)
 @pytest.mark.asyncio
 async def test_handle_tunnel_open_falls_back_to_http_port(tunnel_handler, mock_agent):
     """target_port missing from payload should fall back to config.HTTP_PORT."""
-    from server import config
+    from openavc import config
 
     mock_ws = AsyncMock()
     mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
@@ -146,7 +146,7 @@ async def test_handle_tunnel_open_falls_back_to_http_port(tunnel_handler, mock_a
             "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-default",
         },
     }
-    with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+    with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
         await tunnel_handler.handle_tunnel_open(msg)
 
     assert tunnel_handler._tunnels["t-default"].target_port == config.HTTP_PORT
@@ -156,7 +156,7 @@ async def test_handle_tunnel_open_falls_back_to_http_port(tunnel_handler, mock_a
 @pytest.mark.asyncio
 async def test_handle_tunnel_open_invalid_port_falls_back(tunnel_handler, mock_agent):
     """Invalid target_port (out of range or wrong type) should fall back."""
-    from server import config
+    from openavc import config
 
     mock_ws = AsyncMock()
     mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
@@ -173,7 +173,7 @@ async def test_handle_tunnel_open_invalid_port_falls_back(tunnel_handler, mock_a
                 "tunnel_data_url": f"ws://localhost:9999/tunnel-data/{tid}",
             },
         }
-        with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+        with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
             await tunnel_handler.handle_tunnel_open(msg)
         assert tunnel_handler._tunnels[tid].target_port == config.HTTP_PORT, (
             f"target_port={bad_port!r} should have fallen back to HTTP_PORT"
@@ -199,7 +199,7 @@ async def test_stop_closes_all_tunnels(tunnel_handler, mock_agent):
                 "tunnel_data_url": f"ws://localhost:9999/tunnel-data/{tid}",
             },
         }
-        with patch("server.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+        with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
             await tunnel_handler.handle_tunnel_open(msg)
 
     assert len(tunnel_handler._tunnels) == 2
@@ -211,7 +211,7 @@ async def test_stop_closes_all_tunnels(tunnel_handler, mock_agent):
 @pytest.mark.asyncio
 async def test_http_request_proxied(tunnel_handler, mock_agent):
     """HTTP requests should be proxied to localhost and response sent back."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
 
     # Create a tunnel connection manually
     mock_data_ws = AsyncMock()
@@ -263,7 +263,7 @@ async def test_http_request_proxied(tunnel_handler, mock_agent):
 @pytest.mark.asyncio
 async def test_http_request_preserves_query_string(tunnel_handler, mock_agent):
     """Query string baked into `path` should be passed to the local server."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
 
     mock_data_ws = AsyncMock()
     mock_data_ws.send = AsyncMock()
@@ -308,7 +308,7 @@ async def test_http_request_preserves_query_string(tunnel_handler, mock_agent):
 @pytest.mark.asyncio
 async def test_ws_open_passes_subprotocols_and_headers(tunnel_handler, mock_agent):
     """ws_open with subprotocols + custom headers should reach websockets.connect."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
     mock_data_ws = AsyncMock()
@@ -340,7 +340,7 @@ async def test_ws_open_passes_subprotocols_and_headers(tunnel_handler, mock_agen
         "subprotocols": ["openavc.v1", "openavc.v2"],
     }
 
-    with patch("server.cloud.tunnel.websockets.connect", new=_AsyncMock(return_value=mock_local_ws)) as p:
+    with patch("openavc.cloud.tunnel.websockets.connect", new=_AsyncMock(return_value=mock_local_ws)) as p:
         await tunnel_handler._handle_ws_open(conn, msg)
         # Brief yield so the forward task touches __aiter__ before we stop()
         await asyncio.sleep(0)
@@ -372,7 +372,7 @@ async def test_ws_open_no_subprotocols_no_headers(tunnel_handler, mock_agent):
     tunnel marker so the local server can tell it from a console connection
     (tests/test_tunnel_loopback_trust.py).
     """
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
     mock_data_ws = AsyncMock()
@@ -389,7 +389,7 @@ async def test_ws_open_no_subprotocols_no_headers(tunnel_handler, mock_agent):
         "path": "/programmer/ws",
         "headers": {},
     }
-    with patch("server.cloud.tunnel.websockets.connect", new=_AsyncMock(return_value=mock_local_ws)) as p:
+    with patch("openavc.cloud.tunnel.websockets.connect", new=_AsyncMock(return_value=mock_local_ws)) as p:
         await tunnel_handler._handle_ws_open(conn, msg)
         call_kwargs = p.call_args.kwargs
         assert call_kwargs["subprotocols"] is None
@@ -408,7 +408,7 @@ async def test_ws_open_no_subprotocols_no_headers(tunnel_handler, mock_agent):
 @pytest.mark.asyncio
 async def test_ws_frames_queued_during_open_are_drained_in_order(tunnel_handler, mock_agent):
     """Frames seeded before _handle_ws_open runs must be delivered in FIFO order."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
     conn = TunnelConnection(tunnel_id="t-race", target_port=8080, data_ws=AsyncMock())
@@ -439,7 +439,7 @@ async def test_ws_frames_queued_during_open_are_drained_in_order(tunnel_handler,
             raise StopAsyncIteration
 
     with patch(
-        "server.cloud.tunnel.websockets.connect",
+        "openavc.cloud.tunnel.websockets.connect",
         new=_AsyncMock(return_value=_StubLocal()),
     ):
         await tunnel_handler._handle_ws_open(conn, {
@@ -460,7 +460,7 @@ async def test_ws_frames_queued_during_open_are_drained_in_order(tunnel_handler,
 @pytest.mark.asyncio
 async def test_ws_close_queued_during_open_consumed_after_drain(tunnel_handler, mock_agent):
     """A ws_close queued behind frames closes the local WS and stops further drain."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
     conn = TunnelConnection(tunnel_id="t-close", target_port=8080, data_ws=AsyncMock())
@@ -493,7 +493,7 @@ async def test_ws_close_queued_during_open_consumed_after_drain(tunnel_handler, 
             raise StopAsyncIteration
 
     with patch(
-        "server.cloud.tunnel.websockets.connect",
+        "openavc.cloud.tunnel.websockets.connect",
         new=_AsyncMock(return_value=_StubLocal()),
     ):
         await tunnel_handler._handle_ws_open(conn, {
@@ -515,7 +515,7 @@ async def test_ws_close_queued_during_open_consumed_after_drain(tunnel_handler, 
 async def test_ws_open_failure_drops_queued_frames(tunnel_handler, mock_agent):
     """If the local connect fails, queued frames are discarded and the cloud
     is notified with ws_close."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
     mock_data_ws = AsyncMock()
@@ -529,7 +529,7 @@ async def test_ws_open_failure_drops_queued_frames(tunnel_handler, mock_agent):
     ]
 
     with patch(
-        "server.cloud.tunnel.websockets.connect",
+        "openavc.cloud.tunnel.websockets.connect",
         new=_AsyncMock(side_effect=OSError("connection refused")),
     ):
         await tunnel_handler._handle_ws_open(conn, {
@@ -598,7 +598,7 @@ async def test_close_tunnel_cancels_inflight_ws_open(tunnel_handler, mock_agent)
     """Closing a tunnel while a ws_open handler is still awaiting its local
     connect must cancel that handler — it must not complete later and
     register a socket + forwarder on the closed tunnel."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch
 
     conn = TunnelConnection(
@@ -616,7 +616,7 @@ async def test_close_tunnel_cancels_inflight_ws_open(tunnel_handler, mock_agent)
         await gate.wait()
         return local_ws
 
-    with patch("server.cloud.tunnel.websockets.connect", new=slow_connect):
+    with patch("openavc.cloud.tunnel.websockets.connect", new=slow_connect):
         conn.recv_task = asyncio.create_task(
             tunnel_handler._data_receive_loop(conn)
         )
@@ -644,7 +644,7 @@ async def test_close_tunnel_cancels_inflight_ws_open(tunnel_handler, mock_agent)
 async def test_ws_open_completing_after_close_does_not_register(tunnel_handler, mock_agent):
     """A ws_open handler whose connect resolves after the tunnel was removed
     closes the fresh socket and registers nothing (liveness re-check)."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch
 
     conn = TunnelConnection(tunnel_id="t-late", target_port=8080, data_ws=AsyncMock())
@@ -657,7 +657,7 @@ async def test_ws_open_completing_after_close_does_not_register(tunnel_handler, 
         await gate.wait()
         return local_ws
 
-    with patch("server.cloud.tunnel.websockets.connect", new=slow_connect):
+    with patch("openavc.cloud.tunnel.websockets.connect", new=slow_connect):
         conn.pending_ws_opens["ws-9"] = []
         handler_task = asyncio.create_task(tunnel_handler._handle_ws_open(conn, {
             "type": "ws_open", "id": "ws-9", "path": "/ws", "headers": {},
@@ -679,14 +679,14 @@ async def test_ws_open_completing_after_close_does_not_register(tunnel_handler, 
 async def test_forward_tasks_self_prune(tunnel_handler, mock_agent):
     """Finished forwarders drop out of _forward_tasks instead of accumulating
     for the tunnel's lifetime."""
-    from server.cloud.tunnel import TunnelConnection
+    from openavc.cloud.tunnel import TunnelConnection
     from unittest.mock import patch, AsyncMock as _AsyncMock
 
     conn = TunnelConnection(tunnel_id="t-churn", target_port=8080, data_ws=AsyncMock())
     tunnel_handler._tunnels["t-churn"] = conn
 
     with patch(
-        "server.cloud.tunnel.websockets.connect",
+        "openavc.cloud.tunnel.websockets.connect",
         new=_AsyncMock(side_effect=lambda *a, **k: _StubLocalWS()),
     ):
         for i in range(3):

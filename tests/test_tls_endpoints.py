@@ -14,9 +14,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from server.main import app
-from server import tls as tls_module
-from server.system_config import get_system_config
+from openavc.main import app
+from openavc import tls as tls_module
+from openavc.system_config import get_system_config
 
 
 @pytest.fixture
@@ -372,7 +372,7 @@ def test_patch_system_config_rejects_provided_mode_without_cert(client):
 
 def test_patch_system_config_allows_provided_mode_with_cert(client, monkeypatch):
     # Don't actually write to the real system.json — monkeypatch the save.
-    from server.system_config import get_system_config
+    from openavc.system_config import get_system_config
 
     cfg = get_system_config()
     monkeypatch.setattr(cfg, "save", lambda: None)
@@ -391,7 +391,7 @@ def test_patch_system_config_allows_provided_mode_with_cert(client, monkeypatch)
 
 
 def test_patch_system_config_allows_auto_mode(client, monkeypatch):
-    from server.system_config import get_system_config
+    from openavc.system_config import get_system_config
 
     cfg = get_system_config()
     monkeypatch.setattr(cfg, "save", lambda: None)
@@ -421,7 +421,7 @@ def _clean_cloud_holder():
 @pytest.fixture
 def no_engine(monkeypatch):
     """Force the shared engine slot empty regardless of test ordering."""
-    from server.api import _engine as engine_state
+    from openavc.api import _engine as engine_state
     monkeypatch.setattr(engine_state, "_engine", None)
 
 
@@ -454,7 +454,7 @@ class _FakeCertManager:
 @pytest.fixture
 def fake_engine(monkeypatch):
     """A paired + connected engine/agent/cert-manager stand-in."""
-    from server.api import _engine as engine_state
+    from openavc.api import _engine as engine_state
 
     class FakeAgent:
         def __init__(self):
@@ -573,7 +573,7 @@ def test_disable_cloud_cert_without_pairing_cleans_up_locally(
     client, monkeypatch, tls_dir, no_engine, tmp_path
 ):
     """Disable must work even after unpairing: flag off, files gone."""
-    from server.system_config import get_system_config
+    from openavc.system_config import get_system_config
 
     cfg = get_system_config()
     monkeypatch.setattr(cfg, "_file_path", tmp_path / "system.json")

@@ -12,16 +12,16 @@ import asyncio
 import pytest
 from websockets.exceptions import ConnectionClosed
 
-from server.cloud.agent import (
+from openavc.cloud.agent import (
     CloudAgent,
     DEFAULT_CAPABILITIES,
     _CAPABILITY_GATED,
     MAX_CONSECUTIVE_SIG_FAILURES,
     THROTTLE_MAX_SECONDS,
 )
-from server.cloud.session import Session, SessionInvalid
-from server.cloud.sequencer import Sequencer
-from server.cloud.crypto import generate_system_key, derive_signing_key
+from openavc.cloud.session import Session, SessionInvalid
+from openavc.cloud.sequencer import Sequencer
+from openavc.cloud.crypto import generate_system_key, derive_signing_key
 
 
 # --- Test doubles ---------------------------------------------------------

@@ -35,10 +35,10 @@ from pathlib import Path
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver
-from server.transport.frame_parsers import CallableFrameParser
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver
+from openavc.transport.frame_parsers import CallableFrameParser
 from tests import gates
 
 # The community driver library normally sits beside this repo in the

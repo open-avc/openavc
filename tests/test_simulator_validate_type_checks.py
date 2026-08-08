@@ -20,7 +20,7 @@ import textwrap
 
 import pytest
 
-from simulator.validate import validate_python_driver
+from openavc.simulator.validate import validate_python_driver
 
 
 def _driver_and_sim(tmp_path, state_vars: str, initial_state: str, commands: str = "{}"):
@@ -162,7 +162,7 @@ def test_both_driver_formats_run_the_same_function():
     """
     from pathlib import Path
 
-    import simulator.validate as validate
+    import openavc.simulator.validate as validate
 
     source = Path(validate.__file__).read_text(encoding="utf-8")
     assert source.count("def _check_initial_state_types(") == 1

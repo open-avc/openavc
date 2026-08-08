@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.base import BaseDriver
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.base import BaseDriver
 
 
 class _FakeEmittingBridge(BaseDriver):
@@ -141,7 +141,7 @@ def test_emitting_bridge_records_payload_and_is_a_bridge():
 
 
 def test_device_manager_router_reaches_live_bridge_and_guards():
-    from server.core.device_manager import DeviceManager
+    from openavc.core.device_manager import DeviceManager
 
     dm = DeviceManager(StateStore(), EventBus())
     bridge = _mk(_FakeEmittingBridge, {})

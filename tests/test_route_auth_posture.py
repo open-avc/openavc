@@ -21,8 +21,8 @@ the same table; this pins the auth posture underneath them.
 
 import pytest
 
-from server.api.auth import require_programmer_auth
-from server.main import app
+from openavc.api.auth import require_programmer_auth
+from openavc.main import app
 
 # Every (method, path) callable without a programmer credential.
 #

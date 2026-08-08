@@ -21,12 +21,12 @@ from __future__ import annotations
 
 import pytest
 
-from server.core.device_manager import DeviceManager
-from server.core.event_bus import EventBus
-from server.core.state_store import StateStore
-from server.drivers.actions import resolve_device_actions
-from server.drivers.base import BaseDriver, CommandParamError
-from server.drivers.configurable import create_configurable_driver_class
+from openavc.core.device_manager import DeviceManager
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.actions import resolve_device_actions
+from openavc.drivers.base import BaseDriver, CommandParamError
+from openavc.drivers.configurable import create_configurable_driver_class
 
 
 class _AcmeDriver(BaseDriver):

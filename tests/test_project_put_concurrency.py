@@ -12,9 +12,9 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from server.api import rest, ws
-from server.core.engine import Engine
-from server.main import app
+from openavc.api import rest, ws
+from openavc.core.engine import Engine
+from openavc.main import app
 
 # A body always carries its format version: the route refuses one without it,
 # because the migration chain would treat the body as the oldest format and
@@ -52,9 +52,9 @@ def _stub_persistence(engine, monkeypatch, save_delay: float = 0.0):
             # Hold the save window open so concurrent PUTs genuinely overlap.
             await asyncio.sleep(save_delay)
 
-    monkeypatch.setattr("server.core.engine.save_project_async", fake_save)
+    monkeypatch.setattr("openavc.core.engine.save_project_async", fake_save)
     monkeypatch.setattr(
-        "server.api.routes.project.save_project_async", fake_save, raising=False
+        "openavc.api.routes.project.save_project_async", fake_save, raising=False
     )
 
     async def fake_reconcile(diff, origin):

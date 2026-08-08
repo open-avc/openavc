@@ -8,8 +8,8 @@ model carries the field (Pydantic's default extra='ignore' would otherwise
 drop it) and BaseSimulator exposes it to subclasses + the info API.
 """
 
-from simulator.api import StartRequest
-from simulator.base import BaseSimulator
+from openavc.simulator.api import StartRequest
+from openavc.simulator.base import BaseSimulator
 
 
 CHILDREN = {"encoder": {"01": {"label": "Enc 1", "config": {}}, "02": {"label": "Enc 2", "config": {}}}}

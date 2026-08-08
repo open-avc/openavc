@@ -18,11 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 ALLOWED = {
     "server",
-    "server.drivers",
-    "server.drivers.spec",
-    "server.drivers.avcdriver_semantic",
-    "server.utils",
-    "server.utils.regex_safety",
+    "openavc.drivers",
+    "openavc.drivers.spec",
+    "openavc.drivers.avcdriver_semantic",
+    "openavc.utils",
+    "openavc.utils.regex_safety",
 }
 
 
@@ -48,7 +48,7 @@ def _loaded_modules(import_stmt: str) -> list[str]:
 
 def test_spec_imports_nothing_beyond_itself():
     loaded = _loaded_modules("import server.drivers.spec")
-    assert set(loaded) <= {"server", "server.drivers", "server.drivers.spec"}, loaded
+    assert set(loaded) <= {"server", "openavc.drivers", "openavc.drivers.spec"}, loaded
 
 
 def test_semantic_rules_stay_pure():
@@ -71,7 +71,7 @@ def test_python_info_imports_nothing_beyond_itself():
     own keeps that from becoming a back door — anything ``avcdriver_semantic``
     may not import, ``python_info`` still may not import through it.
     """
-    allowed = ALLOWED | {"server.drivers.python_info"}
+    allowed = ALLOWED | {"openavc.drivers.python_info"}
     loaded = _loaded_modules("import server.drivers.python_info")
     assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
     # Still not YAML. The reader parses Python source, and the catalog CI job

@@ -3,10 +3,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from server.core.condition_eval import eval_operator
-from server.core.event_bus import EventBus
-from server.core.macro_engine import MacroEngine
-from server.core.state_store import StateStore
+from openavc.core.condition_eval import eval_operator
+from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
+from openavc.core.state_store import StateStore
 
 
 @pytest.fixture
@@ -514,7 +514,7 @@ async def test_progress_step_path_else_branch_and_return(engine, state, devices)
 
 
 def test_step_condition_model():
-    from server.core.project_loader import StepCondition
+    from openavc.core.project_loader import StepCondition
     cond = StepCondition(key="var.x", operator="eq", value=True)
     assert cond.key == "var.x"
     assert cond.operator == "eq"
@@ -522,7 +522,7 @@ def test_step_condition_model():
 
 
 def test_macro_step_with_conditional_fields():
-    from server.core.project_loader import MacroStep, StepCondition
+    from openavc.core.project_loader import MacroStep, StepCondition
     step = MacroStep(
         action="conditional",
         condition=StepCondition(key="var.x", operator="eq", value=True),
@@ -536,7 +536,7 @@ def test_macro_step_with_conditional_fields():
 
 
 def test_macro_step_with_skip_if():
-    from server.core.project_loader import MacroStep, StepCondition
+    from openavc.core.project_loader import MacroStep, StepCondition
     step = MacroStep(
         action="device.command",
         device="projector",
@@ -547,7 +547,7 @@ def test_macro_step_with_skip_if():
 
 
 def test_macro_step_with_skip_if_offline():
-    from server.core.project_loader import MacroStep
+    from openavc.core.project_loader import MacroStep
     step = MacroStep(
         action="device.command",
         device="projector",
@@ -558,7 +558,7 @@ def test_macro_step_with_skip_if_offline():
 
 
 def test_macro_step_defaults():
-    from server.core.project_loader import MacroStep
+    from openavc.core.project_loader import MacroStep
     step = MacroStep(action="delay", seconds=1.0)
     assert step.condition is None
     assert step.then_steps is None

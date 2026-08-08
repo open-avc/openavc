@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from server.ui.control_minimums import (
+from openavc.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     TYPES_WITH_MINIMUMS,
