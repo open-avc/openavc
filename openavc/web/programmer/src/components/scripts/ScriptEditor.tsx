@@ -549,7 +549,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
         }
 
         // Import completions for drivers
-        if (textUntilPosition.match(/from server\.drivers\.base import\s/)) {
+        if (textUntilPosition.match(/from openavc\.drivers\.base import\s/)) {
           suggestions.push({
             label: "BaseDriver",
             kind: monaco.languages.CompletionItemKind.Class,
@@ -558,7 +558,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
           });
         }
 
-        if (textUntilPosition.match(/from server\.utils\.logger import\s/)) {
+        if (textUntilPosition.match(/from openavc\.utils\.logger import\s/)) {
           suggestions.push({
             label: "get_logger",
             kind: monaco.languages.CompletionItemKind.Function,
