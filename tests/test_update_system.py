@@ -80,7 +80,7 @@ _BASH_MISSING = None if _BASH_AVAILABLE else "bash not available"
 
 def _build_fake_install(
     target_dir: Path, version: str = "1.0.0", *, with_venv: bool = True,
-    runnable_venv: bool = True,
+    runnable_venv: bool = True, legacy_layout: bool = False,
 ) -> None:
     """Build a directory that looks like /opt/openavc after installation.
 
@@ -93,19 +93,25 @@ def _build_fake_install(
     ``runnable_venv=False`` to simulate a dangling interpreter — present but
     unable to run, as an OS Python minor upgrade can leave it. Both must be
     refused as rollback targets.
+
+    ``legacy_layout=True`` builds a PRE-rename tree, with the package under
+    ``server/`` instead of ``openavc/``. That is what every ``$APP_DIR.previous``
+    looks like when rolling back off the rename release, and it must still be
+    accepted as a valid rollback target.
     """
+    pkg = "server" if legacy_layout else "openavc"
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / "openavc").mkdir(exist_ok=True)
-    (target_dir / "openavc" / "main.py").write_text(
+    (target_dir / pkg).mkdir(exist_ok=True)
+    (target_dir / pkg / "main.py").write_text(
         f"# OpenAVC v{version}\nprint('server running')\n"
     )
-    (target_dir / "openavc" / "version.py").write_text(
+    (target_dir / pkg / "version.py").write_text(
         f"__version__ = '{version}'\n"
     )
     (target_dir / "requirements.txt").write_text("httpx>=0.27\nfastapi>=0.100\n")
-    (target_dir / "openavc" / "web").mkdir(exist_ok=True)
-    (target_dir / "openavc" / "web" / "panel").mkdir(parents=True, exist_ok=True)
-    (target_dir / "openavc" / "web" / "panel" / "index.html").write_text(
+    (target_dir / pkg / "web").mkdir(exist_ok=True)
+    (target_dir / pkg / "web" / "panel").mkdir(parents=True, exist_ok=True)
+    (target_dir / pkg / "web" / "panel" / "index.html").write_text(
         f"<html><body>Panel v{version}</body></html>"
     )
     (target_dir / "pyproject.toml").write_text(
@@ -1001,6 +1007,43 @@ class TestHelperScriptRollback:
         assert _read_version(app_dir) == "2.0.0"
         assert not (data_dir / "apply-rollback").exists()
         assert "corrupt" in result.stdout.lower() or "corrupt" in result.stderr.lower()
+
+    def test_pre_rename_previous_accepted(self, tmp_path):
+        """A $PREVIOUS from BEFORE the openavc/ rename must still be a valid
+        rollback target.
+
+        This is the rename release's own rollback path and the one that matters
+        most: every box updating to it snapshots a tree carrying `server/`, not
+        `openavc/`. The integrity check briefly required the new name, so the
+        helper called every such snapshot "corrupt" and refused — stranding the
+        box on the version it was trying to escape, and disarming the automatic
+        rollback that fires when the new version won't start. Found on the
+        Ubuntu box by rolling a real 0.22.0 -> 0.25.0 update back.
+        """
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        previous = Path(str(app_dir) + ".previous")
+        data_dir.mkdir()
+
+        # Current install is post-rename (openavc/); the snapshot is pre-rename
+        # (server/), exactly as it is on a box that just took the rename update.
+        _build_fake_install(app_dir, "2.0.0")
+        _build_fake_install(previous, "1.0.0", legacy_layout=True)
+        (data_dir / "apply-rollback").write_text("")
+
+        result = _run_helper(data_dir, app_dir)
+
+        assert result.returncode == 0
+        # The rollback happened: the legacy tree is now live.
+        assert (app_dir / "server" / "version.py").exists(), (
+            f"pre-rename snapshot was not promoted. stdout={result.stdout} "
+            f"stderr={result.stderr}"
+        )
+        assert "'1.0.0'" in (app_dir / "server" / "version.py").read_text()
+        assert not (app_dir / "openavc").exists()
+        assert not (data_dir / "apply-rollback").exists()
+        # And it must NOT have been dismissed as corrupt.
+        assert "corrupt" not in (result.stdout + result.stderr).lower()
 
     def test_pending_rollback_skips_stale_update(self, tmp_path):
         """A pending rollback wins over a stale apply-update.json: the helper

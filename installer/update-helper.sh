@@ -49,10 +49,20 @@ LEGACY_REPO_DIRS=(driver_repo plugin_repo)
 # Python minor upgrade (apt 3.11 -> 3.12) can leave venv/bin/python3 as a
 # dangling symlink that passes a file test but can't run, so a snapshot with
 # such a venv must not be treated as a valid rollback target.
+#
+# The package directory is accepted under EITHER name, and that is deliberate:
+# the only caller checks $APP_DIR.previous, which is by definition the install
+# we are rolling BACK to, so during the openavc/ rename upgrade it is a
+# pre-rename tree carrying server/ rather than openavc/. Requiring the new name
+# here made every rollback off the rename release refuse with "appears corrupt"
+# -- stranding the box on precisely the version it was trying to escape, and
+# killing the automatic rollback that arms when the new version fails to start.
+# A snapshot is a snapshot of whatever shipped; it does not adopt the running
+# version's layout.
 is_app_dir_valid() {
     local dir="$1"
     [ -f "$dir/pyproject.toml" ] && \
-    [ -d "$dir/openavc" ] && \
+    { [ -d "$dir/openavc" ] || [ -d "$dir/server" ]; } && \
     [ -f "$dir/venv/bin/python3" ] && \
     "$dir/venv/bin/python3" -c 'import sys' >/dev/null 2>&1
 }
