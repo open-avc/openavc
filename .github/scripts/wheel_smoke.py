@@ -10,9 +10,9 @@ Guards a real failure mode: a wheel built from a tree that was never
 checks catch a missing bundle; the live check confirms the installed package can
 actually start and serve /programmer, /panel, and the API.
 
-IMPORTANT: this must import `server` from the installed wheel, not the source
+IMPORTANT: this must import `openavc` from the installed wheel, not the source
 tree. It lives under .github/scripts/ (not the repo root) so Python's script-dir
-entry on sys.path does not shadow the wheel with the checkout's server/ package.
+entry on sys.path does not shadow the wheel with the checkout's openavc/ package.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ if not any(THEMES_DIR.glob("*.json")):
 
 import openavc.main  # noqa: E402,F401 — proves the package imports from the wheel
 
-print("static OK: programmer UI + panel + themes bundled; server.main imports")
+print("static OK: programmer UI + panel + themes bundled; openavc.main imports")
 
 
 # --- 2. Live: start the server from the wheel and confirm it SERVES the UI ---

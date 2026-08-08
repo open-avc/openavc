@@ -15,13 +15,13 @@
 # amd64 and COPY the dist/ into both final images.
 FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 WORKDIR /build
-COPY web/programmer/package*.json ./programmer/
-COPY web/simulator/package*.json ./simulator/
+COPY openavc/web/programmer/package*.json ./programmer/
+COPY openavc/web/simulator/package*.json ./simulator/
 RUN cd programmer && npm ci && cd ../simulator && npm ci
-COPY web/programmer/ ./programmer/
-COPY web/simulator/ ./simulator/
+COPY openavc/web/programmer/ ./programmer/
+COPY openavc/web/simulator/ ./simulator/
 # Panel dir needed because the build copies icons.svg into it
-COPY web/panel/ ./panel/
+COPY openavc/web/panel/ ./panel/
 RUN cd programmer && npm run build && cd ../simulator && npm run build
 
 # --- Stage 2: Production image ---
@@ -51,22 +51,22 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server code and simulator package
-COPY server/ ./server/
-COPY simulator/ ./simulator/
+# Copy the whole package in one go — server, simulator and themes all live
+# under it now. Deliberately not a list of subdirectories: a list goes stale
+# the first time someone adds a subpackage, and does it silently.
+COPY openavc/ ./openavc/
 COPY pyproject.toml .
 
 # Copy built frontend from stage 1
-COPY --from=frontend /build/programmer/dist/ ./web/programmer/dist/
+COPY --from=frontend /build/programmer/dist/ ./openavc/web/programmer/dist/
 
 # Copy Panel UI (includes icons.svg generated during programmer build)
-COPY --from=frontend /build/panel/ ./web/panel/
+COPY --from=frontend /build/panel/ ./openavc/web/panel/
 
 # Copy built Simulator UI from stage 1
-COPY --from=frontend /build/simulator/dist/ ./web/simulator/dist/
+COPY --from=frontend /build/simulator/dist/ ./openavc/web/simulator/dist/
 
-# Copy data files
-COPY themes/ ./themes/
+# Copy data files (themes ride along inside the package)
 COPY installer/seed/default/ ./seed/default/
 COPY installer/openavc.service ./installer/openavc.service
 

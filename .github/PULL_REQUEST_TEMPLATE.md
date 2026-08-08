@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `ruff check server/ tests/` passes
+- [ ] `ruff check openavc/ tests/` passes
 - [ ] `pytest tests/ --ignore=tests/perf` passes
-- [ ] Frontend rebuilt with `npm run build` (if anything under `web/` changed)
+- [ ] Frontend rebuilt with `npm run build` (if anything under `openavc/web/` changed)
 - [ ] Docs updated (if user-visible behavior changed)

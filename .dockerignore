@@ -1,0 +1,14 @@
+# Keep the build context free of things the build never reads.
+#
+# node_modules is the one that matters: it is hundreds of megabytes, it is sent
+# to the daemon on every build, and the frontend stage runs `npm ci` anyway, so
+# a local copy is not just useless but a reproducibility hazard. The frontend
+# SOURCES are deliberately not excluded here — stage 1 builds from them.
+**/node_modules
+
+# Developer-local state that must never reach an image.
+data/
+.venv/
+**/__pycache__
+**/*.pyc
+**/.env*

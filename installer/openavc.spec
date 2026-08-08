@@ -21,24 +21,24 @@ PROJECT_ROOT = Path(SPECPATH).parent
 # Collect data files: (source, dest_in_bundle)
 datas = [
     # Frontend builds
-    (str(PROJECT_ROOT / 'web' / 'panel'), 'web/panel'),
-    (str(PROJECT_ROOT / 'web' / 'programmer' / 'dist'), 'web/programmer/dist'),
-    (str(PROJECT_ROOT / 'web' / 'simulator' / 'dist'), 'web/simulator/dist'),
+    (str(PROJECT_ROOT / 'openavc' / 'web' / 'panel'), 'openavc/web/panel'),
+    (str(PROJECT_ROOT / 'openavc' / 'web' / 'programmer' / 'dist'), 'openavc/web/programmer/dist'),
+    (str(PROJECT_ROOT / 'openavc' / 'web' / 'simulator' / 'dist'), 'openavc/web/simulator/dist'),
     # Simulator package (Python — runs as subprocess)
-    (str(PROJECT_ROOT / 'simulator'), 'simulator'),
+    (str(PROJECT_ROOT / 'openavc' / 'simulator'), 'openavc/simulator'),
     # Driver definitions (built-in YAML drivers)
-    (str(PROJECT_ROOT / 'server' / 'drivers' / 'definitions'), 'server/drivers/definitions'),
+    (str(PROJECT_ROOT / 'openavc' / 'drivers' / 'definitions'), 'openavc/drivers/definitions'),
     # Built-in starter project templates (project_library.ensure_starter_projects
     # seeds the project library from here on first run; it silently skips when
     # the directory is missing, so leaving this out ships an empty starter
     # library with no error)
-    (str(PROJECT_ROOT / 'server' / 'templates'), 'server/templates'),
+    (str(PROJECT_ROOT / 'openavc' / 'templates'), 'openavc/templates'),
     # Note: driver_repo and plugin_repo are no longer bundled into _internal/.
     # Both live under the persistent data directory now (see system_config.py)
     # so user-installed community drivers and plugins survive uninstalls and
     # upgrades. The runtime creates them on first start.
     # Themes
-    (str(PROJECT_ROOT / 'themes'), 'themes'),
+    (str(PROJECT_ROOT / 'openavc' / 'themes'), 'openavc/themes'),
     # Clean starter project (not the dev project which may have cloud pairing, assets, etc.)
     (str(PROJECT_ROOT / 'installer' / 'seed' / 'default'), 'projects/default'),
     # User templates
@@ -204,7 +204,7 @@ hiddenimports = [
     'openavc.utils.log_buffer',
     'openavc.middleware.rate_limit',
     # Simulator package (launched as subprocess via python -m simulator)
-    'simulator',
+    'openavc.simulator',
     'openavc.simulator.server',
     'openavc.simulator.engine',
     'openavc.simulator.api',
@@ -287,7 +287,7 @@ excludes = [
 ]
 
 a = Analysis(
-    [str(PROJECT_ROOT / 'server' / 'main.py')],
+    [str(PROJECT_ROOT / 'openavc' / 'main.py')],
     pathex=[str(PROJECT_ROOT)],
     binaries=[],
     datas=datas,

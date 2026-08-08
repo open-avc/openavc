@@ -20,7 +20,7 @@ dependencies = [
     "packaging==24.2",           # Apache-2.0/BSD-2 - version parsing (plugin/driver min-version gates)
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
     "gmqtt==0.7.0",              # MIT - Async MQTT client (for MQTT transport; pure Python, asyncio-native)
-    "certifi==2026.6.17",        # MPL-2.0 (CA data) - CA bundle for stdlib ssl on the frozen macOS app (already pulled in by httpx); see server/main.py
+    "certifi==2026.6.17",        # MPL-2.0 (CA data) - CA bundle for stdlib ssl on the frozen macOS app (already pulled in by httpx); see openavc/main.py
     "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
     "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
     "ifaddr==0.2.0",             # MIT - Network interface detection (discovery subnet auto-detect)
@@ -49,7 +49,7 @@ pi = [
 ]
 
 [project.scripts]
-# The `openavc` CLI command maps to the main() function in server/main.py, which starts the server.
+# The `openavc` CLI command maps to the main() function in openavc/main.py, which starts the server.
 # This allows users to run `openavc` from the command line if the package is installed.
 # The original `python -m openavc.main` entry point is still available however.
 openavc = "openavc.main:main"
@@ -65,23 +65,24 @@ build-backend = "uv_build"
 
 
 [tool.uv.build-backend]
-# Include the server and simulator packages and add the content of the web directory at the
-# root of the `sdist` / `wheel` archives (for static file serving in production).
-module-name = ["server", "simulator", "themes", "web"]
+# ONE top-level name. This used to be four — server, simulator, themes and web —
+# and the last three are generic enough that any other distribution shipping the
+# same name would collide in site-packages, with one silently winning.
+module-name = ["openavc"]
 module-root = ""
 namespace = true
 
 
 # Exclude node_modules and other artifacts from the wheel and source distributions
 # We mainly care about:
-# - web/programmer/dist/**
-# - web/simulator/dist/**
-# - web/panel/** (since panel is already bundled)
+# - openavc/web/programmer/dist/**
+# - openavc/web/simulator/dist/**
+# - openavc/web/panel/** (since panel is already bundled)
 source-exclude = [
-    "web/**/node_modules",
-    "web/**/src/**",
-    "web/**/public/**",
-    "web/**/.gitignore",
+    "openavc/web/**/node_modules",
+    "openavc/web/**/src/**",
+    "openavc/web/**/public/**",
+    "openavc/web/**/.gitignore",
 ]
 
 
@@ -111,7 +112,7 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint.per-file-ignores]
-"server/main.py" = ["E402"]
-"server/api/rest.py" = ["E402"]
-"server/core/project_loader.py" = ["E402"]
-"server/cloud/ai_tool_handler.py" = ["E402"]
+"openavc/main.py" = ["E402"]
+"openavc/api/rest.py" = ["E402"]
+"openavc/core/project_loader.py" = ["E402"]
+"openavc/cloud/ai_tool_handler.py" = ["E402"]

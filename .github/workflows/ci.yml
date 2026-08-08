@@ -49,7 +49,7 @@ jobs:
           pip install -e ".[test]"
 
       # Dozens of test files bundle the real TypeScript sources with esbuild and
-      # run them under Node, so they need web/programmer/node_modules. This job
+      # run them under Node, so they need openavc/web/programmer/node_modules. This job
       # used to install Python only, and every one of those tests skipped.
       - name: Set up Node.js
         if: matrix.os == 'ubuntu-latest'
@@ -59,12 +59,12 @@ jobs:
 
       - name: Install Programmer UI dependencies
         if: matrix.os == 'ubuntu-latest'
-        working-directory: web/programmer
+        working-directory: openavc/web/programmer
         run: npm ci
 
       # The driver-library sweeps assert a platform property over every shipped
       # driver, so they need the library itself. Clone it outside the checkout:
-      # inside, its 24 drivers that import from server.transport would be swept
+      # inside, its 24 drivers that import from openavc.transport would be swept
       # up by the tests that walk this repo's source tree. Track main rather
       # than a pin — a genuine disagreement between the platform and the
       # shipped drivers should go red here.
@@ -73,7 +73,7 @@ jobs:
         run: git clone --depth 1 https://github.com/open-avc/openavc-drivers.git "$RUNNER_TEMP/openavc-drivers"
 
       - name: Lint with ruff
-        run: ruff check server/ tests/
+        run: ruff check openavc/ tests/
 
       - name: Run tests
         # tests/perf holds wall-clock benchmarks that are unreliable on shared
@@ -85,7 +85,7 @@ jobs:
       # The browser tests boot a real server and drive the Programmer IDE in
       # Chromium — the only automated proof the IDE works in a browser. They
       # need three things the run above does not: the Playwright package, an
-      # actual browser, and a built IDE (the server serves web/programmer/dist,
+      # actual browser, and a built IDE (the server serves openavc/web/programmer/dist,
       # so with no build every page 404s and all of them fail). Installed after
       # the unit run so that gate's environment stays exactly as it was.
       - name: Install the browser test stack
@@ -96,7 +96,7 @@ jobs:
 
       - name: Build the Programmer UI for the browser tests
         if: matrix.os == 'ubuntu-latest'
-        working-directory: web/programmer
+        working-directory: openavc/web/programmer
         run: npm run build
 
       # A separate step on purpose, never folded into the run above: the
@@ -126,17 +126,17 @@ jobs:
           node-version: "20"
 
       - name: Install and build Programmer UI
-        working-directory: web/programmer
+        working-directory: openavc/web/programmer
         run: |
           npm ci
           npm run build
 
       - name: Test Programmer UI
-        working-directory: web/programmer
+        working-directory: openavc/web/programmer
         run: npm run test
 
       - name: Install and build Simulator UI
-        working-directory: web/simulator
+        working-directory: openavc/web/simulator
         run: |
           npm ci
           npm run build
@@ -158,13 +158,13 @@ jobs:
       # was never `npm run build`-ed installs fine but ships no UI, so build the
       # frontends before packaging.
       - name: Build Programmer UI
-        working-directory: web/programmer
+        working-directory: openavc/web/programmer
         run: |
           npm ci
           npm run build
 
       - name: Build Simulator UI
-        working-directory: web/simulator
+        working-directory: openavc/web/simulator
         run: |
           npm ci
           npm run build

@@ -48,7 +48,7 @@ min_platform_version: 5
 def test_enforce_blocks_when_running_is_older(monkeypatch):
     # Pretend we're running 0.5.0 and the driver demands 0.6.0.
     import openavc.version
-    monkeypatch.setattr(server.version, "__version__", "0.5.0")
+    monkeypatch.setattr(openavc.version, "__version__", "0.5.0")
     with pytest.raises(HTTPException) as excinfo:
         _enforce_min_platform_version("0.6.0")
     assert excinfo.value.status_code == 422
@@ -57,20 +57,20 @@ def test_enforce_blocks_when_running_is_older(monkeypatch):
 
 def test_enforce_passes_when_running_is_equal(monkeypatch):
     import openavc.version
-    monkeypatch.setattr(server.version, "__version__", "0.6.0")
+    monkeypatch.setattr(openavc.version, "__version__", "0.6.0")
     # Should not raise.
     _enforce_min_platform_version("0.6.0")
 
 
 def test_enforce_passes_when_running_is_newer(monkeypatch):
     import openavc.version
-    monkeypatch.setattr(server.version, "__version__", "0.7.1")
+    monkeypatch.setattr(openavc.version, "__version__", "0.7.1")
     _enforce_min_platform_version("0.6.0")
 
 
 def test_enforce_swallows_unparseable(monkeypatch):
     import openavc.version
-    monkeypatch.setattr(server.version, "__version__", "0.7.1")
+    monkeypatch.setattr(openavc.version, "__version__", "0.7.1")
     # An unparseable required version logs and allows.
     _enforce_min_platform_version("not-a-version")
 
@@ -97,6 +97,6 @@ def test_parse_semver_plain_three_part():
 
 def test_enforce_two_part_running_version_not_blocked(monkeypatch):
     import openavc.version
-    monkeypatch.setattr(server.version, "__version__", "0.22")
+    monkeypatch.setattr(openavc.version, "__version__", "0.22")
     # Running "0.22" satisfies a "0.22.0" requirement.
     _enforce_min_platform_version("0.22.0")

@@ -32,13 +32,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Build Programmer UI
-        working-directory: web/programmer
+        working-directory: openavc/web/programmer
         run: |
           npm ci
           npm run build
 
       - name: Build Simulator UI
-        working-directory: web/simulator
+        working-directory: openavc/web/simulator
         run: |
           npm ci
           npm run build
@@ -71,20 +71,15 @@ jobs:
             --exclude='.pytest_cache' \
             --exclude='.ruff_cache' \
             --exclude='installer/pi-image/pi-gen' \
-            --exclude='web/programmer/node_modules' \
-            --exclude='web/programmer/src' \
-            --exclude='web/programmer/.env*' \
-            --exclude='web/simulator/node_modules' \
-            --exclude='web/simulator/src' \
-            --exclude='web/simulator/.env*' \
-            server/ \
-            simulator/ \
-            web/panel/ \
-            web/programmer/dist/ \
-            web/simulator/dist/ \
+            --exclude='openavc/web/programmer/node_modules' \
+            --exclude='openavc/web/programmer/src' \
+            --exclude='openavc/web/programmer/.env*' \
+            --exclude='openavc/web/simulator/node_modules' \
+            --exclude='openavc/web/simulator/src' \
+            --exclude='openavc/web/simulator/.env*' \
+            openavc/ \
             driver_repo/ \
             plugin_repo/ \
-            themes/ \
             requirements.txt \
             pyproject.toml \
             LICENSE
