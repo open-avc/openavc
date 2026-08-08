@@ -22,7 +22,7 @@ from pathlib import Path
 
 # Repo root = openavc/ (this file is openavc/tests/test_app_beforeunload_guard.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-APP_TSX = OPENAVC_ROOT / "web" / "programmer" / "src" / "App.tsx"
+APP_TSX = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "App.tsx"
 
 
 def _beforeunload_guard() -> str:

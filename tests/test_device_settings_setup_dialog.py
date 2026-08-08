@@ -18,8 +18,7 @@ from pathlib import Path
 # Repo root = openavc/ (this file is openavc/tests/test_device_settings_setup_dialog.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 DIALOG = (
-    OPENAVC_ROOT
-    / "web" / "programmer" / "src" / "components" / "shared"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared"
     / "DeviceSettingsSetupDialog.tsx"
 )
 

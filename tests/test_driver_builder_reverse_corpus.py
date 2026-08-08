@@ -54,7 +54,7 @@ from openavc.drivers.driver_loader import validate_driver_issues
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-BUILTIN_DEFINITIONS = OPENAVC_ROOT / "server" / "drivers" / "definitions"
+BUILTIN_DEFINITIONS = OPENAVC_ROOT / "openavc" / "server" / "drivers" / "definitions"
 
 DRIVERS_ROOT = Path(
     os.environ.get("OPENAVC_DRIVERS_ROOT") or OPENAVC_ROOT.parent / "openavc-drivers"
@@ -64,15 +64,14 @@ HARNESS = (
     OPENAVC_ROOT / "tests" / "fixtures" / "driver_builder_reverse_corpus_harness.cjs"
 )
 VALIDATOR = (
-    OPENAVC_ROOT
-    / "web"
+    OPENAVC_ROOT / "openavc" / "web"
     / "programmer"
     / "src"
     / "components"
     / "driver-builder"
     / "validateDriver.ts"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

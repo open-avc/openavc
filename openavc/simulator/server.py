@@ -218,7 +218,10 @@ app.add_api_websocket_route("/ws", ws_endpoint)
 # In frozen (PyInstaller) builds, resources are inside sys._MEIPASS.
 # Otherwise, resolve relative to the simulator package.
 if getattr(sys, "frozen", False):
-    _sim_base = Path(sys._MEIPASS)
+    # web/ is bundled inside the package, so the frozen root has to descend
+    # into it; the source branch below gets there for free because this file
+    # moved down with it (openavc/simulator/server.py -> openavc/).
+    _sim_base = Path(sys._MEIPASS) / "openavc"
 else:
     _sim_base = Path(__file__).parent.parent
 ui_dir = _sim_base / "web" / "simulator" / "dist"

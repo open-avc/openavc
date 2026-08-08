@@ -23,8 +23,7 @@ from pathlib import Path
 # Repo root = openavc/ (this file is openavc/tests/test_action_picker_stale_guard.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 ACTION_PICKER_TSX = (
-    OPENAVC_ROOT
-    / "web" / "programmer" / "src"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src"
     / "components" / "ui-builder" / "BindingEditor" / "ActionPicker.tsx"
 )
 

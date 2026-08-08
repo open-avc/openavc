@@ -41,9 +41,9 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "action_list_harness.cjs"
 LIST_TSX = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared" / "ActionListEditor.tsx"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared" / "ActionListEditor.tsx"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 
 
 def _toolchain_reason() -> str | None:

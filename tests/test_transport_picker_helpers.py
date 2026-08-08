@@ -44,8 +44,7 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "transport_picker_helpers_harness.cjs"
 HELPERS_TS = (
-    OPENAVC_ROOT
-    / "web"
+    OPENAVC_ROOT / "openavc" / "web"
     / "programmer"
     / "src"
     / "components"
@@ -53,16 +52,15 @@ HELPERS_TS = (
     / "transportPickerHelpers.ts"
 )
 PICKER_TSX = (
-    OPENAVC_ROOT
-    / "web"
+    OPENAVC_ROOT / "openavc" / "web"
     / "programmer"
     / "src"
     / "components"
     / "driver-builder"
     / "TransportPicker.tsx"
 )
-STORE_TS = OPENAVC_ROOT / "web" / "programmer" / "src" / "store" / "driverBuilderStore.ts"
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+STORE_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "store" / "driverBuilderStore.ts"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

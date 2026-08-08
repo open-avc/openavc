@@ -52,15 +52,31 @@ def _resolve_install_dir() -> Path:
     return _resolve_app_dir()
 
 
+def _resolve_package_dir() -> Path:
+    """Resolve the `openavc` package directory itself.
+
+    Distinct from APP_DIR on purpose. APP_DIR means "the tree the app was
+    deployed into" — repo root in a checkout, the install dir when installed,
+    _MEIPASS when frozen — which is right for `data/` and `pyproject.toml`.
+    But `themes/`, `web/`, the built-in driver definitions and the starter
+    templates all live *inside* the package, so they have to be anchored on
+    the package or they resolve one level too high and come back empty.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "openavc"
+    return Path(__file__).resolve().parent
+
+
 APP_DIR = _resolve_app_dir()
 INSTALL_DIR = _resolve_install_dir()
+PACKAGE_DIR = _resolve_package_dir()
 
 
 def _is_dev_environment() -> bool:
     """Detect if running from a source/development checkout."""
     if getattr(sys, "frozen", False):
         return False
-    return (APP_DIR / "pyproject.toml").exists() and (APP_DIR / "server").is_dir()
+    return (APP_DIR / "pyproject.toml").exists() and (APP_DIR / "openavc").is_dir()
 
 
 def _is_docker() -> bool:
@@ -162,13 +178,15 @@ PLUGIN_DATA_DIR = get_data_dir() / "plugin_data"
 _LEGACY_DRIVER_REPO_DIR = APP_DIR / "driver_repo"
 _LEGACY_PLUGIN_REPO_DIR = APP_DIR / "plugin_repo"
 
-# Bundle-relative resources (read-only, stays in APP_DIR)
-THEMES_DIR = APP_DIR / "themes"
-DRIVER_DEFINITIONS_DIR = APP_DIR / "server" / "drivers" / "definitions"
-WEB_PANEL_DIR = APP_DIR / "web" / "panel"
-WEB_PROGRAMMER_DIR = APP_DIR / "web" / "programmer" / "dist"
-WEB_SIMULATOR_DIR = APP_DIR / "web" / "simulator" / "dist"
-SEED_TEMPLATES_DIR = APP_DIR / "server" / "templates"
+# Bundle-relative resources (read-only). These six live INSIDE the package, so
+# they anchor on PACKAGE_DIR; user_templates sits beside it in the deployed
+# tree and stays on APP_DIR.
+THEMES_DIR = PACKAGE_DIR / "themes"
+DRIVER_DEFINITIONS_DIR = PACKAGE_DIR / "drivers" / "definitions"
+WEB_PANEL_DIR = PACKAGE_DIR / "web" / "panel"
+WEB_PROGRAMMER_DIR = PACKAGE_DIR / "web" / "programmer" / "dist"
+WEB_SIMULATOR_DIR = PACKAGE_DIR / "web" / "simulator" / "dist"
+SEED_TEMPLATES_DIR = PACKAGE_DIR / "templates"
 USER_TEMPLATES_DIR = APP_DIR / "user_templates"
 PYPROJECT_PATH = APP_DIR / "pyproject.toml"
 

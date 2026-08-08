@@ -10,7 +10,6 @@ version active, and the reload outcome is surfaced in the tool result.
 
 from __future__ import annotations
 
-import sys
 import textwrap
 from unittest.mock import MagicMock
 
@@ -67,7 +66,6 @@ def harness(tmp_path):
     finally:
         rest.set_engine(None)
         script_engine.unload_all()
-        sys.modules.pop("openavc", None)
 
 
 async def test_update_script_source_reloads_running_script(harness):

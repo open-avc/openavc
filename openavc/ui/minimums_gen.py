@@ -23,7 +23,7 @@ from openavc.ui.control_minimums import (
     RULES,
 )
 
-ARTIFACT = "web/programmer/src/api/uiMinimums.gen.ts"
+ARTIFACT = "openavc/web/programmer/src/api/uiMinimums.gen.ts"
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.

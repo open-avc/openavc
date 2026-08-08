@@ -20,7 +20,7 @@ from pathlib import Path
 
 # Repo root = openavc/ (this file is openavc/tests/test_api_base_client_guard.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-BASE_TS = OPENAVC_ROOT / "web" / "programmer" / "src" / "api" / "base.ts"
+BASE_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "base.ts"
 
 
 def _request_body() -> str:

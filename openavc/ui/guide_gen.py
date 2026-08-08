@@ -56,7 +56,7 @@ from openavc.ui.page_review import (
     TOUCHABLE_TYPES,
 )
 
-ARTIFACT = "server/ui/panel_authoring_guide.md"
+ARTIFACT = "openavc/ui/panel_authoring_guide.md"
 
 #: Reading order for the `show` slots, so the table is not alphabetical for the
 #: sake of it. Anything new falls in behind these rather than disappearing.

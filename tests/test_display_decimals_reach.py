@@ -25,11 +25,11 @@ from pathlib import Path
 
 # Repo root = openavc/ (this file is openavc/tests/test_display_decimals_reach.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-PANEL_JS = OPENAVC_ROOT / "web" / "panel" / "panel.js"
-PROJECT_LOADER = OPENAVC_ROOT / "server" / "core" / "project_loader.py"
-TYPES_TS = OPENAVC_ROOT / "web" / "programmer" / "src" / "api" / "types.ts"
+PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
+PROJECT_LOADER = OPENAVC_ROOT / "openavc" / "server" / "core" / "project_loader.py"
+TYPES_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "types.ts"
 BASIC_PROPS = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ui-builder"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
     / "PropertySections" / "BasicProperties.tsx"
 )
 

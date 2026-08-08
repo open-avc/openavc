@@ -31,8 +31,8 @@ from tests import gates
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "ui_builder_undo_harness.cjs"
-STORE_DIR = OPENAVC_ROOT / "web" / "programmer" / "src" / "store"
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+STORE_DIR = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "store"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

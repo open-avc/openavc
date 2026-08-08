@@ -41,8 +41,7 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "routing_matrix_helpers_harness.cjs"
 HELPERS_TS = (
-    OPENAVC_ROOT
-    / "web"
+    OPENAVC_ROOT / "openavc" / "web"
     / "programmer"
     / "src"
     / "components"
@@ -50,7 +49,7 @@ HELPERS_TS = (
     / "routingMatrixHelpers.ts"
 )
 SURFACE_DIR = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "plugins" / "surface"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "plugins" / "surface"
 )
 MATRIX_TSX = SURFACE_DIR / "RoutingMatrix.tsx"
 
@@ -61,7 +60,7 @@ def _surface_sources() -> str:
     return "\n".join(
         f.read_text(encoding="utf-8") for f in sorted(SURFACE_DIR.glob("*.ts*"))
     )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

@@ -27,7 +27,7 @@ from openavc.drivers.spec import CATEGORIES
 
 # Repo root = openavc/ (this file is openavc/tests/test_driver_builder_categories.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-PROGRAMMER_SRC = OPENAVC_ROOT / "web" / "programmer" / "src"
+PROGRAMMER_SRC = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src"
 CATEGORIES_TS = PROGRAMMER_SRC / "components" / "driver-builder" / "driverCategories.ts"
 DRIVER_EDITOR_TSX = PROGRAMMER_SRC / "components" / "driver-builder" / "DriverEditor.tsx"
 CREATE_DRIVER_DIALOG_TSX = PROGRAMMER_SRC / "components" / "scripts" / "CreateDriverDialog.tsx"

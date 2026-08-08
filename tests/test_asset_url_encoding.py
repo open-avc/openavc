@@ -26,10 +26,10 @@ from pathlib import Path
 # Repo root = openavc/ (this file is openavc/tests/test_asset_url_encoding.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 ELEMENT_ICON_TSX = (
-    OPENAVC_ROOT / "web" / "programmer" / "src"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src"
     / "components" / "ui-builder" / "ElementIcon.tsx"
 )
-PANEL_JS = OPENAVC_ROOT / "web" / "panel" / "panel.js"
+PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 
 
 def test_element_icon_uses_shared_getAssetUrl() -> None:

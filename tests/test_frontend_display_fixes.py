@@ -25,8 +25,8 @@ from pathlib import Path
 
 # Repo root = openavc/ (this file is openavc/tests/test_frontend_display_fixes.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-SETTINGS_VIEW = OPENAVC_ROOT / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
-SIM_COMPONENTS = OPENAVC_ROOT / "web" / "simulator" / "src" / "components"
+SETTINGS_VIEW = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
+SIM_COMPONENTS = OPENAVC_ROOT / "openavc" / "web" / "simulator" / "src" / "components"
 METER_CONTROL = SIM_COMPONENTS / "controls" / "MeterControl.tsx"
 SLIDER_CONTROL = SIM_COMPONENTS / "controls" / "SliderControl.tsx"
 POWER_CONTROL = SIM_COMPONENTS / "controls" / "PowerControl.tsx"

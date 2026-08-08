@@ -22,7 +22,7 @@ from pathlib import Path
 
 # Repo root = openavc/ (this file is openavc/tests/test_isc_peer_port_validation.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-ISC_VIEW_TSX = OPENAVC_ROOT / "web" / "programmer" / "src" / "views" / "ISCView.tsx"
+ISC_VIEW_TSX = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "views" / "ISCView.tsx"
 
 
 def _source() -> str:

@@ -32,14 +32,12 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "restart_poll_helpers_harness.cjs"
 HELPERS = (
-    OPENAVC_ROOT
-    / "web" / "programmer" / "src" / "components" / "shared" / "restartPollHelpers.ts"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared" / "restartPollHelpers.ts"
 )
 DIALOG = (
-    OPENAVC_ROOT
-    / "web" / "programmer" / "src" / "components" / "shared" / "RestartProgressDialog.tsx"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared" / "RestartProgressDialog.tsx"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

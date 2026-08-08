@@ -181,11 +181,11 @@ def artifacts(repo_root: Path) -> dict[Path, str]:
     from openavc.drivers.contract_gen_ts import render_types_ts
 
     return {
-        repo_root / "server" / "drivers" / "avcdriver.schema.json":
+        repo_root / "openavc" / "drivers" / "avcdriver.schema.json":
             render_schema("yaml"),
-        repo_root / "server" / "drivers" / "pythondriver.schema.json":
+        repo_root / "openavc" / "drivers" / "pythondriver.schema.json":
             render_schema("python"),
-        repo_root / "web" / "programmer" / "src" / "api" / "types.gen.ts":
+        repo_root / "openavc" / "web" / "programmer" / "src" / "api" / "types.gen.ts":
             render_types_ts(),
     }
 

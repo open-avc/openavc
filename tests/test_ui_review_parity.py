@@ -38,10 +38,10 @@ from openavc.ui.page_review import review_master_element, review_page
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "ui_review_parity_harness.cjs"
 HELPERS = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ui-builder"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
     / "uiBuilderHelpers.ts"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 # 1280 x 800 is the reference, so a percentage states itself in pixels: 1% of

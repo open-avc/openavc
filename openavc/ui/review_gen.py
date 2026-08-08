@@ -25,7 +25,7 @@ from pathlib import Path
 
 from openavc.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
 
-ARTIFACT = "web/programmer/src/api/uiBindingReach.gen.ts"
+ARTIFACT = "openavc/web/programmer/src/api/uiBindingReach.gen.ts"
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.

@@ -30,11 +30,10 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "audio_level_scale_harness.cjs"
 HELPERS = (
-    OPENAVC_ROOT
-    / "web" / "simulator" / "src" / "components" / "devices" / "audioLevelScale.ts"
+    OPENAVC_ROOT / "openavc" / "web" / "simulator" / "src" / "components" / "devices" / "audioLevelScale.ts"
 )
 # esbuild lives in the programmer app's node_modules; it only strips TS syntax.
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

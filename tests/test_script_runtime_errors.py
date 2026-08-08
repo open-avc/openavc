@@ -32,11 +32,10 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "script_runtime_errors_harness.cjs"
 HELPERS = (
-    OPENAVC_ROOT
-    / "web" / "programmer" / "src" / "components" / "scripts" / "scriptRuntimeErrors.ts"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "scripts" / "scriptRuntimeErrors.ts"
 )
-SCRIPT_VIEW = OPENAVC_ROOT / "web" / "programmer" / "src" / "views" / "ScriptView.tsx"
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+SCRIPT_VIEW = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "views" / "ScriptView.tsx"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

@@ -30,10 +30,10 @@ from tests import gates
 # Repo root = openavc/ (this file is openavc/tests/test_clipboard_helper.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
-PROGRAMMER_SRC = OPENAVC_ROOT / "web" / "programmer" / "src"
+PROGRAMMER_SRC = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src"
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "clipboard_helper_harness.cjs"
 HELPERS_TS = PROGRAMMER_SRC / "components" / "shared" / "clipboard.ts"
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

@@ -43,9 +43,9 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "macro_helpers_harness.cjs"
 HELPERS = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "macros" / "macroHelpers.ts"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "macros" / "macroHelpers.ts"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 
@@ -171,11 +171,20 @@ def _exec_script(source: str, state: dict | None = None) -> _ExecResult:
 
     code = compile(source, "<generated>", "exec")
     ns: dict = {}
+    # Shadow the real package while the generated script runs, so `from openavc
+    # import ...` binds these fakes. Restore it afterwards rather than deleting:
+    # `openavc` is the shipped package now, and dropping it from sys.modules
+    # leaves every later import in this process building a second, unrelated
+    # module object.
+    _real_openavc = sys.modules.get("openavc")
     sys.modules["openavc"] = mod
     try:
         exec(code, ns)
     finally:
-        del sys.modules["openavc"]
+        if _real_openavc is not None:
+            sys.modules["openavc"] = _real_openavc
+        else:
+            del sys.modules["openavc"]
     return _ExecResult(ns, st, dv, ev, mc, state_handlers, event_handlers)
 
 

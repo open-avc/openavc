@@ -31,7 +31,7 @@ from openavc.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
 pytest.importorskip("playwright.sync_api")
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[2]
-PANEL_DIR = OPENAVC_ROOT / "web" / "panel"
+PANEL_DIR = OPENAVC_ROOT / "openavc" / "web" / "panel"
 
 REF_W, REF_H = 1280, 800
 

@@ -35,12 +35,12 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "button_binding_helpers_harness.cjs"
 HELPERS_TS = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared" / "buttonBindingHelpers.ts"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared" / "buttonBindingHelpers.ts"
 )
 EDITOR_TSX = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared" / "ButtonBindingEditor.tsx"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared" / "ButtonBindingEditor.tsx"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

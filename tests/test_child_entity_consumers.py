@@ -14,7 +14,6 @@ the contract needs tests to hold it in place.
 from __future__ import annotations
 
 import asyncio
-import sys
 import textwrap
 from unittest.mock import AsyncMock, MagicMock
 
@@ -262,7 +261,6 @@ def script_engine(core, tmp_path):
     se.install()
     yield se
     se.unload_all()
-    sys.modules.pop("openavc", None)
 
 
 def _write_script(scripts_root, filename, code):

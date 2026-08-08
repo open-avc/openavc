@@ -35,16 +35,16 @@ from tests import gates
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 BINDING_EDITOR_DIR = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ui-builder" / "BindingEditor"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder" / "BindingEditor"
 )
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "test_action_params_harness.cjs"
 HELPERS_TS = BINDING_EDITOR_DIR / "testActionParams.ts"
 # The Test affordance moved out of PressBindingEditor when both press editors
 # started sharing one action list, so this pin follows it to its new home.
 ACTION_LIST_TSX = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared" / "ActionListEditor.tsx"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared" / "ActionListEditor.tsx"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 
@@ -128,7 +128,7 @@ def test_no_binding_editor_sends_unresolved_params() -> None:
     """
     roots = [
         BINDING_EDITOR_DIR,
-        OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "shared",
+        OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "shared",
     ]
     offenders = []
     for root in roots:

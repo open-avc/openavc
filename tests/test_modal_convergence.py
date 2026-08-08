@@ -22,7 +22,7 @@ from pathlib import Path
 
 # Repo root = openavc/ (this file is openavc/tests/test_modal_convergence.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-SRC = OPENAVC_ROOT / "web" / "programmer" / "src"
+SRC = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src"
 
 MODAL_TSX = SRC / "components" / "shared" / "Modal.tsx"
 LAYERS_TS = SRC / "components" / "shared" / "layers.ts"

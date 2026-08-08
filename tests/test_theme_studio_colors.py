@@ -24,9 +24,9 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "color_utils_harness.cjs"
 COLOR_UTILS = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ui-builder" / "colorUtils.ts"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder" / "colorUtils.ts"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

@@ -35,7 +35,7 @@ from openavc.ui.control_minimums import TYPES_WITH_MINIMUMS, minimum_box
 pytest.importorskip("playwright.sync_api")
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[2]
-PANEL_DIR = OPENAVC_ROOT / "web" / "panel"
+PANEL_DIR = OPENAVC_ROOT / "openavc" / "web" / "panel"
 
 REF_W, REF_H = 1280, 800
 

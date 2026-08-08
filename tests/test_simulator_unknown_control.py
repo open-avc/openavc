@@ -20,8 +20,7 @@ from pathlib import Path
 # Repo root = openavc/ (this file is openavc/tests/test_simulator_unknown_control.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = (
-    OPENAVC_ROOT
-    / "web" / "simulator" / "src" / "components" / "controls"
+    OPENAVC_ROOT / "openavc" / "web" / "simulator" / "src" / "components" / "controls"
     / "DynamicControls.tsx"
 )
 

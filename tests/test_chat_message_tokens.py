@@ -29,9 +29,9 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "chat_message_tokens_harness.cjs"
 CHAT_MESSAGE_TSX = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ai" / "ChatMessage.tsx"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ai" / "ChatMessage.tsx"
 )
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

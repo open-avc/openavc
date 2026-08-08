@@ -1,7 +1,6 @@
 """Tests for ScriptEngine and script_api."""
 
 import asyncio
-import sys
 import textwrap
 import threading
 
@@ -40,8 +39,6 @@ def engine(subsystems, script_dir):
     se.install()
     yield se
     se.unload_all()
-    # Clean up sys.modules injection
-    sys.modules.pop("openavc", None)
 
 
 def _write_script(script_dir, filename, code):

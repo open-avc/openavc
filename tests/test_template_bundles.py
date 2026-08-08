@@ -239,7 +239,6 @@ def _load_template_scripts(scripts: dict[str, bytes], workdir: Path) -> tuple[in
 
     Returns (handlers registered, load errors keyed by script id).
     """
-    import sys as _sys
 
     from openavc.core.device_manager import DeviceManager
     from openavc.core.event_bus import EventBus
@@ -263,7 +262,6 @@ def _load_template_scripts(scripts: dict[str, bytes], workdir: Path) -> tuple[in
         return handlers, engine.get_load_errors()
     finally:
         engine.unload_all()
-        _sys.modules.pop("openavc", None)
 
 
 @pytest.mark.parametrize("bundle", BUNDLES, ids=BUNDLE_IDS)

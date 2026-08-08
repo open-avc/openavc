@@ -36,9 +36,9 @@ from openavc.ui.page_review import (
 from openavc.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX, RULES
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-PANEL_JS = OPENAVC_ROOT / "web" / "panel" / "panel.js"
+PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 BUILDER_HELPERS = (
-    OPENAVC_ROOT / "web" / "programmer" / "src" / "components" / "ui-builder"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
     / "uiBuilderHelpers.ts"
 )
 

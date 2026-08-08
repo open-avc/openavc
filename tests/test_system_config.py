@@ -12,6 +12,7 @@ from openavc.system_config import (
     DRIVER_DEFINITIONS_DIR,
     DRIVER_REPO_DIR,
     INSTALL_DIR,
+    PACKAGE_DIR,
     PLUGIN_REPO_DIR,
     PYPROJECT_PATH,
     THEMES_DIR,
@@ -383,7 +384,7 @@ class TestPathResolution:
     def test_app_dir_points_to_repo_root_in_dev(self):
         """In dev mode, APP_DIR is the openavc/ repo root."""
         assert (APP_DIR / "pyproject.toml").exists()
-        assert (APP_DIR / "server").is_dir()
+        assert (APP_DIR / "openavc").is_dir()
 
     def test_install_dir_equals_app_dir_in_dev(self):
         """In dev mode, INSTALL_DIR is the same as APP_DIR."""
@@ -401,8 +402,8 @@ class TestPathResolution:
         assert DRIVER_REPO_DIR.parent == PLUGIN_REPO_DIR.parent
         assert DRIVER_REPO_DIR.parent.name == "data" or DRIVER_REPO_DIR.parent.parent != APP_DIR
         # Bundle resources still anchor to APP_DIR
-        assert THEMES_DIR == APP_DIR / "themes"
-        assert DRIVER_DEFINITIONS_DIR == APP_DIR / "server" / "drivers" / "definitions"
+        assert THEMES_DIR == PACKAGE_DIR / "themes"
+        assert DRIVER_DEFINITIONS_DIR == PACKAGE_DIR / "drivers" / "definitions"
         assert PYPROJECT_PATH == APP_DIR / "pyproject.toml"
 
     def test_resolve_app_dir_frozen(self):

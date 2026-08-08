@@ -31,8 +31,8 @@ from tests import gates
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "ws_client_harness.cjs"
-WS_CLIENT = OPENAVC_ROOT / "web" / "programmer" / "src" / "api" / "wsClient.ts"
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+WS_CLIENT = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "wsClient.ts"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 

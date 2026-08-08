@@ -33,12 +33,11 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "icon_picker_harness.cjs"
 HELPERS = (
-    OPENAVC_ROOT
-    / "web" / "programmer" / "src" / "components" / "ui-builder"
+    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
     / "iconPickerHelpers.ts"
 )
-SPRITE = OPENAVC_ROOT / "web" / "panel" / "icons.svg"
-NODE_MODULES = OPENAVC_ROOT / "web" / "programmer" / "node_modules"
+SPRITE = OPENAVC_ROOT / "openavc" / "web" / "panel" / "icons.svg"
+NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
 
 
