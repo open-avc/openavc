@@ -80,6 +80,7 @@ jobs:
             openavc/ \
             driver_repo/ \
             plugin_repo/ \
+            installer/trusted-keys/ \
             requirements.txt \
             pyproject.toml \
             LICENSE
