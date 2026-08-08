@@ -1,4 +1,4 @@
-"""Tests for the shared atomic-write helper (server/utils/fileio.py)."""
+"""Tests for the shared atomic-write helper (openavc/utils/fileio.py)."""
 
 import pytest
 

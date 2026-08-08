@@ -4,7 +4,7 @@ OSCSimulator — async UDP server base for OSC device simulators.
 Parallel to TCPSimulator and HTTPSimulator. Subclasses implement
 handle_message() to define device behavior; the OSC decode/encode loop and
 the UDP server underneath it (:class:`OSCDispatchMixin` over
-:class:`~simulator.datagram_server.DatagramServerMixin`) are shared with the
+:class:`~openavc.simulator.datagram_server.DatagramServerMixin`) are shared with the
 YAML auto-generator, which speaks the same protocol from a driver definition
 instead of Python.
 

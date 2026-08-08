@@ -10,7 +10,7 @@ newly-selected device — briefly offering commands that don't exist on it.
 The fix adds the standard stale-response guard: a ``cancelled`` flag flipped in
 the effect's cleanup return, checked before every ``setDeviceInfo``.
 
-There is no vitest/jest harness in web/programmer, so — like the other frontend
+There is no vitest/jest harness in openavc/web/programmer, so — like the other frontend
 regression tests — this pins the source to the fixed shape: the unguarded form
 can't quietly come back, and the guarded form must be present.
 """

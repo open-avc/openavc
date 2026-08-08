@@ -1,11 +1,11 @@
 "use strict";
 // Loads the binding editor's Test-button param helpers (testActionParams.ts
 // — React-free pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules. The Test button used to send command params
+// openavc/web/programmer/node_modules. The Test button used to send command params
 // raw, so a change/submit binding's "$value" (or a "$var.volume" state ref)
 // went to the device as a literal string — a malformed control command on
 // real AV hardware. The helper must mirror the runtime resolver
-// (server/core/value_resolver.py): state refs resolve from the live state
+// (openavc/core/value_resolver.py): state refs resolve from the live state
 // mirror, interaction tokens have no value in the editor and block the
 // send, and a state ref with no current value blocks instead of sending
 // the None the runtime would.

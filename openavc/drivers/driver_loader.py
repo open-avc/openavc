@@ -7,7 +7,7 @@ Supported formats:
     - .py         Python modules containing BaseDriver subclasses
 
 Directories scanned:
-    - server/drivers/definitions/  (built-in .avcdriver definitions)
+    - openavc/drivers/definitions/  (built-in .avcdriver definitions)
     - driver_repo/                 (community/user drivers — .avcdriver and .py)
 
 Each valid driver is registered in the global driver registry.

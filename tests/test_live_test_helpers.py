@@ -11,7 +11,7 @@ panel now asks the server to build the command with the real driver, and this
 harness checks the wire builder has not come back. What the preview shows is
 covered by test_driver_command_dry_run.py and its corpus sweep.
 
-Bundled with the esbuild in web/programmer/node_modules; skips when the Node
+Bundled with the esbuild in openavc/web/programmer/node_modules; skips when the Node
 toolchain is absent.
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "live test helpers harness missing"
     if not HELPERS.is_file():

@@ -1,10 +1,10 @@
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the binding-reach tables (server/ui/page_review.py).
+// Rendered from the binding-reach tables (openavc/ui/page_review.py).
 // Regenerate with:  python -m openavc.ui.review_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 //
 // `show` accepts the same four slots for every element type, and each render
-// function in web/panel/panel.js reads only some of them. A slot the renderer
+// function in openavc/web/panel/panel.js reads only some of them. A slot the renderer
 // never looks at is silently inert: the element draws, the state key resolves,
 // and the thing the author asked for simply never happens. That is how a label
 // ended up carrying ONLINE / OFFLINE state text the panel has no code to draw.

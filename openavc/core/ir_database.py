@@ -2,7 +2,7 @@
 
 Searches a large crowd-sourced database of remote-control codes by brand and
 device, then renders a chosen function to vendor-neutral Pronto hex via
-:mod:`server.transport.ir_render`. The database stores codes compactly as
+:mod:`openavc.transport.ir_render`. The database stores codes compactly as
 ``(protocol, device, subdevice, function)`` rather than raw timing, so a code is
 only emittable once the renderer turns it into Pronto — this module is the bridge
 between the two.

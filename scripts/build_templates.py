@@ -1,6 +1,6 @@
 """Rebuild the starter-template .zip bundles from their canonical sources.
 
-Every starter template ships twice in ``server/templates/``: a loose
+Every starter template ships twice in ``openavc/templates/``: a loose
 ``<name>.avc`` project file, an optional ``<name>.scripts/`` directory beside
 it, and a ``<name>.zip`` bundle. The loose pair is what a person edits. The
 bundle is what a fresh install actually seeds into the project library, and it
@@ -40,8 +40,8 @@ import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE_DIR = REPO_ROOT / "server" / "templates"
-BUILTIN_DRIVER_DIR = REPO_ROOT / "server" / "drivers" / "definitions"
+TEMPLATE_DIR = REPO_ROOT / "openavc" / "templates"
+BUILTIN_DRIVER_DIR = REPO_ROOT / "openavc" / "drivers" / "definitions"
 
 DRIVERS_ROOT = Path(
     os.environ.get("OPENAVC_DRIVERS_ROOT")

@@ -222,7 +222,7 @@ async def restart_system(request: Request) -> dict[str, Any]:
     """Trigger an OpenAVC process restart.
 
     Emits ``system.restart_requested`` on the engine event bus. The handler
-    registered at startup (server/main.py) flushes logs, runs a graceful
+    registered at startup (openavc/main.py) flushes logs, runs a graceful
     shutdown, and exits — service managers (NSSM / systemd / Docker) bring
     the process back. In dev mode, ``_spawn_replacement`` handles relaunch.
 

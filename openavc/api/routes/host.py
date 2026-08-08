@@ -2,7 +2,7 @@
 
 What the *machine* running OpenAVC has and can be told to do: its network
 adapters, its serial ports, a reboot, and the SSH toggle. The work itself is
-done by ``server/host_control.py`` (via the root privileged helper) and by the
+done by ``openavc/host_control.py`` (via the root privileged helper) and by the
 discovery/transport modules that already enumerate the hardware.
 
 Note on the two "network" surfaces: adapter *enumeration* is here, while host

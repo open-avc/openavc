@@ -20,13 +20,13 @@ Click the **stop button** (same location) to stop simulation and restore real de
 You can also run the simulator directly from the command line:
 
 ```bash
-python -m simulator --driver-paths path/to/openavc-drivers
+python -m openavc.simulator --driver-paths path/to/openavc-drivers
 ```
 
 Or with a configuration file:
 
 ```bash
-python -m simulator --config sim_config.json
+python -m openavc.simulator --config sim_config.json
 ```
 
 **Config file format:**

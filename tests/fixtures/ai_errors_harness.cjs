@@ -1,6 +1,6 @@
 "use strict";
 // Loads the AI error mapper (aiErrors.ts) bundled on the fly with the
-// esbuild in web/programmer/node_modules and checks that the non-streaming
+// esbuild in openavc/web/programmer/node_modules and checks that the non-streaming
 // conversation paths get the same friendly copy the streaming path maps
 // inline — instead of surfacing raw 'AI API 500: {json}' strings.
 // Mirrors transport_picker_helpers_harness.cjs; the Python wrapper skips

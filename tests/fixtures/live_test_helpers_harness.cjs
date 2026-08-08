@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real Live Test panel helpers (liveTestHelpers.ts, bundled on the
-// fly with the esbuild already in web/programmer/node_modules) and checks the
+// fly with the esbuild already in openavc/web/programmer/node_modules) and checks the
 // transport-shape mismatch messages. Prints JSON results to stdout; the
 // Python wrapper skips when the Node toolchain or esbuild is absent.
 //

@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the real LifecycleEditor.tsx with the esbuild in
-// web/programmer/node_modules and server-renders it for a few on_connect
+// openavc/web/programmer/node_modules and server-renders it for a few on_connect
 // shapes. Before the fix, the on_connect editor was string[]-only: an OSC
 // `{address, args}` item was shown READ-ONLY (a disabled input holding the
 // JSON) with no way to author or edit its arguments, even though the runtime

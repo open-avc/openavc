@@ -42,7 +42,7 @@ _OVERLAY_DEFAULT_H = 300
 _SIDEBAR_DEFAULT_W = 320
 
 # Connection-related config fields that belong in the connections table.
-# Names match what BaseDriver reads at runtime (server/drivers/base.py):
+# Names match what BaseDriver reads at runtime (openavc/drivers/base.py):
 # `port` (string for serial, int for TCP/UDP/OSC/HTTP) and `baudrate` for serial.
 # Older `com_port`/`baud_rate` are translated by migrate_0_1_to_0_2.
 CONNECTION_FIELDS = {

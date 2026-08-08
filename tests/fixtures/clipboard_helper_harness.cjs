@@ -1,6 +1,6 @@
 "use strict";
 // Loads the shared copy-to-clipboard helper (components/shared/clipboard.ts)
-// bundled on the fly with the esbuild already in web/programmer/node_modules
+// bundled on the fly with the esbuild already in openavc/web/programmer/node_modules
 // and drives it under fake navigator/document globals. The IDE's copy
 // buttons used to call navigator.clipboard.writeText directly — undefined
 // outside a secure context, i.e. on the default plain-HTTP LAN deployment —

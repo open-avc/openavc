@@ -1,7 +1,7 @@
 "use strict";
 // Loads the Child Entity Types editor helpers (childEntityTypesHelpers.ts —
 // React-free pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the collision-safe id generation, the
+// openavc/web/programmer/node_modules, and checks the collision-safe id generation, the
 // atomic type-change reducer, and the rename validation that back the editor.
 // Mirrors driver_builder_store_harness.cjs. The Python wrapper skips when the
 // Node toolchain or esbuild is absent rather than failing the Python-only CI gate.

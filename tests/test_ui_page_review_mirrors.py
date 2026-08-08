@@ -3,7 +3,7 @@
 ``page_review`` answers two questions it does not own the facts for:
 
 * *does this element type's renderer read this binding* -- which lives in
-  ``web/panel/panel.js``, in whichever render function the type dispatches to.
+  ``openavc/web/panel/panel.js``, in whichever render function the type dispatches to.
 * *is this big enough for a finger* -- which lives in the Builder
   (``uiBuilderHelpers.ts``), measured against real panel diagonals.
 

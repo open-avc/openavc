@@ -26,7 +26,7 @@ from openavc.core.state_store import (
     is_flat_primitive,
 )
 
-_SERVER = Path(__file__).resolve().parents[1] / "server"
+_SERVER = Path(__file__).resolve().parents[1] / "openavc"
 
 
 # --- The policy itself ---
@@ -184,6 +184,9 @@ def test_the_flat_primitive_predicate_has_exactly_one_definition():
     check, so that tightening the invariant reaches all of them at once.
     """
     offenders: list[str] = []
+    # Both sweeps below walk this tree. A root that has stopped existing makes
+    # every one of them pass on an empty walk, saying nothing.
+    assert len(list(_SERVER.rglob("*.py"))) > 100, f"source sweep root is empty: {_SERVER}"
     for path in sorted(_SERVER.rglob("*.py")):
         rel = path.relative_to(_SERVER)
         if path.name == "state_store.py" or (rel.parts[0], path.name) in _PREDICATE_EXEMPT:
@@ -217,7 +220,7 @@ def test_no_second_copy_of_the_key_prefix_list():
             offenders.append(str(path.relative_to(_SERVER)))
     assert not offenders, (
         "These carry their own copy of the state-key namespace list; import "
-        "VALID_KEY_PREFIXES from server.core.state_store instead:\n  "
+        "VALID_KEY_PREFIXES from openavc.core.state_store instead:\n  "
         + "\n  ".join(offenders)
     )
 

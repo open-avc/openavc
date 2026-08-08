@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real device-setting validator (views/devices/deviceUtils.ts,
-// bundled on the fly with the esbuild in web/programmer/node_modules) and
+// bundled on the fly with the esbuild in openavc/web/programmer/node_modules) and
 // checks validateSettingValue: blank/garbage numeric input is rejected with
 // an actionable error instead of being coerced to 0 and written to the
 // hardware, min/max/regex from the setting definition are enforced, and

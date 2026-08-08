@@ -22,11 +22,10 @@ So this file asserts three things about every ```python fence:
 * **It parses.** ``ast.parse``, after the documented elisions below are
   normalized away. A guide example that is not syntactically Python is one an
   author cannot run.
-* **Every platform reference resolves.** ``from server.… import X`` and
-  ``from simulator.… import X`` against the real module; ``self.<attr>``
-  against ``BaseDriver``; ``self.transport.<attr>`` against the transport
-  classes. This closes both directions — a helper the guide invents, and a
-  method the platform renames out from under the guide.
+* **Every platform reference resolves.** ``from openavc.… import X`` against the
+  real module; ``self.<attr>`` against ``BaseDriver``; ``self.transport.<attr>``
+  against the transport classes. This closes both directions — a helper the
+  guide invents, and a method the platform renames out from under the guide.
 * **No coroutine is dropped.** A call to a name the same block defines with
   ``async def``, that is neither awaited nor handed to a task factory.
 
@@ -196,12 +195,18 @@ def _transport_surface() -> frozenset[str]:
 
 
 def _import_targets(tree: ast.Module) -> list[tuple[str, str]]:
-    """(module, name) for every ``from server.… / simulator.… import name``."""
+    """(module, name) for every ``from openavc.… import name``.
+
+    One root covers both halves of the package now: ``openavc.drivers.base`` and
+    ``openavc.simulator.tcp_simulator`` alike, plus the bare ``from openavc import
+    devices`` scripting form, which resolves through the front door's lazy
+    ``__getattr__``.
+    """
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or not node.module:
             continue
-        if node.module.split(".")[0] not in ("server", "simulator"):
+        if node.module.split(".")[0] != "openavc":
             continue
         for alias in node.names:
             out.append((node.module, alias.name))

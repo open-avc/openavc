@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real Updates view helpers (updatesHelpers.ts, transpiled on the
-// fly with the esbuild already in web/programmer/node_modules) and runs
+// fly with the esbuild already in openavc/web/programmer/node_modules) and runs
 // pure-logic checks for the completion-outcome / toast-direction / history
 // label decisions, printing JSON results to stdout. Mirrors
 // ui_builder_helpers_harness.cjs; the Python wrapper skips when the Node

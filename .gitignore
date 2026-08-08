@@ -15,10 +15,10 @@ env/
 
 # Node
 node_modules/
-web/panel/dist/
-web/programmer/dist/
-web/simulator/dist/
-web/simulator/node_modules/
+openavc/web/panel/dist/
+openavc/web/programmer/dist/
+openavc/web/simulator/dist/
+openavc/web/simulator/node_modules/
 .vite/
 *.tsbuildinfo
 

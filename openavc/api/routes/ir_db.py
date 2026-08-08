@@ -3,7 +3,7 @@
 Backs the IR Codes editor's "Search database" action: browse a large
 crowd-sourced remote-code database by brand and device, then take one rendered
 function as a Pronto code. Search-and-fetch-one, not a bulk import — the database
-is fetched at runtime and never bundled (see :mod:`server.core.ir_database`).
+is fetched at runtime and never bundled (see :mod:`openavc.core.ir_database`).
 """
 
 from typing import Any

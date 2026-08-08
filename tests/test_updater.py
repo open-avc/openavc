@@ -1,4 +1,4 @@
-"""Tests for server.updater — update system components."""
+"""Tests for openavc.updater — update system components."""
 
 import logging
 import os

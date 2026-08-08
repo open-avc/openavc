@@ -1,12 +1,12 @@
 """Tests for installer/openavc.spec hidden imports coverage (A27).
 
 PyInstaller's static analysis only catches module-level imports. Function-
-level `from server.transport.X import ...` calls (used to keep startup cost
+level `from openavc.transport.X import ...` calls (used to keep startup cost
 low for optional transports) are invisible to it, so the modules must be
 listed in `hiddenimports` or they're missing from the frozen build.
 
 Before A27, OSC transport and codec were used function-level all over
-`drivers/configurable.py`, `simulator/yaml_auto.py`, `simulator/osc_simulator.py`,
+`drivers/configurable.py`, `openavc/simulator/yaml_auto.py`, `openavc/simulator/osc_simulator.py`,
 and `drivers/base.py`, but neither module was in the spec — every OSC
 device crashed the moment the runtime tried to import it.
 """
@@ -47,7 +47,7 @@ def test_osc_modules_are_hidden_imports():
 
 
 def test_all_function_level_transport_imports_are_declared():
-    """Any `from server.transport.X import …` used inside a function body
+    """Any `from openavc.transport.X import …` used inside a function body
     must be in `hiddenimports`. Catches new transports added with the same
     deferred-import pattern that bit OSC.
     """
@@ -89,7 +89,7 @@ def test_resource_dirs_are_bundled():
     """Every resource directory the frozen runtime resolves under APP_DIR
     (sys._MEIPASS) must be in the spec's datas, or the feature it backs goes
     silently missing on Windows/macOS installs while Docker/Pi/Linux (which
-    copy server/ wholesale) keep it. server/templates is the case that bit:
+    copy openavc/ wholesale) keep it. openavc/templates is the case that bit:
     project_library.ensure_starter_projects silently no-ops without it, so
     installed builds had an empty starter-project library.
     """
@@ -97,7 +97,7 @@ def test_resource_dirs_are_bundled():
     required = {
         "openavc/templates",
         "openavc/drivers/definitions",
-        "themes",
+        "openavc/themes",
         "openavc/web/panel",
         "projects/default",
     }

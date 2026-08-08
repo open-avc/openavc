@@ -1,6 +1,6 @@
 """Which config module owns which setting — enforced, not just documented.
 
-``server/config.py`` and ``server/system_config.py`` both hold settings, and
+``openavc/config.py`` and ``openavc/system_config.py`` both hold settings, and
 the split between them is easy to get wrong when adding one: a user-editable
 setting that lands only in config.py has no Settings UI and no persistence,
 and a mirror that carries its own fallback default states a second answer

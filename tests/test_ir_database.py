@@ -1,4 +1,4 @@
-"""Tests for the IR code-database parse/render glue (server/core/ir_database.py).
+"""Tests for the IR code-database parse/render glue (openavc/core/ir_database.py).
 
 Only the pure, offline helpers are exercised here (index/CSV parsing and the
 per-function render annotation). The network fetch and cache are not — those hit

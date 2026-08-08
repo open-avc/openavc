@@ -1,7 +1,7 @@
 "use strict";
 // Loads the real panel-element config field router
 // (components/ui-builder/PropertySections/panelElementConfig.ts, bundled on the
-// fly with the esbuild in web/programmer/node_modules) and checks
+// fly with the esbuild in openavc/web/programmer/node_modules) and checks
 // panelElementFieldKind: ref types (state_key/device_ref/macro_ref) route to
 // their pickers instead of a plain text box (M-159), and `text` is a textarea
 // while `string` is a single-line input, matching the plugin CONFIG_SCHEMA form

@@ -1,7 +1,7 @@
 "use strict";
 // Loads the Simulation tab editor helpers (simulatorEditorHelpers.ts —
 // React-free pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the response-delay parsing and the
+// openavc/web/programmer/node_modules, and checks the response-delay parsing and the
 // error-mode behavior/set_state editing that back the Driver Builder's
 // Simulation tab. Mirrors config_schema_helpers_harness.cjs. The Python
 // wrapper skips when the Node toolchain or esbuild is absent rather than

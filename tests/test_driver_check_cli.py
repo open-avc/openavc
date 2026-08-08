@@ -311,7 +311,7 @@ def test_named_file_is_always_checked_even_in_a_skipped_location(tmp_path, capsy
     assert "no DRIVER_INFO class attribute found" in capsys.readouterr().err
 
 
-# ── simulator.validate runs the contract check first ──
+# ── openavc.simulator.validate runs the contract check first ──
 
 
 def test_simulator_validate_reports_contract_errors_above_parity(tmp_path, capsys):

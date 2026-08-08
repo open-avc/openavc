@@ -1,6 +1,6 @@
 """Import-guard for the shared protocol-interpreter helpers.
 
-``server/drivers/compiled_protocol.py`` is shared beyond the server runtime —
+``openavc/drivers/compiled_protocol.py`` is shared beyond the server runtime —
 the device simulator (a separate process) and the driver validator import it
 directly — so it must stay importable with nothing but the standard library,
 ``binary_helpers``, and the logging util: no driver runtime, no transport
@@ -16,16 +16,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 ALLOWED = {
-    "server",
+    "openavc",
     "openavc.drivers",
     "openavc.drivers.compiled_protocol",
     "openavc.transport",
     "openavc.transport.binary_helpers",
     "openavc.utils",
     "openavc.utils.logger",
-    # Pulled in by server.utils.logger (same closure inline_protocol has).
+    # Pulled in by openavc.utils.logger (same closure inline_protocol has).
     "openavc.utils.log_buffer",
-    # Also pulled in by server.utils.logger: the credential-redaction filter it
+    # Also pulled in by openavc.utils.logger: the credential-redaction filter it
     # installs on every handler. Stdlib-only (logging + re), so it does not
     # widen what the simulator or the validator has to be able to import.
     "openavc.utils.log_redaction",
@@ -37,8 +37,8 @@ def test_compiled_protocol_stays_pure():
     code = (
         "import sys\n"
         "sys.path.insert(0, r'" + str(REPO_ROOT) + "')\n"
-        "import server.drivers.compiled_protocol\n"
-        "names = sorted(m for m in sys.modules if m.startswith('server'))\n"
+        "import openavc.drivers.compiled_protocol\n"
+        "names = sorted(m for m in sys.modules if m.startswith('openavc'))\n"
         "if 'yaml' in sys.modules: names.append('yaml')\n"
         "print('\\n'.join(names))\n"
     )

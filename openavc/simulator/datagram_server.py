@@ -14,7 +14,7 @@ that also carries this and the HTTP mixin, and starts whichever server the
 driver's ``transport:`` field names. Nothing here defines ``start`` or
 ``stop``, so mixing it in never fights the class it is mixed into.
 
-Mix into a :class:`~simulator.base.BaseSimulator` — the pipeline reads
+Mix into a :class:`~openavc.simulator.base.BaseSimulator` — the pipeline reads
 ``log_protocol``, ``has_error_behavior``, ``_delays`` and ``_network_layer``
 from it.
 """

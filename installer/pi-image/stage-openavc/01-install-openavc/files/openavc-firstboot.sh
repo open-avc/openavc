@@ -29,7 +29,7 @@ fi
 
 # Ensure data directories exist with correct ownership. plugin_repo and
 # driver_repo are created under $DATA_DIR by the runtime on first start
-# (see server/system_config.py) — no need to chown an /opt/openavc/ copy.
+# (see openavc/system_config.py) — no need to chown an /opt/openavc/ copy.
 mkdir -p "$DATA_DIR/projects/default" "$DATA_DIR/logs"
 chown -R openavc:openavc "$DATA_DIR"
 chown -R openavc:openavc /var/log/openavc

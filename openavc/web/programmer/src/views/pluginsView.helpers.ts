@@ -2,7 +2,7 @@
  * Whether a plugin is incompatible with the current platform.
  *
  * The backend always computes the truthful `compatible` flag for every
- * discovered plugin (server/core/plugin_loader.py `is_platform_compatible`),
+ * discovered plugin (openavc/core/plugin_loader.py `is_platform_compatible`),
  * but it only sets `status === "incompatible"` for plugins listed in the
  * project that the loader actually tried to start. A discovered-but-unstarted
  * incompatible plugin therefore carries `compatible: false` with some other

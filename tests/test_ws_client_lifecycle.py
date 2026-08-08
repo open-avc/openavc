@@ -1,7 +1,7 @@
 """Regression tests for the Programmer WebSocket client (wsClient.ts).
 
 wsClient.ts is a browser module (real WebSocket + window), so these bundle it on
-the fly with the esbuild already in web/programmer/node_modules and drive it
+the fly with the esbuild already in openavc/web/programmer/node_modules and drive it
 against a fake WebSocket + window in Node, asserting on the JSON results. Like
 the other frontend-logic suites it skips when the Node toolchain or esbuild
 isn't present rather than failing the Python-only CI gate.
@@ -40,7 +40,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "ws client harness missing"
     if not WS_CLIENT.is_file():

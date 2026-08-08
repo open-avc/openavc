@@ -2,10 +2,10 @@
 
 The Theme Studio is React/TypeScript with no jsdom-loadable entry point, so these
 exercise the pure color/contrast helpers by transpiling colorUtils.ts on the fly
-with the esbuild already in web/programmer/node_modules and asserting on the
+with the esbuild already in openavc/web/programmer/node_modules and asserting on the
 results. Like the panel.js jsdom suite, they skip when the Node toolchain or
 esbuild isn't present rather than failing the Python-only CI gate. Run them
-locally after `npm ci` in web/programmer; `node` ships on the CI runners.
+locally after `npm ci` in openavc/web/programmer; `node` ships on the CI runners.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "color utils harness missing"
     if not COLOR_UTILS.is_file():

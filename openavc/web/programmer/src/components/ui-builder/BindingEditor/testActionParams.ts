@@ -1,7 +1,7 @@
 // Pure helpers behind the binding editor's "Test this action now" button.
 //
 // Command params can hold $-references. At runtime the engine resolves
-// them per param (server/core/value_resolver.py): the UI-event tokens
+// them per param (openavc/core/value_resolver.py): the UI-event tokens
 // ($value, $input, $output, $mute) come from the firing interaction, and
 // any other $ref reads the state store. A Test click has no firing
 // interaction, so sending params raw would put the literal "$value" string

@@ -1,6 +1,6 @@
 """Render the control-minimum rules into the Programmer IDE's types.
 
-Produces ``web/programmer/src/api/uiMinimums.gen.ts`` from ``RULES`` in
+Produces ``openavc/web/programmer/src/api/uiMinimums.gen.ts`` from ``RULES`` in
 ``control_minimums.py``. Data only -- the rows, not the arithmetic over them --
 so there is no second copy of the logic to drift. The Builder's resolver
 consumes these rows; the numbers themselves exist once, in Python, measured
@@ -27,7 +27,7 @@ ARTIFACT = "openavc/web/programmer/src/api/uiMinimums.gen.ts"
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the control-minimum rules (server/ui/control_minimums.py).
+// Rendered from the control-minimum rules (openavc/ui/control_minimums.py).
 // Regenerate with:  python -m openavc.ui.minimums_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 //

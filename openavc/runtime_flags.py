@@ -1,6 +1,6 @@
 """Process-wide runtime facts.
 
-Set by the entrypoint (server.main) when listeners actually come up, read by
+Set by the entrypoint (openavc.main) when listeners actually come up, read by
 API routes and the engine's status snapshot. Dependency-free on purpose so
 anything can import it without cycles.
 """

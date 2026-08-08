@@ -310,12 +310,17 @@ class TestNoUnimplementedLoopSocketAPIs:
     """
 
     def test_no_sock_sendto_or_recvfrom_in_server(self):
-        server_root = Path(__file__).resolve().parents[1] / "server"
+        server_root = Path(__file__).resolve().parents[1] / "openavc"
         offenders: list[str] = []
+        scanned = 0
         for path in server_root.rglob("*.py"):
+            scanned += 1
             text = path.read_text(encoding="utf-8", errors="replace")
             if ".sock_sendto(" in text or ".sock_recvfrom(" in text:
                 offenders.append(path.name)
+        # A guard that scans nothing passes for free. This one did, silently,
+        # for as long as the root pointed somewhere that had stopped existing.
+        assert scanned > 100, f"the source sweep only reached {scanned} files"
         assert offenders == [], (
             f"loop.sock_sendto/sock_recvfrom found in {offenders} — "
             "uvloop raises NotImplementedError for these; use "

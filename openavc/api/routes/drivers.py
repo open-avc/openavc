@@ -5,7 +5,7 @@ Two halves of one job, which is why they share a module:
 * **Install / import / update / uninstall** — the community catalog
   (`/drivers/install`), file upload (`/drivers/upload`, `/drivers/upload-bundle`),
   and the installed-driver lifecycle. Everything downloaded is hashed against
-  the catalog before it is written (`server/utils/community_integrity.py`) and
+  the catalog before it is written (`openavc/utils/community_integrity.py`) and
   gated on `min_platform_version`.
 * **Driver-definition CRUD** — list / get / validate / create / update / patch
   / delete / reload for the ``.avcdriver`` definitions the Driver Builder edits.

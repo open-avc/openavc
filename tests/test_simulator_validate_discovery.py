@@ -1,4 +1,4 @@
-"""Tests for `simulator.validate.find_drivers` driver discovery (A31).
+"""Tests for `openavc.simulator.validate.find_drivers` driver discovery (A31).
 
 Before A31, find_drivers used a plain substring match for "DRIVER_INFO"
 in the file's source. That picked up unrelated scripts that just mention

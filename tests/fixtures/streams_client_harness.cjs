@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the Programmer SPA's api/streamsClient.ts together with api/auth.ts
-// (using the esbuild already in web/programmer/node_modules) and exercises the
+// (using the esbuild already in openavc/web/programmer/node_modules) and exercises the
 // stream snapshot fetch: on a claimed instance the snapshot endpoint requires
 // auth, and only fetch() carries the Programmer's credential — a native
 // <img src> load never does. Scenarios assert the snapshot request rides the

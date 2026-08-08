@@ -10,7 +10,7 @@ all-valid list that silently dropped ``streaming`` and ``power``.
 
 The fix routes every authoring dropdown through one shared canonical list
 (``driverCategories.ts``) so the surfaces can't drift from the catalog again.
-There is no vitest/jest harness in web/programmer, so — like the other frontend
+There is no vitest/jest harness in openavc/web/programmer, so — like the other frontend
 regression tests — this pins the source to the fixed shape: the invalid values
 can't quietly come back, and both dropdowns must consume the shared list.
 

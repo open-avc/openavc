@@ -18,7 +18,7 @@ function isMapping(value: unknown): boolean {
  * bare string), and the old caller cast either straight to DriverDefinition —
  * so a YAML list imported here reached the API and failed with a misleading
  * "missing id" 422. Gate on a mapping up front, mirroring the runtime loader's
- * isinstance(dict) check (server/drivers/driver_loader.py), so the thrown error
+ * isinstance(dict) check (openavc/drivers/driver_loader.py), so the thrown error
  * names the real failure (not-a-mapping) instead of the cast laundering a list
  * or scalar through the type system.
  */

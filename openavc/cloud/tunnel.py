@@ -312,7 +312,7 @@ class TunnelHandler:
             # server over loopback, which is the identity the console uses to
             # configure the host network without a password — this is what
             # keeps a remote caller from inheriting that. See
-            # server/utils/request_origin.py.
+            # openavc/utils/request_origin.py.
             req_headers[TUNNEL_HEADER] = "1"
 
             max_response_size = 10 * 1024 * 1024  # 10MB

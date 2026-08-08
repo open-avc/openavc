@@ -9,7 +9,7 @@ which is BSD-licensed and ships by default on Windows 10+, every Linux, and
 macOS. Running ``ssh`` as a separate process keeps OpenAVC's MIT licence clean
 (no linking) and avoids any binary-wheel/ABI risk on ARM.
 
-Design — deliberately mirrors :class:`server.transport.tcp.TCPTransport`:
+Design — deliberately mirrors :class:`openavc.transport.tcp.TCPTransport`:
 
 * It is a *raw byte pipe*. Bytes from the remote shell are delivered to
   ``on_data`` as they arrive; ``send(bytes)`` writes to the shell's stdin.

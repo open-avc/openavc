@@ -1,6 +1,6 @@
 """The recorded per-control minimums must still be true, and still be tight.
 
-``server/ui/control_minimums.py`` says how small each control can be drawn.
+``openavc/ui/control_minimums.py`` says how small each control can be drawn.
 Those numbers were measured rather than derived, which means nothing about the
 source code keeps them honest -- edit a padding value in ``panel-elements.css``
 and they are quietly wrong, with no test anywhere going red. That is exactly

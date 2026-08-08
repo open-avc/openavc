@@ -1,7 +1,7 @@
 """TLS-aware loopback helpers for the cloud tunnel (Phase 6).
 
 The HTTP and WS URL builders inside ``TunnelHandler`` consult
-``server.config`` at call time, so these tests monkeypatch the config module
+``openavc.config`` at call time, so these tests monkeypatch the config module
 attributes to exercise both schemes.
 """
 

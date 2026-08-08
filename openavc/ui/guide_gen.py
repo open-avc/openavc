@@ -1,6 +1,6 @@
 """Render the per-control facts into the guide a remote authoring client fetches.
 
-Produces ``server/ui/panel_authoring_guide.md`` from ``RULES`` in
+Produces ``openavc/ui/panel_authoring_guide.md`` from ``RULES`` in
 ``control_minimums.py`` plus the finger rule and the binding-reach table in
 ``page_review.py``. Third renderer over the same measured numbers, after
 ``minimums_gen`` (the Builder's types) and ``review_gen`` (the binding table) --
@@ -115,7 +115,7 @@ def _internals(element: dict) -> str:
 
 HEADER = """\
 <!-- GENERATED FILE - DO NOT EDIT.
-     Rendered from server/ui/control_minimums.py and server/ui/page_review.py.
+     Rendered from openavc/ui/control_minimums.py and openavc/ui/page_review.py.
      Regenerate with:  python -m openavc.ui.guide_gen
      A test compares this file against a fresh render, so hand edits fail CI. -->
 

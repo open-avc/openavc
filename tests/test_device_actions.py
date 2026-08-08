@@ -1,6 +1,6 @@
 """Tests for the Quick Action strip platform feature.
 
-Exercises the generic action resolver and validator (server/drivers/actions.py)
+Exercises the generic action resolver and validator (openavc/drivers/actions.py)
 and their wiring into the YAML loader and ConfigurableDriver — using an invented
 device (Acme), never a real product. The mechanism is what's under test, not any
 specific driver's action set.

@@ -2,7 +2,7 @@
 // Loads the deck helpers (components/plugins/surface/deckHelpers.ts —
 // React-free pure logic behind the plugin surface configurator's deck
 // workbench) bundled on the fly with the esbuild in
-// web/programmer/node_modules, and exercises the rules that have to agree
+// openavc/web/programmer/node_modules, and exercises the rules that have to agree
 // with the plugin runtime: pages exist by being referenced, a navigate
 // action can hide in a nested off_action/hold_action, and the "start from
 // the current zones" seed has to reproduce what the runtime generates from

@@ -1,6 +1,6 @@
 "use strict";
 // Runs the real Driver Builder validator (validateDriver.ts, bundled on the
-// fly with the esbuild already in web/programmer/node_modules) over every
+// fly with the esbuild already in openavc/web/programmer/node_modules) over every
 // shipped driver definition and reports what it flagged.
 //
 // The other direction — every definition the loader refuses must be an error

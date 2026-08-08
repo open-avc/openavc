@@ -1,9 +1,9 @@
 "use strict";
 /*
- * jsdom + React harness for the shared Modal (web/programmer/src/components/shared/Modal.tsx).
+ * jsdom + React harness for the shared Modal (openavc/web/programmer/src/components/shared/Modal.tsx).
  *
  * Bundles the real Modal and the z-index ladder with the esbuild in
- * web/programmer/node_modules, renders them into a jsdom document with
+ * openavc/web/programmer/node_modules, renders them into a jsdom document with
  * react-dom/client, and drives the keyboard and pointer gestures the IDE's
  * dialogs depend on. Everything asserted here used to be twenty separate
  * implementations of, or missing from, each dialog.

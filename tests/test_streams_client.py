@@ -9,7 +9,7 @@ Programmer credential to same-origin /api fetches — and returns an object URL
 for the ``<img>``.
 
 This bundles the real ``streamsClient.ts`` and ``auth.ts`` with the esbuild in
-``web/programmer/node_modules`` and asserts the snapshot request rides the
+``openavc/web/programmer/node_modules`` and asserts the snapshot request rides the
 installed interceptor with the credential attached, plus the error-path and
 object-URL contract. Skips when the Node toolchain or esbuild is absent rather
 than failing the Python-only CI gate.
@@ -40,7 +40,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "streams client harness missing"
     if not STREAMS_TS.is_file():

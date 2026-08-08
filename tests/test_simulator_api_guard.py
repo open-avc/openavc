@@ -3,7 +3,7 @@ DNS-rebinding access.
 
 The control API is unauthenticated and can shut the process down or mutate
 device state, so a page the AV designer merely visits while the simulator runs
-must not be able to drive it. The guard lives in simulator/server.py.
+must not be able to drive it. The guard lives in openavc/simulator/server.py.
 
 No real device involved — this exercises the platform's request guard.
 

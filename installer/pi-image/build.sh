@@ -69,15 +69,15 @@ fi
 
 echo ""
 echo "Building Programmer UI..."
-(cd "$REPO_ROOT/web/programmer" && npm ci --silent && npm run build) || { echo "ERROR: Programmer UI build failed"; exit 1; }
+(cd "$REPO_ROOT/openavc/web/programmer" && npm ci --silent && npm run build) || { echo "ERROR: Programmer UI build failed"; exit 1; }
 
-if [ -f "$REPO_ROOT/web/panel/package.json" ]; then
+if [ -f "$REPO_ROOT/openavc/web/panel/package.json" ]; then
     echo "Building Panel UI..."
-    (cd "$REPO_ROOT/web/panel" && npm ci --silent && npm run build) || { echo "ERROR: Panel UI build failed"; exit 1; }
+    (cd "$REPO_ROOT/openavc/web/panel" && npm ci --silent && npm run build) || { echo "ERROR: Panel UI build failed"; exit 1; }
 fi
 
 echo "Building Simulator UI..."
-(cd "$REPO_ROOT/web/simulator" && npm ci --silent && npm run build) || { echo "ERROR: Simulator UI build failed"; exit 1; }
+(cd "$REPO_ROOT/openavc/web/simulator" && npm ci --silent && npm run build) || { echo "ERROR: Simulator UI build failed"; exit 1; }
 
 # --- Package server archive ---
 
@@ -88,6 +88,10 @@ echo "Packaging OpenAVC server..."
 mkdir -p "$STAGE_DIR/01-install-openavc/files"
 OPENAVC_ARCHIVE="$STAGE_DIR/01-install-openavc/files/openavc.tar.gz"
 
+# One entry, not six: the package holds the simulator, the web UIs and the
+# themes now, and a hand-listed set of its parts is what goes quietly stale the
+# first time somebody adds one. The --exclude lines below still do the real
+# filtering (sources and node_modules stay out; the built dist/ ships).
 tar czf "$OPENAVC_ARCHIVE" \
     -C "$REPO_ROOT" \
     --exclude='__pycache__' \
@@ -100,18 +104,13 @@ tar czf "$OPENAVC_ARCHIVE" \
     --exclude='.pytest_cache' \
     --exclude='.ruff_cache' \
     --exclude='installer/pi-image/pi-gen' \
-    --exclude='web/programmer/node_modules' \
-    --exclude='web/programmer/src' \
-    --exclude='web/programmer/.env*' \
-    --exclude='web/simulator/node_modules' \
-    --exclude='web/simulator/src' \
-    --exclude='web/simulator/.env*' \
-    server/ \
-    simulator/ \
-    web/panel/ \
-    web/programmer/dist/ \
-    web/simulator/dist/ \
-    themes/ \
+    --exclude='openavc/web/programmer/node_modules' \
+    --exclude='openavc/web/programmer/src' \
+    --exclude='openavc/web/programmer/.env*' \
+    --exclude='openavc/web/simulator/node_modules' \
+    --exclude='openavc/web/simulator/src' \
+    --exclude='openavc/web/simulator/.env*' \
+    openavc/ \
     requirements.txt \
     pyproject.toml \
     installer/trusted-keys/

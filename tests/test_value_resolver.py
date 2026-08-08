@@ -1,4 +1,4 @@
-"""Tests for the shared $-reference resolver (server.core.value_resolver).
+"""Tests for the shared $-reference resolver (openavc.core.value_resolver).
 
 Covers the namespace order (event context -> trigger context -> state store),
 the precise warn-only-on-unknown-state rule, and StateStore.has().

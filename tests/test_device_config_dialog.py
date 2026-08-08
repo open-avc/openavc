@@ -12,7 +12,7 @@ round-trip is lossless. And the Add dialog stored host/port/credentials in
 device.config — splitConnectionFields must produce the same
 connections-table split the device-update API applies.
 
-Bundled with the esbuild in web/programmer/node_modules; skips when the
+Bundled with the esbuild in openavc/web/programmer/node_modules; skips when the
 Node toolchain is absent.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "device config dialog harness missing"
     if not MODULE.is_file():

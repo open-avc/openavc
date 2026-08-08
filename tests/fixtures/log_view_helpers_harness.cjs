@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the real logViewHelpers.ts (with the esbuild already in
-// web/programmer/node_modules) and runs deviceFilterPredicate over filter
+// openavc/web/programmer/node_modules) and runs deviceFilterPredicate over filter
 // scenarios, printing {scenario: boolean} JSON to stdout. The Python wrapper
 // asserts the verdicts, proving the System Log Device filter matches the
 // entries the server actually produces. Skips happen on the Python side when

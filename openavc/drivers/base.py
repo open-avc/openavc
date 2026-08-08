@@ -1142,7 +1142,7 @@ class BaseDriver(ABC):
     # --- Setup / provisioning actions ---
     #
     # A "setup action" is a driver-declared provisioning wizard (an action of
-    # kind:"setup", see server/drivers/actions.py). Unlike a command, it can run
+    # kind:"setup", see openavc/drivers/actions.py). Unlike a command, it can run
     # while the device is OFFLINE, brings its own out-of-band transport, reports
     # multi-step progress, and may rewrite the device's connection config and
     # reconnect on success. The platform invokes run_setup_action with a live

@@ -4,7 +4,7 @@ UDPSimulator — async UDP server base for device simulators.
 Subclasses implement handle_command() to define protocol behavior, same
 interface as TCPSimulator. The server itself — socket lifecycle, datagram
 routing, network conditions, error modes — is
-:class:`~simulator.datagram_server.DatagramServerMixin`, shared with the OSC
+:class:`~openavc.simulator.datagram_server.DatagramServerMixin`, shared with the OSC
 base and the YAML auto-generator.
 
 Used for AV devices that communicate via UDP datagrams (video wall

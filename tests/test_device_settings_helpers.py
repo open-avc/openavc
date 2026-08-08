@@ -3,7 +3,7 @@
 
 The editor + setup dialog are React with no jsdom-loadable entry point, so these
 exercise the pure helpers by bundling deviceSettingsHelpers.ts on the fly with
-the esbuild already in web/programmer/node_modules and asserting on the results.
+the esbuild already in openavc/web/programmer/node_modules and asserting on the results.
 Like the other frontend-logic suites it skips when the Node toolchain or esbuild
 isn't present rather than failing the Python-only CI gate.
 
@@ -42,7 +42,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "device settings helpers harness missing"
     if not HELPERS.is_file():

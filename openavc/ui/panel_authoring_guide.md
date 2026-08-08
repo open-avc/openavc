@@ -1,5 +1,5 @@
 <!-- GENERATED FILE - DO NOT EDIT.
-     Rendered from server/ui/control_minimums.py and server/ui/page_review.py.
+     Rendered from openavc/ui/control_minimums.py and openavc/ui/page_review.py.
      Regenerate with:  python -m openavc.ui.guide_gen
      A test compares this file against a fresh render, so hand edits fail CI. -->
 

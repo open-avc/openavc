@@ -234,7 +234,7 @@ DEFAULTS: dict[str, Any] = {
         # Optional deployment-provided host-network backend: an importable
         # module exposing create_backend() -> NetworkBackend | None. Empty =
         # use built-in detection (nmcli). Appliance images set this to point
-        # at their own backend. See server/system/network.py.
+        # at their own backend. See openavc/system/network.py.
         "backend_module": "",
     },
     "auth": {
@@ -244,7 +244,7 @@ DEFAULTS: dict[str, Any] = {
         "panel_lock_code": "",
         # No-credential posture: "auto" = open only on a dev checkout, require
         # setup on shipped deployments; "true"/"false" force it. See
-        # server/api/auth.py anonymous_access_allowed().
+        # openavc/api/auth.py anonymous_access_allowed().
         "allow_anonymous": "auto",
     },
     "isc": {

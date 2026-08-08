@@ -15,7 +15,7 @@ Five display-layer defects, one per component:
   (a no-op) and read "Power Off", while the dedicated PowerControl treats
   cooling as "turn back on" — the two surfaces disagreed.
 
-There is no vitest/jest harness in web/programmer or web/simulator, so — like
+There is no vitest/jest harness in openavc/web/programmer or openavc/web/simulator, so — like
 the other frontend regression tests — these pin the source to the fixed shape.
 """
 

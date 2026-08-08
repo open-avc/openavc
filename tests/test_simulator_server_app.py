@@ -1,6 +1,6 @@
 """Smoke test for the simulator FastAPI app wiring.
 
-Importing ``simulator.server`` builds the FastAPI app at module load — routes,
+Importing ``openavc.simulator.server`` builds the FastAPI app at module load — routes,
 middleware, and the WebSocket endpoint. A regression there raises at import
 time, so the frozen simulator dies before a single device starts (the user sees
 only a traceback). This guards the WebSocket registration in particular: it

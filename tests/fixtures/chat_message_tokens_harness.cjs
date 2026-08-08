@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the real ChatMessage.tsx with the esbuild in
-// web/programmer/node_modules and server-renders it to static markup so we can
+// openavc/web/programmer/node_modules and server-renders it to static markup so we can
 // prove the assistant footer's token-count guard behaves. The old guard
 // `(message.inputTokens || message.outputTokens) && (...)` evaluated to `0`
 // when both counts were 0 (0 || 0), and React renders a bare `0` as literal

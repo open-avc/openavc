@@ -11,7 +11,7 @@ contributed — can be checked the same way a catalog driver is.
 Why this exists: every gate that knows the driver contract used to sit
 somewhere the author of a Python driver could not reach. ``build_index.py
 --check`` lives in the community catalog repo and validates the whole catalog
-against its manufacturer registry; ``simulator.validate`` takes any path but
+against its manufacturer registry; ``openavc.simulator.validate`` takes any path but
 checks driver-to-simulator parity, not the contract; the strict save-time
 validation runs inside the Programmer IDE. A YAML author at least gets live
 editor feedback from the ``# yaml-language-server:`` schema line — there is no
@@ -80,7 +80,7 @@ def check_driver_file(path: Path) -> FileCheckResult:
     """Run the driver contract over one file.
 
     The single entry point for every caller — the CLI below,
-    ``simulator.validate``, and any other door that wants the contract verdict
+    ``openavc.simulator.validate``, and any other door that wants the contract verdict
     on a path. Callers decide how to print it and what to exit with; they do
     not re-derive it.
     """

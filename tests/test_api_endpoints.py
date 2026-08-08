@@ -1,5 +1,5 @@
 """
-Tests for REST API endpoints (server/api/rest.py).
+Tests for REST API endpoints (openavc/api/rest.py).
 
 These tests use a lightweight engine mock to test endpoint logic
 without needing a running device simulator. They complement the

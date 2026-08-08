@@ -1,6 +1,6 @@
 """The starter-template .zip bundles match the sources they are built from.
 
-Each template in ``server/templates/`` exists as a loose ``<name>.avc`` plus an
+Each template in ``openavc/templates/`` exists as a loose ``<name>.avc`` plus an
 optional ``<name>.scripts/`` directory, and as a ``<name>.zip`` bundle. The
 bundle is the copy a fresh install seeds, and it is the only one that carries
 the template's drivers.

@@ -1,6 +1,6 @@
 "use strict";
 // Loads the REAL UI Builder + project zustand stores (bundled together on
-// the fly with the esbuild already in web/programmer/node_modules — zustand
+// the fly with the esbuild already in openavc/web/programmer/node_modules — zustand
 // stores work headless via getState/setState) and exercises the UI Builder
 // undo/redo paths end to end: rollback patch application, dirty marking,
 // save scheduling through the shared project-store debounce, and selection

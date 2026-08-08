@@ -4,7 +4,7 @@ Three doors ask this module the same two questions — *is this config key a
 credential?* and *does this text contain a credential value?* — so the answers
 cannot drift apart:
 
-  - **Transport TX/RX** (``server/transport/wire_log.py``) formats every byte a
+  - **Transport TX/RX** (``openavc/transport/wire_log.py``) formats every byte a
     device sends or receives. Device protocols carry logins in the clear, that
     traffic is pinned to DEBUG into the in-memory ring buffer regardless of the
     configured log level, and the buffer is served by ``GET /api/logs/recent``

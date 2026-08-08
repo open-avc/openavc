@@ -6,8 +6,8 @@ import type {
 
 /**
  * Evaluate a single condition operator. Mirrors the panel runtime's
- * `_evalConditionOp` (web/panel/panel.js) and the shared backend evaluator
- * (server/core/condition_eval.py) so an action's `visible_when` behaves the
+ * `_evalConditionOp` (openavc/web/panel/panel.js) and the shared backend evaluator
+ * (openavc/core/condition_eval.py) so an action's `visible_when` behaves the
  * same wherever it's evaluated.
  */
 function evalOp(op: string, actual: unknown, target: unknown): boolean {

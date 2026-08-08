@@ -1,7 +1,7 @@
 "use strict";
 /*
  * jsdom + React harness for the shared action list
- * (web/programmer/src/components/shared/ActionListEditor.tsx) as both press
+ * (openavc/web/programmer/src/components/shared/ActionListEditor.tsx) as both press
  * editors now use it.
  *
  * The point of the extraction was that the two editors had drifted into

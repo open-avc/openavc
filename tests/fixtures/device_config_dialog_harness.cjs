@@ -1,7 +1,7 @@
 "use strict";
 // Loads the real Add/Edit Device dialog config logic
 // (views/devices/deviceConfigCoerce.ts, bundled on the fly with the esbuild
-// in web/programmer/node_modules) and checks:
+// in openavc/web/programmer/node_modules) and checks:
 //   - configFieldKind routes `secret: true` fields to the masked password
 //     widget instead of the plaintext fallback,
 //   - coerceConfigValue preserves declared string/password/secret values

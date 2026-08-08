@@ -3,7 +3,7 @@ import type { PluginExtension } from "../../api/pluginClient";
 // Both generated, both from Python, because both are measured facts rather than
 // design decisions: the per-control floors were binary-searched against a real
 // browser, and the binding-reach table is read off the panel renderer itself.
-// See server/ui/minimums_gen.py and server/ui/review_gen.py.
+// See openavc/ui/minimums_gen.py and openavc/ui/review_gen.py.
 import {
   CONTROL_MINIMUMS,
   REM_BASE_PX,
@@ -2982,7 +2982,7 @@ export function isTouchable(type: string): boolean {
  *  72x100, a slider 68x81, both past the 53px finger minimum), so they are here
  *  for consistency: the rule is "a control you touch has a physical minimum",
  *  and leaving the draggable ones out made it read like a rule about buttons.
- *  Mirrored in server/ui/page_review.py, with a test asserting the two match. */
+ *  Mirrored in openavc/ui/page_review.py, with a test asserting the two match. */
 const TOUCHABLE_TYPES = new Set([
   "button", "page_nav", "camera_preset", "select", "text_input", "keypad", "list",
   "fader", "slider",
@@ -2990,7 +2990,7 @@ const TOUCHABLE_TYPES = new Set([
 
 // --- The page review: what a page will actually draw wrong ---
 //
-// The mirror of server/ui/page_review.py, which runs at the AI write door. The
+// The mirror of openavc/ui/page_review.py, which runs at the AI write door. The
 // two ask the same questions of the same measured numbers and answer in the
 // same words, down to the byte -- tests/test_ui_review_parity.py pushes a
 // project through both and fails on any difference. That matters because a
@@ -3100,7 +3100,7 @@ function own<T>(table: Record<string, T>, key: string): T | undefined {
  *  This used to count a bound `show.value` too. It is not rendered: the review
  *  would widen the floor by 9px to hold text that never draws, while separately
  *  warning that the same binding is inert. Mirrors `_has_caption` in
- *  server/ui/control_minimums.py. */
+ *  openavc/ui/control_minimums.py. */
 function hasCaption(el: UIElement): boolean {
   return !!(el.label ?? "").trim();
 }
@@ -3401,7 +3401,7 @@ export function starvationFinding(
  *
  *  10 sits under every measured floor (the lowest is a level meter at 13px
  *  wide), so this can never contradict one. Mirrored in
- *  server/ui/page_review.py, with a test asserting both the match and that
+ *  openavc/ui/page_review.py, with a test asserting both the match and that
  *  relationship. */
 export const MINIMUM_VISIBLE_PX = 10.0;
 

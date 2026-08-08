@@ -1,17 +1,17 @@
 """Generate the driver-contract artifacts from the spec registry.
 
-The field registry in ``server/drivers/spec.py`` is the single source of
+The field registry in ``openavc/drivers/spec.py`` is the single source of
 the .avcdriver contract. This module renders it into the committed
 artifacts every other surface consumes:
 
-* ``server/drivers/avcdriver.schema.json`` — the published JSON Schema for
+* ``openavc/drivers/avcdriver.schema.json`` — the published JSON Schema for
   YAML (.avcdriver) driver files. The community driver repo vendors a
   byte-identical copy at its root for editor validation and catalog CI.
-* ``server/drivers/pythondriver.schema.json`` — the Python-driver variant,
+* ``openavc/drivers/pythondriver.schema.json`` — the Python-driver variant,
   identical except where the Python tier is wider (ssh/mqtt transports,
   ``kind: setup`` actions). The catalog validates extracted DRIVER_INFO
   dicts against it.
-* ``web/programmer/src/api/types.gen.ts`` — the Programmer IDE's driver
+* ``openavc/web/programmer/src/api/types.gen.ts`` — the Programmer IDE's driver
   definition types and validator constant tables.
 
 Regenerate after any spec change:

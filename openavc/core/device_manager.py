@@ -123,7 +123,7 @@ PAUSE_TTL = 600.0
 
 
 # Masking a device config for a caller uses the same credential-field names as
-# masking a credential out of the device log — see server/utils/log_redaction.py,
+# masking a credential out of the device log — see openavc/utils/log_redaction.py,
 # which owns both. Re-exported here because get_device_info's orphaned-device
 # branch is the only path that returns raw connection config, and that payload
 # flows to the cloud AI (cloud/tools/device_tools.py::_get_device_info): a
@@ -554,7 +554,7 @@ class DeviceManager:
             # VALUE — "'component' must be a child id number, got 'Pgm_Gain'"
             # — when the value was fine and the driver's own declaration was
             # the typo. Say which declaration is wrong, in the same sentence
-            # the catalog, the file checker, simulator.validate and the loader
+            # the catalog, the file checker, openavc.simulator.validate and the loader
             # already use for the static form of this fault.
             if isinstance(declared_type, str) and declared_type not in child_types:
                 raise CommandParamError(

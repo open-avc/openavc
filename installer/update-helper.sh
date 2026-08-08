@@ -23,7 +23,7 @@ PYTHON="${PYTHON:-/usr/bin/python3}"
 # and that must survive every swap. venv is a Python virtual environment built
 # at install time. driver_repo and plugin_repo are legacy locations from before
 # user-installed content moved to $DATA_DIR — we still preserve them across the
-# swap so the runtime migration in server/system_config.migrate_legacy_repos can
+# swap so the runtime migration in openavc/system_config.migrate_legacy_repos can
 # drain them into $DATA_DIR on the first start of the new release. scripts holds
 # launchers placed by the appliance image build (the kiosk/setup display, the
 # first-boot and boot-info helpers); they live here but aren't in the tarball, so
@@ -52,7 +52,7 @@ LEGACY_REPO_DIRS=(driver_repo plugin_repo)
 is_app_dir_valid() {
     local dir="$1"
     [ -f "$dir/pyproject.toml" ] && \
-    [ -d "$dir/server" ] && \
+    [ -d "$dir/openavc" ] && \
     [ -f "$dir/venv/bin/python3" ] && \
     "$dir/venv/bin/python3" -c 'import sys' >/dev/null 2>&1
 }
@@ -182,7 +182,7 @@ verify_artifact_signature() {
 # at runtime by the unit's ProtectSystem=strict (/opt/openavc is read-only to
 # the service); asserting ownership too covers non-strict deployments and any
 # future unit change. Owning a parent directory is enough to rename/replace a
-# root-owned child, so $APP_DIR and installer/ are rooted as well — venv/server
+# root-owned child, so $APP_DIR and installer/ are rooted as well — venv/openavc
 # and the rest stay openavc-owned.
 harden_privileged_paths() {
     local keys_dir="$APP_DIR/installer/trusted-keys"
@@ -457,7 +457,7 @@ host_has_cap_net_raw() {
 # A daemon-reload during ExecStartPre does NOT re-apply to the already-parsed
 # current job, so a changed unit is activated by a deferred one-shot restart.
 # That restart is scheduled past the 60s post-update confirm window
-# (server/core/engine._confirm_startup_after_delay) on purpose: a sub-60s second
+# (openavc/core/engine._confirm_startup_after_delay) on purpose: a sub-60s second
 # start would be counted as a failed-start retry by the rollback attempts
 # counter and trip an automatic rollback of a perfectly good update.
 sync_unit() {

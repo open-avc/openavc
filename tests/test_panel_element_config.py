@@ -6,7 +6,7 @@ declaring a state_key/device_ref/macro_ref field forced end users to type raw
 IDs, and text vs string had no distinction. panelElementFieldKind now routes
 ref types to their pickers and makes text a textarea / string a single-line
 input, matching the plugin CONFIG_SCHEMA form. Bundled with the esbuild in
-web/programmer/node_modules; skips when the Node toolchain is absent.
+openavc/web/programmer/node_modules; skips when the Node toolchain is absent.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "panel element config harness missing"
     if not UTILS.is_file():

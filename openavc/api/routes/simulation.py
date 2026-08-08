@@ -1,6 +1,6 @@
 """Device simulation REST endpoints: status, start, stop.
 
-Drives the simulator subprocess through ``server/core/simulation.py``, which
+Drives the simulator subprocess through ``openavc/core/simulation.py``, which
 owns process lifecycle, port allocation, and the connection redirection that
 points devices at their simulators instead of real hardware.
 """

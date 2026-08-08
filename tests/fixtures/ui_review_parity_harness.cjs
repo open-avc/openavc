@@ -1,8 +1,8 @@
 "use strict";
 // Runs the Builder's page review (uiBuilderHelpers.ts, bundled on the fly with
-// the esbuild already in web/programmer/node_modules) over a set of projects
+// the esbuild already in openavc/web/programmer/node_modules) over a set of projects
 // handed in as JSON, and prints its findings. The Python wrapper runs the same
-// projects through server/ui/page_review.py and compares message for message.
+// projects through openavc/ui/page_review.py and compares message for message.
 //
 // The point of the comparison is that a human and the AI must not reach
 // different verdicts about the same file. Both surfaces read the same measured

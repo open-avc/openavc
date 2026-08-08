@@ -18,7 +18,7 @@ The renderers had four defects:
   autosaves, so dropping the edit would lose it).
 
 Two layers: the harness bundles the real ``pluginExtensionHelpers.ts`` with
-the esbuild in ``web/programmer/node_modules`` and exercises the pure logic
+the esbuild in ``openavc/web/programmer/node_modules`` and exercises the pure logic
 (skips when the Node toolchain is absent rather than failing the Python-only
 CI gate), and source-level checks pin PluginExtensions.tsx to the fixed
 shapes so the old patterns can't quietly come back.
@@ -63,7 +63,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     return None
 
 

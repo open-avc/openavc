@@ -6,7 +6,7 @@ Shared test fixtures for OpenAVC tests.
 import os
 import tempfile
 
-# Pin an isolated, empty data dir BEFORE anything imports `server.config`.
+# Pin an isolated, empty data dir BEFORE anything imports `openavc.config`.
 # config.py computes TLS_ENABLED / HTTP_PORT / TLS_PORT (and friends) as
 # module-level constants at *import* time. A test module that does
 # `from server import config` at top level gets config.py imported during

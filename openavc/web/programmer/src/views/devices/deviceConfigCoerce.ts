@@ -135,7 +135,7 @@ export function coerceConfigValue(
 
 // Connection-related config fields that belong in the project's connections
 // table, not device.config. Mirrors CONNECTION_FIELDS in
-// server/core/project_migration.py — keep the two in sync.
+// openavc/core/project_migration.py — keep the two in sync.
 export const CONNECTION_FIELDS = new Set([
   "host",
   "port",
@@ -194,7 +194,7 @@ export const IR_PICKER_FIELDS = new Set([
 ]);
 
 // Split a flat config map the way the device-update API does
-// (server/api/routes/devices.py): connection fields go to the connections
+// (openavc/api/routes/devices.py): connection fields go to the connections
 // table, the rest stays in device.config. The Add dialog persists via the
 // whole-project save, so it has to apply the same split itself or freshly
 // added devices land with host/port/password in device.config — violating

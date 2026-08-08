@@ -1,5 +1,5 @@
 """Tests for the C10 OS-credential hardening: the privileged-helper IPC
-(``server/host_control.py``) and its wiring into claim / password-change /
+(``openavc/host_control.py``) and its wiring into claim / password-change /
 SSH-toggle / reboot.
 
 The privileged helper itself is a root-owned shell script installed only on the

@@ -14,7 +14,7 @@ A name with a space produced a broken URL in both.
 
 The fix routes ElementIcon through the shared ``getAssetUrl`` and encodes the
 name in the panel's single ``resolveAssetUrl`` helper (which every panel asset
-build now uses). There is no vitest/jest harness in web/programmer, so — like
+build now uses). There is no vitest/jest harness in openavc/web/programmer, so — like
 the other frontend regression tests — this pins the source to the fixed shape.
 """
 

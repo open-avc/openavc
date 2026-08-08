@@ -2,7 +2,7 @@
 OpenAVC Project Library — saved project file management.
 
 All saved projects live in saved_projects/<id>/project.avc with optional scripts/.
-Starter projects are seeded from server/templates/ on first run.
+Starter projects are seeded from openavc/templates/ on first run.
 No distinction between bundled and user projects — all are equal.
 """
 
@@ -211,7 +211,7 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
 
 
 def ensure_starter_projects() -> None:
-    """Seed starter projects from server/templates/ on first run.
+    """Seed starter projects from openavc/templates/ on first run.
 
     Supports two formats:
     - .zip bundles (preferred): self-contained projects with drivers,

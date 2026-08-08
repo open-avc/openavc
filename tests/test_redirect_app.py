@@ -1,4 +1,4 @@
-"""Tests for the HTTP -> HTTPS redirect listener helper in server.main.
+"""Tests for the HTTP -> HTTPS redirect listener helper in openavc.main.
 
 Covers the catch-all redirect handler (Phase 3 of the HTTPS plan): status
 codes, Location header construction, query-string preservation, Host

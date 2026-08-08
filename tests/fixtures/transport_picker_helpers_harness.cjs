@@ -1,7 +1,7 @@
 "use strict";
 // Loads the transport panel helpers (transportPickerHelpers.ts — React-free
 // pure logic behind the Driver Builder's transport config form) bundled on
-// the fly with the esbuild already in web/programmer/node_modules, and
+// the fly with the esbuild already in openavc/web/programmer/node_modules, and
 // replays the defects the helpers exist to fix: the delimiter dropdown
 // compared real control characters against escaped-text option values (an
 // installed driver's CR delimiter matched nothing and a re-pick silently

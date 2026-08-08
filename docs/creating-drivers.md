@@ -293,7 +293,7 @@ YAML was chosen over JSON because it supports comments (essential for documentin
 
 | Directory | Purpose |
 |-----------|---------|
-| `server/drivers/definitions/` | Built-in drivers (shipped with OpenAVC) |
+| `openavc/drivers/definitions/` | Built-in drivers (shipped with OpenAVC) |
 | `driver_repo/` | Community and user drivers |
 
 Both directories are scanned at startup. Files are loaded, validated, and registered automatically.
@@ -1950,7 +1950,7 @@ default_config:
     hdmi1:    { label: "Input HDMI1", pronto: "0000 006D 0000 0022 ...", repeat: 1 }
 ```
 
-An **IR bridge** declares `kind: ir` ports. Unlike a serial port, an IR port has no transparent pipe, so it needs a Python driver that emits and (optionally) learns: override `bridge_emit` to convert a Pronto code to the hardware's wire format and send it, and the `bridge_learn_*` methods plus `can_learn` to capture codes from a remote. Use `server.transport.ir_codec` for the Pronto step. The Global Cache iTach IP2IR driver is a complete example.
+An **IR bridge** declares `kind: ir` ports. Unlike a serial port, an IR port has no transparent pipe, so it needs a Python driver that emits and (optionally) learns: override `bridge_emit` to convert a Pronto code to the hardware's wire format and send it, and the `bridge_learn_*` methods plus `can_learn` to capture codes from a remote. Use `openavc.transport.ir_codec` for the Pronto step. The Global Cache iTach IP2IR driver is a complete example.
 
 ## Method 3: Python Driver
 
@@ -1967,7 +1967,7 @@ Python drivers give you full control. Use this method when:
 If your device uses a text protocol over TCP with `\r` delimiters, you can rely on the auto-transport system and only implement `send_command()`:
 
 ```python
-# server/drivers/my_switcher.py
+# openavc/drivers/my_switcher.py
 
 from openavc.drivers.base import BaseDriver
 from typing import Any
@@ -2676,7 +2676,7 @@ The download in the Log view and `GET /api/logs/recent` both apply this masking,
 
 ### Available Frame Parsers
 
-Import from `server.transport.frame_parsers`:
+Import from `openavc.transport.frame_parsers`:
 
 | Parser | Use Case |
 |--------|----------|
@@ -2691,7 +2691,7 @@ All frame parsers accept an optional `max_buffer` parameter (default: 65536 byte
 
 ### Available Binary Helpers
 
-Import from `server.transport.binary_helpers`:
+Import from `openavc.transport.binary_helpers`:
 
 | Function | Description |
 |----------|-------------|
@@ -2923,7 +2923,7 @@ For TCP and HTTP drivers, use the built-in device simulator. Start simulation fr
 
 ```bash
 # Start the simulator as a standalone process
-python -m simulator --config sim_config.json
+python -m openavc.simulator --config sim_config.json
 ```
 
 The simulator auto-generates behavior for all YAML drivers. For more realistic simulation, add a `simulator:` section to your driver (see "Adding Simulation Support" above).
@@ -2964,7 +2964,7 @@ pytest tests/test_my_driver.py -v
 
 ## Adding Simulation Support
 
-The OpenAVC Simulator (included with OpenAVC at `simulator/`) lets your driver work without real hardware by running a fake protocol server. YAML drivers get basic simulation automatically. Python drivers need a companion `_sim.py` file.
+The OpenAVC Simulator (included with OpenAVC at `openavc/simulator/`) lets your driver work without real hardware by running a fake protocol server. YAML drivers get basic simulation automatically. Python drivers need a companion `_sim.py` file.
 
 ### YAML Drivers: Add a `simulator` Section
 
@@ -3113,7 +3113,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 3. **Python driver missing DRIVER_INFO.** For Python drivers, the file must contain a class that inherits from `BaseDriver` and has a `DRIVER_INFO` dict with at least `id`, `name`, and `transport`.
 
-4. **File not in the right directory.** Drivers must be in `driver_repo/` (or `server/drivers/definitions/` for built-in drivers). The directory is scanned at startup.
+4. **File not in the right directory.** Drivers must be in `driver_repo/` (or `openavc/drivers/definitions/` for built-in drivers). The directory is scanned at startup.
 
 ### Device reconnects constantly
 

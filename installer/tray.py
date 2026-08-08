@@ -62,7 +62,7 @@ def _get_server_config() -> dict:
         "tls_port": 8443,
     }
 
-    # Env-var overrides (mirror server/system_config.py ENV_OVERRIDES)
+    # Env-var overrides (mirror openavc/system_config.py ENV_OVERRIDES)
     port_env = os.environ.get('OPENAVC_PORT')
     if port_env:
         try:

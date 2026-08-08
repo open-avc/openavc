@@ -46,7 +46,7 @@ def driver_repo(tmp_path, monkeypatch):
 
     ``upload_driver_bundle`` / install use ``routes.drivers._get_driver_repo_dir``;
     the Python-driver routes resolve through ``_safe_driver_path``, which reads
-    ``server.system_config.DRIVER_REPO_DIR`` directly — so patch both.
+    ``openavc.system_config.DRIVER_REPO_DIR`` directly — so patch both.
     """
     repo = tmp_path / "driver_repo"
     repo.mkdir()

@@ -139,7 +139,7 @@ class ConnectionFaultError(ConnectionError):
     states its meaning once, explicitly — the message is free to say
     whatever is most useful to the integrator (it becomes
     ``offline_detail``; when empty, the taxonomy's standard wording for the
-    code is used). Re-exported from ``server.drivers.base`` for drivers.
+    code is used). Re-exported from ``openavc.drivers.base`` for drivers.
 
     Unknown codes fail at construction: a typo'd code would silently
     misclassify forever, and every raise site should be covered by a test

@@ -478,7 +478,7 @@ export function DiscoveryPanel() {
   }, [progress, isRunning, isFinished]);
 
   // Static labels for each engine-emitted phase. The eight scan phases
-  // come from server/discovery/engine.py:_scan_pipeline_inner; "refresh"
+  // come from openavc/discovery/engine.py:_scan_pipeline_inner; "refresh"
   // is set by the /api/discovery/refresh endpoint. Engine-supplied
   // ``message`` wins when present so the UI surfaces sub-step detail
   // (e.g. "Port scanning N passive-only devices"); unmapped phases

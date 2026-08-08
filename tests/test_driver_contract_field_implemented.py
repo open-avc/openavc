@@ -1,6 +1,6 @@
 """Every field the driver contract declares must have code behind it.
 
-The field registry in ``server/drivers/spec.py`` is the single source of the
+The field registry in ``openavc/drivers/spec.py`` is the single source of the
 .avcdriver contract, and the generator renders it into the published schemas
 and the Programmer IDE's types automatically. That automation is exactly what
 makes this check necessary: a field can be added to the registry, generated
@@ -112,8 +112,8 @@ NOT_AN_IMPLEMENTATION = frozenset({
 
 # The runtime half is the whole server plus the simulator: a contract field is
 # implemented wherever its consumer lives, and they are spread wider than the
-# driver package. Discovery hints are read in server/discovery/, frame-parser
-# geometry in server/transport/, and the simulator: block in simulator/.
+# driver package. Discovery hints are read in openavc/discovery/, frame-parser
+# geometry in openavc/transport/, and the simulator: block in openavc/simulator/.
 RUNTIME_ROOTS = ("server", "simulator")
 
 FRONTEND_ROOT = "openavc/web/programmer/src"

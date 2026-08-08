@@ -1,4 +1,4 @@
-"""Tests for Programmer session-token auth (server/api/session_tokens.py).
+"""Tests for Programmer session-token auth (openavc/api/session_tokens.py).
 
 The SPA exchanges the admin password for a short-lived token
 (POST /api/auth/session) and authenticates with `Authorization: Bearer` and

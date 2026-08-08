@@ -11,7 +11,7 @@
 # script still emits a working *unsigned* .pkg — the pre-enrollment / dev path.
 #
 # Prereqs: macOS, Python 3.11+ as $PYTHON (default python3), the frontends
-# already built (web/programmer/dist, web/simulator/dist), and the build deps
+# already built (openavc/web/programmer/dist, openavc/web/simulator/dist), and the build deps
 # installed: pyinstaller + rumps (rumps is needed to freeze the menu-bar app).
 # Run from anywhere: installer/build-macos.sh
 #

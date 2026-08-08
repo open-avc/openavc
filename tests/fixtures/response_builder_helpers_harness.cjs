@@ -1,7 +1,7 @@
 "use strict";
 // Loads the Response Builder helpers (responseBuilderHelpers.ts — React-free
 // pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the value-map key-rename guards and
+// openavc/web/programmer/node_modules, and checks the value-map key-rename guards and
 // the set:-shorthand type fidelity that back the Driver Builder's response
 // editor. Mirrors config_schema_helpers_harness.cjs. The Python wrapper skips
 // when the Node toolchain or esbuild is absent rather than failing the

@@ -1,5 +1,5 @@
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the control-minimum rules (server/ui/control_minimums.py).
+// Rendered from the control-minimum rules (openavc/ui/control_minimums.py).
 // Regenerate with:  python -m openavc.ui.minimums_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 //

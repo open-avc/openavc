@@ -1,7 +1,7 @@
 "use strict";
 /*
  * jsdom + React harness for the shared anchored panel
- * (web/programmer/src/components/shared/AnchoredPanel.tsx).
+ * (openavc/web/programmer/src/components/shared/AnchoredPanel.tsx).
  *
  * Five pickers used to carry their own copy of "measure the trigger, decide
  * whether to flip up, place a fixed panel, close on an outside click or

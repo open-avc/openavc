@@ -46,7 +46,7 @@ _TEMPLATE_PREFIXES: tuple[str, ...] = ("generic_",)
 # Ports too generic to use as a hint — every web / admin / SSH device
 # on the network would match. AV-specific ports (1710, 4352, etc.) are
 # fine. Generic safety rule, not vendor-specific. The port list lives in
-# the driver-contract tables (server/drivers/spec.py) so the published
+# the driver-contract tables (openavc/drivers/spec.py) so the published
 # schema and the Builder reject the same ports this parser does;
 # re-exported here under the name discovery code has always used.
 DISALLOWED_OPEN_PORTS: frozenset[int] = frozenset(_DISALLOWED_OPEN_PORTS)

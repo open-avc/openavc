@@ -2,7 +2,7 @@
 
 A ``.py`` driver's contract lives in a ``DRIVER_INFO`` dict on its class. Every
 door that wants to check that contract before the driver runs — the standalone
-checker, ``simulator.validate``, the community catalog's CI — has to read it
+checker, ``openavc.simulator.validate``, the community catalog's CI — has to read it
 from the source text, because importing a driver executes arbitrary code and
 needs its dependencies present.
 

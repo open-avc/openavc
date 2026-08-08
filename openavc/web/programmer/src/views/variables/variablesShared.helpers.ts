@@ -3,7 +3,7 @@
 // unit-tested without React/lucide. See tests/test_variables_shared_helpers.py.
 
 // Characters that make a pattern a glob, mirroring the runtime state store's
-// _GLOB_CHARS (server/core/state_store.py). A pattern without any of these is an
+// _GLOB_CHARS (openavc/core/state_store.py). A pattern without any of these is an
 // exact-match key.
 const GLOB_CHARS = /[*?[]/;
 
@@ -13,7 +13,7 @@ export function hasGlobChars(s: string): boolean {
 
 /**
  * Glob matcher for state-key patterns, mirroring the runtime's Python `fnmatch`
- * (server/core/state_store.py, server/core/event_bus.py) so the IDE "Used By"
+ * (openavc/core/state_store.py, openavc/core/event_bus.py) so the IDE "Used By"
  * cross-reference reports exactly what the runtime subscribes to: "*" matches any
  * run of characters INCLUDING dots, "?" matches one character, and "[...]" is a
  * character class. Every other character is matched literally, so a script-derived
@@ -169,7 +169,7 @@ export function collectWildcardMatches(pattern: string, candidateKeys: Iterable<
 // Built-in macro action types whose step `params` the runtime does NOT resolve
 // `$var` references in. Every OTHER action — `device.command`, `group.command`,
 // and any plugin-registered action — has its `params` passed through the macro
-// engine's `_resolve_params` (server/core/macro_engine.py: device.command,
+// engine's `_resolve_params` (openavc/core/macro_engine.py: device.command,
 // group.command, and the plugin-action `else` branch), so a `$var.<name>` inside
 // those params is live at runtime.
 const NON_PARAM_MACRO_ACTIONS = new Set([

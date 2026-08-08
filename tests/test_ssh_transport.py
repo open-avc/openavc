@@ -1,4 +1,4 @@
-"""Tests for the SSH transport (server/transport/ssh.py).
+"""Tests for the SSH transport (openavc/transport/ssh.py).
 
 These exercise the platform transport's pure logic — the ``ssh`` argument
 vector, the askpass/env wiring for password auth, and host-key policy mapping —

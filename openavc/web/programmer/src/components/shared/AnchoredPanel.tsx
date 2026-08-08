@@ -22,7 +22,7 @@
  *
  * An intrinsically-sized panel is MEASURED once it has rendered, never
  * estimated. Guessing it from padding and border by hand is the mistake
- * `server/ui/control_minimums.py` exists to forbid, and the guess is exactly
+ * `openavc/ui/control_minimums.py` exists to forbid, and the guess is exactly
  * what the clamp depends on: too small and the panel still hangs off the edge
  * the clamp was added to protect.
  *

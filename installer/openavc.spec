@@ -177,7 +177,7 @@ hiddenimports = [
     'openavc.api.themes',
     'openavc.api.auth',
     'openavc.api.models',
-    # Every module under server/api/routes/ — keep this in step when adding one.
+    # Every module under openavc/api/routes/ — keep this in step when adding one.
     'openavc.api.routes.auth',
     'openavc.api.routes.cloud',
     'openavc.api.routes.devices',
@@ -203,7 +203,7 @@ hiddenimports = [
     'openavc.utils.logger',
     'openavc.utils.log_buffer',
     'openavc.middleware.rate_limit',
-    # Simulator package (launched as subprocess via python -m simulator)
+    # Simulator package (launched as subprocess via python -m openavc.simulator)
     'openavc.simulator',
     'openavc.simulator.server',
     'openavc.simulator.engine',

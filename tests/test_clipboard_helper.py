@@ -9,7 +9,7 @@ copy button threw and copied nothing, the shared CopyButton still flashed
 its ``.catch`` only covered promise rejections, not the synchronous throw.
 
 Two layers: the harness bundles the real ``clipboard.ts`` with the esbuild
-in ``web/programmer/node_modules`` and drives it under fake
+in ``openavc/web/programmer/node_modules`` and drives it under fake
 navigator/document globals (skips when the Node toolchain is absent rather
 than failing the Python-only CI gate), and a source-level check pins every
 frontend copy site to the helper so a bare ``navigator.clipboard`` call
@@ -41,7 +41,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "clipboard harness missing"
     if not HELPERS_TS.is_file():

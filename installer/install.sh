@@ -386,7 +386,7 @@ create_user() {
 
 install_files() {
     local is_upgrade=false
-    if [ -d "$INSTALL_DIR/server" ]; then
+    if [ -d "$INSTALL_DIR/openavc" ]; then
         is_upgrade=true
         info "Existing installation found. Upgrading..."
         # Stop service before replacing files
@@ -573,7 +573,7 @@ configure_firewall() {
 
 # Remove the legacy /opt/openavc/{driver,plugin}_repo dirs once they're drained.
 # These predate user content moving to the data dir. The runtime migration
-# (server/system_config.migrate_legacy_repos) empties them on first start, but
+# (openavc/system_config.migrate_legacy_repos) empties them on first start, but
 # leaves the empty dir behind — and the service unit keeps it writable via
 # ReadWritePaths, which makes systemd bind-mount it. An in-app update then fails
 # (EBUSY) trying to mv that mountpoint. Re-running the installer is the escape

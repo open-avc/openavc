@@ -5,7 +5,7 @@ to 0 (``parseInt(v) || 0``) and write it straight to the AV hardware, and
 never enforced the definition's min/max/regex. validateSettingValue now
 rejects invalid input with an actionable message before anything is sent;
 these scenarios pin that contract (including that a legitimate 0 still
-saves). Bundled with the esbuild in web/programmer/node_modules; skips when
+saves). Bundled with the esbuild in openavc/web/programmer/node_modules; skips when
 the Node toolchain is absent.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "device setting validate harness missing"
     if not UTILS.is_file():

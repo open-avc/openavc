@@ -13,7 +13,7 @@ archives). Importing these back out of ``plugin_installer`` would be a cycle,
 so they live at the bottom and the dependency arrows all point one way.
 
 Provenance is a different question and lives in
-``server/utils/community_integrity.py``: that module decides whether a source
+``openavc/utils/community_integrity.py``: that module decides whether a source
 is *trusted* (catalog pinning, artifact hashes), this one assumes the bytes
 are hostile regardless and bounds what they can do.
 """

@@ -3,7 +3,7 @@
 The request/response half of ISC: peer status, the discovered-instance list,
 and the three outbound sends (event to one peer, broadcast to all, device
 command with a reply). The peer-to-peer WebSocket that carries the traffic is
-``server/api/isc_ws.py``; the mesh itself is ``server/core/isc.py``.
+``openavc/api/isc_ws.py``; the mesh itself is ``openavc/core/isc.py``.
 
 Every route returns/raises rather than assuming ISC is on — ``engine.isc`` is
 None whenever the feature is disabled in system config.

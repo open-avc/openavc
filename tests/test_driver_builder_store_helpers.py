@@ -2,7 +2,7 @@
 
 The Driver Builder store is React/Zustand with no jsdom-loadable entry point, so
 these exercise the pure helpers by bundling driverBuilderStore.helpers.ts on the
-fly with the esbuild already in web/programmer/node_modules and asserting on the
+fly with the esbuild already in openavc/web/programmer/node_modules and asserting on the
 results. Unlike the uiBuilderHelpers suite this uses buildSync(bundle) rather
 than transformSync, because importBlockers pulls in the real API client and
 validator. Like the colorUtils suite it skips when the Node toolchain or esbuild
@@ -45,7 +45,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "driver builder store harness missing"
     if not HELPERS.is_file():

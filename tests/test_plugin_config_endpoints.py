@@ -365,7 +365,7 @@ def test_frontend_remove_plugin_config_wiring():
     button in MissingPluginBanner -> store action -> DELETE client call."""
     from pathlib import Path
 
-    web = Path(__file__).resolve().parents[1] / "web" / "programmer" / "src"
+    web = Path(__file__).resolve().parents[1] / "openavc" / "web" / "programmer" / "src"
 
     view = (web / "views" / "PluginsView.tsx").read_text(encoding="utf-8")
     assert "Remove Plugin Config" in view

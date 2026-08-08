@@ -9,7 +9,7 @@ WebSocket (e.g. LG webOS SSAP, JSON-over-WS control channels).
 The server speaks plain ``ws://`` on 127.0.0.1:port. A real device may
 use TLS (``wss://``); the platform's simulation redirect flips the
 device's ``ssl`` flag off when it points the driver at the simulator
-(see server/core/simulation.py :: _apply_sim_redirect), exactly as it
+(see openavc/core/simulation.py :: _apply_sim_redirect), exactly as it
 does for HTTPS device simulators — so the driver connects ``ws://`` here
 without the simulator needing a certificate.
 """

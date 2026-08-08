@@ -23,7 +23,7 @@ from openavc.utils.logger import get_logger
 
 # Re-exported: the bound belongs to both sides of the wire, so it is defined
 # in the stdlib-only leaf and imported here. Every existing
-# ``from server.transport.frame_parsers import DEFAULT_MAX_BUFFER`` keeps
+# ``from openavc.transport.frame_parsers import DEFAULT_MAX_BUFFER`` keeps
 # working — this is where a parser's caller expects to find it.
 from openavc.transport.binary_helpers import DEFAULT_MAX_BUFFER as DEFAULT_MAX_BUFFER
 

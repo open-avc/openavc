@@ -1,5 +1,5 @@
-"""Hardening regression tests for the YAML auto-simulator (simulator/yaml_auto.py)
-and its companion validator (simulator/validate.py).
+"""Hardening regression tests for the YAML auto-simulator (openavc/simulator/yaml_auto.py)
+and its companion validator (openavc/simulator/validate.py).
 
 Each test pins a specific audit finding. Per the platform's test policy these
 exercise the simulator engine with an INVENTED device ("acme_*") and synthetic

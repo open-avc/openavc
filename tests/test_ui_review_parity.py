@@ -1,7 +1,7 @@
 """The Builder and the AI door must reach identical verdicts about one file.
 
 Two implementations of the same arithmetic exist on purpose: the AI writes
-blind through ``server/ui/page_review.py``, and a human drags a box in the
+blind through ``openavc/ui/page_review.py``, and a human drags a box in the
 Builder, which cannot call Python. They read the same measured numbers, and the
 tables neither of them owns are generated rather than copied -- but the
 arithmetic over those numbers is written twice, and the moment one side is
@@ -989,7 +989,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "ui review parity harness missing"
     if not HELPERS.is_file():

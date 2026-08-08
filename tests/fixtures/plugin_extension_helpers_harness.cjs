@@ -1,7 +1,7 @@
 "use strict";
 // Loads the plugin extension renderer helpers (pluginExtensionHelpers.ts —
 // React-free pure logic behind PluginExtensions.tsx) bundled on the fly with
-// the esbuild already in web/programmer/node_modules, and replays the
+// the esbuild already in openavc/web/programmer/node_modules, and replays the
 // defects the helpers exist to fix: the driver-id glob handled only a single
 // trailing '*' (a '*_pro' or 'a*b*c' pattern silently never matched, so a
 // plugin's device panel or context action never appeared), and a boolean

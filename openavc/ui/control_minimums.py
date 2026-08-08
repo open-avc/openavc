@@ -58,7 +58,7 @@ from typing import Any
 REM_BASE_PX = 14.0
 
 # The screen every percentage is reasoned about against. Matches TOUCH_REFERENCE
-# in the Builder (web/programmer/src/components/ui-builder/uiBuilderHelpers.ts),
+# in the Builder (openavc/web/programmer/src/components/ui-builder/uiBuilderHelpers.ts),
 # measured against real panel diagonals rather than chosen.
 REFERENCE_WIDTH_PX = 1280
 REFERENCE_HEIGHT_PX = 800

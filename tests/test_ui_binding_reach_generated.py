@@ -1,6 +1,6 @@
 """The generated binding-reach table must match the reviewer's.
 
-``server/ui/page_review.py`` holds the tables; ``python -m openavc.ui.review_gen``
+``openavc/ui/page_review.py`` holds the tables; ``python -m openavc.ui.review_gen``
 renders them into the Programmer IDE's ``uiBindingReach.gen.ts``. This re-renders
 and compares byte-for-byte, so editing a table without regenerating -- or
 hand-editing the artifact -- fails CI instead of letting the AI door and the

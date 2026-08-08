@@ -1,6 +1,6 @@
 """Regression test for the Programmer shared API client.
 
-The shared ``request()`` in web/programmer/src/api/base.ts used to end with an
+The shared ``request()`` in openavc/web/programmer/src/api/base.ts used to end with an
 unconditional ``return res.json();``. On a 204 No Content or empty body,
 ``res.json()`` rejects with "Unexpected end of JSON input", so any caller
 hitting such a response (e.g. a DELETE route that returns 204) surfaces a
@@ -8,7 +8,7 @@ confusing JSON-parse toast instead of a resolved promise. The sibling client
 (cloudClient.ts) already guards this.
 
 The fix mirrors the sibling: guard 204 and non-JSON/empty responses before
-parsing. There is no vitest/jest harness in web/programmer, so this pins
+parsing. There is no vitest/jest harness in openavc/web/programmer, so this pins
 base.ts to the fixed shape the same way the other frontend regression tests
 pin their modules: the old parse-everything path can't quietly come back.
 """

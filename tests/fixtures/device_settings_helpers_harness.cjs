@@ -1,7 +1,7 @@
 "use strict";
 // Loads the Device Settings editor/setup helpers (deviceSettingsHelpers.ts —
 // React-free pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the write-transport normalization
+// openavc/web/programmer/node_modules, and checks the write-transport normalization
 // (H-120), the OSC empty-value detection (H-119), and the min/max/regex value
 // validation the setup dialog now enforces (M-169). Mirrors
 // driver_builder_store_harness.cjs. The Python wrapper skips when the Node

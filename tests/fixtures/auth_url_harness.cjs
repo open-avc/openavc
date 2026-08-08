@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the Programmer SPA's api/auth.ts (with the esbuild already in
-// web/programmer/node_modules) and exercises the fetch-auth layer: the
+// openavc/web/programmer/node_modules) and exercises the fetch-auth layer: the
 // session token must only ever ride same-origin /api requests, and the raw
 // password must never appear in a header or survive in storage (the legacy
 // {user, pass} blob gets purged). Scenarios cover the pure matcher

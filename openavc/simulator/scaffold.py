@@ -67,7 +67,7 @@ def extract_driver_info(driver_path: Path) -> dict | None:
     reporting section names like ``state_variables`` and ``commands`` as
     command names and pairing labels with the wrong entries. Everything
     downstream — this scaffold's generated skeleton, and the Python half of
-    ``simulator.validate``, which reads through this same function — was
+    ``openavc.simulator.validate``, which reads through this same function — was
     working from that.
 
     Values the reader genuinely cannot resolve statically (a constant, a call,
@@ -149,17 +149,20 @@ def generate_skeleton(info: dict, driver_stem: str) -> str:
 
     # Choose base class based on transport
     if transport == "http":
-        base_import = "from simulator.http_simulator import HTTPSimulator"
+        base_import = "from openavc.simulator.http_simulator import HTTPSimulator"
         base_class = "HTTPSimulator"
         handler_method = _http_handler_template(commands, state_vars, command_doc_block, state_comment_block)
     elif transport == "osc":
         # OSC handler uses `Any` in its signature (args: list[tuple[str, Any]]),
         # which is evaluated at runtime under PEP 604/585 — must be imported.
-        base_import = "from typing import Any\n\nfrom simulator.osc_simulator import OSCSimulator"
+        base_import = (
+            "from typing import Any\n\n"
+            "from openavc.simulator.osc_simulator import OSCSimulator"
+        )
         base_class = "OSCSimulator"
         handler_method = _osc_handler_template(commands, state_vars, command_doc_block, state_comment_block)
     else:
-        base_import = "from simulator.tcp_simulator import TCPSimulator"
+        base_import = "from openavc.simulator.tcp_simulator import TCPSimulator"
         base_class = "TCPSimulator"
         handler_method = _tcp_handler_template(commands, state_vars, command_doc_block, state_comment_block)
 

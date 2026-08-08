@@ -1,6 +1,6 @@
 """Every shipped driver validates against its simulator, with zero errors.
 
-``simulator.validate`` is the tool every contributor guide tells an author to
+``openavc.simulator.validate`` is the tool every contributor guide tells an author to
 run before submitting a driver. Nothing ran it. It was a manual CLI in the
 platform repo, and the community repo's CI — which is where drivers actually
 land — could not call it, because that repo does not check out the platform.

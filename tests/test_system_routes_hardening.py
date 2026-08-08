@@ -1,7 +1,7 @@
 """Regression tests for the system-routes hardening.
 
 These were one file's findings when the routes all lived in
-``server/api/routes/system.py``; they now span the domain modules that file
+``openavc/api/routes/system.py``; they now span the domain modules that file
 was split into (``cloud``, ``tls``, ``simulation``, and ``system`` itself).
 They are kept together because they are one campaign's regressions, and each
 still drives its endpoint through the real app.

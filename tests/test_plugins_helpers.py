@@ -7,7 +7,7 @@ unstarted incompatible plugin carries the truthful ``compatible: false`` flag
 with some other status, so the badge / banner / Enable gating showed it as
 compatible. ``isPluginIncompatible`` reads ``compatible`` (falling back to the
 status string only when the flag is absent). This bundles the real helper with
-the esbuild in web/programmer/node_modules and asserts that derivation. Skips
+the esbuild in openavc/web/programmer/node_modules and asserts that derivation. Skips
 when the Node toolchain or esbuild is absent rather than failing the
 Python-only CI gate.
 """
@@ -42,7 +42,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "plugins helpers harness missing"
     if not HELPERS.is_file():

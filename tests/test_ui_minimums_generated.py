@@ -1,6 +1,6 @@
 """The generated control-minimum types must match the rules.
 
-``server/ui/control_minimums.py`` holds the rules; ``python -m
+``openavc/ui/control_minimums.py`` holds the rules; ``python -m
 openavc.ui.minimums_gen`` renders them into the Programmer IDE's
 ``uiMinimums.gen.ts``. This re-renders and compares byte-for-byte, so editing
 the rules without regenerating -- or hand-editing the artifact -- fails CI

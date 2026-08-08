@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real deviceConfigCoerce.ts (transpiled on the fly with the esbuild
-// already in web/programmer/node_modules) and exercises coerceConfigValue,
+// already in openavc/web/programmer/node_modules) and exercises coerceConfigValue,
 // printing JSON results to stdout. Mirrors color_utils_harness.cjs: no build
 // step, and the Python wrapper skips when the toolchain is absent.
 const fs = require("fs");

@@ -6,8 +6,8 @@ certificate, uploading a third-party cert + key, and handing out the
 auto-generated CA so panel devices can trust it.
 
 Certificate reading, generation, and the SNI-served cloud-cert holder live in
-``server/tls.py``; the cloud side of issuance is
-``server/cloud/cert_manager.py``. This module is the HTTP surface over both.
+``openavc/tls.py``; the cloud side of issuance is
+``openavc/cloud/cert_manager.py``. This module is the HTTP surface over both.
 
 Every route reads *live* system config rather than the import-time constants,
 so the Security card's re-fetch straight after a PATCH reflects the just-saved

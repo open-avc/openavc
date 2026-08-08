@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the real macroHelpers.ts (with the esbuild already in
-// web/programmer/node_modules) and runs macroToScript over a set of scenario
+// openavc/web/programmer/node_modules) and runs macroToScript over a set of scenario
 // macros, printing {scenario: {script, meta}} JSON to stdout. The Python
 // wrapper compiles and EXECUTES the generated scripts against a stubbed
 // `openavc` module (whose compare() is the real server-side evaluator), so

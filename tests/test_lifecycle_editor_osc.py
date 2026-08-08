@@ -11,7 +11,7 @@ capability the UI couldn't reach. The editor now renders the shared
 OscArgsEditor for OSC "send once" items.
 
 This bundles the real ``LifecycleEditor.tsx`` with the esbuild in
-``web/programmer/node_modules`` and server-renders it: an OSC `{address, args}`
+``openavc/web/programmer/node_modules`` and server-renders it: an OSC `{address, args}`
 item (and a bare OSC address) must expose the args editor; non-OSC transports
 must not, and a non-OSC object step stays read-only. Skips when the Node
 toolchain or esbuild is absent rather than failing the Python-only CI gate.
@@ -48,7 +48,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "lifecycle-editor OSC harness missing"
     if not LIFECYCLE_TSX.is_file():

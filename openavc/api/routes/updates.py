@@ -1,6 +1,6 @@
 """Update system REST endpoints: check, apply, rollback, status, history.
 
-Thin HTTP surface over ``server/updater/manager.py`` — the state machine,
+Thin HTTP surface over ``openavc/updater/manager.py`` — the state machine,
 backup, download, apply and rollback logic all live there. The manager is
 created lazily on first use and cached on the engine, so a deployment that
 never checks for updates never builds one.

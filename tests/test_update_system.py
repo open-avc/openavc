@@ -84,7 +84,7 @@ def _build_fake_install(
 ) -> None:
     """Build a directory that looks like /opt/openavc after installation.
 
-    Matches the real structure: server/, web/, requirements.txt, etc.
+    Matches the real structure: openavc/ (with web/ inside it), requirements.txt, etc.
 
     Includes a venv/bin/python3 by default. The integrity check in
     update-helper.sh executes this interpreter (not just stats it), so the
@@ -103,9 +103,9 @@ def _build_fake_install(
         f"__version__ = '{version}'\n"
     )
     (target_dir / "requirements.txt").write_text("httpx>=0.27\nfastapi>=0.100\n")
-    (target_dir / "web").mkdir(exist_ok=True)
-    (target_dir / "web" / "panel").mkdir(parents=True, exist_ok=True)
-    (target_dir / "web" / "panel" / "index.html").write_text(
+    (target_dir / "openavc" / "web").mkdir(exist_ok=True)
+    (target_dir / "openavc" / "web" / "panel").mkdir(parents=True, exist_ok=True)
+    (target_dir / "openavc" / "web" / "panel" / "index.html").write_text(
         f"<html><body>Panel v{version}</body></html>"
     )
     (target_dir / "pyproject.toml").write_text(
@@ -127,7 +127,7 @@ def _build_fake_install(
 def _build_update_tarball(staging_dir: Path, version: str) -> Path:
     """Build a tarball that matches what the CI pipeline produces.
 
-    Real CI output is flat (no wrapper directory): server/main.py, etc.
+    Real CI output is flat (no wrapper directory): openavc/main.py, etc.
     The helper script extracts with ``tar xzf -C $APP_DIR``.
     """
     content_dir = staging_dir / f"openavc-{version}"
@@ -730,7 +730,7 @@ class TestHelperScriptApplyUpdate:
 
         # App dir has v2.0.0 code
         assert _read_version(app_dir) == "2.0.0"
-        assert "Panel v2.0.0" in (app_dir / "web" / "panel" / "index.html").read_text()
+        assert "Panel v2.0.0" in (app_dir / "openavc" / "web" / "panel" / "index.html").read_text()
 
         # Backup of v1.0.0 exists at app_dir.previous
         previous = Path(str(app_dir) + ".previous")

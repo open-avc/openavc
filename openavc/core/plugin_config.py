@@ -1,7 +1,7 @@
 """Plugin CONFIG_SCHEMA validation, shared by every config-write path.
 
-The REST endpoint (server/api/plugins.py) and the cloud AI tool
-(server/cloud/tools/plugin_tools.py) both persist plugin config; they must
+The REST endpoint (openavc/api/plugins.py) and the cloud AI tool
+(openavc/cloud/tools/plugin_tools.py) both persist plugin config; they must
 accept and reject exactly the same shapes, so the validator lives here and
 both import it.
 """

@@ -38,7 +38,7 @@ def _coerce_number(
 
 
 # Which config keys hold credentials, and how a credential VALUE is masked out
-# of log text, both live in server/utils/log_redaction.py — the same rule the
+# of log text, both live in openavc/utils/log_redaction.py — the same rule the
 # transport TX/RX formatter and the log filter use. This module was where that
 # rule was first written; it is now one of its callers, so the cloud AI's view
 # of a log line and the log itself can never disagree about what a secret is.

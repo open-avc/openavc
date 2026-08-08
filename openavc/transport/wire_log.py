@@ -16,7 +16,7 @@ by each reader in turn.
 
 The redaction set is per device: the transport already carries its device id as
 ``name``, so no transport signature changed. See
-``server/utils/log_redaction.py`` for the policy.
+``openavc/utils/log_redaction.py`` for the policy.
 """
 
 from __future__ import annotations

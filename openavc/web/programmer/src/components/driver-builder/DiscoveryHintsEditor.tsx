@@ -11,7 +11,7 @@ import type {
   DriverDiscoverySsdpFingerprint,
 } from "../../api/types";
 // Single source of truth for the disallowed-open-ports rule (mirrors
-// server/discovery/hints.py), shared with the driver validator.
+// openavc/discovery/hints.py), shared with the driver validator.
 import { DISALLOWED_OPEN_PORTS } from "./validateDriver";
 
 // Style tokens.

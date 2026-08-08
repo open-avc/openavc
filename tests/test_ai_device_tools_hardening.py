@@ -1,6 +1,6 @@
 """Regression tests for the cloud AI device/driver tool hardening.
 
-Covers the audit findings fixed in the server/cloud/tools/device_tools.py group:
+Covers the audit findings fixed in the openavc/cloud/tools/device_tools.py group:
   H-040 update_driver_definition built-in guard + save-before-delete
   H-041 install_community_driver GitHub host allowlist (SSRF)
   H-042 update/delete bump the project revision + notify the IDE

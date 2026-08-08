@@ -1,7 +1,7 @@
 """Cloud pairing and connection-status REST endpoints.
 
 Pair this instance with the OpenAVC Cloud platform, unpair it, and report
-what the agent is doing. The agent itself lives in ``server/cloud/``; these
+what the agent is doing. The agent itself lives in ``openavc/cloud/``; these
 routes only own the pairing handshake and the local persistence around it.
 
 ``/api/cloud/status`` is open (the Programmer's connection badge polls it

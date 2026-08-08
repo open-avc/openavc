@@ -1,8 +1,8 @@
 """Hardening regression tests for the ConfigurableDriver YAML runtime and the
 driver-definition validator.
 
-Each test pins a specific audit finding in server/drivers/configurable.py or
-server/drivers/driver_loader.py. Per the platform's test policy these exercise
+Each test pins a specific audit finding in openavc/drivers/configurable.py or
+openavc/drivers/driver_loader.py. Per the platform's test policy these exercise
 the runtime/loader with an INVENTED device ("acme_*") and synthetic payloads —
 no real product, driver file, or captured fixture is involved.
 """

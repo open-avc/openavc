@@ -77,5 +77,5 @@ open_router.include_router(_auth_routes.open_router)
 open_router.include_router(_cloud_routes.open_router)
 open_router.include_router(_tls_routes.open_router)
 
-# Backward compat re-export (used by server.api.discovery)
+# Backward compat re-export (used by openavc.api.discovery)
 install_community_driver = _drivers_routes.install_community_driver

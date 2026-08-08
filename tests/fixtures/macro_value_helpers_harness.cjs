@@ -2,7 +2,7 @@
 // Loads the macro step editor's typed-value helpers (macroValueHelpers.ts —
 // React-free pure logic behind the state.set value input and the event.emit
 // payload editor) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and replays the defects the helpers exist to
+// openavc/web/programmer/node_modules, and replays the defects the helpers exist to
 // fix: the state.set value input guessed a type from how the text looked
 // (a literal string '0' or 'true' could never be authored), and numeric
 // step fields snapped blank/invalid input to 0.

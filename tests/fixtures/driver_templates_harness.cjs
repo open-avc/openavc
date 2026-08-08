@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the real driverTemplates.ts (with the esbuild already in
-// web/programmer/node_modules) and generates driver source for every
+// openavc/web/programmer/node_modules) and generates driver source for every
 // template, printing {scenario: source} JSON to stdout. The Python wrapper
 // compiles each generated source and parses DRIVER_INFO from the AST, so the
 // scaffolding is proven syntactically valid Python with the intended

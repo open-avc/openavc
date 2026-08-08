@@ -1,7 +1,7 @@
 """Guards for the inbound WebSocket frame-size cap on the app's listeners.
 
 uvicorn leaves ``ws_max_size`` at an implicit 16 MiB default. Every listener
-that serves ``server.main:app`` (and therefore the ``/ws`` and ``/isc/ws``
+that serves ``openavc.main:app`` (and therefore the ``/ws`` and ``/isc/ws``
 endpoints) must pin an explicit, tighter cap so the unauthenticated /
 pre-auth socket paths can't be handed a needlessly large frame. The aux
 HTTP->HTTPS redirect listener serves no WebSocket, so it is exempt (it is
@@ -54,10 +54,10 @@ def test_every_app_listener_caps_ws_frame_size():
     tree = ast.parse(MAIN_PY.read_text(encoding="utf-8"))
     calls = list(_app_listener_calls(tree))
     # TLS listener, plain-HTTP listener, and the default single-listener run().
-    assert len(calls) >= 3, f"expected >=3 server.main:app listeners, found {len(calls)}"
+    assert len(calls) >= 3, f"expected >=3 openavc.main:app listeners, found {len(calls)}"
     for call in calls:
         kwargs = {kw.arg for kw in call.keywords}
         assert "ws_max_size" in kwargs, (
-            f"a uvicorn listener for server.main:app at line {call.lineno} "
+            f"a uvicorn listener for openavc.main:app at line {call.lineno} "
             "does not pin ws_max_size"
         )

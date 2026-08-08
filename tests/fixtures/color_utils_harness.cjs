@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real Theme Studio colorUtils.ts (transpiled on the fly with the
-// esbuild already in web/programmer/node_modules) and runs a battery of
+// esbuild already in openavc/web/programmer/node_modules) and runs a battery of
 // pure-logic checks, printing JSON results to stdout. Mirrors panel_harness.cjs:
 // no build step required, and the Python wrapper skips when the toolchain is
 // absent rather than failing CI.

@@ -73,7 +73,7 @@ log = get_logger(__name__)
 # above any legitimate frame yet a fixed, explicit ceiling on the two
 # unauthenticated/pre-auth socket paths (websockets rejects an oversized frame
 # with a 1009 close before buffering it). Applied to every listener that
-# serves server.main:app.
+# serves openavc.main:app.
 _WS_MAX_SIZE = 1024 * 1024
 
 # Set log level from config
@@ -283,7 +283,7 @@ app = FastAPI(
 )
 
 # Wire engine into API modules. rest.set_engine() populates the single shared
-# slot in server.api._engine; ws.py reads that same slot, so it isn't wired
+# slot in openavc.api._engine; ws.py reads that same slot, so it isn't wired
 # separately here.
 rest.set_engine(engine)
 plugins_api.set_engine(engine)
@@ -346,7 +346,7 @@ app.add_exception_handler(RequestValidationError, request_validation_exception_h
 
 # The few errors that carry machine-readable fields put them *beside* the string
 # detail rather than inside it, so every client still finds a readable sentence
-# at {"detail": ...}. See server/api/errors.py for the contract.
+# at {"detail": ...}. See openavc/api/errors.py for the contract.
 app.add_exception_handler(StructuredApiError, structured_api_error_handler)
 
 # CORS — allow same-origin and localhost by default.
@@ -871,7 +871,7 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
         plain HTTP, don't follow redirects, and won't trust the self-signed
         certificate a redirect would send them to — so the push registry is
         served in-process on this listener too (it's process-global; see
-        server/transport/http_listener.py).
+        openavc/transport/http_listener.py).
         """
         from openavc.transport import http_listener
 
@@ -995,7 +995,7 @@ def _harden_tls_context(context) -> None:
     """Pin a TLS 1.2 floor and a modern cipher suite on a built SSLContext.
 
     TLS 1.0/1.1 are never negotiated — a guarantee of ours, not an accident of
-    the stdlib default. The logic lives in ``server.tls`` (one home) so the
+    the stdlib default. The logic lives in ``openavc.tls`` (one home) so the
     cloud-issued cert's SNI-selected context gets the identical guarantee;
     applied to the HTTPS listener's context in `_run_tls`.
     """

@@ -86,7 +86,7 @@ def _validate_catalog_url(url: str) -> None:
     the curated, human-reviewed catalog repo (``open-avc/openavc-plugins``),
     not merely "some GitHub URL". https-only.
 
-    The rule itself lives in ``server.utils.community_integrity`` so drivers —
+    The rule itself lives in ``openavc.utils.community_integrity`` so drivers —
     which are equally arbitrary in-process code — are pinned by the same one.
     ``ValueError`` is preserved for callers that already handle it.
     """

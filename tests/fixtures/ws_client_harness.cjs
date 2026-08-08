@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real Programmer WebSocket client (wsClient.ts, bundled on the fly
-// with the esbuild already in web/programmer/node_modules — auth.ts comes along
+// with the esbuild already in openavc/web/programmer/node_modules — auth.ts comes along
 // in the bundle) and drives it against a fake WebSocket + window so the
 // disconnect/reconnect/auth lifecycle can be exercised deterministically without
 // a browser. Mirrors driver_builder_store_harness.cjs (buildSync bundle), but

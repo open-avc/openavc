@@ -1,4 +1,4 @@
-"""Tests for the startup port pre-flight check (server.main._preflight_port).
+"""Tests for the startup port pre-flight check (openavc.main._preflight_port).
 
 The pre-flight must mirror the socket options uvicorn binds its real listener
 with, so it neither false-fails on a TIME_WAIT'd port from a just-exited

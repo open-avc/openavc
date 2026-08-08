@@ -1,7 +1,7 @@
 "use strict";
 // Loads the routing-matrix helpers (routingMatrixHelpers.ts — React-free
 // pure logic behind the plugin surface configurator's crosspoint matrix)
-// bundled on the fly with the esbuild in web/programmer/node_modules, and
+// bundled on the fly with the esbuild in openavc/web/programmer/node_modules, and
 // replays the defects: JS Boolean() coercion read string route status as
 // routed (the Dante plugin writes "none" for an unsubscribed channel, so
 // every unrouted crosspoint rendered routed and the first click sent

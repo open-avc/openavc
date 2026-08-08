@@ -1,6 +1,6 @@
 "use strict";
 // Bundles queryEntryHelpers.ts (the shared shape model for polling.queries /
-// on_connect entries) with the esbuild in web/programmer/node_modules and
+// on_connect entries) with the esbuild in openavc/web/programmer/node_modules and
 // exercises buildQueryEntry + the shape readers. This covers the write-back
 // logic the render harness can't reach (renderToStaticMarkup fires no events):
 // how the editor folds send/each_child/when/args back into the simplest entry

@@ -1,6 +1,6 @@
 """The on-demand authoring guide is generated, and says only what is measured.
 
-``server/ui/guide_gen.py`` renders ``server/ui/panel_authoring_guide.md`` from
+``openavc/ui/guide_gen.py`` renders ``openavc/ui/panel_authoring_guide.md`` from
 ``RULES`` plus the finger and binding tables. Same arrangement as
 tests/test_ui_minimums_generated.py: the committed artifact is compared against a
 fresh render, so a rule edited without regenerating -- or an artifact edited by

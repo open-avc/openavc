@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the Programmer SPA's api/projectClient.ts (with api/base.ts) using the
-// esbuild already in web/programmer/node_modules and drives getProject() against
+// esbuild already in openavc/web/programmer/node_modules and drives getProject() against
 // a fake fetch + Worker. Focus: the >512 KB worker-parse path's onerror
 // fallback. If the worker errors AND the body is malformed, the old fallback
 // did `resolve(JSON.parse(text))` inline — the throw escaped the handler and

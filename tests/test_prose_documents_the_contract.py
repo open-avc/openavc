@@ -1,7 +1,7 @@
 """The driver guide must describe the contract the registry declares.
 
 ``docs/creating-drivers.md`` is a hand-written description of the same
-.avcdriver contract ``server/drivers/spec.py`` generates the schemas from, and
+.avcdriver contract ``openavc/drivers/spec.py`` generates the schemas from, and
 nothing else pins the two together. Every other mirror of that contract is
 generated and CI-compared; this one is prose, and prose drifts silently. When
 it does, the cost is not a red test — it is an author who reads the guide,
@@ -80,7 +80,7 @@ UNDOCUMENTED = {
 # reports every device-config key and Python attribute the guide mentions.
 # Most are not driver-file keys at all. The exception is a key inside a block
 # the registry deliberately leaves open — the simulator's state-machine
-# transitions are validated by simulator/validate.py, not by the registry —
+# transitions are validated by openavc/simulator/validate.py, not by the registry —
 # and those entries say so, because an entry here is a claim about the
 # contract's shape and a wrong one hides a real cut field.
 NOT_A_CONTRACT_KEY = {

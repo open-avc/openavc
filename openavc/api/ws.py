@@ -42,13 +42,13 @@ WS_RATE_LIMIT_WINDOW_SEC = 1.0
 # swallowed silently; anything else is a real send failure and gets logged.
 _WS_DISCONNECT_EXCEPTIONS = (WebSocketDisconnect, ConnectionError, OSError)
 
-# The engine lives in a single shared slot in server.api._engine. This handler
+# The engine lives in a single shared slot in openavc.api._engine. This handler
 # reads it through get_engine_optional() rather than holding its own reference,
 # so there's no second slot that could fall out of sync with the REST one.
 
 
 def set_engine(engine) -> None:
-    """Wire the engine into the single shared slot in server.api._engine.
+    """Wire the engine into the single shared slot in openavc.api._engine.
 
     Kept as a module-level entry point so callers that wire ws.py directly
     (tests) still work, but it targets the one shared slot — not a ws-local

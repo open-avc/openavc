@@ -3,10 +3,10 @@
 These validate the discovery probe *runtime* with invented devices and
 synthetic payloads:
 
-  * ``server.discovery.hints.parse_driver_discovery`` — how a declared
+  * ``openavc.discovery.hints.parse_driver_discovery`` — how a declared
     ``tcp_probe`` / ``udp_probe`` block is parsed (port, send, matcher, tls,
     extract rules, and the schema's error cases).
-  * ``server.discovery.probe_runner._matches`` / ``_apply_extract`` — how a
+  * ``openavc.discovery.probe_runner._matches`` / ``_apply_extract`` — how a
     response is matched (``expect`` / ``expect_hex`` / ``expect_regex``) and
     mined (static + regex extract, reserved manufacturer/make lifting).
 

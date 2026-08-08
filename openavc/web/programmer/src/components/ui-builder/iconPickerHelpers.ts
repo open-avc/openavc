@@ -3,7 +3,7 @@
 //
 // The panel runtime renders icons by direct sprite lookup (icons.svg#<name>),
 // so every name the picker can store must exist as a symbol id in
-// web/panel/icons.svg. The harness test (tests/test_icon_picker.py) enforces
+// openavc/web/panel/icons.svg. The harness test (tests/test_icon_picker.py) enforces
 // that for the All tab and every curated category entry.
 import { SPRITE_ICON_NAMES } from "./spriteIconNames";
 

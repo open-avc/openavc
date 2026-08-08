@@ -13,7 +13,7 @@ Verifiers accept an artifact if **any** `*.pem` here validates its detached
 - `installer/openavc-macos-run.sh` (root, macOS app swap).
 - `installer/install.sh` (verifies `SHA256SUMS.txt.sig` before trusting the
   checksums).
-- `server/updater/manager.py` (defense-in-depth pre-check on download).
+- `openavc/updater/manager.py` (defense-in-depth pre-check on download).
 
 ## Arming state (why an empty dir is safe to ship)
 

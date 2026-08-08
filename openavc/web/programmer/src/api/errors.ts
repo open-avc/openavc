@@ -13,7 +13,7 @@
  *
  * The server's contract is that `detail` is always a string carrying the whole
  * message; anything a client branches on rides in sibling top-level keys (see
- * `server/api/errors.py`), so there is exactly one place to look for the text.
+ * `openavc/api/errors.py`), so there is exactly one place to look for the text.
  */
 function extractDetail(body: string): string | null {
   try {

@@ -1,4 +1,4 @@
-"""Tests for cloud config persistence (server/cloud/config.py).
+"""Tests for cloud config persistence (openavc/cloud/config.py).
 
 The cloud config file holds the system master key — the root credential for
 the cloud trust boundary — so it must be written owner-only (0600) on POSIX.

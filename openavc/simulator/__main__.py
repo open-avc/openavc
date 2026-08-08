@@ -1,4 +1,4 @@
-"""Entry point for `python -m simulator` and the `openavc-simulator` CLI."""
+"""Entry point for `python -m openavc.simulator` and the `openavc-simulator` CLI."""
 
 import argparse
 import json

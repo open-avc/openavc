@@ -1,9 +1,9 @@
 """Shared pure helpers for the protocol interpreters.
 
 "Interpret a driver's protocol" happens in three places: the driver runtime
-(``server.drivers.configurable``), the auto-generated device simulator
-(``simulator.yaml_auto``), and the driver/simulator validator
-(``simulator.validate``). The helpers here are the pieces those interpreters
+(``openavc.drivers.configurable``), the auto-generated device simulator
+(``openavc.simulator.yaml_auto``), and the driver/simulator validator
+(``openavc.simulator.validate``). The helpers here are the pieces those interpreters
 must agree on byte-for-byte — placeholder substitution and its inversion
 back to a matching regex, value coercion, send_frame packet framing, and
 delimiter decoding. Each interpreter used to
@@ -16,8 +16,8 @@ once instead.
 incoming data against. The other interpreters reason about the same rules,
 so the compile lives here with the helpers rather than inside the runtime.
 
-Pure on purpose: stdlib plus ``server.transport.binary_helpers`` only — the
-same contract as ``server.drivers.inline_protocol``, and for the same reason:
+Pure on purpose: stdlib plus ``openavc.transport.binary_helpers`` only — the
+same contract as ``openavc.drivers.inline_protocol``, and for the same reason:
 the simulator runs as a separate process and imports this module directly, so
 it must not pull in the driver runtime or transport stack.
 """

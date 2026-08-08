@@ -1,7 +1,7 @@
 """Import-guard for the driver-contract modules.
 
-``server/drivers/spec.py``, ``server/drivers/avcdriver_semantic.py`` and
-``server/drivers/python_info.py`` are shared beyond the server runtime (the
+``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py`` and
+``openavc/drivers/python_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
 standard library and each other: no runtime, no transports, no discovery, no
@@ -17,7 +17,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 ALLOWED = {
-    "server",
+    "openavc",
     "openavc.drivers",
     "openavc.drivers.spec",
     "openavc.drivers.avcdriver_semantic",
@@ -31,7 +31,7 @@ def _loaded_modules(import_stmt: str) -> list[str]:
         "import sys\n"
         "sys.path.insert(0, r'" + str(REPO_ROOT) + "')\n"
         + import_stmt + "\n"
-        "names = sorted(m for m in sys.modules if m.startswith('server'))\n"
+        "names = sorted(m for m in sys.modules if m.startswith('openavc'))\n"
         "if 'yaml' in sys.modules: names.append('yaml')\n"
         "print('\\n'.join(names))\n"
     )
@@ -47,12 +47,12 @@ def _loaded_modules(import_stmt: str) -> list[str]:
 
 
 def test_spec_imports_nothing_beyond_itself():
-    loaded = _loaded_modules("import server.drivers.spec")
-    assert set(loaded) <= {"server", "openavc.drivers", "openavc.drivers.spec"}, loaded
+    loaded = _loaded_modules("import openavc.drivers.spec")
+    assert set(loaded) <= {"openavc", "openavc.drivers", "openavc.drivers.spec"}, loaded
 
 
 def test_semantic_rules_stay_pure():
-    loaded = _loaded_modules("import server.drivers.avcdriver_semantic")
+    loaded = _loaded_modules("import openavc.drivers.avcdriver_semantic")
     assert set(loaded) <= ALLOWED, (
         f"avcdriver_semantic pulled in modules outside its purity contract: "
         f"{sorted(set(loaded) - ALLOWED)}"
@@ -72,7 +72,7 @@ def test_python_info_imports_nothing_beyond_itself():
     may not import, ``python_info`` still may not import through it.
     """
     allowed = ALLOWED | {"openavc.drivers.python_info"}
-    loaded = _loaded_modules("import server.drivers.python_info")
+    loaded = _loaded_modules("import openavc.drivers.python_info")
     assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
     # Still not YAML. The reader parses Python source, and the catalog CI job
     # it runs in has no yaml dependency to lean on.

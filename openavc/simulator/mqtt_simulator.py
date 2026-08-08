@@ -20,7 +20,7 @@ requiring) a client certificate. This lets a driver that always uses TLS — lik
 the Hisense VIDAA TVs, which serve a self-signed broker cert and want a client
 cert — connect against the simulator exactly as it would against the real
 device. The cert machinery is shared with the other server bases in
-``simulator/self_signed_tls.py``.
+``openavc/simulator/self_signed_tls.py``.
 """
 
 from __future__ import annotations

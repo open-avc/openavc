@@ -14,7 +14,7 @@ import re
 # misbehaving devices or missing delimiters. It lives in this leaf, not in
 # frame_parsers, because both sides of the wire need it: the receive-side
 # parsers re-export it from here, and the shared send_frame walk the
-# simulator runs on (server.drivers.compiled_protocol) is held to a purity
+# simulator runs on (openavc.drivers.compiled_protocol) is held to a purity
 # contract that lets it import this module and not the transport stack.
 DEFAULT_MAX_BUFFER = 65536
 

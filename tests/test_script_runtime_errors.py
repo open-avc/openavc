@@ -9,7 +9,7 @@ recent script error, which changes only when a new one is logged, so the view
 doesn't re-render on every log line) and depends on it.
 
 Two layers: the harness bundles the extracted pure helpers (scriptRuntimeErrors)
-with the esbuild in web/programmer/node_modules and checks the marker extraction
+with the esbuild in openavc/web/programmer/node_modules and checks the marker extraction
 and the reactive-trigger selector; source-level checks pin ScriptView.tsx to the
 subscription + dependency so the staleness can't silently return. Skips when the
 Node toolchain or esbuild is absent rather than failing the Python-only CI gate.
@@ -43,7 +43,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "script runtime errors harness missing"
     if not HELPERS.is_file():

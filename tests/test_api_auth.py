@@ -1,4 +1,4 @@
-"""Tests for the authentication module (server/api/auth.py)."""
+"""Tests for the authentication module (openavc/api/auth.py)."""
 
 import base64
 from unittest.mock import MagicMock

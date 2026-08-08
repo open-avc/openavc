@@ -12,7 +12,7 @@ and communicate in real time via a WebSocket mesh:
 Architecture:
   - Discovery uses UDP broadcast beacons on port 19872 (no mDNS/zeroconf).
   - Outbound connections use the ``websockets`` client library.
-  - Inbound connections arrive via the FastAPI endpoint in ``server/api/isc_ws.py``.
+  - Inbound connections arrive via the FastAPI endpoint in ``openavc/api/isc_ws.py``.
   - Both directions are normalised through ``PeerConnection`` so the
     ISCManager handles messages identically regardless of direction.
 """

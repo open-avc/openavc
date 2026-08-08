@@ -1,7 +1,7 @@
 """
 Setup-action runner — the platform side of driver-declared provisioning wizards.
 
-A setup action (an action of ``kind:"setup"``, see ``server/drivers/actions.py``)
+A setup action (an action of ``kind:"setup"``, see ``openavc/drivers/actions.py``)
 is a driver-declared wizard that can run while a device is offline, brings its
 own out-of-band transport, reports multi-step progress, and may rewrite the
 device's connection config and reconnect on success. This module orchestrates a

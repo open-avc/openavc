@@ -1,7 +1,7 @@
 """Every transport a driver can declare is served by ONE server.
 
 The YAML auto-generator used to carry its own UDP, OSC and HTTP servers
-alongside ``simulator/udp_simulator.py``, ``osc_simulator.py`` and
+alongside ``openavc/simulator/udp_simulator.py``, ``osc_simulator.py`` and
 ``http_simulator.py`` — the same code twice, which drifted: the Python bases
 learned optional TLS and the generated ones never did, so the HTTPS-only
 devices whose drivers are YAML (the default format) could not reach their own

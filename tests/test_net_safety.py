@@ -1,4 +1,4 @@
-"""Tests for the SSRF-guard helpers in server.utils.net_safety."""
+"""Tests for the SSRF-guard helpers in openavc.utils.net_safety."""
 
 import pytest
 

@@ -43,7 +43,7 @@ import os
 
 import pytest
 
-# Node plus web/programmer/node_modules -- the harnesses that bundle the real
+# Node plus openavc/web/programmer/node_modules -- the harnesses that bundle the real
 # TypeScript sources with esbuild, and the panel DOM tests that need jsdom.
 NODE = "OPENAVC_REQUIRE_NODE"
 

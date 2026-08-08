@@ -1,6 +1,6 @@
 "use strict";
 // Bundles the Programmer SPA's api/types.ts with the esbuild in
-// web/programmer/node_modules and exercises hasUpdate(installed, available)
+// openavc/web/programmer/node_modules and exercises hasUpdate(installed, available)
 // across semver cases with pre-release and build suffixes. The old
 // `installed.split('.').map(Number)` turned '1.0.1-beta' into [1,0,NaN] and
 // `b[i] || 0` coerced NaN to 0, so updates to/from suffixed versions were

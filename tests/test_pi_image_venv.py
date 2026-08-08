@@ -55,6 +55,6 @@ def test_build_verification_imports_server_from_venv():
     can import the server, so a dependency-install regression aborts the
     build instead of shipping a crash-looping image."""
     text = CHROOT_SH.read_text(encoding="utf-8")
-    assert './venv/bin/python -c "import server.main"' in text, (
+    assert './venv/bin/python -c "import openavc.main"' in text, (
         "00-run-chroot.sh build verification does not import-check the venv"
     )

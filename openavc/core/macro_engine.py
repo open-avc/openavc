@@ -540,7 +540,7 @@ class MacroEngine:
         Any other ``$<state_key>`` reads from the state store. When a macro runs
         directly (no trigger context), ``$trigger.*`` resolves to None.
 
-        Delegates to the shared resolver (``server.core.value_resolver``) so the
+        Delegates to the shared resolver (``openavc.core.value_resolver``) so the
         $-namespaces and the unknown-state-key warning match the UI binding
         resolver. A macro has no UI event, so no ``event_ctx`` is passed —
         behavior is identical to before except an unknown state key now warns

@@ -1,5 +1,5 @@
 "use strict";
-// Bundles variablesShared.helpers.ts (with the esbuild in web/programmer/
+// Bundles variablesShared.helpers.ts (with the esbuild in openavc/web/programmer/
 // node_modules) and exercises the cross-reference helpers behind the
 // Variables / Device States "Used By" panels:
 //   - scanBindingForVars / scanBindingForAllKeys read the show/do binding model:

@@ -8,7 +8,7 @@ escaped and the promise never resolved or rejected. getProject() hung forever
 and the IDE stayed in a perpetual loading state with no error surfaced.
 
 This bundles the real ``projectClient.ts`` (with ``base.ts``) using the esbuild
-in ``web/programmer/node_modules`` and drives getProject() against a fake fetch
+in ``openavc/web/programmer/node_modules`` and drives getProject() against a fake fetch
 and Worker: it asserts the promise now SETTLES (rejects) on a malformed body,
 still resolves the fallback for a valid body, and resolves the worker-success
 path. Skips when the Node toolchain or esbuild is absent rather than failing the
@@ -39,7 +39,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "project client harness missing"
     if not PROJECT_CLIENT_TS.is_file():

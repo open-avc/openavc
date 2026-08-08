@@ -4,14 +4,14 @@ Covers the authoring round-trip: an author opens the Driver Builder, declares a 
 with a state field, saves, and the declaration round-trips through the
 .avcdriver YAML on disk and back into the editor after a full reload.
 
-Like the other e2e tests, this boots a real ``server.main`` subprocess
+Like the other e2e tests, this boots a real ``openavc.main`` subprocess
 (the ``openavc_server`` fixture in conftest) and drives a real Chromium.
 New drivers created through the builder are persisted to
 ``{data_dir}/driver_repo/<id>.avcdriver`` by the create endpoint, so the
 test asserts both the on-disk YAML and the reloaded editor state.
 
 Selectors come from the data-testid attributes on
-``web/programmer/src/components/driver-builder/ChildEntityTypesEditor.tsx``.
+``openavc/web/programmer/src/components/driver-builder/ChildEntityTypesEditor.tsx``.
 """
 
 from __future__ import annotations

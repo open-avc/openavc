@@ -21,7 +21,7 @@ Browser sessions don't hold the password: the Programmer SPA exchanges it for
 a short-lived session token (POST /api/auth/session) and sends
 `Authorization: Bearer <token>` / the `auth.bearer.<token>` WebSocket
 subprotocol from then on. Basic and X-API-Key remain first-class for curl and
-API clients. See `server/api/session_tokens.py`.
+API clients. See `openavc/api/session_tokens.py`.
 """
 
 from __future__ import annotations
@@ -291,7 +291,7 @@ async def require_local_or_programmer_auth(
     "Console" is deliberately narrower than "arrived from 127.0.0.1": the
     cloud remote-UI tunnel proxies remote traffic to loopback, and a remote
     caller must not inherit a trust anchor that means *physical access*. See
-    `server/utils/request_origin.py`.
+    `openavc/utils/request_origin.py`.
     """
     if is_local_console_request(request):
         return

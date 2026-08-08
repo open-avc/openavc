@@ -1,11 +1,11 @@
 /*
- * jsdom harness for web/panel/panel.js regression tests.
+ * jsdom harness for openavc/web/panel/panel.js regression tests.
  *
  * Loads the real panel.js into a jsdom window and exercises the behaviours
  * fixed in the bug-fix campaign. Each test throws on failure; results are
  * emitted as JSON on stdout for the pytest wrapper (tests/test_panel_js.py)
  * to assert on. Invoked as: node panel_harness.cjs <abs path to panel.js>
- * with cwd set to web/programmer so `require('jsdom')` resolves.
+ * with cwd set to openavc/web/programmer so `require('jsdom')` resolves.
  */
 const fs = require('fs');
 const { JSDOM } = require('jsdom');

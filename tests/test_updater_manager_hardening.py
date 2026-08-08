@@ -2,7 +2,7 @@
 
 Covers the maintenance-window / cloud-policy trust boundary, rollback bookkeeping,
 history reconciliation, download/backup cleanup, and URL/filename sanitization
-fixed in the bug-fix campaign (server/updater/manager.py + backup.py + rollback.py).
+fixed in the bug-fix campaign (openavc/updater/manager.py + backup.py + rollback.py).
 """
 from __future__ import annotations
 

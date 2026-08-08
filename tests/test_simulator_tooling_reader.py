@@ -1,10 +1,10 @@
 """The simulator tooling reads DRIVER_INFO through the platform's reader.
 
-``simulator/scaffold.py`` used to carry its own: a ``literal_eval`` that fell
+``openavc/simulator/scaffold.py`` used to carry its own: a ``literal_eval`` that fell
 back to scanning the whole file with regexes the moment a driver referenced a
 module constant, which is most of them. It did not merely miss things, it
 invented — reporting section names like ``state_variables`` as commands and
-pairing labels with the wrong entries — and ``simulator/validate.py`` imported
+pairing labels with the wrong entries — and ``openavc/simulator/validate.py`` imported
 that same function for its entire Python path. So a wrong reading fed the
 scaffold's generated file and every Python-driver check at once.
 

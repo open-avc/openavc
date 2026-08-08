@@ -2,7 +2,7 @@
 
 The templates run in the Programmer IDE (Create Python Driver dialog), so the
 generated sources come from bundling the real driverTemplates.ts with the
-esbuild already in web/programmer/node_modules
+esbuild already in openavc/web/programmer/node_modules
 (tests/fixtures/driver_templates_harness.cjs). Each generated source is then
 compiled here and its DRIVER_INFO parsed from the AST, proving the
 scaffolding is valid Python with the intended metadata — not just
@@ -56,7 +56,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "driver templates harness missing"
     if not TEMPLATES.is_file():

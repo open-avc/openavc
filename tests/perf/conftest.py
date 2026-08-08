@@ -1,6 +1,6 @@
 """Perf-test conftest.
 
-OpenAVC's ``server.utils.logger`` pins the root logger to DEBUG on first
+OpenAVC's ``openavc.utils.logger`` pins the root logger to DEBUG on first
 ``get_logger`` call. Production deployments treat this as "verbose mode
 when a developer is debugging," but inside the perf suite it injects a
 ~10-40x slowdown on hot paths (every ``set`` / ``set_batch`` call emits

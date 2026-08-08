@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real Driver Builder store helpers (driverBuilderStore.helpers.ts,
-// bundled on the fly with the esbuild already in web/programmer/node_modules)
+// bundled on the fly with the esbuild already in openavc/web/programmer/node_modules)
 // and runs pure-logic checks for the save-reconcile, latest-wins refresh guard,
 // and import-validation helpers, printing JSON results to stdout. Mirrors
 // ui_builder_helpers_harness.cjs, but uses buildSync(bundle) instead of

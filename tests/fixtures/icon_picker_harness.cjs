@@ -1,8 +1,8 @@
 "use strict";
 // Loads the UI Builder icon picker helpers (iconPickerHelpers.ts — React-free
 // pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks every name the picker can store
-// against the symbol ids of the runtime panel sprite (web/panel/icons.svg,
+// openavc/web/programmer/node_modules, and checks every name the picker can store
+// against the symbol ids of the runtime panel sprite (openavc/web/panel/icons.svg,
 // passed as argv[3]). The panel renders icons by direct sprite lookup
 // (`icons.svg#<name>`), so any picker name missing from the sprite is a
 // silently broken icon on the panel even though the builder preview (a

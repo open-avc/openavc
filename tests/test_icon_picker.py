@@ -2,13 +2,13 @@
 
 The picker is React with no jsdom-loadable entry point, so these exercise the
 pure helpers by bundling iconPickerHelpers.ts on the fly with the esbuild
-already in web/programmer/node_modules and asserting on the results. Like the
+already in openavc/web/programmer/node_modules and asserting on the results. Like the
 other frontend-logic suites it skips when the Node toolchain or esbuild isn't
 present rather than failing the Python-only CI gate.
 
 The panel runtime renders icons by direct sprite lookup (icons.svg#<name>), so
 every name the picker can store must exist as a symbol id in
-web/panel/icons.svg. Covers the two bugs fixed in IconPicker.tsx: the All tab
+openavc/web/panel/icons.svg. Covers the two bugs fixed in IconPicker.tsx: the All tab
 re-derived kebab names from lucide-react's PascalCase exports with a regex
 that got every digit-containing name wrong (Building2 -> "building2" while the
 sprite id is "building-2"), and the curated category lists carried names that
@@ -45,13 +45,13 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "icon picker harness missing"
     if not HELPERS.is_file():
         return "iconPickerHelpers.ts missing"
     if not SPRITE.is_file():
-        return "panel sprite (web/panel/icons.svg) missing"
+        return "panel sprite (openavc/web/panel/icons.svg) missing"
     return None
 
 

@@ -1,4 +1,4 @@
-"""Tests for the vendor-neutral IR protocol renderer (server/transport/ir_render.py).
+"""Tests for the vendor-neutral IR protocol renderer (openavc/transport/ir_render.py).
 
 These exercise a platform capability (turning a compact protocol/device/function
 code into emittable Pronto), so they belong in core. They are self-contained: no

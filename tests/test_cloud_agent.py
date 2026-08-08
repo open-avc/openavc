@@ -55,7 +55,7 @@ from openavc.cloud.sequencer import Sequencer
 
 
 class TestCrypto:
-    """Tests for server.cloud.crypto."""
+    """Tests for openavc.cloud.crypto."""
 
     def test_hkdf_deterministic(self):
         """HKDF produces the same output for the same inputs."""
@@ -218,7 +218,7 @@ class TestCrypto:
 
 
 class TestProtocol:
-    """Tests for server.cloud.protocol."""
+    """Tests for openavc.cloud.protocol."""
 
     def test_protocol_version(self):
         assert PROTOCOL_VERSION == 1
@@ -439,7 +439,7 @@ class TestProtocol:
 
 
 class TestHandshake:
-    """Tests for server.cloud.handshake."""
+    """Tests for openavc.cloud.handshake."""
 
     def _make_handshake(self):
         system_key = generate_system_key()
@@ -691,7 +691,7 @@ class TestHandshake:
 
 
 class TestSession:
-    """Tests for server.cloud.session."""
+    """Tests for openavc.cloud.session."""
 
     def _make_session(self):
         system_key = generate_system_key()
@@ -838,7 +838,7 @@ class TestSession:
 
 
 class TestSequencer:
-    """Tests for server.cloud.sequencer."""
+    """Tests for openavc.cloud.sequencer."""
 
     def test_assign_seq_increments(self):
         seq = Sequencer()
@@ -947,7 +947,7 @@ class TestSequencer:
 
 
 class TestHeartbeat:
-    """Tests for server.cloud.heartbeat."""
+    """Tests for openavc.cloud.heartbeat."""
 
     @pytest.mark.asyncio
     async def test_collect_basic_metrics(self):
@@ -1038,7 +1038,7 @@ class TestHeartbeat:
 
 
 class TestCommandHandler:
-    """Tests for server.cloud.command_handler."""
+    """Tests for openavc.cloud.command_handler."""
 
     @pytest.mark.asyncio
     async def test_handle_device_command(self):
@@ -1246,7 +1246,7 @@ class TestCommandHandler:
 
 
 class TestStateRelay:
-    """Tests for server.cloud.state_relay."""
+    """Tests for openavc.cloud.state_relay."""
 
     def test_on_state_change_batches(self):
         """State changes are collected into the top-tier batch."""

@@ -1,7 +1,7 @@
 "use strict";
 // Loads the macro step drag-reorder helpers (stepDndHelpers.ts — React-free
 // pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and replays the drag flows that used to break
+// openavc/web/programmer/node_modules, and replays the drag flows that used to break
 // when the sortable ids rendered for each step row came from a different id
 // space (`step-${index}`) than the SortableContext items (stable per-object
 // ids): the drag after a reorder moved the WRONG step, and any drag after

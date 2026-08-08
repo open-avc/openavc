@@ -147,8 +147,8 @@ cd openavc
 python3 -m venv venv
 source venv/bin/activate            # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cd web/programmer && npm install && npm run build && cd ../..
-cd web/simulator && npm install && npm run build && cd ../..
+cd openavc/web/programmer && npm install && npm run build && cd ../../..
+cd openavc/web/simulator && npm install && npm run build && cd ../../..
 ```
 
 The virtual environment isolates OpenAVC's Python dependencies from your system Python. On current Debian/Ubuntu, installing into the system Python is blocked by default (PEP 668), so the venv step isn't optional.

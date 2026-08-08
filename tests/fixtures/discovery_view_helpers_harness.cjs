@@ -1,7 +1,7 @@
 "use strict";
 // Loads the Discovery view helpers (discoveryViewHelpers.ts — React-free
 // pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the port-label merge precedence
+// openavc/web/programmer/node_modules, and checks the port-label merge precedence
 // and the SNMP-community payload rule.
 // Mirrors trigger_helpers_harness.cjs. The Python wrapper skips when the
 // Node toolchain or esbuild is absent rather than failing the Python-only

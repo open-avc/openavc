@@ -42,7 +42,7 @@ log() {
     fi
 }
 
-# --- Desired ports from system.json (defaults match server/system_config.py) ---
+# --- Desired ports from system.json (defaults match openavc/system_config.py) ---
 
 desired_ports() {
     "$PYTHON" - "$CONFIG_FILE" <<'PYEOF'

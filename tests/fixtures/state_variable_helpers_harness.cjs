@@ -1,7 +1,7 @@
 "use strict";
 // Loads the state-variable editor helpers (stateVariableHelpers.ts —
 // React-free pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the collision-safe name generation
+// openavc/web/programmer/node_modules, and checks the collision-safe name generation
 // and the atomic type-change reducer that back the editor.
 // Mirrors child_entity_types_helpers_harness.cjs. The Python wrapper skips
 // when the Node toolchain or esbuild is absent rather than failing the

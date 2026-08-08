@@ -3,7 +3,7 @@
 Command params in UI bindings can hold $-references — the interaction
 tokens ($value, $input, $output, $mute) and state refs ($var.volume). At
 runtime the engine resolves each param via the shared resolver
-(server/core/value_resolver.py) before the command reaches the device. The
+(openavc/core/value_resolver.py) before the command reaches the device. The
 Test button sent params raw: for a text-protocol driver the literal
 "$value" was formatted into the command and transmitted to live AV
 hardware as a malformed control command — the standard shape for every
@@ -15,7 +15,7 @@ real panel event) or names a state key with no current value (the runtime
 would send None), telling the user which param blocked it and why.
 
 Two layers: the harness bundles the real ``testActionParams.ts`` with the
-esbuild in ``web/programmer/node_modules`` (skips when the Node toolchain
+esbuild in ``openavc/web/programmer/node_modules`` (skips when the Node toolchain
 is absent rather than failing the Python-only CI gate), and a source-level
 check pins PressBindingEditor to routing the Test send through the helper.
 """
@@ -52,7 +52,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "test action params harness missing"
     if not HELPERS_TS.is_file():

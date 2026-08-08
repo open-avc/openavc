@@ -320,7 +320,7 @@ class SimulationManager:
 
         # Spawn the simulator process.
         # In frozen (PyInstaller) builds, sys.executable is the .exe itself,
-        # so we use --simulator flag which server/main.py dispatches to the
+        # so we use --simulator flag which openavc/main.py dispatches to the
         # simulator entry point. In normal Python, use -m openavc.simulator.
         #
         # --no-auto-shutdown: when launched standalone the simulator stops

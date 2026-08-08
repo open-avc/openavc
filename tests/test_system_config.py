@@ -1,4 +1,4 @@
-"""Tests for server.system_config — system.json layered configuration."""
+"""Tests for openavc.system_config — system.json layered configuration."""
 
 import json
 import os

@@ -5,7 +5,7 @@ come back enveloped in an object, mutations acknowledge with ``status``,
 ``success`` is reserved for calls that can fail at HTTP 200, and identifiers
 are echoed under an explicit ``<thing>_id`` name.
 
-The static half walks every route handler in ``server/api`` so a new endpoint
+The static half walks every route handler in ``openavc/api`` so a new endpoint
 that returns a bare array (or says ``ok``) fails here rather than shipping and
 freezing into the surface. The behavioral half pins a representative endpoint
 per rule, so the conventions are checked against the running app too.
@@ -75,7 +75,7 @@ def test_no_route_acknowledges_with_ok():
     """Rules 2+3: mutations say ``status``; fallible commands say ``success``.
 
     ``ok`` was a third spelling of the same idea. It survives *inside*
-    ``server/system/network.py`` and ``server/host_control.py`` (those mirror
+    ``openavc/system/network.py`` and ``openavc/host_control.py`` (those mirror
     the privileged helper's on-disk protocol), but the HTTP boundary translates.
     """
     offenders = []

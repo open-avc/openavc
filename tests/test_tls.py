@@ -1,4 +1,4 @@
-"""Tests for server.tls — cert generation, loading, inspection."""
+"""Tests for openavc.tls — cert generation, loading, inspection."""
 
 from __future__ import annotations
 

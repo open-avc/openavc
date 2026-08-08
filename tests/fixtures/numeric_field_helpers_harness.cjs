@@ -1,7 +1,7 @@
 "use strict";
 // Loads the UI Builder numeric property-field parsers (numericField.ts —
 // React-free pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules and checks the clear-means-unset parsing that
+// openavc/web/programmer/node_modules and checks the clear-means-unset parsing that
 // backs the BasicProperties numeric inputs. Mirrors
 // config_schema_helpers_harness.cjs. The Python wrapper skips when the Node
 // toolchain or esbuild is absent rather than failing the Python-only CI gate.

@@ -1,6 +1,6 @@
 """Which bindings an element type's renderer actually reaches, run rather than read.
 
-``server/ui/page_review.py`` warns the AI when it wires a binding an element
+``openavc/ui/page_review.py`` warns the AI when it wires a binding an element
 type does not render -- a label carrying ONLINE / OFFLINE state text, say, where
 the panel has no code to draw one. That warning is only worth having if the
 table behind it is true, and the table was written by reading JavaScript.

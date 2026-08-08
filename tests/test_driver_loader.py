@@ -337,7 +337,7 @@ def test_list_python_drivers_skips_companions(tmp_path):
     # Real driver — has a class with DRIVER_INFO.
     (tmp_path / "real_driver.py").write_text(
         '"""A real driver."""\n'
-        "from server.drivers.base import BaseDriver\n"
+        "from openavc.drivers.base import BaseDriver\n"
         "class RealDriver(BaseDriver):\n"
         '    DRIVER_INFO = {"id": "real_driver", "name": "Real Driver"}\n',
         encoding="utf-8",
@@ -743,7 +743,7 @@ def test_load_python_drivers_user_copy_overrides_builtin(tmp_path):
     builtin.mkdir()
     user.mkdir()
     template = (
-        "from server.drivers.base import BaseDriver\n"
+        "from openavc.drivers.base import BaseDriver\n"
         "class AcmeDriver(BaseDriver):\n"
         '    DRIVER_INFO = {{"id": "acme_py_dup", "name": "{name}"}}\n'
     )
@@ -834,7 +834,7 @@ def test_failed_python_import_clears_sys_modules(tmp_path):
 def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
     src = (
         '"""Reload TOCTOU driver."""\n'
-        "from server.drivers.base import BaseDriver\n"
+        "from openavc.drivers.base import BaseDriver\n"
         "class TocTouDriver(BaseDriver):\n"
         '    DRIVER_INFO = {"id": "reload_toctou", "name": "TocTou"}\n'
     )
@@ -869,7 +869,7 @@ def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
 
 def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeypatch):
     src = (
-        "from server.drivers.base import BaseDriver\n"
+        "from openavc.drivers.base import BaseDriver\n"
         "class GhostDriver(BaseDriver):\n"
         '    DRIVER_INFO = {"id": "ghost_driver", "name": "Ghost"}\n'
     )
@@ -893,7 +893,7 @@ def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeyp
 
 def test_list_python_drivers_reports_not_loaded(tmp_path, monkeypatch):
     src = (
-        "from server.drivers.base import BaseDriver\n"
+        "from openavc.drivers.base import BaseDriver\n"
         "class AbsentDriver(BaseDriver):\n"
         '    DRIVER_INFO = {"id": "absent_driver", "name": "Absent"}\n'
     )
@@ -964,7 +964,7 @@ def test_driver_id_from_file_python(tmp_path):
 
     f = tmp_path / "weird_name.py"
     f.write_text(
-        "from server.drivers.base import BaseDriver\n\n"
+        "from openavc.drivers.base import BaseDriver\n\n"
         "class AcmeDriver(BaseDriver):\n"
         "    DRIVER_INFO = {'id': 'acme_widget', 'name': 'Acme'}\n",
         encoding="utf-8",

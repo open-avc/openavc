@@ -11,7 +11,7 @@ the surfaces can't disagree about what the contract says.
 Purity contract: standard library only. This module is imported by the
 simulator, by validation code that runs outside the server (the community
 driver catalog vendors it), and by transports — it must never pull in the
-runtime, and it must stay import-cycle-free (nothing in server/ is above
+runtime, and it must stay import-cycle-free (nothing in openavc/ is above
 it).
 """
 from __future__ import annotations
@@ -203,7 +203,7 @@ PYTHON_ONLY_ACTION_KINDS: tuple[str, ...] = ("setup",)
 AVAILABILITIES: tuple[str, ...] = ("online", "offline", "always")
 
 # Operators accepted in a visible_when condition. Mirrors the shared condition
-# evaluator (server/core/condition_eval.py) and the panel / Stream Deck
+# evaluator (openavc/core/condition_eval.py) and the panel / Stream Deck
 # JS evaluator so an action condition behaves identically everywhere.
 # Ordered: canonical names first, then the accepted aliases.
 VISIBLE_WHEN_OPERATORS: tuple[str, ...] = (
@@ -237,7 +237,7 @@ def is_multicast_group(value: str) -> bool:
 # FIELDS (top-level driver-definition fields) and DEFS (shared sub-object
 # shapes) describe every field of the .avcdriver contract: its type, its
 # accepted values, its numeric/pattern constraints, which tier requires it,
-# and its documentation. The generator (server/drivers/contract_gen.py)
+# and its documentation. The generator (openavc/drivers/contract_gen.py)
 # renders them into the published JSON Schemas (avcdriver.schema.json for
 # YAML drivers, pythondriver.schema.json for Python DRIVER_INFO) and the
 # Programmer IDE's generated driver types — so adding or changing a field

@@ -1,6 +1,6 @@
 """Every registered route's rate-limit tier is intentional.
 
-The tier table in ``server/middleware/rate_limit.py`` is a second description
+The tier table in ``openavc/middleware/rate_limit.py`` is a second description
 of the route surface, and the first version of it drifted: routes that fire
 hardware sat on the general budget because their path happened not to contain
 the substring the classifier looked for, and a device action's tier depended on

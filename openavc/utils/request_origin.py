@@ -14,7 +14,7 @@ channel on which to guess one (the 401 brute-force counter is keyed per IP and
 loopback never reaches it).
 
 So "the socket peer is loopback" is not the question. The tunnel stamps
-``X-OpenAVC-Tunneled`` on everything it proxies (``server/cloud/tunnel.py``)
+``X-OpenAVC-Tunneled`` on everything it proxies (``openavc/cloud/tunnel.py``)
 and the checks here read it.
 
 Two properties make the marker safe to lean on:

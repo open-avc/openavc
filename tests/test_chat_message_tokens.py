@@ -7,7 +7,7 @@ reported zero of both, ``0 || 0`` evaluated to ``0`` — and React renders a bar
 the guard in ``Boolean(...)`` so a false-y count renders nothing.
 
 This bundles the real ``ChatMessage.tsx`` with the esbuild in
-``web/programmer/node_modules`` and server-renders it. The key case: a 0/0
+``openavc/web/programmer/node_modules`` and server-renders it. The key case: a 0/0
 message must produce the same markup as a no-counts message (a stray ``0``
 means the bug is back). Skips when the Node toolchain or esbuild is absent
 rather than failing the Python-only CI gate.
@@ -39,7 +39,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "chat-message tokens harness missing"
     if not CHAT_MESSAGE_TSX.is_file():

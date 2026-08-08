@@ -1,7 +1,7 @@
 "use strict";
 // Loads the real Driver Builder validator (validateDriver.ts) and the Actions
 // editor's pure helpers (actionsEditorHelpers.ts), bundled on the fly with the
-// esbuild already in web/programmer/node_modules, and exercises the
+// esbuild already in openavc/web/programmer/node_modules, and exercises the
 // actions/quick_actions/web_ui rules: id and kind legality, command
 // resolution, visible_when conditions, URL placeholder coverage, and the
 // legacy quick_actions conversion. Prints JSON results to stdout; the Python

@@ -1,8 +1,8 @@
 """Render the driver-contract registry into the Programmer IDE's types.
 
-Produces ``web/programmer/src/api/types.gen.ts``: the driver-definition
+Produces ``openavc/web/programmer/src/api/types.gen.ts``: the driver-definition
 interfaces the Builder edits, plus the validator constant tables, all from
-the field registry in ``server/drivers/spec.py``. The registry decides
+the field registry in ``openavc/drivers/spec.py``. The registry decides
 WHAT exists (fields, accepted values, docs); the tables in this module
 decide only how each member is presented in TypeScript (optionality
 conventions for drafts, ``Record`` shapes, named sub-interfaces). A field
@@ -22,7 +22,7 @@ from openavc.drivers import spec
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the driver-contract registry (server/drivers/spec.py).
+// Rendered from the driver-contract registry (openavc/drivers/spec.py).
 // Regenerate with:  python -m openavc.drivers.contract_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 

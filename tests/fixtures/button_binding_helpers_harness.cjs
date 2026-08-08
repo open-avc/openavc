@@ -2,7 +2,7 @@
 // Loads the button binding press helpers (buttonBindingHelpers.ts —
 // React-free pure logic shared by the UI Builder and the Surface
 // Configurator) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and replays the Remove flows that used to
+// openavc/web/programmer/node_modules, and replays the Remove flows that used to
 // lose data: removing the primary press action nulled the whole binding in
 // tap mode (every additional action discarded — the runtimes fire the full
 // press list in order), and in toggle/tap-hold modes left the extras

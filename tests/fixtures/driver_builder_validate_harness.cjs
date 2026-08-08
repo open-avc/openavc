@@ -1,6 +1,6 @@
 "use strict";
 // Loads the real Driver Builder validator (validateDriver.ts, bundled on the
-// fly with the esbuild already in web/programmer/node_modules) and exercises
+// fly with the esbuild already in openavc/web/programmer/node_modules) and exercises
 // what is left in it now that the driver contract is enforced in exactly one
 // place, on the platform:
 //

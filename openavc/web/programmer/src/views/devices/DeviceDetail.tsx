@@ -1692,7 +1692,7 @@ const devLogTdStyle: React.CSSProperties = {
 };
 
 // Offline reasons the server stops retrying on, because only a human can
-// clear them. Mirrors _PERMANENT_FAULT_CODES in server/core/connection_fault.py
+// clear them. Mirrors _PERMANENT_FAULT_CODES in openavc/core/connection_fault.py
 // (auth_failed is in that set too, but gets its own lockout-specific wording
 // below). Keep the two lists in step.
 const PERMANENT_OFFLINE_REASONS = new Set([

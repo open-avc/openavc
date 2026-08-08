@@ -3,7 +3,7 @@
 Every route here is on ``open_router`` by design — this is the surface a
 caller reaches *before* it has a credential: ask whether auth is required,
 claim an unclaimed controller, exchange a password for a session token, and
-log out. The credential checking itself lives in ``server/api/auth.py``;
+log out. The credential checking itself lives in ``openavc/api/auth.py``;
 this module is only the HTTP door onto it.
 """
 

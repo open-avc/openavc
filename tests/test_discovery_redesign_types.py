@@ -1,6 +1,6 @@
 """Tests for the deterministic identification types.
 
-See ``server/discovery/result.py`` for the type definitions and
+See ``openavc/discovery/result.py`` for the type definitions and
 ``OpenAVC-Discovery-Spec.md`` §5 for the matcher contract.
 """
 

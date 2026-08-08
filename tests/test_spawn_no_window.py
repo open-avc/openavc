@@ -6,8 +6,8 @@ legitimately run console-less on a user's desktop (the in-app restart
 relaunches it that way), and a discovery scan spawns one ping per address —
 one missed flag turns a scan into hundreds of console windows popping open.
 
-The rule: every subprocess spawn under server/ and simulator/ passes
-``creationflags`` (use ``server.utils.spawn.CREATE_NO_WINDOW``, which is 0 on
+The rule: every subprocess spawn under openavc/ and openavc/simulator/ passes
+``creationflags`` (use ``openavc.utils.spawn.CREATE_NO_WINDOW``, which is 0 on
 POSIX so no call site needs a platform check). Calls passing
 ``start_new_session=True`` are exempt — that keyword is POSIX-only, so such a
 call is an explicitly POSIX-only code path.

@@ -28,7 +28,7 @@ properties pane.
 
 Like the other TypeScript harnesses these skip when Node/esbuild/jsdom aren't
 installed, and fail instead when a run promised them (OPENAVC_REQUIRE_NODE=1).
-Run them locally after `npm ci` in web/programmer.
+Run them locally after `npm ci` in openavc/web/programmer.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def _toolchain_reason() -> str | None:
         return "node not installed"
     for pkg in ("esbuild", "jsdom", "react-dom"):
         if not (NODE_MODULES / pkg).is_dir():
-            return f"{pkg} not installed (run `npm ci` in web/programmer)"
+            return f"{pkg} not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "anchored panel harness missing"
     if not PANEL_TSX.is_file():

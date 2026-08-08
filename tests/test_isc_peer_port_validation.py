@@ -11,7 +11,7 @@ The fix parses the optional ``:port`` suffix, rejects anything outside
 authoring surface, where the user can act on it, is the right validation point
 (the runtime deliberately stores peers as free-form strings and fails-soft).
 
-There is no vitest/jest harness in web/programmer, so — like the other frontend
+There is no vitest/jest harness in openavc/web/programmer, so — like the other frontend
 regression tests — this pins the source to the fixed shape.
 """
 

@@ -1,12 +1,12 @@
-"""Regression tests for web/panel/panel.js.
+"""Regression tests for openavc/web/panel/panel.js.
 
 The panel is vanilla browser JS with no build step, so these run the real file
 inside a jsdom window via a Node harness (tests/fixtures/panel_harness.cjs) and
 assert on the resulting behaviour. Node + jsdom are optional dev dependencies
-(jsdom lives in web/programmer/node_modules), so — exactly like the Playwright
+(jsdom lives in openavc/web/programmer/node_modules), so — exactly like the Playwright
 e2e suite — these tests skip when the toolchain isn't present rather than
 failing the Python-only CI gate. Run them locally after `npm ci` in
-web/programmer; `node` ships on the CI runners.
+openavc/web/programmer; `node` ships on the CI runners.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not JSDOM_DIR.is_dir():
-        return "jsdom not installed (run `npm ci` in web/programmer)"
+        return "jsdom not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "panel harness missing"
     return None

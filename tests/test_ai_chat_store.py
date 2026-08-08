@@ -16,7 +16,7 @@ conversation list/select/delete paths surfaced raw 'AI API 500: {json}'
 strings instead of the friendly copy the streaming path already maps.
 
 Two layers: the harness bundles the real ``aiErrors.ts`` with the esbuild
-in ``web/programmer/node_modules`` (skips when the Node toolchain is
+in ``openavc/web/programmer/node_modules`` (skips when the Node toolchain is
 absent), and source-level checks pin aiChatStore.ts to the fixed shapes.
 """
 from __future__ import annotations
@@ -45,7 +45,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "ai errors harness missing"
     if not HELPERS_TS.is_file():

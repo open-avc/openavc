@@ -10,7 +10,7 @@ no-oped. The fix reads items, registered ids, and React keys from the one
 ``stepIds`` array, with the reorder logic extracted here.
 
 Two layers: the harness bundles the real ``stepDndHelpers.ts`` with the
-esbuild in ``web/programmer/node_modules`` and replays the drag flows (skips
+esbuild in ``openavc/web/programmer/node_modules`` and replays the drag flows (skips
 when the Node toolchain is absent rather than failing the Python-only CI
 gate), and a source-level check pins MacroEditor.tsx to rendering the shared
 ids so the index-formula split can't quietly come back.
@@ -46,7 +46,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "step dnd harness missing"
     if not HELPERS_TS.is_file():

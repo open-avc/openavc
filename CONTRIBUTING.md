@@ -65,10 +65,10 @@ pip install -r requirements.txt
 pip install -e ".[test]"
 
 # Frontend (required once before first run)
-cd web/programmer
+cd openavc/web/programmer
 npm ci
 npm run build
-cd ../..
+cd ../../..
 
 # Start the server
 python -m openavc.main
@@ -78,13 +78,13 @@ The Programmer IDE is at http://localhost:8080/programmer and the touch
 panel at http://localhost:8080/panel.
 
 The web UIs are React apps compiled to static files. The server serves the
-compiled output, so if you change anything under `web/programmer/` or
-`web/simulator/`, run `npm run build` there again before testing.
+compiled output, so if you change anything under `openavc/web/programmer/` or
+`openavc/web/simulator/`, run `npm run build` there again before testing.
 
 ## Linting and tests
 
 ```bash
-ruff check server/ tests/
+ruff check openavc/ tests/
 pytest tests/ --ignore=tests/perf
 ```
 

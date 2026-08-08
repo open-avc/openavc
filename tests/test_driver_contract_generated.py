@@ -1,6 +1,6 @@
 """The generated driver-contract artifacts must match the registry.
 
-The field registry in ``server/drivers/spec.py`` is the single source of
+The field registry in ``openavc/drivers/spec.py`` is the single source of
 the .avcdriver contract. ``python -m openavc.drivers.contract_gen`` renders
 it into three committed artifacts: the published JSON Schema, its
 Python-driver variant, and the Programmer IDE's generated types. These

@@ -5,7 +5,7 @@ UPnP GENA NOTIFY) POST here; the body is handed to the subscribed driver's
 response dispatch. Unauthenticated by design — AV devices cannot carry
 credentials for us, and the trust model is the AV VLAN, the same as UDP
 device control (see the IT network guide). The source-IP gate and path
-demux live in ``server/transport/http_listener.py``.
+demux live in ``openavc/transport/http_listener.py``.
 
 ``NOTIFY`` is accepted alongside ``POST`` because UPnP GENA delivers event
 messages with that method.

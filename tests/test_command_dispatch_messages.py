@@ -198,7 +198,7 @@ async def test_undeclared_child_type_names_the_declaration():
 
 
 async def test_undeclared_child_type_wording_is_the_static_rule_s():
-    """The catalog, the file checker, simulator.validate and the loader all
+    """The catalog, the file checker, openavc.simulator.validate and the loader all
     report the static form of this fault; the gate meets it again at runtime
     because a driver copied into driver_repo/ only warns at load. One
     function produces the sentence, so the four doors cannot drift apart."""

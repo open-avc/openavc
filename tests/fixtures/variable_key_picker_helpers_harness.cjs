@@ -1,7 +1,7 @@
 "use strict";
 // Loads the state-key picker helpers (variableKeyPickerHelpers.ts — React-free
 // pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the group-header labelling. The old
+// openavc/web/programmer/node_modules, and checks the group-header labelling. The old
 // inline switch relabelled only device:/system/ui: groups, so plugin.* keys
 // and orphan ui.* keys (element not in the project) fell through to the default
 // "Project Variables" header — a plugin's live state shown under the wrong

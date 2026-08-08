@@ -1,6 +1,6 @@
 """Host network configuration REST endpoints.
 
-Backed by ``server/system/network.py``. Every route 404s when no backend is
+Backed by ``openavc/system/network.py``. Every route 404s when no backend is
 available (Windows, Docker, generic servers), which is also the signal the
 UI surfaces use to hide themselves.
 
@@ -46,7 +46,7 @@ async def _backend() -> host_network.NetworkBackend:
 def _result(payload: dict[str, Any]) -> dict[str, Any]:
     """Translate a backend result to the API's command-result shape.
 
-    ``server/system/network.py`` speaks ``ok`` internally (it mirrors the
+    ``openavc/system/network.py`` speaks ``ok`` internally (it mirrors the
     privileged helper's own protocol); the REST surface says ``success`` for
     calls that can fail without being an HTTP error. Everything else on the
     backend result rides along untouched (``error``, ``rolled_back``, ``reboot``).

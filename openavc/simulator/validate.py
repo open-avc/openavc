@@ -918,13 +918,13 @@ def _check_type_consistency(
 
 
 # Transports the simulator serves with a server of its own — one module each
-# under simulator/ (tcp_simulator, http_simulator, udp_simulator, osc_simulator,
+# under openavc/simulator/ (tcp_simulator, http_simulator, udp_simulator, osc_simulator,
 # mqtt_simulator, websocket_simulator). Anything else is a raw byte pipe with no
 # simulator server, so it is simulated over TCP instead. That substitution is
 # the platform's own: SimulationManager._apply_sim_redirect flips a serial
 # device's transport to tcp for the duration of a simulation run precisely
 # because "the simulator has no serial server"
-# (server/core/simulation.py::_driver_transport_is_serial). A driver declaring
+# (openavc/core/simulation.py::_driver_transport_is_serial). A driver declaring
 # `serial` or `ssh` beside a `tcp` simulator is therefore correct, and erroring
 # on it asks the author to break a working simulator to satisfy a string
 # comparison.

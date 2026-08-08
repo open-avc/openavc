@@ -1,4 +1,4 @@
-"""Regression tests for the discovery config API (server/api/discovery.py).
+"""Regression tests for the discovery config API (openavc/api/discovery.py).
 
 The SNMP community string is a credential: GET /api/discovery/config must
 never return its value (it used to return a masked "****", which the

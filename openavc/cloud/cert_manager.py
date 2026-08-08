@@ -9,7 +9,7 @@ Drives the cloud-issued certificate flow over the agent's WebSocket:
 
 The private key is generated here and never leaves the instance — only the
 CSR (SANs exactly ``{*.<label>.<zone>, <label>.<zone>}``) goes up. On an
-issued result the chain + key are installed via ``server.tls`` and the
+issued result the chain + key are installed via ``openavc.tls`` and the
 running TLS listener hot-swaps to the new certificate on its next handshake.
 
 Renewals arrive two ways: the cloud sends ``cert_renew_due`` to connected

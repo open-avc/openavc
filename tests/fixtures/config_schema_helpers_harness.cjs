@@ -1,7 +1,7 @@
 "use strict";
 // Loads the config-schema editor helpers (configSchemaHelpers.ts — React-free
 // pure logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the typed default coercion, the
+// openavc/web/programmer/node_modules, and checks the typed default coercion, the
 // atomic type-change reducer, and the secret toggle's default purge that back
 // the Driver Builder's config-field editor. Mirrors
 // state_variable_helpers_harness.cjs. The Python wrapper skips when the Node

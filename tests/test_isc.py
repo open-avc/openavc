@@ -1359,7 +1359,7 @@ async def test_remote_command_in_flight_cap(isc, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# ISC WebSocket endpoint (server/api/isc_ws.py)
+# ISC WebSocket endpoint (openavc/api/isc_ws.py)
 # ---------------------------------------------------------------------------
 
 

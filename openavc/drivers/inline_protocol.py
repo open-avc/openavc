@@ -7,8 +7,8 @@ engine runs a config-authored protocol. The helpers here coerce the friendly,
 possibly hand- or AI-authored config shapes into the engine's canonical forms.
 
 Pure and stdlib-only on purpose: both the driver runtime
-(``server.drivers.configurable``) and the device simulator
-(``simulator.yaml_auto``) import these, so they must not pull in the driver
+(``openavc.drivers.configurable``) and the device simulator
+(``openavc.simulator.yaml_auto``) import these, so they must not pull in the driver
 runtime or transport stack.
 
 The six public names below are that shared surface — ``normalize_config_*``,

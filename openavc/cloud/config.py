@@ -37,7 +37,7 @@ def save_cloud_config(config: dict) -> None:
 
     The file holds the system master key — the root credential for the cloud
     trust boundary — so it is written owner read/write only (0600) on POSIX,
-    matching how TLS private keys are persisted (``server/tls.py``). ``mkstemp``
+    matching how TLS private keys are persisted (``openavc/tls.py``). ``mkstemp``
     already creates the temp file 0600 and ``os.replace`` preserves that, but
     the mode is set explicitly so the guarantee doesn't silently rest on that
     implementation detail (a future switch to a plain write would default to

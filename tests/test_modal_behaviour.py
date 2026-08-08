@@ -23,7 +23,7 @@ at all. A modal now marks the keypress it answered.
 
 Like the other TypeScript harnesses these skip when Node/esbuild/jsdom aren't
 installed, and fail instead when a run promised them (OPENAVC_REQUIRE_NODE=1).
-Run them locally after `npm ci` in web/programmer.
+Run them locally after `npm ci` in openavc/web/programmer.
 """
 
 from __future__ import annotations
@@ -52,11 +52,11 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not (NODE_MODULES / "esbuild").is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not (NODE_MODULES / "jsdom").is_dir():
-        return "jsdom not installed (run `npm ci` in web/programmer)"
+        return "jsdom not installed (run `npm ci` in openavc/web/programmer)"
     if not (NODE_MODULES / "react-dom").is_dir():
-        return "react-dom not installed (run `npm ci` in web/programmer)"
+        return "react-dom not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "modal harness missing"
     if not MODAL_TSX.is_file():

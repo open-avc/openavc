@@ -1,7 +1,7 @@
 "use strict";
 // Loads the trigger editor helpers (triggerHelpers.ts — React-free pure
 // logic) bundled on the fly with the esbuild already in
-// web/programmer/node_modules, and checks the cron-safe field parsing, the
+// openavc/web/programmer/node_modules, and checks the cron-safe field parsing, the
 // verbatim day-of-week rebuild, and the saved-event category detection that
 // back the schedule and event trigger editors.
 // Mirrors state_variable_helpers_harness.cjs. The Python wrapper skips when

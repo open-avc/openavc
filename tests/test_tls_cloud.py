@@ -1,4 +1,4 @@
-"""Tests for server.tls cloud-cert support — load, atomic install, SNI selection.
+"""Tests for openavc.tls cloud-cert support — load, atomic install, SNI selection.
 
 Uses an invented label + zone throughout (no real issuance, no real domain).
 The live dual-serve/hot-swap path through a real uvicorn listener is covered

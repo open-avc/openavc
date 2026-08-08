@@ -16,7 +16,7 @@ whose API is HTTPS-only (a Crestron NVX, a Dante Director) have drivers with an
 https:// base URL and verification off; this lets those drivers connect to the
 simulator exactly as they do to the real device, instead of needing a
 plain-HTTP mode that never runs in the field. See
-``simulator/self_signed_tls.py``.
+``openavc/simulator/self_signed_tls.py``.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class HTTPServerMixin:
     What a request *means* is the one thing that differs, so that is the
     override point: :meth:`respond_http`.
 
-    Mix into a :class:`~simulator.base.BaseSimulator`. Nothing here is named
+    Mix into a :class:`~openavc.simulator.base.BaseSimulator`. Nothing here is named
     ``start`` or ``stop``, so a simulator that decides its transport at
     construction time can carry this alongside another server.
     """

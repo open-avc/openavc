@@ -50,7 +50,7 @@ BROKEN_SOURCE = GOOD_SOURCE.replace(
 # Parses fine, cannot import: the module this names does not exist. Must be
 # treated as work in progress, not refused.
 UNIMPORTABLE_SOURCE = GOOD_SOURCE.replace(
-    "from server.drivers.base import BaseDriver",
+    "from openavc.drivers.base import BaseDriver",
     "from acme_vendor_sdk_that_is_not_installed import BaseDriver",
 )
 

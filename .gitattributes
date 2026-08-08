@@ -5,5 +5,5 @@
 # fake changes with no content difference, easy to mistake for real work in
 # progress. Pinning them to the endings the generator writes keeps a rebuild a
 # no-op unless the icon set actually changed.
-web/panel/icons.svg                                        text eol=lf
-web/programmer/src/components/ui-builder/spriteIconNames.ts text eol=lf
+openavc/web/panel/icons.svg                                        text eol=lf
+openavc/web/programmer/src/components/ui-builder/spriteIconNames.ts text eol=lf

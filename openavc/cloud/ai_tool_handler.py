@@ -567,12 +567,12 @@ def _validate_script_syntax(source: str, filename: str = "<script>") -> str | No
 
 
 # --- Plugin config schema validation ---
-# Moved to server/core/plugin_config.py so the REST config endpoint and the
+# Moved to openavc/core/plugin_config.py so the REST config endpoint and the
 # cloud AI tool accept/reject identical shapes.
 
 
 # --- State key validation ---
-# The key/value rules live in server.core.state_store.check_state_write, shared
+# The key/value rules live in openavc.core.state_store.check_state_write, shared
 # with the REST and WebSocket doors — this layer used to keep its own copy of
 # the prefix list and the flat-primitive check, which is how the three doors
 # came to disagree about what a valid write was.

@@ -18,7 +18,7 @@ defects:
   is in flight.
 
 Two layers: the harness bundles the real ``routingMatrixHelpers.ts`` with
-the esbuild in ``web/programmer/node_modules`` (skips when the Node
+the esbuild in ``openavc/web/programmer/node_modules`` (skips when the Node
 toolchain is absent), and source-level checks pin the surface editors to
 the fixed shapes. Those checks read ``surface/RoutingMatrix.tsx`` for the
 crosspoint ones and the whole ``surface/`` directory for the assignment
@@ -68,7 +68,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "routing matrix harness missing"
     if not HELPERS_TS.is_file():

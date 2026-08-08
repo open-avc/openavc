@@ -420,7 +420,7 @@ def test_loopback_trust_has_exactly_one_authority():
         "These read the request's socket peer directly: "
         + ", ".join(f"{f}:{fn}()" for f, fn in offenders)
         + ". A tunneled request arrives from 127.0.0.1, so the peer does not "
-        "answer 'is this local'. Use server.utils.request_origin "
+        "answer 'is this local'. Use openavc.utils.request_origin "
         "(is_local_console_request / is_tunneled_request). If the peer really "
         "is just data here, add the site to _MAY_READ_THE_SOCKET_PEER with the "
         "reason it is not a trust decision."

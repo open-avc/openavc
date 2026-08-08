@@ -3,7 +3,7 @@ Vendor-neutral infrared protocol renderer.
 
 Turns a compact ``(protocol, device, subdevice, function)`` code — the notation
 external IR databases use to store remotes space-efficiently — into an emittable
-:class:`~server.transport.ir_codec.IRCode`, then Pronto hex. Pure functions:
+:class:`~openavc.transport.ir_codec.IRCode`, then Pronto hex. Pure functions:
 no transport, no vendor wire formats, no network. Reusable by any IR feature.
 
 Each protocol is expressed the way its published timing spec defines it: a

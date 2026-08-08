@@ -1,13 +1,13 @@
 """Render the binding-reach tables into the Programmer IDE's types.
 
-Produces ``web/programmer/src/api/uiBindingReach.gen.ts`` from
+Produces ``openavc/web/programmer/src/api/uiBindingReach.gen.ts`` from
 ``HONORED_SHOW_SLOTS`` and ``STATE_LABEL_TYPES`` in ``page_review.py``. Data
 only -- the rows, not the arithmetic over them -- so the Builder and the AI door
 answer "does this element type's renderer read this binding" from one table.
 
 Generated rather than hand-mirrored on purpose. The table is not a design
 decision anyone can re-derive by reading it: it is what each render function in
-``web/panel/panel.js`` actually looks at, eighteen types wide, and
+``openavc/web/panel/panel.js`` actually looks at, eighteen types wide, and
 ``tests/test_ui_page_review_mirrors.py`` re-derives the Python side from the
 renderer itself. A hand-written TypeScript copy would be a third version of a
 fact that already has two, and the failure it produces is silent -- a confident
@@ -29,12 +29,12 @@ ARTIFACT = "openavc/web/programmer/src/api/uiBindingReach.gen.ts"
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the binding-reach tables (server/ui/page_review.py).
+// Rendered from the binding-reach tables (openavc/ui/page_review.py).
 // Regenerate with:  python -m openavc.ui.review_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 //
 // `show` accepts the same four slots for every element type, and each render
-// function in web/panel/panel.js reads only some of them. A slot the renderer
+// function in openavc/web/panel/panel.js reads only some of them. A slot the renderer
 // never looks at is silently inert: the element draws, the state key resolves,
 // and the thing the author asked for simply never happens. That is how a label
 // ended up carrying ONLINE / OFFLINE state text the panel has no code to draw.

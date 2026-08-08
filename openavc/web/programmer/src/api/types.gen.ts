@@ -1,5 +1,5 @@
 // GENERATED FILE - DO NOT EDIT.
-// Rendered from the driver-contract registry (server/drivers/spec.py).
+// Rendered from the driver-contract registry (openavc/drivers/spec.py).
 // Regenerate with:  python -m openavc.drivers.contract_gen
 // A test compares this file against a fresh render, so hand edits fail CI.
 

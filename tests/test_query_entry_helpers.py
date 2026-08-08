@@ -9,7 +9,7 @@ type drops args (each_child OSC is address-only), removing every arg collapses
 back off the args form, and the readers pull the right field per shape.
 
 This bundles the real ``queryEntryHelpers.ts`` with the esbuild in
-``web/programmer/node_modules``. Skips when the Node toolchain or esbuild is
+``openavc/web/programmer/node_modules``. Skips when the Node toolchain or esbuild is
 absent rather than failing the Python-only CI gate.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ def _toolchain_reason() -> str | None:
     if shutil.which("node") is None:
         return "node not installed"
     if not ESBUILD_DIR.is_dir():
-        return "esbuild not installed (run `npm ci` in web/programmer)"
+        return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "query-entry-helpers harness missing"
     if not HELPERS_TS.is_file():

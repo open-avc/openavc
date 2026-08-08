@@ -1,4 +1,4 @@
-// TypeScript types mirroring Python Pydantic models from server/core/project_loader.py
+// TypeScript types mirroring Python Pydantic models from openavc/core/project_loader.py
 
 import type {
   EnumOption,

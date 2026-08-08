@@ -96,7 +96,7 @@ TOUCHABLE_TYPES = frozenset({
 # --- What the panel reads out of `show`, per type --------------------------
 #
 # Read off the renderer, not off the schema: `show` accepts four slots for every
-# element type, and each render function in web/panel/panel.js registers a
+# element type, and each render function in openavc/web/panel/panel.js registers a
 # binding for only some of them. A slot the renderer never looks at is silently
 # inert -- the element draws, nothing errors, and the thing the author asked for
 # simply never happens. That is how a label ended up carrying ONLINE / OFFLINE

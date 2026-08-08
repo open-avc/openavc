@@ -569,7 +569,7 @@ export function driverRangeTarget(
  *  A gauge or a level meter scaled past what the device reports is a needle
  *  that never reaches the end of its sweep -- untidy, and a legitimate choice
  *  for a scale shared across channels. A fader scaled past it hands the device
- *  a value it refuses. Mirrors COMMANDING_TYPES in server/ui/page_review.py,
+ *  a value it refuses. Mirrors COMMANDING_TYPES in openavc/ui/page_review.py,
  *  which warns the AI about the same thing. */
 const COMMANDING_ELEMENTS = new Set(["slider", "fader"]);
 
