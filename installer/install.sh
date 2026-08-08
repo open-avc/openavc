@@ -386,7 +386,12 @@ create_user() {
 
 install_files() {
     local is_upgrade=false
-    if [ -d "$INSTALL_DIR/openavc" ]; then
+    # Both layouts count as an existing install. 0.24.1 and earlier unpacked
+    # server/ simulator/ web/ themes/ at the top level; 0.25.0 puts all four
+    # inside openavc/. Look for only one of them and the upgrade that matters
+    # most -- the one that crosses between them -- reads as a fresh install:
+    # no service stop, and no .previous to roll back to.
+    if [ -d "$INSTALL_DIR/openavc" ] || [ -d "$INSTALL_DIR/server" ]; then
         is_upgrade=true
         info "Existing installation found. Upgrading..."
         # Stop service before replacing files
@@ -396,6 +401,16 @@ install_files() {
             rm -rf "${INSTALL_DIR}.previous"
         fi
         cp -a "$INSTALL_DIR" "${INSTALL_DIR}.previous"
+
+        # tar unpacks over whatever is already there, so the pre-0.25.0
+        # directories would survive beside the new package. That is not just
+        # clutter: the service runs with WorkingDirectory=$INSTALL_DIR, so a
+        # driver still saying `from server.…` would find the stale tree and
+        # import a whole second copy of the platform -- binding to a second
+        # state store and event bus -- instead of failing with the message
+        # that tells the user to update it. The snapshot above keeps them.
+        rm -rf "$INSTALL_DIR/server" "$INSTALL_DIR/simulator" \
+               "$INSTALL_DIR/web" "$INSTALL_DIR/themes"
     fi
 
     info "Extracting to ${INSTALL_DIR}/..."

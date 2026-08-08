@@ -57,6 +57,19 @@ Name: "shortcuts"; Description: "Desktop and Start Menu shortcuts"; Types: full
 ; purpose: an install without the service leaves the tray unable to start
 ; anything. Its files and setup/removal steps below are therefore ungated.
 
+[InstallDelete]
+; 0.24.1 and earlier laid the bundled data out as _internal\server,
+; _internal\simulator, _internal\web and _internal\themes; 0.25.0 puts all of
+; it under _internal\openavc. Inno copies over what is there and never removes
+; anything, so without this the old set survives the upgrade -- and _internal
+; is on the frozen app's sys.path, so a driver's _sim.py that still says
+; `from simulator.…` would import the stale 0.24.1 copy instead of failing
+; with the message that tells the user to update the driver.
+Type: filesandordirs; Name: "{app}\_internal\server"
+Type: filesandordirs; Name: "{app}\_internal\simulator"
+Type: filesandordirs; Name: "{app}\_internal\web"
+Type: filesandordirs; Name: "{app}\_internal\themes"
+
 [Files]
 ; Server bundle - always installed unconditionally (server is a fixed/required
 ; component, and Inno Setup silently skips Components:-gated entries on upgrades

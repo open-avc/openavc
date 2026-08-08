@@ -18,4 +18,15 @@ fi
 # Give launchd a moment to release the listening socket and file handles.
 sleep 1
 
+# 0.24.1 and earlier put the bundled data at _internal/server, _internal/simulator,
+# _internal/web and _internal/themes; 0.25.0 puts all of it under _internal/openavc.
+# Installer upgrades a bundle by merging, so the old set would survive alongside
+# the new one -- and _internal is on the frozen app's sys.path, so a driver's
+# _sim.py that still says `from simulator.…` would import the stale 0.24.1 copy
+# instead of failing with the message that says to update the driver.
+INTERNAL="/Applications/OpenAVC.app/Contents/Resources/server/_internal"
+for stale in server simulator web themes; do
+    rm -rf "$INTERNAL/$stale"
+done
+
 exit 0
