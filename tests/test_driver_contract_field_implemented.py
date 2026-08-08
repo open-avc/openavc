@@ -110,11 +110,12 @@ NOT_AN_IMPLEMENTATION = frozenset({
     "openavc/core/project_migration.py",
 })
 
-# The runtime half is the whole server plus the simulator: a contract field is
-# implemented wherever its consumer lives, and they are spread wider than the
+# The runtime half is the whole package, simulator included: a contract field
+# is implemented wherever its consumer lives, and they are spread wider than the
 # driver package. Discovery hints are read in openavc/discovery/, frame-parser
 # geometry in openavc/transport/, and the simulator: block in openavc/simulator/.
-RUNTIME_ROOTS = ("server", "simulator")
+# One root covers all of them now.
+RUNTIME_ROOTS = ("openavc",)
 
 FRONTEND_ROOT = "openavc/web/programmer/src"
 GENERATED_TYPES = "types.gen.ts"

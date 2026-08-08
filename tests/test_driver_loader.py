@@ -1,5 +1,6 @@
 """Tests for driver loader (.avcdriver YAML files)."""
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -1421,3 +1422,62 @@ async def test_engine_start_registers_the_drivers_on_disk(tmp_path):
         await engine.stop()
         registry._DRIVER_REGISTRY.clear()
         registry._DRIVER_REGISTRY.update(saved)
+
+
+def test_pre_rename_driver_says_what_to_do_about_it(tmp_path, caplog):
+    """A driver installed before the platform moved under ``openavc`` survives
+    an upgrade untouched in ``driver_repo/``, so this is the failure a real
+    user hits: the file still says ``from server.…``, that name is gone, and
+    the driver silently stops registering while its devices stop resolving.
+
+    A raw ImportError traceback says nothing about the remedy. The log line has
+    to name the driver, say why, and say that updating it from Browse Drivers
+    replaces the file — that is the whole fix, and nothing else in the product
+    will offer it (the catalog's semver check only fires because the rename
+    commit bumps each driver's version too).
+
+    Deliberately the ``simulator.`` spelling, not ``server.``. Both take the
+    same branch, but a dev machine can still have an editable install pointing
+    ``server`` at a pre-rename checkout, in which case that import *succeeds*
+    and this test asserts nothing. ``simulator`` was never an installed
+    distribution, so it is missing everywhere.
+    """
+    (tmp_path / "stale_driver.py").write_text(
+        '"""A driver from before the rename."""\n'
+        "from openavc.drivers.base import BaseDriver\n"
+        "from simulator.tcp_simulator import TCPSimulator\n"
+        "class StaleDriver(BaseDriver):\n"
+        '    DRIVER_INFO = {"id": "stale_driver", "name": "Stale Driver"}\n',
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.ERROR):
+        assert load_python_driver_file(tmp_path / "stale_driver.py") is None
+
+    text = caplog.text
+    assert "stale_driver.py" in text
+    assert "older OpenAVC" in text
+    assert "Browse Drivers" in text
+    # The point is that it is NOT a bare traceback.
+    assert "Traceback" not in text
+
+
+def test_a_genuinely_broken_driver_still_gets_its_traceback(tmp_path, caplog):
+    """The rename branch must not swallow every other import failure.
+
+    A driver reaching for a third-party package the user has not installed is
+    the common case, and the traceback is what identifies it.
+    """
+    (tmp_path / "needs_a_lib.py").write_text(
+        "import a_package_that_is_not_installed_anywhere\n"
+        "from openavc.drivers.base import BaseDriver\n"
+        "class NeedsLib(BaseDriver):\n"
+        '    DRIVER_INFO = {"id": "needs_a_lib", "name": "Needs Lib"}\n',
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.ERROR):
+        assert load_python_driver_file(tmp_path / "needs_a_lib.py") is None
+
+    assert "Browse Drivers" not in caplog.text
+    assert "Traceback" in caplog.text

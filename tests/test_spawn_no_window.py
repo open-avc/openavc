@@ -17,7 +17,7 @@ import ast
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCAN_DIRS = ("server", "simulator")
+SCAN_DIRS = ("openavc",)
 
 _SUBPROCESS_CALLS = {"Popen", "run", "call", "check_call", "check_output"}
 _ASYNCIO_CALLS = {"create_subprocess_exec", "create_subprocess_shell"}
@@ -38,8 +38,10 @@ def _spawn_calls(tree: ast.AST):
 
 def test_every_spawn_passes_creationflags():
     offenders = []
+    scanned = 0
     for scan_dir in SCAN_DIRS:
         for path in sorted((REPO_ROOT / scan_dir).rglob("*.py")):
+            scanned += 1
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for call in _spawn_calls(tree):
                 keywords = {kw.arg for kw in call.keywords}
@@ -49,6 +51,9 @@ def test_every_spawn_passes_creationflags():
                     continue
                 offenders.append(f"{path.relative_to(REPO_ROOT)}:{call.lineno}")
 
+    # A rule that walks nothing forbids nothing. This one did, silently, for as
+    # long as SCAN_DIRS named directories that had stopped existing.
+    assert scanned > 100, f"the spawn sweep only reached {scanned} files"
     assert not offenders, (
         "Child-process spawn(s) missing creationflags — pass "
         "openavc.utils.spawn.CREATE_NO_WINDOW so a console-less server on "

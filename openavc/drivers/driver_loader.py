@@ -366,6 +366,23 @@ def load_python_driver_file(filepath: Path) -> type | None:
         # Add to sys.modules so relative imports within the driver work
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
+    except ModuleNotFoundError as exc:
+        # A driver installed before the platform moved under `openavc` still
+        # says `from server.…` / `from simulator.…`, and those names are gone.
+        # It survives an upgrade untouched in driver_repo/, so this is what a
+        # user actually hits: the driver simply stops registering and its
+        # devices stop resolving. A raw ImportError says nothing about the fix,
+        # so name it — updating the driver from Browse Drivers replaces the file.
+        if (exc.name or "").split(".")[0] in ("server", "simulator"):
+            log.error(
+                f"Driver {filepath.name} was written for an older OpenAVC and "
+                f"imports '{exc.name}', which no longer exists. Update it from "
+                f"Browse Drivers (or re-install it) to get the current version."
+            )
+        else:
+            log.exception(f"Failed to load Python driver from {filepath}")
+        sys.modules.pop(module_name, None)
+        return None
     except Exception:  # Catch-all: exec_module runs arbitrary driver code
         log.exception(f"Failed to load Python driver from {filepath}")
         # Drop the half-initialized module: leaving it resident for the process
