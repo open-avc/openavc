@@ -22,6 +22,7 @@ from openavc.system_config import (
     _parse_env_value,
     _resolve_app_dir,
     _resolve_install_dir,
+    _resolve_package_dir,
     get_data_dir,
     get_log_dir,
     get_system_config,
@@ -413,6 +414,39 @@ class TestPathResolution:
              patch.object(sys, "_MEIPASS", fake_meipass, create=True):
             result = _resolve_app_dir()
         assert result == Path(fake_meipass)
+
+    def test_resolve_package_dir_frozen(self):
+        """When frozen, PACKAGE_DIR is _MEIPASS/openavc -- one level below APP_DIR.
+
+        This is the line the whole frozen build hangs off. `openavc.spec` lays
+        the themes, the built-in driver definitions, the starter templates and
+        both web bundles down under `_internal/openavc/`, and every one of them
+        is reached through PACKAGE_DIR. Resolve it to `_MEIPASS` itself and the
+        Windows and macOS builds still start and still serve `/api/health` --
+        with no themes, no built-in drivers, no starter projects and no UI.
+        Nothing else in the suite touches this branch: the two assertions that
+        name PACKAGE_DIR compare it against constants defined from it, so they
+        hold for any value it takes.
+        """
+        fake_meipass = "/fake/bundle/_internal"
+        with patch.object(sys, "frozen", True, create=True), \
+             patch.object(sys, "_MEIPASS", fake_meipass, create=True):
+            package = _resolve_package_dir()
+            app = _resolve_app_dir()
+        assert package == Path(fake_meipass) / "openavc"
+        assert package.parent == app, "PACKAGE_DIR must sit one level under APP_DIR"
+
+    def test_resolve_package_dir_is_the_package_not_the_repo_root(self):
+        """Unfrozen, PACKAGE_DIR is the package directory, APP_DIR its parent.
+
+        `themes/`, `web/` and the built-in drivers moved *inside* the package
+        in 0.25.0 while `data/` and `pyproject.toml` stayed beside it, which is
+        the whole reason these are two constants rather than one.
+        """
+        assert _resolve_package_dir().name == "openavc"
+        assert _resolve_package_dir().parent == _resolve_app_dir()
+        assert (_resolve_package_dir() / "themes").is_dir()
+        assert (_resolve_package_dir() / "drivers" / "definitions").is_dir()
 
     def test_resolve_install_dir_frozen(self):
         """When frozen, _resolve_install_dir returns the exe's parent directory."""
