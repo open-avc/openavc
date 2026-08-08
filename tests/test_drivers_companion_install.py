@@ -257,11 +257,6 @@ def silence_register_and_refresh(monkeypatch):
     these tests don't set up. We replace them with no-ops so the
     companion-fetch logic is what's under test.
     """
-    monkeypatch.setattr(
-        "openavc.api.routes.drivers.refresh_all_device_matches",
-        AsyncMock(return_value=None),
-        raising=False,
-    )
     # Patch the route module, not the registry that defines these: the
     # route imports both names at module scope, so that binding is what
     # the handler actually calls.

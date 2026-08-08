@@ -239,7 +239,7 @@ class SimulationManager:
 
         # Check simulator is available
         try:
-            import simulator  # noqa: F401
+            import openavc.simulator  # noqa: F401
         except ImportError:
             raise RuntimeError(
                 "Simulator module not found. Make sure the simulator "
@@ -330,7 +330,7 @@ class SimulationManager:
         if getattr(sys, 'frozen', False):
             cmd = [sys.executable, "--simulator", "--config", config_path, "--no-auto-shutdown"]
         else:
-            cmd = [sys.executable, "-m", "simulator", "--config", config_path, "--no-auto-shutdown"]
+            cmd = [sys.executable, "-m", "openavc.simulator", "--config", config_path, "--no-auto-shutdown"]
 
         try:
             self._process = await asyncio.create_subprocess_exec(

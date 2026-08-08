@@ -81,11 +81,6 @@ def driver_repo(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def silence_engine(monkeypatch):
     monkeypatch.setattr(
-        "openavc.api.routes.drivers.refresh_all_device_matches",
-        AsyncMock(return_value=None),
-        raising=False,
-    )
-    monkeypatch.setattr(
         "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),
         raising=False,

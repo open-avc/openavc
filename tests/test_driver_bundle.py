@@ -604,9 +604,8 @@ async def test_update_of_a_yaml_driver_fetches_no_python_companions(
         lambda p: {"id": "foo", "name": "Foo", "transport": "tcp"},
     )
     monkeypatch.setattr(
-        "openavc.api.routes.drivers.create_configurable_driver_class",
+        "openavc.drivers.configurable.create_configurable_driver_class",
         lambda d: type("D", (), {"DRIVER_INFO": {"id": "foo"}}),
-        raising=False,
     )
     client = _update_client(_ok(yaml_text))
     req = MagicMock()

@@ -53,9 +53,6 @@ def _stub_persistence(engine, monkeypatch, save_delay: float = 0.0):
             await asyncio.sleep(save_delay)
 
     monkeypatch.setattr("openavc.core.engine.save_project_async", fake_save)
-    monkeypatch.setattr(
-        "openavc.api.routes.project.save_project_async", fake_save, raising=False
-    )
 
     async def fake_reconcile(diff, origin):
         pass
