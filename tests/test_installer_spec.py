@@ -95,10 +95,10 @@ def test_resource_dirs_are_bundled():
     """
     dests = _data_dests()
     required = {
-        "server/templates",
-        "server/drivers/definitions",
+        "openavc/templates",
+        "openavc/drivers/definitions",
         "themes",
-        "web/panel",
+        "openavc/web/panel",
         "projects/default",
     }
     missing = required - dests

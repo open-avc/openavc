@@ -26,9 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 @pytest.mark.parametrize(
     "rel_path",
     [
-        "server/drivers/avcdriver.schema.json",
-        "server/drivers/pythondriver.schema.json",
-        "web/programmer/src/api/types.gen.ts",
+        "openavc/drivers/avcdriver.schema.json",
+        "openavc/drivers/pythondriver.schema.json",
+        "openavc/web/programmer/src/api/types.gen.ts",
     ],
 )
 def test_committed_artifact_matches_registry(rel_path: str) -> None:
@@ -77,7 +77,7 @@ def test_push_tables_agree() -> None:
 
 def test_schema_is_valid_json_and_declares_every_registry_field() -> None:
     doc = json.loads(
-        (REPO_ROOT / "server/drivers/avcdriver.schema.json").read_text(
+        (REPO_ROOT / "openavc/drivers/avcdriver.schema.json").read_text(
             encoding="utf-8"
         )
     )

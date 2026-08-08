@@ -14,7 +14,7 @@ from pathlib import Path
 
 from openavc.main import _WS_MAX_SIZE
 
-MAIN_PY = Path(__file__).resolve().parents[1] / "server" / "main.py"
+MAIN_PY = Path(__file__).resolve().parents[1] / "openavc" / "main.py"
 
 # uvicorn's built-in default that we're tightening away from.
 _UVICORN_DEFAULT_WS_MAX = 16 * 1024 * 1024

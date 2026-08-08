@@ -99,7 +99,7 @@ def test_the_artifact_path_is_part_of_a_cross_repo_contract():
     prevent. So the path is pinned here, and moving it means coming through this
     test and updating the URL that reads it.
     """
-    assert ARTIFACT == "server/ui/panel_authoring_guide.md"
+    assert ARTIFACT == "openavc/ui/panel_authoring_guide.md"
 
 
 # --- What it must not say --------------------------------------------------

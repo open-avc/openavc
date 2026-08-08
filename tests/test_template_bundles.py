@@ -33,7 +33,7 @@ import pytest
 from tests import gates
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPLATE_DIR = REPO_ROOT / "server" / "templates"
+TEMPLATE_DIR = REPO_ROOT / "openavc" / "templates"
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
@@ -194,7 +194,7 @@ def test_no_template_needs_a_driver_it_does_not_carry() -> None:
     orphaned device and, on an isolated network, no way to repair it.
     """
     builtin_ids = set()
-    definitions = REPO_ROOT / "server" / "drivers" / "definitions"
+    definitions = REPO_ROOT / "openavc" / "drivers" / "definitions"
     for path in definitions.glob("*.avcdriver"):
         for line in path.read_text(encoding="utf-8").splitlines():
             if line.startswith("id:"):

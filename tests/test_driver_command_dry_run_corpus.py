@@ -29,7 +29,7 @@ from openavc.api.routes.driver_test import _dry_run_command
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
-BUILTIN_DEFINITIONS = OPENAVC_ROOT / "openavc" / "server" / "drivers" / "definitions"
+BUILTIN_DEFINITIONS = OPENAVC_ROOT / "openavc" / "drivers" / "definitions"
 
 DRIVERS_ROOT = Path(
     os.environ.get("OPENAVC_DRIVERS_ROOT")

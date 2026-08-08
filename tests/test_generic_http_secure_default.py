@@ -16,7 +16,7 @@ import yaml
 
 _DRIVER = (
     Path(__file__).resolve().parents[1]
-    / "server" / "drivers" / "definitions" / "generic_http.avcdriver"
+    / "openavc" / "drivers" / "definitions" / "generic_http.avcdriver"
 )
 
 

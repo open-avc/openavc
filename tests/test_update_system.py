@@ -95,11 +95,11 @@ def _build_fake_install(
     refused as rollback targets.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
-    (target_dir / "server").mkdir(exist_ok=True)
-    (target_dir / "server" / "main.py").write_text(
+    (target_dir / "openavc").mkdir(exist_ok=True)
+    (target_dir / "openavc" / "main.py").write_text(
         f"# OpenAVC v{version}\nprint('server running')\n"
     )
-    (target_dir / "server" / "version.py").write_text(
+    (target_dir / "openavc" / "version.py").write_text(
         f"__version__ = '{version}'\n"
     )
     (target_dir / "requirements.txt").write_text("httpx>=0.27\nfastapi>=0.100\n")
@@ -231,7 +231,7 @@ def _run_helper(data_dir: Path, app_dir: Path) -> subprocess.CompletedProcess:
 
 def _read_version(app_dir: Path) -> str:
     """Read the version string from the fake install's version.py."""
-    content = (app_dir / "server" / "version.py").read_text()
+    content = (app_dir / "openavc" / "version.py").read_text()
     # Parses: __version__ = '1.0.0'
     return content.split("'")[1]
 
@@ -735,7 +735,7 @@ class TestHelperScriptApplyUpdate:
         # Backup of v1.0.0 exists at app_dir.previous
         previous = Path(str(app_dir) + ".previous")
         assert previous.is_dir()
-        prev_version_content = (previous / "server" / "version.py").read_text()
+        prev_version_content = (previous / "openavc" / "version.py").read_text()
         assert "1.0.0" in prev_version_content
 
     def test_preserves_files_not_in_tarball(self, tmp_path):
@@ -1047,8 +1047,8 @@ class TestHelperScriptAtomicSwap:
         _build_fake_install(app_dir, "1.0.0")
 
         # File that v1.0.0 had but v2.0.0 removed.
-        (app_dir / "server" / "drivers").mkdir(parents=True, exist_ok=True)
-        (app_dir / "server" / "drivers" / "deprecated_driver.py").write_text(
+        (app_dir / "openavc" / "drivers").mkdir(parents=True, exist_ok=True)
+        (app_dir / "openavc" / "drivers" / "deprecated_driver.py").write_text(
             "# removed in v2.0.0\n"
         )
 
@@ -1068,7 +1068,7 @@ class TestHelperScriptAtomicSwap:
         assert result.returncode == 0
         assert _read_version(app_dir) == "2.0.0"
         # The deprecated file must NOT be in $APP_DIR after the swap.
-        assert not (app_dir / "server" / "drivers" / "deprecated_driver.py").exists(), (
+        assert not (app_dir / "openavc" / "drivers" / "deprecated_driver.py").exists(), (
             "atomic-swap-extract did not purge file removed in the new release"
         )
 
@@ -1096,7 +1096,7 @@ class TestHelperScriptAtomicSwap:
         previous = Path(str(app_dir) + ".previous")
         assert previous.is_dir()
         # Full snapshot of the OLD install — code, venv, user repos.
-        assert (previous / "server" / "version.py").exists()
+        assert (previous / "openavc" / "version.py").exists()
         assert (previous / "venv" / "bin" / "python3").exists(), (
             "A61: snapshot is missing venv — rollback would be refused as corrupt"
         )

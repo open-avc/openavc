@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-API_ROOT = Path(__file__).resolve().parent.parent / "server" / "api"
+API_ROOT = Path(__file__).resolve().parent.parent / "openavc" / "api"
 
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -184,7 +184,7 @@ def test_server_errors_do_not_leak_exception_text():
     """
     roots = list(_api_modules())
     # The simulator serves its own REST API from a separate process; same rule.
-    sim_api = API_ROOT.parent.parent / "simulator" / "api.py"
+    sim_api = API_ROOT.parent.parent / "openavc" / "simulator" / "api.py"
     roots.append((sim_api, ast.parse(sim_api.read_text(encoding="utf-8"))))
 
     offenders = []

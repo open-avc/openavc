@@ -364,11 +364,11 @@ async def test_marker_reaches_the_local_server_as_the_agent_sent_it(tunnel_handl
 _MAY_READ_THE_SOCKET_PEER = {
     # The rate-limit bucket key. Never gates anything; a wrong answer costs a
     # caller a shared budget, not access.
-    ("server/middleware/rate_limit.py", "_get_client_ip"),
+    ("openavc/middleware/rate_limit.py", "_get_client_ip"),
     # Handed to the push listener as the value it compares against the
     # device's own addresses. The trust decision happens there, and this route
     # refuses tunneled requests before reaching it.
-    ("server/api/routes/push.py", "device_push"),
+    ("openavc/api/routes/push.py", "device_push"),
 }
 
 
@@ -408,7 +408,7 @@ def test_loopback_trust_has_exactly_one_authority():
 
     root = Path(__file__).resolve().parent.parent
     offenders = []
-    for area in ("server/api", "server/middleware"):
+    for area in ("openavc/api", "openavc/middleware"):
         for path in sorted((root / area).rglob("*.py")):
             rel = path.relative_to(root).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"))

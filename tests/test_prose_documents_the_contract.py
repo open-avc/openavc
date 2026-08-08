@@ -88,7 +88,7 @@ NOT_A_CONTRACT_KEY = {
                  "definition key.",
     "reject": "A simulator state-machine transition key. The registry models "
               "that a machine has transitions, not what one contains; "
-              "simulator/validate.py checks their shape.",
+              "openavc/simulator/validate.py checks their shape.",
     "listen_port": "A device connection setting an OSC driver puts in "
                    "default_config, not a contract field.",
     "login": "The device's own Telnet prompt text, quoted in the "

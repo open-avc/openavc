@@ -99,15 +99,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # matching itself in these three files proves nothing, so they are not part
 # of the searched runtime.
 NOT_AN_IMPLEMENTATION = frozenset({
-    "server/drivers/spec.py",
-    "server/drivers/contract_gen.py",
-    "server/drivers/contract_gen_ts.py",
+    "openavc/drivers/spec.py",
+    "openavc/drivers/contract_gen.py",
+    "openavc/drivers/contract_gen_ts.py",
     # The project-file format migration. It reads the 0.7.0 UI page grid,
     # whose `columns`/`rows` share a spelling with a config table's, so it
     # supplies configSchemaEntry's anchor while implementing nothing in the
     # driver contract -- and a dict `.values()` call beside it was enough to
     # make config_schema.*.values look read by the runtime.
-    "server/core/project_migration.py",
+    "openavc/core/project_migration.py",
 })
 
 # The runtime half is the whole server plus the simulator: a contract field is
@@ -116,7 +116,7 @@ NOT_AN_IMPLEMENTATION = frozenset({
 # geometry in server/transport/, and the simulator: block in simulator/.
 RUNTIME_ROOTS = ("server", "simulator")
 
-FRONTEND_ROOT = "web/programmer/src"
+FRONTEND_ROOT = "openavc/web/programmer/src"
 GENERATED_TYPES = "types.gen.ts"
 
 # Opt-out keys are "<block>.<field>", or a bare field name for a top-level
