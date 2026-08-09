@@ -507,21 +507,38 @@ def rollback_target_version(app_dir: Path) -> str:
         return best.stem.removeprefix("OpenAVC-Setup-")
 
     if sys.platform == "darwin":
-        # Display-only. The .app.previous snapshot does carry a bundled
-        # pyproject.toml, but its path inside the frozen bundle isn't pinned
-        # until the .app layout is finalized (Phase 3/8). Rollback availability
-        # is reported separately by can_rollback(); leave the label blank rather
-        # than read a guessed path.
-        return ""
+        # The .app.previous snapshot carries the same bundled pyproject.toml the
+        # Linux tree does, one level deeper: the frozen payload sits under
+        # Contents/Resources/server/_internal/. This used to return "" because
+        # that path was not settled, which put "Rollback to v?" on the one
+        # screen where a person most wants to know what they are agreeing to.
+        previous = _macos_previous_bundle(app_dir)
+        if previous is None:
+            return ""
+        return _version_from_pyproject(
+            previous / "Contents" / "Resources" / "server" / "_internal" / "pyproject.toml"
+        )
 
     # Linux: read the version recorded in the .previous install tree if present.
     previous = app_dir.parent / f"{app_dir.name}.previous"
-    pyproject = previous / "pyproject.toml"
-    if pyproject.is_file():
-        try:
-            import tomllib
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-            return str(data.get("project", {}).get("version", "") or "")
-        except (OSError, ValueError) as e:
-            log.debug("Could not read rollback target version: %s", e)
-    return ""
+    return _version_from_pyproject(previous / "pyproject.toml")
+
+
+def _version_from_pyproject(pyproject: Path) -> str:
+    """The ``project.version`` recorded in a bundled pyproject.toml, or "".
+
+    Shared by the macOS and Linux rollback-target lookups: both snapshot the
+    previous install as a whole tree, and both carry the pyproject that names
+    its version. Returns "" for a missing or unreadable file — the caller
+    reports rollback AVAILABILITY separately, so a blank label never means
+    "cannot roll back".
+    """
+    if not pyproject.is_file():
+        return ""
+    try:
+        import tomllib
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return str(data.get("project", {}).get("version", "") or "")
+    except (OSError, ValueError) as e:
+        log.debug("Could not read rollback target version: %s", e)
+        return ""
