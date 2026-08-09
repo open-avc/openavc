@@ -1,62 +1,50 @@
-# OpenAVC v0.25.0
+# OpenAVC v0.25.1
 
-Mostly an internals release. The Python package moved from `server` to `openavc`, so
-drivers and plugins now import the platform under the product's own name. Alongside
-that, the UI Builder learned to tell you what a page will actually draw wrong before
-you load it on a panel.
+A follow-up to 0.25.0 that fixes what upgrading to it turned up. If you are on
+0.25.0, take this one.
 
-## UI Builder page review
+## Updating and rolling back
 
-The Builder now checks a page against how the panel really renders it, and flags the
-problems on the canvas, in Validate, and in the Layout panel:
+The progress dialog now closes when the update finishes. On a system with a
+password set, which is every real deployment, a successful update sat under
+"Restarting server" until it gave up and called itself slow. The restart signs
+this browser out, and the dialog was waiting on a connection that could not come
+back, so the only way to learn the update had worked was to reload the page and
+sign in again. It now checks the version the server is actually running.
 
-- Controls sized too small to work. Each control type carries a measured minimum, and
-  the warning tells you the size that would work, in the percentages you author in.
-- Controls that cannot fit inside their container at any percentage, which blames the
-  container rather than the control.
-- Elements overlapping each other, or sitting outside the box that holds them.
-- Elements with no box at all, or drawn at a few pixels square.
-- Touch targets under the finger-size rule.
-- Style measurements larger than the element they are set on.
-- Element types the panel cannot draw, with the ones it can named in the message.
-- Bindings this element type's renderer never reads, and bindings that point at a
-  macro, page, device, or command that is not there.
-- Ranges wider than the device's driver declares.
+Rolling back on macOS names the version it will restore, instead of asking you
+to confirm "Rollback to v?".
 
-## Panels and devices
+A rollback you asked for is no longer written into the log as a failure of the
+version you left. Reading a system's log later, a deliberate downgrade and a
+crash looked the same.
 
-- Labels and gauges can round the numbers they display.
-- Devices keep retrying a lost network connection instead of giving up after an hour.
-  A device address is a fact about the space, so only faults that need a person to
-  clear them stop the retry.
-- `ui.navigate` is the single spelling for a page move in macros and UI actions.
-- Both the macro editor and the UI action editor offer the same action list.
+Asking the installed server for its version now answers, instead of reporting
+that the port is already in use.
 
-## Discovery
+## Starter projects on an upgraded system
 
-- A control interface pinned to an address that no longer answers is surfaced instead
-  of hidden, with a one-click way to clear it.
-- Declining a suggested driver stays declined until something changes.
+Opening any of the four built-in starter projects on a system upgraded from
+0.24.x gave you a device with no driver behind it. The starters kept the drivers
+their original version shipped, and those no longer load on this release, while
+the correct ones sat unused inside the installed software. Starters now refresh
+to the drivers this release ships. A starter you have edited keeps your edits,
+and a driver you have changed yourself is left alone.
 
-## Windows
+## macOS
 
-The installer waits for the server to accept connections before it reports success.
+The updater now installs the application owned by the system administrator
+account, matching what a fresh install produces. A self-update left it owned by
+the account that built the release, which on a shared Mac means a standard user
+could replace a file the system runs with full privileges. Worth applying on any
+Mac that has already self-updated to 0.25.0.
 
-## For driver and plugin authors
+## Browsing drivers
 
-Imports change from `server.*` to `openavc.*`:
+The driver library marks the drivers your system is too old to install and names
+the release they need, rather than offering an Install button that fails once you
+press it. This matters more than usual right now: every Python driver in the
+catalog requires 0.25.0 or later, so on an older system most of the library
+cannot be installed until you update.
 
-```python
-from openavc.drivers.base import BaseDriver
-```
-
-Community drivers and plugins in the catalog are already updated and carry a minimum
-platform version, so an older system refuses the download with a clear message rather
-than installing something it cannot load. If you have written your own drivers or
-plugins, update their imports before moving a system to this release. A driver that
-still uses the old name fails to load with a log line telling you what to change.
-
-## Upgrading
-
-On Linux, if you are on 0.20.0 or older, re-run the installer rather than using in-app
-update.
+A plugin that fails to install reports the reason instead of a generic error.
