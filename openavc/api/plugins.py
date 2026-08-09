@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -501,19 +502,45 @@ async def emit_context_action(plugin_id: str, action_id: str, request: Request) 
     return {"status": "emitted", "event": event}
 
 
+async def _install_body(request: Request) -> dict[str, Any]:
+    """The JSON body of an install/update request, or {} when there isn't one.
+
+    `request.json()` raises on an absent or malformed body, which used to
+    escape as a 500 with a stack trace — and it raised BEFORE the endpoint's
+    own `422 file_url is required` could fire, so that 422 was unreachable for
+    exactly the case it was written for. Swallowing the parse error here lets
+    the endpoint answer with its own message.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
 @router.post("/plugins/{plugin_id}/install")
 async def install_plugin_endpoint(plugin_id: str, request: Request) -> dict[str, Any]:
     """Install a plugin from the community repository."""
     from openavc.core.plugin_installer import install_plugin
 
-    body = await request.json()
-    file_url = body.get("file_url")
+    file_url = (await _install_body(request)).get("file_url")
     if not file_url:
         raise HTTPException(status_code=422, detail="file_url is required")
 
     try:
         result = await install_plugin(plugin_id, file_url)
         return result
+    except httpx.HTTPStatusError as e:
+        # The catalog URL resolved to something that isn't there (a stale entry,
+        # a moved file, a typo). Same reasoning as the CommunityArtifactError
+        # branch below: the request was fine, the upstream wasn't — and the
+        # useful part is which URL and what it said, not a blanket failure.
+        raise _api_error(
+            502,
+            f"Could not fetch plugin '{plugin_id}' from {e.request.url}: "
+            f"upstream returned {e.response.status_code}",
+            e,
+        )
     except CommunityArtifactError as e:
         # The download didn't match the published manifest. 502, not 500: the
         # request was fine, the upstream served something else. The message
@@ -535,8 +562,7 @@ async def update_plugin_endpoint(plugin_id: str, request: Request) -> dict[str, 
     """Update an installed plugin to a newer version, preserving config."""
     from openavc.core.plugin_installer import update_plugin
 
-    body = await request.json()
-    file_url = body.get("file_url")
+    file_url = (await _install_body(request)).get("file_url")
     if not file_url:
         raise HTTPException(status_code=422, detail="file_url is required")
 
