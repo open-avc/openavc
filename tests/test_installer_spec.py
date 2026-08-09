@@ -53,10 +53,19 @@ def test_all_function_level_transport_imports_are_declared():
     """
     hidden = _hidden_imports()
 
-    # Modules that are well-known to be unrelated test infrastructure
-    skip_dirs = {"tests", "node_modules", ".git", "dist", "build"}
+    # Not platform source: test infrastructure, build output, and `data/` --
+    # the runtime data dir, where a dev box keeps the community drivers it has
+    # installed. A driver's imports say nothing about what the frozen bundle
+    # must declare, and reading them made this test pass or fail depending on
+    # which drivers happened to be installed on the machine running it.
+    skip_dirs = {"tests", "node_modules", ".git", "dist", "build", "data", ".venv", "venv"}
 
-    pattern = re.compile(r"from\s+(server\.transport\.\w+)\s+import", re.MULTILINE)
+    # The package name here has to track the platform's. It said `server.` for a
+    # while after the move to `openavc.`, and because nothing in the tree matched
+    # any more, `referenced` came back empty and the assertion below passed
+    # without looking at anything -- which is the one failure this test cannot
+    # afford, since a green run is what says a new transport is safely bundled.
+    pattern = re.compile(r"from\s+(openavc\.transport\.\w+)\s+import", re.MULTILINE)
     referenced = set()
     for py in REPO_ROOT.rglob("*.py"):
         if any(part in skip_dirs for part in py.parts):
@@ -66,6 +75,16 @@ def test_all_function_level_transport_imports_are_declared():
         except (OSError, UnicodeDecodeError):
             continue
         referenced.update(pattern.findall(text))
+
+    # Guard the guard: if the scan finds nothing, the assertion below is
+    # satisfied by an empty set and reports success without having checked a
+    # single import. That is exactly how this test went quiet after the package
+    # move, so prove the scan still reaches real code before trusting its verdict.
+    assert referenced, (
+        "Found no function-level `from openavc.transport.X import` anywhere in "
+        f"{REPO_ROOT} -- the scan is broken (wrong package name or over-eager "
+        "skip_dirs), not the source. Fix the scan; a pass here means nothing."
+    )
 
     missing = referenced - hidden
     assert not missing, (
