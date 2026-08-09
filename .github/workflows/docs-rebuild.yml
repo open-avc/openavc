@@ -12,4 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Netlify deploy hook
-        run: curl -s -X POST "${{ secrets.DOCS_DEPLOY_HOOK }}"
+        run: |
+          # --fail matters here. Plain `curl -s` exits 0 on a 404, so a hook URL
+          # that was rotated, revoked, or pointed at a deleted site reports
+          # success forever while docs.openavc.com keeps serving the previous docs.
+          if [ -z "$DOCS_DEPLOY_HOOK" ]; then
+            echo "DOCS_DEPLOY_HOOK is not set, so docs.openavc.com keeps serving the previous docs." >&2
+            exit 1
+          fi
+          curl -sS --fail-with-body -X POST "$DOCS_DEPLOY_HOOK" \
+            -w '\nbuild hook responded %{http_code}\n'
+        env:
+          DOCS_DEPLOY_HOOK: ${{ secrets.DOCS_DEPLOY_HOOK }}

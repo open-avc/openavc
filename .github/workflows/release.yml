@@ -564,7 +564,15 @@ jobs:
       - name: Trigger marketing site rebuild
         if: ${{ needs.version.outputs.prerelease == 'false' }}
         run: |
-          curl -s -X POST "${{ secrets.SITE_DEPLOY_HOOK }}"
+          # --fail matters here. Plain `curl -s` exits 0 on a 404, so a hook URL
+          # that was rotated, revoked, or pointed at a deleted site reports
+          # success forever while openavc.com keeps serving the previous release.
+          if [ -z "$SITE_DEPLOY_HOOK" ]; then
+            echo "SITE_DEPLOY_HOOK is not set, so openavc.com keeps serving the previous release." >&2
+            exit 1
+          fi
+          curl -sS --fail-with-body -X POST "$SITE_DEPLOY_HOOK" \
+            -w '\nbuild hook responded %{http_code}\n'
         env:
           SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
 
