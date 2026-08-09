@@ -84,7 +84,11 @@ def test_an_unedited_unpacked_driver_is_removed_so_the_fresh_one_installs(wired)
     driver_repo would win forever. It is byte-identical to the old bundle, which
     proves we put it there."""
     _seed, _lib, repo = wired
-    (repo / "acme_widget.py").write_text(OLD)
+    # write_bytes, not write_text: on Windows text mode rewrites "\n" as
+    # "\r\n", so the copy would no longer be byte-identical to the bundle it
+    # came from and the code would correctly read it as user-edited. The real
+    # install path writes drivers with write_bytes for exactly this reason.
+    (repo / "acme_widget.py").write_bytes(OLD.encode())
     project_library.ensure_starter_projects()
     assert not (repo / "acme_widget.py").exists(), (
         "the superseded copy survived; the next open would skip it as 'existing' "
@@ -96,9 +100,12 @@ def test_a_driver_the_user_edited_is_left_alone(wired) -> None:
     """The counterweight. Differing bytes mean it is not ours to delete."""
     _seed, _lib, repo = wired
     mine = OLD + "# I changed this in the IDE\n"
-    (repo / "acme_widget.py").write_text(mine)
+    # Bytes here too, so the edit is the only thing that distinguishes this
+    # file from the bundle's copy. Under write_text on Windows the newline
+    # rewrite alone would differ, and this would pass without testing anything.
+    (repo / "acme_widget.py").write_bytes(mine.encode())
     project_library.ensure_starter_projects()
-    assert (repo / "acme_widget.py").read_text() == mine
+    assert (repo / "acme_widget.py").read_bytes() == mine.encode()
 
 
 def test_projects_this_release_does_not_ship_are_ignored(wired) -> None:
