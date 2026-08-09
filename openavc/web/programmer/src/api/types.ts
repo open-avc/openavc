@@ -785,7 +785,7 @@ function parseSemver(v: string): ParsedSemver | null {
  *  Unparseable versions compare equal (0) so a garbled string never fabricates
  *  an update. Follows semver: main parts numeric; a pre-release ranks LOWER
  *  than its release; build metadata is ignored. */
-function compareSemver(a: string, b: string): number {
+export function compareSemver(a: string, b: string): number {
   const pa = parseSemver(a);
   const pb = parseSemver(b);
   if (!pa || !pb) return 0;

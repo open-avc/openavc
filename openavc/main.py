@@ -18,6 +18,16 @@ if getattr(sys, 'frozen', False) and len(sys.argv) > 1 and sys.argv[1] == '--sim
     _sim_main()
     sys.exit(0)
 
+# Asking the binary its version must not start anything. There was no handling
+# for this at all, so `--version` fell through to main(), which pre-flights the
+# listening port -- on a box where OpenAVC is already running (the normal case
+# when you are checking what is installed) it printed "port 8080 is already in
+# use" and wrote a startup-error marker, instead of answering the question.
+if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
+    from openavc.version import __version__ as _v
+    print(_v)
+    sys.exit(0)
+
 # CA trust store for stdlib `ssl` in the frozen macOS app. A PyInstaller .app has
 # no OpenSSL-readable CA bundle, and macOS keeps its roots in the Keychain rather
 # than in files OpenSSL reads. So `ssl.create_default_context()`, used by the
@@ -113,7 +123,7 @@ async def _initialize_engine(app: FastAPI) -> None:
             # code back: the rolled-back code may predate the running version's
             # project-format migrations, so the restore must run on this side.
             restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
-            success = perform_rollback(data_dir)
+            success = perform_rollback(data_dir, automatic=True)
             if success:
                 # Windows: exit 42 tells NSSM not to restart (installer handles it)
                 # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback

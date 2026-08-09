@@ -380,6 +380,7 @@ def perform_rollback(
     data_dir: Path,
     from_version: str | None = None,
     to_version: str | None = None,
+    automatic: bool = False,
 ) -> bool:
     """Restore the previous version of OpenAVC.
 
@@ -392,6 +393,12 @@ def perform_rollback(
     marker is gone by the time a manual rollback runs (it's cleared once an
     update is confirmed), so without the override both would read "unknown".
 
+    ``automatic`` says which of the two callers this is, and only the log line
+    reads it. Both paths land here, and the message used to assert the new
+    version "failed after update" either way -- so a deliberate rollback a
+    person asked for was recorded in the log as a crash. That reads as a fault
+    to whoever opens the log later, which is exactly when it misleads.
+
     Returns True if rollback was initiated, False if no previous version available.
     """
     if from_version is None or to_version is None:
@@ -402,12 +409,21 @@ def perform_rollback(
             to_version = marker.get("to_version", "unknown") if marker else "unknown"
 
     if sys.platform == "win32":
-        return _rollback_windows(data_dir, from_version, to_version)
+        return _rollback_windows(data_dir, from_version, to_version, automatic)
     else:
-        return _rollback_linux(data_dir, from_version, to_version)
+        return _rollback_linux(data_dir, from_version, to_version, automatic)
 
 
-def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> bool:
+def _rollback_reason(automatic: bool, from_version: str, to_version: str) -> str:
+    """One sentence naming why a rollback is happening, for the log."""
+    if automatic:
+        return f"v{to_version} failed to start after updating from v{from_version}"
+    return f"requested: leaving v{to_version} and restoring v{from_version}"
+
+
+def _rollback_windows(
+    data_dir: Path, from_version: str, to_version: str, automatic: bool = False,
+) -> bool:
     """Rollback on Windows by re-running a cached previous installer."""
     cache_dir = data_dir / "update-cache"
     if not cache_dir.exists():
@@ -438,8 +454,10 @@ def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> boo
             return False
         installer = candidates[-1]
     log.warning(
-        "Automatic rollback: scheduling cached installer %s (v%s failed after update from v%s)",
-        installer.name, to_version, from_version,
+        "Rollback (%s): scheduling cached installer %s -- %s",
+        "automatic" if automatic else "manual",
+        installer.name,
+        _rollback_reason(automatic, from_version, to_version),
     )
 
     # Clear the marker before rollback to prevent rollback loops
@@ -448,7 +466,9 @@ def _rollback_windows(data_dir: Path, from_version: str, to_version: str) -> boo
     return _launch_installer_via_scheduler(installer, f"rollback-{from_version}")
 
 
-def _rollback_linux(data_dir: Path, from_version: str, to_version: str) -> bool:
+def _rollback_linux(
+    data_dir: Path, from_version: str, to_version: str, automatic: bool = False,
+) -> bool:
     """Write a rollback instruction for the ExecStartPre helper script.
 
     The actual rollback (swapping /opt/openavc.previous back into place) is
@@ -471,9 +491,10 @@ def _rollback_linux(data_dir: Path, from_version: str, to_version: str) -> bool:
         return False
 
     log.warning(
-        "Rollback marker written (v%s failed after update from v%s). "
+        "Rollback marker written (%s) -- %s. "
         "Rollback will apply on next service start.",
-        to_version, from_version,
+        "automatic" if automatic else "manual",
+        _rollback_reason(automatic, from_version, to_version),
     )
     clear_pending_marker(data_dir)
     return True

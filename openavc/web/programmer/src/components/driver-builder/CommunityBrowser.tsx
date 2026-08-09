@@ -1,9 +1,35 @@
 import { useEffect, useState, useCallback } from "react";
 import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle, ArrowUpCircle, Loader2 } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { Modal } from "../shared/Modal";
-import { hasUpdate } from "../../api/types";
+import { hasUpdate, compareSemver } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
+
+/** The platform release a driver needs, when this system is older than it.
+ *
+ * The catalog has always carried `min_platform_version` and the server has
+ * always enforced it, but nothing showed it: the card rendered a live Install
+ * button and the refusal only arrived as an error after the click. That was a
+ * rare case until the `server` -> `openavc` rename, which gated every Python
+ * driver in the catalog at once -- so on a 0.24.x box the whole Python half of
+ * the library looked installable and none of it was.
+ *
+ * Returns "" when the driver is installable, so the caller can treat it as a
+ * plain boolean. An unparseable or absent version never blocks: the server is
+ * the authority, and this is only here to say so earlier.
+ */
+export function blockedByPlatform(
+  running: string,
+  minRequired: string | null | undefined,
+): string {
+  if (!minRequired || !running) return "";
+  try {
+    return compareSemver(minRequired, running) > 0 ? minRequired : "";
+  } catch {
+    return "";
+  }
+}
 
 const COMMUNITY_BASE_URL =
   "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/";
@@ -143,6 +169,11 @@ export function CommunityBrowser() {
   const communityError = useDriverBuilderStore((s) => s.communityError);
   const loadCommunityDrivers = useDriverBuilderStore((s) => s.loadCommunityDrivers);
   const loadInstalledDrivers = useDriverBuilderStore((s) => s.loadInstalledDrivers);
+  // Primitive selector on purpose: subscribing to the whole liveState object
+  // would re-render this grid on every unrelated state push.
+  const runningVersion = useConnectionStore(
+    (s) => String(s.liveState["system.version"] ?? ""),
+  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
@@ -375,6 +406,7 @@ export function CommunityBrowser() {
                   installing={installingIds.has(driver.id)}
                   installError={installErrors[driver.id] || null}
                   updateAvailable={hasUpdate(installedVersions.get(driver.id) ?? "", driver.version)}
+                  requiresPlatform={blockedByPlatform(runningVersion, driver.min_platform_version)}
                   replacementName={
                     driver.deprecated && driver.replacement_id
                       ? driverNameById.get(driver.replacement_id) ?? driver.replacement_id
@@ -417,6 +449,7 @@ export function CommunityBrowser() {
           installing={installingIds.has(selectedDriver.id)}
           installError={installErrors[selectedDriver.id] || null}
           updateAvailable={hasUpdate(installedVersions.get(selectedDriver.id) ?? "", selectedDriver.version)}
+          requiresPlatform={blockedByPlatform(runningVersion, selectedDriver.min_platform_version)}
           replacementName={
             selectedDriver.deprecated && selectedDriver.replacement_id
               ? driverNameById.get(selectedDriver.replacement_id) ?? selectedDriver.replacement_id
@@ -443,6 +476,7 @@ function DriverCard({
   installing,
   installError,
   updateAvailable,
+  requiresPlatform,
   replacementName,
   onInstall,
   onUpdate,
@@ -454,6 +488,8 @@ function DriverCard({
   installing: boolean;
   installError: string | null;
   updateAvailable: boolean;
+  /** Platform release this driver needs, when this system is older. "" = fine. */
+  requiresPlatform: string;
   replacementName: string | null;
   onInstall: (driver: CommunityDriver) => void;
   onUpdate: (driver: CommunityDriver) => void;
@@ -684,9 +720,24 @@ function DriverCard({
       )}
 
       {/* Action button */}
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-sm)" }}>
+        {requiresPlatform && (
+          <span
+            title={`This driver needs OpenAVC ${requiresPlatform} or later. Update OpenAVC first, then install it.`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <AlertTriangle size={14} />
+            Needs OpenAVC v{requiresPlatform}
+          </span>
+        )}
         {installed ? (
-          updateAvailable && !installing ? (
+          updateAvailable && !installing && !requiresPlatform ? (
             <button
               onClick={(e) => { e.stopPropagation(); onUpdate(driver); }}
               style={{
@@ -744,7 +795,12 @@ function DriverCard({
         ) : (
           <button
             onClick={(e) => { e.stopPropagation(); onInstall(driver); }}
-            disabled={installing}
+            disabled={installing || !!requiresPlatform}
+            title={
+              requiresPlatform
+                ? `This driver needs OpenAVC ${requiresPlatform} or later.`
+                : undefined
+            }
             style={{
               display: "flex",
               alignItems: "center",
@@ -752,10 +808,10 @@ function DriverCard({
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "4px",
               fontSize: "var(--font-size-sm)",
-              background: installing ? "var(--bg-hover)" : "#007acc",
-              color: installing ? "var(--text-muted)" : "#fff",
+              background: installing || requiresPlatform ? "var(--bg-hover)" : "#007acc",
+              color: installing || requiresPlatform ? "var(--text-muted)" : "#fff",
               border: "none",
-              cursor: installing ? "default" : "pointer",
+              cursor: installing || requiresPlatform ? "default" : "pointer",
               fontWeight: 500,
             }}
           >
@@ -790,6 +846,7 @@ function CommunityDriverDetail({
   installing,
   installError,
   updateAvailable,
+  requiresPlatform,
   replacementName,
   onInstall,
   onUpdate,
@@ -801,6 +858,8 @@ function CommunityDriverDetail({
   installing: boolean;
   installError: string | null;
   updateAvailable: boolean;
+  /** Platform release this driver needs, when this system is older. "" = fine. */
+  requiresPlatform: string;
   replacementName: string | null;
   onInstall: (driver: CommunityDriver) => void;
   onUpdate: (driver: CommunityDriver) => void;
@@ -1093,9 +1152,28 @@ function CommunityDriverDetail({
         )}
 
         {/* Action */}
+        {requiresPlatform && (
+          <div
+            style={{
+              marginTop: "var(--space-lg)",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-muted)",
+              background: "var(--bg-hover)",
+              padding: "var(--space-sm) var(--space-md)",
+              borderRadius: "4px",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-sm)",
+            }}
+          >
+            <AlertTriangle size={14} />
+            This driver needs OpenAVC v{requiresPlatform} or later. Update OpenAVC
+            first, then install it.
+          </div>
+        )}
         <div style={{ marginTop: "var(--space-lg)", display: "flex", justifyContent: "flex-end" }}>
           {installed ? (
-            updateAvailable && !installing ? (
+            updateAvailable && !installing && !requiresPlatform ? (
               <button
                 onClick={() => onUpdate(driver)}
                 style={{
@@ -1153,7 +1231,12 @@ function CommunityDriverDetail({
           ) : (
             <button
               onClick={() => onInstall(driver)}
-              disabled={installing}
+              disabled={installing || !!requiresPlatform}
+              title={
+                requiresPlatform
+                  ? `This driver needs OpenAVC ${requiresPlatform} or later.`
+                  : undefined
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1161,10 +1244,10 @@ function CommunityDriverDetail({
                 padding: "var(--space-sm) var(--space-lg)",
                 borderRadius: "4px",
                 fontSize: "var(--font-size-sm)",
-                background: installing ? "var(--bg-hover)" : "#007acc",
-                color: installing ? "var(--text-muted)" : "#fff",
+                background: installing || requiresPlatform ? "var(--bg-hover)" : "#007acc",
+                color: installing || requiresPlatform ? "var(--text-muted)" : "#fff",
                 border: "none",
-                cursor: installing ? "default" : "pointer",
+                cursor: installing || requiresPlatform ? "default" : "pointer",
                 fontWeight: 500,
               }}
             >

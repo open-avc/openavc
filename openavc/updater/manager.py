@@ -867,6 +867,7 @@ class UpdateManager:
             self._data_dir,
             from_version=target_version or "unknown",
             to_version=__version__,
+            automatic=False,
         )
 
         if success:
