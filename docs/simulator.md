@@ -42,7 +42,14 @@ python -m openavc.simulator --config sim_config.json
 }
 ```
 
-The Simulator UI is available at `http://localhost:19500`.
+The Simulator UI opens from the Programmer sidebar and is served by OpenAVC
+itself, at `/simulator/` on the same address you use for the Programmer. So
+if you reach OpenAVC at `http://openavc.local:8080`, the Simulator UI is at
+`http://openavc.local:8080/simulator/`. It works from any machine on your
+network, and through a cloud remote session, exactly like the rest of the IDE.
+
+It needs the same sign-in as the Programmer. Opening it from the sidebar signs
+you in automatically; opening the address directly asks for your password.
 
 ## Simulator UI
 
@@ -86,7 +93,9 @@ For information on adding simulation support to your own drivers, see the Writin
 
 ## API Reference
 
-The simulator exposes a REST API at `http://localhost:19500/api/`:
+The simulator exposes a REST API under `/simulator/api/` on your OpenAVC
+address (for example `http://openavc.local:8080/simulator/api/status`). It
+requires the same credentials as the rest of the API.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|

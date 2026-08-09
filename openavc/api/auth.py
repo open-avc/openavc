@@ -243,17 +243,35 @@ def _challenge_headers(request: Request) -> dict[str, str]:
     fallback `fetch('/api/project')` 401'd with the challenge and every
     canvas mount raised the browser dialog.
 
-    Browsers label every request they make with `Sec-Fetch-Dest`: `document`
-    for a real top-level navigation (where the dialog IS the only way to
-    authenticate a bare API URL in a browser), `empty` for fetch/XHR, and
-    other values for subresources. So: challenge top-level navigations and
-    non-browser clients (no header — curl, scripts, legacy engines), stay
-    silent for everything else and let the application handle its own 401.
+    Only one caller can act on the challenge: a person who typed a bare API
+    URL into the address bar, where the browser dialog is the sole way to
+    authenticate. Everything else — the app's own fetches, iframes, curl,
+    scripts — either handles a 401 itself or does not care. So the rule is
+    to challenge ONLY a request positively identified as a top-level browser
+    navigation, and stay silent whenever we cannot tell.
+
+    That direction is the whole point, and getting it backwards is what
+    shipped in 0.24.1. It read `Sec-Fetch-Dest` and treated a MISSING header
+    as "not a browser", because browsers are supposed to label every request.
+    They don't: `Sec-Fetch-*` is only sent to a potentially-trustworthy
+    origin — HTTPS, or localhost. Reach an instance the way people actually
+    do, `http://<host-or-ip>:8080` from another machine, and Chrome sends
+    none of it, so every credential-less fetch looked like curl and got the
+    challenge. The dialog was still popping over the UI Builder on every
+    deployment except a dev box on localhost.
+
+    A browser navigating to a URL asks for HTML; a fetch, an XHR and curl all
+    send `*/*`. That signal needs no secure context, so it is the one that
+    holds on a plain-HTTP LAN box. `Sec-Fetch-Dest` stays as the precise
+    answer when it is present.
     """
     dest = request.headers.get("sec-fetch-dest")
-    if dest is not None and dest != "document":
-        return {}
-    return {"WWW-Authenticate": "Basic"}
+    if dest is not None:
+        return {"WWW-Authenticate": "Basic"} if dest == "document" else {}
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept.lower():
+        return {"WWW-Authenticate": "Basic"}
+    return {}
 
 
 async def require_programmer_auth(

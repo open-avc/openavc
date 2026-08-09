@@ -64,6 +64,7 @@ from starlette.responses import HTMLResponse, JSONResponse
 
 from openavc import config, runtime_flags
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
+from openavc.api import simulator_proxy
 from openavc.api.routes import network as network_routes
 from openavc.api.routes import pair as pair_routes
 from openavc.api.routes import root as root_routes
@@ -328,6 +329,9 @@ discovery_api.set_app_engine(engine)
 app.include_router(rest.open_router)
 app.include_router(rest.router)
 app.include_router(ws.router)
+app.include_router(simulator_proxy.router)        # authed: /simulator/api/*
+app.include_router(simulator_proxy.open_router)   # open shell, declared after
+app.include_router(simulator_proxy.ws_router)
 app.include_router(ir_learn_ws.router)
 app.include_router(isc_ws.router)
 app.include_router(discovery_api.router)

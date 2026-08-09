@@ -2,7 +2,29 @@
  * REST API client for the simulator backend.
  */
 
-const BASE = "";  // Same origin — served by the simulator server
+import { BASE } from "./paths";
+import { authHeaders, rejectCurrentToken } from "./session";
+
+/** Fired when the server refuses this tab's credential. */
+export const AUTH_REQUIRED = "openavc:sim-auth-required";
+
+export { BASE, APP_ROOT } from "./paths";
+
+// Every call below goes through here so the credential cannot be forgotten at
+// one site. `authHeaders()` is empty until this tab has a token, which is the
+// correct state for the brief moment before the handshake completes.
+async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = { ...(init.headers as Record<string, string> | undefined), ...authHeaders() };
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  if (res.status === 401) {
+    // Dead credential. Drop it and tell the gate, which asks the opener again
+    // and falls back to the password form. Without this the UI sits there
+    // reading "Disconnected" forever, which looks like a broken simulator.
+    rejectCurrentToken();
+    window.dispatchEvent(new Event(AUTH_REQUIRED));
+  }
+  return res;
+}
 
 // ── Declarative Controls Schema ──
 
@@ -130,18 +152,25 @@ export interface LogEntry {
 }
 
 export async function fetchDevices(): Promise<DeviceInfo[]> {
-  const res = await fetch(`${BASE}/api/devices`);
+  const res = await api(`/api/devices`);
+  // Throw rather than hand back undefined. This UI is now served by the main
+  // server, so the page can load in the moment BEFORE the simulator process is
+  // ready -- the proxy answers 503, and returning `data.devices` from that body
+  // put `undefined` into the device list, where rendering it read `.length` and
+  // took the whole tab down. The caller already treats a rejection as "nothing
+  // yet" and the socket refetches the moment the simulator comes up.
+  if (!res.ok) throw new Error(`Simulator not ready (${res.status})`);
   const data = await res.json();
-  return data.devices;
+  return data.devices ?? [];
 }
 
 export async function fetchDevice(id: string): Promise<DeviceInfo> {
-  const res = await fetch(`${BASE}/api/devices/${id}`);
+  const res = await api(`/api/devices/${id}`);
   return res.json();
 }
 
 export async function setDeviceState(id: string, key: string, value: unknown): Promise<void> {
-  const res = await fetch(`${BASE}/api/devices/${id}/state`, {
+  const res = await api(`/api/devices/${id}/state`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key, value }),
@@ -150,7 +179,7 @@ export async function setDeviceState(id: string, key: string, value: unknown): P
 }
 
 export async function toggleError(id: string, mode: string, active: boolean): Promise<void> {
-  const res = await fetch(`${BASE}/api/devices/${id}/errors/${mode}`, {
+  const res = await api(`/api/devices/${id}/errors/${mode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ active }),
@@ -159,13 +188,14 @@ export async function toggleError(id: string, mode: string, active: boolean): Pr
 }
 
 export async function fetchLog(id: string, limit = 200): Promise<LogEntry[]> {
-  const res = await fetch(`${BASE}/api/devices/${id}/log?limit=${limit}`);
+  const res = await api(`/api/devices/${id}/log?limit=${limit}`);
+  if (!res.ok) throw new Error(`Simulator not ready (${res.status})`);
   const data = await res.json();
-  return data.log;
+  return data.log ?? [];
 }
 
 export async function setNetworkPreset(preset: string): Promise<void> {
-  await fetch(`${BASE}/api/network/preset`, {
+  await api(`/api/network/preset`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ preset }),
@@ -176,6 +206,20 @@ export async function fetchNetwork(): Promise<{
   global: { latency_ms: number; jitter_pct: number; drop_rate_pct: number; instability: string };
   presets: string[];
 }> {
-  const res = await fetch(`${BASE}/api/network`);
+  const res = await api(`/api/network`);
   return res.json();
+}
+
+/** Stop the simulator process.
+ *
+ * Goes through the authenticated wrapper like everything else. It did not,
+ * once: a hand-written `fetch` here meant Stop sent no credential, got a 401,
+ * and the swallowed error made the button look simply dead.
+ */
+export async function stopSimulator(): Promise<void> {
+  const res = await api(`/api/shutdown`, { method: "POST" });
+  // The process may die mid-response; that is success, not failure.
+  if (!res.ok && res.status !== 502 && res.status !== 503) {
+    throw new Error(`Could not stop the simulator (${res.status})`);
+  }
 }

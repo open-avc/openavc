@@ -36,7 +36,7 @@ See [Getting Started](getting-started.md) for detailed installation steps coveri
 | Port | Protocol | Purpose | Required? |
 |------|----------|---------|-----------|
 | 8080 | HTTP/WS | Web UI, REST API, WebSocket | Yes |
-| 19500 | HTTP/WS | Simulator UI (development/testing only) | No |
+| 19500 | HTTP/WS | Device simulator, internal only (the Simulator UI is served on the main port at `/simulator/`) | No |
 | 19872 | UDP | ISC auto-discovery (multi-instance setups only) | No |
 
 Ensure port 8080 is accessible from:

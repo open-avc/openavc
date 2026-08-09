@@ -47,7 +47,7 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 | **8080** | TCP (HTTP) | Web interface and REST API | Yes |
 | **8443** | TCP (HTTPS) | Web interface and REST API over TLS | Only when HTTPS is enabled in Settings > Security |
 | **80** | TCP (HTTP) | Convenience redirect so typed URLs can omit the port (`http://<server>/panel`). Pure redirect to the real HTTP/HTTPS port; serves no content. | No — off by default; enable in Settings > Network |
-| **19500** | TCP (HTTP) | Device Simulator UI (development/testing only) | No |
+| **19500** | TCP (HTTP) | Device simulator, bound to localhost only | No |
 | **19872** | UDP | ISC auto-discovery (multi-instance setups only) | No |
 | **5353** | UDP | mDNS advertising — lets OpenAVC Panel apps auto-discover this instance on the LAN | No — on by default; disable with `discovery.advertise: false` |
 | **8189** | UDP | WebRTC media for the Video Panel plugin (live camera/RTSP streams on the panel) | Only when the Video Panel plugin is installed and a panel is viewing a stream |
@@ -63,7 +63,7 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 
 **Port 8443** is opened when HTTPS is enabled. When both listeners are running, the HTTP listener on 8080 returns a temporary (302/307) redirect to the HTTPS URL — so existing bookmarks and panel devices keep working without reconfiguration, and nothing is cached that would break access if HTTPS is later disabled. If you disable the redirect listener (Settings > Security), only port 8443 is open. Port 8443 is configurable via `OPENAVC_TLS_PORT` or `tls.port` in `system.json`.
 
-**Port 19500** is used by the device simulator during development and testing. It is only active when the simulator is running. It does not need to be accessible from other machines.
+**Port 19500** is used by the device simulator during development and testing. It is only active while the simulator is running, and it listens on localhost only, so nothing outside the server can reach it and it never needs to be opened in a firewall. The Simulator UI you use in the browser is served by OpenAVC on its normal port, at `/simulator/`, behind the same sign-in as the Programmer.
 
 **Port 19872** is used only when multiple OpenAVC instances need to discover each other on the same LAN (inter-system communication). It can be disabled entirely.
 

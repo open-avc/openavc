@@ -1,4 +1,5 @@
 import { Power } from "lucide-react";
+import { stopSimulator } from "./store/api";
 import { useSimStore } from "./store/useSimStore";
 import { DeviceCard } from "./components/DeviceCard";
 import { ProtocolLog } from "./components/ProtocolLog";
@@ -10,8 +11,17 @@ export default function App() {
   const handleShutdown = async () => {
     if (!confirm("Stop the simulator and close this window?")) return;
     try {
-      await fetch("/api/shutdown", { method: "POST" });
-    } catch { /* process is shutting down */ }
+      await stopSimulator();
+    } catch (e) {
+      // Don't leave the user tapping a button that does nothing. A refusal
+      // here is real and worth saying out loud.
+      alert(e instanceof Error ? e.message : "Could not stop the simulator.");
+      return;
+    }
+    // The confirm promised to close the window, so close it. Only works for a
+    // window a script opened -- which is the normal case, since the Programmer
+    // opens this one. Opened by hand, it simply stays put showing "stopped".
+    window.close();
   };
 
   return (

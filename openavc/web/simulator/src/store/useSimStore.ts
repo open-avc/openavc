@@ -4,7 +4,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DeviceInfo, LogEntry } from "./api";
-import { fetchDevices } from "./api";
+import { BASE, fetchDevices } from "./api";
+import { authSubprotocols } from "./session";
 
 // ── WebSocket singleton ──
 
@@ -33,8 +34,11 @@ function connectWs() {
   }
 
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${proto}//${window.location.host}/ws`;
-  ws = new WebSocket(url);
+  // BASE carries the mount prefix when the main server is proxying this UI
+  // (see api.ts); it is "" when the simulator serves it directly on :19500.
+  const url = `${proto}//${window.location.host}${BASE}/ws`;
+  const protocols = authSubprotocols();
+  ws = protocols ? new WebSocket(url, protocols) : new WebSocket(url);
 
   ws.onopen = () => {
     everConnected = true;
@@ -148,10 +152,16 @@ export function useSimStore() {
       setConnected(isConnected);
       if (!isConnected && everConnected) {
         // The WS dropped after we were connected. That alone doesn't mean the
-        // simulator stopped — a transient blip drops the socket too. The sim UI
-        // is served by the sim process itself, so confirm the server is really
-        // gone (HTTP unreachable) before showing the "stopped" overlay; a
-        // successful fetch means it was just a transient drop that will reconnect.
+        // simulator stopped — a transient blip drops the socket too. So ask the
+        // API before showing the "stopped" overlay: a 200 means it was just a
+        // blip and the socket will reconnect.
+        //
+        // What "gone" looks like changed when this UI moved behind the main
+        // server. It used to mean the HTTP request itself failed, because the
+        // simulator served this page and died with it. Now the main server
+        // answers, and a dead simulator is a 503 from the proxy — which
+        // `fetchDevices` turns into a rejection, so this still lands in the
+        // catch. Keep those two facts together; they are one behaviour.
         fetchDevices()
           .then((d) => setDevices(d))
           .catch(() => setStopped(true));

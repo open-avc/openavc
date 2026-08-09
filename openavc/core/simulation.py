@@ -40,6 +40,20 @@ SIMULATOR_UI_PORT = 19500
 SIMULATOR_DEVICE_PORT_BASE = 19000
 
 
+def _browser_ui_path() -> str:
+    """Where a BROWSER should go for the simulator UI.
+
+    A path, not a URL, and that is the whole point: the browser is often on a
+    different machine than the server, so ``http://localhost:19500`` named the
+    user's own laptop and led nowhere. The main server proxies the simulator
+    on its own origin, so a relative path is correct over the LAN, on the
+    server itself, and through the cloud tunnel alike.
+    """
+    from openavc.api.simulator_proxy import simulator_ui_path
+
+    return simulator_ui_path()
+
+
 def simulator_ui_port() -> int:
     """The port the simulator serves its own UI and API on.
 
@@ -370,7 +384,10 @@ class SimulationManager:
             ),
         )
 
-        self._sim_ui_url = f"http://localhost:{sim_config['ui_port']}"
+        # Two different addresses, deliberately. The server talks to its own
+        # subprocess over loopback; the BROWSER is told a path on this origin,
+        # because it may be on another machine entirely (see api/simulator_proxy).
+        self._sim_ui_url = f"http://127.0.0.1:{sim_config['ui_port']}"
 
         # Query the simulator API for actual port assignments instead of
         # assuming sequential allocation (ports may differ if some are busy)
@@ -426,16 +443,17 @@ class SimulationManager:
             len(self._sim_ports), self._sim_ui_url,
         )
 
-        # Update system state
+        # Update system state. The published URL is the browser-facing one: a
+        # path on this server, not the loopback address we poll ourselves on.
         self.engine.state.set("system.simulation_active", True, source="simulation")
-        self.engine.state.set("system.simulation_ui_url", self._sim_ui_url, source="simulation")
+        self.engine.state.set("system.simulation_ui_url", _browser_ui_path(), source="simulation")
 
         # Start monitoring the subprocess — if it dies externally, clean up
         self._monitor_task = asyncio.ensure_future(self._monitor_process())
 
         return {
             "devices": dict(self._sim_ports),
-            "ui_url": self._sim_ui_url,
+            "ui_url": _browser_ui_path(),
         }
 
     async def _await_simulator_ready(
@@ -957,11 +975,16 @@ class SimulationManager:
             log.warning("Failed to roll back simulator instance for %s: %s", device_id, e)
 
     def status(self) -> dict:
-        """Get simulation status for the API."""
+        """Get simulation status for the API.
+
+        ``ui_url`` is browser-facing here, exactly as in the start response --
+        this endpoint feeds the same button. Handing back the loopback address
+        we poll ourselves on would send a remote browser to its own machine.
+        """
         return {
             "active": self._active,
             "starting": self._starting,
-            "ui_url": self._sim_ui_url,
+            "ui_url": _browser_ui_path() if self._active else None,
             "devices": dict(self._sim_ports),
             "process_alive": (
                 self._process is not None

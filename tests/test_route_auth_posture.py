@@ -32,6 +32,14 @@ from openavc.main import app
 # device push callbacks (source-IP gated instead), and the on-device setup
 # and network screens (loopback-or-auth, so a fresh appliance can be
 # configured from its own display before a credential exists).
+#
+# The simulator SHELL is open for the same reason `/programmer` is: it is
+# static markup, and requiring a credential for the document itself means the
+# browser meets a 401 on a top-level navigation and answers with its own
+# sign-in dialog before our app can run. Its control API -- everything under
+# /simulator/api/ -- is authenticated, and the simulator process it proxies is
+# bound to loopback. GET and HEAD only (HEAD is filtered out below, like
+# every other route's); nothing here changes state.
 EXPECTED_OPEN = {
     ("DELETE", "/api/auth/session"),
     ("GET", "/"),
@@ -55,6 +63,8 @@ EXPECTED_OPEN = {
     ("GET", "/pair"),
     ("GET", "/redoc"),
     ("GET", "/setup"),
+    ("GET", "/simulator"),
+    ("GET", "/simulator/{path:path}"),
     ("NOTIFY", "/api/push/{device_id}"),
     ("NOTIFY", "/api/push/{device_id}/{label}"),
     ("POST", "/api/auth/session"),

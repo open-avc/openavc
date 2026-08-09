@@ -387,14 +387,25 @@ class TestFastAPIIntegration:
         resp = client.get("/guarded")
         assert resp.status_code == 401
 
-    def test_401_includes_www_authenticate_header(self, monkeypatch):
+    def test_401_challenges_a_navigation_and_only_a_navigation(self, monkeypatch):
+        """The challenge is for the address bar, not for every 401.
+
+        Attaching it unconditionally is what pops Chrome's own sign-in dialog
+        over the app, so a request that is not a browser navigation gets a
+        plain 401 and the application handles it. See `_challenge_headers`.
+        """
         _set_auth(monkeypatch, password="letmein")
 
         app = _make_app_with_protected_route()
         client = TestClient(app)
-        resp = client.get("/guarded")
-        assert resp.status_code == 401
-        assert resp.headers.get("www-authenticate") == "Basic"
+
+        nav = client.get("/guarded", headers={"Accept": "text/html,*/*;q=0.8"})
+        assert nav.status_code == 401
+        assert nav.headers.get("www-authenticate") == "Basic"
+
+        api = client.get("/guarded", headers={"Accept": "*/*"})
+        assert api.status_code == 401
+        assert "www-authenticate" not in api.headers
 
 
 # ---------------------------------------------------------------------------
@@ -553,11 +564,42 @@ class TestChallengeSuppression:
         assert r.status_code == 401
         assert r.headers.get("www-authenticate") == "Basic"
 
-    def test_non_browser_client_still_challenged(self, monkeypatch):
+    def test_plain_http_browser_fetch_is_not_challenged(self, monkeypatch):
+        """The case 0.24.1 got backwards, and the reason the dialog survived it.
+
+        `Sec-Fetch-*` only reaches a potentially-trustworthy origin, so a
+        browser on `http://<ip>:8080` — the Pi, the mini PC, Docker, anything
+        reached from another machine — sends NONE of it. The old rule read
+        that absence as "not a browser" and challenged, which is exactly the
+        popup over the UI Builder that the fix was supposed to remove.
+
+        A fetch is identifiable without a secure context: it asks for `*/*`,
+        never `text/html`.
+        """
+        client = self._client(monkeypatch)
+        r = client.get("/guarded", headers={"Accept": "*/*"})
+        assert r.status_code == 401
+        assert "www-authenticate" not in r.headers
+
+    def test_plain_http_browser_navigation_is_challenged(self, monkeypatch):
+        """Same box, address bar instead of a fetch: still no `Sec-Fetch-*`,
+        but it asks for HTML, and here the dialog is the only way in."""
+        client = self._client(monkeypatch)
+        r = client.get(
+            "/guarded",
+            headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"},
+        )
+        assert r.status_code == 401
+        assert r.headers.get("www-authenticate") == "Basic"
+
+    def test_bare_client_is_not_challenged(self, monkeypatch):
+        """curl and scripts send no Accept preference and cannot use a dialog
+        anyway — they pass `-u`. Silence is the safe default for anything we
+        cannot positively identify as a navigation."""
         client = self._client(monkeypatch)
         r = client.get("/guarded")
         assert r.status_code == 401
-        assert r.headers.get("www-authenticate") == "Basic"
+        assert "www-authenticate" not in r.headers
 
     def test_authorized_fetch_unaffected(self, monkeypatch):
         client = self._client(monkeypatch)

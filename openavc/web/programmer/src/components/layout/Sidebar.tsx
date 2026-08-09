@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { getTunnelPrefix } from "../../api/restClient";
-import { hasSession, logout } from "../../api/auth";
+import { getSessionToken, hasSession, logout } from "../../api/auth";
 import {
   Monitor,
   Cpu,
@@ -119,10 +119,35 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const [simBusy, setSimBusy] = useState(false);
   const [showSimConfirm, setShowSimConfirm] = useState(false);
 
+  // The simulator window opens with no credential of its own: our session token
+  // lives in THIS tab's sessionStorage. It announces itself when its script
+  // runs and we answer with the token, same origin, nothing in the URL.
+  //
+  // It speaks first deliberately. Posting right after window.open races the new
+  // document's load — that race is won on a laptop and lost on a Pi, which is
+  // the kind of bug that only ever shows up on the hardware you shipped.
+  const attachSimulatorHandshake = () => {
+    const origin = window.location.origin;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== origin) return;
+      if ((event.data as { type?: string } | null)?.type !== "openavc:simulator-ready") return;
+      const token = getSessionToken();
+      const source = event.source as Window | null;
+      if (token && source) {
+        source.postMessage({ type: "openavc:simulator-token", token }, origin);
+      }
+      window.removeEventListener("message", onMessage);
+    };
+    window.addEventListener("message", onMessage);
+    // Don't leave the listener behind if the window never opens or is closed.
+    setTimeout(() => window.removeEventListener("message", onMessage), 30000);
+  };
+
   const startSimulation = async () => {
     // Open the simulator tab synchronously so the user-gesture flag is still
     // valid and popup blockers don't intercept it. We navigate it once we
     // know the actual URL — or close it if the start fails.
+    attachSimulatorHandshake();
     const simWindow = window.open("about:blank", "openavc-simulator");
     if (simWindow) {
       try {
@@ -139,7 +164,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
       const res = await fetch(`${getTunnelPrefix()}/api/simulation/start`, { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        const url = data.ui_url || "http://localhost:19500";
+        // A path on this origin, never an absolute URL. It used to fall back to
+        // http://localhost:19500, which means "this laptop" when the IDE is open
+        // from anywhere but the server itself — so the tab opened onto nothing.
+        // The tunnel prefix comes along for the cloud case.
+        const path = data.ui_url || "/simulator/";
+        const url = new URL(`${getTunnelPrefix()}${path}`, window.location.href).href;
         if (simWindow && !simWindow.closed) {
           simWindow.location.href = url;
         } else {
