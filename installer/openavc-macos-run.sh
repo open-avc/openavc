@@ -119,13 +119,24 @@ handle_update() {
         rm -f "$UPDATE_FILE"
         return
     fi
-    if ! tar xzf "$ARTIFACT" -C "$STAGING"; then
+    #    --no-same-owner is a privilege boundary, not tidiness. This runs as
+    #    root, and root tar RESTORES the uid/gid recorded in the archive. The
+    #    release tarball is built on a CI runner whose build user is uid 501,
+    #    so without this the swapped-in bundle lands owned by whichever local
+    #    account happens to hold uid 501 -- and the LaunchDaemon then execs a
+    #    root binary that an unprivileged user can overwrite. A .pkg install
+    #    writes root:wheel correctly; only this path was affected.
+    if ! tar xzf "$ARTIFACT" -C "$STAGING" --no-same-owner; then
         echo "$LOG_TAG: extraction failed, leaving current install untouched"
         rm -rf "$STAGING"
         rm -f "$UPDATE_FILE"
         return
     fi
     NEW_APP="$STAGING/OpenAVC.app"
+    #    Belt and braces: --no-same-owner makes the extracting user the owner,
+    #    which is root here, but state the requirement outright rather than
+    #    inferring it from who ran the script.
+    chown -R root:wheel "$NEW_APP" 2>/dev/null || true
     if ! is_app_valid "$NEW_APP"; then
         echo "$LOG_TAG: staged bundle is invalid, leaving current install untouched"
         rm -rf "$STAGING"
