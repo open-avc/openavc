@@ -210,6 +210,67 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
 
 
 
+def _drop_superseded_bundled_drivers(old_bundle: Path) -> None:
+    """Remove driver_repo copies that came from the bundle being replaced.
+
+    `_install_bundled_drivers` deliberately never overwrites an existing file,
+    so a driver unpacked from a stale bundle would otherwise survive in
+    driver_repo forever and keep losing to the fresh one. Deleting it lets the
+    next open install the current copy.
+
+    Byte-identity against the OLD bundle is the proof that we put the file
+    there and nobody has edited it since, so removing it cannot lose user work.
+    A driver the user has modified differs and is left strictly alone — which
+    is the same promise the no-overwrite rule makes.
+    """
+    try:
+        with zipfile.ZipFile(old_bundle, "r") as zf:
+            for name in zf.namelist():
+                if not name.startswith("drivers/"):
+                    continue
+                fname = Path(name).name
+                if not fname or fname.startswith("_"):
+                    continue
+                existing = _DRIVER_REPO_DIR / fname
+                if existing.is_file() and existing.read_bytes() == zf.read(name):
+                    existing.unlink()
+                    log.info("Removed superseded bundled driver: %s", fname)
+    except Exception as e:  # noqa: BLE001 - never let cleanup block startup
+        log.warning("Could not clean up superseded bundled drivers: %s", e)
+
+
+def _refresh_starter_bundles(lib: Path) -> None:
+    """Re-copy a seeded starter's bundle.zip when the shipped one has changed.
+
+    Seeding is one-shot behind the `.seeded` marker, so an upgraded box keeps
+    the bundles its ORIGINAL version wrote. That went wrong across the
+    `server` -> `openavc` package rename in 0.25.0: every box upgrading from
+    0.24.x kept 0.24.x's bundles, whose drivers still `import server`, so
+    opening any of the four built-in starters produced an orphaned device and
+    a discovery-companion traceback — while the correct drivers sat unused in
+    the installed package the whole time.
+
+    Only `bundle.zip`, and only for ids this release actually ships a template
+    for. The library's `project.avc` is never touched, so a starter the user
+    has edited keeps their edits: the bundle supplies drivers, not content
+    (`open_from_library` reads content from `project.avc` and calls
+    `_install_bundled_from_library` for the drivers).
+    """
+    for zip_file in sorted(_SEED_DIR.glob("*.zip")):
+        project_id = sanitize_id(zip_file.stem)
+        dest = lib / project_id / "bundle.zip"
+        if not dest.is_file():
+            continue  # never seeded, or the user deleted it — not ours to add back
+        try:
+            if dest.read_bytes() == zip_file.read_bytes():
+                continue
+            _drop_superseded_bundled_drivers(dest)
+            shutil.copy2(zip_file, dest)
+            log.info("Refreshed bundled drivers for starter project: %s", project_id)
+        except OSError as e:
+            log.warning("Could not refresh starter bundle %s: %s", project_id, e)
+
+
 def ensure_starter_projects() -> None:
     """Seed starter projects from openavc/templates/ on first run.
 
@@ -219,11 +280,20 @@ def ensure_starter_projects() -> None:
       bundled drivers are auto-installed to driver_repo/.
     - .avc files (legacy): plain project files. If a matching
       <stem>.scripts/ directory exists, scripts are copied too.
+
+    The bundle refresh below runs on EVERY start, not just the first: seeding
+    is one-shot, so without it an upgraded box serves its old version's
+    starters forever.
     """
     lib = _lib_dir()
     marker = lib / ".seeded"
 
-    if marker.exists() or not _SEED_DIR.exists():
+    if not _SEED_DIR.exists():
+        return
+
+    _refresh_starter_bundles(lib)
+
+    if marker.exists():
         return
 
     # Seed .zip bundles (just extract project.avc, scripts, and assets
