@@ -46,6 +46,30 @@ export function updateCompletionOutcome(
   return null;
 }
 
+/**
+ * Decide completion from an unauthenticated `/api/health` probe.
+ *
+ * The WebSocket snapshot cannot be the only completion signal. Session tokens
+ * live in server memory, so the very restart this dialog is waiting for
+ * invalidates the browser's token, and the Programmer socket comes back
+ * refused (`ws.py` closes it 4001). On a claimed instance — which is every
+ * shipped deployment — that left a finished update sitting under "Restarting
+ * server" until the watchdog called it slow, and the only way to learn it had
+ * worked was to reload and sign in again.
+ *
+ * `/api/health` needs no credential and reports the running version, which is
+ * exactly the fact being waited on. A changed version means the swap
+ * happened; direction is decided by the same rule the WS path uses.
+ */
+export function healthProbeOutcome(
+  startVersion: string,
+  probedVersion: string,
+  action: "update" | "rollback" | null,
+): CompletionOutcome {
+  if (!startVersion || !probedVersion || probedVersion === startVersion) return null;
+  return updateCompletionOutcome(startVersion, "", probedVersion, "", action);
+}
+
 export interface HistoryEntryLike {
   from_version: string;
   to_version: string;

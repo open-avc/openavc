@@ -7,7 +7,13 @@ import { useConnectionStore } from "../store/connectionStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api/restClient";
-import { updateCompletionOutcome, historyEntryDisplay } from "./updatesHelpers";
+import { updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
+import { healthProbeUrl } from "../components/shared/restartPollHelpers";
+
+// How often to ask /api/health whether the server is back on a new version.
+// Fast enough that the dialog closes promptly after a swap, slow enough that a
+// server rebinding its port isn't hammered while it starts.
+const HEALTH_POLL_INTERVAL_MS = 2000;
 
 const cardStyle: React.CSSProperties = {
   background: "var(--bg-surface)",
@@ -87,6 +93,13 @@ export function UpdatesView() {
   // rollback from an update (semver direction is the fallback for actions
   // started elsewhere, e.g. cloud-initiated).
   const actionRef = useRef<"update" | "rollback" | null>(null);
+  // The version running when this flow started, compared against /api/health
+  // to notice the swap without needing the (now unauthenticated) WebSocket.
+  const startVersionRef = useRef<string>("");
+  // Both completion paths — WS snapshot and health poll — funnel through
+  // resolveCompletion, so whichever arrives first wins and the other is a
+  // no-op rather than a second toast.
+  const resolvedRef = useRef(false);
 
   // Load initial data
   useEffect(() => {
@@ -105,8 +118,57 @@ export function UpdatesView() {
   // Show progress modal when update is in progress
   useEffect(() => {
     const active = ["backing_up", "downloading", "verifying", "applying", "restarting"].includes(updateStatus);
-    if (active) setShowProgressModal(true);
-  }, [updateStatus]);
+    if (!active) return;
+    // A cloud-initiated update opens this modal without going through
+    // handleApply, so anchor the comparison version here too.
+    if (!startVersionRef.current && currentVersion) startVersionRef.current = currentVersion;
+    setShowProgressModal(true);
+  }, [updateStatus, currentVersion]);
+
+  const resolveCompletion = useCallback((rolledBack: boolean, version: string) => {
+    if (resolvedRef.current) return;
+    resolvedRef.current = true;
+    showSuccess(rolledBack ? "Rolled back to v" + version : "Updated to v" + version);
+    setShowProgressModal(false);
+    actionRef.current = null;
+    startVersionRef.current = "";
+    // Best-effort: after a restart this browser's session token is gone, so
+    // these 401 and the app bounces to the login screen. That's the correct
+    // outcome and not an error worth logging.
+    api.getUpdateStatus().then(setStatus).catch(() => {});
+    api.getUpdateHistory().then(setHistory).catch(() => {});
+  }, []);
+
+  // Completion detection that does NOT depend on the WebSocket. See
+  // healthProbeOutcome: the restart being waited on invalidates this browser's
+  // session token, so the Programmer socket reconnects refused and its
+  // snapshot never arrives. /api/health carries no credential and reports the
+  // running version, which is the fact this dialog needs.
+  useEffect(() => {
+    if (!showProgressModal) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      let probed = "";
+      try {
+        const res = await fetch(healthProbeUrl(window.location.origin), { cache: "no-store" });
+        if (!res.ok) return;
+        probed = String((await res.json())?.version ?? "");
+      } catch {
+        // Server is mid-restart and not answering yet. Keep polling; the
+        // watchdog below is the backstop if it never comes back.
+        return;
+      }
+      if (cancelled || !probed) return;
+      const outcome = healthProbeOutcome(startVersionRef.current, probed, actionRef.current);
+      if (outcome === "updated" || outcome === "rolled_back") {
+        resolveCompletion(outcome === "rolled_back", probed);
+      }
+    }, HEALTH_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showProgressModal, resolveCompletion]);
 
   // Detect completion after the restart (the WebSocket reconnect snapshot
   // delivers the new version + update_status reset to idle in one shot):
@@ -124,25 +186,22 @@ export function UpdatesView() {
     if (!outcome) return;
 
     if (outcome === "same_version_restart") {
-      if (!showProgressModal) return;
+      if (!showProgressModal || resolvedRef.current) return;
+      resolvedRef.current = true;
       setShowProgressModal(false);
+      actionRef.current = null;
+      startVersionRef.current = "";
       showError(
         "The server restarted but the version did not change (still v" + currentVersion +
         "). The update may not have applied — check Update History.",
       );
-    } else {
-      showSuccess(
-        outcome === "rolled_back"
-          ? "Rolled back to v" + currentVersion
-          : "Updated to v" + currentVersion,
-      );
-      setShowProgressModal(false);
+      api.getUpdateStatus().then(setStatus).catch(() => {});
+      api.getUpdateHistory().then(setHistory).catch(() => {});
+      return;
     }
-    actionRef.current = null;
-    // Refresh status and history
-    api.getUpdateStatus().then(setStatus).catch(console.error);
-    api.getUpdateHistory().then(setHistory).catch(console.error);
-  }, [currentVersion, updateStatus, showProgressModal]);
+    // Shared with the health poll, so whichever notices first reports it once.
+    resolveCompletion(outcome === "rolled_back", currentVersion);
+  }, [currentVersion, updateStatus, showProgressModal, resolveCompletion]);
 
   // Detect error state
   useEffect(() => {
@@ -183,6 +242,8 @@ export function UpdatesView() {
 
   const handleApply = async () => {
     actionRef.current = "update";
+    startVersionRef.current = currentVersion;
+    resolvedRef.current = false;
     try {
       const result = await api.applyUpdate();
       if (!result.success) {
@@ -198,6 +259,8 @@ export function UpdatesView() {
   const handleRollback = useCallback(async () => {
     setShowRollbackConfirm(false);
     actionRef.current = "rollback";
+    startVersionRef.current = currentVersion;
+    resolvedRef.current = false;
     try {
       const result = await api.rollbackUpdate();
       if (result.success) {
