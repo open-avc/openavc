@@ -251,6 +251,81 @@ def reference_findings(
     return findings
 
 
+#: The `matrix_config` keys that hold a state-key GLOB rather than a plain key.
+#:
+#: Each is a state key with the input or output number replaced by `*`, which
+#: the panel substitutes 1..count over. They are the only bindings on a panel
+#: that point at state without living under `bindings.show`, which is exactly
+#: why nothing checked them.
+MATRIX_KEY_PATTERNS = (
+    "route_key_pattern",
+    "audio_route_key_pattern",
+    "input_key_pattern",
+    "output_key_pattern",
+)
+
+#: What `*` is replaced with to make a pattern into a checkable key. Every
+#: matrix is 1-based and has at least one of each, so index 1 always exists if
+#: any does -- and a child type whose roster is dynamic answers "no opinion"
+#: rather than guessing, so this cannot invent a complaint.
+_PROBE_INDEX = "1"
+
+
+def _matrix_pattern_findings(
+    dump: Mapping[str, Any],
+    el_id: str,
+    el_type: str,
+    device_ids: set[str],
+    undeclared_property: Callable[[str], set[str] | None] | None,
+) -> list[Finding]:
+    """State-key globs inside `matrix_config`, checked like any other binding.
+
+    A matrix is the one control that reads state from somewhere other than
+    `bindings.show`, so the property check that catches a typo'd key everywhere
+    else has never seen these. The gap is not theoretical: a build authored
+    `input_key_pattern: device.<id>.input.*.label` against a driver that
+    declares no `label` on its input children. Nothing failed -- the renderer
+    only writes a header when the key resolves, so the columns silently keep
+    their default captions and the author believes the labels are live.
+
+    Checked by substituting `*` for index 1 and asking the same question
+    `show.value` asks. A pattern with no `*` is left alone: it is a plain key,
+    it will be read for every row, and saying "this is not a glob" is a
+    different complaint than this function makes.
+    """
+    if el_type != "matrix":
+        return []
+    config = _mapping(dump.get("matrix_config"))
+    if not config:
+        return []
+
+    findings: list[Finding] = []
+    for name in MATRIX_KEY_PATTERNS:
+        pattern = config.get(name)
+        if not isinstance(pattern, str) or not pattern.startswith("device."):
+            continue
+        if _device_of(pattern, device_ids) is None:
+            named = pattern.split(".")[1] if pattern.count(".") >= 1 else pattern
+            findings.append(Finding(
+                el_id, "dangling_reference",
+                f"{el_id} ({el_type}) reads matrix_config.{name} from '{pattern}', and no "
+                f"device '{named}' is in this project. The devices are: {_listed(device_ids)}.",
+                key=("dangling_reference", el_id, f"matrix_config.{name}"),
+            ))
+            continue
+        if undeclared_property is None or "*" not in pattern:
+            continue
+        declared = undeclared_property(pattern.replace("*", _PROBE_INDEX, 1))
+        if declared:
+            findings.append(Finding(
+                el_id, "dangling_reference",
+                f"{el_id} ({el_type}) reads matrix_config.{name} from '{pattern}', and its "
+                f"driver does not declare that. It declares: {_listed(declared)}.",
+                key=("dangling_reference", el_id, f"matrix_config.{name}.property"),
+            ))
+    return findings
+
+
 def _element_findings(
     dump: Mapping[str, Any],
     el_id: str,
@@ -274,6 +349,10 @@ def _element_findings(
             f"The pages are: {_listed(page_ids)}.",
             key=("dangling_reference", el_id, "target_page"),
         ))
+
+    findings.extend(_matrix_pattern_findings(
+        dump, el_id, el_type, device_ids, undeclared_property,
+    ))
 
     bindings = _mapping(dump.get("bindings")) or {}
     show = _mapping(bindings.get("show")) or {}

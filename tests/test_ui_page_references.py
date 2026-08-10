@@ -212,6 +212,83 @@ def test_everything_that_resolves_stays_quiet() -> None:
     ]) == []
 
 
+# --- Matrix key patterns ---------------------------------------------------
+#
+# A matrix is the one control that reads state from somewhere other than
+# `bindings.show`: its keys are globs inside `matrix_config`. So the property
+# check that catches a typo everywhere else had never seen them, and a build
+# shipped `input.*.label` against a driver declaring no `label` on its inputs.
+# Nothing failed -- the renderer only writes a header when the key resolves, so
+# the columns keep their default captions and the labels look wired.
+
+#: What acme_switcher's children declare, for the stub below.
+_CHILD_SCHEMA = {
+    "output": {"input", "audio_input", "signal"},
+    "input": {"signal", "edid"},
+}
+
+
+def _child_property(key: str) -> set[str] | None:
+    """Stand-in for the driver lookup: the same answers, without a registry."""
+    prefix = "device.acme_switcher."
+    if not key.startswith(prefix):
+        return None
+    parts = key[len(prefix):].split(".")
+    if len(parts) < 3:
+        return None
+    schema = _CHILD_SCHEMA.get(parts[0])
+    prop = ".".join(parts[2:])
+    if schema is None or prop in schema:
+        return None
+    return schema
+
+
+def _matrix(**config) -> dict:
+    return {"id": "mtx", "type": "matrix", "matrix_config": config}
+
+
+def test_a_matrix_pattern_naming_an_undeclared_property_is_caught() -> None:
+    messages = _messages(
+        [_matrix(
+            route_key_pattern="device.acme_switcher.output.*.input",
+            input_key_pattern="device.acme_switcher.input.*.label",
+        )],
+        undeclared_property=_child_property,
+    )
+    assert len(messages) == 1
+    assert "matrix_config.input_key_pattern" in messages[0]
+    assert "does not declare that" in messages[0]
+
+
+def test_a_correct_matrix_pattern_says_nothing() -> None:
+    """The half that matters: a warning here would fire on working panels."""
+    assert _messages(
+        [_matrix(
+            route_key_pattern="device.acme_switcher.output.*.input",
+            audio_route_key_pattern="device.acme_switcher.output.*.audio_input",
+            input_count=8,
+            output_count=8,
+        )],
+        undeclared_property=_child_property,
+    ) == []
+
+
+def test_a_matrix_pattern_naming_a_missing_device_is_caught() -> None:
+    messages = _messages(
+        [_matrix(route_key_pattern="device.nope.output.*.input")],
+        undeclared_property=_child_property,
+    )
+    assert len(messages) == 1
+    assert "no device 'nope' is in this project" in messages[0]
+
+
+def test_a_matrix_with_no_driver_opinion_stays_quiet() -> None:
+    """No driver loaded is a deployment fact, not an authoring mistake."""
+    assert _messages(
+        [_matrix(route_key_pattern="device.acme_switcher.output.*.whatever")],
+    ) == []
+
+
 def test_the_navigation_sentinels_are_not_dangling_pages() -> None:
     """`$back` and `$dismiss` are targets the panel resolves, not page ids.
 
