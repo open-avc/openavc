@@ -1118,15 +1118,18 @@ class Engine:
     # --- UI Event Handling ---
 
     async def handle_ui_event(
-        self, event_type: str, element_id: str, data: dict[str, Any] | None = None
+        self, event_type: str, element_id: str, data: dict[str, Any] | None = None,
+        *, dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """Handle a UI event from a connected panel — the door every panel
         interaction comes through (WS handler, cloud UI tools). The binding
         runtime itself lives in ``core.ui_events``.
 
         Returns what the interaction dispatched, which the panel path ignores
-        and ``simulate_ui_action`` reports."""
-        return await self.ui_events.handle(event_type, element_id, data)
+        and ``simulate_ui_action`` reports. ``dry_run`` resolves the same
+        actions and reports them without any of the effects — for a caller
+        checking a control rather than operating one."""
+        return await self.ui_events.handle(event_type, element_id, data, dry_run=dry_run)
 
     def _load_project_safe(self) -> ProjectConfig:
         """Load project.avc with corruption recovery.

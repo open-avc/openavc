@@ -718,6 +718,7 @@ class AIToolHandler(
             "update_ui_element": self._update_ui_element,
             "delete_ui_elements": self._delete_ui_elements,
             "add_master_element": self._add_master_element,
+            "update_master_element": self._update_master_element,
             "delete_master_element": self._delete_master_element,
             "install_community_driver": self._install_community_driver,
             "create_driver_definition": self._create_driver_definition,
@@ -753,6 +754,7 @@ class AIToolHandler(
             "set_device_setting": self._set_device_setting,
             # UI simulation
             "simulate_ui_action": self._simulate_ui_action,
+            "review_ui": self._review_ui,
             # Impact checking
             "check_references": self._check_references,
             # Async / Waiting

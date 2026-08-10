@@ -3,6 +3,7 @@
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core.ui_events import resolve_press
 from openavc.ui.page_geometry import (
     PAGE_BOX,
     absolute_placements,
@@ -39,6 +40,26 @@ _RETIRED_GEOMETRY = {
 }
 
 
+def _find_ui_element(engine: Any, element_id: str) -> Any:
+    """The element an interaction would reach, page elements then masters.
+
+    Same order as ``ui_events._find_element``, so what this reports and what
+    that dispatches are always the same element.
+    """
+    project = getattr(engine, "project", None)
+    ui = getattr(project, "ui", None)
+    if ui is None:
+        return None
+    for page in getattr(ui, "pages", None) or []:
+        for candidate in page.elements:
+            if candidate.id == element_id:
+                return candidate
+    for master in getattr(ui, "master_elements", None) or []:
+        if master.id == element_id:
+            return master
+    return None
+
+
 def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: list) -> dict:
     """Say why an interaction did nothing, when it did nothing.
 
@@ -50,20 +71,14 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
     """
     if dispatched:
         return {}
-    project = getattr(engine, "project", None)
     # First match wins, the way ui_events._find_element resolves it -- so this
     # describes the element the event actually reached.
-    element = next(
-        (
-            candidate
-            for page in getattr(getattr(project, "ui", None), "pages", []) or []
-            for candidate in page.elements
-            if candidate.id == element_id
-        ),
-        None,
-    )
+    element = _find_ui_element(engine, element_id)
     if element is None:
-        return {"note": f"No element '{element_id}' is on any page, so nothing ran."}
+        return {
+            "note": f"No element '{element_id}' is on any page or in the master "
+                    f"elements, so nothing ran."
+        }
     bindings = element.bindings if isinstance(element.bindings, dict) else {}
     do_map = bindings.get("do") if isinstance(bindings.get("do"), dict) else {}
     if not do_map.get(action):
@@ -1012,6 +1027,15 @@ class UIToolsMixin:
                     break
 
             if target_el is None:
+                # A master is an element too, and looking only at pages made
+                # every cross-page control unreachable from here -- the reply
+                # said "not found", which reads like a typo and invites a retry
+                # of the same call. Name the tool that can.
+                if any(m.id == element_id for m in project.ui.master_elements):
+                    raise ToolEditError({
+                        "error": f"'{element_id}' is a master element, not a page element. "
+                                 f"Use update_master_element to change it."
+                    })
                 raise ToolEditError({"error": f"UI element '{element_id}' not found"})
             _reject_retired_geometry(input, f"Element '{element_id}'")
             # Geometry and per-layout visibility belong to one arrangement. The
@@ -1221,6 +1245,125 @@ class UIToolsMixin:
 
         return _with_findings({"status": "created", "id": element_id}, findings, [])
 
+    async def _update_master_element(self, input: dict) -> Any:
+        """Change a master element in place.
+
+        Its absence was not a small gap. ``update_ui_element`` looks only at
+        pages, so the only way to change a master was to delete it and build it
+        again -- re-sending its style, placements, bindings and page list from
+        scratch every time, with anything forgotten silently gone. A logo whose
+        `src` needed setting could not be reached at all.
+
+        Partial, like ``update_ui_element``: fields absent from the call keep
+        their current values, and ``placements`` merges per orientation so
+        moving the landscape box does not blank the portrait one.
+        """
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+
+        element_id = input.get("element_id", "")
+        if not element_id:
+            return {"error": "element_id is required"}
+        changed: list[str] = []
+        findings: list = []
+
+        def mutate(project):
+            target = next(
+                (m for m in project.ui.master_elements if m.id == element_id), None,
+            )
+            if target is None:
+                on_page = next(
+                    (p.id for p in project.ui.pages
+                     for el in p.elements if el.id == element_id),
+                    None,
+                )
+                if on_page:
+                    raise ToolEditError({
+                        "error": f"'{element_id}' is an element on page '{on_page}', not a "
+                                 f"master. Use update_ui_element to change it."
+                    })
+                raise ToolEditError({"error": f"Master element '{element_id}' not found"})
+
+            _reject_retired_geometry(input, f"Master element '{element_id}'")
+            if "placement" in input:
+                raise ToolEditError({
+                    "error": f"Master element '{element_id}': use 'placements' keyed by "
+                             f"orientation, e.g. {{\"landscape\": {{\"x\": 2, \"y\": 2, "
+                             f"\"w\": 20, \"h\": 8}}}}. A master is not part of any page's layout."
+                })
+
+            if "bindings" in input:
+                from openavc.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
+                bindings = input["bindings"]
+                if not isinstance(bindings, dict):
+                    raise ToolEditError({
+                        "error": f"Master element '{element_id}': 'bindings' must be an "
+                                 f"object, got {type(bindings).__name__}"
+                    })
+                bindings = _normalize_bindings(bindings)
+                err = _validate_bindings(bindings, project)
+                if err:
+                    raise ToolEditError({"error": f"Master element '{element_id}': {err}"})
+                target.bindings = bindings
+                changed.append("bindings")
+
+            if "placements" in input:
+                # Merge per orientation: a call that moves the landscape box
+                # must not blank a portrait one it said nothing about.
+                boxes = input["placements"]
+                if not isinstance(boxes, dict):
+                    raise ToolEditError({
+                        "error": f"Master element '{element_id}': 'placements' must be an "
+                                 f"object keyed by orientation"
+                    })
+                merged = dict(target.placements or {})
+                for orientation, box in boxes.items():
+                    merged[orientation] = (
+                        _rounded_placement(box) if isinstance(box, dict) else box
+                    )
+                target.placements = merged
+                changed.append("placements")
+
+            # Everything else is a plain field on the element. Anything the
+            # model declares is settable -- the schema is what limits the
+            # caller, and limiting it twice is what left a master image with no
+            # way to be given a src.
+            for field, value in input.items():
+                if field in ("element_id", "bindings", "placements", "placement"):
+                    continue
+                if field == "id":
+                    raise ToolEditError({
+                        "error": "A master element's id cannot be changed here -- delete it "
+                                 "and add it again under the new id."
+                    })
+                if not hasattr(target, field) and field not in (
+                    type(target).model_fields
+                ):
+                    # extra='allow' means an unknown field would be stored and
+                    # never read. Say so rather than accept it silently.
+                    raise ToolEditError({
+                        "error": f"Master element '{element_id}': '{field}' is not a field "
+                                 f"on a UI element."
+                    })
+                setattr(target, field, value)
+                changed.append(field)
+
+            if not changed:
+                raise ToolEditError({"error": "No fields to update"})
+            findings.extend(review_master_element(
+                target, _theme_defaults(project, "slider"),
+            ))
+
+        err = await apply_tool_edit(engine, mutate)
+        if err:
+            return err
+
+        return _with_findings(
+            {"status": "updated", "element_id": element_id, "changed": changed},
+            findings, [],
+        )
+
     async def _delete_master_element(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -1242,6 +1385,99 @@ class UIToolsMixin:
 
         return {"status": "deleted", "element_id": element_id}
 
+    async def _review_ui(self, input: dict) -> Any:
+        """Re-run every UI check across the whole project, on demand.
+
+        The checks all existed; there was no way to ASK. Findings rode back only
+        on the write that caused them, so a panel built over sixty calls left
+        its warnings scattered through a transcript, and a compacted or resumed
+        session lost them outright. There was no way to end a build with "and
+        now it is clean" -- only to remember, or not.
+
+        Unscoped on purpose: no ``touched`` filter, every page, every master,
+        every arrangement. Read-only, so it fills nothing in -- an auto-fill
+        needs a write to belong to, and answering a question should not change
+        the project.
+        """
+        engine = self._get_engine()
+        if not engine or not engine.project:
+            return {"error": "No project loaded"}
+        project = engine.project
+
+        only = input.get("page_id")
+        pages = [p for p in project.ui.pages if not only or p.id == only]
+        if only and not pages:
+            return {
+                "error": f"UI page '{only}' not found. The pages are: "
+                         f"{', '.join(p.id for p in project.ui.pages) or '(none)'}"
+            }
+
+        device_ids = sorted((d.id for d in project.devices), key=len, reverse=True)
+        page_ids = {p.id for p in project.ui.pages}
+        macro_ids = {m.id for m in project.macros}
+        by_page: dict[str, list[str]] = {}
+        total = 0
+
+        for page in pages:
+            findings, _ = review_page(
+                page,
+                theme=_theme_defaults(project, "slider"),
+                # Ranges are read-only here: review_page only reports a range
+                # mismatch, and the fills it would make are suppressed by
+                # set_field below.
+                declared_range=lambda key: _declared_state_variable(
+                    self._devices, device_ids, key,
+                ),
+                set_field=lambda *_: None,
+            )
+            findings.extend(reference_findings(
+                page,
+                page_ids=page_ids,
+                device_ids=set(device_ids),
+                macro_ids=macro_ids,
+                device_commands=lambda device_id: _declared_commands(self._devices, device_id),
+                plugin_elements=lambda plugin_id: _declared_panel_elements(
+                    self._get_engine(), plugin_id,
+                ),
+                undeclared_property=lambda key: _undeclared_state_property(
+                    self._devices, device_ids, key,
+                ),
+            ))
+            if findings:
+                by_page[page.id] = [f.message for f in findings]
+                total += len(findings)
+
+        master_findings: list[str] = []
+        if not only:
+            for master in project.ui.master_elements:
+                master_findings.extend(
+                    f.message
+                    for f in review_master_element(
+                        master, _theme_defaults(project, "slider"),
+                    )
+                )
+            total += len(master_findings)
+
+        result: dict = {
+            "pages_checked": [p.id for p in pages],
+            "masters_checked": 0 if only else len(project.ui.master_elements),
+            "finding_count": total,
+        }
+        if by_page:
+            result["pages"] = by_page
+        if master_findings:
+            result["master_elements"] = master_findings
+        if not total:
+            result["status"] = "clean"
+            result["note"] = (
+                "Nothing to report: every control has a box it fits in, no two collide, "
+                "and every binding points at something that exists."
+            )
+        else:
+            result["status"] = "findings"
+            result["note"] = _WARNING_NOTE
+        return result
+
     async def _simulate_ui_action(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine:
@@ -1251,10 +1487,17 @@ class UIToolsMixin:
         element_id = input.get("element_id", "")
         value = input.get("value")
         page_id = input.get("page_id", "")
+        dry_run = bool(input.get("dry_run"))
 
         if action == "navigate":
             if not page_id:
                 return {"error": "page_id is required for navigate action"}
+            if dry_run:
+                return {
+                    "success": True, "action": "navigate", "page_id": page_id,
+                    "dry_run": True, "state_changes": [],
+                    "note": f"Would move every connected panel to '{page_id}'.",
+                }
             # Mirror the real navigation path (engine.handle_ui_event): emit the
             # page event AND broadcast ui.navigate — panels switch page only on
             # the WS broadcast, so the emit alone would report success while no
@@ -1276,17 +1519,31 @@ class UIToolsMixin:
                 return
             state_changes.append({"key": key, "old_value": old_val, "new_value": new_val})
 
+        # A real press on a toggle button is resolved BY THE PANEL -- it compares
+        # the bound key against toggle_value in the browser and sends press or
+        # toggle_off. Firing "press" here regardless reported the on-branch
+        # twice in a row for a working toggle, which is indistinguishable from a
+        # toggle that only ever fires one branch.
+        toggle_note: str | None = None
+        effective = action
+        if action == "press":
+            element = _find_ui_element(engine, element_id)
+            if element is not None:
+                effective, toggle_note = resolve_press(element, self._agent.state)
+
         sub_id = self._agent.state.subscribe("*", on_change)
         try:
             if action in ("press", "release", "hold"):
-                dispatched = await engine.handle_ui_event(action, element_id)
+                dispatched = await engine.handle_ui_event(
+                    effective, element_id, dry_run=dry_run,
+                )
             elif action == "change":
                 dispatched = await engine.handle_ui_event(
-                    "change", element_id, {"value": value},
+                    "change", element_id, {"value": value}, dry_run=dry_run,
                 )
             elif action == "submit":
                 dispatched = await engine.handle_ui_event(
-                    "submit", element_id, {"value": value},
+                    "submit", element_id, {"value": value}, dry_run=dry_run,
                 )
             else:
                 return {"error": f"Unknown action: {action}"}
@@ -1298,6 +1555,9 @@ class UIToolsMixin:
         return {
             "success": True,
             "action": action,
+            **({"dispatched_as": effective} if effective != action else {}),
+            **({"toggle": toggle_note} if toggle_note else {}),
+            **({"dry_run": True} if dry_run else {}),
             "element_id": element_id,
             # What the interaction actually DID. State changes alone report a
             # working button as "success, nothing happened": a device.command

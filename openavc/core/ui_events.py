@@ -35,6 +35,64 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error(f"Background task failed: {exc}", exc_info=exc)
 
 
+def press_mode(element: Any) -> tuple[str, dict[str, Any]]:
+    """A button's interaction mode, and the action carrying it.
+
+    Mirrors the panel: mode lives on the FIRST action of ``do.press``, and a
+    toggle without a ``toggle_key`` has nothing to compare, so it degrades to
+    tap rather than doing nothing.
+    """
+    bindings = getattr(element, "bindings", None)
+    do_map = bindings.get("do") if isinstance(bindings, dict) else None
+    actions = do_map.get("press") if isinstance(do_map, dict) else None
+    first = actions[0] if isinstance(actions, list) and actions else actions
+    first = first if isinstance(first, dict) else {}
+    mode = first.get("mode") or "tap"
+    if mode == "toggle" and not first.get("toggle_key"):
+        mode = "tap"
+    return mode, first
+
+
+def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
+    """Which event a real press on this element would send, and why.
+
+    **The panel decides this, not the server.** A touch on a toggle button
+    compares the bound key against ``toggle_value`` in the browser and sends
+    either ``ui.press`` or ``ui.toggle_off``; the server only ever sees the
+    verdict. That is correct for the panel and wrong for anything trying to
+    *verify* a panel -- calling ``handle_ui_event("press", ...)`` directly fires
+    the on-branch no matter what the device is currently doing, so a toggle
+    checked twice reports the same command twice and there is no way to tell a
+    broken toggle from a simulation that cannot see one.
+
+    So this is a mirror, and it is a mirror of four lines. The comparison is
+    string and case-insensitive, matching panel.js exactly -- that is what lets
+    ``toggle_value: true`` match a driver's boolean ``True``, which is how
+    nearly every toggle in a real project is written.
+    ``tests/test_ui_page_review_mirrors.py`` pins the spelling.
+
+    Returns the event type plus a sentence explaining the choice, or None when
+    the element is not a toggle and there was no choice to make.
+    """
+    mode, action = press_mode(element)
+    if mode != "toggle":
+        return "press", None
+    key = action.get("toggle_key")
+    want = action.get("toggle_value")
+    current = state.get(key) if state is not None else None
+    active = (
+        current is not None and want is not None
+        and str(current).lower() == str(want).lower()
+    )
+    verdict = "==" if active else "!="
+    why = (
+        f"toggle_key '{key}' is {current!r} {verdict} toggle_value {want!r}, so a press "
+        f"here {'leaves' if active else 'reaches'} the toggled-on state -- dispatching "
+        f"{'off_action' if active else 'the press action'}."
+    )
+    return ("toggle_off" if active else "press"), why
+
+
 class UIEventRuntime:
     """Executes the bindings behind panel interactions."""
 
@@ -42,7 +100,8 @@ class UIEventRuntime:
         self._engine = engine
 
     async def handle(
-        self, event_type: str, element_id: str, data: dict[str, Any] | None = None
+        self, event_type: str, element_id: str, data: dict[str, Any] | None = None,
+        *, dry_run: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Handle a UI event from a connected panel.
@@ -56,14 +115,23 @@ class UIEventRuntime:
         no state key directly (it goes out the wire and comes back on a poll or
         a push), so watching the state store reported "success, no changes" for
         a working control, and the caller reasonably believed it.
+
+        ``dry_run`` walks the same resolution and returns the same records
+        without any of the effects -- no command on the wire, no state write, no
+        macro, no navigation broadcast. It threads through the real path rather
+        than re-deriving one, because a preview that resolves differently from
+        the thing it previews is worse than no preview. It is off by default:
+        the panel is the caller that matters and it always means it.
         """
         engine = self._engine
         data = data or {}
         dispatched: list[dict[str, Any]] = []
 
-        # Emit the raw UI event
-        event_name = f"ui.{event_type}.{element_id}"
-        await engine.events.emit(event_name, {"element_id": element_id, **data})
+        # Emit the raw UI event. A dry run emits nothing: scripts and triggers
+        # subscribe to these, so the "preview" would drive the room.
+        if not dry_run:
+            event_name = f"ui.{event_type}.{element_id}"
+            await engine.events.emit(event_name, {"element_id": element_id, **data})
 
         # Find the element and its bindings
         element = self._find_element(element_id)
@@ -83,7 +151,7 @@ class UIEventRuntime:
         # row ("select") is show.value; the device guard here is defensive
         # against a hand-edited / AI-authored write_back on a device key.
         value_binding = show.get("value") if isinstance(show.get("value"), dict) else None
-        if value_binding and value_binding.get("write_back"):
+        if value_binding and value_binding.get("write_back") and not dry_run:
             link_key = value_binding.get("key", "")
             if link_key and not link_key.startswith("device."):
                 # change → scale the display value to the element's output range;
@@ -134,12 +202,15 @@ class UIEventRuntime:
             binding = [binding]
         for action_item in binding:
             if isinstance(action_item, dict):
-                await self.execute_action(action_item, data, element, dispatched)
+                await self.execute_action(
+                    action_item, data, element, dispatched, dry_run=dry_run,
+                )
         return dispatched
 
     async def execute_action(
         self, action_def: dict[str, Any], data: dict[str, Any],
         element: Any = None, dispatched: list[dict[str, Any]] | None = None,
+        *, dry_run: bool = False,
     ) -> None:
         """Execute a single UI binding action.
 
@@ -153,6 +224,8 @@ class UIEventRuntime:
         def record(**fields: Any) -> None:
             if dispatched is not None:
                 dispatched.append({"action": action, **fields})
+                if dry_run:
+                    dispatched[-1]["would_run"] = True
 
         # The UI-event tokens a binding can reference. Built once so the
         # device.command and state.set branches resolve them identically: $value
@@ -177,11 +250,16 @@ class UIEventRuntime:
             # binding shape invites, so it is recorded either way.
             record(value=element_value, matched=bool(mapped_action))
             if mapped_action:
-                await self.execute_action(mapped_action, data, element, dispatched)
+                await self.execute_action(
+                    mapped_action, data, element, dispatched, dry_run=dry_run,
+                )
 
         elif action == "macro":
             macro_id = action_def.get("macro", "")
             if macro_id:
+                if dry_run:
+                    record(macro=macro_id, started=False)
+                    return
                 # Run macro in background so UI doesn't block
                 task = asyncio.create_task(engine.macros.execute(macro_id))
                 task.add_done_callback(_log_task_exception)
@@ -196,6 +274,12 @@ class UIEventRuntime:
             # $system ref from the state store.
             for k, v in params.items():
                 params[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
+            if dry_run:
+                # The params are resolved above and reported, because that is
+                # the half worth previewing: a $value that resolves to None is
+                # the mistake, and it is invisible until the command is sent.
+                record(device=device_id, command=command, params=params, sent=False)
+                return
             try:
                 await engine.devices.send_command(device_id, command, params)
                 record(device=device_id, command=command, params=params, sent=True)
@@ -227,7 +311,8 @@ class UIEventRuntime:
                     "state.set binding for key '%s' had a non-primitive value; "
                     "coerced to a JSON string", key,
                 )
-            engine.state.set(key, value, source="ui")
+            if not dry_run:
+                engine.state.set(key, value, source="ui")
             record(key=key, value=value)
 
         elif action == "ui.navigate":
@@ -240,17 +325,19 @@ class UIEventRuntime:
             # keeps its own "navigate" name.
             page_id = action_def.get("page", "")
             if page_id:
-                await engine.events.emit(f"ui.page.{page_id}")
-                await engine.broadcast_ws({
-                    "type": "ui.navigate",
-                    "page_id": page_id,
-                })
+                if not dry_run:
+                    await engine.events.emit(f"ui.page.{page_id}")
+                    await engine.broadcast_ws({
+                        "type": "ui.navigate",
+                        "page_id": page_id,
+                    })
                 record(page=page_id)
 
         elif action == "script.call":
             func_name = action_def.get("function", "")
             if func_name:
-                await engine.events.emit(f"script.call.{func_name}", data)
+                if not dry_run:
+                    await engine.events.emit(f"script.call.{func_name}", data)
                 record(function=func_name)
 
     @staticmethod
@@ -295,7 +382,18 @@ class UIEventRuntime:
         return result
 
     def _find_element(self, element_id: str) -> Any | None:
-        """Find a UI element by ID across all pages."""
+        """Find a UI element by ID, across every page and then the masters.
+
+        Masters were missed here for as long as this existed, which made the
+        whole cross-page layer -- nav bars, a home button, a header status LED
+        -- silently inert to anything that went through this path, and
+        untestable through ``simulate_ui_action``. The panel has always drawn
+        and dispatched them; only the server-side lookup did not know they were
+        elements too.
+
+        Pages first, matching the panel's own precedence: a page element wins a
+        duplicate id, because that is the one it drew last.
+        """
         project = self._engine.project
         if not project:
             return None
@@ -303,4 +401,7 @@ class UIEventRuntime:
             for element in page.elements:
                 if element.id == element_id:
                     return element
+        for master in getattr(project.ui, "master_elements", None) or []:
+            if master.id == element_id:
+                return master
         return None

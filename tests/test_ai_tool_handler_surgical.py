@@ -6,11 +6,13 @@ add/delete_ui_page, add/update/delete_ui_elements.
 """
 
 import asyncio
+from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.ui_events import UIEventRuntime
 from openavc.cloud.protocol import AI_TOOL_CALL, _now_iso
 
 
@@ -988,7 +990,7 @@ async def test_simulate_action_filters_background_state_changes(handler, mock_ag
     store = StateStore()
     mock_agent.state = store  # real store: subscribe/unsubscribe + listener fire
 
-    async def fake_handle(action, element_id, *args):
+    async def fake_handle(action, element_id, *args, **kwargs):
         store.set("device.projector1.power", "on", source="device.projector1")  # real effect
         store.set("system.cpu_percent", 42, source="heartbeat")                  # background noise
         store.set("var.other_tool", "x", source="ai")                            # concurrent tool
@@ -1012,7 +1014,7 @@ async def test_simulate_reports_the_actions_it_dispatched(handler, mock_agent, m
     binding returns. The AI asked to verify its own panel read that as a silent
     failure, correctly, because nothing distinguished the two.
     """
-    async def fake_handle(action, element_id, *args):
+    async def fake_handle(action, element_id, *args, **kwargs):
         return [{"action": "device.command", "device": "projector1",
                  "command": "power_on", "params": {}, "sent": True}]
 
@@ -1031,7 +1033,7 @@ async def test_simulate_reports_the_actions_it_dispatched(handler, mock_agent, m
 @pytest.mark.asyncio
 async def test_simulate_says_why_nothing_ran(handler, mock_agent, mock_engine):
     """An empty result is worth a sentence rather than an empty array to read."""
-    async def fake_handle(action, element_id, *args):
+    async def fake_handle(action, element_id, *args, **kwargs):
         return []
 
     mock_engine.handle_ui_event = fake_handle
@@ -1045,6 +1047,213 @@ async def test_simulate_says_why_nothing_ran(handler, mock_agent, mock_engine):
 
     assert "No element 'not_a_thing' is on any page" in missing["note"]
     assert "nothing bound to hold" in unbound["note"]
+
+
+# --- Simulating a toggle, and simulating without firing ---------------------
+#
+# A real press on a toggle button is resolved in the browser: panel.js compares
+# the bound key against toggle_value and sends press or toggle_off. Simulating
+# a press server-side skipped that entirely and always fired the on-branch, so
+# a working toggle reported the same command twice in a row -- which is exactly
+# what a toggle stuck on one branch looks like. One panel build ended with
+# "26 buttons may or may not work and I cannot tell you which."
+
+
+def _toggle_button(project, *, key: str, value):
+    from openavc.core.project_loader import UIElement
+    page = next(p for p in project.ui.pages if p.id == "main")
+    page.elements.append(UIElement(
+        id="btn_toggle", type="button", label="Lock",
+        bindings={"do": {"press": [{
+            "action": "device.command", "device": "projector1", "command": "lock_on",
+            "params": {}, "mode": "toggle", "toggle_key": key, "toggle_value": value,
+            "off_action": {
+                "action": "device.command", "device": "projector1",
+                "command": "lock_off", "params": {},
+            },
+        }]}},
+    ))
+    return page
+
+
+@pytest.mark.asyncio
+async def test_simulate_resolves_a_toggle_the_way_the_panel_does(
+    handler, mock_agent, mock_engine,
+):
+    """Both branches, and a sentence saying which one and why."""
+    from openavc.core.state_store import StateStore
+
+    store = StateStore()
+    mock_agent.state = store
+    _toggle_button(mock_engine.project, key="device.projector1.key_lock", value=True)
+
+    seen: list[str] = []
+
+    async def fake_handle(action, element_id, *args, **kwargs):
+        seen.append(action)
+        return [{"action": "device.command", "sent": True}]
+
+    mock_engine.handle_ui_event = fake_handle
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        # Device reports locked: pressing it again must take the OFF branch.
+        store.set("device.projector1.key_lock", True, source="device.projector1")
+        on_when_locked = await handler._simulate_ui_action({
+            "action": "press", "element_id": "btn_toggle",
+        })
+        # ...and unlocked, the on branch.
+        store.set("device.projector1.key_lock", False, source="device.projector1")
+        on_when_unlocked = await handler._simulate_ui_action({
+            "action": "press", "element_id": "btn_toggle",
+        })
+
+    assert seen == ["toggle_off", "press"]
+    assert on_when_locked["dispatched_as"] == "toggle_off"
+    assert "off_action" in on_when_locked["toggle"]
+    # The boolean state matched a boolean toggle_value through the string
+    # compare panel.js uses -- the case that makes every real toggle work.
+    assert "True == toggle_value True" in on_when_locked["toggle"]
+    assert "dispatched_as" not in on_when_unlocked  # press stayed press
+
+
+@pytest.mark.asyncio
+async def test_simulate_dry_run_resolves_without_sending(handler, mock_agent, mock_engine):
+    """Probing a control must not operate the room.
+
+    Verifying toggles on a live matrix locked its front panel mid-demo, and
+    nothing in the reply had warned that a tool named `simulate` transmits.
+    """
+    from openavc.core.engine import Engine
+    from openavc.core.state_store import StateStore
+
+    mock_agent.state = StateStore()
+    _toggle_button(mock_engine.project, key="var.locked", value=True)
+    sent: list = []
+    mock_engine.devices.send_command = AsyncMock(side_effect=lambda *a, **k: sent.append(a))
+    mock_engine.events.emit = AsyncMock()
+    mock_engine.state = mock_agent.state
+    mock_engine.handle_ui_event = partial(Engine.handle_ui_event, mock_engine)
+    mock_engine.ui_events = UIEventRuntime(mock_engine)
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        preview = await handler._simulate_ui_action({
+            "action": "press", "element_id": "btn_toggle", "dry_run": True,
+        })
+
+    assert preview["dry_run"] is True
+    assert sent == [], "a dry run reached the device"
+    assert mock_engine.events.emit.await_count == 0, "a dry run emitted a UI event"
+    # It still says what WOULD have happened, resolved params and all.
+    assert preview["dispatched"] == [{
+        "action": "device.command", "device": "projector1", "command": "lock_on",
+        "params": {}, "sent": False, "would_run": True,
+    }]
+
+
+@pytest.mark.asyncio
+async def test_simulate_reaches_a_master_element(handler, mock_agent, mock_engine):
+    """A nav bar is masters, so it had no verification path at all."""
+    from openavc.core.project_loader import MasterElement
+    from openavc.core.state_store import StateStore
+
+    mock_agent.state = StateStore()
+    mock_engine.project.ui.master_elements.append(MasterElement(
+        id="nav_home", type="button", label="Home", pages="*",
+        bindings={"do": {"press": [{"action": "ui.navigate", "page": "main"}]}},
+    ))
+
+    async def fake_handle(action, element_id, *args, **kwargs):
+        return []
+
+    mock_engine.handle_ui_event = fake_handle
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._simulate_ui_action({
+            "action": "press", "element_id": "nav_home",
+        })
+
+    # It found the element, so the note is about the binding, not about the
+    # element not existing anywhere.
+    assert "is on any page" not in result.get("note", "")
+
+
+# --- Master elements are editable ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_master_element_sets_a_field_add_could_not(handler, mock_engine):
+    """The logo placeholder that no tool could give a src to."""
+    from openavc.core.project_loader import MasterElement, Placement
+
+    mock_engine.project.ui.master_elements.append(MasterElement(
+        id="brand_logo", type="image", pages="*",
+        placements={"landscape": Placement(x=2, y=2, w=12, h=8),
+                    "portrait": Placement(x=4, y=1, w=20, h=6)},
+    ))
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_master_element({
+            "element_id": "brand_logo",
+            "src": "assets://logo.png",
+            "placements": {"landscape": {"x": 3, "y": 3, "w": 14, "h": 9}},
+        })
+
+    assert result["status"] == "updated"
+    logo = next(m for m in mock_engine.project.ui.master_elements if m.id == "brand_logo")
+    assert logo.src == "assets://logo.png"
+    assert logo.placements["landscape"].x == 3
+    # The orientation the call said nothing about is untouched, not blanked.
+    assert logo.placements["portrait"].w == 20
+
+
+@pytest.mark.asyncio
+async def test_updating_a_master_through_the_page_tool_names_the_right_one(
+    handler, mock_engine,
+):
+    """`not found` reads like a typo and invites a retry of the same call."""
+    from openavc.core.project_loader import MasterElement
+
+    mock_engine.project.ui.master_elements.append(
+        MasterElement(id="hdr_title", type="label", pages="*"),
+    )
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._update_ui_element({
+            "element_id": "hdr_title", "text": "Main Hall",
+        })
+
+    assert "update_master_element" in result["error"]
+
+
+# --- Asking for the verdict, rather than remembering it ---------------------
+
+
+@pytest.mark.asyncio
+async def test_review_ui_reports_across_the_whole_project(handler, mock_engine):
+    """Findings used to ride back only on the write that caused them."""
+    from openavc.core.project_loader import Placement, UIElement
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    page.elements.append(UIElement(id="lbl_blank", type="label", label="Ready"))
+    page.layouts[0].placements["lbl_blank"] = Placement(x=60, y=60, w=20, h=8)
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._review_ui({})
+
+    assert result["status"] == "findings"
+    assert any("lbl_blank" in m for m in result["pages"]["main"])
+    assert result["pages_checked"] == ["main", "settings"]
+
+
+@pytest.mark.asyncio
+async def test_review_ui_says_clean_and_changes_nothing(handler, mock_engine):
+    """A build needs a way to END, and asking must not mutate the project."""
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        before = mock_engine.project.model_dump_json()
+        result = await handler._review_ui({})
+        after = mock_engine.project.model_dump_json()
+
+    assert result["status"] == "clean"
+    assert result["finding_count"] == 0
+    assert before == after, "a read-only review filled something in"
 
 
 @pytest.mark.asyncio
