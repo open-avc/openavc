@@ -163,6 +163,107 @@ element type, from the page tree rather than from the renderer.
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
 
+## What each type reads off the element
+
+Every property below is settable on every element type -- the file format
+declares them flat and optional, and the loader keeps whatever it is given. Each
+renderer then reads a handful. A property this table does not list for a type is
+stored, round-trips through a read perfectly, and **does nothing**: no error, no
+log, nothing on screen.
+
+Two of these are worth knowing before you author anything.
+
+**`label` is drawn by nearly every type, and not by `label`.** A `label` element
+draws its `text`. Setting `label` on one is the commonest way to get a blank
+element, and it looks correct in every read-back.
+
+**`show.value` overrides `text`** when both are set, so a label that reflects
+state does not need a static string as well.
+
+Icons are shared: `icon`, `icon_position`, `icon_size` and `icon_color` are read
+for the types listed below, and each one is taken from `style` first and the
+element second.
+
+| Type | Reads |
+|---|---|
+| button | `button_image`, `display_mode`, `frameless`, `image_blend_mode`, `image_fit`, `image_opacity`, `label` (+ the shared icon set) |
+| camera_preset | `button_image`, `display_mode`, `frameless`, `image_blend_mode`, `image_fit`, `image_opacity`, `label`, `preset_number` (+ the shared icon set) |
+| clock | `clock_mode`, `duration_minutes`, `format`, `start_key`, `target_time`, `timezone` |
+| fader | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `unit` |
+| gauge | `arc_angle`, `display_decimals`, `label`, `max`, `min`, `unit`, `zones` |
+| group | `label`, `label_position` |
+| image | `label`, `object_fit`, `src` |
+| keypad | `auto_send`, `auto_send_delay_ms`, `digits`, `keypad_style`, `label`, `show_display` |
+| label | `display_decimals`, `text` (+ the shared icon set) |
+| level_meter | `label`, `max`, `min`, `orientation` |
+| list | `item_height`, `items`, `label`, `list_style`, `options` |
+| matrix | `label`, `matrix_config`, `matrix_style` |
+| page_nav | `label`, `target_page` (+ the shared icon set) |
+| plugin | `plugin_config`, `plugin_id`, `plugin_type` |
+| select | `label`, `options` |
+| slider | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `thumb_size`, `unit` |
+| status_led | `label` |
+| text_input | `label`, `placeholder` |
+
+Fields common to every element are not in the table because no renderer owns
+them: `aspect_lock`, `bindings`, `css_class`, `hidden`, `id`, `locked`, `pages`, `parent`, `placement`, `placements`, `style` and `type`.
+
+`hidden` is the one to read twice. On a page element it is **per-layout**
+(`layouts[].hidden`), and setting it on the element does nothing. A master
+element belongs to no layout, so there it is an element property and works.
+
+## The matrix, which is configured entirely inside `matrix_config`
+
+A matrix is the one control whose settings do not live on the element. They live
+in `matrix_config`, which is a free-form object at every layer -- no schema, no
+defaults published anywhere else -- so an invented key is stored and ignored in
+exactly the same way a correct one is stored and used.
+
+| Key | What it does |
+|---|---|
+| `input_count` / `output_count` | Grid size. **Default 4 each.** An 8x8 switcher that omits these silently draws half of itself. |
+| `route_key_pattern` | **The one that lights the crosspoints.** No default. |
+| `input_labels` / `output_labels` | Column and row captions. Default `In 1`..`In N` / `Out 1`..`Out N`. |
+| `input_key_pattern` / `output_key_pattern` | Captions driven from live state instead, same `*` substitution. |
+| `audio_route_key_pattern` | Audio routes, which also drives the per-output A!=V badge. |
+| `audio_follow_video` | Send the audio route alongside the video one. Needs a `do.audio_route` binding. |
+| `show_lock` | Per-output lock buttons. **Defaults on.** Client-side only -- locking sends nothing, it just stops that row being changed on this panel. |
+| `show_mute` | Per-output mute buttons. Drawn only when there is also a `do.mute_route` binding. |
+| `presets` | `[{name, macro}]`. A preset bar above the grid; each button runs its macro. |
+
+`route_key_pattern` is worth its own paragraph, because getting it wrong
+produces a control that looks finished. It is the state key of one output's
+routed input with the **output number replaced by `*`**, 1-based:
+
+    "route_key_pattern": "device.<device id>.output.*.input"
+
+The panel substitutes 1..`output_count` and reads each key to decide which
+crosspoint in that row is lit. Without it, no state binding is registered at all:
+the grid draws, clicking still routes correctly (the command carries
+`$input`/`$output` from the touch, not from config), and **no crosspoint ever
+changes colour** for the life of the panel.
+
+Routing itself is a `do` binding, not config: `do.route` with `$input` and
+`$output`, plus `do.audio_route`, `do.mute_route` and `do.audio_mute_route`
+(`$output`, `$mute`) if the device supports them.
+
+## How a bound value is compared
+
+Three rules, and they are not the same one. All three coerce to string first, so
+a boolean state matches a `"true"` map key and an integer `1` matches `"1"` --
+but only two of them ignore case.
+
+| Where | Rule |
+|---|---|
+| A button's `toggle_value` against `toggle_key` | string, **case-insensitive** |
+| `show.value` with a `condition.equals` | string, **case-insensitive** |
+| `show.look.map` keys (a status LED's colours) | string, **case-sensitive** |
+| A `select` option's `value` against `show.value` | string, exact |
+
+So `{"true": "#4CAF50"}` lights an LED bound to a boolean, and `{"True": ...}`
+does not -- while a toggle would have matched both. Write map keys in the
+device's own casing, and prefer lowercase `"true"` / `"false"` for booleans.
+
 ## After a write
 
 A UI write returns any of the above it finds, in pixels and in the percentage of
