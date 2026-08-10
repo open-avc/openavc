@@ -253,6 +253,28 @@ Visibility conditions are evaluated client-side in the panel, so they respond in
 
 A **List** populates its rows either from the static items configured under **Basic**, or dynamically from state. In the **Items** card, enter a state **key pattern** (use `*` as a wildcard) to build rows from matching keys, for example `device.matrix.input_*_name` to list every input's name. Leave the card blank to use the static items.
 
+### Setting up a Matrix
+
+A **Matrix** is configured under **Basic**, not through the binding cards, and one of its settings decides whether the grid can show anything at all.
+
+| Setting | What it does |
+|---|---|
+| **Inputs** / **Outputs** | Grid size. Both default to 4, so an 8x8 switcher needs both set or it draws half of itself. |
+| **Route key pattern** | The state key that lights the crosspoints. **No default.** |
+| **Input labels** / **Output labels** | Column and row captions. Default to "In 1"..."In N" and "Out 1"..."Out N". |
+| **Audio route key pattern** | Audio routes. Also drives the badge that appears on an output whose audio route differs from its video route. |
+| **Show lock** / **Show mute** | Per-output lock and mute buttons. Lock is panel-side only: it stops that row being changed on this panel and sends nothing. Mute only appears when the Mute interaction has an action on it. |
+
+**Route key pattern is the one to get right.** It is the state key of one output's routed input, with the output number replaced by `*`:
+
+```
+device.matrix_1.output.*.input
+```
+
+The panel substitutes 1 through your output count and reads each key to decide which crosspoint in that row lights up. Leave it blank and the grid still draws, and clicking a crosspoint still routes correctly, but **no crosspoint ever changes colour** -- so the panel shows no feedback about what is currently routed. The Value picker on any output's routed-input state key will show you the exact key to copy; replace the output number with `*`.
+
+Routing itself is a **Does** action, not a setting: the Video route interaction sends the command, with `$input` and `$output` carrying the crosspoint the user touched.
+
 ### Does: actions
 
 The **Does** bucket is one or more **actions**, grouped by the interaction that triggers them. Every action is one of five types:
