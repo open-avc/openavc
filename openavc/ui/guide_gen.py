@@ -49,6 +49,7 @@ from openavc.ui.control_minimums import (
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
+    INERT_WITHOUT,
     MATRIX_CONFIG_KEYS,
     MATRIX_DEFAULT_COUNT,
     RENDERED_TYPES,
@@ -318,6 +319,9 @@ them: %(structural)s.
 `hidden` is the one to read twice. On a page element it is **per-layout**
 (`layouts[].hidden`), and setting it on the element does nothing. A master
 element belongs to no layout, so there it is an element property and works.
+
+Four types draw an empty box when one particular thing is missing, and a write
+warns about each: %(inert)s.
 """
 
 MATRIX_INTRO = """\
@@ -470,6 +474,15 @@ def _note_rows() -> str:
     ) + "\n"
 
 
+def _inert_list() -> str:
+    """The four "or it draws nothing" rules, in one clause each."""
+    return "; ".join(
+        f"a `{name}` needs `{prop}`"
+        + (f" or a `show.{slot}` binding" if slot else "")
+        for name, (prop, slot, _) in sorted(INERT_WITHOUT.items())
+    )
+
+
 def _matrix_section() -> str:
     """The matrix keys, whose prose is written rather than rendered.
 
@@ -585,7 +598,10 @@ def render() -> str:
         BINDINGS_TAIL % {"state_label_types": _and_list(sorted(STATE_LABEL_TYPES))},
         PROPERTIES_INTRO,
         _property_rows(),
-        PROPERTIES_TAIL % {"structural": _and_list(sorted(STRUCTURAL_PROPERTIES))},
+        PROPERTIES_TAIL % {
+            "structural": _and_list(sorted(STRUCTURAL_PROPERTIES)),
+            "inert": _inert_list(),
+        },
         _matrix_section(),
         COMPARISON_INTRO,
         WRITE_TAIL,

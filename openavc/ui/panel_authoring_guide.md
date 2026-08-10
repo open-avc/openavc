@@ -212,6 +212,9 @@ them: `aspect_lock`, `bindings`, `css_class`, `hidden`, `id`, `locked`, `pages`,
 (`layouts[].hidden`), and setting it on the element does nothing. A master
 element belongs to no layout, so there it is an element property and works.
 
+Four types draw an empty box when one particular thing is missing, and a write
+warns about each: a `image` needs `src`; a `label` needs `text` or a `show.value` binding; a `page_nav` needs `target_page`; a `select` needs `options` or a `show.items` binding.
+
 ## The matrix, which is configured entirely inside `matrix_config`
 
 A matrix is the one control whose settings do not live on the element. They live

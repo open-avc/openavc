@@ -110,7 +110,7 @@ CASES["starvation_every_type"] = _project([
             # No floor at all: limited by their text, which is not a minimum box.
             {"id": "btn", "type": "button", "label": "Go"},
             {"id": "lbl", "type": "label", "text": "Hello"},
-            {"id": "img", "type": "image"},
+            {"id": "img", "type": "image", "src": "assets://logo.png"},
             {"id": "dial", "type": "gauge"},
         ],
         [_landscape({
@@ -395,7 +395,7 @@ CASES["binding_reach"] = _project([
             {"id": "list_ok", "type": "list",
              "bindings": {"show": {"items": {"key": "device.acme.inputs"},
                                    "value": {"key": "device.acme.selected"}}}},
-            {"id": "visible_only", "type": "image",
+            {"id": "visible_only", "type": "image", "src": "assets://bg.png",
              "bindings": {"show": {"visible_when": {"key": "var.admin", "equals": True}}}},
             # A type the panel cannot draw. It answers about the TYPE and says
             # nothing about the binding: a slot reaching a renderer that does
@@ -444,6 +444,12 @@ CASES["vocabulary"] = _project([
             # on nearly every type, and not on the one named after it.
             {"id": "lbl_wrong", "type": "label", "label": "Room Ready"},
             {"id": "lbl_right", "type": "label", "text": "Room Ready"},
+            # Bound instead of static: needs no `text`, and must stay quiet.
+            {"id": "lbl_bound", "type": "label",
+             "bindings": {"show": {"value": {"key": "device.acme.name"}}}},
+            # Nothing to draw at all: the shapes that render an empty box.
+            {"id": "img_srcless", "type": "image"},
+            {"id": "nav_nowhere", "type": "page_nav", "label": "Go"},
             # A property that exists on no type at all. `segments` was in the
             # authoring prompt for a level_meter; the real key is a style one,
             # and its default of 20 makes the wrong write look right.
@@ -474,6 +480,9 @@ CASES["vocabulary"] = _project([
         [_landscape({
             "lbl_wrong": _pct_box(0, 0, 20, 8),
             "lbl_right": _pct_box(25, 0, 20, 8),
+            "lbl_bound": _pct_box(70, 0, 20, 8),
+            "img_srcless": _pct_box(70, 10, 12, 12),
+            "nav_nowhere": _pct_box(85, 10, 12, 12),
             "meter_invented": _pct_box(50, 0, 8, 40),
             "mtx_flat": _pct_box(0, 10, 30, 40),
             "mtx_invented": _pct_box(35, 10, 30, 40),
@@ -1122,6 +1131,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "no_placement",
         "binding_not_rendered",
         "property_not_rendered",
+        "nothing_to_draw",
         "unknown_element_type",
         "style_too_large",
         "too_small_to_draw",
@@ -1164,6 +1174,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "gauge_just",                          # exactly on the degenerate threshold
         "lbl_right",                           # a label's static content IS `text`
         "mtx_ok",                              # a matrix spelled the way it works
+        "lbl_bound",                           # show.value supplies the text
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

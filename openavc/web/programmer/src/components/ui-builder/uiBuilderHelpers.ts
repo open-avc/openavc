@@ -3022,6 +3022,7 @@ export interface ReviewFinding {
     | "no_placement"
     | "binding_not_rendered"
     | "property_not_rendered"
+    | "nothing_to_draw"
     | "unknown_element_type"
     | "style_too_large"
     | "too_small_to_draw"
@@ -4078,6 +4079,54 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
 const MATRIX_DEFAULT_COUNT = 4;
 
 /**
+ * Controls that are inert without one particular thing, and what to set.
+ *
+ * Not "required" -- almost nothing is, and a half-built page mid-drag should
+ * not be scolded. These are the four where the element draws an empty box and
+ * there is no reading under which that was the intent. The second entry is the
+ * binding slot that can supply it instead, so a label bound to `show.value`
+ * needs no `text`.
+ *
+ * Hand-mirrored from INERT_WITHOUT in page_review.py; the parity suite compares
+ * the resulting sentences byte for byte, which is what keeps the two together.
+ */
+const INERT_WITHOUT: Record<string, [string, string | null, string]> = {
+  image: ["src", null, "an asset ref ('assets://logo.png') or a URL"],
+  page_nav: ["target_page", null, "the page id it should open, or '$back'"],
+  label: ["text", "value", "the string to draw, or a show.value binding"],
+  select: ["options", "items", "[{label, value}, ...] for the list of choices"],
+};
+
+/**
+ * A control with nothing to draw, which draws an empty box and says nothing.
+ *
+ * Named by a logo placeholder created as a master image and never given a src,
+ * because no tool could set one. It stored, it took a placement, and it
+ * rendered as nothing -- while the request that asked for it was reported done.
+ */
+export function contentFindings(el: UIElement): ReviewFinding[] {
+  const rule = own(INERT_WITHOUT, el.type);
+  if (!rule) return [];
+  const [prop, slot, remedy] = rule;
+  const value = (el as unknown as Record<string, unknown>)[prop];
+  if (value !== undefined && value !== null && value !== "" &&
+      !(Array.isArray(value) && value.length === 0)) return [];
+  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
+    | Record<string, unknown>
+    | undefined;
+  if (slot && show && typeof show === "object" && show[slot]) return [];
+  const instead = slot ? `, and no show.${slot} to supply one` : "";
+  return [{
+    elementId: el.id,
+    kind: "nothing_to_draw",
+    message:
+      `${el.id} (${el.type}) has no ${prop}${instead}, so it draws an empty box. ` +
+      `Set ${prop} to ${remedy}.`,
+    key: `nothing_to_draw|${el.id}`,
+  }];
+}
+
+/**
  * Properties this element type's renderer never reads.
  *
  * The element-level twin of `bindingFindings`, firing on the same silence: the
@@ -4246,6 +4295,7 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
     if (typeFinding) findings.push(typeFinding);
     findings.push(...bindingFindings(el));
     findings.push(...propertyFindings(el));
+    findings.push(...contentFindings(el));
     findings.push(...matrixFindings(el));
   }
 
@@ -4409,6 +4459,7 @@ export function reviewMasterElement(
     ...(typeFinding ? [typeFinding] : []),
     ...bindingFindings(master),
     ...propertyFindings(master),
+    ...contentFindings(master),
     ...matrixFindings(master),
   ];
   const placements = master.placements;

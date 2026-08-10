@@ -1104,6 +1104,54 @@ def property_findings(element: Mapping[str, Any]) -> list[Finding]:
     return findings
 
 
+#: Controls that are inert without one particular thing, and what to set.
+#:
+#: Not "this field is required" -- almost nothing is, and a half-built page
+#: mid-edit should not be scolded. These are the four where the element draws an
+#: empty box and there is no reading under which that was the intent: an image
+#: with no source, a nav button with nowhere to go, a label with no text and
+#: nothing bound to put text in it, a select with no options to select.
+#:
+#: Each entry is (property, binding slot that can supply it instead, remedy).
+#: The slot matters: a label bound to ``show.value`` needs no ``text``, and
+#: warning about it would fire on the correct spelling.
+INERT_WITHOUT: dict[str, tuple[str, str | None, str]] = {
+    "image": ("src", None, "an asset ref ('assets://logo.png') or a URL"),
+    "page_nav": ("target_page", None, "the page id it should open, or '$back'"),
+    "label": ("text", "value", "the string to draw, or a show.value binding"),
+    "select": ("options", "items", "[{label, value}, ...] for the list of choices"),
+}
+
+
+def content_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """A control with nothing to draw, which draws an empty box and says nothing.
+
+    The failure that named this: a logo placeholder was created as a master
+    image and never given a `src`, because no tool could set one. It stored, it
+    round-tripped, it took a placement, and it rendered as nothing at all --
+    while the request that asked for it was reported as done.
+    """
+    el_type = str(element.get("type", ""))
+    rule = INERT_WITHOUT.get(el_type)
+    if rule is None:
+        return []
+    prop, slot, remedy = rule
+    if element.get(prop):
+        return []
+    bindings = element.get("bindings")
+    show = bindings.get("show") if isinstance(bindings, Mapping) else None
+    if slot and isinstance(show, Mapping) and show.get(slot):
+        return []
+    el_id = str(element.get("id", "?"))
+    instead = f", and no show.{slot} to supply one" if slot else ""
+    return [Finding(
+        el_id,
+        "nothing_to_draw",
+        f"{el_id} ({el_type}) has no {prop}{instead}, so it draws an empty box. "
+        f"Set {prop} to {remedy}.",
+    )]
+
+
 #: Every key ``renderMatrix`` reads out of ``matrix_config``.
 #:
 #: The element declares this as a bare ``dict[str, Any]``, so unlike every other
@@ -1427,6 +1475,7 @@ def review_page(
             findings.append(type_finding)
         findings.extend(binding_findings(dump))
         findings.extend(property_findings(dump))
+        findings.extend(content_findings(dump))
         findings.extend(matrix_findings(dump))
         key = bound_state_key(dump)
         if key and declared_range:
@@ -1606,6 +1655,7 @@ def review_master_element(
         ([type_finding] if type_finding else [])
         + binding_findings(dump)
         + property_findings(dump)
+        + content_findings(dump)
         + matrix_findings(dump)
     )
     placements = dump.get("placements")
