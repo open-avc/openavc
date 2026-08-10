@@ -26,9 +26,12 @@ from pathlib import Path
 import pytest
 
 from openavc.ui.page_review import (
+    HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
+    MATRIX_CONFIG_KEYS,
     MINIMUM_VISIBLE_PX,
     STATE_LABEL_TYPES,
+    STRUCTURAL_PROPERTIES,
     TOUCH_MIN_MM,
     TOUCH_PX_PER_INCH,
     TOUCHABLE_TYPES,
@@ -119,6 +122,108 @@ def test_only_the_feedback_types_can_draw_a_state_label(
     )
     assert feedback == STATE_LABEL_TYPES
     assert "_setLabelText" in panel_method_bodies["evaluateFeedback"]
+
+
+# --- The property table ----------------------------------------------------
+#
+# Harder to derive than the slot table, because a render function is not where
+# the reading stops. It hands the element to shared helpers
+# (`renderElementContent` draws the icon for a dozen types) and it registers
+# bindings whose evaluators run later against `elementDef` -- which is how a
+# label's `display_decimals` is read two hops from `renderLabel`. Both hops are
+# followed here, or the table would call correct properties unread and the
+# warning would fire on working panels.
+
+#: A call that hands the element (or its definition) to another method. The
+#: argument test is what keeps the walk from wandering: a helper that reads
+#: element properties has to be given the element, and one that is not given it
+#: cannot read any.
+_CALL = re.compile(r"this\.(\w+)\(([^;\n]*)\)")
+_TAKES_ELEMENT = re.compile(r"\belement(Def)?\b")
+#: `?.` is not optional here -- `elementDef?.display_decimals` is how the
+#: helpers actually spell it, and a parse that misses it under-reports.
+_PROP_READ = re.compile(r"\b(?:element|elementDef)\??\.([a-z_][a-z0-9_]*)")
+#: Inside an evaluator `element` is the DOM node and `elementDef` is the
+#: definition, so reading both there collects `value`, `_dragging` and `class`.
+_PROP_READ_DEF = re.compile(r"\belementDef\??\.([a-z_][a-z0-9_]*)")
+_REGISTERED_BINDING = re.compile(r"type:\s*'([\w_]+)'")
+_EVALUATOR = re.compile(r"case '([\w_]+)':\s*this\.(evaluate\w+)\(b\);", re.S)
+
+
+def _reachable(entry: str, bodies: dict[str, str], seen: set[str] | None = None) -> set[str]:
+    seen = set() if seen is None else seen
+    if entry in seen or entry not in bodies:
+        return seen
+    seen.add(entry)
+    for callee, args in _CALL.findall(bodies[entry]):
+        if callee in bodies and _TAKES_ELEMENT.search(args):
+            _reachable(callee, bodies, seen)
+    return seen
+
+
+def test_every_type_reads_exactly_the_properties_the_table_says(
+    panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+) -> None:
+    """The property table, re-derived from the renderer it describes.
+
+    The failure this guards is the one that produced it. `label` is settable on
+    every element type and drawn by nearly every renderer -- except the `label`
+    element, which draws `text`. Nothing anywhere said so, so an AI-authored
+    panel put four header strings on `label` masters, they rendered blank, and
+    the workaround cost three variables, a macro and two triggers.
+
+    Drift in either direction is a defect, and they fail differently: a
+    property the table calls unread that IS read produces a confident warning
+    about working authoring, which teaches the caller to ignore the field;
+    one the table calls read that is NOT leaves the original silence in place.
+    """
+    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
+    assert len(evaluator_for) > 10, "evaluator dispatch scan found almost nothing"
+
+    derived: dict[str, frozenset[str]] = {}
+    for el_type, fn_name in renderer_by_type.items():
+        methods = _reachable(fn_name, panel_method_bodies)
+        for bind_type in _REGISTERED_BINDING.findall(panel_method_bodies[fn_name]):
+            if (evaluator := evaluator_for.get(bind_type)) is not None:
+                methods |= _reachable(evaluator, panel_method_bodies)
+        found: set[str] = set()
+        for method in methods:
+            pattern = _PROP_READ_DEF if method.startswith("evaluate") else _PROP_READ
+            found |= set(pattern.findall(panel_method_bodies[method]))
+        derived[el_type] = frozenset(found - STRUCTURAL_PROPERTIES)
+
+    assert derived == HONORED_PROPERTIES
+
+
+def test_the_label_element_is_the_one_that_does_not_draw_label(
+    panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+) -> None:
+    """Guard the guard: the asymmetry that motivates the whole table.
+
+    A derivation test passes just as happily against a table that says every
+    type reads everything. This pins the specific shape worth catching, so a
+    parse that quietly went permissive fails here instead of going green.
+    """
+    assert "label" not in HONORED_PROPERTIES["label"]
+    assert "text" in HONORED_PROPERTIES["label"]
+    # ...and it really is the odd one out, so the warning is worth writing.
+    draws_label = {t for t, props in HONORED_PROPERTIES.items() if "label" in props}
+    assert len(draws_label) > 10, "if most types stopped drawing `label`, revisit the message"
+
+
+def test_the_matrix_config_keys_match_the_renderer(
+    panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+) -> None:
+    """`matrix_config` has no schema anywhere, so this table is the only one.
+
+    Every other element property is declared on `UIElement`; this one is a bare
+    `dict[str, Any]`, which is how an 8x8 switcher authored with `inputs[]` /
+    `outputs[]` stored clean and drew as an unbound 4x4.
+    """
+    body = panel_method_bodies[renderer_by_type["matrix"]]
+    derived = set(re.findall(r"\bconfig\??\.([a-z_][a-z0-9_]*)", body))
+    derived |= set(re.findall(r"matrix_config\??\.([a-z_][a-z0-9_]*)", body))
+    assert derived == set(MATRIX_CONFIG_KEYS)
 
 
 @pytest.fixture(scope="module")

@@ -10,9 +10,12 @@ import {
   type ControlScalingInternal,
 } from "../../api/uiMinimums.gen";
 import {
+  HONORED_PROPERTIES,
   HONORED_SHOW_SLOTS,
+  MATRIX_CONFIG_KEYS,
   REVIEWED_SHOW_SLOTS,
   STATE_LABEL_TYPES,
+  STRUCTURAL_PROPERTIES,
 } from "../../api/uiBindingReach.gen";
 
 // --- Binding type definitions ---
@@ -3014,9 +3017,14 @@ export interface ReviewFinding {
     | "overlap"
     | "no_placement"
     | "binding_not_rendered"
+    | "property_not_rendered"
     | "unknown_element_type"
     | "style_too_large"
-    | "too_small_to_draw";
+    | "too_small_to_draw"
+    | "matrix_not_configured"
+    | "matrix_config_unread"
+    | "matrix_no_route_feedback"
+    | "matrix_default_size";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an
@@ -4062,6 +4070,127 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
   return findings;
 }
 
+/** Everything a matrix draws when nothing says otherwise. */
+const MATRIX_DEFAULT_COUNT = 4;
+
+/**
+ * Properties this element type's renderer never reads.
+ *
+ * The element-level twin of `bindingFindings`, firing on the same silence: the
+ * field is declared on UIElement for some other type (or for none), the loader
+ * stores it, and no renderer has a line that looks at it. A property some OTHER
+ * type reads is usually the right idea on the wrong element -- `label` on a
+ * `label`, which wants `text`; one no type reads was invented.
+ */
+export function propertyFindings(el: UIElement): ReviewFinding[] {
+  const honored = own(HONORED_PROPERTIES, el.type);
+  if (!honored) return []; // a type this module has never heard of; say nothing
+
+  const findings: ReviewFinding[] = [];
+  for (const [name, value] of Object.entries(el as unknown as Record<string, unknown>)) {
+    if (honored.includes(name) || STRUCTURAL_PROPERTIES.includes(name)) continue;
+    // An unset field is not an authoring decision. `0` and `false` are.
+    if (
+      value === null || value === undefined || value === "" ||
+      (Array.isArray(value) && value.length === 0) ||
+      (typeof value === "object" && !Array.isArray(value) &&
+        Object.keys(value as object).length === 0)
+    ) continue;
+
+    const elsewhere = Object.entries(HONORED_PROPERTIES)
+      .filter(([, props]) => props.includes(name))
+      .map(([type]) => type)
+      .sort();
+    let why: string;
+    if (el.type === "matrix" && MATRIX_CONFIG_KEYS.includes(name)) {
+      why = `'${name}' belongs inside matrix_config, not on the element.`;
+    } else if (elsewhere.length) {
+      why = `'${name}' is read by ${joined(elsewhere.map((t) => `\`${t}\``))}, not by a ${el.type}.`;
+      if (name === "label" && honored.includes("text")) {
+        why += " A label element draws `text`.";
+      }
+    } else {
+      why = `No element type reads '${name}'.`;
+    }
+    findings.push({
+      elementId: el.id,
+      kind: "property_not_rendered",
+      message:
+        `${el.id} (${el.type}) sets '${name}', which a ${el.type} does not render. ` +
+        `${why} A ${el.type} reads: ${[...honored].sort().join(", ")}.`,
+      key: `property_not_rendered|${el.id}|${name}`,
+    });
+  }
+  return findings;
+}
+
+/**
+ * A matrix that will draw, and route, and never show what is routed.
+ *
+ * `route_key_pattern` is the one key with no default and no fallback: the
+ * renderer guards the whole state binding on it, so without it every crosspoint
+ * keeps its inactive colour for the life of the panel. Clicking still routes,
+ * so the control is half-alive and a bench test that only asks "does it switch"
+ * passes.
+ */
+export function matrixFindings(el: UIElement): ReviewFinding[] {
+  if (el.type !== "matrix") return [];
+  const config = el.matrix_config as Record<string, unknown> | undefined;
+  const findings: ReviewFinding[] = [];
+
+  if (!config || typeof config !== "object" || !Object.keys(config).length) {
+    return [{
+      elementId: el.id,
+      kind: "matrix_not_configured",
+      message:
+        `${el.id} (matrix) has no matrix_config, so it draws an unbound ` +
+        `${MATRIX_DEFAULT_COUNT}x${MATRIX_DEFAULT_COUNT} grid. Set input_count, ` +
+        `output_count and route_key_pattern at least.`,
+      key: `matrix_not_configured|${el.id}`,
+    }];
+  }
+
+  const unread = Object.keys(config).filter((k) => !MATRIX_CONFIG_KEYS.includes(k)).sort();
+  if (unread.length) {
+    findings.push({
+      elementId: el.id,
+      kind: "matrix_config_unread",
+      message:
+        `${el.id} (matrix) sets matrix_config ${joined(unread.map((k) => `'${k}'`))}, ` +
+        `which the matrix renderer does not read. The keys it reads are: ` +
+        `${[...MATRIX_CONFIG_KEYS].sort().join(", ")}.`,
+      key: `matrix_config_unread|${el.id}|${unread.join("|")}`,
+    });
+  }
+
+  if (!config.route_key_pattern) {
+    findings.push({
+      elementId: el.id,
+      kind: "matrix_no_route_feedback",
+      message:
+        `${el.id} (matrix) has no route_key_pattern, so no crosspoint will ever ` +
+        `light up -- the grid draws and routes, but never shows which input is ` +
+        `selected. Set it to the state key of an output's routed input with the ` +
+        `output number replaced by '*', e.g. 'device.<id>.output.*.input'.`,
+      key: `matrix_no_route_feedback|${el.id}`,
+    });
+  }
+
+  for (const axis of ["input", "output"] as const) {
+    if (!config[`${axis}_count`]) {
+      findings.push({
+        elementId: el.id,
+        kind: "matrix_default_size",
+        message:
+          `${el.id} (matrix) does not set ${axis}_count, so it draws ` +
+          `${MATRIX_DEFAULT_COUNT} ${axis}s. State the real count.`,
+        key: `matrix_default_size|${el.id}|${axis}`,
+      });
+    }
+  }
+  return findings;
+}
+
 /** The page-space box an element's percentages are measured against, in px. */
 function parentBoxPx(
   parentId: string | null,
@@ -4112,6 +4241,8 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
     const typeFinding = elementTypeFinding(el);
     if (typeFinding) findings.push(typeFinding);
     findings.push(...bindingFindings(el));
+    findings.push(...propertyFindings(el));
+    findings.push(...matrixFindings(el));
   }
 
   const layouts = page.layouts ?? [];
@@ -4270,9 +4401,12 @@ export function reviewMasterElement(
   theme?: ElementDefaults,
 ): ReviewFinding[] {
   const typeFinding = elementTypeFinding(master);
-  const findings = typeFinding
-    ? [typeFinding, ...bindingFindings(master)]
-    : bindingFindings(master);
+  const findings = [
+    ...(typeFinding ? [typeFinding] : []),
+    ...bindingFindings(master),
+    ...propertyFindings(master),
+    ...matrixFindings(master),
+  ];
   const placements = master.placements;
   if (!placements || typeof placements !== "object") return findings;
   const seen = new Set<string>();

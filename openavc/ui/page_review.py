@@ -142,6 +142,93 @@ RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
 #: select styles its options -- so a ``states[].label`` on those never appears.
 STATE_LABEL_TYPES = frozenset({"button", "camera_preset"})
 
+
+# --- What the panel reads off the element itself, per type -----------------
+#
+# The same problem as HONORED_SHOW_SLOTS, one level out. ``UIElement`` allows
+# extras and declares ~60 optional fields flat, so EVERY property is settable on
+# EVERY type and the loader keeps all of them. Each renderer then reads a
+# handful. A property the renderer does not read for that type is stored,
+# round-trips perfectly, and does nothing.
+#
+# Two shapes of that failure, both seen in one AI-authored panel:
+#
+#   * A property that exists for another type. ``label`` is the sharp one --
+#     nearly every renderer draws it, and the ``label`` element is the one that
+#     does NOT (it draws ``text``). So the most natural guess on the most common
+#     element type is the one that silently draws nothing.
+#   * A property that exists nowhere. ``segments`` on a level_meter, which is
+#     really ``style.meter_segments``, and whose default of 20 makes the wrong
+#     write look right.
+#
+# Derived rather than transcribed. tests/test_ui_page_review_mirrors.py walks
+# each render function, follows the helpers it hands the element to and the
+# evaluators it registers bindings for, and fails when this disagrees.
+HONORED_PROPERTIES: dict[str, frozenset[str]] = {
+    "button": frozenset({
+        "button_image", "display_mode", "frameless", "icon", "icon_color",
+        "icon_position", "icon_size", "image_blend_mode", "image_fit",
+        "image_opacity", "label",
+    }),
+    "camera_preset": frozenset({
+        "button_image", "display_mode", "frameless", "icon", "icon_color",
+        "icon_position", "icon_size", "image_blend_mode", "image_fit",
+        "image_opacity", "label", "preset_number",
+    }),
+    "clock": frozenset({
+        "clock_mode", "duration_minutes", "format", "start_key", "target_time",
+        "timezone",
+    }),
+    "fader": frozenset({
+        "display_decimals", "label", "max", "min", "orientation", "output_max",
+        "output_min", "response", "response_db_range", "scale_to_full",
+        "send_on_release", "send_throttle_ms", "step", "unit",
+    }),
+    "gauge": frozenset({
+        "arc_angle", "display_decimals", "label", "max", "min", "unit", "zones",
+    }),
+    "group": frozenset({"label", "label_position"}),
+    "image": frozenset({"label", "object_fit", "src"}),
+    "keypad": frozenset({
+        "auto_send", "auto_send_delay_ms", "digits", "keypad_style", "label",
+        "show_display",
+    }),
+    "label": frozenset({
+        "display_decimals", "icon", "icon_color", "icon_position", "icon_size",
+        "text",
+    }),
+    "level_meter": frozenset({"label", "max", "min", "orientation"}),
+    "list": frozenset({"item_height", "items", "label", "list_style", "options"}),
+    "matrix": frozenset({"label", "matrix_config", "matrix_style"}),
+    "page_nav": frozenset({
+        "icon", "icon_color", "icon_position", "icon_size", "label", "target_page",
+    }),
+    "plugin": frozenset({"plugin_config", "plugin_id", "plugin_type"}),
+    "select": frozenset({"label", "options"}),
+    "slider": frozenset({
+        "display_decimals", "label", "max", "min", "orientation", "output_max",
+        "output_min", "response", "response_db_range", "scale_to_full",
+        "send_on_release", "send_throttle_ms", "step", "thumb_size", "unit",
+    }),
+    "status_led": frozenset({"label"}),
+    "text_input": frozenset({"label", "placeholder"}),
+}
+
+#: Fields that belong to every element and are read by something other than a
+#: renderer, so no per-type table can vouch for them.
+#:
+#: ``parent`` and ``aspect_lock`` are consumed by the layout engine, ``style``
+#: and ``bindings`` by machinery shared across all types, ``css_class`` by the
+#: project stylesheet, ``locked`` by the Builder alone. ``hidden`` is here for
+#: the master-element case only -- on a page element it is per-layout
+#: (``layout.hidden``) and an element-level one really is inert, but masters
+#: belong to no layout and the panel reads ``mEl.hidden`` directly, so warning
+#: about it would fire on the correct spelling.
+STRUCTURAL_PROPERTIES = frozenset({
+    "id", "type", "style", "bindings", "parent", "aspect_lock", "css_class",
+    "locked", "hidden", "placement", "placements", "pages",
+})
+
 #: The slots worth naming in a message, in the order a reader expects them.
 _SLOTS = ("value", "look", "items")
 
@@ -961,6 +1048,144 @@ def element_type_finding(element: Mapping[str, Any]) -> Finding | None:
     )
 
 
+def property_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """Properties this element type's renderer never reads.
+
+    The element-level twin of ``binding_findings``, and it fires on the same
+    silence: the field is declared on ``UIElement`` for some other type (or on
+    no type at all), the loader stores it, the write returns created, and the
+    renderer has no line that looks at it.
+
+    Two readings, and the message distinguishes them, because the repair is
+    different. A property some OTHER type reads is usually the right idea on the
+    wrong element -- ``label`` on a ``label``, which wants ``text``. A property
+    NO type reads was invented, and the only useful answer is the list of what
+    this type does read.
+
+    Anything falsy is ignored. A caller that dumps a full Pydantic model hands
+    over sixty keys of ``None``, and warning that an unset field is unread would
+    bury the two that were actually set.
+    """
+    el_type = str(element.get("type", ""))
+    honored = HONORED_PROPERTIES.get(el_type)
+    if honored is None:  # a type this module has never heard of; say nothing
+        return []
+
+    el_id = str(element.get("id", "?"))
+    findings: list[Finding] = []
+    for name, value in element.items():
+        if name in honored or name in STRUCTURAL_PROPERTIES:
+            continue
+        # An unset field is not an authoring decision. `0` and `False` are.
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        elsewhere = sorted(
+            other for other, props in HONORED_PROPERTIES.items() if name in props
+        )
+        if el_type == "matrix" and name in MATRIX_CONFIG_KEYS:
+            # The right idea one level too high. Saying "nothing reads it" here
+            # would be true of the top level and useless, because the matrix
+            # does read it -- from inside matrix_config.
+            why = f"'{name}' belongs inside matrix_config, not on the element."
+        elif elsewhere:
+            where = _joined([f"`{t}`" for t in elsewhere])
+            why = f"'{name}' is read by {where}, not by a {el_type}."
+            if name == "label" and "text" in honored:
+                why += " A label element draws `text`."
+        else:
+            why = f"No element type reads '{name}'."
+        findings.append(Finding(
+            el_id,
+            "property_not_rendered",
+            f"{el_id} ({el_type}) sets '{name}', which a {el_type} does not render. "
+            f"{why} A {el_type} reads: {', '.join(sorted(honored))}.",
+            key=("property_not_rendered", el_id, name),
+        ))
+    return findings
+
+
+#: Every key ``renderMatrix`` reads out of ``matrix_config``.
+#:
+#: The element declares this as a bare ``dict[str, Any]``, so unlike every other
+#: property it has no schema at any layer -- the loader takes whatever shape
+#: arrives and the renderer reads the keys it knows. An 8x8 switcher authored
+#: with ``inputs: [...]`` / ``outputs: [{state_key: ...}]`` stores perfectly and
+#: draws as a 4x4 grid of crosspoints that can never light.
+MATRIX_CONFIG_KEYS = frozenset({
+    "input_count", "output_count", "input_labels", "output_labels",
+    "input_key_pattern", "output_key_pattern", "route_key_pattern",
+    "audio_route_key_pattern", "audio_follow_video", "show_lock", "show_mute",
+    "presets",
+})
+
+#: What a matrix draws when nothing says otherwise. Small enough that a real
+#: switcher is nearly always bigger, which is what makes the silence expensive.
+MATRIX_DEFAULT_COUNT = 4
+
+
+def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """A matrix that will draw, and route, and never show what is routed.
+
+    ``route_key_pattern`` is the one key with no default and no fallback:
+    ``renderMatrix`` guards the whole state binding on it, so without it
+    ``evaluateMatrixRoutes`` is never registered and every crosspoint keeps its
+    inactive colour for the life of the panel. Clicking still routes -- the
+    command carries ``$input``/``$output`` from the event, not from config -- so
+    the control is half-alive, and a bench test that only asks "does it switch"
+    passes.
+
+    That is the finding worth the most here. The other two are the ones that
+    make it hard to notice: a config full of keys nothing reads, and a grid
+    silently drawn at 4x4.
+    """
+    if str(element.get("type", "")) != "matrix":
+        return []
+    config = element.get("matrix_config")
+    el_id = str(element.get("id", "?"))
+    findings: list[Finding] = []
+
+    if not isinstance(config, Mapping) or not config:
+        return [Finding(
+            el_id,
+            "matrix_not_configured",
+            f"{el_id} (matrix) has no matrix_config, so it draws an unbound "
+            f"{MATRIX_DEFAULT_COUNT}x{MATRIX_DEFAULT_COUNT} grid. Set input_count, "
+            f"output_count and route_key_pattern at least.",
+        )]
+
+    unread = sorted(k for k in config if k not in MATRIX_CONFIG_KEYS)
+    if unread:
+        findings.append(Finding(
+            el_id,
+            "matrix_config_unread",
+            f"{el_id} (matrix) sets matrix_config {_joined([repr(k) for k in unread])}, "
+            f"which the matrix renderer does not read. The keys it reads are: "
+            f"{', '.join(sorted(MATRIX_CONFIG_KEYS))}.",
+            key=("matrix_config_unread", el_id, *unread),
+        ))
+
+    if not config.get("route_key_pattern"):
+        findings.append(Finding(
+            el_id,
+            "matrix_no_route_feedback",
+            f"{el_id} (matrix) has no route_key_pattern, so no crosspoint will ever "
+            f"light up -- the grid draws and routes, but never shows which input is "
+            f"selected. Set it to the state key of an output's routed input with the "
+            f"output number replaced by '*', e.g. 'device.<id>.output.*.input'.",
+        ))
+
+    for axis in ("input", "output"):
+        if not config.get(f"{axis}_count"):
+            findings.append(Finding(
+                el_id,
+                "matrix_default_size",
+                f"{el_id} (matrix) does not set {axis}_count, so it draws "
+                f"{MATRIX_DEFAULT_COUNT} {axis}s. State the real count.",
+                key=("matrix_default_size", el_id, axis),
+            ))
+    return findings
+
+
 def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     """Bindings this element type's renderer never reads.
 
@@ -1201,6 +1426,8 @@ def review_page(
         if type_finding:
             findings.append(type_finding)
         findings.extend(binding_findings(dump))
+        findings.extend(property_findings(dump))
+        findings.extend(matrix_findings(dump))
         key = bound_state_key(dump)
         if key and declared_range:
             declared = declared_range(key)
@@ -1375,7 +1602,12 @@ def review_master_element(
     """
     dump = _mapping(element)
     type_finding = element_type_finding(dump)
-    findings = ([type_finding] if type_finding else []) + binding_findings(dump)
+    findings = (
+        ([type_finding] if type_finding else [])
+        + binding_findings(dump)
+        + property_findings(dump)
+        + matrix_findings(dump)
+    )
     placements = dump.get("placements")
     if not isinstance(placements, Mapping):
         return findings

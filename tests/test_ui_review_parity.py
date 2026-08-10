@@ -429,6 +429,60 @@ CASES["binding_reach"] = _project([
     ),
 ])
 
+# The element-level vocabulary checks: properties the renderer never reads, and
+# the matrix's config, which is the one property with no schema at any layer.
+#
+# Drawn from a real AI-authored panel. The matrix here is exactly what it wrote
+# for an 8x8 switcher -- a device id, per-input and per-output objects, a
+# state_key on each output -- all of which stored perfectly and drew a 4x4 grid
+# whose crosspoints could never light.
+CASES["vocabulary"] = _project([
+    _page(
+        "main",
+        [
+            # The asymmetry the whole property table exists for: `label` draws
+            # on nearly every type, and not on the one named after it.
+            {"id": "lbl_wrong", "type": "label", "label": "Room Ready"},
+            {"id": "lbl_right", "type": "label", "text": "Room Ready"},
+            # A property that exists on no type at all. `segments` was in the
+            # authoring prompt for a level_meter; the real key is a style one,
+            # and its default of 20 makes the wrong write look right.
+            {"id": "meter_invented", "type": "level_meter", "segments": 12},
+            # The right idea one level too high.
+            {"id": "mtx_flat", "type": "matrix", "show_lock": True,
+             "matrix_config": {"input_count": 2, "output_count": 2,
+                               "route_key_pattern": "device.acme.output.*.input"}},
+            # The authored-by-AI shape, in full.
+            {"id": "mtx_invented", "type": "matrix", "matrix_config": {
+                "device": "acme",
+                "inputs": [{"id": 1, "label": "IN 1"}],
+                "outputs": [{"id": 1, "label": "OUT 1",
+                             "state_key": "device.acme.output.1.input"}],
+                "presets": [{"name": "All 1", "macro": "scene_all_1"}],
+            }},
+            # Configured, sized, and still blind.
+            {"id": "mtx_no_feedback", "type": "matrix",
+             "matrix_config": {"input_count": 8, "output_count": 8}},
+            # Fully correct: this one must come back clean, or the check would
+            # be firing on the spelling it is trying to teach.
+            {"id": "mtx_ok", "type": "matrix", "matrix_config": {
+                "input_count": 8, "output_count": 8,
+                "route_key_pattern": "device.acme.output.*.input",
+                "show_lock": False, "show_mute": False,
+            }},
+        ],
+        [_landscape({
+            "lbl_wrong": _pct_box(0, 0, 20, 8),
+            "lbl_right": _pct_box(25, 0, 20, 8),
+            "meter_invented": _pct_box(50, 0, 8, 40),
+            "mtx_flat": _pct_box(0, 10, 30, 40),
+            "mtx_invented": _pct_box(35, 10, 30, 40),
+            "mtx_no_feedback": _pct_box(0, 55, 30, 40),
+            "mtx_ok": _pct_box(35, 55, 30, 40),
+        })],
+    ),
+])
+
 # Geometry is per-arrangement. A variant can starve or strand a control the
 # primary leaves fine, and it can hide one so neither question applies.
 CASES["arrangements"] = _project([
@@ -1067,9 +1121,14 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "overlap",
         "no_placement",
         "binding_not_rendered",
+        "property_not_rendered",
         "unknown_element_type",
         "style_too_large",
         "too_small_to_draw",
+        "matrix_not_configured",
+        "matrix_config_unread",
+        "matrix_no_route_feedback",
+        "matrix_default_size",
     }
 
 
@@ -1103,6 +1162,8 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "on_when", "off_when",                 # truthy against falsy
         "roomy", "pill",                       # rem measurements a big box can hold
         "gauge_just",                          # exactly on the degenerate threshold
+        "lbl_right",                           # a label's static content IS `text`
+        "mtx_ok",                              # a matrix spelled the way it works
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

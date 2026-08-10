@@ -72,3 +72,178 @@ export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset"];
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;
+
+/**
+ * Which element PROPERTIES each type's renderer actually reads.
+ *
+ * The same problem as the slot table, one level out. Every optional field on
+ * UIElement is settable on every type and the loader keeps all of them; each
+ * renderer reads a handful. `label` is the sharp case -- nearly every renderer
+ * draws it, and the `label` element is the one that does not (it draws `text`).
+ */
+export const HONORED_PROPERTIES: Record<string, string[]> =
+{
+  "button": [
+    "button_image",
+    "display_mode",
+    "frameless",
+    "icon",
+    "icon_color",
+    "icon_position",
+    "icon_size",
+    "image_blend_mode",
+    "image_fit",
+    "image_opacity",
+    "label"
+  ],
+  "camera_preset": [
+    "button_image",
+    "display_mode",
+    "frameless",
+    "icon",
+    "icon_color",
+    "icon_position",
+    "icon_size",
+    "image_blend_mode",
+    "image_fit",
+    "image_opacity",
+    "label",
+    "preset_number"
+  ],
+  "clock": [
+    "clock_mode",
+    "duration_minutes",
+    "format",
+    "start_key",
+    "target_time",
+    "timezone"
+  ],
+  "fader": [
+    "display_decimals",
+    "label",
+    "max",
+    "min",
+    "orientation",
+    "output_max",
+    "output_min",
+    "response",
+    "response_db_range",
+    "scale_to_full",
+    "send_on_release",
+    "send_throttle_ms",
+    "step",
+    "unit"
+  ],
+  "gauge": [
+    "arc_angle",
+    "display_decimals",
+    "label",
+    "max",
+    "min",
+    "unit",
+    "zones"
+  ],
+  "group": [
+    "label",
+    "label_position"
+  ],
+  "image": [
+    "label",
+    "object_fit",
+    "src"
+  ],
+  "keypad": [
+    "auto_send",
+    "auto_send_delay_ms",
+    "digits",
+    "keypad_style",
+    "label",
+    "show_display"
+  ],
+  "label": [
+    "display_decimals",
+    "icon",
+    "icon_color",
+    "icon_position",
+    "icon_size",
+    "text"
+  ],
+  "level_meter": [
+    "label",
+    "max",
+    "min",
+    "orientation"
+  ],
+  "list": [
+    "item_height",
+    "items",
+    "label",
+    "list_style",
+    "options"
+  ],
+  "matrix": [
+    "label",
+    "matrix_config",
+    "matrix_style"
+  ],
+  "page_nav": [
+    "icon",
+    "icon_color",
+    "icon_position",
+    "icon_size",
+    "label",
+    "target_page"
+  ],
+  "plugin": [
+    "plugin_config",
+    "plugin_id",
+    "plugin_type"
+  ],
+  "select": [
+    "label",
+    "options"
+  ],
+  "slider": [
+    "display_decimals",
+    "label",
+    "max",
+    "min",
+    "orientation",
+    "output_max",
+    "output_min",
+    "response",
+    "response_db_range",
+    "scale_to_full",
+    "send_on_release",
+    "send_throttle_ms",
+    "step",
+    "thumb_size",
+    "unit"
+  ],
+  "status_led": [
+    "label"
+  ],
+  "text_input": [
+    "label",
+    "placeholder"
+  ]
+};
+
+/**
+ * Fields that belong to every element and are read by something other than a
+ * renderer, so no per-type table can vouch for them.
+ *
+ * `hidden` is here for the master-element case: on a page element it is
+ * per-layout, but a master belongs to no layout and the panel reads it off the
+ * element, so warning about it would fire on the correct spelling.
+ */
+export const STRUCTURAL_PROPERTIES: string[] = ["aspect_lock", "bindings", "css_class", "hidden", "id", "locked", "pages", "parent", "placement", "placements", "style", "type"];
+
+/**
+ * Every key the matrix renderer reads out of `matrix_config`.
+ *
+ * That property is a bare dict at every layer -- no schema, no validation -- so
+ * this table is the only thing that knows the shape. `route_key_pattern` is the
+ * one with no default: without it no crosspoint ever lights.
+ */
+export const MATRIX_CONFIG_KEYS: string[] = ["audio_follow_video", "audio_route_key_pattern", "input_count", "input_key_pattern", "input_labels", "output_count", "output_key_pattern", "output_labels", "presets", "route_key_pattern", "show_lock", "show_mute"];

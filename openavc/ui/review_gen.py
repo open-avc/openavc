@@ -23,7 +23,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from openavc.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
+from openavc.ui.page_review import (
+    HONORED_PROPERTIES,
+    HONORED_SHOW_SLOTS,
+    MATRIX_CONFIG_KEYS,
+    STATE_LABEL_TYPES,
+    STRUCTURAL_PROPERTIES,
+)
 
 ARTIFACT = "openavc/web/programmer/src/api/uiBindingReach.gen.ts"
 
@@ -60,6 +66,36 @@ export const STATE_LABEL_TYPES: string[] = %(state_labels)s;
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;
+
+/**
+ * Which element PROPERTIES each type's renderer actually reads.
+ *
+ * The same problem as the slot table, one level out. Every optional field on
+ * UIElement is settable on every type and the loader keeps all of them; each
+ * renderer reads a handful. `label` is the sharp case -- nearly every renderer
+ * draws it, and the `label` element is the one that does not (it draws `text`).
+ */
+export const HONORED_PROPERTIES: Record<string, string[]> =
+%(properties)s;
+
+/**
+ * Fields that belong to every element and are read by something other than a
+ * renderer, so no per-type table can vouch for them.
+ *
+ * `hidden` is here for the master-element case: on a page element it is
+ * per-layout, but a master belongs to no layout and the panel reads it off the
+ * element, so warning about it would fire on the correct spelling.
+ */
+export const STRUCTURAL_PROPERTIES: string[] = %(structural)s;
+
+/**
+ * Every key the matrix renderer reads out of `matrix_config`.
+ *
+ * That property is a bare dict at every layer -- no schema, no validation -- so
+ * this table is the only thing that knows the shape. `route_key_pattern` is the
+ * one with no default: without it no crosspoint ever lights.
+ */
+export const MATRIX_CONFIG_KEYS: string[] = %(matrix_keys)s;
 """
 
 
@@ -72,6 +108,13 @@ def render() -> str:
     return BANNER + TYPES % {
         "honored": honored,
         "state_labels": json.dumps(sorted(STATE_LABEL_TYPES), ensure_ascii=False),
+        "properties": json.dumps(
+            {name: sorted(props) for name, props in HONORED_PROPERTIES.items()},
+            indent=2,
+            ensure_ascii=False,
+        ),
+        "structural": json.dumps(sorted(STRUCTURAL_PROPERTIES), ensure_ascii=False),
+        "matrix_keys": json.dumps(sorted(MATRIX_CONFIG_KEYS), ensure_ascii=False),
     }
 
 
