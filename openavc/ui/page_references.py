@@ -40,8 +40,17 @@ typo'd property is at least as common as a typo'd device, and the device was
 caught while the property was not. It is checked now, but only where the driver
 declares a set to check against -- and never for the platform's own device
 properties (``online``, ``offline_reason``, ...), which no DRIVER_INFO contains
-and which are the commonest bindings on any panel. A child id is still not
-checked: children appear when the device connects.
+and which are the commonest bindings on any panel.
+
+A child ID is checked the same narrow way, and for the same reason the property
+is: a page that repeats one block per output gets the NUMBER wrong far more
+often than the name, and ``output.7`` on a four-output frame draws perfectly
+while binding to nothing. Only against a roster the driver DECLARES -- a fixed
+count or a literal list, or a config field this device has actually filled in.
+Never against the live roster, because a page is usually authored before the
+device is connected and an unconnected device has no children at all; and never
+when ``count_from_state`` is declared, because the device resizes the roster
+once it answers.
 
 Everything here WARNS. The write lands and the findings ride back with it, for
 the same reason as the rest of the review: a rejection costs a whole round trip,
@@ -219,6 +228,7 @@ def reference_findings(
     device_commands: Callable[[str], set[str] | None] | None = None,
     plugin_elements: Callable[[str], set[str] | None] | None = None,
     undeclared_property: Callable[[str], set[str] | None] | None = None,
+    unknown_child_id: Callable[[str], set[str] | None] | None = None,
 ) -> list[Finding]:
     """Every binding on this page that names something that is not there.
 
@@ -246,7 +256,7 @@ def reference_findings(
             findings.append(plugin_issue)
         findings.extend(_element_findings(
             dump, el_id, page_ids, device_ids, macro_ids, device_commands,
-            undeclared_property,
+            undeclared_property, unknown_child_id,
         ))
     return findings
 
@@ -334,6 +344,7 @@ def _element_findings(
     macro_ids: set[str],
     device_commands: Callable[[str], set[str] | None] | None,
     undeclared_property: Callable[[str], set[str] | None] | None = None,
+    unknown_child_id: Callable[[str], set[str] | None] | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     el_type = str(dump.get("type", "?"))
@@ -370,6 +381,21 @@ def _element_findings(
                 key=("dangling_reference", el_id, f"show.{slot}"),
             ))
             continue
+        # The child id before the property, because a page repeating one block
+        # per output gets the NUMBER wrong, not the name -- and reported first
+        # it names the actual mistake instead of a property that is spelled
+        # right on a child that does not exist. Reported instead of, not as well
+        # as, the property complaint: one binding, one thing to fix.
+        if unknown_child_id is not None:
+            roster = unknown_child_id(key)
+            if roster:
+                findings.append(Finding(
+                    el_id, "dangling_reference",
+                    f"{el_id} ({el_type}) reads show.{slot} from '{key}', and its driver "
+                    f"declares no such child. It declares: {_listed(roster)}.",
+                    key=("dangling_reference", el_id, f"show.{slot}.child"),
+                ))
+                continue
         # The device resolved; the property after it is the half that used to
         # pass silently while a typo'd device, command, macro and page were all
         # caught. A typo'd property is at least as common as a typo'd device.

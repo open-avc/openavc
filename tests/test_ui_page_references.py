@@ -385,3 +385,72 @@ def test_a_plugin_that_is_not_loaded_here_says_nothing() -> None:
 
 def test_a_correctly_configured_plugin_element_is_silent() -> None:
     assert _plugin(plugin_id="acme", plugin_type="meter") == []
+
+
+# --- A child id that is not on the driver's roster -------------------------
+
+
+def _roster(key: str) -> set[str] | None:
+    """Stand-in for the driver lookup: a four-output switcher, nothing else."""
+    prefix = "device.acme_switcher."
+    if not key.startswith(prefix):
+        return None
+    parts = key[len(prefix):].split(".")
+    if len(parts) < 3 or parts[0] != "output":
+        return None
+    declared = {"1", "2", "3", "4"}
+    return None if parts[1] in declared else declared
+
+
+def _bound(key: str) -> list[dict]:
+    return [{"id": "out", "type": "label",
+             "bindings": {"show": {"value": {"key": key}}}}]
+
+
+def test_a_child_id_past_the_declared_roster_is_caught() -> None:
+    """The mistake a page repeating one block per output actually makes.
+
+    Eight blocks hand-written off a four-output frame, and the fifth binds to a
+    child that will never register. It draws, the key never resolves, and the
+    control sits blank -- found by a customer rather than by a build log.
+    """
+    messages = _messages(
+        _bound("device.acme_switcher.output.7.signal"), unknown_child_id=_roster,
+    )
+    assert len(messages) == 1, messages
+    assert "declares no such child" in messages[0]
+    assert "output.7" in messages[0]
+
+
+def test_a_child_id_on_the_roster_says_nothing() -> None:
+    assert _messages(
+        _bound("device.acme_switcher.output.3.signal"), unknown_child_id=_roster,
+    ) == []
+
+
+def test_a_roster_with_no_opinion_says_nothing() -> None:
+    """None is the answer far more often than a set, and must stay silent.
+
+    A Python driver registering children in code, a config field nobody has
+    filled in, a device that resizes its own roster -- none of those is an
+    authoring mistake, and warning on them would fire on most pages.
+    """
+    assert _messages(
+        _bound("device.acme_switcher.input.99.signal"), unknown_child_id=_roster,
+    ) == []
+    assert _messages(_bound("device.acme_switcher.output.7.signal")) == []
+
+
+def test_the_child_id_is_reported_instead_of_the_property_not_as_well() -> None:
+    """One binding, one thing to fix.
+
+    The property is spelled right; it is the child that does not exist. Saying
+    both would send the author renaming a correct property.
+    """
+    messages = _messages(
+        _bound("device.acme_switcher.output.7.gain"),
+        unknown_child_id=_roster,
+        undeclared_property=_child_property,
+    )
+    assert len(messages) == 1, messages
+    assert "declares no such child" in messages[0]

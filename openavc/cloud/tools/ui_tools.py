@@ -161,6 +161,99 @@ def _undeclared_state_property(devices: Any, device_ids: list[str], key: str) ->
         return None
 
 
+def _declared_child_roster(type_def: dict, config: Any) -> set[str] | None:
+    """The child IDs this type declares, or None when it will not say.
+
+    Read from the DECLARED roster rather than the live one on purpose. A page is
+    usually authored against a device that is not connected -- the whole point of
+    commissioning ahead of the install -- and an unconnected device has no
+    children at all. Believing an empty live roster would flag every binding on
+    every offline device, which is the fastest way to make a warning worthless.
+
+    None whenever the declaration cannot settle it:
+
+    * ``count_from_state`` -- the device resizes the roster once it answers, so
+      an ID past the declared count is a prediction, not a mistake.
+    * ``count_from`` / ``ids_from`` naming a config field this device has not
+      filled in.
+    * no ``instances`` block at all, which is every Python driver that registers
+      its children in code.
+    """
+    instances = type_def.get("instances")
+    if not isinstance(instances, dict):
+        return None
+    # A device-reported count can exceed anything declared here.
+    if instances.get("count_from_state"):
+        return None
+
+    ids = instances.get("ids")
+    if isinstance(ids, list) and ids:
+        return {str(v) for v in ids}
+
+    count = instances.get("count")
+    if isinstance(count, bool):  # bool is an int; not a roster
+        return None
+    if isinstance(count, int) and count >= 1:
+        return {str(i) for i in range(1, count + 1)}
+
+    if (field := instances.get("count_from")):
+        raw = config.get(field)
+        try:
+            resolved = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return {str(i) for i in range(1, resolved + 1)} if resolved >= 1 else None
+
+    if (field := instances.get("ids_from")):
+        raw = config.get(field)
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        return {part.strip() for part in raw.split(",") if part.strip()}
+
+    return None
+
+
+def _unknown_child_id(devices: Any, device_ids: list[str], key: str) -> set[str] | None:
+    """The child IDs a driver declares, when the bound one is not among them.
+
+    ``device.matrix.output.7.signal`` on a four-output frame renders perfectly
+    and binds to nothing: the element draws, the key never resolves, and the
+    control sits there blank forever. The property after it is already checked;
+    this is the number in the middle, which a page repeating one block eight
+    times gets wrong exactly once and silently.
+
+    None means no opinion, which is the answer whenever the roster is dynamic,
+    config-driven with nothing configured, or registered in Python code.
+
+    Never raises. Nothing advisory may cost a UI write.
+    """
+    if devices is None or not isinstance(key, str) or not key.startswith("device."):
+        return None
+    try:
+        for device_id in device_ids:
+            prefix = f"device.{device_id}."
+            if not key.startswith(prefix):
+                continue
+            driver = devices.get_driver(device_id)
+            if driver is None:
+                return None
+            parts = key[len(prefix):].split(".")
+            if len(parts) < 3:
+                return None
+            info = getattr(driver, "DRIVER_INFO", None) or {}
+            type_def = (info.get("child_entity_types") or {}).get(parts[0])
+            if not isinstance(type_def, dict):
+                return None
+            roster = _declared_child_roster(type_def, getattr(driver, "config", None) or {})
+            if not roster or parts[1] in roster:
+                return None
+            return roster
+        return None
+    except Exception:  # pragma: no cover - defensive; advisory path only
+        log.debug("Could not resolve the child roster for '%s'", key, exc_info=True)
+        return None
+
+
 def _declared_panel_elements(engine: Any, plugin_id: str) -> set[str] | None:
     """The panel-element types a loaded plugin declares, or None for no opinion.
 
@@ -672,6 +765,9 @@ class UIToolsMixin:
                 self._get_engine(), plugin_id,
             ),
             undeclared_property=lambda key: _undeclared_state_property(
+                self._devices, device_ids, key,
+            ),
+            unknown_child_id=lambda key: _unknown_child_id(
                 self._devices, device_ids, key,
             ),
         ))
@@ -1440,6 +1536,9 @@ class UIToolsMixin:
                     self._get_engine(), plugin_id,
                 ),
                 undeclared_property=lambda key: _undeclared_state_property(
+                    self._devices, device_ids, key,
+                ),
+                unknown_child_id=lambda key: _unknown_child_id(
                     self._devices, device_ids, key,
                 ),
             ))
