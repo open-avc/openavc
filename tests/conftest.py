@@ -151,6 +151,48 @@ def _reset_rate_limit_buckets():
 
 
 @pytest.fixture
+def isolated_auth_config():
+    """Snapshot and restore the auth credential around a test.
+
+    `SystemConfig` keeps two layers: `_data`, the effective runtime view, and
+    `_file_data`, the pre-env layer that `save()` serializes to system.json.
+    `set()` writes BOTH. So a test that puts an admin password on the config
+    and then restores only `_data` still leaves it sitting in the persisted
+    layer, and the next `save()` writes it to the session data dir. Nothing
+    looks wrong yet: the live singleton is clean, so the file that follows
+    ends green.
+
+    The bill arrives later. Any test that calls `reset_system_config()` --
+    the simulator port tests do, in the middle of the alphabet -- makes the
+    next `get_system_config()` rebuild the singleton off that file, and the
+    password is back for the rest of the session. From there every route
+    guarded by `require_programmer_auth` answers an unauthenticated request
+    with 401, so tests in three unrelated files that assert 403 or 400 fail
+    with `assert 401 == 403` and pass again the moment you run them alone.
+
+    Restoring both layers is the fix; putting the file back byte for byte
+    covers the tests that persist through `claim_instance()` or the config
+    PATCH route rather than through `set()`.
+    """
+    from openavc.api import auth
+    from openavc.system_config import get_system_config
+
+    cfg = get_system_config()
+    saved_data = dict(cfg._data.get("auth", {}))
+    saved_file_data = dict(cfg._file_data.get("auth", {}))
+    saved_bytes = cfg.file_path.read_bytes() if cfg.file_path.exists() else None
+    auth._deployment_is_dev.cache_clear()
+    yield cfg
+    cfg._data["auth"] = saved_data
+    cfg._file_data["auth"] = saved_file_data
+    auth._deployment_is_dev.cache_clear()
+    if saved_bytes is None:
+        cfg.file_path.unlink(missing_ok=True)
+    else:
+        cfg.file_path.write_bytes(saved_bytes)
+
+
+@pytest.fixture
 def state():
     """Fresh StateStore instance."""
     return StateStore()

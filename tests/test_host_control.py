@@ -36,15 +36,10 @@ def spool(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_auth():
-    """Snapshot/restore the auth section so claim/password tests don't leak."""
-    cfg = get_system_config()
-    saved = cfg.section("auth")
-    auth._deployment_is_dev.cache_clear()
-    yield
-    cfg._data["auth"] = dict(saved)
-    auth._deployment_is_dev.cache_clear()
-    cfg.save()
+def _isolate_auth(isolated_auth_config):
+    """Snapshot/restore the auth section so claim/password tests don't leak.
+    See the shared fixture in conftest.py for what "don't leak" has to
+    cover -- these tests persist a password two different ways."""
 
 
 def _requests(req_dir):

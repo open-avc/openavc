@@ -20,16 +20,10 @@ from openavc.system_config import get_system_config
 
 
 @pytest.fixture(autouse=True)
-def _isolate_auth():
+def _isolate_auth(isolated_auth_config):
     """Snapshot/restore the auth config section so tests don't leak state, and
-    reset the cached deployment detection."""
-    cfg = get_system_config()
-    saved = cfg.section("auth")
-    auth._deployment_is_dev.cache_clear()
-    yield
-    cfg._data["auth"] = dict(saved)
-    auth._deployment_is_dev.cache_clear()
-    cfg.save()
+    reset the cached deployment detection. See the shared fixture in
+    conftest.py for what "don't leak" has to cover."""
 
 
 def _set_auth(**kwargs):
