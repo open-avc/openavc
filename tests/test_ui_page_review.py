@@ -323,13 +323,13 @@ def test_a_small_label_is_not_a_touch_problem():
 # --- Bindings the renderer never reads -------------------------------------
 
 
-def test_a_label_carrying_a_look_binding_is_told_it_does_nothing():
-    """The two-writers case, as the renderer actually resolves it.
+def test_a_label_carrying_a_look_binding_is_left_alone():
+    """A label reads both slots, so wiring both is not a mistake to report.
 
-    A label draws ``show.value`` and has no code path for ``show.look`` at all,
-    so an element wired for both does not fight over the text -- it silently
-    draws the raw value and the state text never appears. Saying "two writers"
-    would be the wrong advice; saying which one draws is the right one.
+    This used to be the warned case: a label had no code path for
+    ``show.look``, so an element wired for both silently drew the raw value and
+    the state text never appeared. The panel now draws the state's words, which
+    is what the author asked for, so there is nothing to say about it.
     """
     page = _page(
         [UIElement(id="conn", type="label", bindings={
@@ -347,9 +347,28 @@ def test_a_label_carrying_a_look_binding_is_told_it_does_nothing():
         {"conn": {"x": 0, "y": 0, "w": 20, "h": 10}},
     )
     findings, _ = review_page(page)
+    assert _of_kind(findings, "binding_not_rendered") == []
+
+
+def test_a_keypad_carrying_a_look_binding_is_told_it_does_nothing():
+    """The warning still fires for the types that genuinely never look.
+
+    Widening it to labels must not turn the check off everywhere -- a keypad
+    renders no state appearance at all, so a look binding on one is exactly the
+    silent nothing this finding exists to name.
+    """
+    page = _page(
+        [UIElement(id="pad", type="keypad", bindings={
+            "show": {"look": {"key": "device.acme_widget.connected", "states": {
+                "true": {"label": "ONLINE"},
+            }}},
+        })],
+        {"pad": {"x": 0, "y": 0, "w": 20, "h": 20}},
+    )
+    findings, _ = review_page(page)
     ignored = _of_kind(findings, "binding_not_rendered")
     assert len(ignored) == 1
-    assert "it reads show.value" in ignored[0].message
+    assert "does not render" in ignored[0].message
 
 
 def test_a_button_carrying_the_same_look_binding_is_left_alone():

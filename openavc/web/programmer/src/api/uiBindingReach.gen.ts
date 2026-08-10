@@ -34,6 +34,7 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
   "image": [],
   "keypad": [],
   "label": [
+    "look",
     "value"
   ],
   "level_meter": [
@@ -68,7 +69,7 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
  * tints its dot, a select styles its options -- so a `states[].label` on those
  * never appears anywhere.
  */
-export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset"];
+export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label"];
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;

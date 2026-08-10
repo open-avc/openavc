@@ -131,13 +131,17 @@ def test_a_button_draws_the_state_label_it_was_given(panel_page) -> None:
     assert result["text"] == "ONLINE"
 
 
-def test_a_label_draws_nothing_from_the_same_state_labels(panel_page) -> None:
-    """The defect the AI shipped and nothing anywhere reported.
+def test_a_label_draws_the_state_label_too(panel_page) -> None:
+    """What the AI asked for, and now gets.
 
-    Wired for both, a label draws its bound value and ignores the look entirely
-    -- so the panel shows the raw ``true`` the state carries, where the author
-    asked for ONLINE. Nothing errors, nothing logs, and the element renders, so
-    it reads as a stale value rather than a binding that was never wired up.
+    This used to be the negative case: wired for both, a label drew the raw
+    ``true`` its state carried and ignored the look entirely, so a panel asking
+    for ONLINE showed ``true``. Nothing errored and the element rendered, so it
+    read as a stale value rather than a binding that was never wired up.
+
+    The state's label now wins over the bound value, which is the way round the
+    author meant it -- naming the words for a state is a more specific
+    instruction than "print whatever this key holds".
     """
     result = _probe(panel_page, "label", {
         "bindings": {
@@ -149,9 +153,32 @@ def test_a_label_draws_nothing_from_the_same_state_labels(panel_page) -> None:
             },
         },
     })
-    assert "feedback" not in result["registered"]
+    assert "label_look" in result["registered"]
+    assert result["text"] == "ONLINE"
+
+
+def test_a_label_keeps_its_bound_value_when_the_state_names_no_words(
+    panel_page,
+) -> None:
+    """Colour without words leaves the words alone.
+
+    A state that sets only a colour must not blank the text or overwrite it
+    with the element's own ``label`` field, which a label element never draws
+    anyway. This is the half a button does differently -- it restores its
+    default label there -- and getting it wrong would break every label that
+    tints itself while showing a live value.
+    """
+    result = _probe(panel_page, "label", {
+        "bindings": {
+            "show": {
+                "value": {"key": STATE_KEY, "format": "{value}"},
+                "look": {"key": STATE_KEY, "states": {
+                    "true": {"text_color": "#4CAF50"},
+                }},
+            },
+        },
+    })
     assert result["text"] == "true"
-    assert "ONLINE" not in result["text"]
 
 
 def test_a_status_led_takes_the_colour_and_leaves_the_label(panel_page) -> None:
@@ -167,12 +194,14 @@ def test_a_status_led_takes_the_colour_and_leaves_the_label(panel_page) -> None:
     assert "ONLINE" not in result["text"]
 
 
-def test_the_types_that_register_feedback_are_the_ones_recorded(panel_page) -> None:
+def test_the_types_that_draw_a_state_label_are_the_ones_recorded(panel_page) -> None:
     """Every type, asked at once: who can draw a state label and who cannot.
 
-    This is the whole ``STATE_LABEL_TYPES`` claim, executed. A type that starts
-    registering a feedback binding -- or stops -- lands here rather than in a
-    silently wrong warning six months later.
+    This is the whole ``STATE_LABEL_TYPES`` claim, executed -- and asked of the
+    rendered text rather than of which binding got registered, so it stays true
+    however the panel is wired internally. A type that starts drawing state text
+    -- or stops -- lands here rather than in a silently wrong warning six months
+    later.
     """
     extras = {
         "list": {"options": [{"value": "a", "label": "A"}]},
@@ -186,6 +215,6 @@ def test_the_types_that_register_feedback_are_the_ones_recorded(panel_page) -> N
         result = _probe(panel_page, type_, {
             **extras.get(type_, {}), **_look(true={"label": "ONLINE"}),
         })
-        if "feedback" in result["registered"]:
+        if "ONLINE" in result["text"]:
             drawn.add(type_)
     assert drawn == set(STATE_LABEL_TYPES)

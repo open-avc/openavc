@@ -117,7 +117,7 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "group": frozenset(),
     "image": frozenset(),
     "keypad": frozenset(),
-    "label": frozenset({"value"}),
+    "label": frozenset({"look", "value"}),
     "level_meter": frozenset({"value"}),
     "list": frozenset({"items", "value"}),
     "matrix": frozenset(),
@@ -140,7 +140,12 @@ RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
 #: Types whose ``look`` binding renders per-state TEXT. Everything else that
 #: reads ``look`` takes only colour from it -- a status LED tints its dot, a
 #: select styles its options -- so a ``states[].label`` on those never appears.
-STATE_LABEL_TYPES = frozenset({"button", "camera_preset"})
+#:
+#: ``label`` differs from the other two in what happens when a state names no
+#: label: a button falls back to its own ``label`` field, while a label keeps
+#: whatever text it already had (its ``text``, or a bound ``show.value``) and
+#: takes only colour from that state.
+STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label"})
 
 
 # --- What the panel reads off the element itself, per type -----------------

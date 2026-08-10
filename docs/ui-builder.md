@@ -50,7 +50,7 @@ An orange badge in the corner of an element says something about it will not dra
 - **Hanging outside the page or its container** - by how much, and over which edge. Containers do not clip, so an element that runs past the edge lands on top of whatever sits beside it.
 - **No position at all** - an element with no box fills its container edge to edge and covers whatever is already there.
 - **Smaller than a finger** - the physical size it works out to on a real panel, for controls you actually touch.
-- **A binding this control does not use** - every element accepts the same binding slots, but each type only reads some of them. A label takes its text from Value and does not read Appearance, so a state-driven color set on one never appears. The badge names the slots that control really reads.
+- **A binding this control does not use** - every element accepts the same binding slots, but each type only reads some of them. A Status LED reads Appearance for its color but has nowhere to put words, so per-state label text set on one never appears. The badge names the slots that control really reads.
 
 Sizes are worked out against a 1280x800 reference panel, which is what the percentages mean in pixels. Everything here is advice: nothing is blocked, and a control you deliberately made small stays where you put it.
 
@@ -222,6 +222,8 @@ The **Appearance** card changes an element's look based on a state value. This i
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
 **Conditional labels** let the element's text change based on state. For example, a power button can show "ON" with a green background when the projector is on, and "OFF" with a dark background when it is off.
+
+**Status text on a label:** a Label reads Appearance too, so the plain way to show a device's status in words is one label with a state map: `true` shows ONLINE in green, `false` shows OFFLINE in red. If a state sets only a color and no label text, the label keeps whatever text it already had, so you can tint a live value without replacing it.
 
 Example: on the source-select buttons, set Appearance so that when `var.current_source` equals `"laptop"`, the Laptop button shows as highlighted and all others show as dimmed.
 

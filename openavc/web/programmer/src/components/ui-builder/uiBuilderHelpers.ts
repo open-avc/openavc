@@ -141,7 +141,11 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
     look: "feedback",
     does: [{ interaction: "press", label: "On press", editor: "actions" }],
   },
-  label: { value: { editor: "text", label: "Text" } },
+  // A label takes the same state-driven appearance a button does: the words and
+  // the colour both track the state, which is how you draw ONLINE in green and
+  // OFFLINE in red. Its image and conditional-label fields stay button-only --
+  // FeedbackBindingEditor gates those on the type itself.
+  label: { value: { editor: "text", label: "Text" }, look: "feedback" },
   slider: {
     value: { editor: "slider", link: true },
     does: [{ interaction: "change", label: "On change", editor: "actions" }],

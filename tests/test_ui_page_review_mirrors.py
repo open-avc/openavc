@@ -105,23 +105,42 @@ def test_every_type_reads_exactly_what_the_table_says(
     assert derived == HONORED_SHOW_SLOTS
 
 
-def test_only_the_feedback_types_can_draw_a_state_label(
+def test_only_the_state_text_types_can_draw_a_state_label(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
 ) -> None:
     """A look binding is honored for colour far more widely than for text.
 
-    ``evaluateFeedback`` is the only evaluator that calls ``_setLabelText`` off
-    ``states[].label``; a status LED registers a ``color`` binding and a select
-    a ``select_look`` one, and neither has anywhere to put a string. So the
-    types that can render state text are exactly the ones registering
-    ``type: 'feedback'``.
+    A status LED registers its ``show.look`` as a ``color`` binding and a select
+    as a ``select_look`` one, and neither has anywhere to put a string, so a
+    ``states[].label`` on those never appears. The types that CAN draw state
+    text are the ones whose ``show.look`` registration lands on an evaluator
+    that writes text.
+
+    Derived that way rather than by naming ``feedback``, because there are now
+    two such evaluators -- the button's, which also re-applies its chrome and
+    swaps its image, and the label's, which does colour and words and nothing
+    else. Naming them would mean this test needs editing to keep passing every
+    time one is added, which is the opposite of what it is for.
+
+    Keyed on the LOOK binding specifically: ``evaluateUiOverrides`` also writes
+    a label, from the ``ui.<id>.label`` state key rather than from a state's
+    appearance, and that is a different mechanism this table says nothing about.
     """
-    feedback = frozenset(
-        el_type for el_type, fn_name in renderer_by_type.items()
-        if "type: 'feedback'" in panel_method_bodies[fn_name]
+    look_binding_type = {}
+    for el_type, fn_name in renderer_by_type.items():
+        for block in _PUSH_BLOCK.findall(panel_method_bodies[fn_name]):
+            if "bindings.show.look" not in block:
+                continue
+            if (m := re.search(r"type:\s*'([\w_]+)'", block)) is not None:
+                look_binding_type[el_type] = m.group(1)
+    assert look_binding_type, "no renderer registers a show.look binding"
+
+    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
+    derived = frozenset(
+        el_type for el_type, bind_type in look_binding_type.items()
+        if "_setLabelText" in panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
     )
-    assert feedback == STATE_LABEL_TYPES
-    assert "_setLabelText" in panel_method_bodies["evaluateFeedback"]
+    assert derived == STATE_LABEL_TYPES
 
 
 # --- The property table ----------------------------------------------------
@@ -147,6 +166,9 @@ _PROP_READ = re.compile(r"\b(?:element|elementDef)\??\.([a-z_][a-z0-9_]*)")
 #: definition, so reading both there collects `value`, `_dragging` and `class`.
 _PROP_READ_DEF = re.compile(r"\belementDef\??\.([a-z_][a-z0-9_]*)")
 _REGISTERED_BINDING = re.compile(r"type:\s*'([\w_]+)'")
+#: One ``this.bindings.push({ ... })`` call, so a registration's binding type
+#: can be read together with the slot it was registered from.
+_PUSH_BLOCK = re.compile(r"this\.bindings\.push\(\{.*?\}\);", re.S)
 _EVALUATOR = re.compile(r"case '([\w_]+)':\s*this\.(evaluate\w+)\(b\);", re.S)
 
 

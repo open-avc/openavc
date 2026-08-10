@@ -1705,6 +1705,20 @@ class PanelApp {
             }
         }
 
+        // Appearance (state-driven look) binding, same as a button's. A label
+        // showing a device's status wants the words and the colour to track the
+        // state -- ONLINE in green, OFFLINE in red -- and before this the only
+        // ways to get that were two stacked labels with opposite visible_when,
+        // or a button dressed up to look like a label.
+        if (element.bindings?.show?.look) {
+            this.bindings.push({
+                type: 'label_look',
+                element: el,
+                elementDef: element,
+                binding: element.bindings.show.look,
+            });
+        }
+
         return el;
     }
 
@@ -4278,6 +4292,9 @@ class PanelApp {
                     case 'feedback':
                         this.evaluateFeedback(b);
                         break;
+                    case 'label_look':
+                        this.evaluateLabelLook(b);
+                        break;
                     case 'text':
                         this.evaluateText(b);
                         break;
@@ -4427,6 +4444,53 @@ class PanelApp {
             case 'truthy': return !!actual;
             case 'falsy': return !actual;
             default: return false;
+        }
+    }
+
+    /**
+     * A label's state-driven look: colour from the matching state, and its
+     * words too when that state names them.
+     *
+     * Deliberately NOT evaluateFeedback, which is the button's. That one also
+     * re-applies frameless chrome, retints an image layer, swaps a per-state
+     * button_image and rebuilds an icon+text layout -- none of which a label
+     * has, and all of which would become properties a label is documented as
+     * reading. This does the two things a label wants and nothing else.
+     *
+     * When a state names no label of its own, the text is left exactly as it
+     * was. A button falls back to its own `label` field there, but a label
+     * draws `text` and may also carry a show.value binding that owns what it
+     * says -- so the fallback would either write a field this element never
+     * draws, or clobber a bound value a moment after it arrived. Colour still
+     * tracks the state in that case.
+     */
+    evaluateLabelLook(b) {
+        const { element, elementDef, binding } = b;
+        const stateValue = this.state[binding.key];
+        const baseStyle = elementDef.style || {};
+
+        let appearance;
+        if (binding.states) {
+            const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
+            appearance = binding.states[stateKey]
+                || binding.states[binding.default_state || '']
+                || {};
+        } else {
+            // Legacy binary look, same shape the button honors.
+            const condition = binding.condition || {};
+            const isActive = stateValue !== undefined &&
+                String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
+            appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
+            const legacyText = isActive ? binding.label_active : binding.label_inactive;
+            if (legacyText !== undefined && legacyText !== null) {
+                appearance = { ...appearance, label: legacyText };
+            }
+        }
+
+        this.applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
+
+        if (appearance.label !== undefined) {
+            this._setLabelText(element, String(appearance.label));
         }
     }
 

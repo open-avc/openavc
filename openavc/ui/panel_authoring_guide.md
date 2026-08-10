@@ -144,7 +144,7 @@ you asked for never happens. Check this table before binding.
 | group | nothing |
 | image | nothing |
 | keypad | nothing |
-| label | `show.value` |
+| label | `show.value`, `show.look` |
 | level_meter | `show.value` |
 | list | `show.value`, `show.items` |
 | matrix | nothing |
@@ -159,7 +159,7 @@ you asked for never happens. Check this table before binding.
 element type, from the page tree rather than from the renderer.
 
 `show.look` carries per-state **colour** wherever it is read. Per-state **text**
-(`states[].label`) is drawn by `button` and `camera_preset` and by nothing else, so a
+(`states[].label`) is drawn by `button`, `camera_preset` and `label` and by nothing else, so a
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
 

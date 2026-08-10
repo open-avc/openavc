@@ -814,7 +814,9 @@ function makeValidationProject(elements) {
     id: "p1", name: "P1", snap: SNAP,
     elements: [
       {
-        id: "status_text", type: "label",
+        // A keypad, not a label: a label reads look now, and the point of this
+        // case is a type whose renderer genuinely never looks.
+        id: "dial_pad", type: "keypad",
         bindings: { show: { look: { key: "device.amp.online", states: { true: { label: "ONLINE" } } } } },
       },
       {
@@ -823,7 +825,7 @@ function makeValidationProject(elements) {
       },
     ],
     layouts: [LANDSCAPE({
-      status_text: { x: 0, y: 0, w: 25, h: 12.5 },
+      dial_pad: { x: 0, y: 0, w: 25, h: 12.5 },
       real_led: { x: 30, y: 0, w: 8, h: 12.5 },
     })],
   };
@@ -831,7 +833,7 @@ function makeValidationProject(elements) {
   results.p008_inert_binding_is_named = {
     pass:
       inert.length === 1 &&
-      inert[0].elementId === "status_text" &&
+      inert[0].elementId === "dial_pad" &&
       /does not render/.test(inert[0].message),
     detail: inert,
   };
