@@ -151,6 +151,7 @@ class PanelApp {
         this._bindingRafId = null;       // requestAnimationFrame ID
         this.overlayStack = [];      // Stack of overlay page IDs (newest on top)
         this.pageHistory = [];       // Stack of previously-visited regular pages (newest on top) for $back
+        this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
         this._runningMacros = {};    // macro_id -> { description, step_index, total_steps }
         this.reconnectDelay = 1000;
@@ -314,7 +315,13 @@ class PanelApp {
                     }
                     this.snapshotReceived = true;
                     this._setupViewportListener();
-                    this.renderCurrentPage();
+                    if (this.editMode) {
+                        this.renderCurrentPage();
+                    } else {
+                        // Preview: an overlay page has to go through the
+                        // navigation path or it draws as a flat page.
+                        this._showPageAsRuntimeWould(msg.pageId || this.currentPage);
+                    }
                     this._postToParent({ type: 'openavc:editor-ready' });
                     break;
                 }
@@ -335,6 +342,18 @@ class PanelApp {
                     if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
                         this._applyVminOverride(msg.vmin);
                         rerender = true;
+                    }
+                    if (!this.editMode) {
+                        // Preview always rebuilds through the runtime's own
+                        // path, so a dialog stays a dialog. Going through
+                        // renderCurrentPage instead would tear it down: that
+                        // function opens by dismissing every overlay, so a bare
+                        // vmin nudge used to close an open dialog.
+                        const want = msg.pageId || this._previewPageId || this.currentPage;
+                        if (rerender || want !== this._previewPageId) {
+                            this._showPageAsRuntimeWould(want);
+                        }
+                        break;
                     }
                     if (msg.pageId && msg.pageId !== this.currentPage) {
                         this.currentPage = msg.pageId;
@@ -619,6 +638,10 @@ class PanelApp {
     dismissOverlay() {
         if (this.overlayStack.length === 0) return;
         const dismissed = this.overlayStack.pop();
+        // Closing it in preview means the builder's page selection no longer
+        // matches what is on screen, so selecting that page again should reopen
+        // it rather than read as "already showing".
+        if (this._previewPageId === dismissed) this._previewPageId = null;
         // Remove the topmost overlay DOM element
         const overlayEl = document.querySelector(`.panel-overlay[data-page-id="${dismissed}"]`);
         if (overlayEl) {
@@ -1138,6 +1161,46 @@ class PanelApp {
     }
 
     // --- Rendering ---
+
+    /**
+     * Show a page the way the runtime would, when an embedder names one.
+     *
+     * The builder hands the preview a page id, and for a regular page setting
+     * `currentPage` and re-rendering IS what the runtime does. An overlay is
+     * the exception: at runtime it arrives through navigateToPage, which is the
+     * only place `page_type` is read, so assigning currentPage instead rendered
+     * a dialog as a flat page with no backdrop -- and left `overlayStack` empty,
+     * so its Cancel button (`$back`) found nothing to dismiss and silently did
+     * nothing. The dialog worked on real glass and looked broken in preview,
+     * which is the worst way for a test surface to be wrong.
+     *
+     * An overlay needs something behind it, so a regular page is drawn first.
+     * That page is also where `$back` lands, exactly as it would in the field.
+     * Edit mode keeps the flat render: authoring a dialog means seeing its
+     * contents, not a backdrop.
+     */
+    _showPageAsRuntimeWould(pageId) {
+        const pages = this.uiDef?.pages || [];
+        const target = pages.find(p => p.id === pageId);
+        const type = target?.page_type || 'page';
+        // What the embedder last asked for, which is NOT `currentPage` once an
+        // overlay is open -- that holds the page drawn behind it. Without this
+        // the next editor-page for the same dialog reads as a move and reopens
+        // it, so a vmin nudge or an unrelated edit makes it flicker.
+        this._previewPageId = pageId;
+        if (!target || (type !== 'overlay' && type !== 'sidebar')) {
+            this.currentPage = pageId;
+            this.renderCurrentPage();
+            return;
+        }
+        const behind = pages.find(p => p.id === this.currentPage && (p.page_type || 'page') === 'page')
+            || pages.find(p => (p.page_type || 'page') === 'page');
+        if (behind) {
+            this.currentPage = behind.id;
+            this.renderCurrentPage();
+        }
+        this.navigateToPage(pageId);
+    }
 
     renderCurrentPage() {
         if (!this.uiDef) return;

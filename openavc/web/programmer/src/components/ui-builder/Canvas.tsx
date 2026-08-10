@@ -657,12 +657,21 @@ export function Canvas({
 
   // Overlay/sidebar pages use their configured box, which is a percentage of
   // the viewport now rather than raw px.
+  //
+  // EDIT mode only. Authoring a dialog means seeing its contents at true size,
+  // so the canvas becomes the dialog. PREVIEW means behaving like the runtime,
+  // where a dialog floats over a full screen with a backdrop behind it -- so
+  // preview keeps the whole screen and lets the panel draw the overlay itself.
+  // Shrinking it here was half of why a working Cancel button looked broken:
+  // the preview never rendered an overlay at all, it rendered the dialog's page
+  // flat inside a dialog-sized box.
   const pageType = page.page_type || "page";
   const isOverlay = pageType === "overlay" || pageType === "sidebar";
-  const overlayWidth = isOverlay
+  const boxedOverlay = isOverlay && !previewMode;
+  const overlayWidth = boxedOverlay
     ? Math.round((((page.overlay?.width ?? (pageType === "sidebar" ? 25 : 31.25)) / 100) * screenWidth))
     : screenWidth;
-  const overlayHeight = isOverlay
+  const overlayHeight = boxedOverlay
     ? (pageType === "sidebar"
         ? screenHeight
         : Math.round((((page.overlay?.height ?? 37.5) / 100) * screenHeight)))
