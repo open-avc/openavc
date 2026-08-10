@@ -228,7 +228,6 @@ export interface UIElement {
   show_display?: boolean;
   // Group
   label_position?: string;
-  collapsible?: boolean;
   // List
   list_style?: string;
   item_height?: number;

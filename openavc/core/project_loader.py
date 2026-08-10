@@ -370,7 +370,6 @@ class UIElement(_ForwardCompatModel):
     keypad_style: str | None = None  # keypad: numeric/phone
     show_display: bool | None = None  # keypad: show digit buffer display
     label_position: str | None = None  # group: label position
-    collapsible: bool | None = None  # group: allow collapse/expand
     list_style: str | None = None  # list: static/selectable/multi_select/action
     item_height: float | None = None  # list: row height in rem (see icon_size)
     # Read by the slider renderer as element.thumb_size, honoured per-element
