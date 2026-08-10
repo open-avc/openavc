@@ -67,8 +67,10 @@ a typical one, so a difficult commissioning cannot run out partway through. Usag
 pooled across your account rather than tracked per system, which means a straightforward
 room subsidises a difficult one instead of each room being on its own.
 
-Free accounts get the assistant too, with a monthly allowance. It is the only feature
-difference between a free account and a paid one.
+Free accounts get the assistant too, with a fixed allowance rather than a per-system
+one. It is sized so you can genuinely commission a room with the assistant and see what
+it does, which is the point of a free account. It is the only feature difference between
+a free account and a paid one, and adding a paid system is what lifts it.
 
 We do not publish the figure in tokens or in dollars, and that is deliberate. Tokens are
 not a unit anyone can plan with, and a dollar figure would invite you to do arithmetic
@@ -76,14 +78,16 @@ that the pooling makes wrong.
 
 ## If something is genuinely unusual
 
-Two protections exist, and neither one is a cutoff:
+Two protections exist:
 
 - **A cadence limit** on how quickly requests can arrive. It is set far above the speed
   any person works at, so you will not encounter it. It exists to stop a script or a
   loop from hammering the assistant, not to slow you down.
 - **A ceiling on sustained spend** far above any real usage pattern, which exists to
-  catch runaway automation. If it ever trips, we would talk to you about it rather than
-  silently switch the assistant off.
+  catch runaway automation. On a paid account this is not a cutoff. If it ever trips, we
+  would talk to you about it rather than silently switch the assistant off. On a free
+  account it is a real stop, since a free account has no billing relationship behind it,
+  and it is the only place in OpenAVC where the assistant stops on its own.
 
 If you are doing something legitimately heavy, such as commissioning a very large
 deployment in a short window, tell us and we will raise your account's allocation. That
