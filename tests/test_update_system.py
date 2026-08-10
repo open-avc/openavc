@@ -41,6 +41,20 @@ HELPER_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "update-h
 MAC_WRAPPER_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "openavc-macos-run.sh"
 BUILD_MACOS_SCRIPT = Path(__file__).resolve().parent.parent / "installer" / "build-macos.sh"
 
+# How long a shell helper may run before we call it hung. This is a hang
+# detector, not a performance budget: tracing update-helper.sh puts its own
+# work -- a handful of tar, mv and rm calls -- at under a second.
+#
+# The wall time around that work is not stable. On Windows the same scenario
+# measured 24s and then 3s on back-to-back runs with identical input, which
+# is process startup and file I/O going through a scanner rather than
+# anything the script does. At 30s that variance reached the ceiling during a
+# loaded full-suite run and failed one test with TimeoutExpired -- a red
+# suite reporting nothing except that the machine was busy. 90s stays well
+# inside pytest's own 120s per-test cap, so a genuine hang still fails the
+# test instead of stalling the run.
+HELPER_TIMEOUT = 90
+
 
 def _find_bash() -> str | None:
     """Find a working bash executable.
@@ -230,7 +244,7 @@ def _run_helper(data_dir: Path, app_dir: Path) -> subprocess.CompletedProcess:
         [_BASH_PATH, str(HELPER_SCRIPT), data_arg, app_arg],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=HELPER_TIMEOUT,
         env=env,
     )
 
@@ -1308,7 +1322,7 @@ def _run_mac_wrapper(data_dir: Path, app: Path) -> subprocess.CompletedProcess:
         [_BASH_PATH, str(MAC_WRAPPER_SCRIPT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=HELPER_TIMEOUT,
         env=env,
     )
 
