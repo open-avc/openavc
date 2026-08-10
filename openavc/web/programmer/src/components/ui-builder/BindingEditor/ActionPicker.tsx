@@ -528,6 +528,13 @@ function NavigateConfig({
             ))}
           </optgroup>
         )}
+        {/* Not pages, and that is the point: a Cancel button pointed at one of
+            these works from wherever the dialog was opened, so the dialog stays
+            reusable instead of always landing the operator on one page. */}
+        <optgroup label="Go back">
+          <option value="$back">Back (close overlay, or previous page)</option>
+          <option value="$dismiss">Close this overlay</option>
+        </optgroup>
         <optgroup label="Special">
           <option value="$back">$back — previous page (or close overlay if one is open)</option>
           <option value="$dismiss">$dismiss — close topmost overlay only</option>

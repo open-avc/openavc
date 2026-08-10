@@ -247,3 +247,14 @@ export const STRUCTURAL_PROPERTIES: string[] = ["aspect_lock", "bindings", "css_
  * one with no default: without it no crosspoint ever lights.
  */
 export const MATRIX_CONFIG_KEYS: string[] = ["audio_follow_video", "audio_route_key_pattern", "input_count", "input_key_pattern", "input_labels", "output_count", "output_key_pattern", "output_labels", "presets", "route_key_pattern", "show_lock", "show_mute"];
+
+/**
+ * Navigation targets that are not page ids and never will be.
+ *
+ * The panel resolves both itself: `$back` dismisses an open overlay or pops the
+ * page history, `$dismiss` closes an overlay and nothing else. A validator that
+ * does not know them reports the documented spelling as a dangling page, and
+ * believing it means hardcoding a page id into a confirm dialog's Cancel
+ * button -- which makes the dialog single-use.
+ */
+export const NAVIGATION_SENTINELS = new Set(["$back", "$dismiss"]);

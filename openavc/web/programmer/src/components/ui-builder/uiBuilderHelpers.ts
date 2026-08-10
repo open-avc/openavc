@@ -13,6 +13,7 @@ import {
   HONORED_PROPERTIES,
   HONORED_SHOW_SLOTS,
   MATRIX_CONFIG_KEYS,
+  NAVIGATION_SENTINELS,
   REVIEWED_SHOW_SLOTS,
   STATE_LABEL_TYPES,
   STRUCTURAL_PROPERTIES,
@@ -1257,7 +1258,10 @@ export function actionDanglingRef(
   if (act === "macro" && a.macro && !ids.macroIds.has(a.macro as string)) {
     return `Macro "${a.macro}" not found`;
   }
-  if (act === "ui.navigate" && a.page && !ids.pageIds.has(a.page as string)) {
+  if (
+    act === "ui.navigate" && a.page && !ids.pageIds.has(a.page as string) &&
+    !NAVIGATION_SENTINELS.has(a.page as string)
+  ) {
     return `Page "${a.page}" not found`;
   }
   if (act === "value_map" && a.map && typeof a.map === "object") {
@@ -4496,14 +4500,20 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
     const doMap = (bindings.do || {}) as Record<string, unknown>;
 
     // page_nav target
-    if (el.type === "page_nav" && el.target_page && !pageIds.has(el.target_page)) {
+    if (
+      el.type === "page_nav" && el.target_page && !pageIds.has(el.target_page) &&
+      !NAVIGATION_SENTINELS.has(el.target_page)
+    ) {
       issues.push({ severity: "error", message: `Target page "${el.target_page}" does not exist`, location: loc, pageId, elementId: el.id });
     }
 
     // One action checker for every interaction. Recurses into value_map
     // per-option actions the same way the engine executes them.
     const checkAction = (b: Record<string, unknown>, slotLoc: string) => {
-      if (b.action === "ui.navigate" && b.page && !pageIds.has(b.page as string)) {
+      if (
+        b.action === "ui.navigate" && b.page && !pageIds.has(b.page as string) &&
+        !NAVIGATION_SENTINELS.has(b.page as string)
+      ) {
         issues.push({ severity: "error", message: `Navigate to deleted page "${b.page}"`, location: slotLoc, pageId, elementId: el.id });
       }
       if (b.action === "device.command" && b.device && !deviceIds.has(b.device as string)) {

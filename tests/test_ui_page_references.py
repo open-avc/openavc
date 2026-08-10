@@ -212,6 +212,35 @@ def test_everything_that_resolves_stays_quiet() -> None:
     ]) == []
 
 
+def test_the_navigation_sentinels_are_not_dangling_pages() -> None:
+    """`$back` and `$dismiss` are targets the panel resolves, not page ids.
+
+    They shipped in the panel and the macro engine whitelisted them from the
+    start; this module did not, so the one validator an authoring client reads
+    called the documented spelling a dangling page. The cost is not the false
+    warning -- it is that obeying it means hardcoding a page id into a confirm
+    dialog's Cancel button, which makes the dialog usable from exactly one page.
+    """
+    assert _messages([
+        {"id": "cancel", "type": "button", **_press(
+            {"action": "ui.navigate", "page": "$back"},
+        )},
+        {"id": "close", "type": "button", **_press(
+            {"action": "ui.navigate", "page": "$dismiss"},
+        )},
+        {"id": "nav_back", "type": "page_nav", "target_page": "$back"},
+    ]) == []
+
+
+def test_an_invented_sentinel_is_still_dangling() -> None:
+    """Only the two the panel implements. The prompt used to advertise more."""
+    assert len(_messages([
+        {"id": "btn", "type": "button", **_press(
+            {"action": "ui.navigate", "page": "__next_page__"},
+        )},
+    ])) == 1
+
+
 def test_a_write_answers_only_for_what_it_touched() -> None:
     """Re-reporting the rest of the page on every call is how the field gets skipped."""
     elements = [

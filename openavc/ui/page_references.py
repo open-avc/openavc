@@ -56,6 +56,17 @@ from typing import Any
 
 from openavc.ui.page_review import Finding
 
+#: Navigation targets that are not page ids and never will be.
+#:
+#: The panel resolves both itself (``navigateToPage``): ``$back`` dismisses an
+#: open overlay or pops the page history, ``$dismiss`` closes an overlay and
+#: nothing else. ``macro_engine`` has whitelisted them since they shipped; this
+#: module did not, so the one validator an authoring client actually reads
+#: reported the documented spelling as a dangling page. What that costs is not
+#: the warning -- it is that believing it means hardcoding a page id into a
+#: confirm dialog's Cancel button, which makes the dialog single-use.
+NAVIGATION_SENTINELS = frozenset({"$back", "$dismiss"})
+
 #: Every interaction slot an element can carry actions under. The same set
 #: ``ui_events`` dispatches and the Builder's ACTION_SLOTS enumerates.
 ACTION_SLOTS = (
@@ -253,7 +264,10 @@ def _element_findings(
     el_type = str(dump.get("type", "?"))
 
     target = dump.get("target_page")
-    if el_type == "page_nav" and isinstance(target, str) and target and target not in page_ids:
+    if (
+        el_type == "page_nav" and isinstance(target, str) and target
+        and target not in page_ids and target not in NAVIGATION_SENTINELS
+    ):
         findings.append(Finding(
             el_id, "dangling_reference",
             f"{el_id} ({el_type}) navigates to page '{target}', which does not exist. "
@@ -338,7 +352,10 @@ def _action_findings(
 
     if name == "ui.navigate":
         target = action.get("page")
-        if isinstance(target, str) and target and target not in page_ids:
+        if (
+            isinstance(target, str) and target
+            and target not in page_ids and target not in NAVIGATION_SENTINELS
+        ):
             findings.append(Finding(
                 el_id, "dangling_reference",
                 f"{el_id} ({el_type}) {where} navigates to page '{target}', which does not "

@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from openavc.ui.page_references import NAVIGATION_SENTINELS
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
@@ -96,6 +97,17 @@ export const STRUCTURAL_PROPERTIES: string[] = %(structural)s;
  * one with no default: without it no crosspoint ever lights.
  */
 export const MATRIX_CONFIG_KEYS: string[] = %(matrix_keys)s;
+
+/**
+ * Navigation targets that are not page ids and never will be.
+ *
+ * The panel resolves both itself: `$back` dismisses an open overlay or pops the
+ * page history, `$dismiss` closes an overlay and nothing else. A validator that
+ * does not know them reports the documented spelling as a dangling page, and
+ * believing it means hardcoding a page id into a confirm dialog's Cancel
+ * button -- which makes the dialog single-use.
+ */
+export const NAVIGATION_SENTINELS = new Set(%(sentinels)s);
 """
 
 
@@ -115,6 +127,7 @@ def render() -> str:
         ),
         "structural": json.dumps(sorted(STRUCTURAL_PROPERTIES), ensure_ascii=False),
         "matrix_keys": json.dumps(sorted(MATRIX_CONFIG_KEYS), ensure_ascii=False),
+        "sentinels": json.dumps(sorted(NAVIGATION_SENTINELS), ensure_ascii=False),
     }
 
 
