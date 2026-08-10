@@ -3,6 +3,7 @@ Shared test fixtures for OpenAVC tests.
 """
 
 
+import importlib.util
 import os
 import tempfile
 
@@ -63,6 +64,46 @@ load_builtin_drivers()
 # in place.
 register_driver(AcmeDisplayDriver)
 register_driver(AcmePowerRelayDriver)
+
+
+def _browser_extra_installed() -> bool:
+    """Whether this machine has the Playwright test stack at all."""
+    return importlib.util.find_spec("pytest_playwright") is not None
+
+
+def e2e_availability_note() -> str | None:
+    """One note when the browser tests can't run on this machine.
+
+    The default run never collects `tests/e2e` -- pyproject ignores it, so
+    the sync Playwright loop can't poison the async suite. That makes a
+    machine without the browser extra look exactly like one that has it: a
+    green run, and nothing said about the tests that check what the panel
+    and the Builder actually draw at a given size. jsdom has no layout
+    engine, so nothing else covers it and the gap is silent.
+
+    Speaks up only when they're genuinely unavailable here. A machine that
+    can run them gets no extra line -- it needs a command, not a warning.
+    Quiet under CI as well: a separate job there installs the extra and runs
+    the suite, so the note would be noise, and worse, would read as if that
+    coverage were missing.
+    """
+    if os.environ.get("CI"):
+        return None
+    if _browser_extra_installed():
+        return None
+    return (
+        "note: the browser tests in tests/e2e can't run here "
+        "(pytest-playwright is not installed).\n"
+        '      to enable:  pip install -e ".[dev]" '
+        "&& python -m playwright install chromium\n"
+        '      to run:     pytest tests/e2e -o addopts=""'
+    )
+
+
+def pytest_terminal_summary(terminalreporter):
+    note = e2e_availability_note()
+    if note:
+        terminalreporter.write_line(note, yellow=True)
 
 
 @pytest.fixture(autouse=True, scope="session")
