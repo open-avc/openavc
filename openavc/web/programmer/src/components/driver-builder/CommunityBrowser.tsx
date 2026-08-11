@@ -82,7 +82,7 @@ const TRANSPORT_COLORS: Record<string, string> = {
 //   - via   (isViaCard=true):  the card's brand is one of the OTHER
 //     manufacturers in compatible_models. The card is labeled with a small
 //     "via <driver name>" line so the user knows it's a generic fallback.
-type DisplayCard = {
+export type DisplayCard = {
   driver: CommunityDriver;
   brand: string;
   brandModels: string[];
@@ -95,7 +95,7 @@ type DisplayCard = {
  *  support. Drivers that only target a single brand produce a single card,
  *  matching today's behavior.
  */
-function expandDriverToCards(driver: CommunityDriver): DisplayCard[] {
+export function expandDriverToCards(driver: CommunityDriver): DisplayCard[] {
   const cms = driver.compatible_models ?? [];
   if (cms.length === 0) {
     // No compatible_models declared — fall back to the top-level manufacturer.
@@ -153,6 +153,9 @@ function expandDriverToCards(driver: CommunityDriver): DisplayCard[] {
 /** Sort: alphabetical by brand, native cards before via cards within a brand,
  *  driver name as final tiebreaker. Keeps Sony's dedicated driver above any
  *  Sony card surfaced by a generic VISCA-IP driver, etc.
+ *
+ *  This is the BROWSE order, and the tiebreaker once a search has ranked by
+ *  relevance (see scoreCard).
  */
 function compareCards(a: DisplayCard, b: DisplayCard): number {
   const ba = a.brand.toLowerCase();
@@ -160,6 +163,85 @@ function compareCards(a: DisplayCard, b: DisplayCard): number {
   if (ba !== bb) return ba < bb ? -1 : 1;
   if (a.isViaCard !== b.isViaCard) return a.isViaCard ? 1 : -1;
   return a.driver.name.localeCompare(b.driver.name);
+}
+
+// How well a query matched one field, 0 when it didn't match at all.
+//
+// A plain substring test says only yes/no, which is what made searching a
+// manufacturer's own name useless: "lea" matched eighteen cards, and the LEA
+// amplifier sat alphabetically in the middle of them, below brands that only
+// contain the letters (Turt|leA|V) and drivers whose DESCRIPTION happens to
+// say "re|lea|ses", "c|lea|r" or "|lea|rned". Where in the word a match lands
+// is the signal that separates those: a brand a user typed on purpose starts
+// with what they typed.
+export function matchQuality(field: string | undefined, q: string): number {
+  if (!field) return 0;
+  const f = field.toLowerCase();
+  if (f === q) return 1;        // the whole field IS the query
+  if (f.startsWith(q)) return 0.8;  // "lea" -> "LEA Professional"
+  let best = 0;
+  for (let i = f.indexOf(q); i !== -1; i = f.indexOf(q, i + 1)) {
+    // Starts a word somewhere inside ("Connect Series" in "LEA Connect
+    // Series Amplifier") beats landing mid-word ("lea" in "TurtleAV").
+    if (i === 0 || !/[a-z0-9]/.test(f[i - 1])) return 0.6;
+    best = 0.25;
+  }
+  return best;
+}
+
+// What a match in each field is worth. Brand and model are what an integrator
+// actually types; the description is prose we wrote, and is the weakest signal
+// there is -- it stays searchable (it's how you find "the driver that does
+// IR") but it can no longer outrank the brand someone asked for by name.
+const FIELD_WEIGHTS = {
+  brand: 100,
+  model: 80,
+  name: 60,
+  id: 40,
+  tag: 30,
+  description: 10,
+} as const;
+
+/** Relevance of one card to one already-lowercased query. 0 = no match, which
+ *  is also what filters the card out, so what MATCHES and what RANKS can never
+ *  drift apart into two lists of fields.
+ */
+export function scoreCard(card: DisplayCard, q: string): number {
+  const d = card.driver;
+  return Math.max(
+    FIELD_WEIGHTS.brand * matchQuality(card.brand, q),
+    FIELD_WEIGHTS.name * matchQuality(d.name, q),
+    FIELD_WEIGHTS.id * matchQuality(d.id, q),
+    FIELD_WEIGHTS.description * matchQuality(d.description, q),
+    ...card.brandModels.map((m) => FIELD_WEIGHTS.model * matchQuality(m, q)),
+    ...(d.tags ?? []).map((t) => FIELD_WEIGHTS.tag * matchQuality(t, q)),
+  );
+}
+
+/** Apply the category filter and the search box to the expanded card list.
+ *
+ *  Scoring does double duty: a zero score is "no match", so the set that shows
+ *  and the order it shows in come from one pass over one list of fields and
+ *  cannot drift apart.
+ */
+export function rankCards(
+  cards: DisplayCard[],
+  searchQuery: string,
+  activeCategory: string,
+): DisplayCard[] {
+  const q = searchQuery.trim().toLowerCase();
+  return cards
+    .filter((card) =>
+      activeCategory === "All" ||
+      card.driver.category.toLowerCase() === activeCategory.toLowerCase(),
+    )
+    .map((card) => ({ card, score: q ? scoreCard(card, q) : 0 }))
+    .filter((entry) => !q || entry.score > 0)
+    // Best match first while searching; browsing (no query) stays alphabetical.
+    // compareCards breaks ties either way, so two cards matching a brand name
+    // equally well still put the dedicated driver above the generic one.
+    .sort((a, b) => b.score - a.score || compareCards(a.card, b.card))
+    .map((entry) => entry.card);
 }
 
 export function CommunityBrowser() {
@@ -197,34 +279,7 @@ export function CommunityBrowser() {
   // card level means searching "Sony" only surfaces Sony-branded cards — not
   // every other brand the same driver happens to support.
   const allCards = communityDrivers.flatMap(expandDriverToCards);
-  const filteredCards = allCards.filter((card) => {
-    const driver = card.driver;
-    // Category filter
-    if (activeCategory !== "All") {
-      if (driver.category.toLowerCase() !== activeCategory.toLowerCase()) {
-        return false;
-      }
-    }
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      // Driver-level matches surface every card from that driver — searching
-      // the driver's own brand or its description is "show me everything this
-      // driver does."
-      if (driver.name.toLowerCase().includes(q)) return true;
-      if (driver.description.toLowerCase().includes(q)) return true;
-      if (driver.id.toLowerCase().includes(q)) return true;
-      if (driver.tags?.some((t) => t.toLowerCase().includes(q))) return true;
-      // Card-level matches isolate to this brand's card. Searching "AVer"
-      // surfaces the AVer card from a generic VISCA-IP driver without also
-      // surfacing the Sony card from the same driver.
-      if (card.brand.toLowerCase().includes(q)) return true;
-      if (card.brandModels.some((m) => m.toLowerCase().includes(q))) return true;
-      return false;
-    }
-    return true;
-  });
-  filteredCards.sort(compareCards);
+  const filteredCards = rankCards(allCards, searchQuery, activeCategory);
 
   const handleInstall = useCallback(
     async (driver: CommunityDriver) => {
