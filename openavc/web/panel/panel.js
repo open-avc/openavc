@@ -957,16 +957,16 @@ class PanelApp {
     /**
      * The project stylesheet (ui.custom_css), paired with element.css_class.
      *
-     * Appended to the head so it comes after panel.css and panel-elements.css
-     * and wins ties on specificity. It does NOT beat the inline styles the
-     * renderer writes -- applyStyle puts colors, sizes and radii straight on the
-     * node -- so a rule that fights one of those needs !important. That is a
-     * property of the escape hatch, not a bug in it: the panel's own styling
-     * stays authoritative unless the author insists.
+     * Appended to the head so it comes after panel.css and panel-elements.css,
+     * and then every declaration in it is re-set as !important -- see
+     * _raiseCustomCssPriority for why that is the right call rather than a
+     * heavy hand.
      *
      * One style node, reused, and only rewritten when the text actually changes:
      * this runs on every page render, and reassigning textContent re-parses the
-     * sheet and forces a restyle even when nothing differs.
+     * sheet and forces a restyle even when nothing differs. The priority pass
+     * only has to run when the text is new, because CSSOM edits live on the
+     * parsed sheet and survive until it is re-parsed.
      */
     _applyCustomCss(css) {
         const text = typeof css === 'string' ? css : '';
@@ -985,7 +985,137 @@ class PanelApp {
             document.head.appendChild(node);
         }
         this._customCssNode = node;
-        if (node.textContent !== text) node.textContent = text;
+        if (node.textContent !== text) {
+            node.textContent = text;
+            this._raiseCustomCssPriority(node);
+        }
+    }
+
+    /**
+     * Give the project stylesheet the last word, without making the author ask.
+     *
+     * applyStyle writes colours, corner radius, borders, shadows and text sizes
+     * straight onto each control -- from the THEME as much as from anything the
+     * author set on that one element -- and an inline style beats a stylesheet
+     * rule that does not say !important. So the plain, obvious rule somebody
+     * writes first ('.brand-button { background: #8AB493 }') did nothing at all,
+     * silently, which is the worst possible introduction to a feature.
+     *
+     * Making them type !important was never protecting anything: the properties
+     * it applies to are exactly the properties they are trying to change. It was
+     * a tax on the common case, paid in a confused afternoon.
+     *
+     * So the panel adds it. The project keeps the author's text verbatim -- the
+     * sheet is theirs, raising its priority is ours -- and the parsing is the
+     * browser's own, through the CSSOM, rather than a regex over CSS that would
+     * be wrong about comments, strings and nesting within the week.
+     *
+     * The one thing it must not touch is @keyframes: !important inside a
+     * keyframe is ignored by the spec, and writing it there can drop the
+     * declaration outright, so an animation would break rather than win.
+     *
+     * What this deliberately does NOT solve is a control that changes its own
+     * look to show state -- a button that goes green when the projector is on
+     * writes that colour inline at runtime, and now a class rule for the same
+     * property outranks it, so the button stops reporting. That conflict exists
+     * either way (an author who typed !important got the same result), so it is
+     * answered where it can be answered clearly: the Builder warns when a class
+     * on an element sets a property that element's own feedback also sets.
+     */
+    _raiseCustomCssPriority(node) {
+        const sheet = node.sheet;
+        if (!sheet) return;
+        // CSSRule.KEYFRAMES_RULE, with the literal as a fallback for anything
+        // that doesn't expose the constant.
+        const KEYFRAMES = (window.CSSRule && window.CSSRule.KEYFRAMES_RULE) || 7;
+        const raise = (rules) => {
+            for (const rule of rules) {
+                if (rule.type === KEYFRAMES) continue;
+                if (rule.style) this._raiseDeclarations(rule.style);
+                // @media / @supports and friends hold rules of their own.
+                if (rule.cssRules) raise(rule.cssRules);
+            }
+        };
+        try {
+            raise(sheet.cssRules);
+        } catch {
+            // A sheet the browser won't let us read is a sheet we leave alone;
+            // the author's CSS still applies, just at its normal priority.
+        }
+    }
+
+    /**
+     * Re-set one rule's declarations as important.
+     *
+     * This works on the declaration TEXT rather than property by property, and
+     * that is not a style preference -- it is the only thing that survives a
+     * custom property inside a shorthand. `background: var(--brand)` cannot be
+     * expanded into longhands until the variable is substituted, so the browser
+     * lists background-color and friends but hands back an empty string for
+     * every one of them. Setting each of those "values" doesn't raise the
+     * declaration, it DELETES it: the first version of this shipped a worked
+     * example whose green never appeared, and the rule in the sheet had simply
+     * lost its background line.
+     *
+     * The text comes from the browser's own serializer, so it is already
+     * normalized -- no comments, no surprises -- and splitting it needs to
+     * respect only two things: a `;` inside a quoted string, and a `;` inside
+     * parentheses (a data: URI carries one).
+     *
+     * If the rebuilt text doesn't parse back to the same number of
+     * declarations, the original goes back untouched. A stylesheet at normal
+     * priority is a disappointment; a stylesheet with rules silently missing is
+     * a bug hunt.
+     */
+    _raiseDeclarations(decls) {
+        const original = decls.cssText;
+        if (!original) return;
+        const parts = this._splitDeclarations(original);
+        if (parts.length === 0) return;
+        const raised = parts
+            .map(d => (/!\s*important\s*$/i.test(d) ? d : `${d} !important`))
+            .join('; ') + ';';
+        decls.cssText = raised;
+        if (this._splitDeclarations(decls.cssText).length !== parts.length) {
+            decls.cssText = original;
+        }
+    }
+
+    /** Split a declaration list on the semicolons that actually separate it. */
+    _splitDeclarations(text) {
+        const parts = [];
+        let buffer = '';
+        let quote = null;
+        let depth = 0;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === '\\') {
+                // An escape carries its next character verbatim, quote included.
+                buffer += ch + (text[i + 1] || '');
+                i++;
+                continue;
+            }
+            if (quote) {
+                buffer += ch;
+                if (ch === quote) quote = null;
+                continue;
+            }
+            if (ch === '"' || ch === "'") {
+                quote = ch;
+                buffer += ch;
+                continue;
+            }
+            if (ch === '(') depth++;
+            else if (ch === ')') depth = Math.max(0, depth - 1);
+            else if (ch === ';' && depth === 0) {
+                parts.push(buffer);
+                buffer = '';
+                continue;
+            }
+            buffer += ch;
+        }
+        parts.push(buffer);
+        return parts.map(p => p.trim()).filter(Boolean);
     }
 
     /**

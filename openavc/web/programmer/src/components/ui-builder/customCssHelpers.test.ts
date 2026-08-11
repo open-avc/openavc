@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   stylesheetClassNames,
+  stylesheetClassProperties,
+  feedbackClassConflicts,
   cssClassList,
   cssClassValue,
   toggleCssClass,
@@ -76,5 +78,70 @@ describe("invalidCssClassNames", () => {
 
   it("accepts the shapes CSS allows", () => {
     expect(invalidCssClassNames("brand_button -kebab a1 _x")).toEqual([]);
+  });
+});
+
+describe("stylesheetClassProperties", () => {
+  it("collects the properties a class sets, across every rule that names it", () => {
+    const css = `.brand { color: white; } .brand:hover { opacity: 0.8; }`;
+    expect([...(stylesheetClassProperties(css).get("brand") ?? [])].sort()).toEqual([
+      "color",
+      "opacity",
+    ]);
+  });
+
+  it("expands the shorthands that collide with feedback", () => {
+    const props = stylesheetClassProperties(`.brand { background: red; border: 1px solid #000; }`);
+    const set = props.get("brand")!;
+    expect(set.has("background-color")).toBe(true);
+    expect(set.has("border-color")).toBe(true);
+    expect(set.has("border-width")).toBe(true);
+  });
+
+  it("reads rules inside a media query", () => {
+    const props = stylesheetClassProperties(`@media (min-width: 30rem) { .brand { color: red; } }`);
+    expect([...(props.get("brand") ?? [])]).toEqual(["color"]);
+  });
+});
+
+describe("feedbackClassConflicts", () => {
+  // A button that goes green when the projector is on, in both binding shapes.
+  const statesBinding = {
+    show: { look: { key: "device.p1.power", states: { on: { bg_color: "#4CAF50" } } } },
+  };
+  const legacyBinding = {
+    show: {
+      look: {
+        key: "var.system_power",
+        condition: { equals: "on" },
+        style_active: { bg_color: "#4CAF50" },
+        style_inactive: { bg_color: "#424242" },
+      },
+    },
+  };
+  const css = `.brand { background: #8AB493; font-weight: 700; }
+               .rounded { border-radius: 2rem; }`;
+
+  it("names the class and what it takes over", () => {
+    expect(feedbackClassConflicts("brand", css, statesBinding)).toEqual([
+      { className: "brand", labels: ["background"] },
+    ]);
+    expect(feedbackClassConflicts("brand", css, legacyBinding)).toEqual([
+      { className: "brand", labels: ["background"] },
+    ]);
+  });
+
+  it("stays quiet when the class touches nothing the feedback draws", () => {
+    expect(feedbackClassConflicts("rounded", css, statesBinding)).toEqual([]);
+  });
+
+  it("stays quiet when the control has no look binding at all", () => {
+    expect(feedbackClassConflicts("brand", css, { do: { press: [] } })).toEqual([]);
+    expect(feedbackClassConflicts("brand", css, undefined)).toEqual([]);
+  });
+
+  it("checks every class on the element, not just the first", () => {
+    const both = feedbackClassConflicts("rounded brand", css, statesBinding);
+    expect(both).toEqual([{ className: "brand", labels: ["background"] }]);
   });
 });

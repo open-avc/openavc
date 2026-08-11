@@ -402,6 +402,7 @@ The **Style** section has subsections for fine-grained control over element appe
 - **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height
 - **Background Image**: select an image asset with controls for size, position, and opacity (see Asset Management below)
 - **Overflow**: control how content that exceeds the element bounds is handled (visible, hidden, scroll)
+- **Custom Classes**: apply a class from the project stylesheet to this element (see [Custom Styling](#custom-styling))
 
 ### Asset Management
 
@@ -605,6 +606,115 @@ A built-in WCAG accessibility checker evaluates text-on-background contrast for 
 - **Save as Custom**: duplicates the current theme as an editable copy.
 - **Discard**: reverts all edits to the last saved state.
 - **Export/Import**: download themes as `.avctheme` files or import them from other installations.
+
+## Custom Styling
+
+Themes cover most of what a panel needs to look like yours. When a customer wants something the theme cannot express, a rounded pill button, a specific font, a subtle animation on the source you are currently watching, the project stylesheet is the way in. It is real CSS, written once for the project, applied to the controls you choose.
+
+There are two halves:
+
+1. **The project stylesheet.** Click **Stylesheet** in the UI Builder toolbar. The editor opens with your CSS on the left and a live panel on the right, showing the page you were just looking at. Edits appear as you type. Nothing is saved until you click Save.
+2. **Class names on elements.** Select an element, open **Style**, and find **Custom Classes** at the bottom. Every class your stylesheet defines appears as a chip. Click one to put it on this element. You can also type a name directly.
+
+That is the whole model. Write a rule for `.brand-button`, put `brand-button` on the buttons you want it on.
+
+### What your rules can change
+
+Your stylesheet wins over the theme, and over anything you set in the Style panel for that element. You do not need `!important`. Write ordinary CSS and it applies.
+
+Theme colors are available as CSS variables, so a rule can follow a theme switch instead of fighting it:
+
+| Variable | What it holds |
+|----------|---------------|
+| `--panel-bg` | Page background |
+| `--panel-text` | Default text color |
+| `--panel-accent` | Accent color for active states and highlights |
+| `--panel-button-bg` | Button background |
+| `--panel-button-text` | Button text |
+| `--panel-button-border` | Button border |
+| `--panel-surface` | Surface color for tracks, inputs, and panels |
+| `--panel-surface-border` | Surface border |
+| `--panel-danger` | Danger or alarm color |
+| `--panel-success` | Success or on color |
+| `--panel-warning` | Warning color |
+| `--panel-border-radius` | Default corner radius |
+
+### One thing to watch: controls that show state
+
+A button bound to feedback changes its own color to report what the room is doing. A button that turns green when the projector is on is drawing that green at runtime.
+
+If a class on that button also sets the background, your stylesheet wins and the button stops reporting. That is almost never what you want, so the Builder warns you: the Custom Classes section names the class and what it is taking over. When you see that warning, either set the colors in **Bindings > Appearance** where the feedback lives, or drop that property from the class rule and use the class for the parts that do not change, the shape, the font, the spacing.
+
+### Rules that keep working in a real space
+
+- **Everything ships with the project.** No web fonts from Google, no CSS from a CDN, no remote images. A panel on a wall may have no internet, and a rule that depends on one will render as nothing. Upload fonts and images as project assets instead.
+- **Keep it to styling.** The stylesheet cannot add controls or change what a button does. It changes how what you built looks.
+- **Element internals can change between versions.** Classes we ship, like `.panel-button`, are the panel's own structure and we do restructure them. Style your own class names and you are insulated from that. Style ours and a future update can move it out from under you.
+- **Test on the real panel.** The Builder preview is the same renderer, but tablet browsers vary. Check anything unusual on the actual glass before you hand the space over.
+
+### Worked example: rebranding to a customer's colors
+
+A customer wants their panel in their green, with square corners and uppercase labels.
+
+Start by noticing which controls report state. In a typical room every action button does: source buttons light up to show the selected source, power buttons to show the system is on. Those colors belong to the bindings. What the stylesheet takes over is everything around them, the shape, the border, the type, and the controls that have no state to show.
+
+Open **Stylesheet** and write:
+
+```css
+/* Customer brand palette, defined once */
+:root {
+  --brand-green: #2f7d4f;
+  --brand-ink: #0d1f14;
+}
+
+/* Shape and type for action buttons.
+   No background here on purpose: these buttons color themselves to
+   show what the room is doing, and a background rule would take that over. */
+.brand-button {
+  border-radius: 4px;
+  border: 2px solid #ffffff2b;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Navigation carries no state, so it can wear the brand color outright */
+.brand-nav {
+  background: var(--brand-green);
+  color: #ffffff;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Faders and sliders: green fill on a dark track */
+.brand-fader {
+  --el-accent: var(--brand-green);
+  --el-surface: var(--brand-ink);
+  --el-surface-border: var(--brand-green);
+}
+
+/* Section headings */
+.brand-heading {
+  color: var(--brand-green);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+```
+
+Save, then select each control and click the matching chip in **Custom Classes**: `.brand-button` on the action buttons, `.brand-nav` on the page navigation, `.brand-fader` on the volume control, `.brand-heading` on the room title.
+
+![A conference room panel restyled by a project stylesheet. The room title and page navigation are in the customer green, the buttons are square cornered and uppercase while keeping the colors that report system and source state, and the volume slider is filled in green](images/custom-styling-example.png)
+
+The buttons still turn blue for the selected source and green for system on, because those colors were left to the bindings. Everything else came from four class rules.
+
+Three details worth copying:
+
+- **Define the palette once at `:root`.** A customer color change becomes one edit.
+- **`--el-accent` and `--el-surface`** are the per-element versions of the theme accent and surface colors. They are how you recolor the moving parts of a fader or slider, the fill and the track, rather than just the box around them.
+- **Leave state colors to the bindings.** If you do set one from the stylesheet, the Custom Classes section tells you which control you just took over.
 
 ## Page Backgrounds
 

@@ -391,6 +391,7 @@ export function PropertiesPanel({
           onChange={handleChange}
           themeDefaults={themeDefaults?.[element.type]}
           stylesheetClasses={stylesheetClasses}
+          customCss={project?.ui?.custom_css ?? ""}
           onOpenStylesheet={onOpenStylesheet}
         />
       </Section>
@@ -553,6 +554,7 @@ function MasterElementProperties({
           onChange={handleElementChange}
           themeDefaults={themeDefaults?.[masterElement.type]}
           stylesheetClasses={stylesheetClasses}
+          customCss={project?.ui?.custom_css ?? ""}
           onOpenStylesheet={onOpenStylesheet}
         />
       </Section>

@@ -25,12 +25,6 @@ const STARTER_CSS = `/* Project stylesheet.
  * Name a class on an element (Properties > Style > Custom classes) and
  * target it here.
  *
- * The panel writes colors, corner radius, borders, shadows and text sizes
- * straight onto each control as inline styles, so a rule that changes one
- * of THOSE needs !important to win. Anything the panel does not set
- * inline -- fonts, letter spacing, transitions, transforms, ::after
- * decorations -- works without it.
- *
  * Theme colors are available as CSS variables, so a rule can follow the
  * theme instead of fighting it:
  *   var(--panel-bg)  var(--panel-text)     var(--panel-accent)
@@ -39,9 +33,9 @@ const STARTER_CSS = `/* Project stylesheet.
  */
 
 .brand-button {
-  background: #8AB493 !important;
-  color: #10231a !important;
-  border-radius: 2rem !important;
+  background: #8AB493;
+  color: #10231a;
+  border-radius: 2rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -121,9 +115,7 @@ export function StylesheetEditor({
         <FileCode size={16} style={{ color: "var(--accent)" }} />
         <span style={{ fontSize: 14, fontWeight: 600 }}>Project Stylesheet</span>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          CSS applied to every panel in this project, after the theme. Colors, corner
-          radius and text size arrive on each control as inline styles, so changing one
-          of those from here needs <code>!important</code>.
+          CSS applied to every panel in this project, on top of the theme
         </span>
         <div style={{ flex: 1 }} />
         {dirty && (

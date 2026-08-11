@@ -1,6 +1,11 @@
 import type { UIElement } from "../../../api/types";
 import { displayStyleValue, storeStyleValue } from "../uiBuilderHelpers";
-import { cssClassList, invalidCssClassNames, toggleCssClass } from "../customCssHelpers";
+import {
+  cssClassList,
+  feedbackClassConflicts,
+  invalidCssClassNames,
+  toggleCssClass,
+} from "../customCssHelpers";
 import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 
@@ -10,6 +15,8 @@ interface StylePropertiesProps {
   themeDefaults?: Record<string, unknown>;
   /** Class names the project stylesheet defines, offered as chips to pick from. */
   stylesheetClasses?: string[];
+  /** The stylesheet itself, to tell when a class takes over a look the control draws. */
+  customCss?: string;
   /** Opens the stylesheet editor, for when there is nothing to pick yet. */
   onOpenStylesheet?: () => void;
 }
@@ -28,6 +35,7 @@ export function StyleProperties({
   onChange,
   themeDefaults,
   stylesheetClasses = [],
+  customCss = "",
   onOpenStylesheet,
 }: StylePropertiesProps) {
   const style = element.style || {};
@@ -825,6 +833,7 @@ export function StyleProperties({
       <CustomClassField
         value={element.css_class ?? ""}
         stylesheetClasses={stylesheetClasses}
+        conflicts={feedbackClassConflicts(element.css_class, customCss, element.bindings)}
         onChange={(css_class) => onChange({ css_class })}
         onOpenStylesheet={onOpenStylesheet}
       />
@@ -843,11 +852,13 @@ export function StyleProperties({
 function CustomClassField({
   value,
   stylesheetClasses,
+  conflicts,
   onChange,
   onOpenStylesheet,
 }: {
   value: string;
   stylesheetClasses: string[];
+  conflicts: { className: string; labels: string[] }[];
   onChange: (value: string | undefined) => void;
   onOpenStylesheet?: () => void;
 }) {
@@ -882,6 +893,25 @@ function CustomClassField({
           cannot start with a digit or contain spaces or punctuation.
         </div>
       )}
+
+      {conflicts.map((c) => (
+        <div
+          key={c.className}
+          style={{
+            fontSize: 10,
+            color: "#f59e0b",
+            background: "rgba(245,158,11,0.08)",
+            border: "1px solid rgba(245,158,11,0.2)",
+            borderRadius: 4,
+            padding: "4px 6px",
+          }}
+        >
+          <code>.{c.className}</code> sets the {c.labels.join(" and ")} this control
+          already changes on its own to show state. The stylesheet wins, so it will stop
+          showing state. Style it in Bindings &gt; Appearance instead, or drop{" "}
+          {c.labels.join(" and ")} from that rule.
+        </div>
+      ))}
 
       {stylesheetClasses.length > 0 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
