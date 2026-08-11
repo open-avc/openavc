@@ -125,6 +125,46 @@ Every panel showing this project follows. Common uses:
 
 For switching **modes** within a single page (lecture vs. presentation, video conferencing vs. local source), this is usually the wrong tool. Prefer setting a variable with **Set Variable** and binding element visibility to that variable with the **Shows > Visible when…** card in the UI Builder. That pattern doesn't push every panel to a new page, survives panel reconnects, and keeps the mode state in one place that scripts and other macros can read.
 
+## Ask for Help
+
+An **Ask for Help** step raises a help request to whoever supports this space: the integrator who looks after it, or OpenAVC directly if the account has no integrator above it. It arrives as an alert, so it follows the notification routes already set up for the account and can be acknowledged and looked back on later.
+
+There is no built-in help button. This is a step you wire up, which means you decide whether a space has one at all, what it is called, and where it sits. Three ways to raise it:
+
+- **A panel button.** Point a button's press at a macro whose only step is Ask for Help. Put it behind a confirm step if the panel is somewhere a passer-by could lean on it.
+- **A trigger, with nobody in the room.** This is the one worth more than the button. Three failed power-on attempts, a device that went offline as a class was starting, a temperature climbing: the space asks before anyone in it thinks to.
+- **A script**, for anything the first two cannot express.
+
+### The message
+
+Optional, and where most of the value is. `$var.` and `$trigger.` references are filled in **inside** the sentence, so:
+
+```
+$var.room_name projector failed to power on $var.attempts times
+```
+
+arrives as "Lecture Hall 2 projector failed to power on 3 times" rather than as "someone pressed help". Leave it empty for a plain call for a person.
+
+### Telling the room what happened
+
+The step sets state you can bind to a label, so a panel can answer the person who pressed it:
+
+| Key | What it holds |
+|-----|---------------|
+| `system.help_state` | `idle`, `requested`, `acknowledged`, or `unreachable` |
+| `system.help_message` | The message that was sent |
+| `system.help_requested_at` | When it was raised |
+| `system.help_acknowledged_at` | When someone picked it up |
+| `system.help_acknowledged_by` | Who picked it up |
+
+Bind a label to these and the room can say "Help requested 9:02. Ben acknowledged 9:04." A button that does nothing visible gets pressed four more times, so it is worth showing something back even if it is only "requested".
+
+**If the cloud cannot be reached**, `system.help_state` becomes `unreachable` rather than `requested`. Nothing is held and sent later: a help request that arrives forty minutes on is a message about a class that already ended. Show the difference on the panel so nobody stands waiting for help that never left the building.
+
+### Sending at most every N seconds
+
+The step sends at most one request per cooldown, five minutes by default. This is not about people pressing too often, which is yours to gate on the page. It is about a trigger that fires every poll: "device offline" through a two-hour lecture would otherwise send a hundred identical messages to whoever is meant to answer them. Set it to 0 if a space should be able to ask twice in a row.
+
 ## Skip If Guards
 
 Every step has an optional **Skip this step if...** guard in the Guards section at the bottom of the step editor. When enabled, the step is silently skipped if the condition is true.

@@ -31,6 +31,7 @@ log = get_logger(__name__)
 BUILTIN_STEP_ACTIONS = frozenset((
     "device.command", "group.command", "delay", "state.set",
     "macro", "event.emit", "conditional", "wait_until", "ui.navigate",
+    "help.request",
 ))
 STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "device.command": ("device", "command"),
@@ -48,6 +49,10 @@ STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     # '$back' / '$dismiss' (all non-empty strings, so the required-field
     # check below matches the runtime's "page is required" rule).
     "ui.navigate": ("page",),
+    # help.request: every field is optional. A bare step is the common case --
+    # a panel button whose whole meaning is "someone in this room needs a
+    # person" -- and requiring a message would make the simplest wiring the
+    # fussiest one.
 }
 VALID_TRIGGER_TYPES = frozenset(("schedule", "state_change", "event", "startup"))
 # Accept both canonical operator names and the user-facing aliases that

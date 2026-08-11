@@ -24,6 +24,7 @@ from openavc import config, runtime_flags
 from openavc.core.device_config import bridge_first, resolve_device_config
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
+from openavc.core.help_requests import HelpRequests
 from openavc.core.macro_engine import MacroEngine
 from openavc.core.plugin_loader import PluginLoader
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
@@ -85,7 +86,12 @@ class Engine:
         # Panel interaction runtime (peer of the macro engine, see ui_events)
         self.ui_events = UIEventRuntime(self)
         self.devices = DeviceManager(self.state, self.events)
-        self.macros = MacroEngine(self.state, self.events, self.devices, broadcast_ws=self.broadcast_ws)
+        # "Ask for help" — raised by a macro step, never a stock control.
+        self.help = HelpRequests(self)
+        self.macros = MacroEngine(
+            self.state, self.events, self.devices,
+            broadcast_ws=self.broadcast_ws, help_requests=self.help,
+        )
         self.triggers = TriggerEngine(self.state, self.events, self.macros)
         self.scripts: ScriptEngine | None = None
         self.plugin_loader = PluginLoader(self.state, self.events, self.macros, self.devices)
@@ -211,6 +217,9 @@ class Engine:
         self.state.set("system.update_progress", 0, source="system")
         self.state.set("system.update_error", "", source="system")
         self.state.set("system.deployment_type", detect_deployment_type().value, source="system")
+        # Publish the idle help state so a panel bound to it draws something on
+        # a quiet day rather than a blank that reads as a broken binding.
+        self.help.declare_keys()
 
         # Load project — with corruption recovery
         self.project = self._load_project_safe()
@@ -1636,6 +1645,9 @@ class Engine:
             from openavc.system_config import get_system_config
             cert_manager = CertificateManager(self.cloud_agent, get_system_config())
             self.cloud_agent.set_cert_manager(cert_manager)
+
+            # So an acknowledgement lands on the panel that asked.
+            self.cloud_agent.set_help_requests(self.help)
 
             # Connect (runs in background)
             await self.cloud_agent.connect()

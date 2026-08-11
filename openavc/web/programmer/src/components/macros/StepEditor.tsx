@@ -141,6 +141,9 @@ export function StepEditor({ step, macros, currentMacroId, onChange, activeStepP
     case "ui.navigate":
       editor = <UINavigateEditor step={step} onChange={update} />;
       break;
+    case "help.request":
+      editor = <AskForHelpEditor step={step} onChange={update} />;
+      break;
     default:
       if (pluginAction) {
         editor = (
@@ -908,6 +911,76 @@ function WaitUntilEditor({
 }
 
 // --- UI Navigate Editor ---
+
+function AskForHelpEditor({
+  step,
+  onChange,
+}: {
+  step: MacroStep;
+  onChange: (patch: Partial<MacroStep>) => void;
+}) {
+  const cooldown = step.cooldown;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <HelpText>
+        Raises a help request to whoever supports this space, and sets{" "}
+        <code style={codeStyle}>system.help_state</code> so a panel can show what
+        happened. Bind a label to{" "}
+        <code style={codeStyle}>system.help_acknowledged_by</code> and the room
+        finds out when someone picks it up. Nothing is queued: if the cloud
+        cannot be reached the state says <strong>unreachable</strong> rather
+        than pretending help is on the way.
+      </HelpText>
+      <div style={rowStyle}>
+        <label style={labelStyle}>Message</label>
+        <input
+          value={step.message ?? ""}
+          onChange={(e) => onChange({ message: e.target.value || undefined })}
+          placeholder="e.g., $var.room_name projector failed to power on"
+          style={inputStyle}
+        />
+      </div>
+      <HelpText>
+        Optional. <code style={codeStyle}>$var.</code> and{" "}
+        <code style={codeStyle}>$trigger.</code> references are filled in inside
+        the sentence, so a trigger can say what is actually wrong instead of
+        "someone pressed help". Leave it empty for a plain call for a person.
+      </HelpText>
+      <div style={rowStyle}>
+        <label style={labelStyle}>Urgency</label>
+        <select
+          value={step.severity ?? "warning"}
+          onChange={(e) => onChange({ severity: e.target.value })}
+          style={inputStyle}
+        >
+          <option value="info">Whenever someone is free</option>
+          <option value="warning">Needs attention</option>
+          <option value="critical">Someone is waiting</option>
+        </select>
+      </div>
+      <div style={rowStyle}>
+        <label style={labelStyle}>Send at most every</label>
+        <input
+          type="number"
+          min={0}
+          value={cooldown ?? 300}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            onChange({ cooldown: Number.isFinite(n) && n >= 0 ? n : undefined });
+          }}
+          style={{ ...inputStyle, maxWidth: 120 }}
+        />
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+          seconds
+        </span>
+      </div>
+      <HelpText>
+        Guards against a trigger that fires every poll, not against people. Set
+        it to 0 if this room should be able to ask twice in a row.
+      </HelpText>
+    </div>
+  );
+}
 
 function UINavigateEditor({
   step,
@@ -1737,6 +1810,12 @@ function HelpText({ children }: { children: React.ReactNode }) {
 }
 
 // --- Shared styles ---
+
+const codeStyle: React.CSSProperties = {
+  background: "var(--bg-hover)",
+  padding: "0 4px",
+  borderRadius: 2,
+};
 
 const rowStyle: React.CSSProperties = {
   display: "flex",

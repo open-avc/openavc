@@ -97,6 +97,14 @@ export const STEP_TYPES: StepTypeInfo[] = [
     defaults: () => ({ action: "ui.navigate", page: "" }),
   },
   {
+    action: "help.request",
+    label: "Ask for Help",
+    description: "Raise a help request to whoever supports this space",
+    color: "#e11d48",
+    summary: (step) => step.message?.trim() || "Someone asked for help",
+    defaults: () => ({ action: "help.request", message: "" }),
+  },
+  {
     action: "wait_until",
     label: "Wait Until",
     description: "Pause until a state value matches a condition (with optional timeout)",

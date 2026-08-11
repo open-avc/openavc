@@ -27,9 +27,15 @@ Resolution order (first match wins):
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+# A ``$`` reference embedded in prose. Dots are part of the key
+# (``$var.room_name``), but a trailing one is sentence punctuation, so it is
+# left alone -- "$var.room is down." must not look up ``var.room.``.
+_EMBEDDED_REF = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)")
 
 
 def resolve_ref(
@@ -56,3 +62,43 @@ def resolve_ref(
         return state.get(ref)
     log.warning("unknown state reference '$%s' resolved to None", ref)
     return None
+
+
+def resolve_in_text(
+    text: Any,
+    *,
+    state: Any,
+    event_ctx: dict[str, Any] | None = None,
+    trigger_ctx: dict[str, Any] | None = None,
+) -> str:
+    """Resolve every ``$`` reference *inside* a string, keeping the rest.
+
+    ``resolve_ref`` above is whole-value: a parameter is either a literal or a
+    reference, because it is a value on its way to a device and half a value
+    means nothing. This one is for the other case -- a **sentence on its way to
+    a person** -- where the references are the interesting part and the words
+    around them are what make it readable. "$var.room projector failed to power
+    on $var.attempts times" is the whole reason the help primitive carries a
+    message at all.
+
+    Kept here rather than at the call site because this module owns what ``$``
+    means, and a second interpretation of the sigil living somewhere else is
+    exactly the drift the module docstring exists to prevent. Deliberately NOT
+    used for macro parameters: widening those would change what an existing
+    project does.
+
+    An unknown reference resolves to an empty string and warns once, like the
+    whole-value path -- a typo should leave a gap, not print ``$var.volum`` on
+    a wall panel.
+    """
+    if not isinstance(text, str) or "$" not in text:
+        return text if isinstance(text, str) else ""
+
+    def _one(match: re.Match[str]) -> str:
+        value = resolve_ref(
+            f"${match.group(1)}", state=state,
+            event_ctx=event_ctx, trigger_ctx=trigger_ctx,
+        )
+        return "" if value is None else str(value)
+
+    return _EMBEDDED_REF.sub(_one, text)

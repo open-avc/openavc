@@ -16,7 +16,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.core.value_resolver import resolve_ref
+from openavc.core.value_resolver import resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -69,10 +69,15 @@ class MacroEngine:
         events: EventBus,
         devices: DeviceManager,
         broadcast_ws: BroadcastWS | None = None,
+        help_requests: Any = None,
     ):
         self.state = state
         self.events = events
         self.devices = devices
+        # Raises "Ask for help" steps. None in the plugin/test harness, where
+        # the step reports that it had nowhere to send it rather than raising:
+        # a macro that asks for help is usually the last thing still working.
+        self._help = help_requests
         # Optional WebSocket broadcaster — used by the ui.navigate step.
         # None in test/plugin-harness contexts; the step logs and no-ops
         # rather than failing when not wired.
@@ -605,6 +610,8 @@ class MacroEngine:
             timeout = step.get("timeout")
             tmo = "no timeout" if timeout is None else f"{timeout}s"
             return f"Waiting for {key} ({tmo})"
+        if action == "help.request":
+            return "Asking for help"
         if action == "ui.navigate":
             page = step.get("page", "?")
             if page == "$back":
@@ -798,6 +805,27 @@ class MacroEngine:
                 await self._broadcast_ws({"type": "ui.navigate", "page_id": page})
             else:
                 log.warning("ui.navigate step fired but no broadcast_ws is wired — no panels notified")
+
+        elif action == "help.request":
+            # The message resolves $var. and $trigger. -- and unlike every
+            # other macro parameter it resolves them INSIDE the sentence,
+            # because this one is prose going to a person rather than a value
+            # going to a device. That is what turns "someone pressed help"
+            # into "Lecture Hall 2 projector failed to power on 3 times".
+            message = resolve_in_text(
+                step.get("message", ""), state=self.state, trigger_ctx=context,
+            )
+            severity = str(step.get("severity") or "warning")
+            cooldown = step.get("cooldown")
+            if self._help is None:
+                log.warning(
+                    "A macro asked for help and there is nothing wired to send "
+                    "it. The request was not raised."
+                )
+                return
+            await self._help.raise_request(
+                message=message, severity=severity, cooldown=cooldown,
+            )
 
         else:
             plugin_action = self._plugin_actions.get(action)

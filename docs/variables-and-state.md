@@ -62,6 +62,8 @@ A `$`-prefixed value is a live reference that resolves to the current value when
 
 These references work the same way in macro steps, triggers, and UI Builder bindings. Anywhere you can set a command parameter or a value, you can use one. You pick them from the `$` picker (the picker lists every variable and state key with its current value) rather than typing the key by hand, so there is nothing to misspell.
 
+A reference is normally the **whole** value: `$var.target_volume` is a number on its way to a device, and half a number means nothing. The one place references are filled in *inside* a sentence is the message on an [Ask for Help](macros-and-triggers.md#ask-for-help) step, because that one is prose on its way to a person.
+
 ## Activity
 
 A live feed of recent state changes across the entire system (up to 500 entries). Each entry shows the timestamp, key, old and new values, and the source of the change (device, macro, script, UI, API). Use the filter buttons to narrow by namespace, or type a specific variable or device key in the search box to filter to just that key.

@@ -26,7 +26,7 @@ from openavc.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC,
     SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE, ALERT_RULES_UPDATE,
     AI_TOOL_CALL, GAP_REPORT, GET_PROJECT, GET_DEVICE_COMMANDS,
-    CERT_RESULT, CERT_RENEW_DUE,
+    CERT_RESULT, CERT_RENEW_DUE, HELP_ACKNOWLEDGED,
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
     DIAGNOSTIC_RESULT, AI_TOOL_RESULT, TUNNEL_FAILED, HEARTBEAT, PONG,
     UPSTREAM_PAYLOAD_BUILDERS,
@@ -198,6 +198,9 @@ class CloudAgent:
         self._alert_monitor: Any = None  # AlertMonitor
         self._tunnel_handler: Any = None  # TunnelHandler
         self._cert_manager: Any = None  # CertificateManager
+        # HelpRequests. The agent only needs it to deliver an acknowledgement
+        # back down; raising goes the other way, straight from the macro step.
+        self._help_requests: Any = None
 
         # Tasks
         self._recv_task: asyncio.Task | None = None
@@ -941,6 +944,14 @@ class CloudAgent:
                 await self._cert_manager.handle_renew_due(msg)
             else:
                 log.info("Cloud agent: received cert_renew_due but no certificate manager")
+        elif msg_type == HELP_ACKNOWLEDGED:
+            # Deliberately ungated: it writes a state key the panel reads and
+            # drives nothing, so refusing it would only leave a room believing
+            # nobody answered.
+            if self._help_requests is not None:
+                await self._help_requests.handle_acknowledged(msg.get("payload") or {})
+            else:
+                log.info("Cloud agent: received help_acknowledged but no help subsystem")
         else:
             log.warning(f"Cloud agent: unknown message type '{msg_type}'")
 
@@ -1277,6 +1288,10 @@ class CloudAgent:
     def set_cert_manager(self, manager: Any) -> None:
         """Wire the trusted-certificate manager subsystem."""
         self._cert_manager = manager
+
+    def set_help_requests(self, help_requests: Any) -> None:
+        """Wire the help-request subsystem, so an acknowledgement reaches the room."""
+        self._help_requests = help_requests
 
     @property
     def cert_manager(self) -> Any:

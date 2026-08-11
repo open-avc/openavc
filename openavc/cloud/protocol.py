@@ -112,6 +112,9 @@ GET_PROJECT = "get_project"
 GET_DEVICE_COMMANDS = "get_device_commands"
 CERT_RESULT = "cert_result"
 CERT_RENEW_DUE = "cert_renew_due"
+# Somebody in the cloud said they are on it. The room hears about it, which is
+# what makes "Ask for help" a feature rather than a mail-sender.
+HELP_ACKNOWLEDGED = "help_acknowledged"
 
 # Sets for validation
 HANDSHAKE_TYPES = {
@@ -132,6 +135,7 @@ DOWNSTREAM_TYPES = {
     DIAGNOSTIC, SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE,
     RESTART, PING, ALERT_RULES_UPDATE, AI_TOOL_CALL,
     GET_PROJECT, GET_DEVICE_COMMANDS, CERT_RESULT, CERT_RENEW_DUE,
+    HELP_ACKNOWLEDGED,
 }
 
 # Message priority for buffer overflow (lower = dropped first)
@@ -170,6 +174,7 @@ MESSAGE_PRIORITY = {
     GET_PROJECT: 5,
     CERT_RESULT: 5,
     CERT_RENEW_DUE: 4,
+    HELP_ACKNOWLEDGED: 6,
     THROTTLE: 3,
     ERROR: 3,
 }

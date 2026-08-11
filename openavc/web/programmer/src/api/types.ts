@@ -76,6 +76,14 @@ export interface MacroStep {
   event?: string;
   payload?: Record<string, unknown>;
   page?: string; // ui.navigate: target page id, or "$back" / "$dismiss"
+
+  // help.request ("Ask for help") — every field optional. `message` resolves
+  // $var. / $trigger. references INSIDE the sentence, unlike other step
+  // values, because it is prose going to a person. `cooldown` is seconds and
+  // guards against a trigger loop, not against people; 0 always sends.
+  message?: string;
+  severity?: string;
+  cooldown?: number;
   description?: string;
 
   // Conditional step fields (action == "conditional")
