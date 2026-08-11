@@ -1,5 +1,6 @@
 import type { UIElement } from "../../../api/types";
 import { displayStyleValue, storeStyleValue } from "../uiBuilderHelpers";
+import { cssClassList, invalidCssClassNames, toggleCssClass } from "../customCssHelpers";
 import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 
@@ -7,6 +8,10 @@ interface StylePropertiesProps {
   element: UIElement;
   onChange: (patch: Partial<UIElement>) => void;
   themeDefaults?: Record<string, unknown>;
+  /** Class names the project stylesheet defines, offered as chips to pick from. */
+  stylesheetClasses?: string[];
+  /** Opens the stylesheet editor, for when there is nothing to pick yet. */
+  onOpenStylesheet?: () => void;
 }
 
 // Shadow presets (must match panel.js applyStyle box-shadow handling)
@@ -18,7 +23,13 @@ const SHADOW_PRESETS: Record<string, string> = {
   inset: "inset 0 2px 4px rgba(0,0,0,0.3)",
 };
 
-export function StyleProperties({ element, onChange, themeDefaults }: StylePropertiesProps) {
+export function StyleProperties({
+  element,
+  onChange,
+  themeDefaults,
+  stylesheetClasses = [],
+  onOpenStylesheet,
+}: StylePropertiesProps) {
   const style = element.style || {};
 
   // Measurements are typed in px and stored in rem — the panel's own unit, so
@@ -808,6 +819,116 @@ export function StyleProperties({ element, onChange, themeDefaults }: StylePrope
           <option value="scroll">Scrollable</option>
         </select>
       </StyleRow>
+
+      {/* --- Custom classes --- */}
+      <SectionLabel>Custom Classes</SectionLabel>
+      <CustomClassField
+        value={element.css_class ?? ""}
+        stylesheetClasses={stylesheetClasses}
+        onChange={(css_class) => onChange({ css_class })}
+        onOpenStylesheet={onOpenStylesheet}
+      />
+    </div>
+  );
+}
+
+/**
+ * Which of the project stylesheet's classes this element wears.
+ *
+ * Picking beats typing here for the same reason it does everywhere else in the
+ * IDE: the sheet already knows its own class names, and a typo in this field
+ * fails silently on the glass. The text box stays for the case the chips can't
+ * cover -- a class defined in a theme, or one being written right now.
+ */
+function CustomClassField({
+  value,
+  stylesheetClasses,
+  onChange,
+  onOpenStylesheet,
+}: {
+  value: string;
+  stylesheetClasses: string[];
+  onChange: (value: string | undefined) => void;
+  onOpenStylesheet?: () => void;
+}) {
+  const applied = cssClassList(value);
+  const invalid = invalidCssClassNames(value);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <StyleRow
+        label="Classes"
+        tooltip="Names from the project stylesheet, applied to this element. Rules in the stylesheet that target these classes restyle it."
+      >
+        <input
+          type="text"
+          value={value}
+          placeholder="none"
+          onChange={(e) => onChange(e.target.value.trim() ? e.target.value : undefined)}
+          spellCheck={false}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: "4px 6px",
+            fontSize: "var(--font-size-sm)",
+            fontFamily: "var(--font-mono, monospace)",
+          }}
+        />
+      </StyleRow>
+
+      {invalid.length > 0 && (
+        <div style={{ fontSize: 10, color: "#f59e0b" }}>
+          The panel will ignore {invalid.map((n) => `"${n}"`).join(", ")} — a class name
+          cannot start with a digit or contain spaces or punctuation.
+        </div>
+      )}
+
+      {stylesheetClasses.length > 0 ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {stylesheetClasses.map((name) => {
+            const on = applied.includes(name);
+            return (
+              <button
+                key={name}
+                onClick={() => onChange(toggleCssClass(value, name))}
+                title={on ? `Remove .${name}` : `Apply .${name}`}
+                style={{
+                  padding: "1px 7px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono, monospace)",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  background: on ? "var(--accent)" : "var(--bg-hover)",
+                  color: on ? "#10231a" : "var(--text-secondary)",
+                  border: `1px solid ${on ? "var(--accent)" : "var(--border-color)"}`,
+                }}
+              >
+                .{name}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+          The project stylesheet defines no classes yet.{" "}
+          {onOpenStylesheet && (
+            <button
+              onClick={onOpenStylesheet}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                fontSize: 10,
+                color: "var(--accent)",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Open the stylesheet
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

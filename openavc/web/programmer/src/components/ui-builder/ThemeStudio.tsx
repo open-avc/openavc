@@ -4,7 +4,7 @@ import {
   X, Copy, Trash2, Save, Upload, Download, RotateCcw, AlertTriangle, Check, FilePlus, Minus,
 } from "lucide-react";
 import {
-  getTheme, createTheme, updateTheme, deleteTheme, importTheme, getTunnelPrefix,
+  getTheme, createTheme, updateTheme, deleteTheme, importTheme,
   ThemeExistsError,
   type ThemeDefinition, type ThemeSummary,
 } from "../../api/restClient";
@@ -12,6 +12,7 @@ import type { ProjectConfig, UIPage, UIElement, Placement } from "../../api/type
 import { displayStyleValue, storeStyleValue, REM_BASE_PX } from "./uiBuilderHelpers";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
+import { PanelPreviewFrame } from "./PanelPreviewFrame";
 import { NumericInput } from "../shared/NumericInput";
 import {
   parseColor, rgbToHex6, contrastRatio, wcagLevel, deriveSurfaceBorder,
@@ -548,136 +549,6 @@ const GALLERY_DEMO_STATE: Record<string, unknown> = {
   "gallery.route.Conf": "PC",
   "gallery.route.Stream": "Doc",
 };
-
-// --- Live preview iframe (scaled to fit the column at fixed panel dimensions) ---
-
-interface StudioPreviewProps {
-  project: ProjectConfig;
-  pageId: string | null;
-  inlineTheme: ThemeDefinition | null;
-  demoState?: Record<string, unknown>;
-  panelWidth: number;
-  panelHeight: number;
-}
-
-function StudioPreview({
-  project,
-  pageId,
-  inlineTheme,
-  demoState,
-  panelWidth,
-  panelHeight,
-}: StudioPreviewProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-
-  const projectRef = useRef(project);
-  const inlineThemeRef = useRef(inlineTheme);
-  const demoStateRef = useRef(demoState);
-  useEffect(() => { projectRef.current = project; }, [project]);
-  useEffect(() => { inlineThemeRef.current = inlineTheme; }, [inlineTheme]);
-  useEffect(() => { demoStateRef.current = demoState; }, [demoState]);
-
-  useEffect(() => {
-    const update = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const padding = 24;
-      const sx = (rect.width - padding) / panelWidth;
-      const sy = (rect.height - padding) / panelHeight;
-      setScale(Math.max(0.05, Math.min(sx, sy, 1)));
-    };
-    update();
-    if (typeof ResizeObserver === "undefined" || !containerRef.current) return;
-    const ro = new ResizeObserver(update);
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [panelWidth, panelHeight]);
-
-  const handleLoad = () => {
-    if (!pageId) return;
-    // The preview iframe is served from this same origin; target it explicitly
-    // rather than "*" so credential-bearing project config isn't broadcast.
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        type: "openavc:editor-init",
-        project: projectRef.current,
-        pageId,
-        showGrid: false,
-        demoState: demoStateRef.current,
-        inlineTheme: inlineThemeRef.current,
-      },
-      window.location.origin,
-    );
-  };
-
-  useEffect(() => {
-    if (!pageId) return;
-    const timer = setTimeout(() => {
-      iframeRef.current?.contentWindow?.postMessage(
-        {
-          type: "openavc:editor-project",
-          project,
-          pageId,
-          showGrid: false,
-          demoState,
-          inlineTheme,
-        },
-        window.location.origin,
-      );
-    }, 40);
-    return () => clearTimeout(timer);
-  }, [project, pageId, demoState, inlineTheme]);
-
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        height: "100%",
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-        background: "var(--bg-base)",
-      }}
-    >
-      {pageId ? (
-        <div
-          style={{
-            width: panelWidth,
-            height: panelHeight,
-            transform: `scale(${scale})`,
-            transformOrigin: "center center",
-            flexShrink: 0,
-            borderRadius: 8,
-            overflow: "hidden",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
-          }}
-        >
-          <iframe
-            key={pageId}
-            ref={iframeRef}
-            src={`${getTunnelPrefix()}/panel/?page=${encodeURIComponent(pageId)}&edit=1`}
-            onLoad={handleLoad}
-            title="Theme preview"
-            style={{
-              width: panelWidth,
-              height: panelHeight,
-              border: "none",
-              background: "var(--bg-base)",
-              display: "block",
-            }}
-          />
-        </div>
-      ) : (
-        <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No page to preview.</div>
-      )}
-    </div>
-  );
-}
 
 // --- Main component ---
 
@@ -1416,7 +1287,7 @@ export function ThemeStudio({
                     : `Live preview — ${(project.ui.pages.find((p) => p.id === previewView)?.name) || previewView}`}
                 </div>
                 <div style={{ flex: 1, position: "relative" }}>
-                  <StudioPreview
+                  <PanelPreviewFrame
                     project={previewProject}
                     pageId={previewPageId}
                     inlineTheme={working}

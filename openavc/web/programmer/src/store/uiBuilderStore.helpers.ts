@@ -17,6 +17,10 @@ export interface UndoScope {
   settings?: UISettings;
   master_elements?: MasterElement[];
   page_groups?: PageGroup[];
+  /** The project stylesheet. Its own scope, like it is its own field on ui:
+   *  it is a document, and folding it into the settings scope would make an
+   *  undo of a settings change quietly overwrite a stylesheet edit. */
+  custom_css?: string;
   // project.* scopes (for cross-project edits like element rename
   // that must rewrite references in macros/variables)
   macros?: MacroConfig[];
@@ -65,6 +69,11 @@ export function computeRollbackPatch(
   if ("master_elements" in snapshot) {
     redoSnapshot.master_elements = project.ui.master_elements ?? [];
     uiPatch.master_elements = snapshot.master_elements;
+    touchesUi = true;
+  }
+  if ("custom_css" in snapshot) {
+    redoSnapshot.custom_css = project.ui.custom_css ?? "";
+    uiPatch.custom_css = snapshot.custom_css;
     touchesUi = true;
   }
   if ("page_groups" in snapshot) {

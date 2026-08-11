@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Settings, Palette } from "lucide-react";
+import { Settings, Palette, FileCode } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -30,6 +30,7 @@ import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
+import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal, isModalOpen } from "../components/shared/Modal";
 import { NumericInput } from "../components/shared/NumericInput";
@@ -129,6 +130,7 @@ export function UIBuilderView() {
   const [showPalette, setShowPalette] = useState(true);
   const [leftTab, setLeftTab] = useState<"elements" | "outline">("elements");
   const [showThemeStudio, setShowThemeStudio] = useState(false);
+  const [showStylesheet, setShowStylesheet] = useState(false);
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[] | null>(null);
   const [confirmResetStyles, setConfirmResetStyles] = useState(false);
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
@@ -1267,6 +1269,24 @@ export function UIBuilderView() {
                   <Palette size={14} /> Theme
                 </button>
                 <button
+                  onClick={() => setShowStylesheet(true)}
+                  title="Edit the project stylesheet (custom CSS)"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-xs)",
+                    padding: "3px var(--space-md)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <FileCode size={14} /> Stylesheet
+                </button>
+                <button
                   onClick={() => setShowSettings(true)}
                   title="Panel Settings"
                   style={{
@@ -1473,6 +1493,7 @@ export function UIBuilderView() {
                     themeDefaults={themeElementDefaults}
                     themes={themes}
                     onThemeChange={showThemeStudio ? undefined : handleThemeChange}
+                    onOpenStylesheet={() => setShowStylesheet(true)}
                     onChange={handlePropertyChange}
                     onRenameElement={handleRenameElement}
                     onPageChange={handlePageChange}
@@ -1568,6 +1589,24 @@ export function UIBuilderView() {
           // arrangement happened to be selected behind the dialog.
           panelWidth={preset?.width ?? 1024}
           panelHeight={preset?.height ?? 600}
+        />
+      )}
+      {/* Project stylesheet */}
+      {project && showStylesheet && (
+        <StylesheetEditor
+          project={project}
+          previewPageId={currentPage?.id ?? null}
+          panelWidth={preset?.width ?? 1024}
+          panelHeight={preset?.height ?? 600}
+          onSave={(css) => {
+            pushUndo({ custom_css: project.ui.custom_css ?? "" }, "Edit project stylesheet");
+            propertyUndoPushed.current = false;
+            clearTimeout(propertyUndoTimer.current);
+            update({ ui: { ...project.ui, custom_css: css } });
+            touchMutation();
+            showSuccess("Project stylesheet saved");
+          }}
+          onClose={() => setShowStylesheet(false)}
         />
       )}
       {confirmResetStyles && (

@@ -7,6 +7,7 @@ import { BasicProperties } from "./PropertySections/BasicProperties";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
 import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
+import { stylesheetClassNames } from "./customCssHelpers";
 import { AssetPicker } from "./AssetPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -52,6 +53,9 @@ interface PropertiesPanelProps {
   onMasterElementChange?: (elementId: string, patch: Partial<MasterElement>) => void;
   onDemoteMaster?: (elementId: string) => void;
   onDeleteMaster?: (elementId: string) => void;
+  /** Opens the project stylesheet editor, offered where an element has no
+   *  classes to pick from yet. */
+  onOpenStylesheet?: () => void;
 }
 
 export function PropertiesPanel({
@@ -70,11 +74,15 @@ export function PropertiesPanel({
   onMasterElementChange,
   onDemoteMaster,
   onDeleteMaster,
+  onOpenStylesheet,
 }: PropertiesPanelProps) {
   // Typed coordinates belong to the layout being authored, not to whichever
   // one happens to be primary. Read before the early returns below so the hook
   // order never changes.
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
+  // What the project stylesheet defines, so the Style section can offer its
+  // classes instead of asking the author to remember them.
+  const stylesheetClasses = stylesheetClassNames(project?.ui?.custom_css);
 
   // Master element selected — show master element properties
   if (masterElement && page) {
@@ -88,6 +96,8 @@ export function PropertiesPanel({
         onRename={onRenameElement}
         onDemote={onDemoteMaster || (() => {})}
         onDelete={onDeleteMaster || (() => {})}
+        stylesheetClasses={stylesheetClasses}
+        onOpenStylesheet={onOpenStylesheet}
       />
     );
   }
@@ -376,7 +386,13 @@ export function PropertiesPanel({
             </div>
           );
         })()}
-        <StyleProperties element={element} onChange={handleChange} themeDefaults={themeDefaults?.[element.type]} />
+        <StyleProperties
+          element={element}
+          onChange={handleChange}
+          themeDefaults={themeDefaults?.[element.type]}
+          stylesheetClasses={stylesheetClasses}
+          onOpenStylesheet={onOpenStylesheet}
+        />
       </Section>
 
       <Section title="Bindings" defaultOpen highlight icon={<Link size={12} style={{ color: "var(--accent)" }} />}>
@@ -399,6 +415,8 @@ function MasterElementProperties({
   onRename,
   onDemote,
   onDelete,
+  stylesheetClasses,
+  onOpenStylesheet,
 }: {
   masterElement: MasterElement;
   page: UIPage;
@@ -408,6 +426,8 @@ function MasterElementProperties({
   onRename?: (oldId: string, newId: string) => void;
   onDemote: (elementId: string) => void;
   onDelete: (elementId: string) => void;
+  stylesheetClasses: string[];
+  onOpenStylesheet?: () => void;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // A master has no page layout of its own — its boxes are keyed by orientation
@@ -528,7 +548,13 @@ function MasterElementProperties({
       </Section>
 
       <Section title="Style" defaultOpen>
-        <StyleProperties element={masterElement} onChange={handleElementChange} themeDefaults={themeDefaults?.[masterElement.type]} />
+        <StyleProperties
+          element={masterElement}
+          onChange={handleElementChange}
+          themeDefaults={themeDefaults?.[masterElement.type]}
+          stylesheetClasses={stylesheetClasses}
+          onOpenStylesheet={onOpenStylesheet}
+        />
       </Section>
 
       <Section title="Bindings" defaultOpen highlight icon={<Link size={12} style={{ color: "var(--accent)" }} />}>
