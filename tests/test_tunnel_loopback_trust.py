@@ -425,3 +425,69 @@ def test_loopback_trust_has_exactly_one_authority():
         "is just data here, add the site to _MAY_READ_THE_SOCKET_PEER with the "
         "reason it is not a trust decision."
     )
+
+
+# ===========================================================================
+# Forwarded headers must not survive the last hop
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_the_proxy_strips_forwarded_headers(tunnel_handler):
+    """uvicorn trusts X-Forwarded-For from a loopback caller and rewrites
+    request.client.host with it. The tunnel connects to loopback, so anything
+    it forwards decides what the local server believes its peer is -- which is
+    the one thing the marker's whole safety argument rests on.
+
+    Found on the bench: every tunnelled request was arriving with a public IP
+    as its peer, so `is_tunneled_request` was False on real tunnel traffic and
+    the documented mechanism was not the one running.
+    """
+    conn, client = _http_conn(tunnel_handler, tunnel_id="t-fwd")
+
+    await tunnel_handler._handle_http_request(
+        conn,
+        {
+            "id": "r-fwd",
+            "method": "GET",
+            "path": "/api/status",
+            "headers": {
+                "X-Forwarded-For": "75.139.19.77",
+                "X-Forwarded-Proto": "https",
+                "X-Real-IP": "75.139.19.77",
+                "Forwarded": "for=75.139.19.77",
+                "Accept": "application/json",
+            },
+            "body": "",
+        },
+    )
+
+    sent = {k.lower() for k in client.request.call_args.kwargs["headers"]}
+    assert not sent & {"x-forwarded-for", "x-forwarded-proto", "x-real-ip", "forwarded"}
+    assert "Accept" in client.request.call_args.kwargs["headers"], "other headers untouched"
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_websocket_handshake_strips_them_too(tunnel_handler):
+    from openavc.cloud.tunnel import TunnelConnection
+
+    conn = TunnelConnection(tunnel_id="t-fwd-ws", target_port=8080, data_ws=AsyncMock())
+    tunnel_handler._tunnels["t-fwd-ws"] = conn
+
+    local_ws = AsyncMock()
+    local_ws.__aiter__ = lambda self: self
+    local_ws.__anext__ = AsyncMock(side_effect=StopAsyncIteration)
+
+    with patch(
+        "openavc.cloud.tunnel.websockets.connect", new=AsyncMock(return_value=local_ws)
+    ) as connect:
+        await tunnel_handler._handle_ws_open(
+            conn,
+            {"id": "ws-fwd", "path": "/ws",
+             "headers": {"X-Forwarded-For": "75.139.19.77"}},
+        )
+        headers = connect.call_args.kwargs["additional_headers"]
+
+    assert not [k for k, _ in headers if k.lower() == "x-forwarded-for"]
+    await tunnel_handler.stop()

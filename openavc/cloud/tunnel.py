@@ -26,6 +26,33 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
+# Forwarded headers describe the CLOUD's front door, and they must not survive
+# the last hop into the local server.
+#
+# uvicorn ships with proxy_headers on and forwarded_allow_ips="127.0.0.1", and
+# this proxy connects to localhost -- so uvicorn trusts whatever arrives and
+# rewrites request.client.host to the address in X-Forwarded-For. That is the
+# public IP of whoever called the cloud. Every loopback check on a tunnelled
+# request was therefore being evaluated against a value the caller supplied:
+# `is_tunneled_request` came back False on real tunnel traffic, so tunnelled
+# requests were never put in the tunnel's shared rate-limit bucket, and the
+# marker that is supposed to be believed "only from a loopback peer" was in
+# practice believed from nowhere at all.
+#
+# Nothing was exploitable, because both users of the peer check fail closed --
+# console trust is refused, and the rate limiter just meters the caller as an
+# ordinary remote IP. But it meant the mechanism documented in
+# openavc/utils/request_origin.py was not the one running, and the support
+# session (which GRANTS on a loopback peer) could never authenticate.
+#
+# Stripping them makes the peer true again. The cloud's own logs still hold the
+# caller's address; the local server has no use for it and every reason not to
+# be told it by the caller.
+FORWARDED_HEADERS = frozenset({
+    "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host",
+    "x-forwarded-port", "x-forwarded-server", "forwarded", "x-real-ip",
+})
+
 
 @dataclass
 class TunnelConnection:
@@ -330,6 +357,7 @@ class TunnelHandler:
             skip = {
                 "host", "connection", "upgrade", "transfer-encoding",
                 TUNNEL_HEADER, SUPPORT_SESSION_HEADER,
+                *FORWARDED_HEADERS,
             }
             for k, v in headers.items():
                 if k.lower() not in skip:
@@ -428,6 +456,7 @@ class TunnelHandler:
             "sec-websocket-version", "sec-websocket-extensions",
             "sec-websocket-protocol", "content-length", "transfer-encoding",
             TUNNEL_HEADER, SUPPORT_SESSION_HEADER,
+            *FORWARDED_HEADERS,
         }
         # Same marker as the HTTP path. Nothing on the WebSocket surface trusts
         # loopback today (client type comes from the auth level, not the peer),
