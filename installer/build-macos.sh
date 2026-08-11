@@ -143,6 +143,24 @@ if [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_SIGNING_IDENTITY:-}" ]; then
         --sign "$APPLE_APP_SIGNING_IDENTITY" "$APP/Contents/Resources/server/openavc-server"
     codesign --force --timestamp --options runtime --entitlements "$ENT" \
         --sign "$APPLE_APP_SIGNING_IDENTITY" "$APP/Contents/Resources/menubar/openavc-menubar"
+    # Everything in Contents/MacOS EXCEPT the bundle executable. The executable
+    # named by CFBundleExecutable is sealed by the bundle signature below, but
+    # any other file sitting beside it is a nested code object that codesign
+    # requires to be signed in its own right — and it refuses to seal the
+    # bundle at all while one is not, with "code object is not signed at all /
+    # In subcomponent: <path>". The run wrapper became such a file the moment
+    # the menu-bar shim took over as the executable; the wrapper cannot simply
+    # move, because the installed LaunchDaemon plist names its exact path.
+    # A loop rather than one more explicit line: the next script dropped in
+    # here would otherwise break the release build and nothing before the tag
+    # would say so.
+    BUNDLE_EXE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")"
+    find "$APP/Contents/MacOS" -type f -print0 |
+        while IFS= read -r -d '' f; do
+            [ "$(basename "$f")" = "$BUNDLE_EXE" ] && continue
+            codesign --force --timestamp --options runtime \
+                --sign "$APPLE_APP_SIGNING_IDENTITY" "$f"
+        done
     codesign --force --timestamp --options runtime --entitlements "$ENT" \
         --sign "$APPLE_APP_SIGNING_IDENTITY" "$APP"
 else
