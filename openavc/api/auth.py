@@ -37,7 +37,10 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from openavc.system_config import get_system_config
 from openavc.utils.logger import get_logger
-from openavc.utils.request_origin import is_local_console_request
+from openavc.utils.request_origin import (
+    is_local_console_request,
+    support_session_secret,
+)
 
 log = get_logger(__name__)
 
@@ -115,6 +118,19 @@ def _extract_bearer(header_value: str) -> str:
     return parts[1].strip()
 
 
+def _is_support_session(secret: str) -> bool:
+    """Whether this request rides a live OpenAVC support session.
+
+    Imported lazily so the auth module keeps no import-time dependency on the
+    cloud side of the house. See ``openavc/api/support_session.py`` for why the
+    instance is willing to take the cloud's word for this.
+    """
+    if not secret:
+        return False
+    from openavc.api import support_session
+    return support_session.is_active(secret)
+
+
 def _check_session_token(token: str) -> bool:
     """Validate a session token against the store and the live credential.
 
@@ -154,6 +170,11 @@ def anonymous_access_allowed() -> bool:
         if v in ("false", "0", "no", "off"):
             return False
     return _deployment_is_dev()
+
+
+def request_is_support_session(request: Request) -> bool:
+    """Whether this request arrived on a live OpenAVC support session."""
+    return _is_support_session(support_session_secret(request))
 
 
 def auth_state() -> str:
@@ -201,17 +222,24 @@ def programmer_auth_satisfied(
     """Return True if the request carries valid programmer auth (or none is required).
 
     Checks (in order):
-    1. No password / API key configured — defer to `anonymous_access_allowed()`
+    1. A live OpenAVC support session — the customer granted it from their
+       cloud portal and the agent stamped this request as arriving on it.
+       First because it is the only credential a granted session has: staff
+       never hold the instance password.
+    2. No password / API key configured — defer to `anonymous_access_allowed()`
        (open on a dev checkout, requires setup on a shipped deployment).
-    2. X-API-Key header.
-    3. `Authorization: Bearer <session token>` (the Programmer SPA's channel;
+    3. X-API-Key header.
+    4. `Authorization: Bearer <session token>` (the Programmer SPA's channel;
        tokens are minted by POST /api/auth/session).
-    4. HTTP Basic credentials (username and password both checked when a
+    5. HTTP Basic credentials (username and password both checked when a
        username is configured; password-only when no username is set).
 
     Non-raising so callers that compose auth schemes (e.g. plugin routers that
     also accept a plugin token) can fall through to their own checks.
     """
+    if _is_support_session(support_session_secret(request)):
+        return True
+
     pw = _get_password()
     api_key = _get_api_key()
 
@@ -370,10 +398,15 @@ def _decode_basic_header(header_value: str) -> tuple[str, str] | None:
     return user, password
 
 
-def check_ws_auth(query_params: dict, headers: dict) -> bool:
+def check_ws_auth(query_params: dict, headers: dict, support_secret: str = "") -> bool:
     """Check WebSocket authentication from headers or subprotocol.
 
     Checks (in priority order):
+    0. A live OpenAVC support session, when the caller passed one. The secret
+       comes from ``request_origin.support_session_secret(ws)``, which is the
+       only place that reads the socket peer. The Programmer is not usable
+       without its WebSocket, so a granted session that authenticates over REST
+       and then fails here would load the IDE and show it empty.
     1. X-API-Key header (best for programmatic access)
     2. Authorization header — Basic (browsers send this when cached HTTP
        Basic credentials exist for the origin) or Bearer (a session token,
@@ -386,6 +419,9 @@ def check_ws_auth(query_params: dict, headers: dict) -> bool:
 
     Returns True if auth passes or is not required.
     """
+    if _is_support_session(support_secret):
+        return True
+
     pw = _get_password()
     api_key = _get_api_key()
 

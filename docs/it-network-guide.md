@@ -434,6 +434,14 @@ The cloud platform can open a remote access tunnel to the device's web interface
 
 So the reach of a tunnel is the reach of the Programmer credential, no more and no less: whoever holds it can do through the tunnel exactly what they could do from a browser on the same LAN. On deployments that expose host network settings (Linux and Raspberry Pi with NetworkManager) that does include changing the device's IP, WiFi, and hostname, which is the one capability the cloud command list above does not carry. If you want no remote path to those settings at all, the controls are the same ones that govern the rest of this plane: leave cloud disabled, or keep the instance paired but treat the Programmer credential as the boundary it is.
 
+**The one exception, and how to see it.** A tunnel opened under an OpenAVC **support session** does not ask for the Programmer credential. Nobody at OpenAVC has your password and we will never ask you to send it, so a support session carries its own authorization instead: a per-tunnel secret the device itself generates, valid only while that tunnel is open.
+
+Such a session exists only when someone on your account creates it. It is granted from your own cloud portal, on one named system, on a specific support request, for one, four or twenty-four hours. There is no standing grant, no account-wide grant, and no way for OpenAVC to open one without that action. While it is live you can see it, and you can end it at once; ending it closes any session already open rather than waiting for the clock. Every action taken under it is recorded against the named staff member and shown back to you in the portal. It expires on its own, and a further visit needs a further grant.
+
+Within the session, staff reach what the Programmer reaches. They do **not** reach the surfaces the device reserves for its own screen: host network configuration still requires the Programmer credential, exactly as it does for any other tunnelled request.
+
+If your security model does not permit this at all, the control is the same as for the rest of the management plane: leave cloud disabled, or stay paired and never grant a support session. Nothing in the product creates one on your behalf.
+
 ### Disabling cloud entirely
 
 Cloud is disabled by default. To confirm it is disabled, verify that `cloud.enabled` is `false` in `system.json` (or that the `OPENAVC_CLOUD_ENABLED` environment variable is not set to `true`). When disabled, no cloud-related code runs and no outbound connections to `cloud.openavc.com` are made.
@@ -529,6 +537,7 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 | TLS | Off, opt-in built-in | Enable via Settings > Security. TLS 1.2/1.3 only (1.0/1.1 refused). Auto-generated self-signed cert, supply your own, or a cloud-issued publicly trusted cert for paired systems. Reverse-proxy TLS also supported. |
 | Outbound internet | Not required | Only for optional updates and cloud |
 | Cloud connectivity | Disabled by default | Opt-in. When paired, it is an administrator-equivalent management plane (see Cloud Platform above). |
+| OpenAVC staff access | None, ever, until granted | Nobody at OpenAVC can reach a paired system by default. Access comes only from a support session your own account creates: one named system, one support request, one to twenty-four hours, visible while live, revocable instantly, and every action recorded against the named staff member in your portal. See Remote access tunnels. |
 | Privileged access | None required | Runs as standard user, no root/admin |
 | External dependencies at runtime | None | No external database, message broker, or third-party service required |
 | Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). |
