@@ -46,6 +46,29 @@ class _CountingDriver(BaseDriver):
         # Else: clean return
 
 
+async def _wait_until(predicate: Any, timeout: float = 5.0) -> None:
+    """Give the poll loop time to reach a state, instead of guessing how long.
+
+    These tests used a fixed `sleep(0.2)` after `start_polling(0.01)`, which has
+    to be longer than the slowest plausible run -- and the number that looks
+    generous on a laptop is not generous on a loaded CI runner. Windows carries
+    a ~15.6 ms default timer granularity, so a nominal 10 ms poll interval can
+    land anywhere above it: the 0.26.0 release build failed here with the third
+    poll 203 ms after the first, the watchdog firing correctly, and the assert
+    having already run.
+
+    Returns as soon as the condition holds, so the fast path stays fast. On
+    timeout it returns anyway and lets the caller's own assert produce the
+    failure message, which says far more than a generic timeout would.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+
+
 def _make_driver() -> _CountingDriver:
     state = StateStore()
     events = EventBus()
@@ -66,8 +89,7 @@ async def test_watchdog_fires_after_three_connection_errors() -> None:
     drv.poll_raises = ConnectionError("unreachable")
 
     await drv.start_polling(0.01)
-    # Wait long enough for 3+ polls plus the watchdog disconnect
-    await asyncio.sleep(0.2)
+    await _wait_until(lambda: drv.get_state("connected") is False)
 
     assert drv.get_state("connected") is False
     assert drv._connected is False
@@ -84,7 +106,7 @@ async def test_watchdog_fires_on_httpx_connect_error() -> None:
     drv.poll_raises = httpx.ConnectError("connection refused")
 
     await drv.start_polling(0.01)
-    await asyncio.sleep(0.2)
+    await _wait_until(lambda: drv.get_state("connected") is False)
 
     assert drv.get_state("connected") is False
 
@@ -98,7 +120,7 @@ async def test_watchdog_fires_on_httpx_timeout() -> None:
     drv.poll_raises = httpx.ConnectTimeout("timeout")
 
     await drv.start_polling(0.01)
-    await asyncio.sleep(0.2)
+    await _wait_until(lambda: drv.get_state("connected") is False)
 
     assert drv.get_state("connected") is False
 
@@ -112,7 +134,7 @@ async def test_watchdog_does_not_fire_on_clean_polls() -> None:
     drv.poll_raises = None
 
     await drv.start_polling(0.01)
-    await asyncio.sleep(0.15)
+    await _wait_until(lambda: drv.poll_count >= 5)
     await drv.stop_polling()
 
     assert drv.get_state("connected") is True
@@ -128,7 +150,7 @@ async def test_watchdog_does_not_fire_on_protocol_errors() -> None:
     drv.poll_raises = ValueError("unexpected response shape")
 
     await drv.start_polling(0.01)
-    await asyncio.sleep(0.15)
+    await _wait_until(lambda: drv.poll_count >= 5)
     await drv.stop_polling()
 
     # Device is reachable (it responded, just with garbage) — connected stays True
@@ -153,11 +175,12 @@ async def test_dry_polls_reset_on_recovery() -> None:
 
     await drv.start_polling(0.01)
     # Let a few polls fail (well under the 10-poll threshold)
-    await asyncio.sleep(0.05)
+    await _wait_until(lambda: drv.poll_count >= 3)
     # Recover
     drv.poll_raises = None
+    failed_by = drv.poll_count
     # Let several polls succeed
-    await asyncio.sleep(0.1)
+    await _wait_until(lambda: drv.poll_count >= failed_by + 5)
     await drv.stop_polling()
 
     # Should still be connected — recovery reset the dry-poll counter
@@ -179,7 +202,7 @@ async def test_watchdog_classifies_specific_fault_from_poll_error() -> None:
     drv.poll_raises = ConnectionError("connection refused")
 
     await drv.start_polling(0.01)
-    await asyncio.sleep(0.2)
+    await _wait_until(lambda: drv.get_state("connected") is False)
 
     assert drv.get_state("connected") is False
     assert drv.last_fault is not None
@@ -200,7 +223,7 @@ async def test_watchdog_uses_no_response_for_a_generic_drop() -> None:
     drv.poll_raises = OSError("boom")
 
     await drv.start_polling(0.01)
-    await asyncio.sleep(0.2)
+    await _wait_until(lambda: drv.get_state("connected") is False)
 
     assert drv.get_state("connected") is False
     assert drv.last_fault is not None
