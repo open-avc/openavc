@@ -130,6 +130,31 @@ export function requestTokenFromOpener(): Promise<string | null> {
   });
 }
 
+/**
+ * Whether this instance wants a credential at all.
+ *
+ * A dev checkout with no password set serves its admin surface openly, and the
+ * Programmer that opened us therefore has no session token to hand over. Read
+ * naively, "no token" looks identical to "not signed in", and we would show a
+ * password box for a password that does not exist — nothing typed into it can
+ * ever be right, so the simulator becomes unreachable on exactly the posture
+ * where the least is protecting it.
+ *
+ * So we ask the platform, the same way `/programmer` does before deciding
+ * whether to draw its own login. "ok" means anonymous is allowed and the
+ * control API will answer us without a credential.
+ */
+export async function credentialRequired(): Promise<boolean> {
+  try {
+    const res = await fetch(`${APP_ROOT}/api/auth/required`, { method: "GET" });
+    if (!res.ok) return true; // can't tell — ask, rather than hang on a 401
+    const data = (await res.json()) as { state?: string; required?: boolean };
+    return data?.state !== "ok";
+  } catch {
+    return true; // same: a network error is not evidence the door is open
+  }
+}
+
 /** Exchange a password for a session token, for the no-opener case.
  *
  * Credentials go in a Basic header, not a JSON body — that is what

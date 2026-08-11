@@ -3,15 +3,19 @@
  *
  * Normally invisible: the Programmer opened us, we ask it for its session
  * token, and the app renders. The form below only appears when there is no
- * opener to ask — a bookmarked URL, or a reload after the server restarted.
- * That is the same thing `/programmer` does in a fresh tab, and it is the
- * reason the browser's own sign-in dialog never appears: the shell is served
- * openly, so the 401 that would trigger the dialog never happens on a
- * top-level navigation.
+ * opener to ask AND this instance actually has a credential — a bookmarked
+ * URL, or a reload after the server restarted. That is the same thing
+ * `/programmer` does in a fresh tab, and it is the reason the browser's own
+ * sign-in dialog never appears: the shell is served openly, so the 401 that
+ * would trigger the dialog never happens on a top-level navigation.
+ *
+ * The "actually has a credential" half is not a detail. An open dev checkout
+ * has no password, so the Programmer has no token to pass down, and without
+ * the check we would show a password box that nothing can satisfy.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { requestTokenFromOpener, signIn, currentToken } from "./store/session";
+import { requestTokenFromOpener, signIn, currentToken, credentialRequired } from "./store/session";
 import { AUTH_REQUIRED } from "./store/api";
 
 type Phase = "asking" | "ready" | "needs-password";
@@ -26,9 +30,15 @@ export function SessionGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase !== "asking") return;
     let cancelled = false;
-    requestTokenFromOpener().then((token) => {
+    requestTokenFromOpener().then(async (token) => {
       if (cancelled) return;
-      setPhase(token ? "ready" : "needs-password");
+      if (token) { setPhase("ready"); return; }
+      // No token to be had. Before asking for a password, find out whether
+      // this instance even has one — on an open dev checkout it does not, and
+      // the form would be a door with no key.
+      const needed = await credentialRequired();
+      if (cancelled) return;
+      setPhase(needed ? "needs-password" : "ready");
     });
     return () => { cancelled = true; };
   }, [phase]);
