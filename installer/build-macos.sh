@@ -71,11 +71,19 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # the Python runtime in Contents/Frameworks/) only when its executable lives in
 # Contents/MacOS/. From Contents/Resources/ it uses normal onedir mode and
 # finds its sibling _internal. Each binary keeps its own _internal (no risky
-# merge). Only the wrapper (a shell script, no bootloader) lives in MacOS.
+# merge). Only the two shell scripts (no bootloader) live in MacOS.
 cp -a "$FROZEN" "$APP/Contents/Resources/server"
 cp -a "$MENUBAR_FROZEN" "$APP/Contents/Resources/menubar"
 cp installer/openavc-macos-run.sh "$APP/Contents/MacOS/openavc-macos-run.sh"
 chmod 755 "$APP/Contents/MacOS/openavc-macos-run.sh"
+# CFBundleExecutable — what opening the app from Finder actually does. It
+# restarts the menu bar LaunchAgent, which is the only way back to the icon
+# after "Quit Menu Bar App". The server's run wrapper stays where it is
+# because the installed /Library/LaunchDaemons plist names that exact path and
+# a self-update replaces the bundle without touching the plist; moving it
+# would leave an upgraded machine with a daemon pointing at a missing file.
+cp installer/openavc-menubar-launch.sh "$APP/Contents/MacOS/OpenAVC"
+chmod 755 "$APP/Contents/MacOS/OpenAVC"
 cp installer/com.openavc.server.plist "$APP/Contents/Resources/com.openavc.server.plist"
 cp installer/com.openavc.menubar.plist "$APP/Contents/Resources/com.openavc.menubar.plist"
 # Bundle the uninstaller so the menu-bar "Uninstall OpenAVC..." item (and a
@@ -102,11 +110,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key><string>com.openavc.app</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
-    <key>CFBundleExecutable</key><string>openavc-macos-run.sh</string>
+    <key>CFBundleExecutable</key><string>OpenAVC</string>
     <key>CFBundleIconFile</key><string>openavc.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>11.0</string>
-    <key>LSBackgroundOnly</key><true/>
+    <!-- LSUIElement, not LSBackgroundOnly: this bundle now opens the menu bar
+         app, and BackgroundOnly forbids a process from drawing any UI at all,
+         menu bar items included. UIElement is the agent-app posture we want —
+         a status item and no Dock tile. -->
+    <key>LSUIElement</key><true/>
 </dict>
 </plist>
 PLIST

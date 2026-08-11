@@ -25,6 +25,28 @@ ROLLBACK_FILE="$DATA_DIR/apply-rollback"
 LOG_TAG="openavc-macos-run"
 PYTHON="${PYTHON:-/usr/bin/python3}"
 
+# launchd always runs this as root. A non-root run against the real installed
+# bundle therefore means a person started it by hand, or an old alias did —
+# and that would quietly bring up a second, unprivileged server that cannot
+# write the system data dir and fights the daemon for the port, with no window
+# to show for it. Refuse, and name the supported controls instead.
+#
+# Scoped to the installed bundle: a run with OPENAVC_APP pointed somewhere else
+# is a sandbox (the update tests do exactly this) and is nobody's accident.
+if [ "$(id -u)" -ne 0 ] && [ "$APP" = "/Applications/OpenAVC.app" ]; then
+    cat >&2 <<'MSG'
+This is the OpenAVC server's startup wrapper, not the app. It is run by the
+system service as root; starting it by hand does not work.
+
+To control the OpenAVC server, open OpenAVC from Applications and use the menu
+bar item, or from Terminal:
+
+  sudo launchctl bootout system/com.openavc.server                             # stop
+  sudo launchctl bootstrap system /Library/LaunchDaemons/com.openavc.server.plist   # start
+MSG
+    exit 1
+fi
+
 # A candidate bundle is usable only if it carries the server executable.
 # (Frozen binaries live in Contents/Resources/, not Contents/MacOS/ — see the
 # build script for why.)

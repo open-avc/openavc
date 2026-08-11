@@ -284,7 +284,25 @@ to the Programmer IDE and Panel, an update check, start/stop/restart controls,
 and an **Uninstall OpenAVC** item (all of which prompt for your password, since
 the server runs as root).
 
-To control the service manually from Terminal:
+### The menu bar app and the server are separate
+
+Quitting the menu bar app does not stop the server. That is deliberate. On a Mac
+that controls a real space, the server is what answers the touch panels, so
+closing a status icon must never take the space offline. The menu bar app is a
+status readout and a set of shortcuts, and the server runs whether it is open or
+not.
+
+Two menu items reflect the difference:
+
+- **Quit Menu Bar App** closes the icon. The server keeps running.
+- **Stop Server and Quit** shuts down both.
+
+To put the icon back, open OpenAVC from Applications or Spotlight. The app has no
+window. Its only job is to return the icon to the menu bar, so nothing else
+appears when you open it. It also comes back on its own at your next login.
+
+To control the service manually from Terminal (this works with the menu bar app
+closed, and is the way to stop the server if you would rather not use it):
 
 ```bash
 # Status

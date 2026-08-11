@@ -12,7 +12,14 @@ Menu:
   Open Panel UI
   Check for Updates
   Service > Start / Stop / Restart
-  Quit            (added by rumps)
+  Stop Server and Quit
+  Quit Menu Bar App   (added by rumps)
+
+The two quit items are separate on purpose. The server is a LaunchDaemon that
+outlives this app, so on a Mac driving a real space, quitting a status icon
+must not take the room offline — but "shut it all down" is a fair thing to
+want on a desk, and it should not be buried a submenu deep. Reopening
+OpenAVC.app restarts this agent, which is the way back to the icon.
 
 Uses rumps (BSD-3) for the menu bar; service control shells out to launchctl,
 elevating through the macOS authentication dialog because the server runs as a
@@ -131,7 +138,11 @@ def _service_command(action: str) -> None:
 
 class OpenAVCMenuBar(rumps.App):
     def __init__(self):
-        super().__init__("OpenAVC", quit_button="Quit")
+        # "Quit Menu Bar App", not "Quit": this quits a status icon and leaves
+        # the server running, and a button labelled Quit in an app called
+        # OpenAVC reads as "quit OpenAVC" to everyone who has not read the
+        # plists. Naming it for what it does is the whole fix.
+        super().__init__("OpenAVC", quit_button="Quit Menu Bar App")
         self._cfg = _get_server_config()
         self._base = _base_url(self._cfg)
         self._status_item = rumps.MenuItem("Starting...")
@@ -149,6 +160,7 @@ class OpenAVCMenuBar(rumps.App):
                 rumps.MenuItem("Restart", callback=lambda _: _service_command("restart")),
             ]),
             None,
+            rumps.MenuItem("Stop Server and Quit", callback=self._stop_and_quit),
             rumps.MenuItem("Uninstall OpenAVC...", callback=self._uninstall),
             None,
         ]
@@ -200,6 +212,31 @@ class OpenAVCMenuBar(rumps.App):
     def _check_updates(self, _) -> None:
         _api_get("/api/system/updates/check", self._cfg, timeout=15)
         webbrowser.open(f"{self._base}/programmer#/updates")
+
+    def _stop_and_quit(self, _) -> None:
+        """Stop the server LaunchDaemon, then quit — the "shut the whole thing
+        down" action for a desk machine. Plain quit leaves the server running
+        by design, so without this the only way all the way off is Service >
+        Stop followed by a separate quit, and the person who reached for Quit
+        first has no reason to think there is anything left to do."""
+        _service_command("stop")
+        # Confirm it actually stopped before quitting. Cancelling the password
+        # prompt is silent, and quitting anyway would leave someone certain the
+        # server was off while it kept serving. Poll the same health endpoint
+        # the status line uses; a stop takes a moment to release the socket.
+        for _ in range(10):
+            if _api_get("/api/health", self._cfg, timeout=1) is None:
+                rumps.quit_application()
+                return
+            time.sleep(0.5)
+        rumps.alert(
+            title="OpenAVC is still running",
+            message=(
+                "The server could not be stopped (you may have cancelled the "
+                "password prompt). The menu bar app has been left open so you "
+                "can try again from Service > Stop."
+            ),
+        )
 
     def _uninstall(self, _) -> None:
         """Fully remove OpenAVC: stop the server LaunchDaemon and this menu-bar
