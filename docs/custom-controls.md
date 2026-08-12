@@ -243,6 +243,8 @@ if (msg.type === 'openavc:init') {
 
 Your page fills the element's box exactly, so give it `margin: 0` and let it size from 100% width and height rather than fixed pixels. The box is whatever you drew in the Builder, and it changes with the panel's screen.
 
+Content that does not fit **scrolls inside the box** rather than being cut off. That is the safer of the two failures, but it is not one you want on a wall: a scrollbar appears inside your control and whatever ran off the bottom is out of reach until somebody drags it back. If you see one, either the element is smaller than the control needs or the page is sized in pixels somewhere. The same applies to text, which wraps and then overflows on a narrow panel even when the layout is fluid.
+
 ## Rules that keep working in a real space
 
 - **Everything ships with the project.** No web fonts from Google, no library from a CDN, no remote images. A panel on a wall may have no internet at all, and anything remote renders as nothing. Put what you need in `ui/` beside your page.
