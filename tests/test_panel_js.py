@@ -73,6 +73,8 @@ SCENARIOS = [
     "h003_l007_lock_reconcile",
     "h004_plugin_broadcast_scope",
     "h005_action_capability_gate",
+    "plugin_element_map_shape",
+    "plugin_bridge_respects_edit_mode",
     "m001_l003_countdown",
     "m004_text_loose_compare",
     "l002_format_replace_all",

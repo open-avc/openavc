@@ -4063,8 +4063,11 @@ class PanelApp {
         el.style.position = 'relative';
         el.appendChild(loadingIndicator);
 
-        // Store reference for state updates
-        this.elementMap[element.id] = el;
+        // Store reference for state updates. Same {el, elementDef} shape as every
+        // other renderer — this one used to store the bare node, which quietly cost
+        // it everything that reads elementDef off an entry (ui.* label overrides,
+        // macro-busy). Anything needing the plugin's own bits reads them off entry.el.
+        this.elementMap[element.id] = { el, elementDef: element };
         el._pluginIframe = iframe;
         el._pluginId = pluginId;
         // The plugin's declared capabilities gate what the iframe bridge will
@@ -4137,12 +4140,18 @@ class PanelApp {
                             console.warn(`[panel] plugin '${pluginId}' attempted device.command without the device_command capability`);
                             break;
                         }
-                        this.ws?.send(JSON.stringify({
+                        // Through send(), not straight at the socket: send() is the
+                        // one place that refuses to talk to the room while the
+                        // designer is authoring. Reaching past it worked only
+                        // because there is no socket in edit mode, which is luck
+                        // rather than a rule -- and the design canvas is about to
+                        // start running these iframes for real.
+                        this.send({
                             type: 'command',
                             device_id: msg.device,
                             command: msg.command,
                             params: msg.params || {},
-                        }));
+                        });
                     } else if (msg.action === 'state.set' && msg.key) {
                         const key = String(msg.key);
                         const ownNamespace = key.startsWith(`plugin.${pluginId}.`);
@@ -4153,11 +4162,11 @@ class PanelApp {
                             console.warn(`[panel] plugin '${pluginId}' attempted state.set on '${key}' outside its declared scope`);
                             break;
                         }
-                        this.ws?.send(JSON.stringify({
+                        this.send({
                             type: 'state.set',
                             key: msg.key,
                             value: msg.value,
-                        }));
+                        });
                     }
                     break;
                 }
@@ -4325,7 +4334,8 @@ class PanelApp {
 
     // Send state update to plugin iframes
     _notifyPluginIframes(key, value) {
-        for (const [id, el] of Object.entries(this.elementMap)) {
+        for (const [id, entry] of Object.entries(this.elementMap)) {
+            const el = entry?.el;
             if (!el?._pluginIframe?.contentWindow) continue;
             // Scope live updates to each iframe's own namespace, exactly like the
             // init snapshot (plugin.<id>.*). Broadcasting every key let any
@@ -4474,8 +4484,7 @@ class PanelApp {
 
     evaluateUiOverrides() {
         for (const [elementId, entry] of Object.entries(this.elementMap)) {
-            // Plugin entries store the element directly; others store {el, elementDef}.
-            const el = entry.el || entry;
+            const el = entry.el;
             const elementDef = entry.elementDef;
             if (!el || !el.style) continue;
             const prefix = `ui.${elementId}.`;

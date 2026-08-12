@@ -291,7 +291,12 @@ const tests = {
             return el;
         };
         const a = mk('a'); const b = mk('b');
-        app.elementMap = { a, b };
+        // {el, elementDef} -- the one shape every renderer uses; see
+        // plugin_element_map_shape for why this scenario used to build bare nodes.
+        app.elementMap = {
+            a: { el: a, elementDef: { id: 'a', type: 'plugin' } },
+            b: { el: b, elementDef: { id: 'b', type: 'plugin' } },
+        };
         app._notifyPluginIframes('plugin.a.x', 1);
         assert(a._received.length === 1 && b._received.length === 0, 'only plugin a receives plugin.a.x');
         app._notifyPluginIframes('device.x.power', 'on');
@@ -303,7 +308,7 @@ const tests = {
     // H-005 — the iframe action bridge enforces the plugin's declared capabilities.
     h005_action_capability_gate() {
         const app = mkApp();
-        app.ws = { sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
         const element = { id: 'pe1', type: 'plugin', plugin_id: 'myplug', plugin_type: 'widget', plugin_config: {} };
         const el = app.renderPluginElement(element);
         const handler = el._pluginMessageHandler;
@@ -331,6 +336,67 @@ const tests = {
         el._pluginCaps = ['variable_write'];
         fire({ type: 'openavc:action', action: 'state.set', key: 'var.global', value: 1 });
         assert(app.ws.sent.length === 2, 'var.* write allowed with variable_write');
+    },
+
+    // A plugin element goes into elementMap the same way everything else does, so
+    // the things that read an entry's elementDef reach it too. It used to store the
+    // bare node, which silently excluded it from macro-busy: the entry had no
+    // elementDef, the lookup came back undefined, and the element simply never lit.
+    plugin_element_map_shape() {
+        const app = mkApp();
+        const element = {
+            id: 'pe_busy', type: 'plugin', plugin_id: 'myplug', plugin_type: 'widget',
+            bindings: { do: { press: [{ action: 'macro', macro: 'lights_up' }] } },
+        };
+        const el = app.renderPluginElement(element);
+        const entry = app.elementMap['pe_busy'];
+        assert(entry && entry.el === el, 'entry carries the rendered node as .el');
+        assert(entry.elementDef === element, 'entry carries the element definition');
+
+        // The payoff: macro-busy now reaches a plugin element.
+        app._runningMacros = { lights_up: true };
+        app._updateMacroBusyState('lights_up');
+        assert(el.classList.contains('macro-busy'), 'plugin element picks up macro-busy');
+        assert(el.getAttribute('data-macro-busy') === 'lights_up', 'busy attribute names the macro');
+        app._runningMacros = {};
+        app._updateMacroBusyState('lights_up');
+        assert(!el.classList.contains('macro-busy'), 'busy state clears when the macro stops');
+    },
+
+    // The iframe bridge cannot reach the room while the designer is authoring.
+    // It used to write straight to the socket, skipping send()'s edit-mode guard;
+    // that only looked safe because edit mode has no socket to write to.
+    plugin_bridge_respects_edit_mode() {
+        const app = mkApp();
+        app.editMode = true;
+        // A live socket in edit mode is the situation the design canvas creates
+        // once it renders custom controls for real. Nothing may reach it.
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        const element = { id: 'pe2', type: 'plugin', plugin_id: 'myplug', plugin_type: 'widget', plugin_config: {} };
+        const el = app.renderPluginElement(element);
+        // Edit mode renders a placeholder, so the bridge is not wired at all --
+        // that is the first line of defence and worth pinning.
+        assert(!el._pluginMessageHandler, 'no bridge handler on the edit-mode placeholder');
+
+        // Second line: even with a fully wired bridge (what 4.5 is about to build),
+        // every action it forwards dies at send().
+        app.editMode = false;
+        const live = app.renderPluginElement({ ...element, id: 'pe3' });
+        app.editMode = true;
+        const handler = live._pluginMessageHandler;
+        const src = live._pluginIframe.contentWindow;
+        const fire = (data) => handler({ source: src, data });
+        live._pluginCaps = ['device_command', 'state_write', 'variable_write'];
+        fire({ type: 'openavc:action', action: 'device.command', device: 'd1', command: 'on', params: {} });
+        fire({ type: 'openavc:action', action: 'state.set', key: 'plugin.myplug.x', value: 1 });
+        fire({ type: 'openavc:action', action: 'state.set', key: 'var.global', value: 1 });
+        assert(app.ws.sent.length === 0, `nothing reaches the room in edit mode, got ${app.ws.sent.length}`);
+
+        // Same handler, out of edit mode, does send -- so the assertion above is
+        // about the guard and not about a bridge that never worked.
+        app.editMode = false;
+        fire({ type: 'openavc:action', action: 'device.command', device: 'd1', command: 'on', params: {} });
+        assert(app.ws.sent.length === 1, 'the same action lands once authoring is over');
     },
 
     // M-001 / L-003 — countdown prefers a live state key over target_time and
