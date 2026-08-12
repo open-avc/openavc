@@ -12,9 +12,9 @@ Everything a control needs lives in the project, in a folder called `ui/`. It tr
 
 Three ways in, all writing to the same folder:
 
-- Select the custom control on the page, then **Add files** in the properties panel. Pick files, a folder, or a `.zip`.
-- Drop files onto the same control.
-- Edit them in the IDE the way you edit a script.
+- **Write it in the IDE.** The **Code** view has a **Custom Controls** section beside Scripts and Python Drivers. Click **+**, name the file (`room_map/index.html`), and a new page opens with a working skeleton in it. Save redraws the control on the UI Builder canvas.
+- **Drop it in.** Drag a file, a whole control folder, or a `.zip` onto that section. Dropping a folder keeps its structure.
+- **From the element.** Select the custom control on a page and use **Add files** in the properties panel: drop onto the box, or click it to pick files or a `.zip`. (A folder has to be dropped; a file picker cannot take one.)
 
 A control can be one file or a folder of them:
 

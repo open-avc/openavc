@@ -4,6 +4,7 @@ import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { NumericInput } from "../shared/NumericInput";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
+import { FieldRow } from "./PropertySections/FieldRow";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
 import { StyleProperties } from "./PropertySections/StyleProperties";
 import { BindingProperties } from "./PropertySections/BindingProperties";
@@ -1081,36 +1082,6 @@ function PageProperties({
           ? `Navigate to this ${isSidebar ? "sidebar" : "overlay"} using a page_nav element with target "${page.id}", or use $back to dismiss.`
           : "Page background is visible behind all elements. Use a gradient overlay on top of an image to keep text readable."}
       </div>
-    </div>
-  );
-}
-
-function FieldRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-sm)",
-      }}
-    >
-      <label
-        style={{
-          width: 72,
-          flexShrink: 0,
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-secondary)",
-        }}
-      >
-        {label}
-      </label>
-      {children}
     </div>
   );
 }

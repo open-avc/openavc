@@ -47,6 +47,22 @@ export async function deleteCustomUiFile(path: string): Promise<{ status: string
 }
 
 /**
+ * The text of one file, for the editor.
+ *
+ * Read back through the same open route the panel fetches it from, because
+ * that is the file that actually runs — a second read path could disagree
+ * with what a panel is being served. The route sends `no-cache`, so this is
+ * the version on disk rather than one the browser kept.
+ */
+export async function readCustomUiFile(path: string): Promise<string> {
+  const res = await fetch(customUiFileUrl(path));
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.text();
+}
+
+/**
  * Upload one file, or a .zip that unpacks keeping its own folders.
  *
  * `folder` is where it lands (empty for the top of the tree); the file keeps
@@ -69,6 +85,29 @@ export async function uploadCustomUiFile(
     throw new Error(await res.text());
   }
   return res.json();
+}
+
+/**
+ * Upload a batch, each file with the folder it belongs in.
+ *
+ * The two doors that take a drop — the element's properties panel and the
+ * Code view's file tree — share this so a folder lands the same way through
+ * both. `baseFolder` is where the whole batch goes (the tree can drop into a
+ * control's folder); each entry's own `folder` is appended under it.
+ */
+export async function uploadCustomUiFiles(
+  entries: { file: File; folder: string }[],
+  baseFolder = "",
+): Promise<{ written: string[]; skipped: string[] }> {
+  const written: string[] = [];
+  const skipped: string[] = [];
+  for (const { file, folder } of entries) {
+    const dest = [baseFolder, folder].filter(Boolean).join("/");
+    const result = await uploadCustomUiFile(file, dest);
+    written.push(...result.written);
+    skipped.push(...result.skipped);
+  }
+  return { written, skipped };
 }
 
 /** The URL the panel serves a custom UI file from. */

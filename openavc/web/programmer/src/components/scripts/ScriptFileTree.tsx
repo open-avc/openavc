@@ -1,38 +1,54 @@
 import { useState } from "react";
-import { Plus, Trash2, FileText, AlertTriangle, Cpu, ChevronDown, ChevronRight, Upload, Download } from "lucide-react";
+import { Plus, Trash2, FileText, AlertTriangle, Cpu, ChevronDown, ChevronRight, Upload, Download, LayoutTemplate } from "lucide-react";
 import type { ScriptConfig, PythonDriverInfo } from "../../api/types";
+import type { CustomUiFile } from "../../api/customUiClient";
 import { CopyButton } from "../shared/CopyButton";
+import { filesFromDataTransfer, type DroppedFile } from "../shared/dropFiles";
+import { groupUiFiles } from "./customUiFiles";
 
 interface ScriptFileTreeProps {
   scripts: ScriptConfig[];
   drivers: PythonDriverInfo[];
+  uiFiles: CustomUiFile[];
   selectedId: string | null;
-  selectedType: "script" | "driver" | null;
+  selectedType: "script" | "driver" | "ui" | null;
   loadErrors?: Record<string, string>;
   onSelectScript: (id: string) => void;
   onSelectDriver: (id: string) => void;
+  onSelectUiFile: (path: string) => void;
   onCreateScript: (id: string, file: string, description: string) => void;
   onCreateDriver: () => void;
+  onCreateUiFile: (path: string) => void;
   onImportDriver: () => void;
+  onImportUiFiles: () => void;
   onExportDriver: (id: string) => void;
   onDeleteScript: (id: string) => void;
   onDeleteDriver: (id: string) => void;
+  onDeleteUiFile: (path: string) => void;
+  /** A file or a folder dropped on the Custom Controls section. */
+  onDropUiFiles: (files: DroppedFile[]) => void;
 }
 
 export function ScriptFileTree({
   scripts,
   drivers,
+  uiFiles,
   selectedId,
   selectedType,
   loadErrors = {},
   onSelectScript,
   onSelectDriver,
+  onSelectUiFile,
   onCreateScript,
   onCreateDriver,
+  onCreateUiFile,
   onImportDriver,
+  onImportUiFiles,
   onExportDriver,
   onDeleteScript,
   onDeleteDriver,
+  onDeleteUiFile,
+  onDropUiFiles,
 }: ScriptFileTreeProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [newId, setNewId] = useState("");
@@ -40,6 +56,10 @@ export function ScriptFileTree({
   const [search, setSearch] = useState("");
   const [scriptsCollapsed, setScriptsCollapsed] = useState(false);
   const [driversCollapsed, setDriversCollapsed] = useState(false);
+  const [uiCollapsed, setUiCollapsed] = useState(false);
+  const [showCreateUi, setShowCreateUi] = useState(false);
+  const [newUiPath, setNewUiPath] = useState("");
+  const [dragOver, setDragOver] = useState(false);
 
   const filteredScripts = scripts.filter(s =>
     !search ||
@@ -55,6 +75,10 @@ export function ScriptFileTree({
     d.manufacturer.toLowerCase().includes(search.toLowerCase())
   );
 
+  const filteredUiFiles = uiFiles.filter(f =>
+    !search || f.path.toLowerCase().includes(search.toLowerCase())
+  );
+
   const handleCreateScript = () => {
     if (!newId.trim()) return;
     const safeId = newId.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
@@ -63,6 +87,25 @@ export function ScriptFileTree({
     setNewId("");
     setNewDesc("");
     setShowCreate(false);
+  };
+
+  const handleCreateUiFile = () => {
+    const path = newUiPath.trim();
+    // What may live in ui/ is the server's call, and its refusal names what was
+    // wrong -- so only "you typed nothing" is answered here.
+    if (!path) return;
+    onCreateUiFile(path);
+    setNewUiPath("");
+    setShowCreateUi(false);
+  };
+
+  const handleUiDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    // Claim the item list before the first await: a DataTransfer is emptied
+    // the moment this handler returns.
+    const dropped = await filesFromDataTransfer(e.dataTransfer);
+    if (dropped.length > 0) onDropUiFiles(dropped);
   };
 
   return (
@@ -378,10 +421,180 @@ export function ScriptFileTree({
             </>
           )}
         </div>
+
+        {/* === CUSTOM CONTROLS SECTION (the project's ui/ folder) === */}
+        <div
+          data-testid="custom-ui-section"
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { void handleUiDrop(e); }}
+          style={{
+            outline: dragOver ? "2px dashed var(--accent)" : "none",
+            outlineOffset: -2,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "var(--space-sm) var(--space-md)",
+              borderBottom: "1px solid var(--border-color)",
+              borderTop: "1px solid var(--border-color)",
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+            onClick={() => setUiCollapsed(!uiCollapsed)}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              {uiCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+              <span style={sectionHeaderStyle}>
+                Custom Controls ({uiFiles.length})
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); onImportUiFiles(); }}
+                style={{ ...addBtnStyle, background: "var(--bg-hover)", color: "var(--text-secondary)" }}
+                title="Add files, a folder, or a .zip of a control"
+              >
+                <Upload size={14} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowCreateUi(!showCreateUi); }}
+                style={addBtnStyle}
+                title="New custom control file"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Create file form */}
+          {showCreateUi && !uiCollapsed && (
+            <div
+              style={{
+                padding: "var(--space-sm) var(--space-md)",
+                borderBottom: "1px solid var(--border-color)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-xs)",
+              }}
+            >
+              <input
+                type="text"
+                placeholder="room_map/index.html"
+                aria-label="New custom control file"
+                value={newUiPath}
+                onChange={(e) => setNewUiPath(e.target.value)}
+                style={inputStyle}
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && handleCreateUiFile()}
+              />
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                One control is one folder. Point the element at its page.
+              </div>
+              <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+                <button onClick={handleCreateUiFile} style={createBtnStyle}>
+                  Create
+                </button>
+                <button
+                  onClick={() => setShowCreateUi(false)}
+                  style={{ ...createBtnStyle, background: "var(--bg-hover)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* File list, grouped by control folder */}
+          {!uiCollapsed && (
+            <>
+              {uiFiles.length === 0 ? (
+                <div style={emptyStyle}>
+                  No custom controls yet.
+                  <br />
+                  Click <strong>+</strong> to write one, or drop a folder or a{" "}
+                  <strong>.zip</strong> here.
+                </div>
+              ) : (
+                groupUiFiles(filteredUiFiles).map((group) => (
+                  <div key={`ui-group-${group.folder}`}>
+                    {group.folder && (
+                      <div style={folderHeaderStyle}>{group.folder}/</div>
+                    )}
+                    {group.files.map((f) => (
+                      <div
+                        key={`ui-${f.path}`}
+                        onClick={() => onSelectUiFile(f.path)}
+                        style={{
+                          ...itemStyle,
+                          background:
+                            selectedId === f.path && selectedType === "ui"
+                              ? "var(--bg-hover)"
+                              : "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!(selectedId === f.path && selectedType === "ui"))
+                            (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!(selectedId === f.path && selectedType === "ui"))
+                            (e.currentTarget as HTMLElement).style.background = "transparent";
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
+                          <LayoutTemplate
+                            size={14}
+                            style={{ color: "var(--accent)", flexShrink: 0 }}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={itemNameStyle(null, true, selectedId === f.path && selectedType === "ui")}>
+                              {group.folder ? f.path.slice(group.folder.length + 1) : f.path}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
+                              <code style={idStyle}>{formatSize(f.size)}</code>
+                              <CopyButton value={f.path} size={10} title="Copy file path" />
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteUiFile(f.path); }}
+                          style={deleteBtnStyle}
+                          title="Delete file"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+/** Bytes as something a person reads at a glance. */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const folderHeaderStyle: React.CSSProperties = {
+  padding: "var(--space-xs) var(--space-md)",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--text-secondary)",
+  fontFamily: "var(--font-mono)",
+  background: "var(--bg-base)",
+  borderBottom: "1px solid var(--border-color)",
+};
 
 const sectionHeaderStyle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",

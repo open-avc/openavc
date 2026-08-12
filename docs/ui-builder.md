@@ -85,7 +85,7 @@ When none of the controls above expresses what a space needs, you can write the 
 
 Drag **Custom Control** onto the page, then in the properties panel:
 
-1. **Add files.** Choose files, a folder, or a `.zip`. They go into the project's `ui/` folder and travel with the project.
+1. **Add files.** Drop a file, a control folder, or a `.zip` onto the box, or click it to pick files. They go into the project's `ui/` folder and travel with the project. To write the page yourself instead, use the **Custom Controls** section of the **Code** view.
 2. **Control.** Pick the page this element runs, for example `room_map/index.html`.
 3. **Settings passed to the control.** Optional JSON handed to the page when it starts, so the same control can run twice with different settings.
 4. **Can reach.** What this control is allowed to touch. See below.

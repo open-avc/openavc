@@ -9,20 +9,34 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { CreateDriverDialog } from "../components/scripts/CreateDriverDialog";
 import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
+import { CustomUiEditor } from "../components/scripts/CustomUiEditor";
+import { isEditableUiPath, starterUiContent } from "../components/scripts/customUiFiles";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
+import { useUiFilesStore } from "../store/uiFilesStore";
 import { extractScriptRuntimeErrors, latestScriptErrorId } from "../components/scripts/scriptRuntimeErrors";
 import * as api from "../api/restClient";
+import {
+  deleteCustomUiFile,
+  listCustomUiFiles,
+  readCustomUiFile,
+  uploadCustomUiFiles,
+  writeCustomUiFile,
+  type CustomUiFile,
+} from "../api/customUiClient";
+import { filesFromList, type DroppedFile } from "../components/shared/dropFiles";
 import { showError, showSuccess } from "../store/toastStore";
 import type { PythonDriverInfo } from "../api/types";
+
+type EditorTarget = "script" | "driver" | "ui";
 
 export function ScriptView() {
   const scripts = useProjectStore((s) => s.project?.scripts) ?? [];
   const load = useProjectStore((s) => s.load);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<"script" | "driver" | null>(null);
+  const [selectedType, setSelectedType] = useState<EditorTarget | null>(null);
   const [source, setSource] = useState("");
   const [originalSource, setOriginalSource] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,15 +48,34 @@ export function ScriptView() {
   const [scriptLoadErrors, setScriptLoadErrors] = useState<Record<string, string>>({});
   const [pythonDrivers, setPythonDrivers] = useState<PythonDriverInfo[]>([]);
   const [driverReloadErrors, setDriverReloadErrors] = useState<RuntimeError[]>([]);
+  const [uiFiles, setUiFiles] = useState<CustomUiFile[]>([]);
 
   const editorInstanceRef = useRef<any>(null);
   const pendingLineRef = useRef<number | null>(null);
   const driverFileInputRef = useRef<HTMLInputElement>(null);
+  const uiFileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch script load errors and Python drivers on mount
   useEffect(() => {
     api.getScriptErrors().then(setScriptLoadErrors).catch(() => {});
     loadPythonDrivers();
+    void loadUiFiles();
+  }, []);
+
+  // The project's ui/ folder — custom controls, edited here the way scripts
+  // are. Anything that writes into that folder also bumps uiFilesStore, which
+  // is what redraws the control on the UI Builder's design canvas: its markup
+  // is not project data, so nothing else would.
+  const loadUiFiles = useCallback(async (): Promise<CustomUiFile[]> => {
+    try {
+      const listing = await listCustomUiFiles();
+      setUiFiles(listing.files);
+      return listing.files;
+    } catch {
+      // An unreachable listing is not worth a toast on mount; the section
+      // simply shows empty and the next write reports for itself.
+      return [];
+    }
   }, []);
 
   const loadPythonDrivers = useCallback(async (): Promise<PythonDriverInfo[]> => {
@@ -80,6 +113,7 @@ export function ScriptView() {
   // Extract runtime errors from log entries for the selected item.
   const runtimeErrors = useMemo((): RuntimeError[] => {
     if (!selectedId) return [];
+    if (selectedType === "ui") return [];
     if (selectedType === "driver") return driverReloadErrors;
     const scriptFile = scripts.find((s) => s.id === selectedId)?.file ?? selectedId;
     return extractScriptRuntimeErrors(useLogStore.getState().logEntries, selectedId, scriptFile);
@@ -88,17 +122,39 @@ export function ScriptView() {
 
   // --- Selection handlers ---
 
-  const doSelect = useCallback(async (id: string, type: "script" | "driver") => {
+  const doSelect = useCallback(async (id: string, type: EditorTarget) => {
     setSelectedId(id);
     setSelectedType(type);
     setDriverReloadErrors([]);
     setLoading(true);
     try {
-      const result = type === "script"
-        ? await api.getScriptSource(id)
-        : await api.getPythonDriverSource(id);
-      setSource(result.source);
-      setOriginalSource(result.source);
+      if (type === "ui") {
+        // An image or a font in a control's folder is a real file with nothing
+        // to type into; the editor says so rather than showing its bytes.
+        let text = "";
+        if (isEditableUiPath(id)) {
+          try {
+            text = await readCustomUiFile(id);
+          } catch (e) {
+            // Never leave an error message sitting in the buffer as if it were
+            // the file: saving would write it over the author's control.
+            showError(`Could not open ${id}: ${e instanceof Error ? e.message : e}`);
+            setSelectedId(null);
+            setSelectedType(null);
+            setSource("");
+            setOriginalSource("");
+            return;
+          }
+        }
+        setSource(text);
+        setOriginalSource(text);
+      } else {
+        const result = type === "script"
+          ? await api.getScriptSource(id)
+          : await api.getPythonDriverSource(id);
+        setSource(result.source);
+        setOriginalSource(result.source);
+      }
     } catch (e) {
       console.error(`Failed to load ${type}:`, e);
       setSource(`# Error loading ${type}: ${e}`);
@@ -132,6 +188,19 @@ export function ScriptView() {
       return;
     }
     doSelect(id, "driver");
+  }, [isDirty, selectedId, doSelect]);
+
+  const handleSelectUiFile = useCallback((path: string) => {
+    if (isDirty && selectedId) {
+      setPendingConfirm({
+        title: "Unsaved Changes",
+        message: "You have unsaved changes. Switch and discard them?",
+        confirmLabel: "Discard & Switch",
+        onConfirm: () => { setPendingConfirm(null); doSelect(path, "ui"); },
+      });
+      return;
+    }
+    doSelect(path, "ui");
   }, [isDirty, selectedId, doSelect]);
 
   // Act on a pending focus target (e.g. a console "line N" click). Subscribing to
@@ -170,7 +239,13 @@ export function ScriptView() {
     if (!selectedId || !selectedType) return;
     setSaving(true);
     try {
-      if (selectedType === "script") {
+      if (selectedType === "ui") {
+        await writeCustomUiFile(selectedId, source);
+        // The file changed, not the project, so this is the only thing that
+        // tells the design canvas to draw the new version.
+        useUiFilesStore.getState().bump();
+        await loadUiFiles();
+      } else if (selectedType === "script") {
         await api.saveScriptSource(selectedId, source);
       } else {
         // Plain Save keeps work in progress in whatever state it is in — but
@@ -194,7 +269,7 @@ export function ScriptView() {
     } finally {
       setSaving(false);
     }
-  }, [selectedId, selectedType, source]);
+  }, [selectedId, selectedType, source, loadUiFiles]);
 
   // --- Reload handlers ---
 
@@ -426,6 +501,85 @@ export function ScriptView() {
     [loadPythonDrivers, doSelect]
   );
 
+  // --- Custom control (ui/) handlers ---
+
+  const handleCreateUiFile = useCallback(
+    async (path: string) => {
+      try {
+        // A new page starts from the skeleton with both message directions
+        // already wired: an empty HTML file is a blank box with nothing to
+        // react to, and the bridge is the part worth not retyping.
+        await writeCustomUiFile(path, starterUiContent(path));
+        useUiFilesStore.getState().bump();
+        await loadUiFiles();
+        doSelect(path, "ui");
+      } catch (e) {
+        // The server owns what may live in ui/, so its refusal is the message
+        // worth showing — it names the rule that was broken.
+        showError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [loadUiFiles, doSelect],
+  );
+
+  const handleUploadUiFiles = useCallback(
+    async (dropped: DroppedFile[]) => {
+      if (dropped.length === 0) return;
+      try {
+        const result = await uploadCustomUiFiles(dropped);
+        useUiFilesStore.getState().bump();
+        await loadUiFiles();
+        if (result.skipped.length > 0) {
+          showError(
+            `Added ${result.written.length} file(s). Skipped ${result.skipped.length} this folder can't hold.`,
+          );
+        } else {
+          showSuccess(`Added ${result.written.length} file(s) to custom controls`);
+        }
+      } catch (e) {
+        showError(`Upload failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [loadUiFiles],
+  );
+
+  const handleImportUiFilesFromPicker = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const picked = filesFromList(e.target.files);
+      // Reset the input so the same file can be re-picked later.
+      if (uiFileInputRef.current) uiFileInputRef.current.value = "";
+      void handleUploadUiFiles(picked);
+    },
+    [handleUploadUiFiles],
+  );
+
+  const handleDeleteUiFile = useCallback(
+    (path: string) => {
+      setPendingConfirm({
+        title: "Delete File",
+        message: `Delete "${path}"? Any custom control pointing at it will stop drawing.`,
+        confirmLabel: "Delete",
+        onConfirm: async () => {
+          setPendingConfirm(null);
+          try {
+            await deleteCustomUiFile(path);
+            useUiFilesStore.getState().bump();
+            await loadUiFiles();
+            if (selectedId === path && selectedType === "ui") {
+              setSelectedId(null);
+              setSelectedType(null);
+              setSource("");
+              setOriginalSource("");
+            }
+          } catch (e) {
+            showError(`Delete failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        },
+      });
+    },
+    [selectedId, selectedType, loadUiFiles],
+  );
+
   const handleExportDriver = useCallback(async (id: string) => {
     try {
       await api.downloadDriverBundle(id);
@@ -538,8 +692,9 @@ export function ScriptView() {
       actions={
         selectedId ? (
           <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
-            {/* Templates dropdown */}
-            <div style={{ position: "relative" }}>
+            {/* Templates dropdown — Python only; a control's starter markup
+                comes with the file when it is created. */}
+            <div style={{ position: "relative", display: selectedType === "ui" ? "none" : undefined }}>
               <button
                 onClick={() => setShowTemplates(!showTemplates)}
                 style={actionBtnStyle}
@@ -599,13 +754,16 @@ export function ScriptView() {
               style={{
                 ...actionBtnStyle,
                 opacity: isDirty ? 1 : 0.5,
+                ...(selectedType === "ui"
+                  ? { background: "var(--accent-bg)", color: "#fff" }
+                  : {}),
               }}
             >
               <Save size={14} />
               {saving ? "Saving..." : "Save"}
             </button>
 
-            {selectedType === "driver" ? (
+            {selectedType === "ui" ? null : selectedType === "driver" ? (
               <button
                 onClick={handleReloadDriver}
                 disabled={reloading}
@@ -646,23 +804,37 @@ export function ScriptView() {
         style={{ display: "none" }}
         onChange={handleImportDriverFile}
       />
+      {/* Hidden picker for adding custom control files (or a .zip of one) */}
+      <input
+        ref={uiFileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={handleImportUiFilesFromPicker}
+      />
       <PanelGroup direction="horizontal" style={{ height: "100%" }}>
         {/* File tree */}
         <Panel defaultSize={20} minSize={15} maxSize={35}>
           <ScriptFileTree
             scripts={scripts}
             drivers={pythonDrivers}
+            uiFiles={uiFiles}
             selectedId={selectedId}
             selectedType={selectedType}
             loadErrors={scriptLoadErrors}
             onSelectScript={handleSelectScript}
             onSelectDriver={handleSelectDriver}
+            onSelectUiFile={handleSelectUiFile}
             onCreateScript={handleCreateScript}
             onCreateDriver={() => setShowCreateDriver(true)}
+            onCreateUiFile={(path) => { void handleCreateUiFile(path); }}
             onImportDriver={() => driverFileInputRef.current?.click()}
+            onImportUiFiles={() => uiFileInputRef.current?.click()}
             onExportDriver={handleExportDriver}
             onDeleteScript={handleDeleteScript}
             onDeleteDriver={handleDeleteDriver}
+            onDeleteUiFile={handleDeleteUiFile}
+            onDropUiFiles={(files) => { void handleUploadUiFiles(files); }}
           />
         </Panel>
 
@@ -676,29 +848,31 @@ export function ScriptView() {
 
         {/* Editor + Console */}
         <Panel defaultSize={80}>
-          {selectedId ? (
+          {selectedId && selectedType === "ui" ? (
+            // No console for a custom control: it runs in a sandboxed frame in
+            // the panel, not in this process, so there is no server-side output
+            // to show. What it reports through openavc:error surfaces where it
+            // is running -- in the element's own box and as a toast.
+            <div style={{ height: "100%", overflow: "hidden" }}>
+              {loading ? (
+                <div style={loadingStyle}>Loading...</div>
+              ) : (
+                <CustomUiEditor path={selectedId} source={source} onChange={setSource} />
+              )}
+            </div>
+          ) : selectedId ? (
             <PanelGroup direction="vertical">
               {/* Editor */}
               <Panel defaultSize={70} minSize={30}>
                 <div style={{ height: "100%", overflow: "hidden" }}>
                   {loading ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: "100%",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      Loading...
-                    </div>
+                    <div style={loadingStyle}>Loading...</div>
                   ) : (
                     <ScriptEditor
                       source={source}
                       onChange={setSource}
                       runtimeErrors={runtimeErrors}
-                      editorMode={selectedType ?? "script"}
+                      editorMode={selectedType === "driver" ? "driver" : "script"}
                       onEditorReady={(editor) => {
                         editorInstanceRef.current = editor;
                         if (pendingLineRef.current) {
@@ -754,9 +928,9 @@ export function ScriptView() {
               }}
             >
               <div style={{ fontSize: "var(--font-size-md)" }}>
-                {scripts.length === 0 && pythonDrivers.length === 0
-                  ? "Create your first script or driver"
-                  : "Select a script or driver to edit"}
+                {scripts.length === 0 && pythonDrivers.length === 0 && uiFiles.length === 0
+                  ? "Create your first script, driver or control"
+                  : "Select a file to edit"}
               </div>
               <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
                 <strong>Scripts</strong> let you write Python logic that responds
@@ -764,6 +938,10 @@ export function ScriptView() {
                 <br /><br />
                 <strong>Python Drivers</strong> let you build custom device drivers
                 for complex protocols that need code beyond what the YAML Driver Builder supports.
+                <br /><br />
+                <strong>Custom Controls</strong> are pages you write yourself — HTML, CSS
+                and JavaScript — that run inside one element's box on a panel. Place one
+                from the UI Builder's palette.
               </div>
             </div>
           )}
@@ -790,6 +968,14 @@ export function ScriptView() {
     </ViewContainer>
   );
 }
+
+const loadingStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "100%",
+  color: "var(--text-muted)",
+};
 
 const actionBtnStyle: React.CSSProperties = {
   display: "flex",
