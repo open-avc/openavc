@@ -12,11 +12,11 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from openavc.api.auth import programmer_auth_satisfied, require_programmer_auth
 from openavc.api.errors import api_error as _api_error
+from openavc.api.static_files import serve_static_file
 from openavc.core.plugin_config import (
     missing_required_for_plugin,
     validate_config_for_plugin,
@@ -137,61 +137,21 @@ async def get_all_script_api() -> dict[str, Any]:
 
 # ──── Plugin Static Files ────
 
-# Content types served from plugin directories. Anything not on this list
-# is served as application/octet-stream — files plugins use as data, not
-# code. Executable types like .py and .sh are deliberately not listed and
-# fall through to octet-stream so browsers won't try to execute them.
-_PLUGIN_FILE_CONTENT_TYPES = {
-    ".html": "text/html",
-    ".js": "application/javascript",
-    ".css": "text/css",
-    ".json": "application/json",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".woff2": "font/woff2",
-    ".woff": "font/woff",
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-    ".ogg": "audio/ogg",
-    ".m4a": "audio/mp4",
-    ".mp4": "video/mp4",
-    ".webm": "video/webm",
-    ".m3u8": "application/vnd.apple.mpegurl",
-    ".ts": "video/mp2t",
-    ".m4s": "video/iso.segment",
-    ".mpd": "application/dash+xml",
-    ".vtt": "text/vtt",
-}
-
 
 def _serve_plugin_file(plugin_id: str, subdir: str, file_path: str):
-    """Shared helper: serve a static file from a plugin directory subtree."""
+    """Shared helper: serve a static file from a plugin directory subtree.
+
+    The guards and the content-type table live in ``api/static_files.py`` —
+    the project's ``ui/`` tree serves author-supplied files the same way and
+    the two must not drift.
+    """
     from openavc.config import get_config
 
     config = get_config()
     base_dir = Path(config.plugin_repo_path) / plugin_id
     if subdir:
         base_dir = base_dir / subdir
-    resolved = (base_dir / file_path).resolve()
-
-    # Security: prevent path traversal and symlink escape
-    try:
-        resolved.relative_to(base_dir.resolve())
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied")
-    if resolved.is_symlink():
-        raise HTTPException(status_code=403, detail="Access denied")
-    if not resolved.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    media_type = _PLUGIN_FILE_CONTENT_TYPES.get(
-        resolved.suffix.lower(), "application/octet-stream"
-    )
-    return FileResponse(resolved, media_type=media_type)
+    return serve_static_file(base_dir, file_path)
 
 
 @open_router.get("/plugins/{plugin_id}/panel/{file_path:path}")

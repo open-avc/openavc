@@ -33,6 +33,12 @@ from openavc.main import app
 # and network screens (loopback-or-auth, so a fresh appliance can be
 # configured from its own display before a credential exists).
 #
+# A project's `ui/` tree (custom controls) is open for the same reason a
+# plugin's panel/ directory is: it is what an iframe's src fetches, and a wall
+# panel holds no credential. Read-only, traversal-proof, and unknown types are
+# served as octet-stream. Writing into that tree is not open -- it requires a
+# claimed credential, like the script editor.
+#
 # The simulator SHELL is open for the same reason `/programmer` is: it is
 # static markup, and requiring a credential for the document itself means the
 # browser meets a 401 on a top-level navigation and answers with its own
@@ -52,6 +58,7 @@ EXPECTED_OPEN = {
     ("GET", "/api/plugins/{plugin_id}/files/{file_path:path}"),
     ("GET", "/api/plugins/{plugin_id}/panel/{file_path:path}"),
     ("GET", "/api/projects/{project_id}/assets/{filename:path}"),
+    ("GET", "/api/projects/{project_id}/ui/{file_path:path}"),
     ("GET", "/api/setup/status"),
     ("GET", "/api/startup-status"),
     ("GET", "/api/status"),

@@ -27,6 +27,7 @@ from openavc.api.routes import setup as _setup_routes
 from openavc.api.routes import simulation as _simulation_routes
 from openavc.api.routes import system as _system_routes
 from openavc.api.routes import tls as _tls_routes
+from openavc.api.routes import ui_files as _ui_files_routes
 from openavc.api.routes import updates as _updates_routes
 from openavc.api.routes import variables as _variables_routes
 
@@ -68,6 +69,7 @@ router.include_router(_tls_routes.router)
 router.include_router(_host_routes.router)
 router.include_router(_updates_routes.router)
 router.include_router(_simulation_routes.router)
+router.include_router(_ui_files_routes.router)
 
 # Include open (unauthenticated) sub-routers
 open_router.include_router(_push_routes.open_router)
@@ -76,6 +78,7 @@ open_router.include_router(_system_routes.open_router)
 open_router.include_router(_auth_routes.open_router)
 open_router.include_router(_cloud_routes.open_router)
 open_router.include_router(_tls_routes.open_router)
+open_router.include_router(_ui_files_routes.open_router)
 
 # Backward compat re-export (used by openavc.api.discovery)
 install_community_driver = _drivers_routes.install_community_driver

@@ -6,6 +6,7 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
   - backup_meta.json     (reason, timestamp, project name, version)
   - scripts/             (all .py script files)
   - assets/              (all asset files)
+  - ui/                  (custom controls, folders intact)
   - state.json           (persisted variable state, if present)
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
 
@@ -94,6 +96,30 @@ def _restore_subdir(
             if fname:
                 with zf.open(name) as src:
                     (staging / fname).write_bytes(src.read())
+    _swap_dir(staging, target_dir)
+
+
+def _restore_ui_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    """Restore the ``ui/`` tree the same way ``_restore_subdir`` restores the
+    flat ones: staged extract, atomic swap, old content replaced rather than
+    merged into.
+
+    It needs its own function because a custom control is a *folder* —
+    ``_restore_subdir`` keeps only each entry's basename, which is right for
+    ``scripts/`` and ``assets/`` and would collapse ``room_map/index.html`` and
+    ``lights/index.html`` onto each other here.
+
+    The replace-don't-merge half is the point: every other tree is swapped
+    whole on restore, so a ``ui/`` tree that merely gained the backup's files
+    would leave last month's controls sitting beside a freshly restored
+    project. A backup with no ``ui/`` at all clears the directory, which is the
+    same promise ``scripts/`` and ``assets/`` already make.
+    """
+    staging = target_dir.with_name(target_dir.name + ".restore-new")
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    extract_from_zip(zf, staging)
     _swap_dir(staging, target_dir)
 
 
@@ -176,6 +202,10 @@ def create_backup(
                 for f in assets_dir.iterdir():
                     if f.is_file():
                         zf.write(f, f"assets/{f.name}")
+            # Custom controls, folders intact — one control is a folder, so this
+            # tree is the one that cannot be flattened on the way in or out.
+            for archive_path, f in zip_entries(project_dir / "ui"):
+                zf.write(f, archive_path)
             state_file = project_dir / "state.json"
             if state_file.is_file():
                 zf.write(state_file, "state.json")
@@ -314,6 +344,7 @@ def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
                 # orphans without a half-cleared window).
                 _restore_subdir(zf, names, "scripts/", project_dir / "scripts")
                 _restore_subdir(zf, names, "assets/", project_dir / "assets")
+                _restore_ui_tree(zf, project_dir / "ui")
 
                 # Persisted state — restore it, or clear a stale newer state.json
                 # when the backup predates persistence, so the older restored

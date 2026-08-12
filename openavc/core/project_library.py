@@ -1,7 +1,8 @@
 """
 OpenAVC Project Library — saved project file management.
 
-All saved projects live in saved_projects/<id>/project.avc with optional scripts/.
+All saved projects live in saved_projects/<id>/project.avc with optional
+scripts/, assets/ and ui/ (custom controls) trees beside it.
 Starter projects are seeded from openavc/templates/ on first run.
 No distinction between bundled and user projects — all are equal.
 """
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc import config
+from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.core.project_loader import (
     ISCConfig,
     ProjectConfig,
@@ -91,18 +93,19 @@ def _check_zip_safety(zf: zipfile.ZipFile) -> None:
             )
 
 
-def _copy_assets(src_assets: Path, dest_assets: Path) -> None:
-    """Copy a project's assets/ tree to a destination, preserving subdirs.
+def _copy_tree(src: Path, dest: Path) -> None:
+    """Copy one of a project's file trees to a destination, preserving subdirs.
 
-    No-op when the source has no assets. Used so saving, duplicating, and
-    opening library projects carry uploaded images/backgrounds along instead
-    of leaving dead asset:// references.
+    No-op when the source doesn't exist. Used so saving, duplicating, and
+    opening library projects carry uploaded images/backgrounds (``assets/``)
+    and hand-written custom controls (``ui/``) along, instead of leaving dead
+    asset:// references or a control that renders nothing.
     """
-    if not src_assets.is_dir():
+    if not src.is_dir():
         return
-    for f in src_assets.rglob("*"):
+    for f in src.rglob("*"):
         if f.is_file():
-            target = dest_assets / f.relative_to(src_assets)
+            target = dest / f.relative_to(src)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, target)
 
@@ -203,6 +206,9 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
                     dest = project_dir / "assets"
                     dest.mkdir(exist_ok=True)
                     (dest / asset_name).write_bytes(zf.read(name))
+
+        # Extract custom UI files (a starter template may ship a control)
+        extract_from_zip(zf, project_dir / "ui")
 
     # Copy the original .zip alongside the project so bundled drivers
     # can be installed when the user opens it
@@ -394,6 +400,7 @@ def save_to_library(
     name: str,
     description: str,
     assets_dir: Path | None = None,
+    ui_dir: Path | None = None,
 ) -> None:
     """Save the current project to the library."""
     sid = sanitize_id(project_id)
@@ -423,7 +430,12 @@ def save_to_library(
     # Carry uploaded assets so the saved project's image/background references
     # still resolve.
     if assets_dir is not None:
-        _copy_assets(assets_dir, project_dir / "assets")
+        _copy_tree(assets_dir, project_dir / "assets")
+
+    # Same for hand-written custom controls: a saved project whose ui/ tree
+    # stayed behind opens with empty boxes where its controls were.
+    if ui_dir is not None:
+        _copy_tree(ui_dir, project_dir / "ui")
 
     log.info(f"Saved project '{sid}' to library")
 
@@ -483,9 +495,11 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
         for fname, source_code in scripts.items():
             (dest_scripts / fname).write_text(source_code, encoding="utf-8")
 
-    # Carry the source project's uploaded assets so the duplicate's references
-    # resolve (get_project returns only data + scripts).
-    _copy_assets(_lib_dir() / sanitize_id(source_id) / "assets", project_dir / "assets")
+    # Carry the source project's uploaded assets and custom UI files so the
+    # duplicate's references resolve (get_project returns only data + scripts).
+    src_dir = _lib_dir() / sanitize_id(source_id)
+    _copy_tree(src_dir / "assets", project_dir / "assets")
+    _copy_tree(src_dir / "ui", project_dir / "ui")
 
     log.info(f"Duplicated project '{source_id}' -> '{new_sid}'")
 
@@ -554,13 +568,16 @@ def open_from_library(
 
     replace_scripts(scripts_dir, scripts)
 
-    # Replace the active project's assets with the library project's so
-    # image/background references resolve and stale assets don't linger
-    # (assets are served from project_path.parent/assets).
-    active_assets = project_path.parent / "assets"
-    if active_assets.exists():
-        shutil.rmtree(active_assets, ignore_errors=True)
-    _copy_assets(_lib_dir() / sanitize_id(project_id) / "assets", active_assets)
+    # Replace the active project's assets and custom UI files with the library
+    # project's so image/background references and custom controls resolve, and
+    # the previous project's files don't linger (both are served from
+    # project_path.parent).
+    lib_project_dir = _lib_dir() / sanitize_id(project_id)
+    for tree in ("assets", "ui"):
+        active_tree = project_path.parent / tree
+        if active_tree.exists():
+            shutil.rmtree(active_tree, ignore_errors=True)
+        _copy_tree(lib_project_dir / tree, active_tree)
 
     log.info(f"Opened project '{project_id}' as '{new_project_name}'")
     return project
@@ -683,6 +700,10 @@ def export_project(project_id: str) -> tuple[bytes, str, str]:
                 rel = f.relative_to(assets_dir)
                 asset_files.append((f"assets/{rel.as_posix()}", f))
 
+    # Hand-written custom controls travel with the project: an export that
+    # left them behind would open on the other machine with empty boxes.
+    ui_files = zip_entries(project_dir / "ui")
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("project.avc", json.dumps(data, indent=4, ensure_ascii=False))
@@ -693,6 +714,8 @@ def export_project(project_id: str) -> tuple[bytes, str, str]:
         for archive_path, fpath in plugin_files:
             zf.writestr(archive_path, fpath.read_bytes())
         for archive_path, fpath in asset_files:
+            zf.writestr(archive_path, fpath.read_bytes())
+        for archive_path, fpath in ui_files:
             zf.writestr(archive_path, fpath.read_bytes())
     return buf.getvalue(), f"{sid}.zip", "application/zip"
 
@@ -993,6 +1016,11 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
                         assets_dest = project_dir / "assets"
                         assets_dest.mkdir(exist_ok=True)
                         (assets_dest / asset_name).write_bytes(zf.read(name))
+
+            # Extract custom UI files, folders intact — a control is a folder,
+            # and a flattened one does not run. The path rules, file types and
+            # caps are core/custom_ui.py's, the same ones the IDE writes under.
+            extract_from_zip(zf, project_dir / "ui")
         except BaseException:
             shutil.rmtree(project_dir, ignore_errors=True)
             raise
