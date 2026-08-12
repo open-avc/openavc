@@ -86,6 +86,7 @@ export const ELEMENT_TYPES: ElementTypeInfo[] = [
   { type: "list", label: "List", category: "controls", description: "Scrollable list of items (sources, presets, zones)" },
   { type: "page_nav", label: "Page Nav", category: "navigation", description: "Button that navigates to another page or overlay" },
   { type: "camera_preset", label: "Camera Preset", category: "navigation", description: "Button to recall a PTZ camera preset position" },
+  { type: "custom", label: "Custom Control", category: "display", description: "Your own HTML/CSS/JS, running in its own box on the page" },
 ];
 
 // --- Binding capability descriptor per element type ---
@@ -182,7 +183,9 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
       { interaction: "audio_mute_route", label: "Audio mute", editor: "actions" },
     ],
   },
-  // page_nav / image / group / clock / plugin: "Visible when…" only.
+  // page_nav / image / group / clock / plugin / custom: "Visible when…" only.
+  // A custom control talks to the room through its own message bridge, not
+  // through bindings, so there is nothing here to give it.
 };
 
 // --- Screen presets ---
@@ -240,6 +243,7 @@ export const DEFAULT_ELEMENT_SIZES: Record<string, { w: number; h: number }> = {
   keypad: { w: 25, h: 62.5 },
   list: { w: 25, h: 50 },
   matrix: { w: 50, h: 62.5 },
+  custom: { w: 33.3333, h: 37.5 },
 };
 
 /** Fallback size for an element type with no entry above (incl. plugins). */
@@ -417,6 +421,11 @@ export function createDefaultElement(
         matrix_style: "crosspoint",
         style: { cell_size: 44 / 14 },
       };
+    case "custom":
+      // The file is chosen in the properties panel, from what is actually in
+      // the project's ui/ folder — a new one starts empty and says so on the
+      // canvas rather than pointing at a path nobody has written yet.
+      return { ...base, label: "Custom Control", custom_file: "", custom_config: {} };
     default:
       // Plugin element: type is "plugin:<plugin_id>:<plugin_type>"
       if (type.startsWith("plugin:")) {
@@ -4099,6 +4108,7 @@ const INERT_WITHOUT: Record<string, [string, string | null, string]> = {
   page_nav: ["target_page", null, "the page id it should open, or '$back'"],
   label: ["text", "value", "the string to draw, or a show.value binding"],
   select: ["options", "items", "[{label, value}, ...] for the list of choices"],
+  custom: ["custom_file", null, "a page in the project's ui/ folder, e.g. 'room_map/index.html'"],
 };
 
 /**

@@ -7,7 +7,7 @@ load, so it gets real binding-shape fixtures here (not just a version-bump
 smoke test) to lock the behavior in.
 """
 
-from openavc.core.project_migration import migrate_project
+from openavc.core.project_migration import CURRENT_VERSION, migrate_project
 
 
 def _migrate(elements, master_elements=None):
@@ -21,7 +21,7 @@ def _migrate(elements, master_elements=None):
     }
     data, changed = migrate_project(project)
     assert changed is True
-    assert data["openavc_version"] == "0.8.0"
+    assert data["openavc_version"] == CURRENT_VERSION
     return data["ui"]
 
 
@@ -148,7 +148,7 @@ def test_already_migrated_project_is_not_remangled():
     showdo = {"show": {"value": {"source": "state", "key": "var.v", "write_back": True}},
               "do": {"press": [{"action": "macro", "macro": "m"}]}}
     project = {
-        "openavc_version": "0.8.0",
+        "openavc_version": CURRENT_VERSION,
         "ui": {"pages": [{"id": "p1", "elements": [{"id": "e", "bindings": showdo}]}]},
     }
     data, changed = migrate_project(project)

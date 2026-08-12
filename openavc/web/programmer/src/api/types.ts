@@ -260,6 +260,10 @@ export interface UIElement {
   plugin_type?: string;
   plugin_id?: string;
   plugin_config?: Record<string, unknown>;
+  // Custom control: a page in the project's ui/ folder, run in a sandboxed
+  // iframe. custom_file is relative to that folder ("room_map/index.html").
+  custom_file?: string;
+  custom_config?: Record<string, unknown>;
   parent?: string | null;
   aspect_lock?: number | null;
   css_class?: string | null;

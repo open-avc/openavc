@@ -878,12 +878,14 @@
     color: var(--panel-success);
 }
 
-/* ===== Plugin (iframe) ===== */
+/* ===== Iframe elements: plugin panels and custom controls ===== */
 
-.panel-plugin {
+.panel-plugin,
+.panel-custom {
     padding: 0;
     overflow: hidden;
 }
-.panel-plugin iframe {
+.panel-plugin iframe,
+.panel-custom iframe {
     display: block;
 }

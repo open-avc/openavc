@@ -4,7 +4,7 @@ import {
   Type, Circle, Image, Square, ArrowRight, Camera, Gauge, BarChart3,
   SlidersVertical, Group, Clock, Grid3X3, LayoutGrid, List, Puzzle,
   Search, Lock, Unlock, Eye, EyeOff, ChevronUp, ChevronDown as ChDown, ChevronRight,
-  Star, Layers,
+  Star, Layers, Code,
 } from "lucide-react";
 import type { UIPage, UIElement, MasterElement } from "../../api/types";
 import { outlineRows, outlineDropParent } from "./uiBuilderHelpers";
@@ -28,6 +28,7 @@ const ICONS: Record<string, React.ReactNode> = {
   keypad: <LayoutGrid size={12} />,
   list: <List size={12} />,
   plugin: <Puzzle size={12} />,
+  custom: <Code size={12} />,
 };
 
 /** Below this much travel it was a click, and a click selects. */

@@ -12,6 +12,7 @@ from openavc.core.project_migration import (
     migrate_0_5_to_0_6,
     migrate_0_6_to_0_7,
     migrate_0_7_to_0_8,
+    migrate_0_8_to_0_9,
     migrate_project,
 )
 
@@ -380,11 +381,28 @@ class TestFullMigrationChain:
         data = make_v05_project()
         data = migrate_0_5_to_0_6(data)
         data = migrate_0_6_to_0_7(data)
-        data = migrate_0_7_to_0_8(data)  # Now at CURRENT_VERSION
+        data = migrate_0_7_to_0_8(data)
+        data = migrate_0_8_to_0_9(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
         assert result["openavc_version"] == CURRENT_VERSION
+
+    def test_0_8_to_0_9_stamps_the_version_and_changes_nothing_else(self):
+        """0.9.0 adds the `custom` element type. Nothing that existed moves."""
+        data = make_v05_project()
+        data = migrate_0_5_to_0_6(data)
+        data = migrate_0_6_to_0_7(data)
+        data = migrate_0_7_to_0_8(data)
+        before = copy.deepcopy(data)
+
+        result = migrate_0_8_to_0_9(copy.deepcopy(data))
+
+        assert result["openavc_version"] == "0.9.0"
+        before.pop("openavc_version")
+        after = copy.deepcopy(result)
+        after.pop("openavc_version")
+        assert after == before
 
     def test_0_4_to_current(self):
         data = make_v04_project()

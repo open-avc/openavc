@@ -280,29 +280,84 @@ const tests = {
         assert(!document.getElementById('lock-overlay'), 'cleared lock_code removes the overlay');
     },
 
-    // H-004 — live state broadcast to a plugin iframe is scoped to its namespace.
+    // H-004 — live state broadcast to an iframe element is scoped to what that
+    // element may see. Rendered through the real renderers rather than
+    // hand-built nodes, so the scoping under test is the shipped rule and not
+    // one the scenario set up for itself.
     h004_plugin_broadcast_scope() {
         const app = mkApp();
-        const mk = (pid) => {
-            const el = document.createElement('div');
+        const record = (el) => {
             el._received = [];
             el._pluginIframe = { contentWindow: { postMessage: (m) => el._received.push(m) } };
-            el._pluginId = pid;
             return el;
         };
-        const a = mk('a'); const b = mk('b');
-        // {el, elementDef} -- the one shape every renderer uses; see
-        // plugin_element_map_shape for why this scenario used to build bare nodes.
-        app.elementMap = {
-            a: { el: a, elementDef: { id: 'a', type: 'plugin' } },
-            b: { el: b, elementDef: { id: 'b', type: 'plugin' } },
-        };
+        const a = record(app.renderPluginElement({ id: 'a', type: 'plugin', plugin_id: 'a', plugin_type: 'widget' }));
+        const b = record(app.renderPluginElement({ id: 'b', type: 'plugin', plugin_id: 'b', plugin_type: 'widget' }));
+        // A custom control has no namespace of its own, so it sees nothing at
+        // all until per-element grants land -- and it must not be handed some
+        // other plugin's state in the meantime.
+        const c = record(app.renderCustomElement({ id: 'c', type: 'custom', custom_file: 'room_map/index.html' }));
+
         app._notifyPluginIframes('plugin.a.x', 1);
         assert(a._received.length === 1 && b._received.length === 0, 'only plugin a receives plugin.a.x');
+        assert(c._received.length === 0, 'a custom control does not receive another element\'s state');
         app._notifyPluginIframes('device.x.power', 'on');
         assert(a._received.length === 1 && b._received.length === 0, 'no plugin receives a device.* key');
+        assert(c._received.length === 0, 'a custom control receives no device state yet');
         app._notifyPluginIframes('plugin.b.y', 2);
         assert(b._received.length === 1, 'plugin b receives plugin.b.y');
+    },
+
+    // A custom control is the plugin iframe's machinery pointed at a file in
+    // the project instead of a plugin's panel/ directory: same sandbox, same
+    // elementMap shape, same bridge -- and a relative URL, which is what makes
+    // it work through the cloud tunnel.
+    custom_element_render() {
+        const app = mkApp();
+        const el = app.renderCustomElement({
+            id: 'map', type: 'custom', custom_file: 'room map/index.html',
+            custom_config: { room: '204' },
+        });
+        const iframe = el._pluginIframe;
+        assert(iframe, 'a custom control renders an iframe');
+        // The attribute, not the property: the property is resolved against the
+        // document base, and it is the attribute that has to stay relative for
+        // the cloud tunnel to rewrite nothing.
+        const src = iframe.getAttribute('src');
+        assert(src === '/api/projects/default/ui/room%20map/index.html',
+            `relative ui/ URL with each segment encoded, got ${src}`);
+        assert(!/^[a-z]+:/i.test(src), 'never an absolute URL');
+        assert(iframe.getAttribute('sandbox') === 'allow-scripts',
+            `sandboxed with allow-scripts only, got "${iframe.getAttribute('sandbox')}"`);
+        assert(!iframe.getAttribute('allow'), 'no extra allow features');
+        assert(el._pluginCaps.length === 0, 'a custom control declares no capabilities');
+        const entry = app.elementMap['map'];
+        assert(entry && entry.el === el && entry.elementDef.id === 'map',
+            'filed in elementMap the same way every other element is');
+        assert(el._pluginMessageHandler, 'the bridge is wired');
+    },
+
+    // Nothing a custom control sends reaches the room until it has been granted
+    // something. It holds no capabilities, so every branch of the bridge drops.
+    custom_element_sends_nothing_without_a_grant() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        const el = app.renderCustomElement({ id: 'map', type: 'custom', custom_file: 'map/index.html' });
+        const fire = (data) => el._pluginMessageHandler({ source: el._pluginIframe.contentWindow, data });
+        fire({ type: 'openavc:action', action: 'device.command', device: 'd1', command: 'on', params: {} });
+        fire({ type: 'openavc:action', action: 'state.set', key: 'var.global', value: 1 });
+        fire({ type: 'openavc:action', action: 'state.set', key: 'plugin.anything.x', value: 1 });
+        assert(app.ws.sent.length === 0, `nothing reaches the room, got ${app.ws.sent.length}`);
+    },
+
+    // A control with no file chosen draws a box that says so, and boots nothing.
+    custom_element_without_a_file() {
+        const app = mkApp();
+        for (const bad of [undefined, '', '/etc/passwd', '../../secret.html']) {
+            const el = app.renderCustomElement({ id: 'x', type: 'custom', custom_file: bad });
+            assert(!el._pluginIframe, `no iframe for custom_file ${JSON.stringify(bad)}`);
+            assert(el.textContent.includes('Custom control'), 'the box says what is missing');
+        }
     },
 
     // H-005 — the iframe action bridge enforces the plugin's declared capabilities.

@@ -9,7 +9,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.8.0"
+CURRENT_VERSION = "0.9.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -749,6 +749,22 @@ def _migrate_masters_0_7_to_0_8(
 
 
 # Ordered list of migrations: (source_version, target_version, transform_fn)
+def migrate_0_8_to_0_9(data: dict) -> dict:
+    """
+    Migrate from 0.8.0 to 0.9.0 -- custom controls.
+
+    Nothing in an existing project changes, and that is the whole story: 0.9.0
+    adds a ``custom`` element type carrying ``custom_file`` (a path inside the
+    project's ``ui/`` tree) and ``custom_config``, and every element that
+    existed before it still means exactly what it meant. The step exists so the
+    stamped version says whether a project may contain one -- an older platform
+    opening a 0.9.0 project has no renderer for that type and logs the version
+    mismatch, instead of drawing a page with a silent hole in it.
+    """
+    data["openavc_version"] = "0.9.0"
+    return data
+
+
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
     ("0.2.0", "0.3.0", migrate_0_2_to_0_3),
@@ -757,6 +773,7 @@ MIGRATIONS = [
     ("0.5.0", "0.6.0", migrate_0_5_to_0_6),
     ("0.6.0", "0.7.0", migrate_0_6_to_0_7),
     ("0.7.0", "0.8.0", migrate_0_7_to_0_8),
+    ("0.8.0", "0.9.0", migrate_0_8_to_0_9),
 ]
 
 

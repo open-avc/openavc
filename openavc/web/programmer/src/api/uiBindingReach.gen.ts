@@ -24,6 +24,7 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
   "clock": [
     "value"
   ],
+  "custom": [],
   "fader": [
     "value"
   ],
@@ -118,6 +119,10 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
     "start_key",
     "target_time",
     "timezone"
+  ],
+  "custom": [
+    "custom_config",
+    "custom_file"
   ],
   "fader": [
     "display_decimals",

@@ -28,7 +28,7 @@ not the 1.56% it would need of the page.
 
 ## The element types
 
-`button`, `camera_preset`, `clock`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led` and `text_input`
+`button`, `camera_preset`, `clock`, `custom`, `fader`, `gauge`, `group`, `image`, `keypad`, `label`, `level_meter`, `list`, `matrix`, `page_nav`, `plugin`, `select`, `slider`, `status_led` and `text_input`
 
 That is the whole set. `type` is a free-form string in the file, so anything else
 is accepted by the loader, saved, given a placement -- and then dropped by the
@@ -95,7 +95,7 @@ Where a floor is not what the shape of the control suggests.
 
 ## Types with no floor at all
 
-`button`, `camera_preset`, `clock`, `gauge`, `group`, `image`, `label`, `page_nav` and `plugin`
+`button`, `camera_preset`, `clock`, `custom`, `gauge`, `group`, `image`, `label`, `page_nav` and `plugin`
 
 These have **no fixed internals**: nothing inside them keeps a size when the box
 shrinks. What limits them is their content -- a caption, an icon, an image,
@@ -139,6 +139,7 @@ you asked for never happens. Check this table before binding.
 | button | `show.look` |
 | camera_preset | `show.look` |
 | clock | `show.value` |
+| custom | nothing |
 | fader | `show.value` |
 | gauge | `show.value` |
 | group | nothing |
@@ -189,6 +190,7 @@ element second.
 | button | `button_image`, `display_mode`, `frameless`, `image_blend_mode`, `image_fit`, `image_opacity`, `label` (+ the shared icon set) |
 | camera_preset | `button_image`, `display_mode`, `frameless`, `image_blend_mode`, `image_fit`, `image_opacity`, `label`, `preset_number` (+ the shared icon set) |
 | clock | `clock_mode`, `duration_minutes`, `format`, `start_key`, `target_time`, `timezone` |
+| custom | `custom_config`, `custom_file` |
 | fader | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `unit` |
 | gauge | `arc_angle`, `display_decimals`, `label`, `max`, `min`, `unit`, `zones` |
 | group | `label`, `label_position` |
@@ -213,7 +215,7 @@ them: `aspect_lock`, `bindings`, `css_class`, `hidden`, `id`, `locked`, `pages`,
 element belongs to no layout, so there it is an element property and works.
 
 Four types draw an empty box when one particular thing is missing, and a write
-warns about each: a `image` needs `src`; a `label` needs `text` or a `show.value` binding; a `page_nav` needs `target_page`; a `select` needs `options` or a `show.items` binding.
+warns about each: a `custom` needs `custom_file`; a `image` needs `src`; a `label` needs `text` or a `show.value` binding; a `page_nav` needs `target_page`; a `select` needs `options` or a `show.items` binding.
 
 ## The matrix, which is configured entirely inside `matrix_config`
 

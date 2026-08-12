@@ -811,3 +811,25 @@ def test_driver_source_detects_add_when_directory_mtime_is_frozen(tmp_path, monk
     # Restore the directory's mtime so it looks unchanged, as it would on Windows.
     os.utime(tree, ns=(frozen.st_atime_ns, frozen.st_mtime_ns))
     assert _get_driver_source("acme_widget") == "builtin"
+
+def test_custom_control_fields_are_declared_not_extras():
+    """A custom control's fields are part of the contract, not passengers.
+
+    ``UIElement`` allows extras, so a field nobody declared still round-trips
+    and every test that only compares values passes -- which is exactly how a
+    field ends up undeclared for months. The assertion that means something is
+    that these are in ``model_fields`` and nothing landed in ``model_extra``.
+    """
+    from openavc.core.project_loader import UIElement
+
+    element = UIElement(
+        id="map",
+        type="custom",
+        custom_file="room_map/index.html",
+        custom_config={"room": "204"},
+    )
+    assert "custom_file" in UIElement.model_fields
+    assert "custom_config" in UIElement.model_fields
+    assert element.model_extra == {}
+    assert element.custom_file == "room_map/index.html"
+    assert element.model_dump()["custom_config"] == {"room": "204"}

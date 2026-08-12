@@ -666,7 +666,7 @@ class PanelApp {
             // Remove window 'message' listeners registered by plugin iframes in
             // this overlay — otherwise each open/dismiss cycle leaks one stale
             // listener (retaining the removed iframe's closure).
-            overlayEl.querySelectorAll('.panel-plugin').forEach(el => {
+            overlayEl.querySelectorAll('.panel-plugin, .panel-custom').forEach(el => {
                 if (el._pluginMessageHandler) {
                     window.removeEventListener('message', el._pluginMessageHandler);
                     this._pluginMessageHandlers.delete(el._pluginMessageHandler);
@@ -1625,6 +1625,7 @@ class PanelApp {
             case 'clock':         return this.renderClock(element);
             case 'keypad':        return this.renderKeypad(element);
             case 'plugin':        return this.renderPluginElement(element);
+            case 'custom':        return this.renderCustomElement(element);
             default:
                 console.warn('Unknown element type:', element.type);
                 return null;
@@ -3976,64 +3977,25 @@ class PanelApp {
         return el;
     }
 
-    // --- Plugin Element (iframe-based) ---
+    // --- Iframe elements: plugin panels and custom controls ---
+    //
+    // Two element types render an author's own web page inside one element's
+    // box, and they are the same machinery: a sandboxed iframe, an init message
+    // carrying config + theme + a scoped state snapshot, live state pushes, and
+    // an action bridge back. What differs is only where the page comes from,
+    // what state it may see, and (for a plugin) an auth token for its own
+    // routes. One renderer, two callers -- a second copy of the bridge is how
+    // one of them quietly loses a guard.
 
     renderPluginElement(element) {
-        const el = document.createElement('div');
-        el.className = 'panel-element panel-plugin';
-        el.dataset.elementId = element.id;
-
         const pluginId = element.plugin_id;
         const pluginType = element.plugin_type;
 
         // Validate pluginId/pluginType format (alphanumeric, underscores, hyphens only)
         const validIdPattern = /^[a-zA-Z0-9_-]+$/;
         if (!pluginId || !pluginType || !validIdPattern.test(pluginId) || !validIdPattern.test(pluginType)) {
-            el.textContent = 'Plugin element (unconfigured)';
-            el.style.color = 'var(--panel-text)';
-            el.style.opacity = '0.5';
-            el.style.fontSize = '0.8571rem';
-            el.style.display = 'flex';
-            el.style.alignItems = 'center';
-            el.style.justifyContent = 'center';
-            return el;
+            return this._renderIframePlaceholder(element, 'plugin', 'Plugin element (unconfigured)');
         }
-
-        // Edit mode: render a placeholder instead of booting the real plugin iframe.
-        // Keeps the designer fast and avoids running plugin code while authoring.
-        if (this.editMode) {
-            el.style.display = 'flex';
-            el.style.flexDirection = 'column';
-            el.style.alignItems = 'center';
-            el.style.justifyContent = 'center';
-            el.style.gap = '4px';
-            el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
-            el.style.borderRadius = '4px';
-            el.style.color = 'var(--panel-text)';
-            el.style.opacity = '0.4';
-            el.style.fontSize = '11px';
-            el.style.padding = '4px';
-            el.style.textAlign = 'center';
-            const label = document.createElement('div');
-            label.textContent = 'Plugin';
-            label.style.fontWeight = '600';
-            const sub = document.createElement('div');
-            sub.textContent = `${pluginId} / ${pluginType}`;
-            sub.style.opacity = '0.8';
-            sub.style.fontSize = '10px';
-            el.appendChild(label);
-            el.appendChild(sub);
-            this.applyStyle(el, this.getThemedStyle('plugin', element.style));
-            return el;
-        }
-
-        // Resolve renderer URL using relative path (works through tunnels)
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
-        const rendererUrl = `${basePath}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`;
-
-        const iframe = document.createElement('iframe');
-        iframe.src = rendererUrl;
 
         // Sandbox + allow attributes are 'allow-scripts' / none by default.
         // A plugin's panel_elements entry can opt into extra tokens via
@@ -4045,12 +4007,132 @@ class PanelApp {
         for (const t of (extDef?.sandbox_permissions || [])) {
             if (!sandboxTokens.includes(t)) sandboxTokens.push(t);
         }
-        iframe.sandbox = sandboxTokens.join(' ');
-        const allowFeatures = extDef?.allow_features || [];
-        if (allowFeatures.length) {
-            iframe.setAttribute('allow', allowFeatures.join('; '));
+
+        return this._renderIframeElement(element, {
+            className: 'panel-plugin',
+            styleType: 'plugin',
+            src: `${this._panelBasePath()}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`,
+            sandboxTokens,
+            allowFeatures: extDef?.allow_features || [],
+            config: element.plugin_config || {},
+            loadingText: 'Loading plugin...',
+            placeholderLabel: 'Plugin',
+            placeholderDetail: `${pluginId} / ${pluginType}`,
+            pluginId,
+            // The plugin's declared capabilities gate what the bridge forwards
+            // (see the openavc:action handler). Mirrors server PluginAPI.
+            caps: extDef?.capabilities || [],
+            extAuth: !!extDef?.ext_auth,
+            // A plugin has a server-side half publishing into its own
+            // namespace, and may see that and nothing else.
+            stateFilter: (key) => key.startsWith(`plugin.${pluginId}.`),
+        });
+    }
+
+    renderCustomElement(element) {
+        // The file is a relative path inside the project's ui/ tree, written by
+        // the Builder from what is actually on disk. Reject anything that isn't
+        // one rather than building a URL out of it.
+        const file = String(element.custom_file || '');
+        if (!file || file.startsWith('/') || file.includes('..') || file.includes('\\')) {
+            return this._renderIframePlaceholder(element, 'custom', 'Custom control (no file chosen)');
+        }
+        const src = file.split('/').map(encodeURIComponent).join('/');
+
+        return this._renderIframeElement(element, {
+            className: 'panel-custom',
+            styleType: 'custom',
+            src: `${this._panelBasePath()}/api/projects/default/ui/${src}`,
+            // Nothing but allow-scripts, and no opt-in. The per-plugin escape
+            // hatch exists because a plugin is reviewed code with a manifest the
+            // server has filtered; a file dropped into ui/ is neither.
+            sandboxTokens: ['allow-scripts'],
+            allowFeatures: [],
+            config: element.custom_config || {},
+            loadingText: 'Loading...',
+            placeholderLabel: 'Custom control',
+            placeholderDetail: file,
+            pluginId: null,
+            caps: [],
+            extAuth: false,
+            // A custom control has no namespace of its own, so today it sees
+            // nothing. The per-element grant that replaces this is the next
+            // piece of work, and it lands here and in _notifyPluginIframes
+            // together -- an opening snapshot that disagrees with the live
+            // pushes is worse than either.
+            stateFilter: () => false,
+        });
+    }
+
+    /** The path the panel is served under, so every URL we build is relative.
+     *  An absolute one works on the LAN and dies through the cloud tunnel. */
+    _panelBasePath() {
+        return location.pathname.split('/panel')[0] || '';
+    }
+
+    /** The box an iframe element draws when it cannot render for real:
+     *  unconfigured, or the design canvas where author code does not run. */
+    _renderIframePlaceholder(element, styleType, label, detail) {
+        const el = document.createElement('div');
+        el.className = `panel-element panel-${styleType}`;
+        el.dataset.elementId = element.id;
+        el.style.display = 'flex';
+        el.style.flexDirection = 'column';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.style.gap = '4px';
+        el.style.color = 'var(--panel-text)';
+        el.style.textAlign = 'center';
+        el.style.padding = '4px';
+        if (detail === undefined) {
+            // Unconfigured: one line, no border — it is not a stand-in for
+            // something that would otherwise draw.
+            el.style.opacity = '0.5';
+            el.style.fontSize = '0.8571rem';
+            el.textContent = label;
+            return el;
+        }
+        el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
+        el.style.borderRadius = '4px';
+        el.style.opacity = '0.4';
+        el.style.fontSize = '11px';
+        const title = document.createElement('div');
+        title.textContent = label;
+        title.style.fontWeight = '600';
+        const sub = document.createElement('div');
+        sub.textContent = detail;
+        sub.style.opacity = '0.8';
+        sub.style.fontSize = '10px';
+        el.appendChild(title);
+        el.appendChild(sub);
+        this.applyStyle(el, this.getThemedStyle(styleType, element.style));
+        return el;
+    }
+
+    _renderIframeElement(element, opts) {
+        // Edit mode: render a placeholder instead of booting the real page.
+        // Keeps the designer fast and avoids running unreviewed code while
+        // authoring.
+        if (this.editMode) {
+            return this._renderIframePlaceholder(
+                element, opts.styleType, opts.placeholderLabel, opts.placeholderDetail,
+            );
         }
 
+        const el = document.createElement('div');
+        el.className = `panel-element ${opts.className}`;
+        el.dataset.elementId = element.id;
+
+        const iframe = document.createElement('iframe');
+        iframe.src = opts.src;
+        // setAttribute rather than `iframe.sandbox = ...`: identical in a
+        // browser, but the property assignment leaves the attribute unset under
+        // jsdom, and the sandbox attribute is the entire isolation story here —
+        // it has to be assertable.
+        iframe.setAttribute('sandbox', opts.sandboxTokens.join(' '));
+        if (opts.allowFeatures.length) {
+            iframe.setAttribute('allow', opts.allowFeatures.join('; '));
+        }
         iframe.style.cssText = 'width:100%; height:100%; border:none; border-radius:inherit;';
         iframe.setAttribute('loading', 'lazy');
         el.style.overflow = 'hidden';
@@ -4058,7 +4140,7 @@ class PanelApp {
 
         // Loading indicator
         const loadingIndicator = document.createElement('div');
-        loadingIndicator.textContent = 'Loading plugin...';
+        loadingIndicator.textContent = opts.loadingText;
         loadingIndicator.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;position:absolute;inset:0;z-index:1;';
         el.style.position = 'relative';
         el.appendChild(loadingIndicator);
@@ -4066,21 +4148,22 @@ class PanelApp {
         // Store reference for state updates. Same {el, elementDef} shape as every
         // other renderer — this one used to store the bare node, which quietly cost
         // it everything that reads elementDef off an entry (ui.* label overrides,
-        // macro-busy). Anything needing the plugin's own bits reads them off entry.el.
+        // macro-busy). Anything needing the frame's own bits reads them off entry.el.
         this.elementMap[element.id] = { el, elementDef: element };
         el._pluginIframe = iframe;
-        el._pluginId = pluginId;
-        // The plugin's declared capabilities gate what the iframe bridge will
-        // forward (see the openavc:action handler). Mirrors server PluginAPI.
-        el._pluginCaps = extDef?.capabilities || [];
-        el._pluginConfig = element.plugin_config || {};
+        el._pluginId = opts.pluginId;
+        el._pluginCaps = opts.caps;
+        el._pluginConfig = opts.config;
+        // What live state this frame may see. The broadcast asks the element
+        // rather than re-deriving a namespace, so the opening snapshot below and
+        // every later push are the same rule in one place.
+        el._stateFilter = opts.stateFilter;
 
-        // postMessage API: send initial config + theme + state snapshot
-        // when iframe loads. The state snapshot is filtered to the plugin's
-        // own namespace (plugin.<id>.*) so iframes don't see unrelated keys.
-        // Also re-run on demand ('openavc:request-init' from the iframe) so a
-        // long-lived plugin iframe can recover a fresh ext token after its
-        // TTL expires — wall panels outlive the token lifetime by design.
+        // postMessage API: send initial config + theme + state snapshot when the
+        // iframe loads. Also re-run on demand ('openavc:request-init' from the
+        // frame) so a long-lived plugin iframe can recover a fresh ext token
+        // after its TTL expires — wall panels outlive the token lifetime by
+        // design.
         const sendInit = async () => {
             loadingIndicator.remove();
             const themeVars = {};
@@ -4093,24 +4176,21 @@ class PanelApp {
                 themeVars[prop] = getComputedStyle(root).getPropertyValue(prop).trim();
             }
             const stateSnapshot = {};
-            const namespacePrefix = `plugin.${pluginId}.`;
             for (const [key, value] of Object.entries(this.state || {})) {
-                if (key.startsWith(namespacePrefix)) {
-                    stateSnapshot[key] = value;
-                }
+                if (opts.stateFilter(key)) stateSnapshot[key] = value;
             }
             // Plugins that call their own /ext/* routes declare ext_auth. Fetch
             // a plugin-scoped token (our fetch is already authenticated) and pass
             // it in — the sandboxed iframe can't carry our credentials itself, so
             // it presents this token instead.
             let extToken;
-            if (extDef && extDef.ext_auth) {
-                extToken = await this._fetchPluginExtToken(pluginId);
+            if (opts.extAuth) {
+                extToken = await this._fetchPluginExtToken(opts.pluginId);
             }
             if (!iframe.contentWindow) return;  // element removed during await
             iframe.contentWindow.postMessage({
                 type: 'openavc:init',
-                config: element.plugin_config || {},
+                config: opts.config,
                 theme: themeVars,
                 state: stateSnapshot,
                 elementId: element.id,
@@ -4119,7 +4199,8 @@ class PanelApp {
         };
         iframe.addEventListener('load', sendInit);
 
-        // Listen for messages from plugin iframe
+        // Listen for messages from the iframe
+        const who = opts.pluginId ? `plugin '${opts.pluginId}'` : `custom control '${element.id}'`;
         const handler = (event) => {
             if (event.source !== iframe.contentWindow) return;
             const msg = event.data;
@@ -4137,7 +4218,7 @@ class PanelApp {
                     const caps = el._pluginCaps || [];
                     if (msg.action === 'device.command' && msg.device && msg.command) {
                         if (!caps.includes('device_command')) {
-                            console.warn(`[panel] plugin '${pluginId}' attempted device.command without the device_command capability`);
+                            console.warn(`[panel] ${who} attempted device.command without the device_command capability`);
                             break;
                         }
                         // Through send(), not straight at the socket: send() is the
@@ -4154,12 +4235,14 @@ class PanelApp {
                         });
                     } else if (msg.action === 'state.set' && msg.key) {
                         const key = String(msg.key);
-                        const ownNamespace = key.startsWith(`plugin.${pluginId}.`);
+                        const ownNamespace = opts.pluginId
+                            ? key.startsWith(`plugin.${opts.pluginId}.`)
+                            : false;
                         const isVariable = key.startsWith('var.');
                         const allowed = (ownNamespace && caps.includes('state_write')) ||
                             (isVariable && caps.includes('variable_write'));
                         if (!allowed) {
-                            console.warn(`[panel] plugin '${pluginId}' attempted state.set on '${key}' outside its declared scope`);
+                            console.warn(`[panel] ${who} attempted state.set on '${key}' outside its declared scope`);
                             break;
                         }
                         this.send({
@@ -4187,7 +4270,7 @@ class PanelApp {
         el._pluginMessageHandler = handler;
         this._pluginMessageHandlers.add(handler);
 
-        this.applyStyle(el, this.getThemedStyle('plugin', element.style));
+        this.applyStyle(el, this.getThemedStyle(opts.styleType, element.style));
         return el;
     }
 
@@ -4337,12 +4420,13 @@ class PanelApp {
         for (const [id, entry] of Object.entries(this.elementMap)) {
             const el = entry?.el;
             if (!el?._pluginIframe?.contentWindow) continue;
-            // Scope live updates to each iframe's own namespace, exactly like the
-            // init snapshot (plugin.<id>.*). Broadcasting every key let any
+            // Scope live updates to what this frame may see, by asking the same
+            // filter the init snapshot used. Broadcasting every key let any
             // plugin passively observe all device/var/ui/system/other-plugin
-            // state it was never granted, making the scoped init snapshot moot.
-            const pid = el._pluginId;
-            if (!pid || !String(key).startsWith(`plugin.${pid}.`)) continue;
+            // state it was never granted, making the scoped init snapshot moot —
+            // and the two must agree, or a frame gets live updates for state its
+            // opening snapshot said it could not see.
+            if (!el._stateFilter || !el._stateFilter(String(key))) continue;
             el._pluginIframe.contentWindow.postMessage({
                 type: 'openavc:state',
                 key,

@@ -112,6 +112,7 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "button": frozenset({"look"}),
     "camera_preset": frozenset({"look"}),
     "clock": frozenset({"value"}),
+    "custom": frozenset(),
     "fader": frozenset({"value"}),
     "gauge": frozenset({"value"}),
     "group": frozenset(),
@@ -184,6 +185,7 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
         "clock_mode", "duration_minutes", "format", "start_key", "target_time",
         "timezone",
     }),
+    "custom": frozenset({"custom_config", "custom_file"}),
     "fader": frozenset({
         "display_decimals", "label", "max", "min", "orientation", "output_max",
         "output_min", "response", "response_db_range", "scale_to_full",
@@ -1125,6 +1127,7 @@ INERT_WITHOUT: dict[str, tuple[str, str | None, str]] = {
     "page_nav": ("target_page", None, "the page id it should open, or '$back'"),
     "label": ("text", "value", "the string to draw, or a show.value binding"),
     "select": ("options", "items", "[{label, value}, ...] for the list of choices"),
+    "custom": ("custom_file", None, "a page in the project's ui/ folder, e.g. 'room_map/index.html'"),
 }
 
 

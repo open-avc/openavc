@@ -383,14 +383,20 @@ class UIElement(_ForwardCompatModel):
     plugin_type: str | None = None  # plugin-defined element type name
     plugin_id: str | None = None  # which plugin provides this element
     plugin_config: dict[str, Any] = Field(default_factory=dict)
+    # Custom control fields: a page the integrator wrote themselves, living in
+    # the project's ui/ tree and rendered in a sandboxed iframe. The file is a
+    # relative path inside that tree ("room_map/index.html"); the config is
+    # handed to it verbatim in the opening message, the way plugin_config is.
+    custom_file: str | None = None
+    custom_config: dict[str, Any] = Field(default_factory=dict)
     # Geometry lives in the page's layouts, not on the element, so the same
     # control can sit in different places in the landscape and portrait
     # arrangements without being duplicated.
     parent: str | None = None  # container element id, or None for page-level
     aspect_lock: float | None = None  # width/height ratio to hold under stretch
     # Power-user hook: names one or more classes the project stylesheet
-    # (ui.custom_css) can target. The renderer puts them on the element's node;
-    # there is no editor for it yet, so today it is written by hand.
+    # (ui.custom_css) can target. The renderer puts them on the element's node,
+    # and the UI Builder's styling editor writes both halves.
     css_class: str | None = None
     # Authoring-time protection: a locked element cannot be dragged, resized,
     # nudged or deleted in the Builder. It has no runtime meaning -- the panel
@@ -574,7 +580,7 @@ class ProjectConfig(_ForwardCompatModel):
     # A stale default here is not cosmetic: a project written with it gets the
     # whole 0.7->0.8 migration re-run over an already-0.8 body on its next
     # save, which collapses every placement and re-divides every rem value.
-    openavc_version: str = "0.8.0"
+    openavc_version: str = "0.9.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)
     device_groups: list[DeviceGroup] = Field(default_factory=list)

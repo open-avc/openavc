@@ -476,6 +476,13 @@ CASES["vocabulary"] = _project([
                 "route_key_pattern": "device.acme.output.*.input",
                 "show_lock": False, "show_mute": False,
             }},
+            # A custom control with no page chosen renders an empty box, the
+            # same shape as the srcless image above.
+            {"id": "custom_fileless", "type": "custom"},
+            # ...and one that names its page is correct and must stay quiet,
+            # config and all.
+            {"id": "custom_ok", "type": "custom",
+             "custom_file": "room_map/index.html", "custom_config": {"room": "204"}},
         ],
         [_landscape({
             "lbl_wrong": _pct_box(0, 0, 20, 8),
@@ -488,6 +495,8 @@ CASES["vocabulary"] = _project([
             "mtx_invented": _pct_box(35, 10, 30, 40),
             "mtx_no_feedback": _pct_box(0, 55, 30, 40),
             "mtx_ok": _pct_box(35, 55, 30, 40),
+            "custom_fileless": _pct_box(70, 55, 12, 12),
+            "custom_ok": _pct_box(85, 55, 12, 12),
         })],
     ),
 ])
@@ -1175,6 +1184,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "lbl_right",                           # a label's static content IS `text`
         "mtx_ok",                              # a matrix spelled the way it works
         "lbl_bound",                           # show.value supplies the text
+        "custom_ok",                           # a custom control that names its page
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

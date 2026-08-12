@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Plus, X } from "lucide-react";
 import type { UIElement, UIPage, UIElementOption, Placement } from "../../../api/types";
 import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { getAssetUrl } from "../../../api/systemClient";
+import {
+  listCustomUiFiles,
+  uploadCustomUiFile,
+  type CustomUiFile,
+} from "../../../api/customUiClient";
 import { pxToRem, remToPx } from "../uiBuilderHelpers";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
@@ -1025,6 +1030,15 @@ export function BasicProperties({
         </>
       )}
 
+      {/* Custom control: which page in the project's ui/ folder it runs */}
+      {element.type === "custom" && (
+        <CustomControlConfig
+          file={element.custom_file || ""}
+          config={element.custom_config || {}}
+          onChange={onChange}
+        />
+      )}
+
       {/* Plugin element config */}
       {element.type === "plugin" && (
         <PluginElementConfig
@@ -1770,6 +1784,134 @@ function PanelFieldControl({
         />
       );
   }
+}
+
+/**
+ * A custom control points at one page in the project's `ui/` folder.
+ *
+ * The picker lists what is actually on disk rather than asking for a path,
+ * because a typo here is a blank box with no error anywhere. Files can be
+ * dropped in from right here too -- a folder, a single file, or a .zip of a
+ * control -- so building one never means leaving the page you are laying out.
+ */
+function CustomControlConfig({
+  file,
+  config,
+  onChange,
+}: {
+  file: string;
+  config: Record<string, unknown>;
+  onChange: (patch: Partial<UIElement>) => void;
+}) {
+  const [files, setFiles] = useState<CustomUiFile[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const listing = await listCustomUiFiles();
+      setFiles(listing.files);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  // Only pages are entry points; the CSS, JS and images beside them are
+  // fetched by the page itself, so offering them here would just be noise.
+  const pages = files.filter((f) => /\.html?$/i.test(f.path));
+
+  const upload = async (picked: FileList | null) => {
+    if (!picked || picked.length === 0) return;
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const skipped: string[] = [];
+    try {
+      for (const f of Array.from(picked)) {
+        // A dropped folder reports its own path; the server takes the folder
+        // half so the control's structure survives.
+        const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+        const folder = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
+        const result = await uploadCustomUiFile(f, folder);
+        skipped.push(...result.skipped);
+      }
+      await refresh();
+      setNote(skipped.length ? `Skipped ${skipped.length} file(s) this folder can't hold.` : null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <FieldRow label="Control">
+        <select
+          value={file}
+          onChange={(e) => onChange({ custom_file: e.target.value })}
+          style={{ flex: 1 }}
+        >
+          <option value="">Choose a page...</option>
+          {/* Keep a file the project already names visible even if it is gone,
+              so choosing something else is a decision and not a surprise. */}
+          {file && !pages.some((p) => p.path === file) && (
+            <option value={file}>{file} (missing)</option>
+          )}
+          {pages.map((f) => (
+            <option key={f.path} value={f.path}>{f.path}</option>
+          ))}
+        </select>
+      </FieldRow>
+
+      <FieldRow label="Add files">
+        <label
+          style={{
+            flex: 1, fontSize: 11, cursor: busy ? "wait" : "pointer",
+            border: "1px dashed var(--border)", borderRadius: 4,
+            padding: "6px 8px", textAlign: "center", color: "var(--text-muted)",
+          }}
+        >
+          {busy ? "Uploading..." : "Choose files or a .zip"}
+          <input
+            type="file"
+            multiple
+            disabled={busy}
+            onChange={(e) => { void upload(e.target.files); e.target.value = ""; }}
+            style={{ display: "none" }}
+          />
+        </label>
+      </FieldRow>
+
+      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+        Files live in the project and travel with it. Every panel can read them,
+        so keep passwords and customer data out.
+      </div>
+
+      {error && (
+        <div style={{ fontSize: 10, color: "var(--danger)", padding: "2px 0" }}>{error}</div>
+      )}
+      {note && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>{note}</div>
+      )}
+
+      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+        Settings passed to the control (JSON):
+      </div>
+      <textarea
+        value={JSON.stringify(config, null, 2)}
+        onChange={(e) => {
+          try { onChange({ custom_config: JSON.parse(e.target.value) }); } catch { /* invalid JSON */ }
+        }}
+        rows={3}
+        style={{ width: "100%", fontSize: 11, fontFamily: "monospace", resize: "vertical" }}
+      />
+    </>
+  );
 }
 
 function PluginElementConfig({

@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   List,
   Puzzle,
+  Code,
 } from "lucide-react";
 import { ELEMENT_TYPES, type ElementTypeInfo } from "./uiBuilderHelpers";
 import { usePluginStore } from "../../store/pluginStore";
@@ -42,6 +43,7 @@ const ICONS: Record<string, React.ReactNode> = {
   list: <List size={16} />,
   page_nav: <ArrowRight size={16} />,
   camera_preset: <Camera size={16} />,
+  custom: <Code size={16} />,
 };
 
 const CATEGORIES = [
