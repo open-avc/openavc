@@ -218,6 +218,25 @@ def plugin_element_finding(
     return None
 
 
+def _page_grant_findings(page: Any, device_ids: set[str]) -> list[Finding]:
+    """A custom page granted a device the project no longer has."""
+    grant = _mapping(getattr(page, "grant", None))
+    if not grant:
+        return []
+    page_id = str(getattr(page, "id", "?"))
+    findings: list[Finding] = []
+    for granted in grant.get("devices") or []:
+        if isinstance(granted, str) and granted and granted not in device_ids:
+            findings.append(Finding(
+                page_id, "dangling_reference",
+                f"{page_id} (page) is granted device '{granted}', which is not in this "
+                f"project, so the page it shows can neither read nor control it. The "
+                f"devices are: {_listed(device_ids)}.",
+                key=("dangling_reference", page_id, f"grant.devices.{granted}"),
+            ))
+    return findings
+
+
 def reference_findings(
     page: Any,
     *,
@@ -243,6 +262,14 @@ def reference_findings(
     """
     findings: list[Finding] = []
     in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
+
+    # A custom page carries the same grant an iframe element does, so it can name
+    # a device that has since left the project in exactly the same way -- and it
+    # is exactly as invisible, because a grant matching nothing looks like a
+    # grant nobody set. Not scoped by `touched`: the page is not an element, and
+    # a write that never mentions it is still a write onto a page whose author
+    # page can no longer reach what it was given.
+    findings.extend(_page_grant_findings(page, device_ids))
 
     for element in getattr(page, "elements", []) or []:
         dump = _mapping(element)

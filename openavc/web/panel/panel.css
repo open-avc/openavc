@@ -334,6 +334,12 @@ button.panel-element {
 
 /* ===== Offline Overlay ===== */
 
+/* Above the overlay/sidebar stack (5000), below the lock screen (10000). It sat
+   at 1001, so a dialog left open when the room dropped drew straight over
+   "System Offline" -- the panel was dead and the screen said nothing, which is
+   the one thing this overlay exists to prevent. Nothing a page can draw reaches
+   this number: page content is z-index 2, and a custom page's markup is sealed
+   inside a sandboxed frame. */
 #offline-overlay {
     display: none;
     position: fixed;
@@ -342,7 +348,7 @@ button.panel-element {
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.75);
-    z-index: 1001;
+    z-index: 6000;
     justify-content: center;
     align-items: center;
 }

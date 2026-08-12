@@ -7,9 +7,11 @@
  * `.zip` of a control — so building one never means leaving the page you are
  * laying out. Writing the code itself is the Code view's job; this is the
  * door for the person placing the control.
+ *
+ * A custom PAGE uses the same door, with the same two fields — the only thing
+ * that differs is what the first row is called.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { UIElement } from "../../../api/types";
 import {
   listCustomUiFiles,
   uploadCustomUiFiles,
@@ -19,14 +21,24 @@ import { filesFromDataTransfer, filesFromList } from "../../shared/dropFiles";
 import { useUiFilesStore } from "../../../store/uiFilesStore";
 import { FieldRow } from "./FieldRow";
 
+/** The two fields this writes, shared by the element and the page that use it. */
+export interface CustomFilePatch {
+  custom_file?: string;
+  custom_config?: Record<string, unknown>;
+}
+
 export function CustomControlConfig({
   file,
   config,
   onChange,
+  label = "Control",
+  settingsLabel = "Settings passed to the control (JSON):",
 }: {
   file: string;
   config: Record<string, unknown>;
-  onChange: (patch: Partial<UIElement>) => void;
+  onChange: (patch: CustomFilePatch) => void;
+  label?: string;
+  settingsLabel?: string;
 }) {
   const [files, setFiles] = useState<CustomUiFile[]>([]);
   const [busy, setBusy] = useState(false);
@@ -85,7 +97,7 @@ export function CustomControlConfig({
 
   return (
     <>
-      <FieldRow label="Control">
+      <FieldRow label={label}>
         <select
           value={file}
           onChange={(e) => onChange({ custom_file: e.target.value })}
@@ -141,7 +153,7 @@ export function CustomControlConfig({
       )}
 
       <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
-        Settings passed to the control (JSON):
+        {settingsLabel}
       </div>
       <textarea
         value={JSON.stringify(config, null, 2)}

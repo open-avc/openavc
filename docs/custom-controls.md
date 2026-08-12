@@ -152,6 +152,22 @@ parent.postMessage({ type: 'openavc:navigate', page: 'lighting' }, '*');
 
 `$back` and `$dismiss` work here the same as they do on a Page Nav button.
 
+**Say somebody is using it**
+
+```javascript
+parent.postMessage({ type: 'openavc:activity' }, '*');
+```
+
+A panel with an idle timeout returns to its idle page, and re-locks if a PIN is set, after a stretch with nothing happening. Taps inside your page do not reach the panel, so send this while somebody is working in it and the panel stays where they are. Anything else you send counts too, so a control with buttons in it needs nothing extra. A page that only draws should send one on `pointerdown`:
+
+```javascript
+document.addEventListener('pointerdown', () => {
+  parent.postMessage({ type: 'openavc:activity' }, '*');
+});
+```
+
+It only counts while somebody is actually in your page, so this cannot hold a panel awake on its own.
+
 ## What it is allowed to reach
 
 Nothing, until you say otherwise. A control you place and do not configure draws, gets its config and its theme, and sees an empty `state`. Everything it sends is dropped.
@@ -242,6 +258,21 @@ Your page fills the element's box exactly, so give it `margin: 0` and let it siz
 - Check the **Control** dropdown on the element. A file that was renamed or removed shows as `(missing)`.
 - Open the page on its own to see it in isolation: `http://<your-server>:8080/api/projects/default/ui/room_map/index.html`.
 - Open the browser console on the panel. A refused action names itself there, and so does a script error in your page.
+
+## Writing a whole page
+
+A page can be yours instead of a box on it. Set a page's **Contents** to *A page you wrote yourself* in the UI Builder, choose a file from `ui/`, and the panel gives that page the whole screen.
+
+Everything above is the same: same folder, same messages, same grant, same rules. Four differences worth knowing.
+
+- **Your page fills the screen**, so size from `100%` and `100vh` rather than from the element box.
+- **The grant is on the page**, in the same **Can reach** section, and it covers everything your page does.
+- **Master elements still draw over it.** A nav bar you put on every page is on this one too, which is usually how somebody gets back off it. If your page has no master element on it, give it a way out: `openavc:navigate` with the *Change pages* switch on.
+- **Send `openavc:activity`.** A full page is where this matters most, because every tap a person makes is inside it and none of them reach the panel.
+
+Controls already placed on the page stay in the project and are not drawn. Switch **Contents** back and they return, so the change is reversible.
+
+The panel is still the panel underneath: overlays and sidebars open over your page, the lock screen covers it, and *System Offline* appears over it when the room is unreachable. Your page cannot suppress any of those, which is what makes it safe to hand a whole screen over.
 
 ## Pointing your own web app at OpenAVC instead
 

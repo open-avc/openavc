@@ -120,6 +120,19 @@ Click the **+** tab to add pages. Common patterns for AV rooms:
 
 Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks. Right-click a page tab for options including **Set as Home Page**.
 
+### A page you wrote yourself
+
+A whole page can be yours, the same way one control can. In the page's properties, set **Contents** to *A page you wrote yourself* and choose a file from the project's `ui/` folder. The panel then gives that page the whole screen.
+
+- **Can reach** works exactly as it does on a custom control, and covers everything the page does.
+- Controls already on the page stay in the project and are not drawn. Switch **Contents** back and they return.
+- Master elements still draw over your page, so a nav bar you put on every page is on this one too. That is usually how somebody leaves the page.
+- Overlays, the lock screen and the offline notice all still appear over it.
+
+The page tab shows a `</>` mark so a custom page is recognisable in the strip, and the canvas draws it as you build the rest of the project around it.
+
+Writing the page itself is in [Writing a Custom Control](custom-controls.md#writing-a-whole-page).
+
 ## Arrangements (Landscape and Portrait)
 
 A page can hold a second arrangement of the same controls, for panels turned the other way. Most projects never need one: a single arrangement stretches to fit any screen, and the difference between 16:9 and 16:10 is not something anyone notices. A phone or a portrait wall panel is where it pays off.

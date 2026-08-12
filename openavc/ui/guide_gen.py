@@ -37,6 +37,7 @@ without regenerating (or hand-editing the artifact) fails CI.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from openavc.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
@@ -48,6 +49,7 @@ from openavc.ui.control_minimums import (
 )
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
+    custom_page_findings,
     HONORED_SHOW_SLOTS,
     INERT_WITHOUT,
     MATRIX_CONFIG_KEYS,
@@ -382,6 +384,29 @@ does not -- while a toggle would have matched both. Write map keys in the
 device's own casing, and prefer lowercase `"true"` / `"false"` for booleans.
 """
 
+CUSTOM_PAGE_INTRO = """\
+
+## A page that draws its own markup
+
+A page can carry `render_mode: "custom"` and a `custom_file` naming a page in the
+project's `ui/` folder. The panel hands that page the whole screen in one
+sandboxed frame and **draws none of the page's own elements**, so a page that
+looks empty in the file may be the busiest screen in the project. Master
+elements still draw over the frame, so a nav bar that appears on every page is
+on this one too.
+
+Two things follow for a write:
+
+- **Adding controls to such a page does nothing visible.** They are saved, they
+  are positioned, and they are not drawn. The review answers: *%(kept)s*
+- **A page set to custom that names no file still draws its controls**, which is
+  the one case where adding one is not wasted. The review answers: *%(fileless)s*
+
+The `ui/` folder is not writable from here, so a custom page is set up by the
+person building the panel. Leave `render_mode` alone unless you are asked to
+change it.
+"""
+
 WRITE_TAIL = """\
 
 ## After a write
@@ -390,6 +415,26 @@ A UI write returns any of the above it finds, in pixels and in the percentage of
 that element's own container to write instead. Those are warnings, not failures:
 the write landed, and resolving them is part of the same job.
 """
+
+
+def _custom_page_section() -> str:
+    """The custom-page rules, quoting the review's own sentences.
+
+    Rendered rather than written out, for the same reason every other table
+    here is: a hand copy of what the review says drifts from what it says, and
+    this reader acts on the sentence.
+    """
+    kept = custom_page_findings(SimpleNamespace(
+        id="lobby", render_mode="custom", custom_file="room_map/index.html",
+        elements=[object(), object()],
+    ))
+    fileless = custom_page_findings(SimpleNamespace(
+        id="lobby", render_mode="custom", custom_file=None, elements=[object()],
+    ))
+    return CUSTOM_PAGE_INTRO % {
+        "kept": kept[0].message,
+        "fileless": fileless[0].message,
+    }
 
 
 def _fixed_rows() -> str:
@@ -604,6 +649,7 @@ def render() -> str:
         },
         _matrix_section(),
         COMPARISON_INTRO,
+        _custom_page_section(),
         WRITE_TAIL,
     ])
 

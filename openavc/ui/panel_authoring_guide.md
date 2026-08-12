@@ -269,6 +269,26 @@ So `{"true": "#4CAF50"}` lights an LED bound to a boolean, and `{"True": ...}`
 does not -- while a toggle would have matched both. Write map keys in the
 device's own casing, and prefer lowercase `"true"` / `"false"` for booleans.
 
+## A page that draws its own markup
+
+A page can carry `render_mode: "custom"` and a `custom_file` naming a page in the
+project's `ui/` folder. The panel hands that page the whole screen in one
+sandboxed frame and **draws none of the page's own elements**, so a page that
+looks empty in the file may be the busiest screen in the project. Master
+elements still draw over the frame, so a nav bar that appears on every page is
+on this one too.
+
+Two things follow for a write:
+
+- **Adding controls to such a page does nothing visible.** They are saved, they
+  are positioned, and they are not drawn. The review answers: *lobby shows room_map/index.html, so the 2 controls on it are not drawn. Move them to another page, or set the page back to controls to show them again.*
+- **A page set to custom that names no file still draws its controls**, which is
+  the one case where adding one is not wasted. The review answers: *lobby is set to show a page you wrote but names no file, so it still draws its controls. Choose a file in the project's ui/ folder, or set the page back to controls.*
+
+The `ui/` folder is not writable from here, so a custom page is set up by the
+person building the panel. Leave `render_mode` alone unless you are asked to
+change it.
+
 ## After a write
 
 A UI write returns any of the above it finds, in pixels and in the percentage of

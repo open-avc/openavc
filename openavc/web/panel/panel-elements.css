@@ -889,3 +889,8 @@
 .panel-custom iframe {
     display: block;
 }
+/* A custom PAGE fills the screen, so the rounded corner every element carries
+   would clip the author's own layout at four corners they cannot see. */
+.panel-custom-page {
+    border-radius: 0;
+}

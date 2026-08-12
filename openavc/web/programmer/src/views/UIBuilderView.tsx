@@ -448,6 +448,11 @@ export function UIBuilderView() {
   // Derived data
   const pages = project?.ui?.pages ?? [];
   const currentPage = pages.find((p) => p.id === selectedPageId) || pages[0] || null;
+  // A page that hands the whole screen to markup the author wrote. It needs a
+  // file to be one: a page that says custom and names none still draws its
+  // elements, so the palette must stay open for it.
+  const currentPageIsCustom =
+    currentPage?.render_mode === "custom" && !!currentPage?.custom_file;
   const selectedElement = currentPage?.elements.find(
     (e) => e.id === selectedElementId,
   ) || null;
@@ -1365,7 +1370,12 @@ export function UIBuilderView() {
                   <div style={{ flex: 1, overflow: "auto" }}>
                     {leftTab === "elements" ? (
                       <ElementPalette
-                        disabled={previewMode}
+                        disabled={previewMode || currentPageIsCustom}
+                        disabledNote={
+                          !previewMode && currentPageIsCustom
+                            ? "This page shows a page you wrote, so controls placed here are not drawn."
+                            : undefined
+                        }
                         onAdd={(type) => {
                           if (!currentPage || !project) return;
                           // Page + master ids share the ui.<id> namespace.

@@ -4,6 +4,8 @@ import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { NumericInput } from "../shared/NumericInput";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
+import { CustomControlConfig } from "./PropertySections/CustomControlConfig";
+import { GrantEditor } from "./PropertySections/GrantEditor";
 import { FieldRow } from "./PropertySections/FieldRow";
 import { LayoutProperties } from "./PropertySections/LayoutProperties";
 import { StyleProperties } from "./PropertySections/StyleProperties";
@@ -716,6 +718,10 @@ function PageProperties({
   // Preserve grid across page-type switches — Aaron explicitly wants this.
   // The previous behavior reset grid to 4×4 / 4×8 silently, which clamped
   // existing elements off the grid with no path back.
+  //
+  // The box defaults are PERCENTAGES of the viewport (0.8.0). They were still
+  // the pre-0.8.0 pixel numbers here, so converting a page to an overlay gave
+  // it a 400% x 300% box — createPage has had the right ones all along.
   const handleTypeChange = (newType: string) => {
     if (newType === "page") {
       onChange({ page_type: undefined as unknown as string, overlay: undefined });
@@ -723,8 +729,8 @@ function PageProperties({
       onChange({
         page_type: "overlay",
         overlay: {
-          width: overlay.width ?? 400,
-          height: overlay.height ?? 300,
+          width: overlay.width ?? 31.25,
+          height: overlay.height ?? 37.5,
           position: overlay.position ?? "center",
           backdrop: overlay.backdrop ?? "dim",
           dismiss_on_backdrop: overlay.dismiss_on_backdrop ?? true,
@@ -735,7 +741,7 @@ function PageProperties({
       onChange({
         page_type: "sidebar",
         overlay: {
-          width: overlay.width ?? 320,
+          width: overlay.width ?? 25,
           side: overlay.side ?? "right",
           backdrop: overlay.backdrop ?? "dim",
           dismiss_on_backdrop: overlay.dismiss_on_backdrop ?? true,
@@ -744,6 +750,9 @@ function PageProperties({
       });
     }
   };
+
+  const isCustom = page.render_mode === "custom";
+  const keptElements = page.elements?.length ?? 0;
 
   const hasGradient = !!(bg.gradient?.from && bg.gradient?.to);
 
@@ -787,7 +796,41 @@ function PageProperties({
             <option value="sidebar">Sidebar</option>
           </select>
         </FieldRow>
+
+        <FieldRow label="Contents">
+          <select
+            value={isCustom ? "custom" : "elements"}
+            onChange={(e) => onChange({ render_mode: e.target.value as "elements" | "custom" })}
+            style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+          >
+            <option value="elements">Controls you place here</option>
+            <option value="custom">A page you wrote yourself</option>
+          </select>
+        </FieldRow>
       </div>
+
+      {isCustom && (
+        <>
+          {sectionHeader("Your Page", true)}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+            <CustomControlConfig
+              file={page.custom_file || ""}
+              config={page.custom_config || {}}
+              onChange={onChange}
+              label="Page"
+              settingsLabel="Settings passed to the page (JSON):"
+            />
+            {keptElements > 0 && (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+                {keptElements} control{keptElements === 1 ? "" : "s"} on this page
+                {keptElements === 1 ? " is" : " are"} not drawn while it shows your own
+                page. Switch Contents back to show {keptElements === 1 ? "it" : "them"} again.
+              </div>
+            )}
+            <GrantEditor grant={page.grant} onChange={(grant) => onChange({ grant })} />
+          </div>
+        </>
+      )}
 
       {isOverlayOrSidebar && (
         <>

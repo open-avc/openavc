@@ -114,6 +114,8 @@ SCENARIOS = [
     "h086_validate_array_device",
     "h086_validate_array_navigate",
     "h086_validate_array_change_macro",
+    "custom_page_grant_names_a_missing_device",
+    "custom_page_grant_on_a_real_device_is_silent",
     "h086_validate_legacy_object",
     "h086_validate_valid_refs_pass",
     "h086_removepage_scrubs_arrays",

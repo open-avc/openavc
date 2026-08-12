@@ -194,6 +194,37 @@ async def test_a_starved_control_is_created_and_reported(handler, mock_engine, m
 
 
 @pytest.mark.asyncio
+async def test_a_control_added_to_a_custom_page_is_told_it_will_not_draw(
+    handler, mock_engine, mock_agent,
+):
+    """The page draws its own markup, so the control lands and is never seen.
+
+    Without this the write comes back "created" with a clean review, and the
+    only way to find out is to stand in front of the panel. It replaces the
+    geometry findings rather than joining them: advice about the pixels of a
+    control nobody will see is worse than silence.
+    """
+    page = mock_engine.project.ui.pages[0]
+    page.render_mode = "custom"
+    page.custom_file = "room_map/index.html"
+
+    result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "ready_led", "type": "status_led", "label": "Ready",
+            "placement": {"x": 50, "y": 50, "w": 2, "h": 5},
+        }],
+    }))
+    assert result["status"] == "created"
+    assert any(
+        "shows room_map/index.html" in w and "not drawn" in w
+        for w in result["warnings"]
+    ), result["warnings"]
+    # And nothing about the pixels of a control that will never be on screen.
+    assert not any("needs 29px" in w for w in result["warnings"]), result["warnings"]
+
+
+@pytest.mark.asyncio
 async def test_a_warned_write_is_still_a_success_to_the_caller(
     handler, mock_engine, mock_agent,
 ):

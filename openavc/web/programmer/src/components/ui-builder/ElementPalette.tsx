@@ -53,7 +53,17 @@ const CATEGORIES = [
   { key: "navigation" as const, label: "Navigation" },
 ];
 
-export function ElementPalette({ disabled, onAdd }: { disabled?: boolean; onAdd?: (type: string) => void }) {
+export function ElementPalette({
+  disabled,
+  disabledNote,
+  onAdd,
+}: {
+  disabled?: boolean;
+  /** Why the palette is greyed out, shown above it. Without this a disabled
+   *  palette on a custom page reads as the IDE being broken. */
+  disabledNote?: string;
+  onAdd?: (type: string) => void;
+}) {
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
   const [search, setSearch] = useState("");
 
@@ -87,6 +97,22 @@ export function ElementPalette({ disabled, onAdd }: { disabled?: boolean; onAdd?
       >
         Elements
       </div>
+
+      {disabledNote && (
+        <div
+          style={{
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: "var(--text-muted)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "var(--border-radius)",
+            padding: "var(--space-sm)",
+            background: "var(--bg-base)",
+          }}
+        >
+          {disabledNote}
+        </div>
+      )}
 
       {/* Search (11.7) */}
       <input

@@ -315,8 +315,15 @@ export interface UIPage {
   id: string;
   name: string;
   page_type?: string;
-  /** Reserved for the hand-coded page. Nothing implements "custom" yet. */
+  /** "custom" hands the whole screen to a page in the project's ui/ tree, in
+   *  one sandboxed frame. The elements below are kept and are not drawn. */
   render_mode?: "elements" | "custom";
+  /** Only read when render_mode is "custom": a relative path inside ui/, and
+   *  the settings handed to that page in its opening message. */
+  custom_file?: string | null;
+  custom_config?: Record<string, unknown>;
+  /** What the author's page may reach. Same shape as an element's grant. */
+  grant?: ElementGrant;
   overlay?: OverlayConfig;
   background?: PageBackground;
   snap: SnapConfig;

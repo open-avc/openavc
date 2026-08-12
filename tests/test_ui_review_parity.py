@@ -1031,6 +1031,40 @@ CASES["stress_test"] = _project([
 ])
 
 
+# A page that draws its own markup. Three shapes, and only two of them say
+# anything: a page carrying controls it will not draw, a page set to custom that
+# names no file (so it draws them after all), and the ordinary case -- a custom
+# page with nothing else on it, which must stay silent on both sides.
+CASES["custom_pages"] = _project([
+    {
+        **_page("kept", [
+            {"id": "kept_btn", "type": "button", "label": "Power"},
+            {"id": "kept_lbl", "type": "label", "text": "Room"},
+        ], [_landscape({
+            "kept_btn": _pct_box(1, 1, 20, 12),
+            "kept_lbl": _pct_box(25, 1, 20, 12),
+        })]),
+        "render_mode": "custom",
+        "custom_file": "room_map/index.html",
+        # Every other finding about those two controls has to disappear, so one
+        # of them is deliberately starved: if the page said nothing, this page
+        # would still be reported for a control nobody will see.
+    },
+    {
+        **_page("fileless", [
+            {"id": "orphan_btn", "type": "button", "label": "Power"},
+        ], [_landscape({"orphan_btn": _pct_box(1, 1, 20, 12)})]),
+        "render_mode": "custom",
+    },
+    {
+        **_page("clean", [], [_landscape({})]),
+        "render_mode": "custom",
+        "custom_file": "dashboard/index.html",
+        "custom_config": {"room": "204"},
+    },
+])
+
+
 def _python_findings(project: ProjectConfig) -> list[dict]:
     findings: list[dict] = []
     for page in project.ui.pages:
@@ -1148,6 +1182,8 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "matrix_config_unread",
         "matrix_no_route_feedback",
         "matrix_default_size",
+        "custom_page_elements_not_drawn",
+        "custom_page_without_a_file",
     }
 
 
@@ -1185,6 +1221,8 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "mtx_ok",                              # a matrix spelled the way it works
         "lbl_bound",                           # show.value supplies the text
         "custom_ok",                           # a custom control that names its page
+        "clean",                               # a custom page with nothing left on it
+        "kept_btn", "kept_lbl", "orphan_btn",  # controls a custom page answers FOR
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 

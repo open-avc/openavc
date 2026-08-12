@@ -1007,6 +1007,47 @@ def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
     )
 
 
+def custom_page_findings(page: Any) -> list[Finding]:
+    """What a page that draws its own markup is doing with the controls on it.
+
+    Two ways this goes wrong, and neither has any geometry to look at:
+
+    A page set to draw its own markup keeps every control that was ever placed
+    on it -- deliberately, so switching back restores the page rather than
+    asking somebody to rebuild it. But the panel draws none of them, so every
+    other finding about them would be advice about pixels nobody will see, and
+    a caller reading a clean review would conclude the controls are fine.
+
+    And a page set to draw its own markup that names no file draws its controls
+    after all, which looks from the file like the switch did nothing. That is
+    the same shape as an image with no ``src``.
+    """
+    if getattr(page, "render_mode", "elements") != "custom":
+        return []
+    page_id = str(getattr(page, "id", "?"))
+    custom_file = getattr(page, "custom_file", None)
+    count = len(getattr(page, "elements", None) or ())
+    if not custom_file:
+        return [Finding(
+            page_id,
+            "custom_page_without_a_file",
+            f"{page_id} is set to show a page you wrote but names no file, so it still "
+            f"draws its controls. Choose a file in the project's ui/ folder, or set the "
+            f"page back to controls.",
+        )]
+    if not count:
+        return []
+    controls = "control" if count == 1 else "controls"
+    them = "it" if count == 1 else "them"
+    return [Finding(
+        page_id,
+        "custom_page_elements_not_drawn",
+        f"{page_id} shows {custom_file}, so the {count} {controls} on it {'is' if count == 1 else 'are'} "
+        f"not drawn. Move {them} to another page, or set the page back to controls to show "
+        f"{them} again.",
+    )]
+
+
 def no_box_finding(element: Mapping[str, Any], parent_name: str) -> Finding:
     """An element the primary arrangement never positions.
 
@@ -1472,6 +1513,15 @@ def review_page(
     elements = {el.id: el for el in page.elements}
     dumps = {el_id: dict(_mapping(el)) for el_id, el in elements.items()}
     in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
+
+    # A page drawing its own markup draws none of these, so everything below is
+    # about pixels nobody will see. Said once, and nothing else. It is NOT
+    # scoped by `touched`: writing a control onto such a page is exactly when
+    # somebody needs to hear it.
+    custom = custom_page_findings(page)
+    if custom and custom[0].kind == "custom_page_elements_not_drawn":
+        return custom, adjustments
+    findings.extend(custom)
 
     # Bindings and ranges are properties of the element itself, so they are
     # answered once rather than once per arrangement.

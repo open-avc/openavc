@@ -616,6 +616,223 @@ const tests = {
         assert(navigatedTo === 'admin', 'the page changes with the switch on');
     },
 
+    // ---- Custom pages: the whole screen, not one box ------------------------
+
+    // A custom page draws one frame filling the screen. Its own elements are
+    // kept in the project and are not drawn, so switching back restores the
+    // page exactly rather than asking the author to rebuild it.
+    custom_page_renders_one_full_box_frame() {
+        const app = mkApp();
+        const proj = project({
+            elements: [el('b1', 'button')],
+            placements: { b1: { x: 10, y: 10, w: 20, h: 10 } },
+        });
+        Object.assign(proj.ui.pages[0], {
+            render_mode: 'custom',
+            custom_file: 'room map/index.html',
+            custom_config: { room: '204' },
+        });
+        renderProject(app, proj);
+        const frames = app.root.querySelectorAll('.panel-custom');
+        assert(frames.length === 1, `one frame for the page, got ${frames.length}`);
+        const frame = frames[0];
+        assert(frame.style.left === '0%' && frame.style.top === '0%'
+            && frame.style.width === '100%' && frame.style.height === '100%',
+            `the frame is the whole page, got ${frame.style.left}/${frame.style.top} `
+            + `${frame.style.width}x${frame.style.height}`);
+        assert(frame.classList.contains('panel-custom-page'),
+            'and is marked as a page so it keeps square corners');
+        const src = frame._pluginIframe.getAttribute('src');
+        assert(src === '/api/projects/default/ui/room%20map/index.html',
+            `the same relative ui/ URL a control gets, got ${src}`);
+        assert(frame._pluginIframe.getAttribute('sandbox') === 'allow-scripts',
+            'and the same sandbox -- a whole page is not a reason to widen it');
+        assert(frame._pluginConfig.room === '204', 'the page config is handed over');
+        assert(!app.root.querySelector('[data-element-id="b1"]'),
+            "the page's own elements are not drawn");
+        assert(proj.ui.pages[0].elements.length === 1, 'and are not deleted either');
+        assert(!app.root.querySelector('.panel-page-snap-overlay'),
+            'and there is no ruler to snap to on a page nothing is placed on');
+    },
+
+    // Master elements draw OVER a custom page. Every child of .panel-page gets
+    // the same z-index, so DOM order decides, and the frame is appended first
+    // for exactly that reason: a master nav bar is how somebody gets off a
+    // custom page, and burying it strands them there.
+    custom_page_draws_master_elements_over_it() {
+        const app = mkApp();
+        const proj = project({});
+        Object.assign(proj.ui.pages[0], {
+            render_mode: 'custom', custom_file: 'room/index.html',
+        });
+        proj.ui.master_elements = [{
+            id: 'home', type: 'button', label: 'Home', pages: '*',
+            placements: { landscape: { x: 0, y: 0, w: 12, h: 8 } },
+        }];
+        setViewport(1280, 800);
+        renderProject(app, proj);
+        const surface = document.querySelector('#panel-root .panel-page');
+        const kids = Array.from(surface.children).filter(n => n.dataset && n.dataset.elementId);
+        assert(kids.length === 2, `the frame and the master element, got ${kids.length}`);
+        assert(kids[0].dataset.elementId === 'main', 'the frame is drawn first');
+        assert(kids[1].dataset.elementId === 'home',
+            'so the master element paints over it rather than under it');
+    },
+
+    // A page that says custom but names no file draws its elements. A blank
+    // screen would be indistinguishable from a page with nothing on it, and
+    // the elements are the better thing to show while somebody is half way
+    // through setting it up.
+    custom_page_without_a_file_falls_back_to_its_elements() {
+        const app = mkApp();
+        for (const bad of [undefined, '', null]) {
+            const proj = project({
+                elements: [el('b1', 'button')],
+                placements: { b1: { x: 10, y: 10, w: 20, h: 10 } },
+            });
+            Object.assign(proj.ui.pages[0], { render_mode: 'custom', custom_file: bad });
+            renderProject(app, proj);
+            assert(!app.root.querySelector('.panel-custom'),
+                `no frame for custom_file ${JSON.stringify(bad)}`);
+            assert(app.root.querySelector('[data-element-id="b1"]'),
+                'the page draws what it has instead');
+        }
+    },
+
+    // The grant is the element grant, on the page. It scopes the opening
+    // snapshot and the live pushes through the one filter both already ask.
+    async custom_page_grant_scopes_what_it_sees() {
+        const app = mkApp();
+        app.state = { 'device.dsp1.mute': false, 'device.other.x': 1, 'var.vol': 3 };
+        const proj = project({});
+        Object.assign(proj.ui.pages[0], {
+            render_mode: 'custom',
+            custom_file: 'room/index.html',
+            grant: { devices: ['dsp1'], variables: ['vol'], macros: false, navigate: false },
+        });
+        renderProject(app, proj);
+        const frame = app.root.querySelector('.panel-custom');
+        const posted = [];
+        Object.defineProperty(frame._pluginIframe, 'contentWindow', {
+            value: { postMessage: (m) => posted.push(m) }, configurable: true,
+        });
+        frame._pluginIframe.dispatchEvent(new window.Event('load'));
+        await Promise.resolve();
+        assert(posted.length === 1, `one init message, got ${posted.length}`);
+        assert(Object.keys(posted[0].state).sort().join(',') === 'device.dsp1.mute,var.vol',
+            `the snapshot is scoped by the page grant, got ${Object.keys(posted[0].state).join(',')}`);
+        assert(posted[0].elementId === 'main', 'and the frame is named for the page it fills');
+        // Live pushes ride the same filter, reached through elementMap.
+        app._notifyPluginIframes('device.dsp1.mute', true);
+        app._notifyPluginIframes('device.other.x', 9);
+        const states = posted.filter(m => m.type === 'openavc:state').map(m => m.key);
+        assert(states.join(',') === 'device.dsp1.mute',
+            `only granted keys are pushed, got ${states.join(',')}`);
+    },
+
+    // A dialog can be hand-written too. It is the same frame in the overlay
+    // box, so refusing it would be a special case to explain rather than one
+    // to write.
+    custom_overlay_page_renders_a_frame() {
+        const app = mkApp();
+        const proj = project({});
+        proj.ui.pages.push({
+            id: 'dlg', name: 'Dialog', page_type: 'overlay',
+            render_mode: 'custom', custom_file: 'dialog/index.html',
+            elements: [], layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: {}, hidden: [] }],
+        });
+        renderProject(app, proj);
+        app.navigateToPage('dlg');
+        const overlay = document.querySelector('.panel-overlay[data-page-id="dlg"]');
+        assert(overlay, 'the overlay opens');
+        const frame = overlay.querySelector('.panel-custom');
+        assert(frame && frame._pluginIframe, 'and runs the author page inside it');
+        assert(frame._pluginIframe.getAttribute('src') === '/api/projects/default/ui/dialog/index.html',
+            'from the same ui/ tree');
+        // The overlay cleanup already matches .panel-custom, so dismissing must
+        // take the bridge listener with it rather than leaking one per open.
+        const before = app._pluginMessageHandlers.size;
+        app.dismissOverlay();
+        assert(app._pluginMessageHandlers.size === before - 1,
+            'dismissing takes the frame bridge listener with it');
+    },
+
+    // Navigating from inside a frame tells the server, exactly as the page-nav
+    // button does. It used to move the panel silently, so a trigger bound to
+    // `ui.page.<id>` never fired for anyone who got there from a control.
+    frame_navigation_tells_the_server() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        app.navigateToPage = () => {};
+        const el = app.renderCustomElement({
+            id: 'nav', type: 'custom', custom_file: 'a/index.html',
+            grant: { navigate: true },
+        });
+        el._pluginMessageHandler({
+            source: el._pluginIframe.contentWindow,
+            data: { type: 'openavc:navigate', page: 'presentation' },
+        });
+        const pageMsgs = app.ws.sent.filter(m => m.type === 'ui.page');
+        assert(pageMsgs.length === 1 && pageMsgs[0].page_id === 'presentation',
+            `the server hears which page, got ${JSON.stringify(app.ws.sent)}`);
+    },
+
+    // Nothing inside a cross-origin sandboxed frame reaches the document
+    // listeners that reset the idle timer, so a person working a custom page
+    // is invisible to it -- the panel navigates away and locks under their
+    // hands. A message from the frame counts as activity, but only while the
+    // frame HAS FOCUS, or a control nobody is touching could hold a wall panel
+    // unlocked all night by posting in a loop.
+    frame_activity_resets_the_idle_timer_only_when_focused() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        let resets = 0;
+        app.resetIdleTimer = () => { resets++; };
+        const el = app.renderCustomElement({
+            id: 'map', type: 'custom', custom_file: 'a/index.html',
+            grant: { devices: ['dsp1'] },
+        });
+        const fire = (d) => el._pluginMessageHandler({ source: el._pluginIframe.contentWindow, data: d });
+
+        app._frameHasFocus = () => false;
+        fire({ type: 'openavc:activity' });
+        fire({ type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'on', params: {} });
+        assert(resets === 0, `an unfocused frame cannot keep the panel awake, got ${resets}`);
+        assert(app.ws.sent.length === 1, 'though its granted action still lands');
+
+        app._frameHasFocus = () => true;
+        fire({ type: 'openavc:activity' });
+        assert(resets === 1, 'a focused frame saying so resets the timer');
+        fire({ type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'on', params: {} });
+        assert(resets === 2, 'and so does anything else it does, with no extra line to write');
+    },
+
+    // The offline notice outranks an open dialog. It sat below the overlay
+    // stack, so a dialog left open when the room dropped drew straight over
+    // "System Offline": the panel was dead and the screen said nothing.
+    offline_overlay_outranks_an_open_dialog() {
+        const zOf = (sel) => {
+            const node = document.querySelector(sel) || document.createElement('div');
+            if (!node.isConnected) document.body.appendChild(node);
+            return parseInt(window.getComputedStyle(node).zIndex, 10);
+        };
+        const probe = (cls) => {
+            const n = document.createElement('div');
+            n.className = cls;
+            document.body.appendChild(n);
+            const z = parseInt(window.getComputedStyle(n).zIndex, 10);
+            n.remove();
+            return z;
+        };
+        const offline = zOf('#offline-overlay');
+        const dialog = probe('panel-overlay');
+        const lock = probe('lock-overlay');
+        assert(offline > dialog,
+            `the offline notice draws over an open dialog (${offline} vs ${dialog})`);
+        assert(lock > offline,
+            `and the lock screen still draws over both (${lock} vs ${offline})`);
+    },
+
     // A plugin element goes into elementMap the same way everything else does, so
     // the things that read an entry's elementDef reach it too. It used to store the
     // bare node, which silently excluded it from macro-busy: the entry had no

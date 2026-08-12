@@ -556,6 +556,32 @@ function makeValidationProject(elements) {
   const issues = H.validateProject(proj).filter((i) => i.severity === "error");
   results.h086_validate_valid_refs_pass = { pass: issues.length === 0, detail: issues };
 }
+{
+  // A custom page's grant names a device that has left the project. It is
+  // exactly as invisible at runtime as an element's is: the page renders, no
+  // state reaches it, and nothing anywhere says why.
+  const proj = makeValidationProject([]);
+  proj.ui.pages[0].render_mode = "custom";
+  proj.ui.pages[0].custom_file = "room_map/index.html";
+  proj.ui.pages[0].grant = { devices: ["real_dev", "ghost_dev"], variables: [], macros: false, navigate: false };
+  const issues = H.validateProject(proj).filter((i) => i.severity === "error");
+  results.custom_page_grant_names_a_missing_device = {
+    pass: issues.length === 1 && /ghost_dev/.test(issues[0].message)
+      && !/real_dev/.test(issues[0].message),
+    detail: issues,
+  };
+}
+{
+  // ...and a grant naming only devices that are there says nothing.
+  const proj = makeValidationProject([]);
+  proj.ui.pages[0].render_mode = "custom";
+  proj.ui.pages[0].custom_file = "room_map/index.html";
+  proj.ui.pages[0].grant = { devices: ["real_dev"], variables: [], macros: true, navigate: true };
+  results.custom_page_grant_on_a_real_device_is_silent = {
+    pass: H.validateProject(proj).filter((i) => i.severity === "error").length === 0,
+    detail: H.validateProject(proj),
+  };
+}
 
 // --- H-086: removePage scrubs navigate actions in do action lists ---
 {

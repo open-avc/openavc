@@ -751,7 +751,12 @@ class PanelApp {
         surface.style.width = '100%';
         surface.style.height = '100%';
 
-        this._renderPageElements(page, surface);
+        // A dialog can be hand-written too -- it is the same frame, sized to the
+        // overlay box instead of the screen, so refusing it here would be a
+        // special case to explain rather than one to write.
+        const customFrame = this._isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
+        if (customFrame) surface.appendChild(customFrame);
+        else this._renderPageElements(page, surface);
 
         this._applyPageBackground(surface, page.background);
         content.appendChild(surface);
@@ -1438,14 +1443,27 @@ class PanelApp {
             surface.classList.add(`page-enter-${pageTransition}`);
         }
 
-        // Design-time snap overlay. The grid is a ruler now rather than a
-        // container, so this only draws where things will snap to -- showing
-        // or hiding it moves nothing.
-        this._renderSnapOverlay(page, surface);
+        // A custom page is the author's own markup filling the screen, so there
+        // is no ruler to draw on and nothing to snap to.
+        const customFrame = this._isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
+        if (customFrame) {
+            // BEFORE the master elements, not after: every child of .panel-page
+            // gets the same z-index, so the later sibling wins, and a full-box
+            // frame appended last would paint over every master element on the
+            // page. A master nav bar is how somebody gets off a custom page.
+            surface.appendChild(customFrame);
+        } else {
+            // Design-time snap overlay. The grid is a ruler now rather than a
+            // container, so this only draws where things will snap to -- showing
+            // or hiding it moves nothing.
+            this._renderSnapOverlay(page, surface);
+        }
 
-        // Master elements come first, so DOM order alone keeps them behind the
-        // page's own elements. They used to carry an inline z-index for that,
-        // which also dropped them behind the page's gradient layer.
+        // Master elements come before the page's own, so DOM order alone keeps
+        // them behind. They used to carry an inline z-index for that, which
+        // also dropped them behind the page's gradient layer. On a custom page
+        // that puts them AFTER the frame, which is the other half of the same
+        // rule: they draw over the author's markup, and are the way off it.
         const masterElements = this.uiDef.master_elements || [];
         for (const mEl of masterElements) {
             const mPages = mEl.pages;
@@ -1459,7 +1477,9 @@ class PanelApp {
             surface.appendChild(node);
         }
 
-        this._renderPageElements(page, surface, { entryAnimation, staggerMs });
+        if (!customFrame) {
+            this._renderPageElements(page, surface, { entryAnimation, staggerMs });
+        }
 
         this.root.appendChild(surface);
         this._applyCoordinateSpaces(surface);
@@ -4078,6 +4098,59 @@ class PanelApp {
         });
     }
 
+    /** Is the person actually in this frame right now?
+     *
+     *  The browser is the only thing that can answer: clicking or tapping into
+     *  an iframe moves `document.activeElement` to it out here, even though
+     *  nothing about the event itself crosses. That is the whole guard on the
+     *  idle reset above -- a message from a frame the user is not in must not
+     *  count, or a control left running in a corner keeps a wall panel awake
+     *  and unlocked all night. Wrapped because `document.activeElement` is not
+     *  guaranteed to exist in every embedding host. */
+    _frameHasFocus(iframe) {
+        try {
+            return !!iframe && document.activeElement === iframe;
+        } catch {
+            return false;
+        }
+    }
+
+    /** Whether this page hands the whole screen to markup the author wrote.
+     *
+     *  A page that says `custom` but names no file is not one: it would draw a
+     *  blank screen indistinguishable from a page with nothing on it, and the
+     *  elements it still carries are the better thing to show while somebody is
+     *  half way through setting it up. */
+    _isCustomPage(page) {
+        return !!page && page.render_mode === 'custom' && !!page.custom_file;
+    }
+
+    /** A custom PAGE is a custom control sized to the page.
+     *
+     *  Same frame, same sandbox, same bridge, same grant -- the only difference
+     *  is the box, and `_placeElement` with no placement is already the full
+     *  box. The synthetic element carries the page's own id, so the state
+     *  pushes, the failure strip and `openavc:init`'s elementId all name the
+     *  page. A second renderer here is how one of the two quietly loses a
+     *  guard, which is the reason §4.3 collapsed the plugin and control paths
+     *  into one to begin with. */
+    _renderCustomPageFrame(page) {
+        const asElement = {
+            id: page.id,
+            type: 'custom',
+            custom_file: page.custom_file,
+            custom_config: page.custom_config || {},
+            grant: page.grant,
+        };
+        const el = this.renderCustomElement(asElement);
+        if (!el) return null;
+        el.dataset.elementType = 'custom';
+        // Fills the screen, so it keeps square corners -- the rounded radius
+        // every element carries would clip the author's own page.
+        el.classList.add('panel-custom-page');
+        return this._placeElement(el, null, asElement);
+    }
+
     /** The grant on an element, normalised so the checks below never have to
      *  ask what shape it is. An element with no grant reaches nothing, which is
      *  what every element in every project written before grants existed has. */
@@ -4319,7 +4392,24 @@ class PanelApp {
             // grant the integrator has already taken away.
             const grant = el._grant || { devices: [], variables: [], macros: false, navigate: false };
 
+            // Somebody using this frame is using the panel. Nothing inside a
+            // cross-origin sandboxed frame reaches the document listeners that
+            // reset the idle timer, so without this a person working a custom
+            // page is invisible to it: the panel navigates to the idle page and
+            // re-shows the lock screen under their hands. Any message from the
+            // frame counts, so a control that already does something needs no
+            // extra line -- but only while the frame HAS FOCUS, which is what
+            // stops a frame nobody is touching from holding a panel unlocked
+            // forever by posting in a loop.
+            if (this._frameHasFocus(iframe)) this.resetIdleTimer();
+
             switch (msg.type) {
+                case 'openavc:activity':
+                    // Nothing more to do -- the reset above is the whole
+                    // message. It exists for the control that draws rather than
+                    // acts (a room map, a dashboard), which would otherwise
+                    // send nothing at all while somebody stands in front of it.
+                    break;
                 case 'openavc:action': {
                     // This bridge carries the panel's WS authority, so gate it
                     // against the grant the integrator set when they placed the
@@ -4412,7 +4502,15 @@ class PanelApp {
                     // page they are editing, and a control must not move them
                     // off it.
                     if (this.editMode) break;
-                    if (msg.page) this.navigateToPage(msg.page);
+                    if (!msg.page) break;
+                    this.navigateToPage(msg.page);
+                    // Tell the server too, exactly as the page-nav button does
+                    // (renderPageNav). It turns this into the `ui.page.<id>`
+                    // event triggers fire on, so a room that dims its lights
+                    // when somebody lands on a page behaves the same whether
+                    // they got there by button or from inside a frame. Without
+                    // it the trigger simply never runs, and nothing says why.
+                    this.send({ type: 'ui.page', page_id: msg.page });
                     break;
             }
         };

@@ -34,6 +34,7 @@ import {
   Pencil,
   RectangleHorizontal,
   RectangleVertical,
+  Code2,
 } from "lucide-react";
 import type { UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -90,6 +91,11 @@ interface TabMenuState {
  *  only never-saved pages — the guard that kept the home affordances from
  *  ever showing on a loaded project. */
 const isRegularPage = (p: UIPage) => !p.page_type || p.page_type === "page";
+
+/** A page that hands the whole screen to markup the author wrote. It still
+ *  needs a file: one that says custom and names none draws its elements, so
+ *  marking the tab would say something the panel does not do. */
+const isCustomPage = (p: UIPage) => p.render_mode === "custom" && !!p.custom_file;
 
 const toolButton: React.CSSProperties = {
   display: "flex",
@@ -463,16 +469,23 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           // all mutations, so it stays shut there.
           if (!previewMode) setTabMenu({ x: e.clientX, y: e.clientY, pageId: page.id });
         }}
-        title={`${page.name}${isRegularPage(page) ? "" : ` (${page.page_type})`} — ${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}. Double-click to rename, right-click for more.`}
+        title={`${page.name}${isRegularPage(page) ? "" : ` (${page.page_type})`} — ${
+          isCustomPage(page)
+            ? "shows a page you wrote"
+            : `${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}`
+        }. Double-click to rename, right-click for more.`}
       >
-        {/* Page type icon */}
-        {!page.page_type && (
+        {/* Page type icon. A custom page takes its own mark whatever its type
+            is: what it DRAWS is the thing you cannot see from the tab. */}
+        {isCustomPage(page) ? (
+          <Code2 size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        ) : !page.page_type ? (
           <Square size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-        )}
-        {page.page_type === "overlay" && (
+        ) : null}
+        {!isCustomPage(page) && page.page_type === "overlay" && (
           <Layers size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         )}
-        {page.page_type === "sidebar" && (
+        {!isCustomPage(page) && page.page_type === "sidebar" && (
           <PanelRight size={11} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
         )}
         {renamingPageId === page.id ? (

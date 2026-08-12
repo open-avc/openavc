@@ -472,6 +472,44 @@ def test_a_grant_naming_a_missing_device_is_reported() -> None:
     assert "acme_amp" not in messages[0].split("The devices are")[0]
 
 
+def _custom_page(**page_fields) -> object:
+    project = ProjectConfig.model_validate({
+        "project": {"id": "refs", "name": "Refs", "description": ""},
+        "ui": {"settings": {}, "pages": [{
+            "id": "main", "name": "Main", "elements": [], "layouts": [],
+            "render_mode": "custom", "custom_file": "room/index.html", **page_fields,
+        }], "master_elements": []},
+    })
+    return project.ui.pages[0]
+
+
+def test_a_page_grant_naming_a_missing_device_is_reported() -> None:
+    """A custom page holds the same grant an element does, and loses a renamed
+    device just as silently -- the page renders, it is pushed no state, and
+    nothing says why."""
+    findings = reference_findings(
+        _custom_page(grant={"devices": ["acme_amp", "ghost"], "variables": ["anything"]}),
+        page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS, device_commands=COMMANDS.get,
+    )
+    assert len(findings) == 1, [f.message for f in findings]
+    assert findings[0].element_id == "main"
+    assert "main (page) is granted device 'ghost', which is not in this project" in findings[0].message
+
+
+def test_a_page_grant_on_a_device_that_exists_is_silent() -> None:
+    assert reference_findings(
+        _custom_page(grant={"devices": ["acme_amp"], "variables": ["invented_later"], "macros": True}),
+        page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS, device_commands=COMMANDS.get,
+    ) == []
+
+
+def test_a_page_with_no_grant_is_silent() -> None:
+    assert reference_findings(
+        _custom_page(),
+        page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS, device_commands=COMMANDS.get,
+    ) == []
+
+
 def test_a_grant_on_a_device_that_exists_is_silent() -> None:
     """Including its variables: a script can create a variable at runtime, so
     an unknown one is not an authoring mistake -- the same rule bound var. keys

@@ -3042,7 +3042,9 @@ export interface ReviewFinding {
     | "matrix_not_configured"
     | "matrix_config_unread"
     | "matrix_no_route_feedback"
-    | "matrix_default_size";
+    | "matrix_default_size"
+    | "custom_page_elements_not_drawn"
+    | "custom_page_without_a_file";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an
@@ -4003,6 +4005,49 @@ const RENDERED_TYPES = new Set(Object.keys(HONORED_SHOW_SLOTS));
  * The message lists the whole set on purpose -- it is the only place an author
  * who guessed is told what the alternatives are.
  */
+/**
+ * What a page that draws its own markup is doing with the controls on it.
+ *
+ * Two ways this goes wrong, and neither has any geometry to look at.
+ *
+ * A page set to draw its own markup keeps every control that was ever placed on
+ * it -- deliberately, so switching back restores the page rather than asking
+ * somebody to rebuild it. But the panel draws none of them, so every other
+ * finding about them would be advice about pixels nobody will see, and a clean
+ * review would read as "those controls are fine".
+ *
+ * And a page set to draw its own markup that names no file draws its controls
+ * after all, which looks from the file like the switch did nothing. That is the
+ * same shape as an image with no `src`.
+ */
+export function customPageFindings(page: UIPage): ReviewFinding[] {
+  if (page.render_mode !== "custom") return [];
+  const count = page.elements?.length ?? 0;
+  if (!page.custom_file) {
+    return [{
+      elementId: page.id,
+      kind: "custom_page_without_a_file",
+      message:
+        `${page.id} is set to show a page you wrote but names no file, so it still ` +
+        `draws its controls. Choose a file in the project's ui/ folder, or set the ` +
+        `page back to controls.`,
+      key: `custom_page_without_a_file|${page.id}`,
+    }];
+  }
+  if (!count) return [];
+  const controls = count === 1 ? "control" : "controls";
+  const them = count === 1 ? "it" : "them";
+  return [{
+    elementId: page.id,
+    kind: "custom_page_elements_not_drawn",
+    message:
+      `${page.id} shows ${page.custom_file}, so the ${count} ${controls} on it ` +
+      `${count === 1 ? "is" : "are"} not drawn. Move ${them} to another page, or set ` +
+      `the page back to controls to show ${them} again.`,
+    key: `custom_page_elements_not_drawn|${page.id}`,
+  }];
+}
+
 export function elementTypeFinding(el: UIElement): ReviewFinding | null {
   if (RENDERED_TYPES.has(el.type)) return null;
   return {
@@ -4302,6 +4347,14 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
   const { theme, touched, layoutId } = options;
   const inScope = (id: string) => (touched ? touched.has(id) : true);
   const findings: ReviewFinding[] = [];
+
+  // A page drawing its own markup draws none of its controls, so everything
+  // below is about pixels nobody will see. Said once, and nothing else. Not
+  // scoped by `touched`: dropping a control onto such a page is exactly when
+  // somebody needs to hear it.
+  const custom = customPageFindings(page);
+  if (custom.length && custom[0].kind === "custom_page_elements_not_drawn") return custom;
+  findings.push(...custom);
 
   for (const el of page.elements) {
     if (!inScope(el.id)) continue;
@@ -4678,6 +4731,15 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
   for (const page of project.ui.pages) {
     const byId = new Map(page.elements.map((e) => [e.id, e]));
     const layoutIds = new Set((page.layouts ?? []).map((l) => l.id));
+
+    // A custom page carries the same grant an iframe element does, and can name
+    // a device that has since left the project in exactly the same invisible
+    // way: it matches nothing, which looks like a grant nobody set.
+    for (const granted of page.grant?.devices ?? []) {
+      if (!deviceIds.has(granted)) {
+        issues.push({ severity: "error", message: `Granted device "${granted}" not found, so the page shown here cannot read or control it`, location: `${page.name} > page`, pageId: page.id });
+      }
+    }
 
     // The arrangements themselves: a dangling inherits silently collapses the
     // variant (everything without its own box falls to default placements),

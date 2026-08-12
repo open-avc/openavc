@@ -460,12 +460,21 @@ class UIPage(_ForwardCompatModel):
     id: str
     name: str
     page_type: str = "page"
-    # Reserved for the hand-coded page. "elements" is every page today: the
-    # renderer lays out the elements below. "custom" is the seat kept warm for
-    # a page whose markup the author writes themselves -- nothing implements it
-    # yet, and a page carrying it still renders its elements, which is the right
-    # fallback for a reservation.
+    # How this page is drawn. "elements" is the ordinary page: the renderer lays
+    # out the elements below. "custom" hands the whole screen to a page the
+    # integrator wrote themselves, in the project's ui/ tree, in one sandboxed
+    # frame -- the same machinery a `custom` ELEMENT runs in, sized to the page
+    # instead of to a box. The elements below are kept and are not drawn, so
+    # switching back restores the page exactly.
     render_mode: Literal["elements", "custom"] = "elements"
+    # Only read when render_mode is "custom", and the same two fields a custom
+    # element carries: a relative path inside ui/, and settings handed over in
+    # the opening message.
+    custom_file: str | None = None
+    custom_config: dict[str, Any] = Field(default_factory=dict)
+    # What the author's page may reach in the room. Same shape and same picker
+    # as an element's -- a whole screen is not a reason for a second grant model.
+    grant: ElementGrant | None = None
     overlay: OverlayConfig | None = None
     background: PageBackground | None = None
     snap: SnapConfig = Field(default_factory=SnapConfig)

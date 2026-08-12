@@ -835,6 +835,43 @@ def test_custom_control_fields_are_declared_not_extras():
     assert element.model_dump()["custom_config"] == {"room": "204"}
 
 
+def test_custom_page_fields_are_declared_not_extras():
+    """A custom page carries the same three fields, on the page.
+
+    ``UIPage`` allows extras too, so the same trap applies: a value-only
+    round-trip proves nothing. And the defaults are the whole migration story --
+    every page in every existing project already says "elements, no file, no
+    grant", which is why the format did not need a second bump for this.
+    """
+    from openavc.core.project_loader import UIPage
+
+    for field in ("render_mode", "custom_file", "custom_config", "grant"):
+        assert field in UIPage.model_fields, field
+
+    plain = UIPage(id="main", name="Main")
+    assert plain.render_mode == "elements"
+    assert plain.custom_file is None
+    assert plain.custom_config == {}
+    assert plain.grant is None
+    assert plain.model_extra == {}
+
+    page = UIPage.model_validate({
+        "id": "lobby",
+        "name": "Lobby",
+        "render_mode": "custom",
+        "custom_file": "room_map/index.html",
+        "custom_config": {"room": "204"},
+        "grant": {"devices": ["dsp1"], "navigate": True},
+    })
+    assert page.model_extra == {}
+    assert page.custom_file == "room_map/index.html"
+    assert page.grant is not None and page.grant.devices == ["dsp1"]
+    assert page.grant.macros is False  # a switch nobody set is off
+    dumped = page.model_dump()
+    assert dumped["custom_config"] == {"room": "204"}
+    assert dumped["grant"]["navigate"] is True
+
+
 def test_element_grant_is_declared_and_defaults_to_nothing():
     """The grant is a security boundary, so it is part of the contract.
 
