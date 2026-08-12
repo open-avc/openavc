@@ -57,6 +57,22 @@ _WINDOWS_RESERVED = {
 }
 
 
+class ProjectExistsError(ValueError):
+    """The library already holds a project under this id.
+
+    Its own type, and not a bare ``ValueError``, because it is the one import
+    failure that is not a bad file: the bundle is fine and the machine simply
+    has that room already. A caller that cannot tell the two apart has to
+    answer both the same way, which is how importing a room onto a machine
+    that already had it came back as *"Invalid project file"* -- sending
+    somebody to inspect a file with nothing wrong with it.
+    """
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__(f"Project '{project_id}' already exists in library")
+        self.project_id = project_id
+
+
 # --- Helpers ---
 
 
@@ -406,7 +422,7 @@ def save_to_library(
     sid = sanitize_id(project_id)
     project_dir = _lib_dir() / sid
     if project_dir.exists() and (project_dir / "project.avc").exists():
-        raise ValueError(f"Project '{sid}' already exists in library")
+        raise ProjectExistsError(sid)
 
     project_dir.mkdir(parents=True, exist_ok=True)
 
@@ -473,7 +489,7 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
     """Duplicate a saved project."""
     new_sid = sanitize_id(new_id)
     if (_lib_dir() / new_sid / "project.avc").exists():
-        raise ValueError(f"Project '{new_sid}' already exists in library")
+        raise ProjectExistsError(new_sid)
 
     data, scripts = get_project(source_id)
 
@@ -799,7 +815,7 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     pid = sanitize_id(override_id or project.get("id", "imported"))
 
     if (_lib_dir() / pid / "project.avc").exists():
-        raise ValueError(f"Project '{pid}' already exists in library")
+        raise ProjectExistsError(pid)
 
     project_dir = _lib_dir() / pid
     try:
@@ -1038,7 +1054,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         pid = sanitize_id(override_id or project.get("id", "imported"))
 
         if (_lib_dir() / pid / "project.avc").exists():
-            raise ValueError(f"Project '{pid}' already exists in library")
+            raise ProjectExistsError(pid)
 
         # Write the project (validated) + its scripts/assets as a unit that is
         # rolled back on any failure, BEFORE touching the shared driver/plugin

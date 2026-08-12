@@ -170,6 +170,13 @@ STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label"})
 # Derived rather than transcribed. tests/test_ui_page_review_mirrors.py walks
 # each render function, follows the helpers it hands the element to and the
 # evaluators it registers bindings for, and fails when this disagrees.
+#
+# ``grant`` on the two frame types is the one worth naming, because getting it
+# wrong here is worse than silence: the panel reads it in the shared frame
+# renderer both of them hand the element to, and it is the whole of what a
+# custom control or a plugin panel can see and send. Calling it unread told a
+# reader their control's device access was being dropped -- an invitation to
+# delete the one field holding the grant.
 HONORED_PROPERTIES: dict[str, frozenset[str]] = {
     "button": frozenset({
         "button_image", "display_mode", "frameless", "icon", "icon_color",
@@ -185,7 +192,7 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
         "clock_mode", "duration_minutes", "format", "start_key", "target_time",
         "timezone",
     }),
-    "custom": frozenset({"custom_config", "custom_file"}),
+    "custom": frozenset({"custom_config", "custom_file", "grant"}),
     "fader": frozenset({
         "display_decimals", "label", "max", "min", "orientation", "output_max",
         "output_min", "response", "response_db_range", "scale_to_full",
@@ -210,7 +217,7 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
     "page_nav": frozenset({
         "icon", "icon_color", "icon_position", "icon_size", "label", "target_page",
     }),
-    "plugin": frozenset({"plugin_config", "plugin_id", "plugin_type"}),
+    "plugin": frozenset({"grant", "plugin_config", "plugin_id", "plugin_type"}),
     "select": frozenset({"label", "options"}),
     "slider": frozenset({
         "display_decimals", "label", "max", "min", "orientation", "output_max",

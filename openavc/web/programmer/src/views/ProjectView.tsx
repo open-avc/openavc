@@ -19,6 +19,7 @@ import { useProjectStore } from "../store/projectStore";
 import { importParsedProject } from "./projectImport";
 import * as api from "../api/restClient";
 import type { LibraryProject, ProjectConfig } from "../api/types";
+import { parseApiError } from "../api/errors";
 import { showError, showInfo, showSuccess } from "../store/toastStore";
 
 export function ProjectView() {
@@ -116,7 +117,7 @@ export function ProjectView() {
     try {
       await api.exportCurrentProject();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     }
   }, []);
 
@@ -151,7 +152,7 @@ export function ProjectView() {
       if (result.warnings?.length) msgs.push(...result.warnings);
       showSuccess(["Project imported.", ...msgs].join(" "));
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }
@@ -197,7 +198,7 @@ export function ProjectView() {
       setShowSaveAs(false);
       await refreshLibrary();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }
@@ -213,7 +214,7 @@ export function ProjectView() {
       setBlankId("");
       await forceReloadProject();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }
@@ -227,7 +228,7 @@ export function ProjectView() {
       setShowOpen(null);
       await forceReloadProject();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }
@@ -241,7 +242,7 @@ export function ProjectView() {
       setShowDuplicate(null);
       await refreshLibrary();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }
@@ -255,7 +256,7 @@ export function ProjectView() {
       setShowDelete(null);
       await refreshLibrary();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }
@@ -265,7 +266,7 @@ export function ProjectView() {
     try {
       await api.exportLibraryProject(id);
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     }
   };
 
@@ -297,7 +298,7 @@ export function ProjectView() {
           showInfo("Project imported. " + msgs.join(" "));
         }
       } catch (e) {
-        showError(String(e));
+        showError(parseApiError(e));
       } finally {
         setBusy(false);
       }
@@ -313,7 +314,7 @@ export function ProjectView() {
       showSuccess("Project restored successfully.");
       await refreshBackups();
     } catch (e) {
-      showError(String(e));
+      showError(parseApiError(e));
     } finally {
       setBusy(false);
     }

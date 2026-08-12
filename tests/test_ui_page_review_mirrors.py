@@ -157,7 +157,7 @@ def test_only_the_state_text_types_can_draw_a_state_label(
 #: argument test is what keeps the walk from wandering: a helper that reads
 #: element properties has to be given the element, and one that is not given it
 #: cannot read any.
-_CALL = re.compile(r"this\.(\w+)\(([^;\n]*)\)")
+_CALL_HEAD = re.compile(r"this\.(\w+)\(")
 _TAKES_ELEMENT = re.compile(r"\belement(Def)?\b")
 #: `?.` is not optional here -- `elementDef?.display_decimals` is how the
 #: helpers actually spell it, and a parse that misses it under-reports.
@@ -172,12 +172,40 @@ _PUSH_BLOCK = re.compile(r"this\.bindings\.push\(\{.*?\}\);", re.S)
 _EVALUATOR = re.compile(r"case '([\w_]+)':\s*this\.(evaluate\w+)\(b\);", re.S)
 
 
+def _calls(body: str) -> list[tuple[str, str]]:
+    """Every ``this.method(...)`` call in a body, with its arguments.
+
+    The argument list is read by balancing parentheses rather than by stopping
+    at the end of the line, because the two iframe types hand the element to
+    the frame renderer they share over a multi-line options object. A walk that
+    stopped at the newline never reached it, so `grant` -- read there, and the
+    whole of what a custom control or a plugin panel may see and send -- was
+    derived as read by nothing and the review said so out loud.
+
+    Only the positional part counts as handing the element over: `element`
+    named inside a callback body is a closure, not an argument, and a helper
+    that was not given the element cannot read its properties.
+    """
+    found: list[tuple[str, str]] = []
+    for match in _CALL_HEAD.finditer(body):
+        depth, i = 1, match.end()
+        while i < len(body) and depth:
+            if body[i] == "(":
+                depth += 1
+            elif body[i] == ")":
+                depth -= 1
+            i += 1
+        args = body[match.end():i - 1]
+        found.append((match.group(1), re.split(r"\{|=>", args, maxsplit=1)[0]))
+    return found
+
+
 def _reachable(entry: str, bodies: dict[str, str], seen: set[str] | None = None) -> set[str]:
     seen = set() if seen is None else seen
     if entry in seen or entry not in bodies:
         return seen
     seen.add(entry)
-    for callee, args in _CALL.findall(bodies[entry]):
+    for callee, args in _calls(bodies[entry]):
         if callee in bodies and _TAKES_ELEMENT.search(args):
             _reachable(callee, bodies, seen)
     return seen
@@ -231,6 +259,24 @@ def test_the_label_element_is_the_one_that_does_not_draw_label(
     # ...and it really is the odd one out, so the warning is worth writing.
     draws_label = {t for t, props in HONORED_PROPERTIES.items() if "label" in props}
     assert len(draws_label) > 10, "if most types stopped drawing `label`, revisit the message"
+
+
+def test_the_two_frame_types_read_the_grant_they_were_placed_with() -> None:
+    """Guard the guard, from the other side: a right property called unread.
+
+    The walk above only ever reached a render function's own body and the
+    helpers it named on one line, so it could not see the frame renderer that
+    a custom control and a plugin panel share -- and the table said no element
+    type reads `grant`. The review then told an author, in a sentence, that
+    their control's device access was being dropped, which reads as an
+    instruction to delete the one field that holds it. Nothing else in this
+    module is load-bearing for what a page can reach into the room.
+    """
+    for el_type in ("custom", "plugin"):
+        assert "grant" in HONORED_PROPERTIES[el_type], (
+            f"a {el_type} element is placed with a grant and the panel reads it; "
+            "calling it unread invites deleting it"
+        )
 
 
 def test_the_matrix_config_keys_match_the_renderer(

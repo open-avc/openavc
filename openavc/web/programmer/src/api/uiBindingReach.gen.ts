@@ -122,7 +122,8 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
   ],
   "custom": [
     "custom_config",
-    "custom_file"
+    "custom_file",
+    "grant"
   ],
   "fader": [
     "display_decimals",
@@ -201,6 +202,7 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
     "target_page"
   ],
   "plugin": [
+    "grant",
     "plugin_config",
     "plugin_id",
     "plugin_type"

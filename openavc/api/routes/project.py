@@ -292,7 +292,7 @@ async def export_library_project(project_id: str):
 @router.post("/library/import")
 async def import_library_project(request: Request) -> dict[str, Any]:
     """Upload a .avc or .zip file to the project library."""
-    from openavc.core.project_library import import_project
+    from openavc.core.project_library import ProjectExistsError, import_project
 
     form = await request.form()
     upload = form.get("file")
@@ -308,6 +308,13 @@ async def import_library_project(request: Request) -> dict[str, Any]:
 
     try:
         result = import_project(content, filename, override_id)
+    except ProjectExistsError as e:
+        raise _api_error(
+            409,
+            f"The project library already has '{e.project_id}'. Delete that one from the "
+            f"Project Library first, then import again.",
+            e,
+        )
     except ValueError as e:
         raise _api_error(422, f"Invalid project file '{filename}'", e)
 

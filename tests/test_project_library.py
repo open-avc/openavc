@@ -587,6 +587,50 @@ class TestTransactionalImport:
         assert not (tmp_lib / "rollback_me").exists()  # cleaned up, no half-written project
 
 
+class TestImportNameCollision:
+    """A room the machine already has is not a bad file, and must not read as one.
+
+    Importing the same bundle twice is ordinary -- an integrator moving a room
+    onto a bench that already had it -- and the answer has to name the
+    collision, because the only fix is in the library, not in the file.
+    """
+
+    def test_the_collision_carries_the_id_it_collided_on(self, tmp_lib):
+        content = _zip_bytes({"project.avc": _valid_avc("lobby")})
+        import_project(content, "lobby.zip")
+        with pytest.raises(plib.ProjectExistsError) as excinfo:
+            import_project(content, "lobby.zip")
+        assert excinfo.value.project_id == "lobby"
+
+    def test_the_avc_door_collides_the_same_way(self, tmp_lib):
+        content = _valid_avc("lobby").encode("utf-8")
+        import_project(content, "lobby.avc")
+        with pytest.raises(plib.ProjectExistsError):
+            import_project(content, "lobby.avc")
+
+    def test_the_import_route_answers_409_and_says_where_to_fix_it(self, tmp_lib):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from openavc.api.routes import project as project_routes
+
+        app = FastAPI()
+        app.include_router(project_routes.router, prefix="/api")
+        client = TestClient(app)
+        content = _zip_bytes({"project.avc": _valid_avc("lobby")})
+
+        first = client.post("/api/library/import", files={"file": ("lobby.zip", content)})
+        assert first.status_code == 200, first.text
+
+        second = client.post("/api/library/import", files={"file": ("lobby.zip", content)})
+        assert second.status_code == 409, second.text
+        detail = second.json()["detail"]
+        assert "lobby" in detail
+        assert "Project Library" in detail
+        # The sentence this replaced. It sent people to inspect a good file.
+        assert "Invalid project file" not in detail
+
+
 class TestMissingPluginParity:
     def test_import_avc_reports_missing_plugins(self, tmp_lib):
         avc = _valid_avc("withplugin", plugins={"acme_widget": {"enabled": True}})

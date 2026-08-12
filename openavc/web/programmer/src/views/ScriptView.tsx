@@ -557,7 +557,7 @@ export function ScriptView() {
     (path: string) => {
       setPendingConfirm({
         title: "Delete File",
-        message: `Delete "${path}"? Any custom control pointing at it will stop drawing.`,
+        message: `Delete "${path}"? Any custom control or page pointing at it will stop drawing.`,
         confirmLabel: "Delete",
         onConfirm: async () => {
           setPendingConfirm(null);

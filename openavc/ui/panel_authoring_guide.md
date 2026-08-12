@@ -190,7 +190,7 @@ element second.
 | button | `button_image`, `display_mode`, `frameless`, `image_blend_mode`, `image_fit`, `image_opacity`, `label` (+ the shared icon set) |
 | camera_preset | `button_image`, `display_mode`, `frameless`, `image_blend_mode`, `image_fit`, `image_opacity`, `label`, `preset_number` (+ the shared icon set) |
 | clock | `clock_mode`, `duration_minutes`, `format`, `start_key`, `target_time`, `timezone` |
-| custom | `custom_config`, `custom_file` |
+| custom | `custom_config`, `custom_file`, `grant` |
 | fader | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `unit` |
 | gauge | `arc_angle`, `display_decimals`, `label`, `max`, `min`, `unit`, `zones` |
 | group | `label`, `label_position` |
@@ -201,7 +201,7 @@ element second.
 | list | `item_height`, `items`, `label`, `list_style`, `options` |
 | matrix | `label`, `matrix_config`, `matrix_style` |
 | page_nav | `label`, `target_page` (+ the shared icon set) |
-| plugin | `plugin_config`, `plugin_id`, `plugin_type` |
+| plugin | `grant`, `plugin_config`, `plugin_id`, `plugin_type` |
 | select | `label`, `options` |
 | slider | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `thumb_size`, `unit` |
 | status_led | `label` |
