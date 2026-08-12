@@ -95,6 +95,48 @@ class TunnelHandler:
         return self._http_client
 
     @staticmethod
+    def _resolve_target_port(requested: Any) -> int:
+        """Decide which local port a tunnel proxies to.
+
+        The cloud names a port in tunnel_open, but the port an instance
+        listens on is a fact only the instance holds -- nothing reports it
+        upstream, so the cloud is sending a default. When that default is
+        wrong, honoring it points this instance's tunnel at whatever else
+        answers on that port: a second instance, or some unrelated service,
+        published to the internet under the customer's tunnel URL and, in the
+        panel scope, without a credential. So a requested port is honored
+        only when it is a port this instance actually serves; anything else
+        becomes the main HTTP port, which is what the tunnel is for.
+
+        Asking for TLS_PORT means the main app too -- it resolves to
+        HTTP_PORT so the one TLS switch in _loopback_origin decides the
+        scheme, rather than a second place deciding it differently.
+        """
+        from openavc import config
+        if requested is None:
+            return config.HTTP_PORT
+        valid = (
+            isinstance(requested, int)
+            and not isinstance(requested, bool)
+            and 1 <= requested <= 65535
+        )
+        if not valid:
+            log.warning(
+                f"Tunnel open: invalid target_port {requested!r}, "
+                f"using HTTP_PORT {config.HTTP_PORT}"
+            )
+            return config.HTTP_PORT
+        if requested == config.HTTP_PORT:
+            return requested
+        if config.TLS_ENABLED and requested == config.TLS_PORT:
+            return config.HTTP_PORT
+        log.warning(
+            f"Tunnel open: port {requested} is not served by this instance, "
+            f"using HTTP_PORT {config.HTTP_PORT}"
+        )
+        return config.HTTP_PORT
+
+    @staticmethod
     def _loopback_origin(target_port: int) -> str:
         """Return the origin (scheme://host:port) for tunneled HTTP requests.
 
@@ -124,27 +166,12 @@ class TunnelHandler:
 
     async def handle_tunnel_open(self, msg: dict[str, Any]) -> None:
         """Handle a tunnel_open message from the cloud."""
-        from openavc import config
-
         payload = msg.get("payload", {})
         tunnel_id = payload.get("tunnel_id", "")
         tunnel_token = payload.get("tunnel_token", "")
         tunnel_data_url = payload.get("tunnel_data_url", "")
 
-        # Per spec §13.12, target_port is the local port to proxy to. Honor
-        # what the cloud requested so it can tunnel to plugin or alt-service
-        # ports, not just the main HTTP port. Fall back to HTTP_PORT when
-        # the field is missing (older cloud builds) or invalid.
-        requested_port = payload.get("target_port")
-        if isinstance(requested_port, int) and 1 <= requested_port <= 65535:
-            target_port = requested_port
-        else:
-            if requested_port is not None:
-                log.warning(
-                    f"Tunnel open: invalid target_port {requested_port!r}, "
-                    f"falling back to HTTP_PORT {config.HTTP_PORT}"
-                )
-            target_port = config.HTTP_PORT
+        target_port = self._resolve_target_port(payload.get("target_port"))
 
         if not tunnel_id or not tunnel_data_url:
             log.error("Tunnel open: missing tunnel_id or tunnel_data_url")

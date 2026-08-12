@@ -99,15 +99,21 @@ async def test_handle_tunnel_open_missing_fields(tunnel_handler, mock_agent):
 
 
 # ===========================================================================
-# A20 — Agent must honor target_port from tunnel_open instead of hardcoding
-# its own HTTP_PORT. Spec §13.12 line 1859: target_port: 8080 in the payload.
-# Without this, plugin / alt-service tunneling is impossible.
+# Which local port a tunnel proxies to. The cloud sends one, but only the
+# instance knows which ports it actually listens on — so a requested port is
+# honored only when it is one of ours, and anything else becomes the main
+# HTTP port instead of publishing whatever else answers there.
 # ===========================================================================
 
 
 @pytest.mark.asyncio
-async def test_handle_tunnel_open_honors_target_port(tunnel_handler, mock_agent):
-    """Agent should record the cloud-requested target_port on the TunnelConnection."""
+async def test_tunnel_open_honors_the_main_http_port(
+    tunnel_handler, mock_agent, monkeypatch
+):
+    """The port this instance serves is honored as asked."""
+    from openavc import config
+    monkeypatch.setattr(config, "HTTP_PORT", 8090)
+
     mock_ws = AsyncMock()
     mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
     mock_ws.close = AsyncMock()
@@ -115,16 +121,88 @@ async def test_handle_tunnel_open_honors_target_port(tunnel_handler, mock_agent)
     msg = {
         "type": "tunnel_open",
         "payload": {
-            "tunnel_id": "t-port",
-            "target_port": 9090,  # NOT the default HTTP_PORT
+            "tunnel_id": "t-main",
+            "target_port": 8090,
             "tunnel_token": "tok",
-            "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-port",
+            "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-main",
         },
     }
     with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
         await tunnel_handler.handle_tunnel_open(msg)
 
-    assert tunnel_handler._tunnels["t-port"].target_port == 9090
+    assert tunnel_handler._tunnels["t-main"].target_port == 8090
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_tunnel_open_refuses_a_port_this_instance_does_not_serve(
+    tunnel_handler, mock_agent, monkeypatch
+):
+    """A port we don't listen on is replaced by the main HTTP port.
+
+    The cloud sends a fixed default it cannot check against this instance, so
+    on any instance not running there the requested port belongs to something
+    else on the host — a second instance, or an unrelated service. Proxying it
+    would publish that to the internet under the tunnel URL.
+    """
+    from openavc import config
+    monkeypatch.setattr(config, "HTTP_PORT", 8090)
+    monkeypatch.setattr(config, "TLS_ENABLED", False)
+
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
+    mock_ws.close = AsyncMock()
+
+    msg = {
+        "type": "tunnel_open",
+        "payload": {
+            "tunnel_id": "t-stranger",
+            "target_port": 8080,  # the cloud's default; not this instance
+            "tunnel_token": "tok",
+            "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-stranger",
+        },
+    }
+    with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+        await tunnel_handler.handle_tunnel_open(msg)
+
+    assert tunnel_handler._tunnels["t-stranger"].target_port == 8090
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_tunnel_open_maps_the_tls_port_onto_the_main_port(
+    tunnel_handler, mock_agent, monkeypatch
+):
+    """Asking for the TLS port means the main app, so it resolves to HTTP_PORT.
+
+    Carrying TLS_PORT through would send plain http:// at a TLS listener —
+    _loopback_origin is the single place that decides the scheme.
+    """
+    from openavc import config
+    from openavc.cloud.tunnel import TunnelHandler
+    monkeypatch.setattr(config, "HTTP_PORT", 8090)
+    monkeypatch.setattr(config, "TLS_PORT", 8493)
+    monkeypatch.setattr(config, "TLS_ENABLED", True)
+
+    mock_ws = AsyncMock()
+    mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
+    mock_ws.close = AsyncMock()
+
+    msg = {
+        "type": "tunnel_open",
+        "payload": {
+            "tunnel_id": "t-tls",
+            "target_port": 8493,
+            "tunnel_token": "tok",
+            "tunnel_data_url": "ws://localhost:9999/tunnel-data/t-tls",
+        },
+    }
+    with patch("openavc.cloud.tunnel.websockets.connect", new_callable=AsyncMock, return_value=mock_ws):
+        await tunnel_handler.handle_tunnel_open(msg)
+
+    resolved = tunnel_handler._tunnels["t-tls"].target_port
+    assert resolved == 8090
+    assert TunnelHandler._loopback_origin(resolved) == "https://localhost:8493"
     await tunnel_handler.stop()
 
 
@@ -162,7 +240,9 @@ async def test_handle_tunnel_open_invalid_port_falls_back(tunnel_handler, mock_a
     mock_ws.recv = AsyncMock(side_effect=asyncio.CancelledError)
     mock_ws.close = AsyncMock()
 
-    for bad_port in (0, -1, 70000, "8080", None):
+    # True is an int in Python, so a payload carrying it once resolved to
+    # "port True" — it belongs on this list, not in the honored branch.
+    for bad_port in (0, -1, 70000, "8080", None, True):
         tid = f"t-bad-{bad_port}"
         msg = {
             "type": "tunnel_open",
