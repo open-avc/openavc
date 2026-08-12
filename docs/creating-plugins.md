@@ -199,10 +199,10 @@ The panel and the plugin iframe communicate through `window.postMessage`. All me
 
 | Message Type | When Sent | Payload |
 |-------------|-----------|---------|
-| `openavc:init` | When the iframe loads, and again whenever the iframe asks via `openavc:request-init` | `{config, theme, state, elementId, ext_token}`: the element's `plugin_config` values, the active theme's CSS variables, a snapshot of state keys in the plugin's namespace (`plugin.<plugin_id>.*`), this element's ID, and — for plugins that declare `ext_auth` — a token for calling the plugin's own `/ext/*` routes |
-| `openavc:state` | When a key in the plugin's own namespace changes | `{key, value}`: the changed `plugin.<plugin_id>.*` key and its new value |
+| `openavc:init` | When the iframe loads, and again whenever the iframe asks via `openavc:request-init` | `{config, theme, state, elementId, grant, ext_token}`: the element's `plugin_config` values, the active theme's CSS variables, the state this element may see, this element's ID, what it was granted, and for plugins that declare `ext_auth` a token for calling the plugin's own `/ext/*` routes |
+| `openavc:state` | When a key this element may see changes | `{key, value}`: the changed key and its new value |
 
-The init payload includes a snapshot of the plugin's own namespace (`plugin.<plugin_id>.*`) so the iframe can render its current state immediately. `openavc:state` updates are scoped to that same namespace — a plugin iframe sees only its own state, never other devices', variables', or other plugins' keys.
+The state an element may see is its own plugin's namespace (`plugin.<plugin_id>.*`), always, plus whatever the person who placed the element granted it. The init snapshot and the `openavc:state` updates use the same rule, so a key missing from the snapshot never arrives later.
 
 **iframe to panel (outgoing messages):**
 
@@ -212,10 +212,17 @@ Outgoing messages use `type: "openavc:action"` for both device commands and stat
 |-------------|----------|---------|---------|
 | `openavc:action` | `device.command` | Send a device command | `{device, command, params}` |
 | `openavc:action` | `state.set` | Write a state key | `{key, value}` |
+| `openavc:action` | `macro.run` | Run a macro | `{macro}` |
 | `openavc:navigate` | — | Navigate to a page | `{page}` |
 | `openavc:request-init` | — | Ask the panel to re-send `openavc:init` with a freshly-minted `ext_token` — send it when an `/ext/*` call starts returning 401 mid-session (the token expired; panels often outlive the token lifetime) | — |
 
-`openavc:action` requests are gated by the plugin's declared `capabilities`, mirroring the server-side checks for Python plugins: `device.command` requires `device_command`; `state.set` to a `plugin.<plugin_id>.*` key requires `state_write`; `state.set` to a `var.*` key requires `variable_write`. Writes to `device.*`, `system.*`, `isc.*`, `ui.*`, another plugin's namespace, or any action the plugin didn't declare a capability for are dropped.
+What these can reach is set on the element, not by your plugin. Whoever places it on a page ticks the devices and variables it may touch and the switches for running a macro and changing pages, in **Can reach** in the UI Builder properties panel. Your plugin's `capabilities` gate the Python API on the server; they do not gate this bridge.
+
+- `device.command` reaches a device on that list, and nothing else.
+- `state.set` writes your own `plugin.<plugin_id>.*` keys always, and a `var.<name>` key only when that variable is on the list. `device.*`, `system.*`, `isc.*`, `ui.*` and other plugins' keys are always dropped.
+- `macro.run` and `openavc:navigate` need their switches.
+
+An element can be placed with nothing ticked, so read `grant` from `openavc:init` and hide what you cannot use. A dropped action writes a `[panel]` warning to the browser console.
 
 ### Example: Custom Status Display
 

@@ -77,6 +77,33 @@ Sizes are worked out against a 1280x800 reference panel, which is what the perce
 | **Keypad** | Numeric 0-9 pad with display | TV channel entry, passcode input |
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
 | **Matrix** | Crosspoint or dropdown routing matrix | Video/audio switcher routing |
+| **Custom Control** | A page you wrote yourself, running inside the element's box | Seating map, rack diagram, a control nothing else covers |
+
+## Custom Controls
+
+When none of the controls above expresses what a space needs, you can write the control yourself: a small web page that lives in the project and runs inside one element's box, next to the ordinary buttons and faders.
+
+Drag **Custom Control** onto the page, then in the properties panel:
+
+1. **Add files.** Choose files, a folder, or a `.zip`. They go into the project's `ui/` folder and travel with the project.
+2. **Control.** Pick the page this element runs, for example `room_map/index.html`.
+3. **Settings passed to the control.** Optional JSON handed to the page when it starts, so the same control can run twice with different settings.
+4. **Can reach.** What this control is allowed to touch. See below.
+
+Writing the page itself, the messages it exchanges with the panel, and a worked example are in [Writing a Custom Control](custom-controls.md).
+
+### Can reach
+
+A custom control has no bindings, so nothing else says what it touches. That list is **Can reach**, and you set it when you place the control:
+
+- **Devices.** Tick a device and the control can read its state and send it commands. Ticking a device covers everything under it, including child entities like individual DSP inputs.
+- **Variables.** Tick a variable and the control can read and change it.
+- **Run macros.** Lets the control run any macro in the project.
+- **Change pages.** Lets the control move the panel to another page.
+
+Nothing is ticked by default, so a control you have placed and not configured sees no state and sends nothing. Tick what it needs and nothing more.
+
+The same section appears on a plugin panel element and works the same way. A plugin element also sees its own plugin's state without being granted anything.
 
 ## Pages
 
