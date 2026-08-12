@@ -361,6 +361,22 @@ def _element_findings(
             key=("dangling_reference", el_id, "target_page"),
         ))
 
+    # A grant names devices by id, and a control whose grant names a device that
+    # is not here sees nothing from it and cannot command it -- with no error
+    # anywhere, because a grant that matches nothing is indistinguishable at
+    # runtime from a grant nobody set. Variables are deliberately not checked,
+    # for the same reason bound var. keys are not: a script can create one.
+    grant = _mapping(dump.get("grant"))
+    for granted in (grant.get("devices") or []) if grant else []:
+        if isinstance(granted, str) and granted and granted not in device_ids:
+            findings.append(Finding(
+                el_id, "dangling_reference",
+                f"{el_id} ({el_type}) is granted device '{granted}', which is not in this "
+                f"project, so it can neither read nor control it. The devices are: "
+                f"{_listed(device_ids)}.",
+                key=("dangling_reference", el_id, f"grant.devices.{granted}"),
+            ))
+
     findings.extend(_matrix_pattern_findings(
         dump, el_id, el_type, device_ids, undeclared_property,
     ))

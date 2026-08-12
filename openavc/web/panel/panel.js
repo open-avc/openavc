@@ -4019,13 +4019,12 @@ class PanelApp {
             placeholderLabel: 'Plugin',
             placeholderDetail: `${pluginId} / ${pluginType}`,
             pluginId,
-            // The plugin's declared capabilities gate what the bridge forwards
-            // (see the openavc:action handler). Mirrors server PluginAPI.
-            caps: extDef?.capabilities || [],
             extAuth: !!extDef?.ext_auth,
             // A plugin has a server-side half publishing into its own
-            // namespace, and may see that and nothing else.
-            stateFilter: (key) => key.startsWith(`plugin.${pluginId}.`),
+            // namespace, and reaches that with no grant at all -- it is the
+            // plugin's own data. Anything beyond it is granted per element,
+            // exactly like a custom control's.
+            ownNamespace: `plugin.${pluginId}.`,
         });
     }
 
@@ -4053,15 +4052,43 @@ class PanelApp {
             placeholderLabel: 'Custom control',
             placeholderDetail: file,
             pluginId: null,
-            caps: [],
             extAuth: false,
-            // A custom control has no namespace of its own, so today it sees
-            // nothing. The per-element grant that replaces this is the next
-            // piece of work, and it lands here and in _notifyPluginIframes
-            // together -- an opening snapshot that disagrees with the live
-            // pushes is worse than either.
-            stateFilter: () => false,
+            // A custom control has no namespace of its own: everything it sees
+            // and everything it sends comes from the grant on the element.
+            ownNamespace: null,
         });
+    }
+
+    /** The grant on an element, normalised so the checks below never have to
+     *  ask what shape it is. An element with no grant reaches nothing, which is
+     *  what every element in every project written before grants existed has. */
+    _elementGrant(element) {
+        const g = (element && element.grant) || {};
+        return {
+            devices: Array.isArray(g.devices) ? g.devices.map(String) : [],
+            variables: Array.isArray(g.variables) ? g.variables.map(String) : [],
+            macros: g.macros === true,
+            navigate: g.navigate === true,
+        };
+    }
+
+    /** One rule for what state an iframe element may see, asked by both the
+     *  opening snapshot and every live push. Device grants match on the prefix
+     *  INCLUDING the trailing dot -- a grant on `dsp1` must not also hand over
+     *  `dsp10` -- which is also what makes child entities work: their keys are
+     *  `device.<parent>.<child>.<id>.<prop>`, so the parent's grant covers them
+     *  without the integrator listing keys that only exist at runtime. A
+     *  variable is matched exactly, so `room_volume` is not `room_volume_max`. */
+    _grantAllowsRead(grant, ownNamespace, key) {
+        const k = String(key);
+        if (ownNamespace && k.startsWith(ownNamespace)) return true;
+        for (const id of grant.devices) {
+            if (k.startsWith(`device.${id}.`)) return true;
+        }
+        for (const id of grant.variables) {
+            if (k === `var.${id}`) return true;
+        }
+        return false;
     }
 
     /** The path the panel is served under, so every URL we build is relative.
@@ -4152,12 +4179,16 @@ class PanelApp {
         this.elementMap[element.id] = { el, elementDef: element };
         el._pluginIframe = iframe;
         el._pluginId = opts.pluginId;
-        el._pluginCaps = opts.caps;
         el._pluginConfig = opts.config;
-        // What live state this frame may see. The broadcast asks the element
-        // rather than re-deriving a namespace, so the opening snapshot below and
-        // every later push are the same rule in one place.
-        el._stateFilter = opts.stateFilter;
+        // The grant this element was placed with, and the namespace it owns
+        // outright (a plugin's own `plugin.<id>.`, nothing for a custom
+        // control). Both checks below read these off the element rather than
+        // re-deriving them, so the opening snapshot, the live pushes and the
+        // action bridge cannot end up answering differently.
+        el._grant = this._elementGrant(element);
+        el._ownNamespace = opts.ownNamespace;
+        const stateFilter = (key) => this._grantAllowsRead(el._grant, el._ownNamespace, key);
+        el._stateFilter = stateFilter;
 
         // postMessage API: send initial config + theme + state snapshot when the
         // iframe loads. Also re-run on demand ('openavc:request-init' from the
@@ -4177,7 +4208,7 @@ class PanelApp {
             }
             const stateSnapshot = {};
             for (const [key, value] of Object.entries(this.state || {})) {
-                if (opts.stateFilter(key)) stateSnapshot[key] = value;
+                if (stateFilter(key)) stateSnapshot[key] = value;
             }
             // Plugins that call their own /ext/* routes declare ext_auth. Fetch
             // a plugin-scoped token (our fetch is already authenticated) and pass
@@ -4195,6 +4226,15 @@ class PanelApp {
                 state: stateSnapshot,
                 elementId: element.id,
                 ext_token: extToken,
+                // What it was granted, so a control can adapt to it -- hide a
+                // button for a device it cannot command instead of sending a
+                // message that is silently dropped.
+                grant: {
+                    devices: [...el._grant.devices],
+                    variables: [...el._grant.variables],
+                    macros: el._grant.macros,
+                    navigate: el._grant.navigate,
+                },
             }, '*');  // sandboxed iframe has opaque origin; source check provides security
         };
         iframe.addEventListener('load', sendInit);
@@ -4205,20 +4245,34 @@ class PanelApp {
             if (event.source !== iframe.contentWindow) return;
             const msg = event.data;
             if (!msg || !msg.type) return;
+            // Read off the element, not the closure: a re-render replaces the
+            // grant, and a stale copy captured here would keep answering for a
+            // grant the integrator has already taken away.
+            const grant = el._grant || { devices: [], variables: [], macros: false, navigate: false };
 
             switch (msg.type) {
                 case 'openavc:action': {
                     // This bridge carries the panel's WS authority, so gate it
-                    // against the plugin's declared capabilities, mirroring the
-                    // server-side PluginAPI: device commands require
-                    // device_command; state writes are limited to the plugin's
-                    // own plugin.<id>.* namespace (state_write) or var.*
-                    // (variable_write). Anything else is a confused-deputy write
-                    // and is dropped.
-                    const caps = el._pluginCaps || [];
+                    // against the grant the integrator set when they placed the
+                    // element: a command reaches a device only if that device is
+                    // on the list, a write reaches a variable only if that
+                    // variable is. A plugin's own plugin.<id>.* namespace needs
+                    // no grant -- it is the plugin's own data. Anything else is
+                    // a confused-deputy write and is dropped.
+                    //
+                    // THIS IS THE ENFORCEMENT POINT, AND IT CANNOT BE ANYWHERE
+                    // ELSE. The server's WS handler takes a device_id from any
+                    // authenticated panel socket and has no idea which element
+                    // sent it -- a WS frame carries no element identity, so the
+                    // grant is unenforceable server-side by construction. What
+                    // makes it a real boundary is the iframe: sandboxed with an
+                    // opaque origin, it cannot reach this document's memory or
+                    // its socket, and can only ask the panel to act for it. The
+                    // panel is trusted because it already holds the credential.
+                    // Do not assume the server double-checks. It does not.
                     if (msg.action === 'device.command' && msg.device && msg.command) {
-                        if (!caps.includes('device_command')) {
-                            console.warn(`[panel] ${who} attempted device.command without the device_command capability`);
+                        if (!grant.devices.includes(String(msg.device))) {
+                            console.warn(`[panel] ${who} attempted a command on device '${msg.device}', which it was not granted`);
                             break;
                         }
                         // Through send(), not straight at the socket: send() is the
@@ -4235,20 +4289,25 @@ class PanelApp {
                         });
                     } else if (msg.action === 'state.set' && msg.key) {
                         const key = String(msg.key);
-                        const ownNamespace = opts.pluginId
-                            ? key.startsWith(`plugin.${opts.pluginId}.`)
-                            : false;
-                        const isVariable = key.startsWith('var.');
-                        const allowed = (ownNamespace && caps.includes('state_write')) ||
-                            (isVariable && caps.includes('variable_write'));
-                        if (!allowed) {
-                            console.warn(`[panel] ${who} attempted state.set on '${key}' outside its declared scope`);
+                        const ownNamespace = !!el._ownNamespace && key.startsWith(el._ownNamespace);
+                        const grantedVariable = grant.variables.some(id => key === `var.${id}`);
+                        if (!ownNamespace && !grantedVariable) {
+                            console.warn(`[panel] ${who} attempted to write '${key}', which it was not granted`);
                             break;
                         }
                         this.send({
                             type: 'state.set',
                             key: msg.key,
                             value: msg.value,
+                        });
+                    } else if (msg.action === 'macro.run' && msg.macro) {
+                        if (!grant.macros) {
+                            console.warn(`[panel] ${who} attempted to run macro '${msg.macro}' without the macro switch`);
+                            break;
+                        }
+                        this.send({
+                            type: 'macro.execute',
+                            macro_id: String(msg.macro),
                         });
                     }
                     break;
@@ -4262,6 +4321,12 @@ class PanelApp {
                     break;
                 }
                 case 'openavc:navigate':
+                    // Ungated until grants existed, so any plugin iframe could
+                    // move the panel out from under whoever was using it.
+                    if (!grant.navigate) {
+                        console.warn(`[panel] ${who} attempted to change pages without the navigation switch`);
+                        break;
+                    }
                     if (msg.page) this.navigateToPage(msg.page);
                     break;
             }

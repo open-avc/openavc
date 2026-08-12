@@ -7,10 +7,10 @@ inside a sandbox with an opaque origin, and let a message across that boundary
 rectangle because the sandbox blocked something is a failure with no error
 message anywhere, so it gets a real browser.
 
-What is deliberately NOT asserted here: anything the control sends back. Until
-per-element grants land it holds no capabilities, so the bridge drops
-everything it says -- that refusal is pinned in the jsdom harness, where it can
-be checked without depending on message timing.
+The grant is checked here too, on both sides of the boundary: what a control is
+handed at startup, and what the panel does with what it sends back. The jsdom
+harness pins the same rules against a fake window; this proves them where the
+sandbox is real and the messages actually have to cross an opaque origin.
 """
 
 from __future__ import annotations
@@ -36,12 +36,17 @@ CONTROL_HTML = """<!DOCTYPE html>
   <div id="room">Room map</div>
   <script>
     window.__init = null;
+    window.__state = [];
+    // What the author calls to act on the room. The test drives it directly so
+    // the assertion is about the panel's answer, not about timing.
+    window.__ask = (msg) => parent.postMessage(msg, '*');
     window.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'openavc:init') {
         window.__init = e.data;
         document.getElementById('room').textContent =
           'Room ' + (e.data.config.room || '?');
       }
+      if (e.data && e.data.type === 'openavc:state') window.__state.push(e.data.key);
     });
   </script>
 </body></html>
@@ -112,10 +117,26 @@ def _render_control(page, element: dict) -> None:
             const box = document.getElementById('box');
             box.innerHTML = '';
             app.state = {'device.acme_widget.power': 'on', 'var.volume': 30};
+            // Every frame the panel writes to the room, so a refusal is the
+            // absence of an entry rather than something nobody looked at.
+            window.__sent = [];
+            app.ws = { readyState: 1, send: (m) => window.__sent.push(JSON.parse(m)) };
+            // Navigation never touches the socket, so watching only __sent
+            // would report "nothing reached the room" while the panel walked
+            // off the page somebody was using.
+            window.__navigated = [];
+            app.navigateToPage = (p) => window.__navigated.push(p);
             box.appendChild(app.renderElement(el));
         }""",
         element,
     )
+
+
+def _ask(page, message: dict) -> list:
+    """Have the control send one message, and return what reached the room."""
+    page.frames[1].evaluate("(m) => window.__ask(m)", message)
+    page.wait_for_timeout(50)  # one postMessage hop, cross-origin
+    return page.evaluate("() => window.__sent")
 
 
 def test_the_control_loads_and_receives_its_opening_message(panel) -> None:
@@ -154,3 +175,66 @@ def test_the_frame_is_sandboxed_with_scripts_and_nothing_else(panel) -> None:
     assert panel.frames[1].evaluate(
         "() => { try { return !!parent.document; } catch (e) { return false; } }"
     ) is False
+
+
+def test_a_granted_control_sees_that_device_and_commands_it(panel) -> None:
+    """The whole point of the step, through a real sandbox boundary."""
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "room_map/index.html",
+        "custom_config": {"room": "204"},
+        "grant": {"devices": ["acme_widget"], "variables": [], "macros": False, "navigate": False},
+    })
+    panel.frame_locator('[data-element-id="map"] iframe').locator("#room").wait_for(timeout=5000)
+
+    init = panel.frames[1].evaluate("() => window.__init")
+    # It is told what it holds, and handed the state that grant covers.
+    assert init["grant"]["devices"] == ["acme_widget"]
+    assert init["state"] == {"device.acme_widget.power": "on"}
+    assert "var.volume" not in init["state"]
+
+    sent = _ask(panel, {"type": "openavc:action", "action": "device.command",
+                        "device": "acme_widget", "command": "power_on", "params": {}})
+    assert len(sent) == 1, sent
+    assert sent[0]["type"] == "command" and sent[0]["device_id"] == "acme_widget"
+
+    # ...and the device next to it on the same page is still out of reach.
+    sent = _ask(panel, {"type": "openavc:action", "action": "device.command",
+                        "device": "acme_projector", "command": "power_on", "params": {}})
+    assert len(sent) == 1, f"an ungranted device was commanded anyway: {sent}"
+
+
+def test_an_ungranted_control_reaches_nothing(panel) -> None:
+    """Placed and not configured is the common case, and it must be inert."""
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "room_map/index.html",
+    })
+    panel.frame_locator('[data-element-id="map"] iframe').locator("#room").wait_for(timeout=5000)
+
+    assert panel.frames[1].evaluate("() => window.__init")["state"] == {}
+    for message in (
+        {"type": "openavc:action", "action": "device.command",
+         "device": "acme_widget", "command": "power_on", "params": {}},
+        {"type": "openavc:action", "action": "state.set", "key": "var.volume", "value": 1},
+        {"type": "openavc:action", "action": "macro.run", "macro": "system_on"},
+        {"type": "openavc:navigate", "page": "admin"},
+    ):
+        assert _ask(panel, message) == [], f"{message['type']} reached the room ungranted"
+    assert panel.evaluate("() => window.__navigated") == [], "it moved the panel ungranted"
+
+
+def test_a_granted_control_moves_the_panel_and_runs_a_macro(panel) -> None:
+    """The two switches, through the real boundary. Navigation was ungated
+    before grants existed, so this is the half that used to let any iframe walk
+    the panel off whatever page a person was standing at."""
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "room_map/index.html",
+        "grant": {"devices": [], "variables": [], "macros": True, "navigate": True},
+    })
+    panel.frame_locator('[data-element-id="map"] iframe').locator("#room").wait_for(timeout=5000)
+
+    sent = _ask(panel, {"type": "openavc:action", "action": "macro.run", "macro": "system_on"})
+    assert len(sent) == 1 and sent[0]["type"] == "macro.execute"
+    assert sent[0]["macro_id"] == "system_on"
+
+    _ask(panel, {"type": "openavc:navigate", "page": "admin"})
+    assert panel.evaluate("() => window.__navigated") == ["admin"]

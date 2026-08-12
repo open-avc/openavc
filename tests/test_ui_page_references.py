@@ -454,3 +454,29 @@ def test_the_child_id_is_reported_instead_of_the_property_not_as_well() -> None:
     )
     assert len(messages) == 1, messages
     assert "declares no such child" in messages[0]
+
+
+def test_a_grant_naming_a_missing_device_is_reported() -> None:
+    """A grant that matches nothing is invisible at runtime.
+
+    The control renders, the panel pushes it no state, and nothing anywhere
+    says why -- it looks identical to a control nobody granted anything. The
+    author who renamed the device is the one who needs to hear about it.
+    """
+    messages = _messages([{
+        "id": "map", "type": "custom", "custom_file": "map/index.html",
+        "grant": {"devices": ["acme_amp", "ghost"], "variables": ["anything"]},
+    }])
+    assert len(messages) == 1, messages
+    assert "is granted device 'ghost', which is not in this project" in messages[0]
+    assert "acme_amp" not in messages[0].split("The devices are")[0]
+
+
+def test_a_grant_on_a_device_that_exists_is_silent() -> None:
+    """Including its variables: a script can create a variable at runtime, so
+    an unknown one is not an authoring mistake -- the same rule bound var. keys
+    already follow."""
+    assert _messages([{
+        "id": "map", "type": "custom", "custom_file": "map/index.html",
+        "grant": {"devices": ["acme_amp"], "variables": ["invented_later"], "macros": True},
+    }]) == []

@@ -182,6 +182,16 @@ export interface UIElementOption {
   value: string;
 }
 
+/** Set by whoever places the element, not by whoever wrote the code inside it.
+ *  Devices and variables are named by id, and the one list covers both
+ *  directions: a control that may read a device may command it. */
+export interface ElementGrant {
+  devices: string[];
+  variables: string[];
+  macros: boolean;
+  navigate: boolean;
+}
+
 export interface UIElement {
   id: string;
   type: string;
@@ -264,6 +274,9 @@ export interface UIElement {
   // iframe. custom_file is relative to that folder ("room_map/index.html").
   custom_file?: string;
   custom_config?: Record<string, unknown>;
+  /** What an iframe element (custom control or plugin panel element) may reach
+   *  in the room. Absent means nothing: it draws, and sees and sends nothing. */
+  grant?: ElementGrant;
   parent?: string | null;
   aspect_lock?: number | null;
   css_class?: string | null;

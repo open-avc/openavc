@@ -833,3 +833,30 @@ def test_custom_control_fields_are_declared_not_extras():
     assert element.model_extra == {}
     assert element.custom_file == "room_map/index.html"
     assert element.model_dump()["custom_config"] == {"room": "204"}
+
+
+def test_element_grant_is_declared_and_defaults_to_nothing():
+    """The grant is a security boundary, so it is part of the contract.
+
+    Same reasoning as the fields above: ``extra="allow"`` would round-trip an
+    undeclared ``grant`` perfectly while the panel read a shape nobody agreed
+    on. The default matters as much as the shape -- an element written before
+    grants existed, or placed and not configured, must reach nothing.
+    """
+    from openavc.core.project_loader import UIElement
+
+    assert "grant" in UIElement.model_fields
+    assert UIElement(id="map", type="custom").grant is None
+
+    granted = UIElement.model_validate({
+        "id": "map",
+        "type": "custom",
+        "grant": {"devices": ["dsp1"], "variables": ["room_volume"], "macros": True},
+    })
+    assert granted.model_extra == {}
+    assert granted.grant is not None
+    assert granted.grant.devices == ["dsp1"]
+    assert granted.grant.variables == ["room_volume"]
+    assert granted.grant.macros is True
+    assert granted.grant.navigate is False  # a switch nobody set is off
+    assert granted.model_dump()["grant"]["devices"] == ["dsp1"]

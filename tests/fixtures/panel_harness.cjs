@@ -293,19 +293,91 @@ const tests = {
         };
         const a = record(app.renderPluginElement({ id: 'a', type: 'plugin', plugin_id: 'a', plugin_type: 'widget' }));
         const b = record(app.renderPluginElement({ id: 'b', type: 'plugin', plugin_id: 'b', plugin_type: 'widget' }));
-        // A custom control has no namespace of its own, so it sees nothing at
-        // all until per-element grants land -- and it must not be handed some
-        // other plugin's state in the meantime.
+        // A custom control has no namespace of its own, so with no grant on it
+        // it sees nothing at all -- and it must never be handed some other
+        // element's state.
         const c = record(app.renderCustomElement({ id: 'c', type: 'custom', custom_file: 'room_map/index.html' }));
 
         app._notifyPluginIframes('plugin.a.x', 1);
         assert(a._received.length === 1 && b._received.length === 0, 'only plugin a receives plugin.a.x');
         assert(c._received.length === 0, 'a custom control does not receive another element\'s state');
         app._notifyPluginIframes('device.x.power', 'on');
-        assert(a._received.length === 1 && b._received.length === 0, 'no plugin receives a device.* key');
-        assert(c._received.length === 0, 'a custom control receives no device state yet');
+        assert(a._received.length === 1 && b._received.length === 0, 'an ungranted plugin receives no device.* key');
+        assert(c._received.length === 0, 'an ungranted custom control receives no device state');
         app._notifyPluginIframes('plugin.b.y', 2);
         assert(b._received.length === 1, 'plugin b receives plugin.b.y');
+    },
+
+    // The grant decides what an iframe element may SEE, and the opening
+    // snapshot and the live pushes have to answer identically -- a frame told
+    // at startup it cannot see a key, then pushed that key, is the failure this
+    // one rule in one place exists to prevent.
+    grant_scopes_what_an_element_sees() {
+        const app = mkApp();
+        app.state = {
+            'device.dsp1.mute': false,
+            'device.dsp1.input.01.gain': -6,   // a child entity, never listed by hand
+            'device.dsp10.mute': true,         // the prefix trap: dsp1 is not dsp10
+            'device.proj1.power': 'on',
+            'var.room_volume': 30,
+            'var.room_volume_max': 60,         // exact match, not a prefix
+            'system.version': '9.9.9',
+            'plugin.other.secret': 'nope',
+        };
+        const element = {
+            id: 'map', type: 'custom', custom_file: 'map/index.html',
+            grant: { devices: ['dsp1'], variables: ['room_volume'] },
+        };
+        const el = app.renderCustomElement(element);
+        const seen = (key) => el._stateFilter(key);
+        assert(seen('device.dsp1.mute'), 'a granted device is visible');
+        assert(seen('device.dsp1.input.01.gain'), 'a granted device covers its child entities');
+        assert(!seen('device.dsp10.mute'), 'a grant on dsp1 does not reach dsp10');
+        assert(!seen('device.proj1.power'), 'an ungranted device stays hidden');
+        assert(seen('var.room_volume'), 'a granted variable is visible');
+        assert(!seen('var.room_volume_max'), 'a variable is matched exactly, not by prefix');
+        assert(!seen('system.version'), 'system.* is not grantable');
+        assert(!seen('plugin.other.secret'), 'another element\'s plugin namespace stays hidden');
+
+        // And the live broadcast asks that same filter, so what arrives after
+        // startup matches what the opening snapshot said was visible.
+        const received = [];
+        Object.defineProperty(el._pluginIframe, 'contentWindow', {
+            value: { postMessage: (m) => received.push(m) }, configurable: true,
+        });
+        app.elementMap['map'] = { el, elementDef: element };
+        app._notifyPluginIframes('device.dsp1.mute', true);
+        app._notifyPluginIframes('device.dsp10.mute', false);
+        app._notifyPluginIframes('var.room_volume_max', 60);
+        app._notifyPluginIframes('var.room_volume', 12);
+        assert(received.length === 2, `only granted keys are pushed, got ${received.length}`);
+        assert(received.map(m => m.key).join(',') === 'device.dsp1.mute,var.room_volume',
+            `pushed keys match the filter, got ${received.map(m => m.key).join(',')}`);
+    },
+
+    // The init message carries the same scoped snapshot the live pushes honour,
+    // plus the grant itself so a control can adapt to what it was given.
+    async grant_scopes_the_opening_snapshot() {
+        const app = mkApp();
+        app.state = { 'device.dsp1.mute': false, 'device.proj1.power': 'on', 'var.room_volume': 30 };
+        const el = app.renderCustomElement({
+            id: 'map', type: 'custom', custom_file: 'map/index.html',
+            grant: { devices: ['dsp1'], variables: ['room_volume'], macros: true },
+        });
+        const posted = [];
+        Object.defineProperty(el._pluginIframe, 'contentWindow', {
+            value: { postMessage: (m) => posted.push(m) }, configurable: true,
+        });
+        el._pluginIframe.dispatchEvent(new window.Event('load'));
+        await Promise.resolve();
+        assert(posted.length === 1, `one init message, got ${posted.length}`);
+        const init = posted[0];
+        assert(init.type === 'openavc:init', 'it is the init message');
+        assert(Object.keys(init.state).sort().join(',') === 'device.dsp1.mute,var.room_volume',
+            `snapshot holds only granted keys, got ${Object.keys(init.state).sort().join(',')}`);
+        assert(init.grant.devices.join(',') === 'dsp1', 'the control is told which devices it has');
+        assert(init.grant.macros === true && init.grant.navigate === false,
+            'the control is told which switches it has');
     },
 
     // A custom control is the plugin iframe's machinery pointed at a file in
@@ -330,7 +402,10 @@ const tests = {
         assert(iframe.getAttribute('sandbox') === 'allow-scripts',
             `sandboxed with allow-scripts only, got "${iframe.getAttribute('sandbox')}"`);
         assert(!iframe.getAttribute('allow'), 'no extra allow features');
-        assert(el._pluginCaps.length === 0, 'a custom control declares no capabilities');
+        assert(el._grant.devices.length === 0 && el._grant.variables.length === 0 &&
+            !el._grant.macros && !el._grant.navigate,
+            'a control placed without a grant reaches nothing');
+        assert(el._ownNamespace === null, 'and owns no state namespace of its own');
         const entry = app.elementMap['map'];
         assert(entry && entry.el === el && entry.elementDef.id === 'map',
             'filed in elementMap the same way every other element is');
@@ -360,37 +435,72 @@ const tests = {
         }
     },
 
-    // H-005 — the iframe action bridge enforces the plugin's declared capabilities.
-    h005_action_capability_gate() {
+    // H-005 — the iframe action bridge enforces the grant the element was
+    // placed with. Same scenario for a plugin panel element and a custom
+    // control, because the two share one bridge: the only difference is that a
+    // plugin also owns its own plugin.<id>.* namespace.
+    h005_action_grant_gate() {
         const app = mkApp();
         app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
-        const element = { id: 'pe1', type: 'plugin', plugin_id: 'myplug', plugin_type: 'widget', plugin_config: {} };
-        const el = app.renderPluginElement(element);
-        const handler = el._pluginMessageHandler;
+        const el = app.renderPluginElement({
+            id: 'pe1', type: 'plugin', plugin_id: 'myplug', plugin_type: 'widget', plugin_config: {},
+            grant: { devices: ['dsp1'], variables: ['room_volume'] },
+        });
         const src = el._pluginIframe.contentWindow;
-        const fire = (data) => handler({ source: src, data });
+        const fire = (data) => el._pluginMessageHandler({ source: src, data });
 
-        // device.command without device_command capability is dropped.
-        el._pluginCaps = [];
-        fire({ type: 'openavc:action', action: 'device.command', device: 'd1', command: 'on', params: {} });
-        assert(app.ws.sent.length === 0, 'device.command dropped without capability');
-        // ...and forwarded once the capability is declared.
-        el._pluginCaps = ['device_command'];
-        fire({ type: 'openavc:action', action: 'device.command', device: 'd1', command: 'on', params: {} });
-        assert(app.ws.sent.length === 1 && app.ws.sent[0].type === 'command', 'device.command forwarded with capability');
+        // A command reaches a granted device and nothing else.
+        fire({ type: 'openavc:action', action: 'device.command', device: 'proj1', command: 'on', params: {} });
+        assert(app.ws.sent.length === 0, 'a command on an ungranted device is dropped');
+        fire({ type: 'openavc:action', action: 'device.command', device: 'dsp10', command: 'on', params: {} });
+        assert(app.ws.sent.length === 0, 'a grant on dsp1 does not let dsp10 be commanded');
+        fire({ type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'on', params: {} });
+        assert(app.ws.sent.length === 1 && app.ws.sent[0].type === 'command', 'a granted device can be commanded');
 
-        // state.set is scoped: own namespace needs state_write; var.* needs variable_write; others denied.
+        // Writes ride the same list: a granted variable, exactly; a plugin's
+        // own namespace, always; anything else, never.
         app.ws.sent = [];
-        el._pluginCaps = ['state_write'];
+        fire({ type: 'openavc:action', action: 'state.set', key: 'var.room_volume', value: 1 });
+        assert(app.ws.sent.length === 1, 'a granted variable can be written');
+        fire({ type: 'openavc:action', action: 'state.set', key: 'var.room_volume_max', value: 1 });
+        assert(app.ws.sent.length === 1, 'a variable grant is exact, not a prefix');
+        fire({ type: 'openavc:action', action: 'state.set', key: 'var.other', value: 1 });
+        assert(app.ws.sent.length === 1, 'an ungranted variable is refused');
+        fire({ type: 'openavc:action', action: 'state.set', key: 'device.dsp1.mute', value: 1 });
+        assert(app.ws.sent.length === 1, 'a device state write is refused even for a granted device');
         fire({ type: 'openavc:action', action: 'state.set', key: 'plugin.myplug.x', value: 1 });
-        assert(app.ws.sent.length === 1, 'own-namespace state.set allowed with state_write');
-        fire({ type: 'openavc:action', action: 'state.set', key: 'var.global', value: 1 });
-        assert(app.ws.sent.length === 1, 'var.* write denied without variable_write');
-        fire({ type: 'openavc:action', action: 'state.set', key: 'device.d1.power', value: 1 });
-        assert(app.ws.sent.length === 1, 'device.* write always denied');
-        el._pluginCaps = ['variable_write'];
-        fire({ type: 'openavc:action', action: 'state.set', key: 'var.global', value: 1 });
-        assert(app.ws.sent.length === 2, 'var.* write allowed with variable_write');
+        assert(app.ws.sent.length === 2, 'a plugin writes its own namespace with no grant');
+        fire({ type: 'openavc:action', action: 'state.set', key: 'plugin.other.x', value: 1 });
+        assert(app.ws.sent.length === 2, 'and not another plugin\'s');
+    },
+
+    // Running a macro and moving the panel are separate switches, off unless
+    // the integrator turned them on. Navigation was ungated before grants
+    // existed: any plugin iframe could move the panel out from under whoever
+    // was standing at it.
+    grant_switches_gate_macros_and_navigation() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        let navigatedTo = null;
+        app.navigateToPage = (p) => { navigatedTo = p; };
+
+        const off = app.renderCustomElement({ id: 'off', type: 'custom', custom_file: 'a/index.html' });
+        const fireOff = (d) => off._pluginMessageHandler({ source: off._pluginIframe.contentWindow, data: d });
+        fireOff({ type: 'openavc:action', action: 'macro.run', macro: 'lights_up' });
+        assert(app.ws.sent.length === 0, 'no macro without the switch');
+        fireOff({ type: 'openavc:navigate', page: 'admin' });
+        assert(navigatedTo === null, 'no page change without the switch');
+
+        const on = app.renderCustomElement({
+            id: 'on', type: 'custom', custom_file: 'b/index.html',
+            grant: { macros: true, navigate: true },
+        });
+        const fireOn = (d) => on._pluginMessageHandler({ source: on._pluginIframe.contentWindow, data: d });
+        fireOn({ type: 'openavc:action', action: 'macro.run', macro: 'lights_up' });
+        assert(app.ws.sent.length === 1 && app.ws.sent[0].type === 'macro.execute' &&
+            app.ws.sent[0].macro_id === 'lights_up', 'the macro runs with the switch on');
+        fireOn({ type: 'openavc:navigate', page: 'admin' });
+        assert(navigatedTo === 'admin', 'the page changes with the switch on');
     },
 
     // A plugin element goes into elementMap the same way everything else does, so
@@ -441,7 +551,7 @@ const tests = {
         const handler = live._pluginMessageHandler;
         const src = live._pluginIframe.contentWindow;
         const fire = (data) => handler({ source: src, data });
-        live._pluginCaps = ['device_command', 'state_write', 'variable_write'];
+        live._grant = { devices: ['d1'], variables: ['global'], macros: true, navigate: true };
         fire({ type: 'openavc:action', action: 'device.command', device: 'd1', command: 'on', params: {} });
         fire({ type: 'openavc:action', action: 'state.set', key: 'plugin.myplug.x', value: 1 });
         fire({ type: 'openavc:action', action: 'state.set', key: 'var.global', value: 1 });
@@ -1339,10 +1449,14 @@ const tests = {
 };
 
 const results = {};
-for (const [name, fn] of Object.entries(tests)) {
-    try { fn(); results[name] = { pass: true }; }
-    catch (e) { results[name] = { pass: false, error: String(e && e.message), stack: (e && e.stack || '').split('\n').slice(0, 4).join(' | ') }; }
-}
-// Exit explicitly once stdout is flushed so jsdom/lingering timers from the
-// scenarios don't keep the process alive.
-process.stdout.write(JSON.stringify(results, null, 2), () => process.exit(0));
+// Awaited, so a scenario that returns a promise reports its failure instead of
+// passing vacuously the moment it is called.
+(async () => {
+    for (const [name, fn] of Object.entries(tests)) {
+        try { await fn(); results[name] = { pass: true }; }
+        catch (e) { results[name] = { pass: false, error: String(e && e.message), stack: (e && e.stack || '').split('\n').slice(0, 4).join(' | ') }; }
+    }
+    // Exit explicitly once stdout is flushed so jsdom/lingering timers from the
+    // scenarios don't keep the process alive.
+    process.stdout.write(JSON.stringify(results, null, 2), () => process.exit(0));
+})();

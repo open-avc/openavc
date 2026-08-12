@@ -4572,6 +4572,15 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       issues.push({ severity: "error", message: `Target page "${el.target_page}" does not exist`, location: loc, pageId, elementId: el.id });
     }
 
+    // A grant naming a device that is gone matches nothing at runtime, and a
+    // grant that matches nothing looks exactly like a grant nobody set: the
+    // control just sits there seeing no state.
+    for (const granted of el.grant?.devices ?? []) {
+      if (!deviceIds.has(granted)) {
+        issues.push({ severity: "error", message: `Granted device "${granted}" not found, so this control cannot read or control it`, location: loc, pageId, elementId: el.id });
+      }
+    }
+
     // One action checker for every interaction. Recurses into value_map
     // per-option actions the same way the engine executes them.
     const checkAction = (b: Record<string, unknown>, slotLoc: string) => {

@@ -16,6 +16,7 @@ import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
 import { MacroRefPicker, DeviceRefPicker } from "../../shared/RefPickers";
 import { MatchDriverRangeRow } from "../BindingEditor/DeviceValuePicker";
+import { GrantEditor } from "./GrantEditor";
 import { panelElementFieldKind } from "./panelElementConfig";
 import { numOrUndefined, intOrUndefined } from "./numericField";
 import { usePluginStore } from "../../../store/pluginStore";
@@ -1047,6 +1048,11 @@ export function BasicProperties({
           config={element.plugin_config || {}}
           onChange={(cfg) => onChange({ plugin_config: cfg })}
         />
+      )}
+
+      {/* The two element types that run someone else's page: what it may touch */}
+      {(element.type === "custom" || element.type === "plugin") && (
+        <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
       )}
 
       {/* Icon properties (for elements that display text) */}

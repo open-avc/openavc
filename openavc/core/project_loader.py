@@ -314,6 +314,25 @@ class SnapConfig(_ForwardCompatModel):
     y: float = 100.0 / 8
 
 
+class ElementGrant(_ForwardCompatModel):
+    """What an iframe element (a custom control or a plugin panel element) may
+    reach in the room.
+
+    Set by the integrator who places the element, not declared by whoever wrote
+    the code inside it -- the person putting it on the page is the one who knows
+    what it should touch. Devices and variables are named by id, and the same
+    list covers both directions: a control that may read `dsp1` may command it.
+
+    Absent (the default) means no grant: the element renders, is themed, and
+    gets its config, but sees no state and sends nothing.
+    """
+
+    devices: list[str] = Field(default_factory=list)  # device ids it may read and command
+    variables: list[str] = Field(default_factory=list)  # variable ids it may read and write
+    macros: bool = False  # may run any macro in the project
+    navigate: bool = False  # may move the panel to another page
+
+
 class UIElement(_ForwardCompatModel):
     id: str
     type: str  # "button", "label", "slider", "status_led", "page_nav", etc.
@@ -389,6 +408,9 @@ class UIElement(_ForwardCompatModel):
     # handed to it verbatim in the opening message, the way plugin_config is.
     custom_file: str | None = None
     custom_config: dict[str, Any] = Field(default_factory=dict)
+    # What this element may reach in the room. Only the two iframe types read
+    # it; every other element's reach is its bindings. See ElementGrant.
+    grant: ElementGrant | None = None
     # Geometry lives in the page's layouts, not on the element, so the same
     # control can sit in different places in the landscape and portrait
     # arrangements without being duplicated.

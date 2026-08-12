@@ -72,13 +72,17 @@ SCENARIOS = [
     "h002_fader_reset",
     "h003_l007_lock_reconcile",
     "h004_plugin_broadcast_scope",
-    "h005_action_capability_gate",
+    "h005_action_grant_gate",
     "plugin_element_map_shape",
     "plugin_bridge_respects_edit_mode",
     # Custom controls: the same iframe machinery pointed at the project's ui/ tree.
     "custom_element_render",
     "custom_element_sends_nothing_without_a_grant",
     "custom_element_without_a_file",
+    # Per-element grants: what an iframe element may see and do.
+    "grant_scopes_what_an_element_sees",
+    "grant_scopes_the_opening_snapshot",
+    "grant_switches_gate_macros_and_navigation",
     "m001_l003_countdown",
     "m004_text_loose_compare",
     "l002_format_replace_all",
