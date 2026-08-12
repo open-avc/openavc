@@ -27,6 +27,9 @@ import {
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
+import { useConnectionStore } from "../../store/connectionStore";
+import { useUiFilesStore } from "../../store/uiFilesStore";
+import { showError } from "../../store/toastStore";
 
 interface CanvasProps {
   page: UIPage;
@@ -108,6 +111,14 @@ export function Canvas({
   // load handler's closure stays stable.
   const vminRef = useRef(8);
 
+  // A custom control draws for real in the canvas, so it needs something to
+  // draw. A snapshot of what the room is actually reporting beats invented
+  // numbers, and the panel scopes it per element through that element's grant
+  // exactly as it does on glass. Read once, not subscribed: the live store
+  // updates constantly and this component also subscribes to others.
+  const sampleState = () => useConnectionStore.getState().liveState;
+  const uiFilesVersion = useUiFilesStore((s) => s.version);
+
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current;
     const p = projectRef.current;
@@ -120,25 +131,52 @@ export function Canvas({
         pageId: pageIdRef.current,
         showGrid,
         vmin: vminRef.current,
+        demoState: sampleState(),
+        uiFilesVersion,
       },
       "*",
     );
     setIframeReady(true);
-  }, [showGrid]);
+  }, [showGrid, uiFilesVersion]);
 
-  // Push project → iframe on every edit (both edit and preview modes).
+  // Push project → iframe on every edit (both edit and preview modes), and on
+  // every save into ui/ — a custom control's markup is not project data, so
+  // that is the only thing that redraws it.
   useEffect(() => {
     if (!project) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
     const timer = setTimeout(() => {
       iframe.contentWindow?.postMessage(
-        { type: "openavc:editor-project", project, pageId: page.id, showGrid, vmin: vminRef.current },
+        {
+          type: "openavc:editor-project",
+          project,
+          pageId: page.id,
+          showGrid,
+          vmin: vminRef.current,
+          demoState: sampleState(),
+          uiFilesVersion,
+        },
         "*",
       );
     }, 50);
     return () => clearTimeout(timer);
-  }, [project, page.id, showGrid]);
+  }, [project, page.id, showGrid, uiFilesVersion]);
+
+  // A custom control runs in its own sandboxed frame, so a script error in it
+  // is invisible out here and invisible on a wall panel. The panel shows what
+  // it can in the element's box and forwards it; this is the half that puts it
+  // in front of the person who wrote it.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const msg = event.data as { type?: string; elementId?: string; message?: string };
+      if (msg?.type !== "openavc:element-error") return;
+      showError(`${msg.elementId || "Custom control"}: ${msg.message || "failed"}`);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;

@@ -79,6 +79,13 @@ SCENARIOS = [
     "custom_element_render",
     "custom_element_sends_nothing_without_a_grant",
     "custom_element_without_a_file",
+    # Seeing the control while you build it.
+    "custom_control_draws_in_the_designer",
+    "custom_control_in_the_designer_reaches_nothing",
+    "custom_control_init_says_it_is_the_designer",
+    "custom_control_says_when_its_file_is_missing",
+    "custom_control_reports_its_own_error",
+    "custom_control_reloads_when_a_file_is_saved",
     # Per-element grants: what an iframe element may see and do.
     "grant_scopes_what_an_element_sees",
     "grant_scopes_the_opening_snapshot",

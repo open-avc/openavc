@@ -79,7 +79,16 @@ def _panel_html() -> str:
   <div id="offline-overlay"></div><div id="loading-state"></div>
   <div id="stage"><div id="box"></div></div>
 <script>
-  window.fetch = async () => ({{ ok: false, json: async () => ({{}}) }});
+  // Stub the project fetch the panel does at startup, but let requests for the
+  // ui/ tree through: the panel asks whether a control's file is really there,
+  // and a stub that answers "no" for everything would put a failure strip on
+  // every control in every scenario here.
+  const realFetch = window.fetch.bind(window);
+  window.fetch = async (url, opts) => (
+    String(url).includes('/api/projects/default/ui/')
+      ? realFetch(url, opts)
+      : {{ ok: false, json: async () => ({{}}) }}
+  );
   class FakeWS {{ constructor() {{ this.readyState = 1; }} send() {{}} close() {{}} }}
   FakeWS.OPEN = 1; window.WebSocket = FakeWS;
 </script>
@@ -238,3 +247,39 @@ def test_a_granted_control_moves_the_panel_and_runs_a_macro(panel) -> None:
 
     _ask(panel, {"type": "openavc:navigate", "page": "admin"})
     assert panel.evaluate("() => window.__navigated") == ["admin"]
+
+
+MISSING_URL = "http://openavc.invalid/api/projects/default/ui/gone/index.html"
+
+
+def test_a_missing_file_says_so_in_the_box(panel) -> None:
+    """An iframe pointed at a 404 renders the server's JSON error as text.
+
+    That reads as "this control is broken in some unknowable way" rather than
+    "that file is not in the project", and on a wall panel there is no console
+    to check.
+    """
+    panel.route(MISSING_URL, lambda route: route.fulfill(
+        status=404, content_type="application/json", body='{"detail":"Not found"}',
+    ))
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "gone/index.html",
+    })
+    fault = panel.locator('[data-element-id="map"] .panel-iframe-fault')
+    fault.wait_for(timeout=5000)
+    assert fault.inner_text() == "gone/index.html could not be loaded (404)"
+
+
+def test_a_control_that_throws_says_so_in_the_box(panel) -> None:
+    """Nothing outside a sandboxed frame can see a script error inside it, so
+    the control reports its own with the one line the guide gives it."""
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "room_map/index.html",
+    })
+    panel.frame_locator('[data-element-id="map"] iframe').locator("#room").wait_for(timeout=5000)
+    panel.frames[1].evaluate(
+        "() => window.__ask({type: 'openavc:error', message: 'ReferenceError: lights is not defined'})"
+    )
+    fault = panel.locator('[data-element-id="map"] .panel-iframe-fault')
+    fault.wait_for(timeout=5000)
+    assert "ReferenceError" in fault.inner_text()

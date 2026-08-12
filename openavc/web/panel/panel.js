@@ -291,6 +291,12 @@ class PanelApp {
                     this.uiSettings = ui.settings || {};
                     if (msg.pageId) this.currentPage = msg.pageId;
                     if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
+                    // Bumped by the Builder every time a file lands in ui/. It
+                    // rides on the src of every custom control so a save is
+                    // visible in the canvas without reloading the IDE.
+                    if (Object.prototype.hasOwnProperty.call(msg, 'uiFilesVersion')) {
+                        this._uiFilesVersion = msg.uiFilesVersion;
+                    }
                     // The builder sizes an overlay preview to the overlay box,
                     // not the screen, so it hands us the preset's vmin to keep
                     // preview type the size it will be at runtime.
@@ -4037,11 +4043,24 @@ class PanelApp {
             return this._renderIframePlaceholder(element, 'custom', 'Custom control (no file chosen)');
         }
         const src = file.split('/').map(encodeURIComponent).join('/');
+        // The designer re-renders this page whenever the author saves a file
+        // into ui/, and the browser would otherwise hand back the copy it
+        // already has. The version rides in from the Builder; at runtime there
+        // is none and the URL is the plain one.
+        const bust = this._uiFilesVersion ? `?v=${encodeURIComponent(this._uiFilesVersion)}` : '';
 
         return this._renderIframeElement(element, {
             className: 'panel-custom',
             styleType: 'custom',
-            src: `${this._panelBasePath()}/api/projects/default/ui/${src}`,
+            src: `${this._panelBasePath()}/api/projects/default/ui/${src}${bust}`,
+            // The one iframe type that runs in the designer. It is the control
+            // the integrator is writing right now, so a grey box is the wrong
+            // answer: it draws, it is themed, and it is the size they gave it.
+            // Nothing it sends reaches the room -- send() refuses in edit mode,
+            // and edit mode has no socket to refuse into.
+            liveInEditMode: true,
+            // Named so a failure message can say which file, not which element.
+            fileLabel: file,
             // Nothing but allow-scripts, and no opt-in. The per-plugin escape
             // hatch exists because a plugin is reviewed code with a manifest the
             // server has filtered; a file dropped into ui/ is neither.
@@ -4136,11 +4155,41 @@ class PanelApp {
         return el;
     }
 
+    /** Say, in the element's own box, that the page in it failed.
+     *
+     *  A control that breaks is otherwise a blank rectangle with the answer in
+     *  a console nobody has open -- and on a wall panel there is no console at
+     *  all. The strip sits over the frame rather than replacing it, so a page
+     *  that half-drew still shows what it managed. */
+    _showIframeFault(el, message) {
+        let strip = el._faultStrip;
+        if (!strip) {
+            strip = document.createElement('div');
+            strip.className = 'panel-iframe-fault';
+            strip.style.cssText = 'position:absolute;left:0;right:0;bottom:0;z-index:2;'
+                + 'padding:3px 5px;font-size:10px;line-height:1.3;text-align:left;'
+                + 'background:var(--panel-danger, #b3261e);color:#fff;'
+                + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            el.appendChild(strip);
+            el._faultStrip = strip;
+        }
+        strip.textContent = message;
+        strip.title = message;
+        // The designer can put it in front of the author, which the panel
+        // itself cannot: it has no place to show a message that is not a box.
+        this._postToParent({
+            type: 'openavc:element-error',
+            elementId: el.dataset.elementId,
+            message,
+        });
+    }
+
     _renderIframeElement(element, opts) {
-        // Edit mode: render a placeholder instead of booting the real page.
-        // Keeps the designer fast and avoids running unreviewed code while
-        // authoring.
-        if (this.editMode) {
+        // Edit mode: a plugin element stays a placeholder -- it is somebody
+        // else's shipped code and the author is not editing it, so there is
+        // nothing to see and no reason to run it while they drag. A custom
+        // control is the opposite: it is the thing being written.
+        if (this.editMode && !opts.liveInEditMode) {
             return this._renderIframePlaceholder(
                 element, opts.styleType, opts.placeholderLabel, opts.placeholderDetail,
             );
@@ -4164,6 +4213,21 @@ class PanelApp {
         iframe.setAttribute('loading', 'lazy');
         el.style.overflow = 'hidden';
         el.appendChild(iframe);
+
+        // Is the page actually there? An iframe pointed at a 404 renders the
+        // server's JSON error as text, which reads as "my control is broken in
+        // some unknowable way" rather than "that file is not in the project".
+        // Asking first costs one conditional request (the ui/ route is
+        // no-cache with an etag, so the iframe's own fetch revalidates).
+        if (opts.fileLabel) {
+            fetch(opts.src, { cache: 'no-store' }).then(res => {
+                if (!res.ok) {
+                    this._showIframeFault(el, `${opts.fileLabel} could not be loaded (${res.status})`);
+                }
+            }).catch(() => {
+                this._showIframeFault(el, `${opts.fileLabel} could not be loaded`);
+            });
+        }
 
         // Loading indicator
         const loadingIndicator = document.createElement('div');
@@ -4226,6 +4290,11 @@ class PanelApp {
                 state: stateSnapshot,
                 elementId: element.id,
                 ext_token: extToken,
+                // True in the Builder's design canvas: the control is drawing
+                // for its author, with whatever sample state the Builder sent
+                // and no way to reach the room. A control can use this to show
+                // representative content instead of empty readouts.
+                edit: !!this.editMode,
                 // What it was granted, so a control can adapt to it -- hide a
                 // button for a device it cannot command instead of sending a
                 // message that is silently dropped.
@@ -4312,6 +4381,17 @@ class PanelApp {
                     }
                     break;
                 }
+                case 'openavc:error': {
+                    // The frame is sandboxed with an opaque origin, so nothing
+                    // out here can see a script error inside it. The one line
+                    // the docs give an author (window.onerror -> this message)
+                    // is what makes a broken control say so instead of drawing
+                    // an empty box.
+                    const text = String(msg.message || 'error').slice(0, 200);
+                    console.warn(`[panel] ${who} reported an error: ${text}`);
+                    this._showIframeFault(el, text);
+                    break;
+                }
                 case 'openavc:request-init': {
                     // Re-send openavc:init (with a freshly-fetched ext token
                     // when the plugin declares ext_auth). A plugin iframe
@@ -4327,6 +4407,11 @@ class PanelApp {
                         console.warn(`[panel] ${who} attempted to change pages without the navigation switch`);
                         break;
                     }
+                    // Navigation does not go through send(), so it needs its
+                    // own authoring guard: in the designer the author is on the
+                    // page they are editing, and a control must not move them
+                    // off it.
+                    if (this.editMode) break;
                     if (msg.page) this.navigateToPage(msg.page);
                     break;
             }

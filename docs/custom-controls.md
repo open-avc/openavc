@@ -31,6 +31,8 @@ Point the element at `room_map/index.html`. Everything beside it loads with rela
 
 Allowed file types are the ones a browser needs: HTML, CSS, JavaScript, images, fonts, JSON, and a few others. Anything else is refused when you upload it, and the message says which files were skipped.
 
+**Anything in `ui/` is readable by anyone who can reach the server.** A wall panel presents no password, so these files are served without one. Keep credentials, customer data and anything else you would not hand out of this folder.
+
 ## The shape of a control
 
 A control is a normal web page. It talks to the panel with `postMessage`.
@@ -85,6 +87,7 @@ Once, when your page loads.
 | `state` | Every state key this control was granted, with its current value |
 | `grant` | What this control may reach: `{devices, variables, macros, navigate}` |
 | `elementId` | This element's id, useful when the same page runs in more than one box |
+| `edit` | `true` when the control is drawing in the UI Builder's design canvas rather than on a panel |
 
 ### `openavc:state`
 
@@ -149,6 +152,37 @@ Refused messages are logged to the browser console (`[panel] custom control 'roo
 
 Peer instance state (`isc.*`), system state (`system.*`) and panel state (`ui.*`) cannot be granted to a control.
 
+## Seeing it while you build it
+
+Your control draws for real on the Builder's design canvas, at the size you gave it and in the project's theme, so you can lay a page out around it. What it does not do there is touch the room: the canvas has no connection to it, so commands, variable writes, macros and page changes all stop at the panel. The state it receives on the canvas is a snapshot of what the room was last reporting, which is enough to see your readouts filled in.
+
+`edit: true` in the opening message is how your page can tell. Use it to draw representative content when there is nothing live to show:
+
+```javascript
+if (msg.type === 'openavc:init') {
+  const level = msg.edit ? 42 : (msg.state['device.lights.level'] ?? 0);
+  draw(level);
+}
+```
+
+**Preview** runs the control exactly as it will on the glass: live state, working commands, the real room. That is the one to trust before you hand a space over.
+
+Saving a file into `ui/` redraws the control on the canvas. You do not need to reload the IDE.
+
+## When something goes wrong, say so
+
+A control runs in its own window, so nothing outside it can see a script error inside it. Report your own in one line and the panel shows it in the element's box, and in the IDE while you are building:
+
+```javascript
+window.onerror = (message) => {
+  parent.postMessage({ type: 'openavc:error', message: String(message) }, '*');
+};
+```
+
+Do that in every control you write. A control that throws without it is a blank rectangle, and on a wall panel there is no console to check.
+
+The panel raises one failure on its own: if the file the element points at is not there, the box says so and names the file.
+
 ## Matching the panel's look
 
 The theme arrives in `openavc:init` as the same twelve variables the project stylesheet uses. Set them on your own page and the control follows a theme switch instead of fighting it:
@@ -189,6 +223,7 @@ Your page fills the element's box exactly, so give it `margin: 0` and let it siz
 
 ## When the control does not draw
 
+- Read the message in the box. A missing file names itself, and so does anything your control reports through `openavc:error`.
 - Check the **Control** dropdown on the element. A file that was renamed or removed shows as `(missing)`.
 - Open the page on its own to see it in isolation: `http://<your-server>:8080/api/projects/default/ui/room_map/index.html`.
 - Open the browser console on the panel. A refused action names itself there, and so does a script error in your page.

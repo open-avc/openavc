@@ -92,6 +92,8 @@ Drag **Custom Control** onto the page, then in the properties panel:
 
 Writing the page itself, the messages it exchanges with the panel, and a worked example are in [Writing a Custom Control](custom-controls.md).
 
+The control draws for real on the canvas as you lay the page out, and redraws when you save a file into `ui/`. It cannot reach the room from there: commands and page changes stop at the panel until you switch to Preview, which runs it against the real room. If the control fails, the box says why.
+
 ### Can reach
 
 A custom control has no bindings, so nothing else says what it touches. That list is **Can reach**, and you set it when you place the control:

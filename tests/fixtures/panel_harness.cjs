@@ -435,6 +435,119 @@ const tests = {
         }
     },
 
+    // The designer draws the control for real, because it is the thing being
+    // written. A plugin element is somebody else's shipped code and stays a
+    // placeholder: nothing to see, and no reason to run it while dragging.
+    custom_control_draws_in_the_designer() {
+        const app = mkApp();
+        app.editMode = true;
+        const custom = app.renderCustomElement({
+            id: 'map', type: 'custom', custom_file: 'map/index.html',
+        });
+        assert(custom._pluginIframe, 'a custom control renders its page in the designer');
+        const plugin = app.renderPluginElement({
+            id: 'pe', type: 'plugin', plugin_id: 'p', plugin_type: 'widget',
+        });
+        assert(!plugin._pluginIframe, 'a plugin element is still a placeholder there');
+        assert(plugin.textContent.includes('Plugin'), 'and says what it stands for');
+    },
+
+    // Drawing for real in the designer must not mean acting for real. The
+    // canvas has no socket, and send() refuses anyway -- both, because either
+    // one alone is a promise resting on the other.
+    custom_control_in_the_designer_reaches_nothing() {
+        const app = mkApp();
+        app.editMode = true;
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        let navigatedTo = null;
+        app.navigateToPage = (p) => { navigatedTo = p; };
+        const el = app.renderCustomElement({
+            id: 'map', type: 'custom', custom_file: 'map/index.html',
+            grant: { devices: ['dsp1'], variables: ['vol'], macros: true, navigate: true },
+        });
+        const fire = (d) => el._pluginMessageHandler({ source: el._pluginIframe.contentWindow, data: d });
+        fire({ type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'on', params: {} });
+        fire({ type: 'openavc:action', action: 'state.set', key: 'var.vol', value: 1 });
+        fire({ type: 'openavc:action', action: 'macro.run', macro: 'system_on' });
+        assert(app.ws.sent.length === 0, `nothing reaches the room while authoring, got ${app.ws.sent.length}`);
+        // Navigation is the one that does not go through send(), so it is
+        // checked separately rather than assumed to ride along.
+        fire({ type: 'openavc:navigate', page: 'admin' });
+        assert(navigatedTo === null, 'and the canvas does not walk to another page');
+    },
+
+    // The opening message tells a control it is drawing for its author, and
+    // hands it the sample state the Builder supplied -- scoped by the same
+    // grant as on glass, so the designer cannot show what the panel would not.
+    async custom_control_init_says_it_is_the_designer() {
+        const app = mkApp();
+        app.editMode = true;
+        app.state = { 'device.dsp1.mute': false, 'device.other.x': 1 };
+        const el = app.renderCustomElement({
+            id: 'map', type: 'custom', custom_file: 'map/index.html',
+            grant: { devices: ['dsp1'] },
+        });
+        const posted = [];
+        Object.defineProperty(el._pluginIframe, 'contentWindow', {
+            value: { postMessage: (m) => posted.push(m) }, configurable: true,
+        });
+        el._pluginIframe.dispatchEvent(new window.Event('load'));
+        await Promise.resolve();
+        assert(posted.length === 1, `one init message, got ${posted.length}`);
+        assert(posted[0].edit === true, 'the control is told it is in the designer');
+        assert(Object.keys(posted[0].state).join(',') === 'device.dsp1.mute',
+            `sample state is still scoped by the grant, got ${Object.keys(posted[0].state).join(',')}`);
+    },
+
+    // A file that is not there renders the server's JSON error as text, which
+    // reads as an unknowable breakage. The box says which file instead, and
+    // the designer is told so it can put it in front of the author.
+    async custom_control_says_when_its_file_is_missing() {
+        const app = mkApp();
+        const toParent = [];
+        app._postToParent = (m) => toParent.push(m);
+        window.fetch = async () => ({ ok: false, status: 404 });
+        const el = app.renderCustomElement({ id: 'map', type: 'custom', custom_file: 'map/index.html' });
+        await Promise.resolve(); await Promise.resolve();
+        const strip = el.querySelector('.panel-iframe-fault');
+        assert(strip, 'the box carries a failure strip');
+        assert(strip.textContent === 'map/index.html could not be loaded (404)',
+            `it names the file and the status, got "${strip.textContent}"`);
+        assert(toParent.some(m => m.type === 'openavc:element-error' && m.elementId === 'map'),
+            'and the designer is told which element failed');
+        window.fetch = async () => ({ ok: false, json: async () => ({}) });
+    },
+
+    // Nothing outside a sandboxed frame can see a script error inside it, so
+    // the control reports its own and the panel shows it where the control is.
+    custom_control_reports_its_own_error() {
+        const app = mkApp();
+        const toParent = [];
+        app._postToParent = (m) => toParent.push(m);
+        const el = app.renderCustomElement({ id: 'map', type: 'custom', custom_file: 'map/index.html' });
+        el._pluginMessageHandler({
+            source: el._pluginIframe.contentWindow,
+            data: { type: 'openavc:error', message: 'ReferenceError: lights is not defined' },
+        });
+        const strip = el.querySelector('.panel-iframe-fault');
+        assert(strip && strip.textContent.includes('ReferenceError'),
+            `the message shows in the element's box, got "${strip && strip.textContent}"`);
+        assert(toParent.some(m => m.type === 'openavc:element-error'), 'the designer hears about it too');
+    },
+
+    // Saving a file changes no project data, so the version the Builder bumps
+    // is the only thing that stops the browser drawing the copy it already has.
+    custom_control_reloads_when_a_file_is_saved() {
+        const app = mkApp();
+        const plain = app.renderCustomElement({ id: 'a', type: 'custom', custom_file: 'map/index.html' });
+        assert(plain._pluginIframe.getAttribute('src') === '/api/projects/default/ui/map/index.html',
+            `no version at runtime, got ${plain._pluginIframe.getAttribute('src')}`);
+        app._uiFilesVersion = 7;
+        const busted = app.renderCustomElement({ id: 'b', type: 'custom', custom_file: 'map/index.html' });
+        assert(busted._pluginIframe.getAttribute('src') === '/api/projects/default/ui/map/index.html?v=7',
+            `the saved version rides on the URL, got ${busted._pluginIframe.getAttribute('src')}`);
+    },
+
     // H-005 — the iframe action bridge enforces the grant the element was
     // placed with. Same scenario for a plugin panel element and a custom
     // control, because the two share one bridge: the only difference is that a

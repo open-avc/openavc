@@ -20,6 +20,7 @@ import { GrantEditor } from "./GrantEditor";
 import { panelElementFieldKind } from "./panelElementConfig";
 import { numOrUndefined, intOrUndefined } from "./numericField";
 import { usePluginStore } from "../../../store/pluginStore";
+import { useUiFilesStore } from "../../../store/uiFilesStore";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { showInfo } from "../../../store/toastStore";
 
@@ -1846,6 +1847,9 @@ function CustomControlConfig({
         skipped.push(...result.skipped);
       }
       await refresh();
+      // The files changed, not the project, so nothing else would tell the
+      // design canvas to draw the new version.
+      useUiFilesStore.getState().bump();
       setNote(skipped.length ? `Skipped ${skipped.length} file(s) this folder can't hold.` : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
