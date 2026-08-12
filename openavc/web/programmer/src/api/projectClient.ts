@@ -215,12 +215,13 @@ export async function duplicateLibraryProject(
   });
 }
 
-export async function exportLibraryProject(id: string): Promise<void> {
-  const res = await fetch(`${BASE}/library/${id}/export`);
+/** Download a bundle response to the user's disk, named by the server. */
+async function downloadBundle(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`Export failed: ${res.status}`);
   const disposition = res.headers.get("content-disposition") || "";
   const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match ? match[1] : `${id}.avc`;
+  const filename = match ? match[1] : fallbackName;
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -230,10 +231,27 @@ export async function exportLibraryProject(id: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export async function exportLibraryProject(id: string): Promise<void> {
+  return downloadBundle(`/library/${id}/export`, `${id}.zip`);
+}
+
+/**
+ * Download the current project as a complete .zip bundle.
+ *
+ * Built on the server from what is on disk, so the caller saves first. It used
+ * to be a client-side JSON.stringify of the store, which quietly shipped a
+ * project with none of its drivers, plugins or custom controls.
+ */
+export async function exportCurrentProject(): Promise<void> {
+  return downloadBundle("/project/export", "project.zip");
+}
+
 export async function importToLibrary(file: File, id?: string): Promise<{
   status: string; project_id: string;
   installed_drivers?: string[];
   missing_drivers?: { driver_id: string; driver_name: string; affected_devices: string[] }[];
+  installed_plugins?: string[];
+  missing_plugins?: { plugin_id: string; plugin_name: string }[];
   warnings?: string[];
 }> {
   const formData = new FormData();

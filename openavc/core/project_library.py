@@ -594,7 +594,7 @@ def _install_bundled_from_library(project_id: str) -> None:
         with zipfile.ZipFile(bundle_path, "r") as zf:
             _check_zip_safety(zf)
             installed_drivers = _install_bundled_drivers(zf)
-            installed_plugins = _install_bundled_plugins(zf)
+            installed_plugins, _unloadable = _install_bundled_plugins(zf)
             if installed_drivers:
                 log.info("Installed bundled drivers for '%s': %s",
                          project_id, ", ".join(installed_drivers))
@@ -665,33 +665,32 @@ def _find_plugin_files(plugin_deps: list[dict]) -> list[tuple[str, Path]]:
         plugin_dir = plugin_repo / plugin_id
         if not plugin_dir.is_dir():
             continue
-        # Bundle all files in the plugin directory
+        # Bundle all files in the plugin directory, minus the bytecode Python
+        # leaves behind. A .pyc is stamped with the interpreter that wrote it
+        # and is regenerated on the other machine anyway, so it is only weight
+        # in a file whose whole job is to travel.
         for f in plugin_dir.rglob("*"):
-            if f.is_file() and not f.name.startswith("."):
-                rel = f.relative_to(plugin_repo)
-                files.append((f"plugins/{rel.as_posix()}", f))
+            if not f.is_file() or f.name.startswith("."):
+                continue
+            if "__pycache__" in f.parts or f.suffix in (".pyc", ".pyo"):
+                continue
+            rel = f.relative_to(plugin_repo)
+            files.append((f"plugins/{rel.as_posix()}", f))
     return files
 
 
-def export_project(project_id: str) -> tuple[bytes, str, str]:
-    """Export a saved project as a .zip bundle.
+def _bundle_bytes(data: dict[str, Any], scripts: dict[str, str], project_dir: Path) -> bytes:
+    """Build the project bundle: project.avc + everything it needs to run.
 
-    Returns (content_bytes, filename, content_type).
-    Always produces a .zip containing project.avc, scripts/, drivers/, and plugins/.
+    One builder for both export doors -- the library's and the current
+    project's. They used to be different code producing different things: the
+    toolbar's wrote the project JSON on its own and nothing else, so the most
+    obvious way to move a room to another machine was the one that left the
+    custom controls, drivers and plugins behind.
     """
-    data, scripts = get_project(project_id)
-    sid = sanitize_id(project_id)
+    driver_files = _find_driver_files(data.get("driver_dependencies", []))
+    plugin_files = _find_plugin_files(data.get("plugin_dependencies", []))
 
-    # Find non-builtin driver files to bundle
-    driver_deps = data.get("driver_dependencies", [])
-    driver_files = _find_driver_files(driver_deps)
-
-    # Find plugin files to bundle
-    plugin_deps = data.get("plugin_dependencies", [])
-    plugin_files = _find_plugin_files(plugin_deps)
-
-    # Find asset files to bundle
-    project_dir = _lib_dir() / sid
     assets_dir = project_dir / "assets"
     asset_files: list[tuple[str, Path]] = []
     if assets_dir.exists():
@@ -717,7 +716,33 @@ def export_project(project_id: str) -> tuple[bytes, str, str]:
             zf.writestr(archive_path, fpath.read_bytes())
         for archive_path, fpath in ui_files:
             zf.writestr(archive_path, fpath.read_bytes())
-    return buf.getvalue(), f"{sid}.zip", "application/zip"
+    return buf.getvalue()
+
+
+def export_project(project_id: str) -> tuple[bytes, str, str]:
+    """Export a saved project as a .zip bundle.
+
+    Returns (content_bytes, filename, content_type).
+    """
+    data, scripts = get_project(project_id)
+    sid = sanitize_id(project_id)
+    return _bundle_bytes(data, scripts, _lib_dir() / sid), f"{sid}.zip", "application/zip"
+
+
+def export_active_project(project_path: Path) -> tuple[bytes, str, str]:
+    """Export the project the room is running as the same .zip bundle.
+
+    Reads what is on disk rather than what an editor is holding, so the caller
+    saves first -- see the export route.
+    """
+    data = _load_avc(project_path)
+    scripts = _read_scripts_dir(project_path.parent / "scripts")
+    sid = sanitize_id(data.get("project", {}).get("id") or "project")
+    return (
+        _bundle_bytes(data, scripts, project_path.parent),
+        f"{sid}.zip",
+        "application/zip",
+    )
 
 
 def import_project(
@@ -888,15 +913,23 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
     return installed
 
 
-def _install_bundled_plugins(zf: zipfile.ZipFile) -> list[str]:
+def _install_bundled_plugins(zf: zipfile.ZipFile) -> tuple[list[str], dict[str, str]]:
     """Install plugin files bundled in a zip's plugins/ directory.
 
-    Returns list of installed plugin IDs.
+    Returns ``(installed plugin ids, {plugin id: why it did not load})``.
+
+    A plugin is registered as soon as it lands, the same way a bundled driver
+    is a few functions up. Writing the files and stopping left the import
+    reporting a plugin it had just installed as missing, and told the user to
+    go and install it again.
     """
+
+    from openavc.core.plugin_installer import _register_installed_plugin
 
     plugin_repo = _PLUGIN_REPO_DIR
     plugin_repo.mkdir(exist_ok=True)
     installed: list[str] = []
+    unloadable: dict[str, str] = {}
 
     # Collect plugin directories from the zip
     plugin_dirs: set[str] = set()
@@ -939,22 +972,43 @@ def _install_bundled_plugins(zf: zipfile.ZipFile) -> list[str]:
         installed.append(plugin_id)
         log.info(f"Installed bundled plugin: {plugin_id}")
 
-    return installed
+        # Register it now, so the project that arrived with it can run it
+        # without a restart. Executing plugin code here is the same trust the
+        # bundled-driver path already takes: whoever imported this file chose
+        # to run it.
+        try:
+            error = _register_installed_plugin(plugin_id, dest_dir)
+        except Exception as e:  # Catch-all: plugin import runs arbitrary Python
+            error = f"{type(e).__name__}: {e}"
+        if error:
+            unloadable[plugin_id] = error
+            log.warning("Bundled plugin '%s' installed but did not load: %s",
+                        plugin_id, error)
+
+    return installed, unloadable
 
 
-def _check_missing_plugins(data: dict) -> list[dict[str, Any]]:
+def _check_missing_plugins(
+    data: dict, installed: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Check which plugins referenced in the project are not installed.
 
     Returns an object list mirroring ``_check_missing_drivers`` so clients get
     a consistent shape (and the human-readable plugin name when the project
     carries it in ``plugin_dependencies``).
+
+    ``installed`` names the plugins this import just unpacked from the bundle.
+    They are on disk whether or not their code loaded, so they are not missing
+    and must not be reported as such -- the registry alone cannot tell the two
+    apart.
     """
     from openavc.core.plugin_loader import get_plugin_registry
 
     registry = get_plugin_registry()
+    just_installed = set(installed or ())
     missing: list[dict[str, Any]] = []
     for plugin_id in data.get("plugins", {}):
-        if plugin_id in registry:
+        if plugin_id in registry or plugin_id in just_installed:
             continue
         dep_name = ""
         for dep in data.get("plugin_dependencies", []):
@@ -1029,7 +1083,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         # idempotent). A failure here leaves the project intact with the
         # affected drivers simply reported as missing below.
         installed_drivers = _install_bundled_drivers(zf)
-        installed_plugins = _install_bundled_plugins(zf)
+        installed_plugins, unloadable_plugins = _install_bundled_plugins(zf)
 
     # Check for still-missing drivers after installing bundled ones
     missing = _check_missing_drivers(data)
@@ -1038,14 +1092,23 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         names = ", ".join(m["affected_devices"])
         warnings.append(f"Driver '{m['driver_id']}' is not installed (used by: {names})")
 
-    # Check for missing plugins
-    missing_plugins = _check_missing_plugins(data)
+    # Check for missing plugins — the ones the bundle did not carry.
+    missing_plugins = _check_missing_plugins(data, installed_plugins)
     for mp in missing_plugins:
         name = mp["plugin_name"] or mp["plugin_id"]
         warnings.append(
             f"Plugin '{name}' is not installed and was not bundled in the export. "
             f"Install it from the community repository."
         )
+
+    # A plugin that arrived in the bundle but would not load is a different
+    # sentence: it is on disk, so telling the user to install it is wrong.
+    for plugin_id in installed_plugins:
+        if plugin_id in unloadable_plugins:
+            warnings.append(
+                f"Plugin '{plugin_id}' came with this project but did not load on "
+                f"this system. Check the Plugins page."
+            )
 
     log.info(f"Imported project '{pid}' from .zip bundle")
     return {

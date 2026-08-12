@@ -104,25 +104,70 @@ export function ProjectView() {
 
   // --- Handlers ---
 
-  const handleExportCurrent = useCallback(() => {
-    const project = useProjectStore.getState().project;
-    if (!project) return;
-    const blob = new Blob([JSON.stringify(project, null, 4)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${project.project.id}.avc`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExportCurrent = useCallback(async () => {
+    if (!useProjectStore.getState().project) return;
+    if (useProjectStore.getState().dirty) {
+      showError(
+        "Save the project first. The export is built from the saved project, " +
+          "so unsaved changes would be left out."
+      );
+      return;
+    }
+    try {
+      await api.exportCurrentProject();
+    } catch (e) {
+      showError(String(e));
+    }
   }, []);
+
+  /** Bring in a .zip bundle: into the library, then open it as the room.
+   *
+   *  A bundle carries drivers, plugins, assets and custom controls, so it
+   *  can't be adopted by parsing JSON into the store. Opening it through the
+   *  library also keeps a copy of what was here — that path takes its own
+   *  backup first. */
+  const importBundle = useCallback(async (file: File) => {
+    setBusy(true);
+    showInfo("Importing project...");
+    try {
+      const result = await api.importToLibrary(file);
+      const entries = await api.listLibrary();
+      setLibrary(entries);
+      const entry = entries.find((l) => l.id === result.project_id);
+      await api.openFromLibrary(
+        result.project_id,
+        entry?.name || result.project_id,
+        result.project_id
+      );
+      await forceReloadProject();
+
+      const msgs: string[] = [];
+      if (result.installed_drivers?.length) {
+        msgs.push(`Installed ${result.installed_drivers.length} driver(s): ${result.installed_drivers.join(", ")}`);
+      }
+      if (result.installed_plugins?.length) {
+        msgs.push(`Installed ${result.installed_plugins.length} plugin(s): ${result.installed_plugins.join(", ")}`);
+      }
+      if (result.warnings?.length) msgs.push(...result.warnings);
+      showSuccess(["Project imported.", ...msgs].join(" "));
+    } catch (e) {
+      showError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [forceReloadProject]);
 
   const handleImportCurrent = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".avc,.json";
+    input.accept = ".avc,.json,.zip";
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+      if (file.name.toLowerCase().endsWith(".zip")) {
+        await importBundle(file);
+        return;
+      }
       let parsed: ProjectConfig;
       try {
         parsed = JSON.parse(await file.text());
@@ -142,7 +187,7 @@ export function ProjectView() {
       });
     };
     input.click();
-  }, [forceReloadProject]);
+  }, [forceReloadProject, importBundle]);
 
   const handleSaveAs = async () => {
     if (!saveAsId.trim() || !saveAsName.trim()) return;
@@ -240,6 +285,9 @@ export function ProjectView() {
         const msgs: string[] = [];
         if (result.installed_drivers && result.installed_drivers.length > 0) {
           msgs.push(`Installed ${result.installed_drivers.length} bundled driver(s): ${result.installed_drivers.join(", ")}`);
+        }
+        if (result.installed_plugins && result.installed_plugins.length > 0) {
+          msgs.push(`Installed ${result.installed_plugins.length} bundled plugin(s): ${result.installed_plugins.join(", ")}`);
         }
         if (result.warnings && result.warnings.length > 0) {
           msgs.push("", "Warnings:", ...result.warnings,

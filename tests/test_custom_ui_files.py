@@ -224,6 +224,47 @@ def test_serving_an_unknown_type_never_invites_the_browser_to_run_it(client, pro
     assert resp.headers["content-type"].startswith("application/octet-stream")
 
 
+def test_a_missing_page_does_not_draw_the_api_at_the_room(client):
+    """Rename a control's file and the frame must not render the API's JSON.
+
+    The panel draws its own message over the frame, but the frame still has a
+    body, and a wall panel showing ``{"detail":"File not found"}`` is API
+    plumbing pointed at whoever is in the room.
+    """
+    resp = client.get("/api/projects/default/ui/room_map/index.html")
+    assert resp.status_code == 404
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "detail" not in resp.text
+    assert "not in the project" in resp.text
+    # A restored file has to show up on the next render, so the miss is never
+    # the thing that got cached.
+    assert "no-store" in resp.headers.get("cache-control", "")
+
+
+def test_a_missing_file_that_is_not_a_page_still_answers_json(client):
+    """Only the document case changes. A missing stylesheet is an API answer:
+    nothing renders it, and a fetch()ing control wants the error shape."""
+    resp = client.get("/api/projects/default/ui/room_map/style.css")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "File not found"
+
+
+@pytest.mark.skipif(not _CAN_SYMLINK, reason="symlinks need privilege on Windows")
+def test_a_refused_page_is_a_document_too(client, project_dir, tmp_path):
+    """The symlink refusal lands in the same iframe as the 404 does."""
+    ui = project_dir / "ui"
+    ui.mkdir(parents=True, exist_ok=True)
+    secret = tmp_path / "secret.html"
+    secret.write_text("<p>not yours</p>", encoding="utf-8")
+    (ui / "link.html").symlink_to(secret)
+
+    resp = client.get("/api/projects/default/ui/link.html")
+    assert resp.status_code == 403
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "not yours" not in resp.text
+    assert "detail" not in resp.text
+
+
 def test_saves_show_up_rather_than_serving_a_cached_copy(client, project_dir):
     client.put("/api/projects/default/ui/a.html", json={"content": "one"})
     resp = client.get("/api/projects/default/ui/a.html")
@@ -386,6 +427,39 @@ def test_export_then_import_keeps_the_control(tmp_lib, tmp_path):
 
     import_project(content, filename, override_id="reimported")
     assert (tmp_lib / "reimported" / "ui" / "room_map" / "index.html").read_text() == "<h1>map</h1>"
+
+
+def test_the_current_project_exports_as_a_whole_room(tmp_lib, tmp_path):
+    """Program > Export has to carry what Project Library > Export carries.
+
+    It used to write the store to a Blob client-side, so the button an
+    integrator reaches for to move a room to another machine was the one that
+    shipped the settings and left every custom control behind.
+    """
+    from openavc.core.project_library import export_active_project, import_project
+
+    active = tmp_path / "active"
+    (active / "scripts").mkdir(parents=True)
+    (active / "scripts" / "startup.py").write_text("x = 1", encoding="utf-8")
+    (active / "assets").mkdir()
+    (active / "assets" / "logo.png").write_bytes(b"PNG")
+    _write_control(active / "ui")
+    (active / "project.avc").write_text(
+        json.dumps(_blank_project("live").model_dump(mode="json")), encoding="utf-8"
+    )
+
+    content, filename, content_type = export_active_project(active / "project.avc")
+    assert (filename, content_type) == ("live.zip", "application/zip")
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        names = set(zf.namelist())
+    assert "project.avc" in names
+    assert "ui/room_map/index.html" in names
+    assert "scripts/startup.py" in names
+    assert "assets/logo.png" in names
+
+    # And the bundle it produces goes back in through the import door.
+    import_project(content, filename, override_id="moved")
+    assert (tmp_lib / "moved" / "ui" / "room_map" / "index.html").read_text() == "<h1>map</h1>"
 
 
 def test_backup_carries_the_controls_and_restore_replaces_them(tmp_path):

@@ -50,7 +50,7 @@ def test_install_bundled_plugins_blocks_zip_slip(tmp_path, monkeypatch):
         }
     )
 
-    installed = project_library._install_bundled_plugins(zf)
+    installed, _unloadable = project_library._install_bundled_plugins(zf)
 
     # Legit plugin installed inside the repo, nested file preserved.
     assert (plugin_repo / "realplugin" / "__init__.py").read_bytes() == b"OK = 1"

@@ -154,6 +154,31 @@ async def validate_drivers() -> dict[str, Any]:
     return {"available": available, "missing": missing}
 
 
+@router.get("/project/export")
+async def export_current_project():
+    """Download the running project as a .zip bundle.
+
+    The same bundle a library export produces: project.avc plus the scripts,
+    drivers, plugins, assets and custom controls the room needs to come up on
+    another machine. Built from what is on disk, so an IDE with unsaved
+    changes saves before it asks for this.
+    """
+    from fastapi.responses import Response
+    from openavc.core.project_library import export_active_project
+
+    engine = _get_engine()
+    try:
+        content, filename, content_type = export_active_project(engine.project_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="No project file to export")
+
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # --- Project Library ---
 
 

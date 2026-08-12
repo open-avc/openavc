@@ -101,6 +101,19 @@ if (msg.type === 'openavc:state') {
 
 You only ever receive keys you were granted. A control granted the DSP hears about the DSP and nothing else.
 
+### When a device goes offline
+
+There is nothing extra to ask for. A device that drops off the network adds keys inside the grant you already have, and they arrive like any other state change.
+
+| Key | What it holds |
+|-----|---------------|
+| `device.<id>.connected` | `false` while the device is unreachable |
+| `device.<id>.offline_reason` | A short code to branch on: `unreachable`, `connection_refused`, `auth_failed`, `no_response`, `invalid_config`, `bridge_offline`, and a few more |
+| `device.<id>.offline_detail` | A sentence written for the person in the room: *"Can't reach 192.168.4.141:23. Check the IP address and network."* |
+| `device.<id>.reconnect_attempt` | Counts up while the server keeps trying, and clears when the device comes back |
+
+Branch on `offline_reason` and show `offline_detail`. Your control is not unmounted when a device goes away, so whatever it last drew stays on the glass until you change it, and a control still showing the old volume for a DSP that has been unplugged for an hour is telling the room something untrue.
+
 ## What you can send back
 
 All four are `parent.postMessage(..., '*')`, and all four are refused unless the element's grant covers them.
@@ -128,6 +141,8 @@ parent.postMessage({
 ```javascript
 parent.postMessage({ type: 'openavc:action', action: 'macro.run', macro: 'system_on' }, '*');
 ```
+
+Starting a macro is all you get back. `openavc:init` and `openavc:state` are the only two messages your page ever receives, so nothing tells you when the macro finished. To show a button as busy, have the macro set a variable on its first step and clear it on its last (`var.system_starting`), grant the control that variable, and draw the busy state yourself from `openavc:state`. That is the better result anyway, because you decide what busy looks like inside your own design.
 
 **Change the page**
 

@@ -613,6 +613,104 @@ class TestMissingPluginParity:
         assert any("Acme Widget" in w for w in result["warnings"])
 
 
+class TestBundledPluginReporting:
+    """What the import says about a plugin it carried, and what it packs.
+
+    Both come from one bench import: the response named the same plugin in
+    ``installed_plugins`` and ``missing_plugins`` at once, told the reader to
+    go and install what it had just written to disk, and the bundle it came
+    out of was carrying the plugin's ``__pycache__``.
+    """
+
+    _PLUGIN_SRC = (
+        "class AcmeWidgetPlugin:\n"
+        "    PLUGIN_INFO = {'id': 'acme_widget', 'name': 'Acme Widget',\n"
+        "                   'version': '1.0.0'}\n"
+    )
+
+    @pytest.fixture
+    def plugin_repo(self, tmp_path, monkeypatch):
+        repo = tmp_path / "plugin_repo"
+        repo.mkdir()
+        monkeypatch.setattr(plib, "_PLUGIN_REPO_DIR", repo)
+        return repo
+
+    @pytest.fixture(autouse=True)
+    def _clean_registry(self):
+        from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+        before = dict(_PLUGIN_CLASS_REGISTRY)
+        yield
+        _PLUGIN_CLASS_REGISTRY.clear()
+        _PLUGIN_CLASS_REGISTRY.update(before)
+
+    def test_a_bundled_plugin_is_not_reported_missing(self, tmp_lib, plugin_repo):
+        """It was installed from this very bundle. Saying it is missing, and
+        telling the user to install it, is a false sentence."""
+        content = _zip_bytes({
+            "project.avc": _valid_avc("hasplugin", plugins={"acme_widget": {"enabled": True}}),
+            "plugins/acme_widget/__init__.py": self._PLUGIN_SRC,
+        })
+        result = import_project(content, "hasplugin.zip")
+
+        assert result["installed_plugins"] == ["acme_widget"]
+        assert result["missing_plugins"] == []
+        assert not any("install it from the community" in w.lower()
+                       for w in result["warnings"])
+
+    def test_a_bundled_plugin_is_usable_without_a_restart(self, tmp_lib, plugin_repo):
+        """A bundled driver registers as it lands; a plugin has to as well, or
+        opening the project it arrived with logs 'class not found in registry'."""
+        from openavc.core.plugin_loader import get_plugin_registry
+
+        content = _zip_bytes({
+            "project.avc": _valid_avc("hasplugin", plugins={"acme_widget": {"enabled": True}}),
+            "plugins/acme_widget/__init__.py": self._PLUGIN_SRC,
+        })
+        import_project(content, "hasplugin.zip")
+
+        assert "acme_widget" in get_plugin_registry()
+
+    def test_a_plugin_that_will_not_load_says_so_instead(self, tmp_lib, plugin_repo):
+        """Still on disk, so 'install it' stays wrong -- but silence would be
+        wrong too. It gets its own sentence."""
+        content = _zip_bytes({
+            "project.avc": _valid_avc("badplugin", plugins={"acme_widget": {"enabled": True}}),
+            "plugins/acme_widget/__init__.py": "raise RuntimeError('boom')\n",
+        })
+        result = import_project(content, "badplugin.zip")
+
+        assert result["installed_plugins"] == ["acme_widget"]
+        assert result["missing_plugins"] == []
+        assert any("did not load" in w for w in result["warnings"])
+        assert not any("community repository" in w for w in result["warnings"])
+
+    def test_a_plugin_the_bundle_never_carried_still_says_install_it(
+        self, tmp_lib, plugin_repo
+    ):
+        """The original sentence is right for the case it was written for."""
+        content = _zip_bytes({
+            "project.avc": _valid_avc("noplugin", plugins={"acme_widget": {"enabled": True}}),
+        })
+        result = import_project(content, "noplugin.zip")
+
+        assert result["installed_plugins"] == []
+        assert [p["plugin_id"] for p in result["missing_plugins"]] == ["acme_widget"]
+        assert any("community repository" in w for w in result["warnings"])
+
+    def test_the_export_leaves_python_bytecode_behind(self, plugin_repo):
+        """A .pyc is stamped with the interpreter that wrote it. In a file
+        whose whole purpose is to move to another machine, it is only weight."""
+        pdir = plugin_repo / "acme_widget"
+        (pdir / "__pycache__").mkdir(parents=True)
+        (pdir / "__init__.py").write_text(self._PLUGIN_SRC, encoding="utf-8")
+        (pdir / "__pycache__" / "__init__.cpython-312.pyc").write_bytes(b"\x00" * 64)
+
+        packed = [name for name, _ in plib._find_plugin_files(
+            [{"plugin_id": "acme_widget"}]
+        )]
+        assert packed == ["plugins/acme_widget/__init__.py"]
+
+
 class TestBundledDriverIdDedup:
     def test_bundled_driver_does_not_clobber_existing_id(self, tmp_path, monkeypatch):
         from openavc.drivers.registry import _DRIVER_REGISTRY
