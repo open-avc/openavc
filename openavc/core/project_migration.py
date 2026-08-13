@@ -9,7 +9,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.9.0"
+CURRENT_VERSION = "0.10.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -748,7 +748,6 @@ def _migrate_masters_0_7_to_0_8(
         master["hidden"] = False
 
 
-# Ordered list of migrations: (source_version, target_version, transform_fn)
 def migrate_0_8_to_0_9(data: dict) -> dict:
     """
     Migrate from 0.8.0 to 0.9.0 -- custom controls.
@@ -765,6 +764,103 @@ def migrate_0_8_to_0_9(data: dict) -> dict:
     return data
 
 
+#: What a pattern-form matrix drew when it stated no count. Kept here rather
+#: than read from the renderer because a migration's job is to preserve what the
+#: panel already drew, and the renderer stops defaulting in 0.10.0.
+_MATRIX_LEGACY_DEFAULT_COUNT = 4
+
+#: The eight keys the pattern form used, and which generator key each becomes.
+#: Dropped from the config afterwards -- left in place they would be keys the
+#: renderer no longer reads, and every migrated project would open with a
+#: warning about its own history.
+_MATRIX_LEGACY_KEYS = ("input_count", "output_count", "input_labels", "output_labels",
+                       "input_key_pattern", "output_key_pattern",
+                       "route_key_pattern", "audio_route_key_pattern")
+
+
+def _migrate_matrix_config_0_9_to_0_10(config: dict) -> dict:
+    """One matrix's counts and glob patterns, as the generator that says the same.
+
+    Nothing about what draws changes. ``input_count: 8`` plus
+    ``route_key_pattern: "device.mx.output.*.input"`` said "eight destinations,
+    numbered from one, each watching its number substituted into that key" --
+    which is exactly what the generator says, in the shape that can now also say
+    the things the pattern form could not.
+
+    An axis whose count was never stated migrates to a stated 4, because 4 is
+    what it was drawing. Recording the number it drew is the honest reading of a
+    migration; the review is where "did you mean 4?" belongs.
+    """
+    out = {k: v for k, v in config.items() if k not in _MATRIX_LEGACY_KEYS}
+
+    for axis, count_key, label_key, key_pattern in (
+        ("sources", "input_count", "input_labels", "input_key_pattern"),
+        ("destinations", "output_count", "output_labels", "output_key_pattern"),
+    ):
+        # A file that already speaks 0.10.0 keeps what it says. Nothing writes
+        # one yet, but a hand-edited project should not have its lists replaced
+        # by an expansion of keys it also happens to carry.
+        if axis in config:
+            continue
+        try:
+            count = int(config.get(count_key) or _MATRIX_LEGACY_DEFAULT_COUNT)
+        except (TypeError, ValueError):
+            count = _MATRIX_LEGACY_DEFAULT_COUNT
+        generator: dict = {"count": max(count, 0)}
+        labels = config.get(label_key)
+        if isinstance(labels, list) and labels:
+            generator["labels"] = labels
+        if config.get(key_pattern):
+            generator["label_key"] = config[key_pattern]
+        if axis == "destinations":
+            if config.get("route_key_pattern"):
+                generator["route_key"] = config["route_key_pattern"]
+            if config.get("audio_route_key_pattern"):
+                generator["audio_route_key"] = config["audio_route_key_pattern"]
+        out[axis] = {"from": generator}
+
+    return out
+
+
+def migrate_0_9_to_0_10(data: dict) -> dict:
+    """
+    Migrate from 0.9.0 to 0.10.0 -- the matrix becomes two lists.
+
+    A matrix used to be two counts, two label arrays and four glob patterns, so
+    it could only describe a rectangular frame with contiguous ports numbered
+    from one on a single device reporting plain integers. Now it is a list of
+    sources and a list of destinations, each destination carrying its own route
+    key and an opaque value, which is what it takes to express a decoder with six
+    routing planes, a frame with two ports patched, string ids, or a source that
+    is an IP address.
+
+    Every existing matrix migrates to the GENERATOR form -- the same shorthand,
+    stated as a generator rather than as loose keys -- so no project needs
+    re-authoring and no matrix changes shape.
+    """
+    ui = data.get("ui")
+    if isinstance(ui, dict):
+        elements = [
+            el
+            for page in ui.get("pages", []) or []
+            if isinstance(page, dict)
+            for el in page.get("elements", []) or []
+        ]
+        elements += list(ui.get("master_elements", []) or [])
+        for el in elements:
+            if not isinstance(el, dict) or el.get("type") != "matrix":
+                continue
+            config = el.get("matrix_config")
+            # No config at all stays that way: the element is unconfigured, and
+            # inventing a generator for it would hide that behind a shape.
+            if isinstance(config, dict) and config:
+                el["matrix_config"] = _migrate_matrix_config_0_9_to_0_10(config)
+
+    data["openavc_version"] = "0.10.0"
+    return data
+
+
+# Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
     ("0.2.0", "0.3.0", migrate_0_2_to_0_3),
@@ -774,6 +870,7 @@ MIGRATIONS = [
     ("0.6.0", "0.7.0", migrate_0_6_to_0_7),
     ("0.7.0", "0.8.0", migrate_0_7_to_0_8),
     ("0.8.0", "0.9.0", migrate_0_8_to_0_9),
+    ("0.9.0", "0.10.0", migrate_0_9_to_0_10),
 ]
 
 

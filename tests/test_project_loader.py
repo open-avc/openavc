@@ -506,11 +506,11 @@ def test_matrix_element():
                 "elements": [{
                     "id": "mx1", "type": "matrix",
                     "matrix_config": {
-                        "input_count": 4,
-                        "output_count": 2,
-                        "input_labels": ["A", "B", "C", "D"],
-                        "output_labels": ["X", "Y"],
-                        "route_key_pattern": "dev.sw.out_*_src",
+                        "sources": {"from": {"count": 4, "labels": ["A", "B", "C", "D"]}},
+                        "destinations": {"from": {
+                            "count": 2, "labels": ["X", "Y"],
+                            "route_key": "dev.sw.out_*_src",
+                        }},
                     },
                     "grid_area": {"col": 1, "row": 1, "col_span": 6, "row_span": 5},
                     "style": {}, "bindings": {},
@@ -521,7 +521,12 @@ def test_matrix_element():
     project = _load_project_dict(data)
     el = project.ui.pages[0].elements[0]
     assert el.type == "matrix"
-    assert el.matrix_config["input_count"] == 4
+    # matrix_config is dict[str, Any] and the model is extra='allow', so the
+    # 0.10.0 shape has to survive the round trip untouched -- there is no schema
+    # anywhere to drop a field it does not recognise, which is the property this
+    # asserts rather than assumes.
+    assert el.matrix_config["sources"]["from"]["count"] == 4
+    assert el.matrix_config["destinations"]["from"]["route_key"] == "dev.sw.out_*_src"
 
 
 def test_installer_seed_project_matches_v04_schema():

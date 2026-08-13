@@ -254,7 +254,7 @@ export const STRUCTURAL_PROPERTIES: string[] = ["aspect_lock", "bindings", "css_
  * this table is the only thing that knows the shape. `route_key_pattern` is the
  * one with no default: without it no crosspoint ever lights.
  */
-export const MATRIX_CONFIG_KEYS: string[] = ["audio_follow_video", "audio_route_key_pattern", "input_count", "input_key_pattern", "input_labels", "output_count", "output_key_pattern", "output_labels", "presets", "route_key_pattern", "show_lock", "show_mute"];
+export const MATRIX_CONFIG_KEYS: string[] = ["audio_follow_video", "destinations", "presets", "show_lock", "show_mute", "sources"];
 
 /**
  * Navigation targets that are not page ids and never will be.

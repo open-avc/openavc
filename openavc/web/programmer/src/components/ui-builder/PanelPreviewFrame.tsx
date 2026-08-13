@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getTunnelPrefix, type ThemeDefinition } from "../../api/restClient";
+import { resolveProjectMatrices } from "../../api/matrixPreview";
 import type { ProjectConfig } from "../../api/types";
 
 /**
@@ -71,35 +72,43 @@ export function PanelPreviewFrame({
     if (!pageId) return;
     // The preview iframe is served from this same origin; target it explicitly
     // rather than "*" so credential-bearing project config isn't broadcast.
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        type: "openavc:editor-init",
-        project: projectRef.current,
-        pageId,
-        showGrid: false,
-        demoState: demoStateRef.current,
-        inlineTheme: inlineThemeRef.current,
-      },
-      window.location.origin,
+    // The panel reads a matrix as two finished lists and has no expander, so
+    // what goes over is the resolved copy (matrix plan D6).
+    void resolveProjectMatrices(projectRef.current).then((resolved) =>
+      iframeRef.current?.contentWindow?.postMessage(
+        {
+          type: "openavc:editor-init",
+          project: resolved,
+          pageId,
+          showGrid: false,
+          demoState: demoStateRef.current,
+          inlineTheme: inlineThemeRef.current,
+        },
+        window.location.origin,
+      ),
     );
   };
 
   useEffect(() => {
     if (!pageId) return;
+    let live = true;
     const timer = setTimeout(() => {
-      iframeRef.current?.contentWindow?.postMessage(
-        {
-          type: "openavc:editor-project",
-          project,
-          pageId,
-          showGrid: false,
-          demoState,
-          inlineTheme,
-        },
-        window.location.origin,
-      );
+      void resolveProjectMatrices(project).then((resolved) => {
+        if (!live) return;
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: "openavc:editor-project",
+            project: resolved,
+            pageId,
+            showGrid: false,
+            demoState,
+            inlineTheme,
+          },
+          window.location.origin,
+        );
+      });
     }, 40);
-    return () => clearTimeout(timer);
+    return () => { live = false; clearTimeout(timer); };
   }, [project, pageId, demoState, inlineTheme]);
 
   return (

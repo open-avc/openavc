@@ -277,11 +277,14 @@ class PanelApp {
     _fetchProjectAndRender() {
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
-        fetch(`${basePath}/api/project`)
+        // The RESOLVED ui, not /api/project. A matrix's sources and destinations
+        // are expanded on the server (matrix plan D6) and this renderer has no
+        // expander, so the authoring copy would draw an empty matrix here.
+        fetch(`${basePath}/api/ui/resolved`)
             .then(r => r.ok ? r.json() : null)
             .then(proj => {
                 if (!proj || !proj.ui) {
-                    console.warn('[panel-edit] no project available from /api/project');
+                    console.warn('[panel-edit] no project available from /api/ui/resolved');
                     return;
                 }
                 // If the parent already pushed a definition, don't clobber it.
@@ -2583,14 +2586,22 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         const config = element.matrix_config || {};
-        const inputCount = config.input_count || 4;
-        const outputCount = config.output_count || 4;
-        const inputLabels = config.input_labels || Array.from({ length: inputCount }, (_, i) => `In ${i + 1}`);
-        const outputLabels = config.output_labels || Array.from({ length: outputCount }, (_, i) => `Out ${i + 1}`);
-        const routePattern = config.route_key_pattern || '';
-        const audioRoutePattern = config.audio_route_key_pattern || '';
-        const inputKeyPattern = config.input_key_pattern || '';
-        const outputKeyPattern = config.output_key_pattern || '';
+        // TWO LISTS, already expanded. A matrix used to be two counts and four
+        // glob patterns, which could only describe a rectangular frame with
+        // contiguous ports numbered from one, on one device, reporting plain
+        // integers. Each entry now carries its own keys and an opaque value, so
+        // a six-row subset of an 8x8, a decoder's six routing planes and a
+        // source that is an rtsp:// URL are all just entries.
+        //
+        // The expansion happens on the SERVER (matrix plan D6) -- openavc/ui/
+        // matrix_model.py -- so this renderer and the Builder canvas, which is
+        // an iframe of this renderer, cannot drift about what a config means.
+        // An element that arrives unexpanded draws an empty box, which somebody
+        // can see, rather than the phantom 4x4 the old default invented.
+        const sources = Array.isArray(config.sources) ? config.sources : [];
+        const destinations = Array.isArray(config.destinations) ? config.destinations : [];
+        const inputCount = sources.length;
+        const outputCount = destinations.length;
         const matrixStyle = element.matrix_style || 'crosspoint';
         const showLock = config.show_lock !== false;
         // Mute buttons only render when there is a mute_route binding wired up —
@@ -2636,6 +2647,10 @@ class PanelApp {
         // into messages. The tap, the drag and the list dropdown all come here,
         // so they cannot drift apart on whether audio follows -- which they had,
         // three near-copies of the same audio_follow_video block.
+        // input/output are the SOURCE's and DESTINATION's own values now, not row
+        // and column numbers -- whatever the device reports and accepts. The
+        // server finds the destination by that value to see whether it overrides
+        // the element's route action.
         const sendRoute = (input, output) => {
             this.send({ type: 'ui.route', element_id: element.id, input, output });
             if (config.audio_follow_video && element.bindings?.do?.audio_route) {
@@ -2671,16 +2686,19 @@ class PanelApp {
             list.className = 'matrix-list';
 
             for (let o = 0; o < outputCount; o++) {
+                const dest = destinations[o];
                 const row = document.createElement('div');
                 row.className = 'matrix-list-row';
 
                 const outLabel = document.createElement('span');
                 outLabel.className = 'matrix-list-label';
-                outLabel.textContent = outputLabels[o] || `Out ${o + 1}`;
+                outLabel.textContent = dest.label || `Out ${o + 1}`;
                 outLabel.dataset.outputIdx = String(o);
                 row.appendChild(outLabel);
-                // Hidden badge shown when audio route diverges from video route
-                if (audioRoutePattern) {
+                // Hidden badge shown when audio route diverges from video route.
+                // Per destination now: one row of a matrix can watch an audio
+                // key while the rest do not.
+                if (dest.audio_route_key) {
                     const mismatch = document.createElement('span');
                     mismatch.className = 'matrix-route-mismatch';
                     mismatch.dataset.mismatchIdx = String(o);
@@ -2694,15 +2712,21 @@ class PanelApp {
                 select.className = 'matrix-list-select';
                 for (let i = 0; i < inputCount; i++) {
                     const opt = document.createElement('option');
-                    opt.value = String(i + 1);
-                    opt.textContent = inputLabels[i] || `In ${i + 1}`;
+                    // The option's value is the source's own value as text,
+                    // because a DOM option value is always a string. The typed
+                    // value is read back off the source list on change, so a
+                    // device expecting the number 3 is not sent "3".
+                    opt.value = String(sources[i].value);
+                    opt.textContent = sources[i].label || `In ${i + 1}`;
+                    opt.dataset.sourceIdx = String(i);
                     select.appendChild(opt);
                 }
                 select.dataset.outputIdx = String(o);
 
                 select.addEventListener('change', () => {
-                    if (lockedOutputs.has(o + 1)) return;
-                    sendRoute(parseInt(select.value), o + 1);
+                    if (lockedOutputs.has(o)) return;
+                    const src = sources[select.selectedIndex];
+                    if (src) sendRoute(src.value, dest.value);
                 });
 
                 if (showLock) {
@@ -2711,13 +2735,13 @@ class PanelApp {
                     lockBtn.textContent = '\uD83D\uDD13';
                     lockBtn.title = 'Lock output';
                     lockBtn.addEventListener('click', () => {
-                        if (lockedOutputs.has(o + 1)) {
-                            lockedOutputs.delete(o + 1);
+                        if (lockedOutputs.has(o)) {
+                            lockedOutputs.delete(o);
                             lockBtn.textContent = '\uD83D\uDD13';
                             lockBtn.classList.remove('locked');
                             select.disabled = false;
                         } else {
-                            lockedOutputs.add(o + 1);
+                            lockedOutputs.add(o);
                             lockBtn.textContent = '\uD83D\uDD12';
                             lockBtn.classList.add('locked');
                             select.disabled = true;
@@ -2732,19 +2756,18 @@ class PanelApp {
                     muteBtn.textContent = 'M';
                     muteBtn.title = 'Mute output';
                     muteBtn.addEventListener('click', () => {
-                        const outputIdx = o + 1;
-                        const isMuted = mutedOutputs.has(outputIdx);
+                        const isMuted = mutedOutputs.has(o);
                         if (isMuted) {
-                            mutedOutputs.delete(outputIdx);
+                            mutedOutputs.delete(o);
                             muteBtn.classList.remove('muted');
                         } else {
-                            mutedOutputs.add(outputIdx);
+                            mutedOutputs.add(o);
                             muteBtn.classList.add('muted');
                         }
                         this.send({
                             type: 'ui.route',
                             element_id: element.id,
-                            output: outputIdx,
+                            output: dest.value,
                             mute: !isMuted,
                         });
                         // Audio follow video: also send audio-mute when AFV is on
@@ -2753,12 +2776,12 @@ class PanelApp {
                             this.send({
                                 type: 'ui.route',
                                 element_id: element.id,
-                                output: outputIdx,
+                                output: dest.value,
                                 mute: !isMuted,
                                 audio: true,
                             });
                         }
-                        if (select) select.disabled = mutedOutputs.has(outputIdx);
+                        if (select) select.disabled = mutedOutputs.has(o);
                     });
                     row.appendChild(muteBtn);
                 }
@@ -2792,9 +2815,14 @@ class PanelApp {
             // that ZERO, so the column started at its own padding and then took an
             // equal share of the spare room alongside eight cell tracks.
             const labelTrack = `minmax(${MATRIX_LABEL_MIN_PX}px, max-content)`;
+            // repeat(0, ...) is not valid CSS, and an unresolved or empty matrix
+            // is now reachable -- the counts come from lists rather than from a
+            // default of four.
+            const cellCols = inputCount > 0 ? `repeat(${inputCount}, ${cellTrack})` : '';
             table.style.gridTemplateColumns =
-                `${labelTrack} repeat(${inputCount}, ${cellTrack}) ${extraColDefs.join(' ')}`.trim();
-            table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellTrack})`;
+                `${labelTrack} ${cellCols} ${extraColDefs.join(' ')}`.replace(/\s+/g, ' ').trim();
+            table.style.gridTemplateRows = outputCount > 0
+                ? `auto repeat(${outputCount}, ${cellTrack})` : 'auto';
 
             // Top-left corner cell
             const corner = document.createElement('div');
@@ -2836,6 +2864,7 @@ class PanelApp {
 
             // Output rows with crosspoints
             for (let o = 0; o < outputCount; o++) {
+                const dest = destinations[o];
                 // Output label — wrapped in a labelText span so the mismatch
                 // badge (when shown) doesn't get wiped by the dynamic-label
                 // updater. The data-output-idx attribute stays on the header
@@ -2845,10 +2874,10 @@ class PanelApp {
                 outHeader.dataset.outputIdx = String(o);
                 const outLabelText = document.createElement('span');
                 outLabelText.dataset.labelText = '';
-                outLabelText.textContent = outputLabels[o] || `Out ${o + 1}`;
+                outLabelText.textContent = dest.label || `Out ${o + 1}`;
                 outHeader.appendChild(outLabelText);
                 // Hidden badge shown when audio route diverges from video route
-                if (audioRoutePattern) {
+                if (dest.audio_route_key) {
                     const mismatch = document.createElement('span');
                     mismatch.className = 'matrix-route-mismatch';
                     mismatch.dataset.mismatchIdx = String(o);
@@ -2861,15 +2890,24 @@ class PanelApp {
 
                 // Crosspoint cells
                 for (let i = 0; i < inputCount; i++) {
+                    const src = sources[i];
                     const cell = document.createElement('div');
                     cell.className = 'matrix-cell';
-                    cell.setAttribute('aria-label', `Route input ${i + 1} to output ${o + 1}`);
+                    cell.setAttribute('aria-label',
+                        `Route ${src.label || `input ${i + 1}`} to ${dest.label || `output ${o + 1}`}`);
 
                     const dot = document.createElement('div');
                     dot.className = 'matrix-crosspoint';
                     dot.style.backgroundColor = inactiveColor;
-                    dot.dataset.input = String(i + 1);
-                    dot.dataset.output = String(o + 1);
+                    // data-input / data-output carry the VALUES, which is what
+                    // the route comparison needs; the -idx pair carries the row
+                    // and column, which is what a typed value is read back by.
+                    // A DOM dataset is strings only, and a device that wants the
+                    // number 3 must not be sent "3".
+                    dot.dataset.input = String(src.value);
+                    dot.dataset.output = String(dest.value);
+                    dot.dataset.sourceIdx = String(i);
+                    dot.dataset.destIdx = String(o);
 
                     // ONE gesture, ONE route. The cell used to carry a click
                     // handler AND a drag handler whose pointerup routed as
@@ -2884,7 +2922,7 @@ class PanelApp {
                     //   drag     -> route the cell released over
                     //   scrolled -> nothing; the finger was moving the grid
                     cell.addEventListener('pointerdown', (e) => {
-                        if (lockedOutputs.has(o + 1)) return;
+                        if (lockedOutputs.has(o)) return;
                         const startX = e.clientX, startY = e.clientY;
                         const startLeft = scrollWrap.scrollLeft;
                         const startTop = scrollWrap.scrollTop;
@@ -2892,7 +2930,7 @@ class PanelApp {
                         const originX = rect.left + rect.width / 2;
                         const originY = rect.top + rect.height / 2;
                         let dragging = false;
-                        dragStartInput = i + 1;
+                        dragStartInput = i;
 
                         // The grid moved under the finger, so the gesture was
                         // a scroll no matter where it ended up.
@@ -2936,23 +2974,29 @@ class PanelApp {
                             el._matrixDragCleanup = null;
                             dropLine();
                             const wasDragging = dragging;
-                            const input = dragStartInput;
+                            // Row and column indices, not port numbers -- index
+                            // 0 is a real source, so every guard below asks
+                            // whether it is a number rather than whether it is
+                            // truthy.
+                            const srcIdx = dragStartInput;
                             dragging = false;
                             dragStartInput = null;
                             // A cancelled pointer is the browser saying it took
                             // this gesture over to scroll with; a moved
                             // scrollbar says the same thing after the fact.
-                            if (cancelled || scrolled() || !input) return;
-                            let output = o + 1;
+                            if (cancelled || scrolled() || srcIdx === null) return;
+                            let destIdx = o;
                             if (wasDragging) {
                                 const target = document.elementFromPoint(ue.clientX, ue.clientY);
                                 const cp = target?.closest?.('.matrix-crosspoint')
                                     || target?.closest?.('.matrix-cell')?.querySelector('.matrix-crosspoint');
-                                if (!cp || !cp.dataset.output) return;
-                                output = parseInt(cp.dataset.output);
+                                if (!cp || cp.dataset.destIdx === undefined) return;
+                                destIdx = parseInt(cp.dataset.destIdx);
                             }
-                            if (!output || lockedOutputs.has(output)) return;
-                            sendRoute(input, output);
+                            if (!Number.isInteger(destIdx) || lockedOutputs.has(destIdx)) return;
+                            const from = sources[srcIdx], to = destinations[destIdx];
+                            if (!from || !to) return;
+                            sendRoute(from.value, to.value);
                         };
                         const onUp = (ue) => finish(ue, false);
                         const onCancel = () => finish(null, true);
@@ -2976,12 +3020,12 @@ class PanelApp {
                     lockBtn.textContent = '\uD83D\uDD13';
                     lockBtn.title = 'Lock output';
                     lockBtn.addEventListener('click', () => {
-                        if (lockedOutputs.has(o + 1)) {
-                            lockedOutputs.delete(o + 1);
+                        if (lockedOutputs.has(o)) {
+                            lockedOutputs.delete(o);
                             lockBtn.textContent = '\uD83D\uDD13';
                             lockBtn.classList.remove('locked');
                         } else {
-                            lockedOutputs.add(o + 1);
+                            lockedOutputs.add(o);
                             lockBtn.textContent = '\uD83D\uDD12';
                             lockBtn.classList.add('locked');
                         }
@@ -2999,15 +3043,14 @@ class PanelApp {
                     muteBtn.textContent = 'M';
                     muteBtn.title = 'Mute output';
                     muteBtn.addEventListener('click', () => {
-                        const outputIdx = o + 1;
-                        const isMuted = mutedOutputs.has(outputIdx);
-                        if (isMuted) { mutedOutputs.delete(outputIdx); muteBtn.classList.remove('muted'); }
-                        else { mutedOutputs.add(outputIdx); muteBtn.classList.add('muted'); }
-                        this.send({ type: 'ui.route', element_id: element.id, output: outputIdx, mute: !isMuted });
+                        const isMuted = mutedOutputs.has(o);
+                        if (isMuted) { mutedOutputs.delete(o); muteBtn.classList.remove('muted'); }
+                        else { mutedOutputs.add(o); muteBtn.classList.add('muted'); }
+                        this.send({ type: 'ui.route', element_id: element.id, output: dest.value, mute: !isMuted });
                         // Audio follow video: also send audio-mute when AFV is on
                         // and the element has an audio_mute_route binding.
                         if (config.audio_follow_video && element.bindings?.do?.audio_mute_route) {
-                            this.send({ type: 'ui.route', element_id: element.id, output: outputIdx, mute: !isMuted, audio: true });
+                            this.send({ type: 'ui.route', element_id: element.id, output: dest.value, mute: !isMuted, audio: true });
                         }
                     });
                     muteCell.appendChild(muteBtn);
@@ -3033,7 +3076,7 @@ class PanelApp {
                 num.textContent = String(i + 1);
                 const name = document.createElement('span');
                 name.dataset.labelText = '';
-                name.textContent = inputLabels[i] || `In ${i + 1}`;
+                name.textContent = sources[i].label || `In ${i + 1}`;
                 item.appendChild(num);
                 item.appendChild(name);
                 legend.appendChild(item);
@@ -3044,26 +3087,28 @@ class PanelApp {
         if (legend) el.appendChild(legend);
         this.elementMap[element.id] = { el, elementDef: element };
 
-        // State binding for routes. Carry every glob pattern the matrix reads
-        // (route, audio route, dynamic in/out labels) as `_patterns` so the
-        // incremental state.update filter re-evaluates the matrix when any of
-        // them change. The old `key: routePattern` stored a literal glob that
-        // the concrete-key filter could never match, so routes only refreshed
-        // on a full re-render.
-        if (routePattern) {
+        // State binding for routes. Every key this matrix reads, listed by name
+        // rather than as a glob: a route key per destination, an audio key per
+        // destination, and a live-name key per entry on either axis. The
+        // incremental state.update filter matches on a prefix, and a concrete
+        // key is its own prefix, so nothing about that filter had to change --
+        // it just stopped being handed a literal `*` it could never match.
+        const watched = [];
+        for (const src of sources) if (src.label_key) watched.push(src.label_key);
+        for (const dest of destinations) {
+            if (dest.route_key) watched.push(dest.route_key);
+            if (dest.audio_route_key) watched.push(dest.audio_route_key);
+            if (dest.label_key) watched.push(dest.label_key);
+        }
+        if (watched.length) {
             this.bindings.push({
                 type: 'matrix_routes',
                 element: el,
                 elementDef: element,
-                binding: {
-                    _patterns: [routePattern, audioRoutePattern, inputKeyPattern, outputKeyPattern]
-                        .filter(Boolean),
-                },
+                binding: { _patterns: watched },
                 _matrix: {
-                    routePattern, audioRoutePattern,
-                    inputKeyPattern, outputKeyPattern,
-                    inputCount, outputCount, activeColor, inactiveColor,
-                    matrixStyle,
+                    sources, destinations,
+                    activeColor, inactiveColor, matrixStyle,
                 },
             });
         }
@@ -3072,86 +3117,73 @@ class PanelApp {
     }
 
     evaluateMatrixRoutes(b) {
-        const { routePattern, audioRoutePattern, inputKeyPattern, outputKeyPattern, inputCount, outputCount, activeColor, inactiveColor, matrixStyle } = b._matrix;
+        const { sources, destinations, activeColor, inactiveColor, matrixStyle } = b._matrix;
         const el = b.element;
 
-        // Read current video routes from state. The RAW value is kept -- the
-        // device decides what a routed source looks like, and _routeMatches
-        // decides whether two of them name the same thing.
-        const routes = {};  // output (1-based) -> whatever the device reports
-        for (let o = 1; o <= outputCount; o++) {
-            routes[o] = this.state[routePattern.replace('*', String(o))];
-        }
+        // Each destination reads its OWN key. That is the change that lets one
+        // matrix span several devices, or several routing planes of one device
+        // -- the plane is part of the key, so nothing here has to know planes
+        // exist. The RAW value is kept: the device decides what a routed source
+        // looks like, and _routeMatches decides whether two of them name the
+        // same thing.
+        const routes = destinations.map(
+            d => (d.route_key ? this.state[d.route_key] : undefined));
 
-        // Read audio routes if a pattern is configured, so we can flag any
-        // output whose audio route diverges from its video route.
-        if (audioRoutePattern) {
-            const badges = el.querySelectorAll('.matrix-route-mismatch');
-            badges.forEach(badge => {
-                const idx = parseInt(badge.dataset.mismatchIdx) + 1;
-                const video = this._routeValue(routes[idx]);
-                const audio = this._routeValue(
-                    this.state[audioRoutePattern.replace('*', String(idx))]);
-                // Only when BOTH are routed and they disagree. An unreported or
-                // idle audio port is not a mismatch, it is an absence.
-                badge.hidden = !(video !== null && audio !== null
-                    && !this._routeMatches(video, audio));
-            });
-        }
+        // Flag any destination whose audio route diverges from its video route.
+        const badges = el.querySelectorAll('.matrix-route-mismatch');
+        badges.forEach(badge => {
+            const idx = parseInt(badge.dataset.mismatchIdx);
+            const dest = destinations[idx];
+            const video = this._routeValue(routes[idx]);
+            const audio = this._routeValue(
+                dest?.audio_route_key ? this.state[dest.audio_route_key] : undefined);
+            // Only when BOTH are routed and they disagree. An unreported or
+            // idle audio port is not a mismatch, it is an absence.
+            badge.hidden = !(video !== null && audio !== null
+                && !this._routeMatches(video, audio));
+        });
 
         // Update dynamic labels from state — write to the [data-label-text]
         // child when present (crosspoint output header has siblings), else to
         // the header element directly (input headers, list-view labels).
-        if (inputKeyPattern) {
-            const headers = el.querySelectorAll('[data-input-idx]');
-            headers.forEach(h => {
-                const idx = parseInt(h.dataset.inputIdx);
-                const key = inputKeyPattern.replace('*', String(idx + 1));
-                const val = this.state[key];
-                if (val !== undefined && val !== null) {
-                    const target = h.querySelector('[data-label-text]') || h;
-                    target.textContent = String(val);
-                }
-            });
-        }
-        if (outputKeyPattern) {
-            // Scoped to the LABEL nodes. The list view's <select> carries the
-            // same data-output-idx (its change handler reads it), so an
-            // unscoped query wrote the output's name into the dropdown --
-            // and setting textContent on a <select> destroys every <option>
-            // in it. Live output names emptied the control outright.
-            const headers = el.querySelectorAll(
-                '.matrix-output-header[data-output-idx], .matrix-list-label[data-output-idx]');
-            headers.forEach(h => {
-                const idx = parseInt(h.dataset.outputIdx);
-                const key = outputKeyPattern.replace('*', String(idx + 1));
-                const val = this.state[key];
-                if (val !== undefined && val !== null) {
-                    const target = h.querySelector('[data-label-text]') || h;
-                    target.textContent = String(val);
-                }
-            });
-        }
+        const applyLabel = (node, key) => {
+            if (!key) return;
+            const val = this.state[key];
+            if (val === undefined || val === null) return;
+            (node.querySelector('[data-label-text]') || node).textContent = String(val);
+        };
+        el.querySelectorAll('[data-input-idx]').forEach(h => {
+            applyLabel(h, sources[parseInt(h.dataset.inputIdx)]?.label_key);
+        });
+        // Scoped to the LABEL nodes. The list view's <select> carries the same
+        // data-output-idx (its change handler reads it), so an unscoped query
+        // wrote the destination's name into the dropdown -- and setting
+        // textContent on a <select> destroys every <option> in it. Live output
+        // names emptied the control outright.
+        el.querySelectorAll(
+            '.matrix-output-header[data-output-idx], .matrix-list-label[data-output-idx]'
+        ).forEach(h => {
+            applyLabel(h, destinations[parseInt(h.dataset.outputIdx)]?.label_key);
+        });
 
         if (matrixStyle === 'list') {
             const selects = el.querySelectorAll('.matrix-list-select');
             selects.forEach(sel => {
-                // Live INPUT names reach the dropdown here. The label updater
+                // Live SOURCE names reach the dropdown here. The label updater
                 // above only touches nodes tagged data-input-idx, which the
                 // list view has none of, so its options kept their authored
                 // captions no matter what the device reported.
-                if (inputKeyPattern) {
-                    for (const opt of sel.options) {
-                        const val = this.state[inputKeyPattern.replace('*', opt.value)];
-                        if (val !== undefined && val !== null && String(val) !== '') {
-                            opt.textContent = String(val);
-                        }
+                for (const opt of sel.options) {
+                    const key = sources[parseInt(opt.dataset.sourceIdx)]?.label_key;
+                    if (!key) continue;
+                    const val = this.state[key];
+                    if (val !== undefined && val !== null && String(val) !== '') {
+                        opt.textContent = String(val);
                     }
                 }
-                const oIdx = parseInt(sel.dataset.outputIdx) + 1;
                 // Select the option whose value the device's report names, so a
                 // device reporting 'IN2' still moves the dropdown to Input 2.
-                const routed = routes[oIdx];
+                const routed = routes[parseInt(sel.dataset.outputIdx)];
                 if (this._routeValue(routed) !== null) {
                     const hit = Array.from(sel.options)
                         .find(opt => this._routeMatches(opt.value, routed));
@@ -3162,12 +3194,13 @@ class PanelApp {
             // Update crosspoint dots
             const dots = el.querySelectorAll('.matrix-crosspoint');
             dots.forEach(dot => {
-                const inp = parseInt(dot.dataset.input);
-                const out = parseInt(dot.dataset.output);
-                const isActive = this._routeMatches(dot.dataset.input, routes[out]);
+                const isActive = this._routeMatches(
+                    dot.dataset.input, routes[parseInt(dot.dataset.destIdx)]);
                 dot.style.backgroundColor = isActive ? activeColor : inactiveColor;
                 dot.classList.toggle('active', isActive);
-                dot.setAttribute('aria-label', isActive ? `Active: input ${inp} to output ${out}` : `Inactive: input ${inp} to output ${out}`);
+                const what = `${dot.dataset.input} to ${dot.dataset.output}`;
+                dot.setAttribute('aria-label',
+                    isActive ? `Active: ${what}` : `Inactive: ${what}`);
             });
         }
     }

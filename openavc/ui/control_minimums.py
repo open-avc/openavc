@@ -76,6 +76,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.ui.matrix_model import axis_count
+
 # The panel's rem base: `style` measurements are px / 14 (project format 0.8.0).
 REM_BASE_PX = 14.0
 
@@ -170,11 +172,11 @@ def _has_caption(element: Mapping[str, Any]) -> bool:
 class RepeatedInternal:
     """A part drawn once per item the element's config asks for.
 
-    The matrix is the type this exists for: a crosspoint grid is
-    ``input_count`` columns by ``output_count`` rows of a cell that does not
-    shrink, so its floor is a line rather than a point. Measured slope is
-    exactly ``size_px + gap_px`` on both axes across 2, 3, 4, 5, 6, 8, 12 and
-    16, and it stays exact when the cell is authored to another size.
+    The matrix is the type this exists for: a crosspoint grid is one column per
+    source by one row per destination, of a cell that does not shrink, so its
+    floor is a line rather than a point. Measured slope is exactly
+    ``size_px + gap_px`` on both axes across 2, 3, 4, 5, 6, 8, 12 and 16, and it
+    stays exact when the cell is authored to another size.
     """
 
     part: str
@@ -184,7 +186,13 @@ class RepeatedInternal:
 
     count_key: str
     count_in: str
-    """The element property holding the count map (``matrix_config``)."""
+    """The element property the count is read from (``matrix_config``).
+
+    ``count_key`` names either a number or a LIST of the things being counted.
+    A matrix says it the second way -- ``sources`` and ``destinations`` are the
+    entries themselves, written out or generated -- so the count is however many
+    that resolves to, which is what makes a subset of a frame's ports sizeable.
+    """
 
     default_count: int
     axis: str
@@ -298,7 +306,7 @@ _MATRIX_LIST = MinimumRule(
                    "panel-elements.css .matrix-list-select padding + inherited font"),),
     repeated=(
         RepeatedInternal(
-            "matrix-list-row", 28, 6, "output_count", "matrix_config", 4, "height",
+            "matrix-list-row", 28, 6, "destinations", "matrix_config", 0, "height",
             origin="font-driven",
             source="panel-elements.css .matrix-list gap 0.4286rem + row height",
         ),
@@ -337,12 +345,12 @@ _MATRIX_CROSSPOINT = MinimumRule(
     (FixedInternal("matrix-cell", 44, 44, "declared", "panel.js MATRIX_CELL_MIN_PX"),),
     repeated=(
         RepeatedInternal(
-            "matrix-cell", 44, 1, "input_count", "matrix_config", 4, "width",
+            "matrix-cell", 44, 1, "sources", "matrix_config", 0, "width",
             size_property="cell_size",
             source="panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
         ),
         RepeatedInternal(
-            "matrix-cell", 44, 1, "output_count", "matrix_config", 4, "height",
+            "matrix-cell", 44, 1, "destinations", "matrix_config", 0, "height",
             size_property="cell_size",
             source="panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
         ),
@@ -472,7 +480,18 @@ def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
 
 
 def _count(repeated: RepeatedInternal, element: Mapping[str, Any]) -> int:
-    value = _config(element, repeated.count_in).get(repeated.count_key)
+    """How many of this part the element draws.
+
+    Two spellings, because two things say a count. A number says it outright.
+    A LIST of the things being counted says it by being that long -- a matrix's
+    sources are entries now rather than a tally, and half of them may be written
+    out while the other half is generated, so the only honest count is the
+    resolved one.
+    """
+    config = _config(element, repeated.count_in)
+    value = config.get(repeated.count_key)
+    if isinstance(value, Mapping | list):
+        return axis_count(config, repeated.count_key)
     try:
         count = int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):

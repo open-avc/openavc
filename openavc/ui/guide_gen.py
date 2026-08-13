@@ -54,7 +54,6 @@ from openavc.ui.page_review import (
     HONORED_SHOW_SLOTS,
     INERT_WITHOUT,
     MATRIX_CONFIG_KEYS,
-    MATRIX_DEFAULT_COUNT,
     RENDERED_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
@@ -379,33 +378,61 @@ in `matrix_config`, which is a free-form object at every layer -- no schema, no
 defaults published anywhere else -- so an invented key is stored and ignored in
 exactly the same way a correct one is stored and used.
 
+**A matrix is two lists**: the `sources` you can pick from, and the
+`destinations` you can send them to. Everything else is a way of drawing them.
+
 | Key | What it does |
 |---|---|
-| `input_count` / `output_count` | Grid size. **Default %(default_count)d each.** An 8x8 switcher that omits these silently draws half of itself. |
-| `route_key_pattern` | **The one that lights the crosspoints.** No default. |
-| `input_labels` / `output_labels` | Source and destination names. Default `In 1`..`In N` / `Out 1`..`Out N`. In `crosspoint` the columns are **numbered** and the source names are read out in a legend under the grid, so a long source name costs nothing; a destination name is a row caption and ellipsises to fit its column. |
-| `input_key_pattern` / `output_key_pattern` | Captions driven from live state instead, same `*` substitution. |
-| `audio_route_key_pattern` | Audio routes, which also drives the per-output A!=V badge. |
+| `sources` | What can be routed. A list of entries, or a generator standing for one. **No default** -- a matrix that omits it draws nothing to route from. |
+| `destinations` | What can be routed to. Same two forms, same absence of a default. |
 | `audio_follow_video` | Send the audio route alongside the video one. Needs a `do.audio_route` binding. |
-| `show_lock` | Per-output lock buttons. **Defaults on.** Client-side only -- locking sends nothing, it just stops that row being changed on this panel. |
-| `show_mute` | Per-output mute buttons. Drawn only when there is also a `do.mute_route` binding. |
+| `show_lock` | Per-destination lock buttons. **Defaults on.** Client-side only -- locking sends nothing, it just stops that row being changed on this panel. |
+| `show_mute` | Per-destination mute buttons. Drawn only when there is also a `do.mute_route` binding. |
 | `presets` | `[{name, macro}]`. A preset bar above the grid; each button runs its macro. |
 
-`route_key_pattern` is worth its own paragraph, because getting it wrong
-produces a control that looks finished. It is the state key of one output's
-routed input with the **output number replaced by `*`**, 1-based:
+An entry on either axis carries a `value` -- whatever the device reports and
+accepts, which need not be a number -- and a `label`. A **destination** also
+carries its own `route_key`, and this is the field worth a paragraph, because
+getting it wrong produces a control that looks finished:
 
-    "route_key_pattern": "device.<device id>.output.*.input"
+    "destinations": [
+      {"value": 1, "label": "Main LCD", "route_key": "device.mx.output.1.input"},
+      {"value": 2, "label": "Confidence", "route_key": "device.mx.output.2.input"}
+    ]
 
-The panel substitutes 1..`output_count` and reads each key to decide which
-crosspoint in that row is lit. Without it, no state binding is registered at all:
-the grid draws, clicking still routes correctly (the command carries
-`$input`/`$output` from the touch, not from config), and **no crosspoint ever
-changes colour** for the life of the panel.
+The panel reads each destination's own key to decide which crosspoint in that row
+is lit. A destination without one still routes -- the command carries
+`$input`/`$output` from the touch, not from config -- and **never changes colour**
+for the life of the panel.
+
+Because the key is per destination rather than one pattern for all of them, one
+matrix can span several devices, skip the ports nobody patched, use string ids,
+and cover one **routing plane** of a device that has several (the plane is part
+of the key, so a decoder routing video and USB independently is two elements).
+Optional per entry: `label_key` for a live name from state, `audio_route_key` on
+a destination for the audio route and its A!=V badge, and `route` on a
+destination for an action list that overrides `do.route` for that row alone.
+
+Writing every entry out is tedious for a frame whose ports run 1..N, so an axis
+may instead be a **generator**: `from` holds a `count` (or explicit `values`),
+plus `labels`, `label_key`, `route_key` and `audio_route_key` as patterns where
+`*` becomes the entry's value. `exclude` drops entries and `overrides` edits them
+by value.
+
+    "destinations": {
+      "from": {"count": 8, "route_key": "device.mx.output.*.input"},
+      "exclude": [7, 8],
+      "overrides": {"1": {"label": "Main LCD"}}
+    }
+
+In `crosspoint` style the columns are **numbered** and the source names are read
+out in a legend under the grid, so a long source name costs nothing; a
+destination name is a row caption and ellipsises to fit its column.
 
 Routing itself is a `do` binding, not config: `do.route` with `$input` and
-`$output`, plus `do.audio_route`, `do.mute_route` and `do.audio_mute_route`
-(`$output`, `$mute`) if the device supports them.
+`$output` (which carry the source's and destination's own `value`), plus
+`do.audio_route`, `do.mute_route` and `do.audio_mute_route` (`$output`, `$mute`)
+if the device supports them.
 """
 
 COMPARISON_INTRO = """\
@@ -737,7 +764,7 @@ def _matrix_section() -> str:
     checked instead -- a key added to the renderer that nobody documented stops
     the generator rather than shipping a guide that is quietly missing it.
     """
-    section = MATRIX_INTRO % {"default_count": MATRIX_DEFAULT_COUNT}
+    section = MATRIX_INTRO
     missing = sorted(k for k in MATRIX_CONFIG_KEYS if f"`{k}`" not in section)
     if missing:
         raise AssertionError(

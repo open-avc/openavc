@@ -412,12 +412,18 @@ export function createDefaultElement(
       return {
         ...base,
         label: "Video Routing",
+        // Two generators rather than two written-out lists: a new matrix has no
+        // device behind it yet, and `count: 4` is the shorthand that says "four
+        // of them, numbered from one" without inventing four entries somebody
+        // then has to edit one at a time. Picking a device writes the entries
+        // out; until then this is the terse, correct form.
         matrix_config: {
-          input_count: 4,
-          output_count: 4,
-          input_labels: ["Input 1", "Input 2", "Input 3", "Input 4"],
-          output_labels: ["Output 1", "Output 2", "Output 3", "Output 4"],
-          route_key_pattern: "",
+          sources: {
+            from: { count: 4, labels: ["Input 1", "Input 2", "Input 3", "Input 4"] },
+          },
+          destinations: {
+            from: { count: 4, labels: ["Output 1", "Output 2", "Output 3", "Output 4"] },
+          },
         },
         // A new matrix is a list: one row per destination with its source in a
         // dropdown. It reads at a glance, it fits a panel, and it is what
@@ -3054,6 +3060,7 @@ export interface ReviewFinding {
     | "matrix_config_unread"
     | "matrix_no_route_feedback"
     | "matrix_default_size"
+    | "matrix_duplicate_values"
     | "custom_page_elements_not_drawn"
     | "custom_page_without_a_file"
     | "covers_master";
@@ -3210,7 +3217,17 @@ function repeatedCount(
   countKey: string,
   fallback: number,
 ): number {
-  const value = Number(subObject(el, countIn)[countKey]);
+  // Two spellings, because two things say a count: a number, and a LIST of the
+  // things being counted. A matrix says it the second way -- its sources and
+  // destinations are the entries themselves, written out or generated -- so the
+  // count is however many that resolves to. Mirrors `_count` in
+  // openavc/ui/control_minimums.py.
+  const config = subObject(el, countIn);
+  const raw = config[countKey];
+  if (Array.isArray(raw) || (!!raw && typeof raw === "object")) {
+    return matrixAxisCount(config, countKey);
+  }
+  const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
 }
 
@@ -4367,8 +4384,153 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
   return findings;
 }
 
-/** Everything a matrix draws when nothing says otherwise. */
-const MATRIX_DEFAULT_COUNT = 4;
+// --- What a matrix is, once the shorthand is expanded ---------------------
+//
+// Mirrors openavc/ui/matrix_model.py. The RENDERER does not have a copy of this
+// -- the server expands a matrix before the panel or this canvas ever sees one
+// (matrix plan D6) -- but the review does, because the review already exists
+// twice by design and `tests/test_ui_review_parity.py` compares the two message
+// for message. So a resolver that drifts from the Python one changes a sentence
+// and turns that suite red, which is not true of a renderer and is exactly why
+// the renderer went without.
+
+export interface MatrixEntry {
+  value: unknown;
+  label: string;
+  label_key?: string;
+  route_key?: string;
+  audio_route_key?: string;
+  route?: unknown[];
+}
+
+export type MatrixAxisName = "sources" | "destinations";
+
+/** How each axis names an entry nobody labelled. */
+const MATRIX_LABEL_PREFIX: Record<MatrixAxisName, string> = {
+  sources: "In",
+  destinations: "Out",
+};
+
+const MATRIX_NUMERIC = /^[+-]?\d+(?:\.\d+)?$/;
+
+/** A routed-source value in comparable form, or null when nothing is routed.
+ *
+ *  Mirrors `route_value` in matrix_model.py, which mirrors `_routeValue` in
+ *  panel.js -- the copy that decides what a panel actually lights. */
+export function matrixRouteValue(value: unknown): number | string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value !== 0 ? value : null;
+  }
+  const text = String(value).trim();
+  if (text === "" || text === "0") return null;
+  if (MATRIX_NUMERIC.test(text)) return Number(text);
+  return text.toLowerCase();
+}
+
+/** The single digit run in a string, or null when it does not have exactly one. */
+function matrixRouteDigits(text: string): number | null {
+  const runs = text.match(/\d+/g);
+  return runs && runs.length === 1 ? Number(runs[0]) : null;
+}
+
+/** Do two routed-source values name the same source? */
+export function matrixRouteMatches(a: unknown, b: unknown): boolean {
+  const x = matrixRouteValue(a);
+  const y = matrixRouteValue(b);
+  if (x === null || y === null) return false;
+  if (x === y) return true;
+  const dx = typeof x === "number" ? x : matrixRouteDigits(x);
+  const dy = typeof y === "number" ? y : matrixRouteDigits(y);
+  return dx !== null && dx === dy;
+}
+
+/** A key pattern with `*` replaced by this entry's value, first `*` only. */
+function matrixSubstitute(pattern: unknown, value: unknown): string | undefined {
+  if (typeof pattern !== "string" || !pattern) return undefined;
+  return pattern.replace("*", String(value));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Expand a generator entry into the list it stands for. */
+function generateMatrixAxis(
+  spec: Record<string, unknown>,
+  axis: MatrixAxisName,
+): MatrixEntry[] {
+  const from = isPlainObject(spec.from) ? spec.from : {};
+
+  let values: unknown[];
+  if (Array.isArray(from.values)) {
+    values = from.values;
+  } else {
+    const count = Number(from.count ?? 0);
+    const whole = Number.isFinite(count) ? Math.trunc(count) : 0;
+    values = whole > 0 ? Array.from({ length: whole }, (_, i) => i + 1) : [];
+  }
+
+  const labels = Array.isArray(from.labels) ? from.labels : [];
+  const excluded = new Set((Array.isArray(spec.exclude) ? spec.exclude : []).map(String));
+  const overrides = isPlainObject(spec.overrides) ? spec.overrides : {};
+
+  const entries: MatrixEntry[] = [];
+  values.forEach((value, position) => {
+    if (excluded.has(String(value))) return;
+    const label = labels[position];
+    const entry: MatrixEntry = {
+      value,
+      label: label ? String(label) : `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`,
+    };
+    const labelKey = matrixSubstitute(from.label_key, value);
+    if (labelKey) entry.label_key = labelKey;
+    const routeKey = matrixSubstitute(from.route_key, value);
+    if (routeKey) entry.route_key = routeKey;
+    const audioKey = matrixSubstitute(from.audio_route_key, value);
+    if (audioKey) entry.audio_route_key = audioKey;
+    if (Array.isArray(from.route)) entry.route = from.route;
+    const override = own(overrides as Record<string, unknown>, String(value));
+    entries.push(isPlainObject(override) ? { ...entry, ...override } as MatrixEntry : entry);
+  });
+  return entries;
+}
+
+/** One authored entry, filled out. A bare scalar means "just this value". */
+function normaliseMatrixEntry(
+  raw: unknown,
+  axis: MatrixAxisName,
+  position: number,
+): MatrixEntry | null {
+  let entry: Record<string, unknown>;
+  if (isPlainObject(raw)) entry = { ...raw };
+  else if (typeof raw === "string" || typeof raw === "number") entry = { value: raw };
+  else return null;
+  if (!("value" in entry)) return null;
+  if (!entry.label) entry.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+  return entry as unknown as MatrixEntry;
+}
+
+/** One axis of a matrix, as the list the renderer draws. */
+export function resolveMatrixAxis(config: unknown, axis: MatrixAxisName): MatrixEntry[] {
+  if (!isPlainObject(config)) return [];
+  const spec = config[axis];
+  if (isPlainObject(spec)) return generateMatrixAxis(spec, axis);
+  if (Array.isArray(spec)) {
+    const entries: MatrixEntry[] = [];
+    spec.forEach((raw, position) => {
+      const entry = normaliseMatrixEntry(raw, axis, position);
+      if (entry) entries.push(entry);
+    });
+    return entries;
+  }
+  return [];
+}
+
+/** How many entries this axis draws -- the question controlMinimumBox asks. */
+export function matrixAxisCount(config: unknown, axis: string): number {
+  return resolveMatrixAxis(config, axis as MatrixAxisName).length;
+}
 
 /**
  * Controls that are inert without one particular thing, and what to set.
@@ -4470,14 +4632,32 @@ export function propertyFindings(el: UIElement): ReviewFinding[] {
   return findings;
 }
 
+/** Which direction each axis routes, for a sentence that has to say which. */
+const MATRIX_AXIS_DIRECTION: Record<MatrixAxisName, string> = {
+  sources: "route from",
+  destinations: "route to",
+};
+
+/** How many entries a matrix finding names before it counts the rest. */
+const MATRIX_NAMED = 4;
+
+function matrixNamed(labels: string[]): string {
+  const shown = labels.slice(0, MATRIX_NAMED).join(", ");
+  const rest = labels.length - MATRIX_NAMED;
+  return rest > 0 ? `${shown} and ${rest} more` : shown;
+}
+
 /**
  * A matrix that will draw, and route, and never show what is routed.
  *
- * `route_key_pattern` is the one key with no default and no fallback: the
- * renderer guards the whole state binding on it, so without it every crosspoint
- * keeps its inactive colour for the life of the panel. Clicking still routes,
- * so the control is half-alive and a bench test that only asks "does it switch"
- * passes.
+ * `route_key` is what makes a destination visible rather than merely operable:
+ * without one the panel registers no state binding for that row, so it keeps its
+ * inactive colour for the life of the panel. Clicking still routes, so the
+ * control is half-alive and a bench test that only asks "does it switch" passes.
+ *
+ * It is per destination now rather than per element, which is the whole shape of
+ * project format 0.10.0: each destination owns its key, so half a matrix can be
+ * blind while the other half reports.
  */
 export function matrixFindings(el: UIElement): ReviewFinding[] {
   if (el.type !== "matrix") return [];
@@ -4489,9 +4669,10 @@ export function matrixFindings(el: UIElement): ReviewFinding[] {
       elementId: el.id,
       kind: "matrix_not_configured",
       message:
-        `${el.id} (matrix) has no matrix_config, so it draws an unbound ` +
-        `${MATRIX_DEFAULT_COUNT}x${MATRIX_DEFAULT_COUNT} grid. Set input_count, ` +
-        `output_count and route_key_pattern at least.`,
+        `${el.id} (matrix) has no matrix_config, so it draws an empty box. Set ` +
+        `sources and destinations -- each is a list of entries, or a generator ` +
+        `standing for one, e.g. destinations: ` +
+        `{'from': {'count': 8, 'route_key': 'device.<id>.output.*.input'}}.`,
       key: `matrix_not_configured|${el.id}`,
     }];
   }
@@ -4509,30 +4690,65 @@ export function matrixFindings(el: UIElement): ReviewFinding[] {
     });
   }
 
-  if (!config.route_key_pattern) {
-    findings.push({
-      elementId: el.id,
-      kind: "matrix_no_route_feedback",
-      message:
-        `${el.id} (matrix) has no route_key_pattern, so no crosspoint will ever ` +
-        `light up -- the grid draws and routes, but never shows which input is ` +
-        `selected. Set it to the state key of an output's routed input with the ` +
-        `output number replaced by '*', e.g. 'device.<id>.output.*.input'.`,
-      key: `matrix_no_route_feedback|${el.id}`,
-    });
-  }
-
-  for (const axis of ["input", "output"] as const) {
-    if (!config[`${axis}_count`]) {
+  for (const axis of ["sources", "destinations"] as const) {
+    const entries = resolveMatrixAxis(config, axis);
+    if (!entries.length) {
       findings.push({
         elementId: el.id,
         kind: "matrix_default_size",
         message:
-          `${el.id} (matrix) does not set ${axis}_count, so it draws ` +
-          `${MATRIX_DEFAULT_COUNT} ${axis}s. State the real count.`,
+          `${el.id} (matrix) resolves to no ${axis}, so it draws nothing to ` +
+          `${MATRIX_AXIS_DIRECTION[axis]}. List them under ` +
+          `matrix_config.${axis}, or generate them with ${axis}.from.count.`,
         key: `matrix_default_size|${el.id}|${axis}`,
       });
+      continue;
     }
+
+    // Two entries claiming one value is new in 0.10.0 and is only possible
+    // because a value is now opaque and authored. The crosspoint match lights
+    // every entry the device's report names, and a list dropdown can only hold
+    // one option per value, so the second is either a duplicate light or a row
+    // that cannot be selected.
+    const seen: unknown[] = [];
+    const collided: string[] = [];
+    for (const entry of entries) {
+      if (seen.some((other) => matrixRouteMatches(entry.value, other))) {
+        collided.push(String(entry.label ?? entry.value));
+      } else {
+        seen.push(entry.value);
+      }
+    }
+    if (collided.length) {
+      findings.push({
+        elementId: el.id,
+        kind: "matrix_duplicate_values",
+        message:
+          `${el.id} (matrix) has ${collided.length} of its ${axis} claiming a value ` +
+          `another one already has (${matrixNamed(collided)}), and a routed ` +
+          `source is matched by value -- so they cannot be told apart. Give ` +
+          `each one the value its device actually reports.`,
+        key: `matrix_duplicate_values|${el.id}|${axis}|${collided.join("|")}`,
+      });
+    }
+  }
+
+  const blind = resolveMatrixAxis(config, "destinations")
+    .filter((entry) => !entry.route_key)
+    .map((entry) => String(entry.label ?? entry.value));
+  if (blind.length) {
+    findings.push({
+      elementId: el.id,
+      kind: "matrix_no_route_feedback",
+      message:
+        `${el.id} (matrix) has ${blind.length} ` +
+        `destination${blind.length === 1 ? "" : "s"} with no route_key ` +
+        `(${matrixNamed(blind)}), so those never show what is routed -- the ` +
+        `matrix routes, and the panel cannot say which source is selected. Give ` +
+        `each one the state key holding its routed source, e.g. ` +
+        `'device.<id>.output.1.input'.`,
+      key: `matrix_no_route_feedback|${el.id}`,
+    });
   }
   return findings;
 }

@@ -304,28 +304,33 @@ A **Matrix** is configured under **Basic**, not through the binding cards, and o
 
 **Style** picks how it draws. A new matrix is a **List**: one row per destination, with its current source in a dropdown. It reads at a glance and it fits on a panel. **Crosspoint Grid** is the rack view, a dot per input-to-output pair, and it needs a lot more room (see below).
 
+A matrix is **two lists**: the sources you can pick from, and the destinations you can send them to. Everything else is a way of drawing them.
+
 | Setting | What it does |
 |---|---|
-| **Inputs** / **Outputs** | Grid size. Both default to 4, so an 8x8 switcher needs both set or it draws half of itself. |
-| **Route key pattern** | The state key that lights the crosspoints. **No default.** |
-| **Input labels** / **Output labels** | Source and destination names. Default to "In 1"..."In N" and "Out 1"..."Out N". |
-| **Audio route key pattern** | Audio routes. Also drives the badge that appears on an output whose audio route differs from its video route. |
-| **Show lock** / **Show mute** | Per-output lock and mute buttons. Lock is panel-side only: it stops that row being changed on this panel and sends nothing. Mute only appears when the Mute interaction has an action on it. |
+| **Sources** / **Destinations** | How many of each. Both default to 4, so an 8x8 switcher needs both set or it draws half of itself. |
+| **Route key** | The state key that lights the crosspoints. **No default.** |
+| **Source labels** / **Destination labels** | The names. Default to "In 1"..."In N" and "Out 1"..."Out N". |
+| **Audio route key** | Audio routes. Also drives the badge that appears on a destination whose audio route differs from its video route. |
+| **Source name key** / **Destination name key** | Live names read from state instead of typed here. |
+| **Show lock** / **Show mute** | Per-destination lock and mute buttons. Lock is panel-side only: it stops that row being changed on this panel and sends nothing. Mute only appears when the Mute interaction has an action on it. |
 | **Cell size** | How big each crosspoint is drawn. Leave it blank and the grid sizes itself to the element, between 44 and 72 pixels. Type a number to pin it. |
 
 **Source names go under the grid, not above it.** In the crosspoint style the columns are numbered, and a legend under the grid says which source each number is. That legend is one strip: if there are more names than fit, it slides sideways rather than stacking up and taking room away from the grid. Destination names are the row captions down the left, and a name too long for its column is shortened from the end.
 
-**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. An 8x8 needs about 432 x 446 pixels on a 1280 x 800 panel and a 16x16 needs about 792 x 806. The Builder tells you the number for your grid if the box you drew is too small.
+**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. An 8x8 needs about 500 x 446 pixels on a 1280 x 800 panel and a 16x16 needs about 860 x 806. The Builder tells you the number for your grid if the box you drew is too small.
 
-**Route key pattern is the one to get right.** It is the state key of one output's routed input, with the output number replaced by `*`:
+**Route key is the one to get right.** It is the state key of one destination's routed source, with the destination number replaced by `*`:
 
 ```
 device.matrix_1.output.*.input
 ```
 
-The panel substitutes 1 through your output count and reads each key to decide which crosspoint in that row lights up. Leave it blank and the grid still draws, and clicking a crosspoint still routes correctly, but **no crosspoint ever changes colour** -- so the panel shows no feedback about what is currently routed. The Value picker on any output's routed-input state key will show you the exact key to copy; replace the output number with `*`.
+The panel substitutes 1 through your destination count and reads each key to decide which crosspoint in that row lights up. Leave it blank and the grid still draws, and clicking a crosspoint still routes correctly, but **no crosspoint ever changes colour** -- so the panel shows no feedback about what is currently routed. The Value picker on any output's routed-input state key will show you the exact key to copy; replace the output number with `*`.
 
-Routing itself is a **Does** action, not a setting: the Video route interaction sends the command, with `$input` and `$output` carrying the crosspoint the user touched.
+Routing itself is a **Does** action, not a setting: the Video route interaction sends the command, with `$input` and `$output` carrying the source and destination the user touched.
+
+**Each destination can hold its own key instead**, which is how a matrix covers things that are not a plain rectangular frame: an 8x8 frame with only six ports patched, ports the device names rather than numbers, destinations spread across two devices, or a decoder that routes video and USB independently (a separate matrix per signal, each pointed at that signal's own keys). A matrix set up that way is a list of entries rather than a count, and the properties panel says so and steps aside -- the count and key fields have nothing to fill in, because each entry carries its own. A destination can also carry its own action, so one row of an otherwise ordinary matrix can start a stream instead of moving a crosspoint.
 
 ### Does: actions
 

@@ -102,7 +102,13 @@ CASES["starvation_every_type"] = _project([
             {"id": "sld_thick", "type": "slider", "thumb_size": 6},
             {"id": "lst", "type": "list"},
             {"id": "lst_tall", "type": "list", "item_height": 6},
-            {"id": "mtx", "type": "matrix"},
+            # A matrix's floor is a function of how many entries it resolves to,
+            # so it needs entries before it has one to breach.
+            {"id": "mtx", "type": "matrix", "matrix_config": {
+                "sources": {"from": {"count": 4}},
+                "destinations": {"from": {
+                    "count": 4, "route_key": "device.acme.output.*.input"}},
+            }},
             {"id": "meter", "type": "level_meter"},
             {"id": "pad", "type": "keypad"},
             {"id": "sel", "type": "select"},
@@ -122,7 +128,7 @@ CASES["starvation_every_type"] = _project([
             "sld_thick": _box(50, 0, 100, 110),
             "lst": _box(60, 0, 20, 70),
             "lst_tall": _box(70, 0, 40, 100),
-            "mtx": _box(0, 20, 200, 200),
+            "mtx": _box(0, 20, 319, 242),
             "meter": _box(20, 20, 8, 60),
             "pad": _box(30, 20, 60, 180),
             "sel": _box(40, 20, 40, 44),
@@ -456,9 +462,13 @@ CASES["vocabulary"] = _project([
             {"id": "meter_invented", "type": "level_meter", "segments": 12},
             # The right idea one level too high.
             {"id": "mtx_flat", "type": "matrix", "show_lock": True,
-             "matrix_config": {"input_count": 2, "output_count": 2,
-                               "route_key_pattern": "device.acme.output.*.input"}},
-            # The authored-by-AI shape, in full.
+             "matrix_config": {
+                 "sources": {"from": {"count": 2}},
+                 "destinations": {"from": {
+                     "count": 2, "route_key": "device.acme.output.*.input"}},
+             }},
+            # The authored-by-AI shape, in full. Nothing here is a key the
+            # renderer reads, so both axes resolve to nothing as well.
             {"id": "mtx_invented", "type": "matrix", "matrix_config": {
                 "device": "acme",
                 "inputs": [{"id": 1, "label": "IN 1"}],
@@ -466,17 +476,20 @@ CASES["vocabulary"] = _project([
                              "state_key": "device.acme.output.1.input"}],
                 "presets": [{"name": "All 1", "macro": "scene_all_1"}],
             }},
-            # Configured, sized, and still blind.
+            # Configured, sized, and still blind -- and blind on ALL eight, which
+            # is where the naming cap earns itself.
             {"id": "mtx_no_feedback", "type": "matrix",
-             "matrix_config": {"input_count": 8, "output_count": 8}},
+             "matrix_config": {"sources": {"from": {"count": 8}},
+                               "destinations": {"from": {"count": 8}}}},
             # Fully correct: this one must come back clean, or the check would
             # be firing on the spelling it is trying to teach. A 4x4 rather than
             # an 8x8 because the floor is a function of the counts now, and an
             # 8x8 does not fit the box the other three sit in -- which is what
             # the three of them are covering.
             {"id": "mtx_ok", "type": "matrix", "matrix_config": {
-                "input_count": 4, "output_count": 4,
-                "route_key_pattern": "device.acme.output.*.input",
+                "sources": {"from": {"count": 4}},
+                "destinations": {"from": {
+                    "count": 4, "route_key": "device.acme.output.*.input"}},
                 "show_lock": False, "show_mute": False,
             }},
             # A custom control with no page chosen renders an empty box, the
@@ -500,6 +513,70 @@ CASES["vocabulary"] = _project([
             "mtx_ok": _pct_box(35, 55, 30, 40),
             "custom_fileless": _pct_box(70, 55, 12, 12),
             "custom_ok": _pct_box(85, 55, 12, 12),
+        })],
+    ),
+    # The other half of project format 0.10.0: entries written out one at a
+    # time, where a value is opaque and a route key is per destination. Its own
+    # page so the geometry above stays where it was measured.
+    _page(
+        "written",
+        [
+            # Two sources naming one port. Only reachable now that a value is
+            # authored rather than a row number -- and the collision is decided
+            # by the SAME comparison that lights a crosspoint, so 'IN1' and 1
+            # are the same source however differently they are spelled.
+            {"id": "mtx_collide", "type": "matrix", "matrix_config": {
+                "sources": [
+                    {"value": 1, "label": "Laptop"},
+                    {"value": "IN1", "label": "Laptop HDMI"},
+                    {"value": 2, "label": "Room PC"},
+                ],
+                "destinations": [
+                    {"value": 1, "label": "Main LCD",
+                     "route_key": "device.acme.output.1.input"},
+                ],
+                "show_lock": False, "show_mute": False,
+            }},
+            # Half a matrix reporting and half of it blind, which the old
+            # per-element route_key_pattern could not express at all: either
+            # every crosspoint lit or none did.
+            {"id": "mtx_half_blind", "type": "matrix", "matrix_config": {
+                "sources": [{"value": 1, "label": "Cam"}, {"value": 2, "label": "PC"}],
+                "destinations": [
+                    {"value": 1, "label": "Main LCD",
+                     "route_key": "device.acme.output.1.input"},
+                    {"value": "stream", "label": "Stream",
+                     "route": [{"action": "macro", "macro": "start_stream"}]},
+                ],
+                "show_lock": False, "show_mute": False,
+            }},
+            # Written out and correct: values a device reports, a key each, a
+            # per-destination action override on one of them. Must stay quiet,
+            # or the check is firing on the spelling it exists to teach.
+            {"id": "mtx_written_ok", "type": "matrix", "matrix_config": {
+                "sources": [
+                    {"value": 1, "label": "Apple TV"},
+                    {"value": "HDMI_A", "label": "Laptop"},
+                    {"value": 7, "label": "Room PC",
+                     "label_key": "device.acme.input.7.name"},
+                ],
+                "destinations": [
+                    {"value": 1, "label": "Main LCD",
+                     "route_key": "device.acme.output.1.input"},
+                    {"value": 6, "label": "Confidence",
+                     "route_key": "device.acme.output.6.input",
+                     "audio_route_key": "device.acme.output.6.audio"},
+                    {"value": "rtsp://10.0.0.9/live", "label": "Stream",
+                     "route_key": "device.enc.source",
+                     "route": [{"action": "macro", "macro": "start_stream"}]},
+                ],
+                "show_lock": False, "show_mute": False,
+            }},
+        ],
+        [_landscape({
+            "mtx_collide": _pct_box(0, 0, 30, 40),
+            "mtx_half_blind": _pct_box(35, 0, 30, 40),
+            "mtx_written_ok": _pct_box(0, 45, 30, 45),
         })],
     ),
 ])
@@ -1276,6 +1353,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "matrix_config_unread",
         "matrix_no_route_feedback",
         "matrix_default_size",
+        "matrix_duplicate_values",
         "custom_page_elements_not_drawn",
         "custom_page_without_a_file",
         "covers_master",
@@ -1314,6 +1392,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "gauge_just",                          # exactly on the degenerate threshold
         "lbl_right",                           # a label's static content IS `text`
         "mtx_ok",                              # a matrix spelled the way it works
+        "mtx_written_ok",                      # ...and the same, written out entry by entry
         "lbl_bound",                           # show.value supplies the text
         "custom_ok",                           # a custom control that names its page
         "clean",                               # a custom page with nothing left on it

@@ -41,16 +41,33 @@ REF_W, REF_H = 1280, 800
 
 # A representative element per type. Deliberately minimal: this measures the
 # control's own fixed parts, not how long a caption someone typed.
+def _grid(sources: int, destinations: int, **config) -> dict:
+    """A matrix of a given size, in the form the panel is handed.
+
+    The panel reads two resolved lists -- the server expands them (matrix plan
+    D6) -- so a fixture that hands it a count draws an empty box, and a floor
+    measured against an empty box is a floor for nothing.
+    """
+    return {"matrix_config": {
+        "sources": [{"value": i, "label": f"In {i}"} for i in range(1, sources + 1)],
+        "destinations": [{"value": i, "label": f"Out {i}"}
+                         for i in range(1, destinations + 1)],
+        **config,
+    }}
+
+
 SPECIMENS: dict[str, dict] = {
     "status_led": {"label": "On"},
     "fader": {"label": "Ch", "min": -80, "max": 10},
     "slider": {"label": "Vol", "min": 0, "max": 100},
     "keypad": {"label": "PIN"},
-    # input_count / output_count, not inputs / outputs. The keys renderMatrix
-    # reads: the pair that used to be here were ignored, so the "2x2" specimen
-    # was silently a 4x4 and the floor it recorded belonged to a grid nobody
-    # meant to measure.
-    "matrix": {"label": "Route", "matrix_config": {"input_count": 4, "output_count": 4}},
+    # A matrix is two lists, and its floor is a function of how long they are
+    # (project format 0.10.0). The counts that used to be here were the pair
+    # renderMatrix reads; the pair before THOSE were ignored, so the "2x2"
+    # specimen was silently a 4x4 and the floor it recorded belonged to a grid
+    # nobody meant to measure. _grid() is now the only place that shape is
+    # spelled, so it cannot go wrong in one table and not the other.
+    "matrix": {"label": "Route", **_grid(4, 4)},
     "list": {"label": "Presets", "options": [{"value": "a", "label": "A"}]},
     "select": {"label": "Src", "options": [{"value": "a", "label": "A"}]},
     "text_input": {"label": "Name"},
@@ -414,24 +431,17 @@ def test_an_unlabelled_status_led_is_just_the_dot(panel_page) -> None:
 #: options in one dropdown, not sixteen columns, so its width does not move at
 #: all.
 MATRIX_GRIDS: list[tuple[str, dict]] = [
-    ("2x2", {"matrix_config": {"input_count": 2, "output_count": 2}}),
-    ("8x8", {"matrix_config": {"input_count": 8, "output_count": 8}}),
-    ("12x12", {"matrix_config": {"input_count": 12, "output_count": 12}}),
-    ("16x4", {"matrix_config": {"input_count": 16, "output_count": 4}}),
-    ("4x16", {"matrix_config": {"input_count": 4, "output_count": 16}}),
-    ("8x8 no lock", {"matrix_config": {
-        "input_count": 8, "output_count": 8, "show_lock": False}}),
-    ("4x4 with presets", {"matrix_config": {
-        "input_count": 4, "output_count": 4,
-        "presets": [{"name": "All to 1", "macro": "m"}]}}),
-    ("8x8 cell 60", {"style": {"cell_size": 60 / 14},
-                     "matrix_config": {"input_count": 8, "output_count": 8}}),
-    ("list 8 out", {"matrix_style": "list",
-                    "matrix_config": {"input_count": 4, "output_count": 8}}),
-    ("list 16 in", {"matrix_style": "list",
-                    "matrix_config": {"input_count": 16, "output_count": 4}}),
-    ("list 16 out", {"matrix_style": "list",
-                     "matrix_config": {"input_count": 4, "output_count": 16}}),
+    ("2x2", _grid(2, 2)),
+    ("8x8", _grid(8, 8)),
+    ("12x12", _grid(12, 12)),
+    ("16x4", _grid(16, 4)),
+    ("4x16", _grid(4, 16)),
+    ("8x8 no lock", _grid(8, 8, show_lock=False)),
+    ("4x4 with presets", _grid(4, 4, presets=[{"name": "All to 1", "macro": "m"}])),
+    ("8x8 cell 60", {"style": {"cell_size": 60 / 14}, **_grid(8, 8)}),
+    ("list 8 out", {"matrix_style": "list", **_grid(4, 8)}),
+    ("list 16 in", {"matrix_style": "list", **_grid(16, 4)}),
+    ("list 16 out", {"matrix_style": "list", **_grid(4, 16)}),
 ]
 
 
@@ -480,8 +490,7 @@ def test_a_matrix_at_its_floor_shows_every_crosspoint(panel_page) -> None:
     rectangle, and still be behind .matrix-scroll's scrollbar. Under the old
     reading a 16x16 "held" at 278x236 -- 22 of its 256 crosspoints on screen.
     """
-    element = {"type": "matrix", "label": "Route",
-               "matrix_config": {"input_count": 16, "output_count": 16}}
+    element = {"type": "matrix", "label": "Route", **_grid(16, 16)}
     box = minimum_box(element)
     assert box is not None
     seen = panel_page.evaluate(

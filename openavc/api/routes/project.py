@@ -1,5 +1,6 @@
 """Project, library, backup, and log REST API endpoints."""
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -10,6 +11,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
+from openavc.ui.matrix_model import resolve_matrix_config
 from openavc.utils.log_buffer import get_log_buffer
 from openavc.drivers.registry import is_driver_registered
 
@@ -30,6 +32,51 @@ async def get_project() -> JSONResponse:
             headers={"ETag": f'"{engine._project_revision}"'},
         )
     raise HTTPException(status_code=404, detail="No project loaded")
+
+
+@router.get("/ui/resolved")
+async def get_resolved_ui() -> dict[str, Any]:
+    """The saved UI as a panel receives it, with every matrix expanded.
+
+    ``/api/project`` above is the authoring copy and stays terse; this is the
+    rendering copy. The panel uses it for its own first paint when it is
+    embedded in the Builder and the editor has not pushed a project yet.
+    """
+    engine = _get_engine()
+    if not engine.project:
+        raise HTTPException(status_code=404, detail="No project loaded")
+    return {"ui": engine.panel_ui()}
+
+
+@router.post("/ui/resolve-matrix")
+async def resolve_matrix_configs(request: Request) -> dict[str, Any]:
+    """Expand matrix configs the Builder is still editing.
+
+    The Builder holds unsaved edits, so it cannot ask for the saved project's
+    resolution -- and it must not resolve locally, because its canvas is an
+    iframe of the real panel and the panel reads resolved lists only (D6). So it
+    posts the configs it is about to draw and gets them back expanded, keyed by
+    element id.
+
+    Configs rather than the whole project: this is called while somebody types,
+    and a matrix config is the only part of a page that has anything to expand.
+    """
+    body = await request.body()
+    if len(body) > 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Too many matrix configs (max 1 MB)")
+    try:
+        payload = json.loads(body or b"{}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
+    configs = payload.get("configs") if isinstance(payload, dict) else None
+    if not isinstance(configs, dict):
+        raise HTTPException(status_code=400, detail="Expected {\"configs\": {id: config}}")
+    return {
+        "configs": {
+            str(element_id): resolve_matrix_config(config)
+            for element_id, config in configs.items()
+        }
+    }
 
 
 @router.post("/project/reload")

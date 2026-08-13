@@ -18,6 +18,11 @@ from pathlib import Path
 
 import pytest
 
+from openavc.core.project_migration import (
+    _migrate_matrix_config_0_9_to_0_10 as migrate_matrix_config,
+)
+from openavc.ui.matrix_model import resolve_matrix_config
+
 # Skip-gate only: the browser itself comes from pytest-playwright's session
 # fixtures, never from a second sync_playwright() of our own (see the note in
 # test_control_minimums.py -- calling it here breaks every test in the file).
@@ -111,12 +116,34 @@ def panel_page(browser):
 
 
 def _matrix(**config):
-    """A matrix element wired the way the Builder writes one."""
+    """A matrix element as the SERVER hands it to the panel: two resolved lists.
+
+    Written in the shorthand an author still types -- counts, labels, a key with
+    a `*` in it -- and expanded here by the real resolver, through the real
+    migration, because that is exactly the path a project written before format
+    0.10.0 takes to reach this renderer. The panel has no expander of its own
+    (matrix plan D6), so handing it the shorthand would draw an empty box.
+    """
     cfg = {"input_count": 4, "output_count": 4, "route_key_pattern": ROUTE_KEY}
     cfg.update(config)
     return {
         "id": "mx1", "type": "matrix", "label": "Routing",
-        "matrix_config": cfg,
+        "matrix_config": resolve_matrix_config(migrate_matrix_config(cfg)),
+        "bindings": {"do": {"video_route": [{"action": "device.command"}]}},
+    }
+
+
+def _resolved(**config):
+    """A matrix authored in the 0.10.0 form directly, entry by entry.
+
+    The half the shorthand above cannot reach: per-destination keys, opaque
+    values, a subset of a frame's ports.
+    """
+    cfg = {"sources": [], "destinations": []}
+    cfg.update(config)
+    return {
+        "id": "mx1", "type": "matrix", "label": "Routing",
+        "matrix_config": resolve_matrix_config(cfg),
         "bindings": {"do": {"video_route": [{"action": "device.command"}]}},
     }
 
@@ -541,10 +568,8 @@ def test_the_destination_column_keeps_its_room_at_the_floor(panel_page) -> None:
     publish a width at all: a column sized to its content is a column whose
     width is whatever somebody typed.
     """
-    element = {"type": "matrix", "label": "Routing",
-               "matrix_config": {"input_count": 8, "output_count": 8,
-                                 "output_labels": DESTINATIONS}}
-    _mount(panel_page, {"id": "mx1", **element}, 455 + 45, 446)
+    element = _matrix(input_count=8, output_count=8, output_labels=DESTINATIONS)
+    _mount(panel_page, element, 455 + 45, 446)
     assert _label_column_px(panel_page) >= 80
 
 
@@ -581,3 +606,208 @@ def test_a_long_destination_name_loses_its_tail_not_its_head(panel_page) -> None
         "the label is being clipped from the front: its first characters sit "
         f"{box['headerLeft'] - box['spanLeft']:.1f}px outside the header"
     )
+
+
+# ---------------------------------------------------------------------------
+# The model (project format 0.10.0)
+#
+# Each of these is a shape the pattern form could not express at all. They are
+# not refinements of the grid -- they are the reason the grid was rewritten:
+# one glob pattern plus two counts can only describe a rectangular frame with
+# contiguous ports numbered from one, on one device, reporting plain integers,
+# and the driver corpus is not that.
+# ---------------------------------------------------------------------------
+
+# An 8x8 frame with six ports patched, which is what a room actually has. The
+# gap is the point: rows 5 and 6 are outputs 7 and 8.
+PATCHED = [
+    {"value": v, "label": lbl, "route_key": f"device.mx.output.{v}.input"}
+    for v, lbl in ((1, "Main LCD"), (2, "Left Proj"), (3, "Right Proj"),
+                   (4, "Confidence"), (7, "Lobby TV"), (8, "Record"))
+]
+TWO_SOURCES = [{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}]
+
+
+def test_a_matrix_draws_the_entries_it_has_not_a_rectangle(panel_page) -> None:
+    """Six destinations out of an eight-output frame is six rows.
+
+    'Leave out unused inputs and outputs' turns out not to be a feature at all
+    -- it is a shorter list. The counts form had nowhere to put a gap, so an
+    8x8 frame with two ports patched drew eight rows, two of which routed
+    signal nowhere.
+    """
+    _mount(panel_page, _resolved(sources=TWO_SOURCES, destinations=PATCHED), 700, 600)
+    rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
+    assert rows == ["Main LCD", "Left Proj", "Right Proj",
+                    "Confidence", "Lobby TV", "Record"]
+    assert panel_page.locator(".matrix-crosspoint").count() == 12, (
+        "six destinations by two sources is twelve crosspoints"
+    )
+
+
+def test_a_tap_sends_the_destinations_own_value_not_its_row(panel_page) -> None:
+    """The sharpest consequence of a gap in the list.
+
+    Row five of that patched frame is OUTPUT 7. The old renderer sent the row
+    number, so on any matrix that was not a full contiguous rectangle it routed
+    the wrong destination -- correctly, silently, and every time.
+    """
+    _mount(panel_page, _resolved(sources=TWO_SOURCES, destinations=PATCHED), 700, 600)
+    _crosspoint(panel_page, 2, 7).click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": 2, "output": 7}
+    ]
+
+
+def test_a_source_value_need_not_be_a_number(panel_page) -> None:
+    """A Gefen frame's ids are strings and a Crestron NVX source is a URL.
+
+    The value goes out as authored -- not coerced, not indexed -- because the
+    device is the one that decides what a source is called.
+    """
+    element = _resolved(
+        sources=[{"value": "HDMI_A", "label": "Laptop"},
+                 {"value": "rtsp://10.0.0.9/live", "label": "Stream"}],
+        destinations=[{"value": "out_a", "label": "Main LCD",
+                       "route_key": "device.mx.out_a.source"}],
+    )
+    _mount(panel_page, element, 700, 400)
+    _crosspoint(panel_page, "rtsp://10.0.0.9/live", "out_a").click()
+    assert _sent(panel_page) == [{
+        "type": "ui.route", "element_id": "mx1",
+        "input": "rtsp://10.0.0.9/live", "output": "out_a",
+    }]
+
+
+def test_one_matrix_can_span_two_devices(panel_page) -> None:
+    """Each destination owns its key, so nothing says they share a device.
+
+    A single glob pattern made this unsayable: every row of a matrix had to be
+    an output of one frame, which is why a page needing a switcher and an
+    encoder needed two controls that could not show one picture.
+    """
+    element = _resolved(
+        sources=TWO_SOURCES,
+        destinations=[
+            {"value": 1, "label": "Main LCD", "route_key": "device.mx.output.1.input"},
+            {"value": "live", "label": "Stream", "route_key": "device.enc.source"},
+        ],
+    )
+    _mount(panel_page, element, 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.output.1.input": 1,
+        "device.enc.source": 2,
+    })
+    lit = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-crosspoint.active')).map(d => [d.dataset.input, d.dataset.output])""")
+    assert lit == [["1", "1"], ["2", "live"]], (
+        f"two devices' routes should light one crosspoint each; lit {lit}"
+    )
+
+
+def test_one_destination_can_watch_audio_while_the_others_do_not(panel_page) -> None:
+    """The badge is per destination now, because the key is.
+
+    A single audio_route_key_pattern put a badge on every row or on none, so a
+    frame whose audio breakaway is wired on one output could not say so.
+    """
+    element = _resolved(
+        sources=TWO_SOURCES,
+        destinations=[
+            {"value": 1, "label": "Main LCD", "route_key": "device.mx.output.1.input",
+             "audio_route_key": "device.mx.output.1.audio"},
+            {"value": 2, "label": "Left Proj", "route_key": "device.mx.output.2.input"},
+        ],
+    )
+    _mount(panel_page, element, 700, 400)
+    assert panel_page.locator(".matrix-route-mismatch").count() == 1, (
+        "only the destination that names an audio key can carry the badge"
+    )
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.output.1.input": 1,
+        "device.mx.output.1.audio": 2,
+        "device.mx.output.2.input": 1,
+    })
+    assert panel_page.locator(".matrix-route-mismatch:not([hidden])").count() == 1
+
+
+def test_a_live_name_is_per_entry_not_per_axis(panel_page) -> None:
+    """Two sources on two devices, each named by its own key."""
+    element = _resolved(
+        sources=[
+            {"value": 1, "label": "Input 1", "label_key": "device.mx.input.1.name"},
+            {"value": 2, "label": "Input 2", "label_key": "device.enc.name"},
+        ],
+        destinations=[{"value": 1, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input"}],
+    )
+    _mount(panel_page, element, 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.input.1.name": "Apple TV",
+        "device.enc.name": "Encoder A",
+    })
+    shown = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-legend-item [data-label-text]')).map(n => n.textContent)""")
+    assert shown == ["Apple TV", "Encoder A"]
+
+
+def test_a_list_dropdown_sends_the_sources_typed_value(panel_page) -> None:
+    """A DOM option value is always a string; a device that wants 3 wants 3."""
+    element = _resolved(
+        sources=[{"value": 3, "label": "Doc Cam"}, {"value": "HDMI_A", "label": "Laptop"}],
+        destinations=[{"value": 6, "label": "Confidence",
+                       "route_key": "device.mx.output.6.input"}],
+    )
+    element["matrix_style"] = "list"
+    _mount(panel_page, element, 400, 300)
+    panel_page.select_option(".matrix-list-select", index=0)
+    panel_page.select_option(".matrix-list-select", index=1)
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": 3, "output": 6},
+        {"type": "ui.route", "element_id": "mx1", "input": "HDMI_A", "output": 6},
+    ]
+
+
+def test_a_list_row_follows_a_route_reported_as_a_name(panel_page) -> None:
+    """The dropdown moves to the option the device's report names, whatever the
+    device chose to call it."""
+    element = _resolved(
+        sources=[{"value": "HDMI_A", "label": "Laptop"},
+                 {"value": "HDMI_B", "label": "Room PC"}],
+        destinations=[{"value": 1, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input"}],
+    )
+    element["matrix_style"] = "list"
+    _mount(panel_page, element, 400, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.1.input": "HDMI_B"})
+    assert panel_page.locator(".matrix-list-select").input_value() == "HDMI_B"
+
+
+def test_a_matrix_that_says_nothing_draws_nothing(panel_page) -> None:
+    """Rather than the phantom 4x4 the old default invented.
+
+    Four rows of dots that can never light look like a working control that the
+    device is not answering, which is the most expensive thing a panel can look
+    like. An empty box is visible, and the page review names it.
+    """
+    _mount(panel_page, _resolved(), 400, 300)
+    assert panel_page.locator(".matrix-crosspoint").count() == 0
+    assert panel_page.locator(".matrix-output-header").count() == 0
+
+
+def test_a_matrix_that_reached_the_panel_unexpanded_draws_nothing(panel_page) -> None:
+    """The panel has no expander, and must not half-invent one.
+
+    Resolution happens once, on the server (D6). A generator arriving here means
+    something upstream did not run, and the honest answer is an empty box rather
+    than a guess at what `count: 8` meant.
+    """
+    element = _resolved()
+    element["matrix_config"] = {
+        "sources": {"from": {"count": 8}},
+        "destinations": {"from": {"count": 8, "route_key": ROUTE_KEY}},
+    }
+    _mount(panel_page, element, 700, 600)
+    assert panel_page.locator(".matrix-crosspoint").count() == 0

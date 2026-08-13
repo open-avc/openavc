@@ -251,15 +251,15 @@ export interface UIElement {
   item_height?: number;
   items?: Array<{ label: string; value: string }>;
   // Matrix
+  // A matrix is two lists: what can be routed, and what it can be routed to.
+  // Each is either the entries written out or a generator standing for them
+  // (`{from: {count, route_key, ...}, exclude, overrides}`), which is why both
+  // are typed loosely here -- the shape that decides between them lives in
+  // openavc/ui/matrix_model.py, and the server expands it before any renderer
+  // sees it. Every other key is read straight.
   matrix_config?: {
-    input_count?: number;
-    output_count?: number;
-    input_labels?: string[];
-    output_labels?: string[];
-    input_key_pattern?: string;
-    output_key_pattern?: string;
-    route_key_pattern?: string;
-    audio_route_key_pattern?: string;
+    sources?: unknown;
+    destinations?: unknown;
     audio_follow_video?: boolean;
     show_lock?: boolean;
     show_mute?: boolean;

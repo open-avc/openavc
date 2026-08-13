@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
+from openavc.ui.matrix_model import destination_for
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -91,6 +92,27 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
         f"{'off_action' if active else 'the press action'}."
     )
     return ("toggle_off" if active else "press"), why
+
+
+def _destination_route(element: Any, output: Any) -> list[Any] | None:
+    """The action list this matrix destination overrides ``do.route`` with.
+
+    The panel sends the destination's own opaque value rather than a row number,
+    so the destination is found by value -- through the same comparison the
+    crosspoints light by, because a dropdown reads ``"2"`` out of the DOM where
+    the project wrote ``2``.
+
+    None means "no override", which is not the same as an empty list: an
+    override authored as ``[]`` is a destination somebody deliberately made
+    inert, and falling back to the element default would route it anyway.
+    """
+    if getattr(element, "type", "") != "matrix":
+        return None
+    destination = destination_for(getattr(element, "matrix_config", None), output)
+    if destination is None:
+        return None
+    route = destination.get("route")
+    return route if isinstance(route, list) else None
 
 
 class UIEventRuntime:
@@ -171,6 +193,15 @@ class UIEventRuntime:
 
         # Look up the action list for this interaction (always a list of actions)
         binding = do.get(event_type)
+
+        # A matrix destination may carry its own action list. The element's
+        # do.route is the default -- what almost every row does -- and a single
+        # row can override it, which is how one control covers a frame's eight
+        # outputs plus a "Stream" destination that starts an encoder instead.
+        if event_type == "route":
+            override = _destination_route(element, data.get("output"))
+            if override is not None:
+                binding = override
 
         # Toggle off: look for off_action inside the first press action that has one
         if not binding and event_type == "toggle_off":

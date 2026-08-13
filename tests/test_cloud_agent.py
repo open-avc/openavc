@@ -1182,7 +1182,7 @@ class TestCommandHandler:
 
         saved = json.loads(project_path.read_text(encoding="utf-8"))
         # Migration ran before the save: the persisted version is the current one.
-        assert saved["openavc_version"] == "0.9.0", saved.get("openavc_version")
+        assert saved["openavc_version"] == "0.10.0", saved.get("openavc_version")
         # And the pushed project is what got saved (not the pre-existing one).
         assert saved["project"]["id"] == "pushed"
         # The push went through the seam — LOAD origin, no OCC check (a fleet

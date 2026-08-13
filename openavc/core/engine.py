@@ -42,6 +42,7 @@ from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.ui_events import UIEventRuntime
 from openavc.core.ws_hub import WSHub
 from openavc.discovery import network_scanner
+from openavc.ui.matrix_model import resolve_ui
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
 
@@ -700,7 +701,7 @@ class Engine:
         if diff.ui:
             await self.broadcast_ws({
                 "type": "ui.definition",
-                "ui": self.project.ui.model_dump(mode="json"),
+                "ui": self.panel_ui(),
             })
 
         # Notify the Programmer IDE to refetch project data. Always sent:
@@ -1139,6 +1140,23 @@ class Engine:
         actions and reports them without any of the effects — for a caller
         checking a control rather than operating one."""
         return await self.ui_events.handle(event_type, element_id, data, dry_run=dry_run)
+
+    def panel_ui(self) -> dict[str, Any]:
+        """The UI definition as a RENDERER must receive it, not as it is stored.
+
+        The one difference is the matrix: a matrix's sources and destinations are
+        authored as a terse generator and drawn as two lists, and that expansion
+        happens here rather than in the renderer (matrix plan D6). The panel and
+        the Builder canvas are the same renderer in two places, so a copy each
+        would be two copies of the same translation, drifting.
+
+        ``/api/project`` deliberately does NOT go through this: it is what the
+        Builder edits and saves back, and resolving there would materialise
+        somebody's `count: 128` into 128 rows on their next save.
+        """
+        if not self.project:
+            return {}
+        return resolve_ui(self.project.ui.model_dump(mode="json"))
 
     def _load_project_safe(self) -> ProjectConfig:
         """Load project.avc with corruption recovery.

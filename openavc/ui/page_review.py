@@ -58,6 +58,11 @@ from openavc.ui.control_minimums import (
     minimum_box,
     minimum_percent,
 )
+from openavc.ui.matrix_model import (
+    MATRIX_CONFIG_KEYS,
+    resolve_axis,
+    route_matches,
+)
 from openavc.ui.page_geometry import (
     PAGE_BOX,
     absolute_placements,
@@ -1358,39 +1363,40 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     )]
 
 
-#: Every key ``renderMatrix`` reads out of ``matrix_config``.
-#:
-#: The element declares this as a bare ``dict[str, Any]``, so unlike every other
-#: property it has no schema at any layer -- the loader takes whatever shape
-#: arrives and the renderer reads the keys it knows. An 8x8 switcher authored
-#: with ``inputs: [...]`` / ``outputs: [{state_key: ...}]`` stores perfectly and
-#: draws as a 4x4 grid of crosspoints that can never light.
-MATRIX_CONFIG_KEYS = frozenset({
-    "input_count", "output_count", "input_labels", "output_labels",
-    "input_key_pattern", "output_key_pattern", "route_key_pattern",
-    "audio_route_key_pattern", "audio_follow_video", "show_lock", "show_mute",
-    "presets",
-})
+#: Which direction each axis routes, for a sentence that has to say which one it
+#: means without the reader counting the letters in "destinations".
+_MATRIX_AXIS_DIRECTION = {"sources": "route from", "destinations": "route to"}
 
-#: What a matrix draws when nothing says otherwise. Small enough that a real
-#: switcher is nearly always bigger, which is what makes the silence expensive.
-MATRIX_DEFAULT_COUNT = 4
+#: How many entries a matrix finding names before it counts the rest. Same
+#: bargain as ``_OVERLAP_NAMED``: a 128-output frame must not produce a sentence
+#: nobody reads, and nothing is quietly dropped -- the total is stated first.
+_MATRIX_NAMED = 4
+
+
+def _matrix_named(labels: list[str]) -> str:
+    """A list of entry names, capped, with the remainder counted."""
+    shown = ", ".join(labels[:_MATRIX_NAMED])
+    rest = len(labels) - _MATRIX_NAMED
+    return f"{shown} and {rest} more" if rest > 0 else shown
 
 
 def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
     """A matrix that will draw, and route, and never show what is routed.
 
-    ``route_key_pattern`` is the one key with no default and no fallback:
-    ``renderMatrix`` guards the whole state binding on it, so without it
-    ``evaluateMatrixRoutes`` is never registered and every crosspoint keeps its
-    inactive colour for the life of the panel. Clicking still routes -- the
-    command carries ``$input``/``$output`` from the event, not from config -- so
-    the control is half-alive, and a bench test that only asks "does it switch"
-    passes.
+    ``route_key`` is what makes a destination visible rather than merely
+    operable: without one the panel registers no state binding for that row, so
+    it keeps its inactive colour for the life of the panel. Clicking still routes
+    -- the command carries ``$input``/``$output`` from the event, not from config
+    -- so the control is half-alive, and a bench test that only asks "does it
+    switch" passes.
 
-    That is the finding worth the most here. The other two are the ones that
-    make it hard to notice: a config full of keys nothing reads, and a grid
-    silently drawn at 4x4.
+    It is per destination now rather than per element, which is the whole shape
+    of project format 0.10.0: each destination owns its key, so half a matrix can
+    be blind while the other half reports, and that is worth naming precisely.
+
+    The other three are the ones that make it hard to notice: a config full of
+    keys nothing reads, an axis that resolves to nothing, and two entries that
+    claim the same value.
     """
     if str(element.get("type", "")) != "matrix":
         return []
@@ -1402,9 +1408,10 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
         return [Finding(
             el_id,
             "matrix_not_configured",
-            f"{el_id} (matrix) has no matrix_config, so it draws an unbound "
-            f"{MATRIX_DEFAULT_COUNT}x{MATRIX_DEFAULT_COUNT} grid. Set input_count, "
-            f"output_count and route_key_pattern at least.",
+            f"{el_id} (matrix) has no matrix_config, so it draws an empty box. Set "
+            f"sources and destinations -- each is a list of entries, or a generator "
+            f"standing for one, e.g. destinations: "
+            f"{{'from': {{'count': 8, 'route_key': 'device.<id>.output.*.input'}}}}.",
         )]
 
     unread = sorted(k for k in config if k not in MATRIX_CONFIG_KEYS)
@@ -1418,25 +1425,58 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
             key=("matrix_config_unread", el_id, *unread),
         ))
 
-    if not config.get("route_key_pattern"):
-        findings.append(Finding(
-            el_id,
-            "matrix_no_route_feedback",
-            f"{el_id} (matrix) has no route_key_pattern, so no crosspoint will ever "
-            f"light up -- the grid draws and routes, but never shows which input is "
-            f"selected. Set it to the state key of an output's routed input with the "
-            f"output number replaced by '*', e.g. 'device.<id>.output.*.input'.",
-        ))
-
-    for axis in ("input", "output"):
-        if not config.get(f"{axis}_count"):
+    for axis in ("sources", "destinations"):
+        entries = resolve_axis(config, axis)
+        if not entries:
             findings.append(Finding(
                 el_id,
                 "matrix_default_size",
-                f"{el_id} (matrix) does not set {axis}_count, so it draws "
-                f"{MATRIX_DEFAULT_COUNT} {axis}s. State the real count.",
+                f"{el_id} (matrix) resolves to no {axis}, so it draws nothing to "
+                f"{_MATRIX_AXIS_DIRECTION[axis]}. List them under "
+                f"matrix_config.{axis}, or generate them with {axis}.from.count.",
                 key=("matrix_default_size", el_id, axis),
             ))
+            continue
+
+        # Two entries claiming one value is new in 0.10.0 and is only possible
+        # because a value is now opaque and authored. It is not cosmetic: the
+        # crosspoint match lights every entry the device's report names, and a
+        # list dropdown can only hold one option per value, so the second entry
+        # is either a duplicate light or a row that cannot be selected.
+        seen: list[Any] = []
+        collided: list[str] = []
+        for entry in entries:
+            if any(route_matches(entry.get("value"), other) for other in seen):
+                collided.append(str(entry.get("label", entry.get("value"))))
+            else:
+                seen.append(entry.get("value"))
+        if collided:
+            findings.append(Finding(
+                el_id,
+                "matrix_duplicate_values",
+                f"{el_id} (matrix) has {len(collided)} of its {axis} claiming a value "
+                f"another one already has ({_matrix_named(collided)}), and a routed "
+                f"source is matched by value -- so they cannot be told apart. Give "
+                f"each one the value its device actually reports.",
+                key=("matrix_duplicate_values", el_id, axis, *collided),
+            ))
+
+    blind = [
+        str(entry.get("label", entry.get("value")))
+        for entry in resolve_axis(config, "destinations")
+        if not entry.get("route_key")
+    ]
+    if blind:
+        findings.append(Finding(
+            el_id,
+            "matrix_no_route_feedback",
+            f"{el_id} (matrix) has {len(blind)} "
+            f"destination{'' if len(blind) == 1 else 's'} with no route_key "
+            f"({_matrix_named(blind)}), so those never show what is routed -- the "
+            f"matrix routes, and the panel cannot say which source is selected. Give "
+            f"each one the state key holding its routed source, e.g. "
+            f"'device.<id>.output.1.input'.",
+        ))
     return findings
 
 

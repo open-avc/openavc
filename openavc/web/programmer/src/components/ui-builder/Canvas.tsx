@@ -27,6 +27,7 @@ import {
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
+import { resolveProjectMatrices } from "../../api/matrixPreview";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useUiFilesStore } from "../../store/uiFilesStore";
 import { showError } from "../../store/toastStore";
@@ -124,17 +125,21 @@ export function Canvas({
     const p = projectRef.current;
     if (!iframe?.contentWindow || !p) return;
     console.log("[canvas] iframe loaded — posting editor-init");
-    iframe.contentWindow.postMessage(
-      {
-        type: "openavc:editor-init",
-        project: p,
-        pageId: pageIdRef.current,
-        showGrid,
-        vmin: vminRef.current,
-        demoState: sampleState(),
-        uiFilesVersion,
-      },
-      "*",
+    // Resolved, not raw: the canvas IS the panel, and the panel reads a matrix
+    // as two finished lists rather than expanding a generator itself (D6).
+    void resolveProjectMatrices(p).then((resolved) =>
+      iframe.contentWindow?.postMessage(
+        {
+          type: "openavc:editor-init",
+          project: resolved,
+          pageId: pageIdRef.current,
+          showGrid,
+          vmin: vminRef.current,
+          demoState: sampleState(),
+          uiFilesVersion,
+        },
+        "*",
+      ),
     );
     setIframeReady(true);
   }, [showGrid, uiFilesVersion]);
@@ -146,21 +151,25 @@ export function Canvas({
     if (!project) return;
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow) return;
+    let live = true;
     const timer = setTimeout(() => {
-      iframe.contentWindow?.postMessage(
-        {
-          type: "openavc:editor-project",
-          project,
-          pageId: page.id,
-          showGrid,
-          vmin: vminRef.current,
-          demoState: sampleState(),
-          uiFilesVersion,
-        },
-        "*",
-      );
+      void resolveProjectMatrices(project).then((resolved) => {
+        if (!live) return;
+        iframe.contentWindow?.postMessage(
+          {
+            type: "openavc:editor-project",
+            project: resolved,
+            pageId: page.id,
+            showGrid,
+            vmin: vminRef.current,
+            demoState: sampleState(),
+            uiFilesVersion,
+          },
+          "*",
+        );
+      });
     }, 50);
-    return () => clearTimeout(timer);
+    return () => { live = false; clearTimeout(timer); };
   }, [project, page.id, showGrid, uiFilesVersion]);
 
   // A custom control runs in its own sandboxed frame, so a script error in it

@@ -824,82 +824,108 @@ export function BasicProperties({
               <option value="list">List (Dropdowns)</option>
             </select>
           </FieldRow>
-          <FieldRow label="Inputs">
-            <input
-              type="number"
-              value={element.matrix_config?.input_count ?? 4}
-              onChange={(e) => {
-                const count = Math.max(1, Math.min(32, Number(e.target.value)));
-                const cfg = { ...element.matrix_config, input_count: count };
-                // Resize labels array
-                const labels = [...(cfg.input_labels || [])];
-                while (labels.length < count) labels.push(`Input ${labels.length + 1}`);
-                cfg.input_labels = labels.slice(0, count);
-                onChange({ matrix_config: cfg });
-              }}
-              min={1}
-              max={32}
-              style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Outputs">
-            <input
-              type="number"
-              value={element.matrix_config?.output_count ?? 4}
-              onChange={(e) => {
-                const count = Math.max(1, Math.min(32, Number(e.target.value)));
-                const cfg = { ...element.matrix_config, output_count: count };
-                const labels = [...(cfg.output_labels || [])];
-                while (labels.length < count) labels.push(`Output ${labels.length + 1}`);
-                cfg.output_labels = labels.slice(0, count);
-                onChange({ matrix_config: cfg });
-              }}
-              min={1}
-              max={32}
-              style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Route Key">
-            <input
-              value={element.matrix_config?.route_key_pattern || ""}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, route_key_pattern: e.target.value } })}
-              placeholder="device.sw.output_*_source"
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-            Use * for the output number (1-based)
-          </div>
-          <FieldRow label="Audio Route Key">
-            <input
-              value={element.matrix_config?.audio_route_key_pattern || ""}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, audio_route_key_pattern: e.target.value || undefined } })}
-              placeholder="device.sw.output_*_audio_source"
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-            Optional. When set, an "A≠V" badge appears on any output whose audio route differs from its video route.
-          </div>
-          <FieldRow label="Input Key">
-            <input
-              value={element.matrix_config?.input_key_pattern || ""}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, input_key_pattern: e.target.value || undefined } })}
-              placeholder="device.sw.input_*_name"
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <FieldRow label="Output Key">
-            <input
-              value={element.matrix_config?.output_key_pattern || ""}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, output_key_pattern: e.target.value || undefined } })}
-              placeholder="device.sw.output_*_name"
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-            Dynamic labels from state. * = input/output number
-          </div>
+          {matrixAxisIsList(element.matrix_config, "sources") ? (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              Sources are set as a list of {matrixList(element.matrix_config, "sources").length} entries,
+              each with its own value. The count and key fields do not apply.
+            </div>
+          ) : (
+            <FieldRow label="Sources">
+              <input
+                type="number"
+                value={Number(matrixFrom(element.matrix_config, "sources").count ?? 4)}
+                onChange={(e) => {
+                  const count = Math.max(1, Math.min(32, Number(e.target.value)));
+                  const from = matrixFrom(element.matrix_config, "sources");
+                  const labels = (Array.isArray(from.labels) ? [...from.labels] : []) as string[];
+                  while (labels.length < count) labels.push(`Input ${labels.length + 1}`);
+                  onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", {
+                    count, labels: labels.slice(0, count),
+                  }) });
+                }}
+                min={1}
+                max={32}
+                style={{ flex: 1 }}
+              />
+            </FieldRow>
+          )}
+          {matrixAxisIsList(element.matrix_config, "destinations") ? (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              Destinations are set as a list of {matrixList(element.matrix_config, "destinations").length} entries,
+              each with its own value and route key. The count and key fields do not apply.
+            </div>
+          ) : (
+            <>
+              <FieldRow label="Destinations">
+                <input
+                  type="number"
+                  value={Number(matrixFrom(element.matrix_config, "destinations").count ?? 4)}
+                  onChange={(e) => {
+                    const count = Math.max(1, Math.min(32, Number(e.target.value)));
+                    const from = matrixFrom(element.matrix_config, "destinations");
+                  const labels = (Array.isArray(from.labels) ? [...from.labels] : []) as string[];
+                    while (labels.length < count) labels.push(`Output ${labels.length + 1}`);
+                    onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", {
+                      count, labels: labels.slice(0, count),
+                    }) });
+                  }}
+                  min={1}
+                  max={32}
+                  style={{ flex: 1 }}
+                />
+              </FieldRow>
+              <FieldRow label="Route Key">
+                <input
+                  value={String(matrixFrom(element.matrix_config, "destinations").route_key || "")}
+                  onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { route_key: e.target.value || undefined }) })}
+                  placeholder="device.sw.output_*_source"
+                  style={{ flex: 1, fontSize: 11 }}
+                />
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                Use * for the destination number (1-based)
+              </div>
+              <FieldRow label="Audio Route Key">
+                <input
+                  value={String(matrixFrom(element.matrix_config, "destinations").audio_route_key || "")}
+                  onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { audio_route_key: e.target.value || undefined }) })}
+                  placeholder="device.sw.output_*_audio_source"
+                  style={{ flex: 1, fontSize: 11 }}
+                />
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                Optional. When set, an "A≠V" badge appears on any destination whose audio route differs from its video route.
+              </div>
+            </>
+          )}
+          {!matrixAxisIsList(element.matrix_config, "sources") && (
+            <FieldRow label="Source Name Key">
+              <input
+                value={String(matrixFrom(element.matrix_config, "sources").label_key || "")}
+                onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { label_key: e.target.value || undefined }) })}
+                placeholder="device.sw.input_*_name"
+                style={{ flex: 1, fontSize: 11 }}
+              />
+            </FieldRow>
+          )}
+          {!matrixAxisIsList(element.matrix_config, "destinations") && (
+            <FieldRow label="Destination Name Key">
+              <input
+                value={String(matrixFrom(element.matrix_config, "destinations").label_key || "")}
+                onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { label_key: e.target.value || undefined }) })}
+                placeholder="device.sw.output_*_name"
+                style={{ flex: 1, fontSize: 11 }}
+              />
+            </FieldRow>
+          )}
+          {/* Only when there is a name-key field above it to explain. Both axes
+              written out as lists leaves this caption with nothing to caption. */}
+          {(!matrixAxisIsList(element.matrix_config, "sources") ||
+            !matrixAxisIsList(element.matrix_config, "destinations")) && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              Live names from state. * = the entry's number
+            </div>
+          )}
           <FieldRow label="Audio Follow">
             <input
               type="checkbox"
@@ -944,16 +970,20 @@ export function BasicProperties({
               Add an Audio Mute Route binding in the Bindings tab so the mute button also mutes audio.
             </div>
           )}
-          <MatrixLabelEditor
-            title="Input Labels"
-            labels={element.matrix_config?.input_labels || []}
-            onChange={(labels) => onChange({ matrix_config: { ...element.matrix_config, input_labels: labels } })}
-          />
-          <MatrixLabelEditor
-            title="Output Labels"
-            labels={element.matrix_config?.output_labels || []}
-            onChange={(labels) => onChange({ matrix_config: { ...element.matrix_config, output_labels: labels } })}
-          />
+          {!matrixAxisIsList(element.matrix_config, "sources") && (
+            <MatrixLabelEditor
+              title="Source Labels"
+              labels={(matrixFrom(element.matrix_config, "sources").labels as string[] | undefined) || []}
+              onChange={(labels) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { labels }) })}
+            />
+          )}
+          {!matrixAxisIsList(element.matrix_config, "destinations") && (
+            <MatrixLabelEditor
+              title="Destination Labels"
+              labels={(matrixFrom(element.matrix_config, "destinations").labels as string[] | undefined) || []}
+              onChange={(labels) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { labels }) })}
+            />
+          )}
 
           <MatrixPresetsEditor
             presets={element.matrix_config?.presets as MatrixPreset[] || []}
@@ -1132,6 +1162,56 @@ export function BasicProperties({
  * already set a lock of their own. The renderer invents nothing on its own, so
  * if the authoring surface doesn't do this, nothing does.
  */
+type MatrixAxis = "sources" | "destinations";
+type MatrixConfig = Record<string, unknown> | undefined;
+
+/**
+ * One axis of a matrix, as the list it already is.
+ *
+ * A matrix's sources and destinations are each either a list somebody wrote out
+ * or a generator that stands for one. The fields below author the generator --
+ * a count, a key with a `*` in it, a row of labels -- which is the terse form
+ * and covers a frame whose ports run 1..N. An axis written out entry by entry
+ * carries per-entry values and keys these fields cannot express, so they step
+ * aside rather than flatten it back.
+ */
+function matrixList(config: MatrixConfig, axis: MatrixAxis): unknown[] {
+  const spec = config?.[axis];
+  return Array.isArray(spec) ? spec : [];
+}
+
+function matrixAxisIsList(config: MatrixConfig, axis: MatrixAxis): boolean {
+  return Array.isArray(config?.[axis]);
+}
+
+/** The generator behind one axis, or an empty one to start from. */
+function matrixFrom(config: MatrixConfig, axis: MatrixAxis): Record<string, unknown> {
+  const spec = config?.[axis];
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return {};
+  const from = (spec as Record<string, unknown>).from;
+  return from && typeof from === "object" && !Array.isArray(from)
+    ? (from as Record<string, unknown>)
+    : {};
+}
+
+/** That generator with some fields changed, in a whole new matrix_config. */
+function setMatrixFrom(
+  config: MatrixConfig,
+  axis: MatrixAxis,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const spec = config?.[axis];
+  const outer =
+    spec && typeof spec === "object" && !Array.isArray(spec)
+      ? (spec as Record<string, unknown>)
+      : {};
+  const from: Record<string, unknown> = { ...matrixFrom(config, axis), ...patch };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete from[key];
+  }
+  return { ...config, [axis]: { ...outer, from } };
+}
+
 function adoptIntrinsicAspect(
   src: string | undefined,
   element: UIElement,

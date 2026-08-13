@@ -13,8 +13,10 @@ from openavc.core.project_migration import (
     migrate_0_6_to_0_7,
     migrate_0_7_to_0_8,
     migrate_0_8_to_0_9,
+    migrate_0_9_to_0_10,
     migrate_project,
 )
+from openavc.ui.matrix_model import resolve_axis
 
 
 # ---------------------------------------------------------------------------
@@ -382,11 +384,129 @@ class TestFullMigrationChain:
         data = migrate_0_5_to_0_6(data)
         data = migrate_0_6_to_0_7(data)
         data = migrate_0_7_to_0_8(data)
-        data = migrate_0_8_to_0_9(data)  # Now at CURRENT_VERSION
+        data = migrate_0_8_to_0_9(data)
+        data = migrate_0_9_to_0_10(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
         assert result["openavc_version"] == CURRENT_VERSION
+
+    def test_0_9_to_0_10_turns_counts_and_patterns_into_a_generator(self):
+        """The shorthand survives as a generator, and draws the same matrix.
+
+        ``input_count: 8`` plus a ``route_key_pattern`` said "eight
+        destinations, numbered from one, each watching its number substituted
+        into that key". The generator says exactly that, in the shape that can
+        also say the things the pattern form could not.
+        """
+        data = {
+            "openavc_version": "0.9.0",
+            "project": {"id": "p", "name": "P"},
+            "ui": {"pages": [{"id": "main", "name": "Main", "elements": [{
+                "id": "mx", "type": "matrix", "matrix_config": {
+                    "input_count": 3, "output_count": 8,
+                    "input_labels": ["Apple TV", "Room PC", "Laptop"],
+                    "input_key_pattern": "device.mx.input.*.name",
+                    "route_key_pattern": "device.mx.output.*.input",
+                    "audio_route_key_pattern": "device.mx.output.*.audio",
+                    "show_lock": False,
+                    "presets": [{"name": "All 1", "macro": "m"}],
+                },
+            }]}]},
+        }
+
+        result = migrate_0_9_to_0_10(copy.deepcopy(data))
+        config = result["ui"]["pages"][0]["elements"][0]["matrix_config"]
+
+        assert config["sources"] == {"from": {
+            "count": 3,
+            "labels": ["Apple TV", "Room PC", "Laptop"],
+            "label_key": "device.mx.input.*.name",
+        }}
+        assert config["destinations"] == {"from": {
+            "count": 8,
+            "route_key": "device.mx.output.*.input",
+            "audio_route_key": "device.mx.output.*.audio",
+        }}
+        # Read straight by the renderer, so they pass through untouched...
+        assert config["show_lock"] is False
+        assert config["presets"] == [{"name": "All 1", "macro": "m"}]
+        # ...and the eight keys that became the generator are gone, or every
+        # migrated project would open warning about its own history.
+        assert not {k for k in config if k.endswith(("_count", "_pattern", "_labels"))}
+        assert result["openavc_version"] == "0.10.0"
+
+    def test_0_9_to_0_10_resolves_back_to_what_the_panel_drew(self):
+        """The point of the migration, stated as the thing that must not move."""
+        data = {
+            "openavc_version": "0.9.0",
+            "project": {"id": "p", "name": "P"},
+            "ui": {"pages": [{"id": "main", "name": "Main", "elements": [{
+                "id": "mx", "type": "matrix", "matrix_config": {
+                    "input_count": 2, "output_count": 2,
+                    "output_labels": ["Main LCD", "Confidence"],
+                    "route_key_pattern": "device.mx.output.*.input",
+                },
+            }]}]},
+        }
+
+        result = migrate_0_9_to_0_10(copy.deepcopy(data))
+        config = result["ui"]["pages"][0]["elements"][0]["matrix_config"]
+
+        assert resolve_axis(config, "sources") == [
+            {"value": 1, "label": "In 1"},
+            {"value": 2, "label": "In 2"},
+        ]
+        assert resolve_axis(config, "destinations") == [
+            {"value": 1, "label": "Main LCD",
+             "route_key": "device.mx.output.1.input"},
+            {"value": 2, "label": "Confidence",
+             "route_key": "device.mx.output.2.input"},
+        ]
+
+    def test_0_9_to_0_10_states_the_count_a_silent_matrix_was_drawing(self):
+        """An axis that never said a count was drawing four, and still is.
+
+        A migration preserves what the panel drew. Recording 4 is the honest
+        reading of that; "did you mean 4?" is the review's question, not this
+        step's.
+        """
+        data = {
+            "openavc_version": "0.9.0",
+            "project": {"id": "p", "name": "P"},
+            "ui": {"pages": [{"id": "main", "name": "Main", "elements": [
+                {"id": "mx", "type": "matrix", "matrix_config": {
+                    "route_key_pattern": "device.mx.output.*.input"}},
+                # ...but an element with no config at all keeps none, so it
+                # still reads as unconfigured rather than as a 4x4 nobody wrote.
+                {"id": "bare", "type": "matrix"},
+            ]}]},
+        }
+
+        result = migrate_0_9_to_0_10(copy.deepcopy(data))
+        elements = result["ui"]["pages"][0]["elements"]
+
+        assert elements[0]["matrix_config"]["sources"]["from"]["count"] == 4
+        assert elements[0]["matrix_config"]["destinations"]["from"]["count"] == 4
+        assert "matrix_config" not in elements[1]
+
+    def test_0_9_to_0_10_reaches_a_master_element(self):
+        """A master is not in any page's element list, and can be a matrix."""
+        data = {
+            "openavc_version": "0.9.0",
+            "project": {"id": "p", "name": "P"},
+            "ui": {"pages": [], "master_elements": [{
+                "id": "bar", "type": "matrix",
+                "matrix_config": {"output_count": 2,
+                                  "route_key_pattern": "device.mx.out.*"},
+            }]},
+        }
+
+        result = migrate_0_9_to_0_10(copy.deepcopy(data))
+
+        assert result["ui"]["master_elements"][0]["matrix_config"]["destinations"] == {
+            "from": {"count": 2, "route_key": "device.mx.out.*"}
+        }
 
     def test_0_8_to_0_9_stamps_the_version_and_changes_nothing_else(self):
         """0.9.0 adds the `custom` element type. Nothing that existed moves."""

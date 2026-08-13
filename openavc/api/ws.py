@@ -163,7 +163,7 @@ async def _run_ws_connection(
         if engine.project:
             await ws.send_json({
                 "type": "ui.definition",
-                "ui": engine.project.ui.model_dump(mode="json"),
+                "ui": engine.panel_ui(),
             })
 
         # Baseline is on the wire — release queued broadcasts

@@ -504,12 +504,19 @@ function buildGalleryPage(): UIPage {
     {
       id: "g_matrix",
       type: "matrix",
+      // Written out rather than generated: the gallery is a picture of a
+      // matrix, and this is the form somebody reading it should see.
       matrix_config: {
-        input_count: 3,
-        output_count: 3,
-        input_labels: ["Cam 1", "PC", "Doc"],
-        output_labels: ["Main", "Conf", "Stream"],
-        route_key_pattern: "gallery.route.*",
+        sources: [
+          { value: 1, label: "Cam 1" },
+          { value: 2, label: "PC" },
+          { value: 3, label: "Doc" },
+        ],
+        destinations: [
+          { value: 1, label: "Main", route_key: "gallery.route.1" },
+          { value: 2, label: "Conf", route_key: "gallery.route.2" },
+          { value: 3, label: "Stream", route_key: "gallery.route.3" },
+        ],
       },
       style: { cell_size: 32 / REM_BASE_PX },
       bindings: {},
