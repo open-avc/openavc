@@ -27,14 +27,14 @@ async def auth_required(request: Request) -> dict[str, Any]:
                           (shipped, unclaimed)
     - state "ok"       → skip straight to the app (dev / anonymous allowed)
 
-    A request arriving on a live OpenAVC support session answers "ok". The
-    grant is the credential there, and every other door already accepts it —
-    without this the staff member would be shown a password box for a
-    password that only the customer has, in front of an app they can already
+    A request arriving on a live cloud-authorized session answers "ok". The
+    cloud's authorization is the credential there, and every other door
+    already accepts it — without this the caller would be shown a password
+    box for a password they do not have, in front of an app they can already
     use.
     """
-    from openavc.api.auth import auth_state, request_is_support_session
-    if request_is_support_session(request):
+    from openavc.api.auth import auth_state, request_is_cloud_session
+    if request_is_cloud_session(request):
         return {"required": False, "state": "ok"}
     state = auth_state()
     return {"required": state == "required", "state": state}

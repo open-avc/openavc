@@ -21,7 +21,7 @@ from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
 from openavc.api.error_messages import friendly_error
 from openavc.core.state_store import check_state_write, is_flat_primitive
 from openavc.utils.log_buffer import get_log_buffer, LogEntry
-from openavc.utils.request_origin import support_session_secret
+from openavc.utils.request_origin import cloud_session_secret
 from openavc.utils.logger import get_logger
 
 router = APIRouter()
@@ -81,7 +81,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
     # Derive client type from authentication level, not client declaration
     is_authenticated = check_ws_auth(
-        query_params, headers, support_session_secret(ws)
+        query_params, headers, cloud_session_secret(ws)
     )
     if requested_type == "programmer" and not is_authenticated:
         await ws.close(code=4001, reason="Authentication required")

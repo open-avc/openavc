@@ -32,19 +32,22 @@ short: the failure mode of a spoofed marker is that the sender is treated as
 remote, which is what every unknown caller is treated as anyway.
 
 The tunnel stamps a **second** marker, and that one grants, so it does not get
-to borrow the short argument. ``X-OpenAVC-Support-Session`` says "the customer
-granted OpenAVC a support session and this request arrived on it", and the
-Programmer accepts it in place of the admin password — which is the only way a
-granted session can reach the Programmer at all, since nobody at OpenAVC has
-the customer's instance credential and should not be sent it. Its value is a
-per-tunnel secret minted here on the box, never transmitted anywhere but back
-across loopback, and only ever valid while that tunnel is open; the registry
-that mints and checks it is ``openavc/api/support_session.py``. So the marker
-is not a header anyone can assert: guessing it is guessing 256 bits, and the
-moment the customer revokes the grant the cloud closes the tunnel and the
-secret is discarded. A bare name would have handed programmer access to any
-unprivileged local process that could reach ``localhost:8080``, which is a
-worse door than the one this opens.
+to borrow the short argument. ``X-OpenAVC-Cloud-Session`` says "the cloud
+authorized this tunnel to act as a signed-in Programmer client", and the
+Programmer accepts it in place of the admin password. Two callers need that,
+and neither of them can be sent the instance's credential: OpenAVC support
+working under a customer's grant (nobody here holds their password), and the
+system's own owner, who turned on password-free remote programming for their
+own rooms rather than typing a per-room password once per room.
+
+Its value is a per-tunnel secret minted here on the box, never transmitted
+anywhere but back across loopback, and only ever valid while that tunnel is
+open; the registry that mints and checks it is
+``openavc/api/cloud_session.py``. So the marker is not a header anyone can
+assert: guessing it is guessing 256 bits, and the moment the authorization
+ends the cloud closes the tunnel and the secret is discarded. A bare name
+would have handed programmer access to any unprivileged local process that
+could reach ``localhost:8080``, which is a worse door than the one this opens.
 """
 
 from __future__ import annotations
@@ -62,9 +65,11 @@ LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 # handshake. Lower-case because that is how Starlette normalizes header lookup.
 TUNNEL_HEADER = "x-openavc-tunneled"
 
-# Stamped only on a tunnel the cloud opened under a live support-access grant.
-# Carries a per-tunnel secret; see the module docstring and support_session.py.
-SUPPORT_SESSION_HEADER = "x-openavc-support-session"
+# Stamped only on a tunnel the cloud authorized to act as a signed-in
+# Programmer client -- a support grant, or an owner who turned on password-free
+# remote programming. Carries a per-tunnel secret; see the module docstring and
+# cloud_session.py.
+CLOUD_SESSION_HEADER = "x-openavc-cloud-session"
 
 
 def socket_peer_is_loopback(request: Request) -> bool:
@@ -78,14 +83,14 @@ def socket_peer_is_loopback(request: Request) -> bool:
     return client is not None and client.host in LOOPBACK_HOSTS
 
 
-def support_session_secret(conn: Any) -> str:
-    """The support-session secret this request carries, or "".
+def cloud_session_secret(conn: Any) -> str:
+    """The cloud-authorized-session secret this request carries, or "".
 
     Takes a ``Request`` or a ``WebSocket`` — both expose ``.client`` and
     ``.headers``, and the WebSocket handshake needs the same answer as the
-    REST door, or a granted session would load the Programmer's pages and then
-    fail to open its socket. ``None`` is accepted and answers "", because some
-    auth callers have no request in hand.
+    REST door, or an authorized session would load the Programmer's pages and
+    then fail to open its socket. ``None`` is accepted and answers "", because
+    some auth callers have no request in hand.
 
     Returns "" unless the socket peer is loopback, so this stays the only place
     that has to reason about the peer.
@@ -95,7 +100,7 @@ def support_session_secret(conn: Any) -> str:
     client = getattr(conn, "client", None)
     if client is None or client.host not in LOOPBACK_HOSTS:
         return ""
-    value = conn.headers.get(SUPPORT_SESSION_HEADER, "")
+    value = conn.headers.get(CLOUD_SESSION_HEADER, "")
     return value.strip() if isinstance(value, str) else ""
 
 

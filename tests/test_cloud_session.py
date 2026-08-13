@@ -1,19 +1,20 @@
-"""A customer-granted OpenAVC support session gets into the Programmer.
+"""A cloud-authorized session gets into the Programmer without the password.
 
-Before this, a grant opened a Programmer-scoped tunnel that carried real
-traffic and delivered the staff member to the instance's own sign-in screen.
-Nobody at OpenAVC holds a customer's instance password, so the grant reached
-the door and stopped, and the only way through was the customer typing their
-password into a support thread.
+Two callers arrive this way and neither can be handed the instance credential:
+OpenAVC support working under a customer's grant (nobody here holds their
+password), and the system's own owner, who turned on password-free remote
+programming rather than typing a per-room password once per room. Before this
+existed, both landed on the instance's own sign-in screen and stopped.
 
 What is pinned here is the whole promise and its limits:
 
-- the marker rides only on a tunnel the cloud opened under a live grant, never
-  on an ordinary one, and it carries a secret this process minted rather than a
-  name anyone could assert;
+- the marker rides only on a tunnel the cloud authorized, never on an ordinary
+  one, and it carries a secret this process minted rather than a name anyone
+  could assert;
 - whoever called the cloud cannot supply or suppress it;
 - it is only believed from a loopback peer, so it is not a LAN credential;
-- it dies with the tunnel, which is what makes revoking the grant enough;
+- it dies with the tunnel, which is what makes withdrawing the authorization
+  enough;
 - it authenticates the Programmer and its WebSocket, and it does NOT become the
   device's own console, so host network configuration stays behind the password.
 """
@@ -24,22 +25,22 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 import openavc.api.auth as auth_mod
-from openavc.api import support_session
+from openavc.api import cloud_session
 from openavc.main import app
 from openavc.system import network as netmod
 from openavc.utils.request_origin import (
-    SUPPORT_SESSION_HEADER,
+    CLOUD_SESSION_HEADER,
     TUNNEL_HEADER,
-    support_session_secret,
+    cloud_session_secret,
 )
 
 
 @pytest.fixture(autouse=True)
 def no_leftover_sessions():
     """Every test starts and ends with an empty registry."""
-    support_session._sessions.clear()
+    cloud_session._sessions.clear()
     yield
-    support_session._sessions.clear()
+    cloud_session._sessions.clear()
 
 
 @pytest.fixture
@@ -51,14 +52,14 @@ def tunnel_handler():
     return TunnelHandler(agent)
 
 
-def _conn(handler, *, support: bool, tunnel_id="t-sup"):
+def _conn(handler, *, authorized: bool, tunnel_id="t-sup"):
     from openavc.cloud.tunnel import TunnelConnection
 
     conn = TunnelConnection(
         tunnel_id=tunnel_id, target_port=8080, data_ws=AsyncMock()
     )
-    if support:
-        conn.support_secret = support_session.open_session(tunnel_id)
+    if authorized:
+        conn.session_secret = cloud_session.open_session(tunnel_id)
     handler._tunnels[tunnel_id] = conn
 
     response = MagicMock()
@@ -72,43 +73,43 @@ def _conn(handler, *, support: bool, tunnel_id="t-sup"):
 
 
 # ===========================================================================
-# The agent stamps it, and only on a support tunnel
+# The agent stamps it, and only on an authorized tunnel
 # ===========================================================================
 
 
 @pytest.mark.asyncio
-async def test_ordinary_tunnel_carries_no_support_marker(tunnel_handler):
-    """The customer's own remote session is unchanged: they have a password."""
-    conn, client = _conn(tunnel_handler, support=False)
+async def test_ordinary_tunnel_carries_no_marker(tunnel_handler):
+    """An unauthorized tunnel is unchanged: the instance asks for its password."""
+    conn, client = _conn(tunnel_handler, authorized=False)
 
     await tunnel_handler._handle_http_request(
         conn, {"id": "r1", "method": "GET", "path": "/api/project", "headers": {}, "body": ""}
     )
 
     sent = client.request.call_args.kwargs["headers"]
-    assert SUPPORT_SESSION_HEADER not in {k.lower() for k in sent}
+    assert CLOUD_SESSION_HEADER not in {k.lower() for k in sent}
     await tunnel_handler.stop()
 
 
 @pytest.mark.asyncio
-async def test_support_tunnel_stamps_the_minted_secret(tunnel_handler):
-    conn, client = _conn(tunnel_handler, support=True)
+async def test_authorized_tunnel_stamps_the_minted_secret(tunnel_handler):
+    conn, client = _conn(tunnel_handler, authorized=True)
 
     await tunnel_handler._handle_http_request(
         conn, {"id": "r1", "method": "GET", "path": "/api/project", "headers": {}, "body": ""}
     )
 
     sent = client.request.call_args.kwargs["headers"]
-    assert sent[SUPPORT_SESSION_HEADER] == conn.support_secret
-    assert support_session.is_active(conn.support_secret)
+    assert sent[CLOUD_SESSION_HEADER] == conn.session_secret
+    assert cloud_session.is_active(conn.session_secret)
     await tunnel_handler.stop()
 
 
 @pytest.mark.asyncio
-async def test_upstream_cannot_forge_or_suppress_the_support_marker(tunnel_handler):
+async def test_upstream_cannot_forge_or_suppress_the_marker(tunnel_handler):
     """The cloud forwards its caller's headers verbatim. A value that arrived
     with the request must never reach the local server, in any casing."""
-    conn, client = _conn(tunnel_handler, support=True)
+    conn, client = _conn(tunnel_handler, authorized=True)
 
     await tunnel_handler._handle_http_request(
         conn,
@@ -116,15 +117,15 @@ async def test_upstream_cannot_forge_or_suppress_the_support_marker(tunnel_handl
             "id": "r2",
             "method": "POST",
             "path": "/api/project",
-            "headers": {"X-OpenAVC-Support-Session": "attacker-supplied", "Accept": "*/*"},
+            "headers": {"X-OpenAVC-Cloud-Session": "attacker-supplied", "Accept": "*/*"},
             "body": "",
         },
     )
 
     sent = client.request.call_args.kwargs["headers"]
-    keys = [k for k in sent if k.lower() == SUPPORT_SESSION_HEADER]
-    assert keys == [SUPPORT_SESSION_HEADER], "exactly one marker, stamped by us"
-    assert sent[SUPPORT_SESSION_HEADER] == conn.support_secret
+    keys = [k for k in sent if k.lower() == CLOUD_SESSION_HEADER]
+    assert keys == [CLOUD_SESSION_HEADER], "exactly one marker, stamped by us"
+    assert sent[CLOUD_SESSION_HEADER] == conn.session_secret
     assert sent["Accept"] == "*/*", "other headers untouched"
     await tunnel_handler.stop()
 
@@ -133,7 +134,7 @@ async def test_upstream_cannot_forge_or_suppress_the_support_marker(tunnel_handl
 async def test_an_ordinary_tunnel_strips_a_forged_marker(tunnel_handler):
     """The dangerous case: no secret of its own to overwrite the forgery with,
     so the drop has to happen whether or not this tunnel is a support one."""
-    conn, client = _conn(tunnel_handler, support=False)
+    conn, client = _conn(tunnel_handler, authorized=False)
 
     await tunnel_handler._handle_http_request(
         conn,
@@ -141,13 +142,13 @@ async def test_an_ordinary_tunnel_strips_a_forged_marker(tunnel_handler):
             "id": "r3",
             "method": "GET",
             "path": "/api/project",
-            "headers": {"X-OpenAVC-Support-Session": "attacker-supplied"},
+            "headers": {"X-OpenAVC-Cloud-Session": "attacker-supplied"},
             "body": "",
         },
     )
 
     sent = client.request.call_args.kwargs["headers"]
-    assert SUPPORT_SESSION_HEADER not in {k.lower() for k in sent}
+    assert CLOUD_SESSION_HEADER not in {k.lower() for k in sent}
     await tunnel_handler.stop()
 
 
@@ -155,7 +156,7 @@ async def test_an_ordinary_tunnel_strips_a_forged_marker(tunnel_handler):
 async def test_support_websocket_open_is_marked(tunnel_handler):
     """The IDE loads over REST and then lives on its WebSocket. Authenticating
     one without the other gives a staff member an empty Programmer."""
-    conn, _ = _conn(tunnel_handler, support=True, tunnel_id="t-ws")
+    conn, _ = _conn(tunnel_handler, authorized=True, tunnel_id="t-ws")
 
     local_ws = AsyncMock()
     local_ws.__aiter__ = lambda self: self
@@ -167,12 +168,12 @@ async def test_support_websocket_open_is_marked(tunnel_handler):
         await tunnel_handler._handle_ws_open(
             conn,
             {"id": "ws-1", "path": "/ws?client=programmer",
-             "headers": {"X-OpenAVC-Support-Session": "forged"}},
+             "headers": {"X-OpenAVC-Cloud-Session": "forged"}},
         )
         headers = connect.call_args.kwargs["additional_headers"]
 
-    marker = [v for k, v in headers if k.lower() == SUPPORT_SESSION_HEADER]
-    assert marker == [conn.support_secret]
+    marker = [v for k, v in headers if k.lower() == CLOUD_SESSION_HEADER]
+    assert marker == [conn.session_secret]
     await tunnel_handler.stop()
 
 
@@ -180,25 +181,25 @@ async def test_support_websocket_open_is_marked(tunnel_handler):
 async def test_closing_the_tunnel_discards_the_secret(tunnel_handler):
     """Revoking a grant closes the tunnel cloud-side. That has to be enough:
     the secret must not outlive it here either."""
-    conn, _ = _conn(tunnel_handler, support=True, tunnel_id="t-close")
-    secret = conn.support_secret
-    assert support_session.is_active(secret)
+    conn, _ = _conn(tunnel_handler, authorized=True, tunnel_id="t-close")
+    secret = conn.session_secret
+    assert cloud_session.is_active(secret)
 
     await tunnel_handler._close_tunnel("t-close")
 
-    assert not support_session.is_active(secret)
-    assert support_session.active_count() == 0
+    assert not cloud_session.is_active(secret)
+    assert cloud_session.active_count() == 0
 
 
 @pytest.mark.asyncio
 async def test_agent_shutdown_discards_every_secret(tunnel_handler):
-    _conn(tunnel_handler, support=True, tunnel_id="t-a")
-    _conn(tunnel_handler, support=True, tunnel_id="t-b")
-    assert support_session.active_count() == 2
+    _conn(tunnel_handler, authorized=True, tunnel_id="t-a")
+    _conn(tunnel_handler, authorized=True, tunnel_id="t-b")
+    assert cloud_session.active_count() == 2
 
     await tunnel_handler.stop()
 
-    assert support_session.active_count() == 0
+    assert cloud_session.active_count() == 0
 
 
 # ===========================================================================
@@ -221,7 +222,7 @@ async def _get(path, headers=None, peer="127.0.0.1"):
 
 
 def _session_headers(secret):
-    return {TUNNEL_HEADER: "1", SUPPORT_SESSION_HEADER: secret}
+    return {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret}
 
 
 @pytest.mark.asyncio
@@ -233,14 +234,14 @@ async def test_claimed_instance_refuses_a_tunnel_with_no_session(claimed):
 
 @pytest.mark.asyncio
 async def test_a_live_session_reaches_the_programmer_api(claimed):
-    secret = support_session.open_session("t-live")
+    secret = cloud_session.open_session("t-live")
     resp = await _get("/api/project", headers=_session_headers(secret))
     assert resp.status_code != 401
 
 
 @pytest.mark.asyncio
 async def test_a_wrong_secret_is_still_refused(claimed):
-    support_session.open_session("t-live")
+    cloud_session.open_session("t-live")
     resp = await _get("/api/project", headers=_session_headers("not-the-secret"))
     assert resp.status_code == 401
 
@@ -248,10 +249,10 @@ async def test_a_wrong_secret_is_still_refused(claimed):
 @pytest.mark.asyncio
 async def test_a_closed_session_is_refused(claimed):
     """Same request, same secret, after the grant ended."""
-    secret = support_session.open_session("t-live")
+    secret = cloud_session.open_session("t-live")
     assert (await _get("/api/project", headers=_session_headers(secret))).status_code != 401
 
-    support_session.close_session("t-live")
+    cloud_session.close_session("t-live")
 
     assert (await _get("/api/project", headers=_session_headers(secret))).status_code == 401
 
@@ -260,17 +261,17 @@ async def test_a_closed_session_is_refused(claimed):
 async def test_a_lan_client_cannot_use_a_leaked_secret(claimed):
     """The secret never leaves this host, but it is not treated as a bearer
     token even so: off loopback it is not read at all."""
-    secret = support_session.open_session("t-live")
+    secret = cloud_session.open_session("t-live")
     resp = await _get("/api/project", headers=_session_headers(secret), peer="192.168.1.50")
     assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_support_session_does_not_become_the_console(claimed):
+async def test_an_authorized_session_does_not_become_the_console(claimed):
     """Physical access to the appliance's own screen is a different trust
     anchor, and configuring the host's network rests on it with no password.
     A staff session is remote by definition and must not inherit it."""
-    secret = support_session.open_session("t-live")
+    secret = cloud_session.open_session("t-live")
     resp = await _get("/api/system/network", headers=_session_headers(secret))
     # 404 = allowed through to a route with no backend; 401 = refused.
     # Either way it must not be the credential-free console grant, which is
@@ -281,16 +282,16 @@ async def test_support_session_does_not_become_the_console(claimed):
 
     class _Req:
         client = type("C", (), {"host": "127.0.0.1"})()
-        headers = {TUNNEL_HEADER: "1", SUPPORT_SESSION_HEADER: secret}
+        headers = {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret}
 
     assert is_local_console_request(_Req()) is False
 
 
 @pytest.mark.asyncio
-async def test_auth_required_says_ok_on_a_support_session(claimed):
-    """Otherwise the staff member is shown a password box for a password only
-    the customer has, in front of an app they can already use."""
-    secret = support_session.open_session("t-live")
+async def test_auth_required_says_ok_on_an_authorized_session(claimed):
+    """Otherwise the caller is shown a password box for a password they do not
+    have, in front of an app they can already use."""
+    secret = cloud_session.open_session("t-live")
 
     plain = await _get("/api/auth/required", headers={TUNNEL_HEADER: "1"})
     assert plain.json()["state"] == "required"
@@ -310,7 +311,7 @@ def _fake_conn(secret, peer="127.0.0.1"):
         "_Conn", (),
         {
             "client": type("C", (), {"host": peer})(),
-            "headers": {TUNNEL_HEADER: "1", SUPPORT_SESSION_HEADER: secret},
+            "headers": {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret},
         },
     )()
 
@@ -318,28 +319,102 @@ def _fake_conn(secret, peer="127.0.0.1"):
 def test_the_secret_is_only_read_from_a_loopback_peer():
     """The one place that reasons about the peer, so it is tested here rather
     than at each door."""
-    secret = support_session.open_session("t-live")
-    assert support_session_secret(_fake_conn(secret)) == secret
-    assert support_session_secret(_fake_conn(secret, peer="192.168.1.50")) == ""
-    assert support_session_secret(None) == ""
+    secret = cloud_session.open_session("t-live")
+    assert cloud_session_secret(_fake_conn(secret)) == secret
+    assert cloud_session_secret(_fake_conn(secret, peer="192.168.1.50")) == ""
+    assert cloud_session_secret(None) == ""
 
 
 def test_ws_auth_accepts_a_live_session(claimed):
-    secret = support_session.open_session("t-live")
-    headers = {TUNNEL_HEADER: "1", SUPPORT_SESSION_HEADER: secret}
+    secret = cloud_session.open_session("t-live")
+    headers = {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret}
     assert auth_mod.check_ws_auth({}, headers, secret) is True
 
 
 def test_ws_auth_refuses_a_closed_session(claimed):
-    secret = support_session.open_session("t-live")
-    support_session.close_session("t-live")
-    headers = {TUNNEL_HEADER: "1", SUPPORT_SESSION_HEADER: secret}
+    secret = cloud_session.open_session("t-live")
+    cloud_session.close_session("t-live")
+    headers = {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret}
     assert auth_mod.check_ws_auth({}, headers, secret) is False
 
 
 def test_ws_auth_ignores_the_header_it_was_not_handed(claimed):
     """The default keeps every existing caller safe: the secret has to be
     resolved through request_origin and passed in, never read off the dict."""
-    secret = support_session.open_session("t-live")
-    headers = {TUNNEL_HEADER: "1", SUPPORT_SESSION_HEADER: secret}
+    secret = cloud_session.open_session("t-live")
+    headers = {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret}
     assert auth_mod.check_ws_auth({}, headers) is False
+
+
+# ===========================================================================
+# The wire field
+#
+# Every test above sets session_secret by hand, so until now nothing read the
+# field name off a real tunnel_open payload -- which is precisely what a rename
+# breaks silently. The support session is the surface nobody exercises daily,
+# so it is the one that would sit broken.
+# ===========================================================================
+
+
+async def _open(handler, payload):
+    """Drive handle_tunnel_open with the data WS stubbed out."""
+    with patch("openavc.cloud.tunnel.websockets.connect", new=AsyncMock()):
+        await handler.handle_tunnel_open({"payload": payload})
+    return handler._tunnels.get(payload["tunnel_id"])
+
+
+def _payload(tunnel_id="t-wire", **extra):
+    return {
+        "tunnel_id": tunnel_id,
+        "tunnel_token": "tok",
+        "tunnel_data_url": "wss://cloud.example/tunnel-data/t-wire",
+        **extra,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_tunnel_with_no_authorization_mints_nothing(tunnel_handler):
+    conn = await _open(tunnel_handler, _payload())
+    assert conn.session_secret == ""
+    assert cloud_session.active_count() == 0
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason", ["support", "owner"])
+async def test_either_authorization_reason_mints_a_secret(tunnel_handler, reason):
+    """Both callers are trusted identically; the reason only picks the log
+    sentence, so neither may be quietly stricter than the other."""
+    conn = await _open(tunnel_handler, _payload(authorized_session=reason))
+    assert conn.session_secret != ""
+    assert cloud_session.is_active(conn.session_secret)
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_old_boolean_field_no_longer_authorizes_anything(tunnel_handler):
+    """The 0.26.0 spelling was `support_session: true`, and dropping it is a
+    deliberate break rather than an oversight: an instance that still honoured
+    it would be trusting a field the cloud no longer means to send. Pinned so
+    nobody restores the bool as a kindness."""
+    conn = await _open(tunnel_handler, _payload(support_session=True))
+    assert conn.session_secret == ""
+    assert cloud_session.active_count() == 0
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_non_string_reason_authorizes_nothing(tunnel_handler):
+    """`authorized_session: true` is the same mistake in a new field name."""
+    conn = await _open(tunnel_handler, _payload(authorized_session=True))
+    assert conn.session_secret == ""
+    await tunnel_handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_reason_still_authorizes(tunnel_handler):
+    """The reason is a label, not a permission. Refusing a working session to
+    punish a typo in a field that grants nothing is the wrong trade."""
+    conn = await _open(tunnel_handler, _payload(authorized_session="whatever"))
+    assert cloud_session.is_active(conn.session_secret)
+    await tunnel_handler.stop()

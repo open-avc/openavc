@@ -19,7 +19,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidHandshake
 
 from openavc.utils.logger import get_logger
-from openavc.utils.request_origin import SUPPORT_SESSION_HEADER, TUNNEL_HEADER
+from openavc.utils.request_origin import CLOUD_SESSION_HEADER, TUNNEL_HEADER
 
 if TYPE_CHECKING:
     from openavc.cloud.agent import CloudAgent
@@ -59,11 +59,13 @@ class TunnelConnection:
     """State for a single active tunnel."""
     tunnel_id: str
     target_port: int
-    # Set when the cloud opened this tunnel under a live support-access grant.
-    # The value is the secret minted by openavc/api/support_session.py, stamped
-    # on everything proxied here so the Programmer accepts the session without
-    # the customer's password. Empty on every ordinary tunnel.
-    support_secret: str = ""
+    # Set when the cloud authorized this tunnel to act as a signed-in
+    # Programmer client -- a support grant, or an owner who turned on
+    # password-free remote programming. The value is the secret minted by
+    # openavc/api/cloud_session.py, stamped on everything proxied here so the
+    # Programmer accepts the session without the instance's password. Empty on
+    # every ordinary tunnel.
+    session_secret: str = ""
     data_ws: Any = None  # websockets.WebSocketClientProtocol
     local_ws_connections: dict[str, Any] = field(default_factory=dict)  # ws_id -> websockets conn
     # ws_id -> list of queued ws_frame / ws_close messages received from the
@@ -185,13 +187,16 @@ class TunnelHandler:
 
         conn = TunnelConnection(tunnel_id=tunnel_id, target_port=target_port)
 
-        # A tunnel the cloud opened under a customer's support-access grant.
-        # Nobody at OpenAVC holds this instance's password, so without this the
-        # granted session reaches the Programmer's sign-in screen and stops.
-        # The secret lives only in this process and dies with the tunnel.
-        if payload.get("support_session") is True:
-            from openavc.api import support_session
-            conn.support_secret = support_session.open_session(tunnel_id)
+        # A tunnel the cloud authorized to act as a signed-in Programmer
+        # client. Neither caller holds this instance's password -- OpenAVC
+        # staff never have it, and an owner should not have to type a per-room
+        # one -- so without this the session reaches the sign-in screen and
+        # stops. The secret lives only in this process and dies with the
+        # tunnel. The reason only decides what gets logged.
+        authorized = payload.get("authorized_session")
+        if isinstance(authorized, str) and authorized:
+            from openavc.api import cloud_session
+            conn.session_secret = cloud_session.open_session(tunnel_id, authorized)
 
         try:
             # Connect secondary WebSocket to cloud
@@ -228,9 +233,9 @@ class TunnelHandler:
             log.exception(f"Failed to open tunnel {tunnel_id}")
             # Clean up partial state
             self._tunnels.pop(tunnel_id, None)
-            if conn.support_secret:
-                from openavc.api import support_session
-                support_session.close_session(tunnel_id)
+            if conn.session_secret:
+                from openavc.api import cloud_session
+                cloud_session.close_session(tunnel_id)
             # Notify cloud so it doesn't show the tunnel as active
             try:
                 from openavc.cloud.protocol import TUNNEL_FAILED, build_tunnel_failed_payload
@@ -254,13 +259,13 @@ class TunnelHandler:
 
         log.info(f"Closing tunnel {tunnel_id}")
 
-        # Before anything else. This is what makes a revoked grant stop working
-        # here as well as at the cloud, and it must not depend on the teardown
-        # below finishing cleanly.
-        if conn.support_secret:
-            from openavc.api import support_session
-            support_session.close_session(tunnel_id)
-            conn.support_secret = ""
+        # Before anything else. This is what makes a withdrawn authorization
+        # stop working here as well as at the cloud, and it must not depend on
+        # the teardown below finishing cleanly.
+        if conn.session_secret:
+            from openavc.api import cloud_session
+            cloud_session.close_session(tunnel_id)
+            conn.session_secret = ""
 
         # Cancel receive task
         if conn.recv_task and not conn.recv_task.done():
@@ -383,7 +388,7 @@ class TunnelHandler:
             req_headers = {}
             skip = {
                 "host", "connection", "upgrade", "transfer-encoding",
-                TUNNEL_HEADER, SUPPORT_SESSION_HEADER,
+                TUNNEL_HEADER, CLOUD_SESSION_HEADER,
                 *FORWARDED_HEADERS,
             }
             for k, v in headers.items():
@@ -397,11 +402,11 @@ class TunnelHandler:
             # openavc/utils/request_origin.py.
             req_headers[TUNNEL_HEADER] = "1"
 
-            # Only on a tunnel the cloud opened under a live grant, and only
-            # with the secret this process minted — dropped from the inbound
-            # headers just above, so whoever called the cloud cannot supply one.
-            if conn.support_secret:
-                req_headers[SUPPORT_SESSION_HEADER] = conn.support_secret
+            # Only on a tunnel the cloud authorized, and only with the secret
+            # this process minted — dropped from the inbound headers just
+            # above, so whoever called the cloud cannot supply one.
+            if conn.session_secret:
+                req_headers[CLOUD_SESSION_HEADER] = conn.session_secret
 
             max_response_size = 10 * 1024 * 1024  # 10MB
             response = await client.request(
@@ -482,7 +487,7 @@ class TunnelHandler:
             "host", "connection", "upgrade", "sec-websocket-key",
             "sec-websocket-version", "sec-websocket-extensions",
             "sec-websocket-protocol", "content-length", "transfer-encoding",
-            TUNNEL_HEADER, SUPPORT_SESSION_HEADER,
+            TUNNEL_HEADER, CLOUD_SESSION_HEADER,
             *FORWARDED_HEADERS,
         }
         # Same marker as the HTTP path. Nothing on the WebSocket surface trusts
@@ -493,10 +498,10 @@ class TunnelHandler:
             (k, v) for k, v in raw_headers.items() if k.lower() not in drop
         ]
         additional_headers.append((TUNNEL_HEADER, "1"))
-        # The Programmer is not usable without its WebSocket, so the support
+        # The Programmer is not usable without its WebSocket, so an authorized
         # session has to authenticate here too or the IDE loads and sits empty.
-        if conn.support_secret:
-            additional_headers.append((SUPPORT_SESSION_HEADER, conn.support_secret))
+        if conn.session_secret:
+            additional_headers.append((CLOUD_SESSION_HEADER, conn.session_secret))
 
         try:
             local_ws = await websockets.connect(
