@@ -4926,8 +4926,10 @@ class PanelApp {
                 if (changedKeys) {
                     const bKey = b.binding?.key;
                     const bKeys = b.binding?._keys;        // visible_when: array of keys
-                    const bPatterns = b.binding?._patterns; // matrix: array of glob patterns
-                    const bPattern = b.binding?.key_pattern || b._routePattern;
+                    // matrix: the concrete keys it reads, one per entry. A concrete
+                    // key is its own prefix, so the test below matches it exactly.
+                    const bPatterns = b.binding?._patterns;
+                    const bPattern = b.binding?.key_pattern;
                     if (bKeys && !bKeys.some(k => changedKeys.includes(k))) continue;
                     if (bKey && !bKeys && !changedKeys.includes(bKey)) continue;
                     if (bPatterns) {
