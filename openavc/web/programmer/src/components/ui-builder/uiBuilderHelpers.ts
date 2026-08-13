@@ -419,10 +419,18 @@ export function createDefaultElement(
           output_labels: ["Output 1", "Output 2", "Output 3", "Output 4"],
           route_key_pattern: "",
         },
-        matrix_style: "crosspoint",
-        // No cell_size: absent means the cells fit themselves to the box. The
-        // seed used to be 44, which is the floor, so every new matrix was
-        // pinned at its smallest cell however much room it was given.
+        // A new matrix is a list: one row per destination with its source in a
+        // dropdown. It reads at a glance, it fits a panel, and it is what
+        // somebody standing in the room actually wants -- which destination is
+        // showing what, not a grid of dots. Crosspoint stays a click away in
+        // Style, for the rack.
+        //
+        // Only NEW matrices. The panel still falls back to crosspoint when an
+        // element says nothing, so no panel already built changes shape.
+        matrix_style: "list",
+        // No cell_size: absent means the crosspoint cells fit themselves to the
+        // box. The seed used to be 44, which is the floor, so every new matrix
+        // was pinned at its smallest cell however much room it was given.
       };
     case "custom":
       // The file is chosen in the properties panel, from what is actually in

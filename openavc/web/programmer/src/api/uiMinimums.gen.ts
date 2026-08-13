@@ -194,7 +194,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": "Row height does not change how wide a list has to be."
   },
   "matrix": {
-    "baseWidthPx": 27,
+    "baseWidthPx": 95,
     "baseHeightPx": 63,
     "internals": [
       {
@@ -338,7 +338,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       }
     },
     "styleDefault": "crosspoint",
-    "note": "A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. The source legend is one strip that scrolls sideways rather than a block that wraps, so it costs one row rather than however many rows the source names take; the same is true of the preset bar."
+    "note": "A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number."
   },
   "level_meter": {
     "baseWidthPx": 13,

@@ -77,7 +77,7 @@ Sizes are worked out against a 1280x800 reference panel, which is what the perce
 | **Clock** | Time, date, countdown, elapsed, meeting timer | Current time display, meeting countdown |
 | **Keypad** | Numeric 0-9 pad with display | TV channel entry, passcode input |
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
-| **Matrix** | Crosspoint or dropdown routing matrix | Video/audio switcher routing |
+| **Matrix** | Routing, as a list of destinations or a crosspoint grid | Video/audio switcher routing |
 | **Custom Control** | A page you wrote yourself, running inside the element's box | Seating map, rack diagram, a control nothing else covers |
 
 ## Custom Controls
@@ -300,7 +300,9 @@ A **List** populates its rows either from the static items configured under **Ba
 
 ### Setting up a Matrix
 
-A **Matrix** is configured under **Basic**, not through the binding cards, and one of its settings decides whether the grid can show anything at all.
+A **Matrix** is configured under **Basic**, not through the binding cards, and one of its settings decides whether it can show anything at all.
+
+**Style** picks how it draws. A new matrix is a **List**: one row per destination, with its current source in a dropdown. It reads at a glance and it fits on a panel. **Crosspoint Grid** is the rack view, a dot per input-to-output pair, and it needs a lot more room (see below).
 
 | Setting | What it does |
 |---|---|

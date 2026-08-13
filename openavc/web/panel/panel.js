@@ -110,6 +110,17 @@ const MATRIX_DRAG_THRESHOLD_PX = 8;
 const MATRIX_CELL_MIN_PX = 44;
 const MATRIX_CELL_MAX_PX = 72;
 
+// How much room the destination-name column keeps before it starts ellipsising.
+// It has to be DECLARED rather than left to the names, for two reasons that pull
+// the same way. A grid's spare room is shared out equally between the tracks that
+// can take it, so once the cells could grow, the one label column was getting a
+// ninth of it and "Main LCD" was drawing as "M" -- the names lost to the dots
+// they label. And a column sized to its content is a column whose width is
+// whatever somebody typed, which openavc/ui/control_minimums.py could not state a
+// floor for. 80px is the same number .matrix-list-label already declares, so the
+// two styles reserve the same room for the same names.
+const MATRIX_LABEL_MIN_PX = 80;
+
 // Overlay and sidebar boxes, as percentages of the viewport. These are the
 // old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
 // against the 1280x800 reference, so an overlay that never set a size keeps
@@ -2775,8 +2786,14 @@ class PanelApp {
             // The stylesheet's `justify-content: start` keeps the auto label
             // column from swallowing that spare room first.
             const cellTrack = `minmax(${cellMinPx}px, ${cellMaxPx}px)`;
+            // The label column keeps MATRIX_LABEL_MIN_PX and grows to the longest
+            // name when there is room. It was `auto`, whose base size is
+            // min-content -- and .matrix-header is `overflow: hidden`, which makes
+            // that ZERO, so the column started at its own padding and then took an
+            // equal share of the spare room alongside eight cell tracks.
+            const labelTrack = `minmax(${MATRIX_LABEL_MIN_PX}px, max-content)`;
             table.style.gridTemplateColumns =
-                `auto repeat(${inputCount}, ${cellTrack}) ${extraColDefs.join(' ')}`.trim();
+                `${labelTrack} repeat(${inputCount}, ${cellTrack}) ${extraColDefs.join(' ')}`.trim();
             table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellTrack})`;
 
             // Top-left corner cell

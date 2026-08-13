@@ -95,7 +95,7 @@ width does not move with the input count at all.
 
 | Type and `matrix_style` | Floor |
 |---|---|
-| matrix (crosspoint) | 27 + input_count x (cell + 1) wide, 63 + output_count x (cell + 1) tall |
+| matrix (crosspoint) | 95 + input_count x (cell + 1) wide, 63 + output_count x (cell + 1) tall |
 | matrix (list) | 148 wide, 9 + output_count x 34 tall |
 
 `cell` is 44px unless `style.cell_size` authors another size, in which case the
@@ -115,17 +115,21 @@ Worked, for a matrix with a label and the lock column it gets by default:
 
 | Grid | crosspoint | list |
 |---|---|---|
-| 4x4 | 252 x 266 px | 180 x 168 px |
-| 8x8 | 432 x 446 px | 180 x 304 px |
-| 16x16 | 792 x 806 px | 180 x 576 px |
+| 4x4 | 320 x 266 px | 180 x 168 px |
+| 8x8 | 500 x 446 px | 180 x 304 px |
+| 16x16 | 860 x 806 px | 180 x 576 px |
 
-What the floor does **not** hold is the destination names. They are a column that
-ellipsises down to its own padding, so a crosspoint grid at exactly this size is
-numbered columns and nameless rows. Text is content and is not a minimum box
-anywhere in this file. What it does hold is every crosspoint, drawn at the finger
-rule, visible without scrolling.
+What this holds is every crosspoint, drawn at the finger rule and visible without
+scrolling, plus enough room to read the destination names and the column numbers.
 
-**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. The source legend is one strip that scrolls sideways rather than a block that wraps, so it costs one row rather than however many rows the source names take; the same is true of the preset bar.
+What it does **not** hold is the *whole* of a name. The destination column keeps a
+declared 80px and grows to the longest name when there is room; past that the name
+ellipsises. The source legend is the same bargain turned sideways: one row tall
+whatever the sources are called, scrolling if there are more than fit. A floor that
+held any name anyone typed would be a floor whose value is whatever they typed, and
+nothing in this file sizes text.
+
+**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number.
 
 **matrix (list)** -- A list matrix is one dropdown per destination, so its width does not move with the input count at all -- sixteen sources are sixteen options, not sixteen columns. Recording the crosspoint floor for both styles is what the old constant did, and it told a 16-input list it needed 792px when it needs 180. The lock and mute buttons differ in width here because they are glyphs rather than grid tracks, and an unlock glyph is wider than an M.
 

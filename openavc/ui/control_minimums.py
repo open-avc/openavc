@@ -282,12 +282,16 @@ class MinimumRule:
 # each, plus the off-diagonal 8x2, 2x8 and 16x4 to prove the axes are
 # independent), and stay exact when the cell is authored to another size.
 #
-# What the floor does NOT hold, on purpose: the destination names. They are a
-# flex column that ellipsises to its padding, so at the floor a crosspoint grid
-# is numbered columns and nameless rows. Text is content -- unbounded and
-# theme-dependent -- and this module has never claimed to size it. What the
-# floor DOES hold is every crosspoint, visible without scrolling, which is what
-# nothing anywhere could say before.
+# What the floor holds is every crosspoint, at the finger rule, visible without
+# scrolling -- which is what nothing anywhere could say before -- plus enough of
+# the destination-name column and the column-number row to read them.
+#
+# What it does NOT hold is the WHOLE of a destination name. That column keeps a
+# declared 80px and grows to the longest name when there is room; past 80px the
+# name ellipsises. A floor that held any name anyone typed would be a floor
+# whose value is whatever somebody typed, and this module does not size text.
+# The legend's source names are the same bargain on the other axis: the strip
+# is one row tall whatever the names are, and scrolls sideways.
 _MATRIX_LIST = MinimumRule(
     148, 9,
     (FixedInternal("matrix-list-row", None, 28, "font-driven",
@@ -319,13 +323,17 @@ _MATRIX_LIST = MinimumRule(
 )
 
 _MATRIX_CROSSPOINT = MinimumRule(
-    # 63 of that height is the element's padding, the grid gaps and the 25px
-    # column-number row (.matrix-input-header min-height 1.7857rem). That row
-    # is declared rather than left to its line box because .matrix-header sets
-    # `overflow: hidden`, which makes a grid track's min-content ZERO: without
-    # it the row compressed to 8px of padding and cut the column numbers in
-    # half at exactly the size this file calls the minimum.
-    27, 63,
+    # 95 of that width is the element's padding, the grid gaps and the 80px
+    # destination-name column (panel.js MATRIX_LABEL_MIN_PX); 63 of the height
+    # is padding, gaps and the 25px column-number row
+    # (.matrix-input-header min-height 1.7857rem). BOTH of those are declared
+    # rather than left to their content, and for the same reason: .matrix-header
+    # sets `overflow: hidden`, which makes a grid track's min-content ZERO. The
+    # name column started at its 12px of padding and then took an equal share of
+    # the spare room alongside eight cell tracks -- so "Main LCD" drew as "M"
+    # even in a box with room to spare -- and the number row compressed to 8px
+    # and cut the digits in half at exactly the size this file calls the minimum.
+    95, 63,
     (FixedInternal("matrix-cell", 44, 44, "declared", "panel.js MATRIX_CELL_MIN_PX"),),
     repeated=(
         RepeatedInternal(
@@ -357,10 +365,12 @@ _MATRIX_CROSSPOINT = MinimumRule(
          "lock and mute columns and the element's own label row. The cell is "
          "44 -- the touch floor it will not go below, whatever room it is "
          "given -- unless style.cell_size authors another size, in which case "
-         "the slope moves with it and stays exact. The source legend is one "
-         "strip that scrolls sideways rather than a block that wraps, so it "
-         "costs one row rather than however many rows the source names take; "
-         "the same is true of the preset bar.",
+         "the slope moves with it and stays exact. Everything that is TEXT is "
+         "declared rather than measured from the text: the name column keeps "
+         "80px and ellipsises past it, the source legend is one strip that "
+         "scrolls sideways rather than a block that wraps, and so is the preset "
+         "bar. Otherwise every one of them would put somebody's typing in this "
+         "number.",
 )
 
 # The whole table. Everything below is interpretation of these rows, and the

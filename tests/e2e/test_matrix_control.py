@@ -500,6 +500,54 @@ def test_the_legend_is_one_strip_and_cannot_eat_the_grid(panel_page) -> None:
     )
 
 
+DESTINATIONS = ["Main LCD", "Left Proj", "Right Proj", "Confidence",
+                "Lobby TV", "Stream", "Overflow", "Record"]
+
+
+def _label_column_px(page) -> float:
+    return page.evaluate("""() => document.querySelector(
+        '.matrix-output-header[data-output-idx="0"]').getBoundingClientRect().width""")
+
+
+def test_destination_names_are_not_starved_by_the_cells(panel_page) -> None:
+    """The names must not lose to the dots they label.
+
+    A grid shares its spare room out EQUALLY between the tracks that can take
+    it. Once the cells could grow, the one name column was getting a ninth of
+    that room and starting from nothing (`.matrix-header` is `overflow: hidden`,
+    which makes a grid track's min-content zero) -- so an 8x8 with 563px to
+    spend drew "Main LCD" as "M". Nothing measured caught it: the floor
+    deliberately does not size text, so the column was free to collapse.
+    """
+    _mount(panel_page, _matrix(input_count=8, output_count=8,
+                               output_labels=DESTINATIONS), 563, 592)
+    assert _label_column_px(panel_page) >= 80, (
+        f"the destination column is {_label_column_px(panel_page):.0f}px wide in a "
+        f"563px box, so the names are being starved by the crosspoints"
+    )
+    truncated = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]'))
+        .filter(s => s.scrollWidth > s.clientWidth + 0.5).map(s => s.textContent)""")
+    assert not truncated, (
+        f"a matrix with room to spare still truncates {truncated}"
+    )
+
+
+def test_the_destination_column_keeps_its_room_at_the_floor(panel_page) -> None:
+    """Declared, not content-derived, so the floor can state it.
+
+    The column is 80px whatever the names are -- the same number the list
+    style's own label already declares. That is what lets control_minimums.py
+    publish a width at all: a column sized to its content is a column whose
+    width is whatever somebody typed.
+    """
+    element = {"type": "matrix", "label": "Routing",
+               "matrix_config": {"input_count": 8, "output_count": 8,
+                                 "output_labels": DESTINATIONS}}
+    _mount(panel_page, {"id": "mx1", **element}, 455 + 45, 446)
+    assert _label_column_px(panel_page) >= 80
+
+
 def test_a_long_destination_name_loses_its_tail_not_its_head(panel_page) -> None:
     """A right-aligned flex box with overflow:hidden clips the START of a line,
     and text-overflow does not apply to it -- so "Main LCD" rendered as "ain

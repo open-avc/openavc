@@ -243,11 +243,15 @@ Worked, for a matrix with a label and the lock column it gets by default:
 %(example_rule)s
 %(examples)s
 
-What the floor does **not** hold is the destination names. They are a column that
-ellipsises down to its own padding, so a crosspoint grid at exactly this size is
-numbered columns and nameless rows. Text is content and is not a minimum box
-anywhere in this file. What it does hold is every crosspoint, drawn at the finger
-rule, visible without scrolling.
+What this holds is every crosspoint, drawn at the finger rule and visible without
+scrolling, plus enough room to read the destination names and the column numbers.
+
+What it does **not** hold is the *whole* of a name. The destination column keeps a
+declared 80px and grows to the longest name when there is room; past that the name
+ellipsises. The source legend is the same bargain turned sideways: one row tall
+whatever the sources are called, scrolling if there are more than fit. A floor that
+held any name anyone typed would be a floor whose value is whatever they typed, and
+nothing in this file sizes text.
 
 %(notes)s
 """
