@@ -753,6 +753,9 @@ class UIToolsMixin:
             touched=touched,
             theme=_theme_defaults(project, "slider"),
             declared_range=declared_range if ranges else None,
+            # The masters draw under this page, and the page does not know they
+            # exist -- without them a control laid over the nav bar is silence.
+            masters=project.ui.master_elements,
         )
         findings.extend(reference_findings(
             page,
@@ -1525,6 +1528,7 @@ class UIToolsMixin:
                     self._devices, device_ids, key,
                 ),
                 set_field=lambda *_: None,
+                masters=project.ui.master_elements,
             )
             findings.extend(reference_findings(
                 page,

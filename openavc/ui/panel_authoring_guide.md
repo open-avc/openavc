@@ -289,6 +289,23 @@ The `ui/` folder is not writable from here, so a custom page is set up by the
 person building the panel. Leave `render_mode` alone unless you are asked to
 change it.
 
+## The elements that are on every page and are not in the page
+
+Master elements live in `ui.master_elements`, not in `page.elements`, and each
+one draws on every page its `pages` field names (`"*"` means all of them). A
+page's own controls are drawn **after** them and therefore **on top of them**, so
+a control laid over a master hides it and takes the finger that was meant for it.
+
+That is worth more care than an ordinary collision. A master is usually the
+navigation -- on a page that draws its own markup it is the only way off the page
+-- and nothing on the page itself says it is there, so the page looks fine in
+isolation.
+
+Reading a page before writing to it will not show you them. Read the master
+elements too, and keep controls out of their boxes. A master's box is a
+percentage of the **viewport**, keyed by orientation, not of anything on the
+page. The review answers: *video (image) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move video off it, or stop nav_bar drawing on lobby. video covers 152x63px of nav_bar, 75% of it.*
+
 ## After a write
 
 A UI write returns any of the above it finds, in pixels and in the percentage of

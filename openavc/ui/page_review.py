@@ -11,11 +11,12 @@ This module is the answer to that question. It takes a page, folds its geometry
 down through ``page_geometry``, and reports -- in reference pixels and in the
 percentages the caller actually writes -- everything that will render wrong: a
 control smaller than its own fixed internals, one drawn so small nothing
-survives it, two controls on top of each other, one hanging out of its
-container, one with no box at all, one too small for a finger, a ``style``
-measurement bigger than the element carrying it (those are rem), a range wider
-than the device it drives, a ``type`` the panel has no renderer for, and a
-binding the panel does not read for that element type.
+survives it, two controls on top of each other, one drawn over a master element
+that the panel draws underneath it, one hanging out of its container, one with
+no box at all, one too small for a finger, a ``style`` measurement bigger than
+the element carrying it (those are rem), a range wider than the device it
+drives, a ``type`` the panel has no renderer for, and a binding the panel does
+not read for that element type.
 
 What a binding POINTS AT -- a macro, a page, a device, a command -- is the
 neighbouring question, and ``page_references`` answers it. It is separate
@@ -45,8 +46,9 @@ actual size in pixels, the size it needs, and what to write instead.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any
 
 from openavc.ui.control_minimums import (
@@ -1014,6 +1016,154 @@ def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
     )
 
 
+# --- A page's controls against the masters underneath them -----------------
+#
+# Masters are appended to the page surface BEFORE the page's own elements
+# (panel.js `renderPage`), and every child of `.panel-page` shares one z-index,
+# so the later sibling wins: a control laid over a master hides it and takes the
+# touch. That is the whole failure. A master nav bar is how somebody gets off a
+# page -- decision 15 of the custom-UI plan makes it the ONLY way off a page
+# that draws its own markup -- so burying one is not a cosmetic collision.
+#
+# It was invisible on both surfaces: the overlap check collides `page.elements`
+# with each other, and masters are not among them.
+#
+# A custom page is the exception and needs no test here. There the frame is
+# appended FIRST and the masters paint over it, and `review_page` has already
+# returned by the time this runs (its controls are not drawn at all, which is
+# the one thing it says about such a page).
+
+
+def master_box(master: Mapping[str, Any], orientation: str) -> dict[str, float] | None:
+    """The box a master draws in on a page arranged this way.
+
+    Mirrors the panel's ``_masterPlacement``: this orientation's own box, then
+    landscape, then portrait, then whatever is there. A master has to be valid
+    on every page it appears on, so it carries its own orientation-keyed boxes
+    rather than borrowing a layout's -- and the panel falls back rather than
+    drawing nothing, so a master with only a landscape box still appears on a
+    portrait screen.
+    """
+    placements = master.get("placements")
+    if not isinstance(placements, Mapping):
+        return None
+    raw = (
+        placements.get(orientation)
+        or placements.get("landscape")
+        or placements.get("portrait")
+        or next((box for box in placements.values() if box), None)
+    )
+    if raw is None:
+        return None
+    box = _mapping(raw)
+    try:
+        # The same defaults `_placeElement` applies to a missing coordinate.
+        out = {
+            "x": float(box.get("x") or 0.0),
+            "y": float(box.get("y") or 0.0),
+            "w": float(box.get("w") or 100.0),
+            "h": float(box.get("h") or 100.0),
+        }
+    except (TypeError, ValueError):
+        return None
+    # A hand-edited file can carry a NaN, which compares False against every
+    # bound and would otherwise report an overlap measured in "nan px".
+    return out if all(isfinite(value) for value in out.values()) else None
+
+
+def master_draws_on(pages: Any, page_id: str) -> bool:
+    """Whether a master appears on this page. The panel's own test, exactly."""
+    return pages == "*" or (isinstance(pages, list) and page_id in pages)
+
+
+def _master_scope(pages: Any) -> str:
+    """How widely a master draws, said the way it matters to the reader.
+
+    The point of the clause is that a master is shared, so moving it is not a
+    local fix -- whatever it is doing here, it is doing somewhere else too.
+    """
+    if isinstance(pages, list):
+        return f"{len(pages)} page" + ("" if len(pages) == 1 else "s")
+    return "every page"
+
+
+def buried_master_findings(
+    boxes: Mapping[str, Mapping[str, float]],
+    dumps: Mapping[str, Mapping[str, Any]],
+    parents: Mapping[str, str | None],
+    masters: Sequence[Any],
+    page_id: str,
+    orientation: str,
+    in_scope: Callable[[str], bool],
+) -> list[Finding]:
+    """Every control on this page that is drawn over a master element.
+
+    ``boxes`` are absolute -- page percentages with container nesting already
+    flattened -- because a master's box is a percentage of the viewport and a
+    nested control's is a percentage of its container, so the two are not
+    comparable until one of them has been folded down.
+
+    Reported on the CONTROL rather than on the master: the control is what
+    moved, it is the thing being edited, and the master has no page to be
+    warned about it on. A control inside a container that is itself burying the
+    master says the same thing twice, so only the container answers -- moving
+    it is the fix, and the child has done nothing wrong.
+    """
+    findings: list[Finding] = []
+    for master in masters:
+        m = _mapping(master)
+        if m.get("hidden") or not master_draws_on(m.get("pages", "*"), page_id):
+            continue
+        m_box = master_box(m, orientation)
+        if m_box is None:
+            continue
+        m_w_px, m_h_px = _box_px(m_box)
+        if m_w_px <= 0 or m_h_px <= 0:
+            continue
+        covered: dict[str, tuple[float, float]] = {}
+        for el_id, box in boxes.items():
+            if mutually_exclusive(dumps[el_id], m):
+                continue
+            extent = overlap_extent(box, m_box)
+            if extent:
+                covered[el_id] = (extent[0], extent[1])
+        m_id = str(m.get("id", "?"))
+        for el_id in sorted(covered):
+            if not in_scope(el_id) or _covered_ancestor(el_id, covered, parents):
+                continue
+            ox_px, oy_px = covered[el_id]
+            share = 100.0 * (ox_px * oy_px) / (m_w_px * m_h_px)
+            findings.append(Finding(
+                el_id,
+                "covers_master",
+                # The coverage goes LAST because a variant arrangement appends
+                # " in the 'portrait' arrangement" to whatever the sentence ends
+                # with, and geometry is the half that is per-arrangement -- a
+                # master's page list is not.
+                f"{el_id} ({dumps[el_id].get('type', '?')}) is drawn over the master element "
+                f"{m_id} ({m.get('type', '?')}), which draws on "
+                f"{_master_scope(m.get('pages', '*'))} and sits behind a page's own controls. "
+                f"Move {el_id} off it, or stop {m_id} drawing on {page_id}. "
+                f"{el_id} covers {ox_px:.0f}x{oy_px:.0f}px of {m_id}, {share:.0f}% of it.",
+                key=("covers_master", el_id, m_id),
+            ))
+    return findings
+
+
+def _covered_ancestor(
+    el_id: str, covered: Mapping[str, Any], parents: Mapping[str, str | None],
+) -> bool:
+    """Whether a container above this element is burying the same master."""
+    seen = {el_id}
+    cursor = parents.get(el_id)
+    while cursor and cursor not in seen:
+        if cursor in covered:
+            return True
+        seen.add(cursor)
+        cursor = parents.get(cursor)
+    return False
+
+
 def custom_page_findings(page: Any) -> list[Finding]:
     """What a page that draws its own markup is doing with the controls on it.
 
@@ -1500,6 +1650,7 @@ def review_page(
     theme: Mapping[str, Any] | None = None,
     declared_range: Callable[[str], Mapping[str, Any] | None] | None = None,
     set_field: Callable[[Any, str, Any], None] = setattr,
+    masters: Sequence[Any] = (),
 ) -> tuple[list[Finding], list[Adjustment]]:
     """Review everything one write touched, across every arrangement.
 
@@ -1509,6 +1660,11 @@ def review_page(
     problems on every subsequent call until the caller learned to ignore the
     field entirely. A finding is kept when it involves something this write
     touched -- for an overlap, when either side does.
+
+    ``masters`` is the project's master elements, which the page does not carry
+    and cannot reach: they live on ``ui.master_elements`` and draw underneath
+    every page they are listed on. Passing them is what lets a control be told
+    it is sitting on the nav bar. Omitted, that one check simply does not run.
 
     An ``Adjustment`` in the result always means a field WAS written -- the fill
     goes through ``set_field``, which a caller overrides only to reach an
@@ -1577,6 +1733,8 @@ def review_page(
             in_scope,
             theme,
             is_primary=layout.id == primary_id,
+            masters=masters,
+            orientation=str(getattr(layout, "orientation", "landscape") or "landscape"),
         ):
             if finding.key in seen:
                 continue
@@ -1595,6 +1753,8 @@ def _layout_findings(
     in_scope: Callable[[str], bool],
     theme: Mapping[str, Any] | None,
     is_primary: bool,
+    masters: Sequence[Any] = (),
+    orientation: str = "landscape",
 ) -> list[Finding]:
     """Every geometry finding for one arrangement."""
     findings: list[Finding] = []
@@ -1690,6 +1850,22 @@ def _layout_findings(
         findings.extend(overlap_findings(
             pairs, types, f"'{parent_id}'" if parent_id else "the page",
         ))
+
+    # ...and the masters under all of them, which are nobody's sibling.
+    drawn = {
+        el_id: absolute[el_id]
+        for el_id in dumps
+        if el_id not in hidden and absolute.get(el_id) is not None
+    }
+    findings.extend(buried_master_findings(
+        drawn,
+        dumps,
+        {el_id: parent_of(el_id) for el_id in dumps},
+        masters,
+        str(getattr(page, "id", "?")),
+        orientation,
+        in_scope,
+    ))
     return findings
 
 
@@ -1710,9 +1886,15 @@ def review_master_element(
     """The same checks a master element can be given.
 
     A master borrows no page's layout -- its box is a percentage of the
-    viewport, keyed by orientation -- so it has no siblings to collide with and
-    no container to hang out of. What is left is whether it holds its own
-    contents, whether a finger can hit it, and whether its bindings are read.
+    viewport, keyed by orientation -- so it has no container to hang out of and
+    no sibling in any layout to collide with. What is left is whether it holds
+    its own contents, whether a finger can hit it, and whether its bindings are
+    read.
+
+    It CAN be collided with, by the controls on the pages it draws under, and
+    that is answered on the page rather than here: the finding belongs on the
+    control that moved (``buried_master_findings``), and a master reviewed on
+    its own has no page in hand to look at.
     """
     dump = _mapping(element)
     type_finding = element_type_finding(dump)

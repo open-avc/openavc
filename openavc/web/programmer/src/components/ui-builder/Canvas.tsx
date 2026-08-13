@@ -184,8 +184,9 @@ export function Canvas({
 
   // Everything this arrangement will draw wrong, per element, from the same
   // review the AI write path answers with: a control starved of the parts inside
-  // it that don't shrink, two controls on top of each other, one hanging out of
-  // its container, one with no box at all, one too small for a finger, and a
+  // it that don't shrink, two controls on top of each other, one drawn over a
+  // master element the panel draws underneath it, one hanging out of its
+  // container, one with no box at all, one too small for a finger, and a
   // binding this element type's renderer never reads. Live, not just on
   // Validate -- a status light gets starved by dragging as easily as by sizing,
   // and the badge is the moment to notice. Each message carries the pixels AND
@@ -194,12 +195,15 @@ export function Canvas({
   // The theme slice is stable across renders -- it is the store's own object,
   // or null -- so it can be a dependency without re-reviewing every render.
   const sliderTheme = sliderThemeDefaults(project);
+  // The masters draw under this page and are not on it, so the review cannot
+  // see them unless they are handed over. Dragging a control onto the nav bar
+  // is a canvas gesture, which is exactly where this has to be said.
   const warningsByElement = useMemo(
     () =>
       previewMode
         ? new Map<string, string>()
-        : reviewWarningsByElement(page, activeLayoutId, sliderTheme),
-    [page, previewMode, activeLayoutId, sliderTheme],
+        : reviewWarningsByElement(page, activeLayoutId, sliderTheme, masterElements ?? []),
+    [page, previewMode, activeLayoutId, sliderTheme, masterElements],
   );
 
   const placements = useMemo(

@@ -3044,7 +3044,8 @@ export interface ReviewFinding {
     | "matrix_no_route_feedback"
     | "matrix_default_size"
     | "custom_page_elements_not_drawn"
-    | "custom_page_without_a_file";
+    | "custom_page_without_a_file"
+    | "covers_master";
   /** The whole finding in one self-contained sentence. */
   message: string;
   /** What makes a finding the same finding across two arrangements -- an
@@ -3968,6 +3969,148 @@ export function mutuallyExclusive(a: UIElement, b: UIElement): boolean {
   );
 }
 
+// --- A page's controls against the masters underneath them -----------------
+//
+// Masters are appended to the page surface BEFORE the page's own elements
+// (panel.js `renderPage`), and every child of `.panel-page` shares one z-index,
+// so the later sibling wins: a control laid over a master hides it and takes the
+// touch. That is the whole failure. A master nav bar is how somebody gets off a
+// page -- decision 15 of the custom-UI plan makes it the ONLY way off a page
+// that draws its own markup -- so burying one is not a cosmetic collision.
+//
+// It was invisible on both surfaces: the overlap check collides a page's
+// elements with each other, and masters are not among them.
+//
+// A custom page is the exception and needs no test here. There the frame is
+// appended FIRST and the masters paint over it, and `reviewPage` has already
+// returned by the time this runs (its controls are not drawn at all, which is
+// the one thing it says about such a page).
+
+/**
+ * The box a master draws in on a page arranged this way.
+ *
+ * Mirrors the panel's `_masterPlacement`: this orientation's own box, then
+ * landscape, then portrait, then whatever is there. A master has to be valid on
+ * every page it appears on, so it carries its own orientation-keyed boxes rather
+ * than borrowing a layout's -- and the panel falls back rather than drawing
+ * nothing, so a master with only a landscape box still appears on a portrait
+ * screen.
+ */
+export function masterBox(
+  master: MasterElement,
+  orientation: string,
+): Placement | null {
+  const placements = master.placements;
+  if (!placements || typeof placements !== "object") return null;
+  const raw =
+    placements[orientation] ||
+    placements.landscape ||
+    placements.portrait ||
+    Object.values(placements).find((box) => box) ||
+    null;
+  if (!raw) return null;
+  // The same defaults `_placeElement` applies to a missing coordinate.
+  const box = {
+    x: Number(raw.x || 0),
+    y: Number(raw.y || 0),
+    w: Number(raw.w || 100),
+    h: Number(raw.h || 100),
+  };
+  return Object.values(box).every((n) => Number.isFinite(n)) ? box : null;
+}
+
+/** Whether a master appears on this page. The panel's own test, exactly. */
+export function masterDrawsOn(pages: string | string[], pageId: string): boolean {
+  return pages === "*" || (Array.isArray(pages) && pages.includes(pageId));
+}
+
+/** How widely a master draws, said the way it matters to the reader.
+ *
+ *  The point of the clause is that a master is shared, so moving it is not a
+ *  local fix -- whatever it is doing here, it is doing somewhere else too. */
+function masterScope(pages: string | string[]): string {
+  if (Array.isArray(pages)) return `${pages.length} page${pages.length === 1 ? "" : "s"}`;
+  return "every page";
+}
+
+/**
+ * Every control on this page that is drawn over a master element.
+ *
+ * `boxes` are absolute -- page percentages with container nesting already
+ * flattened -- because a master's box is a percentage of the viewport and a
+ * nested control's is a percentage of its container, so the two are not
+ * comparable until one of them has been folded down.
+ *
+ * Reported on the CONTROL rather than on the master: the control is what moved,
+ * it is the thing being edited, and the master has no page to be warned about it
+ * on. A control inside a container that is itself burying the master says the
+ * same thing twice, so only the container answers -- moving it is the fix, and
+ * the child has done nothing wrong.
+ */
+export function buriedMasterFindings(
+  boxes: Map<string, Placement>,
+  elements: Map<string, UIElement>,
+  parents: Map<string, string | null>,
+  masters: MasterElement[],
+  pageId: string,
+  orientation: string,
+  inScope: (id: string) => boolean,
+): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
+  for (const master of masters) {
+    if (master.hidden || !masterDrawsOn(master.pages ?? "*", pageId)) continue;
+    const mBox = masterBox(master, orientation);
+    if (!mBox) continue;
+    const mWidthPx = (mBox.w / 100) * TOUCH_REFERENCE.width;
+    const mHeightPx = (mBox.h / 100) * TOUCH_REFERENCE.height;
+    if (mWidthPx <= 0 || mHeightPx <= 0) continue;
+    const covered = new Map<string, { oxPx: number; oyPx: number }>();
+    for (const [elId, box] of boxes) {
+      if (mutuallyExclusive(elements.get(elId) as UIElement, master)) continue;
+      const extent = overlapExtent(box, mBox);
+      if (extent) covered.set(elId, { oxPx: extent.oxPx, oyPx: extent.oyPx });
+    }
+    for (const elId of [...covered.keys()].sort()) {
+      if (!inScope(elId) || coveredAncestor(elId, covered, parents)) continue;
+      const { oxPx, oyPx } = covered.get(elId) as { oxPx: number; oyPx: number };
+      const share = (100 * (oxPx * oyPx)) / (mWidthPx * mHeightPx);
+      findings.push({
+        elementId: elId,
+        kind: "covers_master",
+        // The coverage goes LAST because a variant arrangement appends
+        // " in the 'portrait' arrangement" to whatever the sentence ends with,
+        // and geometry is the half that is per-arrangement -- a master's page
+        // list is not.
+        message:
+          `${elId} (${elements.get(elId)?.type ?? "?"}) is drawn over the master element ` +
+          `${master.id} (${master.type}), which draws on ` +
+          `${masterScope(master.pages ?? "*")} and sits behind a page's own controls. ` +
+          `Move ${elId} off it, or stop ${master.id} drawing on ${pageId}. ` +
+          `${elId} covers ${fixed(oxPx, 0)}x${fixed(oyPx, 0)}px of ${master.id}, ` +
+          `${fixed(share, 0)}% of it.`,
+        key: `covers_master|${elId}|${master.id}`,
+      });
+    }
+  }
+  return findings;
+}
+
+/** Whether a container above this element is burying the same master. */
+function coveredAncestor(
+  elId: string,
+  covered: Map<string, unknown>,
+  parents: Map<string, string | null>,
+): boolean {
+  const seen = new Set<string>([elId]);
+  let cursor = parents.get(elId) ?? null;
+  while (cursor && !seen.has(cursor)) {
+    if (covered.has(cursor)) return true;
+    seen.add(cursor);
+    cursor = parents.get(cursor) ?? null;
+  }
+  return false;
+}
+
 /**
  * An element the primary arrangement never positions.
  *
@@ -4333,6 +4476,11 @@ export interface ReviewOptions {
    *  arrangement, when omitted -- which is what the AI door does, because a
    *  portrait variant can starve a control the primary leaves fine. */
   layoutId?: string | null;
+  /** The project's master elements, which the page does not carry and cannot
+   *  reach: they live on `ui.master_elements` and draw underneath every page
+   *  they are listed on. Passing them is what lets a control be told it is
+   *  sitting on the nav bar. Omitted, that one check simply does not run. */
+  masters?: MasterElement[];
 }
 
 /**
@@ -4344,7 +4492,7 @@ export interface ReviewOptions {
  * speaks up about something the primary got right.
  */
 export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFinding[] {
-  const { theme, touched, layoutId } = options;
+  const { theme, touched, layoutId, masters } = options;
   const inScope = (id: string) => (touched ? touched.has(id) : true);
   const findings: ReviewFinding[] = [];
 
@@ -4385,6 +4533,8 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
       theme,
       inScope,
       isPrimary: layout.id === primaryId,
+      masters: masters ?? [],
+      orientation: layout.orientation ?? "landscape",
     })) {
       if (seen.has(finding.key)) continue;
       seen.add(finding.key);
@@ -4402,6 +4552,8 @@ function layoutFindings(
     theme?: ElementDefaults;
     inScope: (id: string) => boolean;
     isPrimary: boolean;
+    masters: MasterElement[];
+    orientation: string;
   },
 ): ReviewFinding[] {
   const absolute = absolutePlacements(page, layoutId);
@@ -4506,6 +4658,24 @@ function layoutFindings(
       ...overlapFindings(pairs, types, parent ? `'${parent}'` : "the page"),
     );
   }
+
+  // ...and the masters under all of them, which are nobody's sibling.
+  const drawn = new Map<string, Placement>();
+  for (const el of page.elements) {
+    const box = own(absolute, el.id);
+    if (box && !hidden.has(el.id)) drawn.set(el.id, box);
+  }
+  findings.push(
+    ...buriedMasterFindings(
+      drawn,
+      byId,
+      new Map(page.elements.map((el) => [el.id, parentOf(el.id)])),
+      ctx.masters,
+      page.id,
+      ctx.orientation,
+      ctx.inScope,
+    ),
+  );
   return findings;
 }
 
@@ -4513,9 +4683,14 @@ function layoutFindings(
  * The same checks a master element can be given.
  *
  * A master borrows no page's layout -- its box is a percentage of the viewport,
- * keyed by orientation -- so it has no siblings to collide with and no container
- * to hang out of. What is left is whether it holds its own contents, whether a
- * finger can hit it, and whether its bindings are read.
+ * keyed by orientation -- so it has no container to hang out of and no sibling in
+ * any layout to collide with. What is left is whether it holds its own contents,
+ * whether a finger can hit it, and whether its bindings are read.
+ *
+ * It CAN be collided with, by the controls on the pages it draws under, and that
+ * is answered on the page rather than here: the finding belongs on the control
+ * that moved (`buriedMasterFindings`), and a master reviewed on its own has no
+ * page in hand to look at.
  */
 export function reviewMasterElement(
   master: MasterElement,
@@ -4572,9 +4747,10 @@ export function reviewWarningsByElement(
   page: UIPage,
   layoutId: string | null = null,
   theme?: ElementDefaults,
+  masters: MasterElement[] = [],
 ): Map<string, string> {
   const byElement = new Map<string, string[]>();
-  for (const finding of reviewPage(page, { theme, layoutId })) {
+  for (const finding of reviewPage(page, { theme, layoutId, masters })) {
     const lines = byElement.get(finding.elementId);
     if (lines) lines.push(finding.message);
     else byElement.set(finding.elementId, [finding.message]);
@@ -4769,7 +4945,7 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       }
     }
 
-    for (const finding of reviewPage(page, { theme })) {
+    for (const finding of reviewPage(page, { theme, masters: project.ui.master_elements ?? [] })) {
       issues.push({
         severity: "warning",
         message: finding.message,

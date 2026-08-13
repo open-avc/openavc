@@ -44,12 +44,13 @@ for (const [name, project] of Object.entries(cases)) {
   // Pages in order, then masters in order -- the same walk the Python side
   // makes, so a difference in the lists is a difference in the verdicts and
   // never a difference in how they were collected.
+  const masters = project.ui.master_elements || [];
   for (const page of project.ui.pages) {
-    for (const f of H.reviewPage(page, { theme })) {
+    for (const f of H.reviewPage(page, { theme, masters })) {
       findings.push({ element_id: f.elementId, kind: f.kind, message: f.message });
     }
   }
-  for (const master of project.ui.master_elements || []) {
+  for (const master of masters) {
     for (const f of H.reviewMasterElement(master, theme)) {
       findings.push({ element_id: f.elementId, kind: f.kind, message: f.message });
     }

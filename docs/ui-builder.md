@@ -47,6 +47,7 @@ An orange badge in the corner of an element says something about it will not dra
 
 - **Too small for its contents** - the box in pixels, the size the control actually needs, and the width or height to type into the Layout section to fix it. The Layout section repeats this next to the fields you would change.
 - **Overlapping a neighbour** - by how much, and which other control.
+- **Covering a master element** - which master, and how much of it. Master elements draw underneath a page's own controls, so a control laid over one hides it and takes the touch. The navigation bar is still there and nobody can reach it, and because the master is not part of this page there is nothing on the page to look at.
 - **Hanging outside the page or its container** - by how much, and over which edge. Containers do not clip, so an element that runs past the edge lands on top of whatever sits beside it.
 - **No position at all** - an element with no box fills its container edge to edge and covers whatever is already there.
 - **Smaller than a finger** - the physical size it works out to on a real panel, for controls you actually touch.
@@ -493,7 +494,7 @@ To customize a theme, open the **Theme Studio** (click the paint brush icon in t
 
 Master elements persist across page changes. Use them for elements that should always be visible regardless of which page the user is on: a company logo, a navigation bar, a clock, or a status indicator row.
 
-To create a master element, select an element and click **Make Master** in the properties panel (or right-click the element and choose **Make Master**). Master elements render below page elements, so page content appears on top.
+To create a master element, select an element and click **Make Master** in the properties panel (or right-click the element and choose **Make Master**). Master elements render below page elements, so page content appears on top. That also means a control placed over one hides it, and the canvas badges the control when it happens.
 
 Each master element has a **Pages** filter that controls where it appears:
 

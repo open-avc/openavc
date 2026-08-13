@@ -582,6 +582,96 @@ CASES["masters"] = _project(
     ],
 )
 
+# ...and the other half of that: a master has no sibling in any layout, but the
+# controls on the pages it draws under are laid over the top of it. Masters are
+# appended to the page surface FIRST, so a control on top of one hides it and
+# takes the finger -- and a master nav bar is how somebody gets off a page.
+#
+# The measurements are the bench project this was found on: `master_home` is
+# 203x63px at the origin, and the page's own video element starts 51px in.
+CASES["master_buried"] = _project(
+    [
+        {
+            **_page(
+                "main",
+                [
+                    {"id": "vid_wide", "type": "image", "src": "assets://wall.png"},
+                    {"id": "nav_clear", "type": "button", "label": "Go"},
+                    # Clear of the landscape bar, on top of the portrait one.
+                    {"id": "port_ctl", "type": "button", "label": "P"},
+                ],
+                [
+                    _landscape({
+                        "vid_wide": _box(3.984375, 0, 624, 160),
+                        "nav_clear": _pct_box(20, 25, 20, 12),
+                        "port_ctl": _pct_box(70, 20, 20, 12),
+                    }),
+                    {
+                        "id": "portrait", "orientation": "portrait", "primary": False,
+                        "inherits": "landscape", "hidden": [],
+                        "placements": {"port_ctl": _pct_box(0, 92, 30, 8)},
+                    },
+                ],
+            ),
+        },
+        # A container over the bar, with children inside it. The container is
+        # what has to move, so it answers alone -- and the child that is inside
+        # it but clear of the bar says nothing either way.
+        _page(
+            "nested",
+            [
+                {"id": "grp_over", "type": "group"},
+                {"id": "nav_kid", "type": "button", "label": "K", "parent": "grp_over"},
+                {"id": "off_kid", "type": "label", "text": "F", "parent": "grp_over"},
+            ],
+            [_landscape({
+                "grp_over": _pct_box(0, 0, 20, 14),
+                "nav_kid": _pct_box(50, 0, 50, 50),
+                "off_kid": _pct_box(85, 60, 15, 40),
+            })],
+        ),
+        # A control and a master that can never be on screen together.
+        _page(
+            "modes",
+            [
+                {"id": "mode_b_lbl", "type": "label", "text": "B",
+                 **_when(key="var.mode", value="b")},
+            ],
+            [_landscape({"mode_b_lbl": _pct_box(60, 0, 20, 10)})],
+        ),
+        # A page that draws its own markup paints the masters OVER the frame, so
+        # nothing on it can bury one. It is also the page whose controls are not
+        # drawn at all, which is the only thing said about it.
+        {
+            **_page(
+                "own_markup",
+                [{"id": "hidden_ctl", "type": "button", "label": "X"}],
+                [_landscape({"hidden_ctl": _pct_box(0, 0, 20, 10)})],
+            ),
+            "render_mode": "custom",
+            "custom_file": "room/index.html",
+        },
+        _page("quiet_page", [], [_landscape({})]),
+    ],
+    masters=[
+        {"id": "nav_bar", "type": "button", "label": "Home", "pages": "*",
+         "placements": {"landscape": _box(0, 0, 203, 63),
+                        "portrait": _pct_box(0, 90, 100, 10)}},
+        # Listed on a page that has nothing on it: a master nobody is sitting on.
+        {"id": "logo", "type": "image", "src": "assets://logo.png",
+         "pages": ["quiet_page"],
+         "placements": {"landscape": _pct_box(0, 0, 100, 100)}},
+        # Drawn nowhere at all, over everything if it were.
+        {"id": "ghost", "type": "status_led", "label": "G", "pages": "*", "hidden": True,
+         "placements": {"landscape": _pct_box(0, 0, 100, 100)}},
+        # Only ever on screen in one mode, and `mode_b_lbl` is the other one.
+        {"id": "mode_a_bar", "type": "label", "text": "A", "pages": "*",
+         **_when(key="var.mode", value="a"),
+         "placements": {"landscape": _pct_box(60, 0, 20, 10)}},
+    ],
+)
+
+
 # A floor larger than the box that holds it, which has no remedy expressed as a
 # percentage of that box -- 100% of it is already too small. The container is
 # what has to move, and which container depends on how far up the room is.
@@ -1067,9 +1157,10 @@ CASES["custom_pages"] = _project([
 
 def _python_findings(project: ProjectConfig) -> list[dict]:
     findings: list[dict] = []
+    masters = project.ui.master_elements or []
     for page in project.ui.pages:
         theme = _theme(project)
-        for finding in review_page(page, theme=theme)[0]:
+        for finding in review_page(page, theme=theme, masters=masters)[0]:
             findings.append({
                 "element_id": finding.element_id,
                 "kind": finding.kind,
@@ -1184,6 +1275,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "matrix_default_size",
         "custom_page_elements_not_drawn",
         "custom_page_without_a_file",
+        "covers_master",
     }
 
 
@@ -1223,6 +1315,10 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "custom_ok",                           # a custom control that names its page
         "clean",                               # a custom page with nothing left on it
         "kept_btn", "kept_lbl", "orphan_btn",  # controls a custom page answers FOR
+        "nav_clear",                           # beside a master, not on it
+        "nav_kid", "off_kid",                  # inside a container that answers for them
+        "mode_b_lbl",                          # never on screen with the master it covers
+        "hidden_ctl",                          # a custom page paints its masters on top
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
 
@@ -1266,6 +1362,36 @@ def test_one_box_over_many_is_one_finding(verdicts) -> None:
         f["kind"] == "outside_its_container" and f["element_id"] == "runaway"
         for f in python_side
     )
+
+
+def test_a_buried_master_is_named_on_the_control_that_buried_it(verdicts) -> None:
+    """The check nobody had: a master is not in the page's element list.
+
+    It was found on a real panel -- a nav bar under a video element, with both
+    reviews silent -- and the thing that has to survive is not the number but
+    which element gets told. The master has no page to be warned on, and the
+    control is what moved.
+    """
+    python_side, _ = verdicts["master_buried"]
+    buried = [f for f in python_side if f["kind"] == "covers_master"]
+    assert [f["element_id"] for f in buried] == ["vid_wide", "port_ctl", "grp_over"]
+
+    # The bench measurements, in the pixels somebody can hold a ruler to, and
+    # named against the master rather than against "the smaller one".
+    assert buried[0]["message"] == (
+        "vid_wide (image) is drawn over the master element nav_bar (button), which "
+        "draws on every page and sits behind a page's own controls. Move vid_wide off "
+        "it, or stop nav_bar drawing on main. vid_wide covers 152x63px of nav_bar, "
+        "75% of it."
+    )
+    # A master carries a box per orientation, so the portrait bar is a different
+    # box in a different place -- and the arrangement it happens in is named.
+    assert buried[1]["message"].endswith(
+        "port_ctl covers 384x64px of nav_bar, 24% of it in the 'portrait' arrangement."
+    )
+    # Nesting folded down: the container's own box is a percentage of the page,
+    # and it covers the bar outright.
+    assert "grp_over covers 203x63px of nav_bar, 100% of it." in buried[2]["message"]
 
 
 def test_an_unknown_type_answers_once_about_the_type(verdicts) -> None:

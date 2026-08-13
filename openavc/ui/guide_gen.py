@@ -49,6 +49,7 @@ from openavc.ui.control_minimums import (
 )
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
+    buried_master_findings,
     custom_page_findings,
     HONORED_SHOW_SLOTS,
     INERT_WITHOUT,
@@ -407,6 +408,26 @@ person building the panel. Leave `render_mode` alone unless you are asked to
 change it.
 """
 
+MASTER_INTRO = """\
+
+## The elements that are on every page and are not in the page
+
+Master elements live in `ui.master_elements`, not in `page.elements`, and each
+one draws on every page its `pages` field names (`"*"` means all of them). A
+page's own controls are drawn **after** them and therefore **on top of them**, so
+a control laid over a master hides it and takes the finger that was meant for it.
+
+That is worth more care than an ordinary collision. A master is usually the
+navigation -- on a page that draws its own markup it is the only way off the page
+-- and nothing on the page itself says it is there, so the page looks fine in
+isolation.
+
+Reading a page before writing to it will not show you them. Read the master
+elements too, and keep controls out of their boxes. A master's box is a
+percentage of the **viewport**, keyed by orientation, not of anything on the
+page. The review answers: *%(buried)s*
+"""
+
 WRITE_TAIL = """\
 
 ## After a write
@@ -435,6 +456,25 @@ def _custom_page_section() -> str:
         "kept": kept[0].message,
         "fileless": fileless[0].message,
     }
+
+
+def _master_section() -> str:
+    """The master-element rule, quoting the review's own sentence.
+
+    Same reason as the custom-page section above: the reader acts on the
+    sentence, so a hand copy of it here would be a second version to drift.
+    """
+    buried = buried_master_findings(
+        {"video": {"x": 3.984375, "y": 0, "w": 48.75, "h": 20}},
+        {"video": {"id": "video", "type": "image"}},
+        {"video": None},
+        [{"id": "nav_bar", "type": "button", "pages": "*",
+          "placements": {"landscape": {"x": 0, "y": 0, "w": 15.859375, "h": 7.875}}}],
+        "lobby",
+        "landscape",
+        lambda _el_id: True,
+    )
+    return MASTER_INTRO % {"buried": buried[0].message}
 
 
 def _fixed_rows() -> str:
@@ -650,6 +690,7 @@ def render() -> str:
         _matrix_section(),
         COMPARISON_INTRO,
         _custom_page_section(),
+        _master_section(),
         WRITE_TAIL,
     ])
 
