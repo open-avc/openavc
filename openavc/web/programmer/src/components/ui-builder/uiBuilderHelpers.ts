@@ -7,6 +7,7 @@ import type { PluginExtension } from "../../api/pluginClient";
 import {
   CONTROL_MINIMUMS,
   REM_BASE_PX,
+  type ControlMinimumRule,
   type ControlScalingInternal,
 } from "../../api/uiMinimums.gen";
 import {
@@ -419,7 +420,9 @@ export function createDefaultElement(
           route_key_pattern: "",
         },
         matrix_style: "crosspoint",
-        style: { cell_size: 44 / 14 },
+        // No cell_size: absent means the cells fit themselves to the box. The
+        // seed used to be 44, which is the floor, so every new matrix was
+        // pinned at its smallest cell however much room it was given.
       };
     case "custom":
       // The file is chosen in the properties panel, from what is actually in
@@ -3156,19 +3159,99 @@ function scaledInternalPx(
  * image. Those are limited by their text, which is unbounded and theme
  * dependent, and is therefore not a minimum box.
  */
+/** A sub-object off the element, or an empty one. */
+function subObject(el: UIElement, name: string): Record<string, unknown> {
+  const value = (el as unknown as Record<string, unknown>)[name];
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/** An authored measurement out of `element.style`, in px (style is rem).
+ *
+ *  Mirrors `_style_px` in openavc/ui/control_minimums.py. */
+function stylePx(el: UIElement, key: string): number | null {
+  if (!key) return null;
+  const value = subObject(el, "style")[key];
+  return typeof value === "number" ? value * REM_BASE_PX : null;
+}
+
+/** Whether a ControlConditionalPart is drawn. Mirrors `part_is_present`
+ *  in openavc/ui/control_minimums.py -- each case is renderMatrix's own test. */
+function partIsPresent(when: string, el: UIElement): boolean {
+  const config = subObject(el, "matrix_config");
+  switch (when) {
+    case "label":
+      return hasCaption(el);
+    case "presets":
+      return Array.isArray(config.presets) && config.presets.length > 0;
+    case "lock_column":
+      return config.show_lock !== false;
+    case "mute_column":
+      return (
+        config.show_mute !== false &&
+        !!(subObject(el, "bindings").do as Record<string, unknown> | undefined)?.mute_route
+      );
+    default:
+      return false;
+  }
+}
+
+/** The count a RepeatedInternal repeats over. Mirrors `_count` in Python. */
+function repeatedCount(
+  el: UIElement,
+  countIn: string,
+  countKey: string,
+  fallback: number,
+): number {
+  const value = Number(subObject(el, countIn)[countKey]);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+}
+
+/** The rule this element is measured against, style variant resolved.
+ *
+ *  Mirrors `rule_for` in openavc/ui/control_minimums.py: the matrix's floor is
+ *  a different function for `crosspoint` and `list`, and the rule in the table
+ *  IS the default (crosspoint), exactly as renderMatrix reads it. */
+function ruleFor(el: UIElement): ControlMinimumRule | undefined {
+  const rule = own(CONTROL_MINIMUMS, el.type);
+  if (!rule || !rule.styleProperty) return rule;
+  const style = String(
+    (el as unknown as Record<string, unknown>)[rule.styleProperty] ?? "",
+  );
+  return own(rule.styles, style) ?? rule;
+}
+
 export function controlMinimumBox(
   el: UIElement,
   theme?: ElementDefaults,
 ): ControlMinimumBox | null {
-  const rule = own(CONTROL_MINIMUMS, el.type);
+  const rule = ruleFor(el);
   if (!rule) return null;
   let widthPx = rule.baseWidthPx;
   let heightPx = rule.baseHeightPx;
-  const internals: ResolvedInternal[] = rule.internals.map((i) => ({
-    part: i.part,
-    widthPx: i.widthPx,
-    heightPx: i.heightPx,
-  }));
+  const repeatedParts = new Set(rule.repeated.map((r) => r.part));
+  const internals: ResolvedInternal[] = rule.internals
+    .filter((i) => !repeatedParts.has(i.part))
+    .map((i) => ({ part: i.part, widthPx: i.widthPx, heightPx: i.heightPx }));
+  // The resolved cell replaces the declared one, so a warning blames the size
+  // this matrix actually draws. A crosspoint declares the same part on both
+  // axes, so the two are merged into one internal rather than reported twice.
+  const resolved = new Map<string, ResolvedInternal>();
+  for (const r of rule.repeated) {
+    const size = stylePx(el, r.sizeProperty) ?? r.sizePx;
+    const span = repeatedCount(el, r.countIn, r.countKey, r.defaultCount) * (size + r.gapPx);
+    if (r.axis === "width") widthPx += span;
+    else heightPx += span;
+    const part = resolved.get(r.part) ?? { part: r.part, widthPx: null, heightPx: null };
+    if (r.axis === "width") part.widthPx = size;
+    else part.heightPx = size;
+    resolved.set(r.part, part);
+  }
+  internals.push(...resolved.values());
+  for (const c of rule.conditionals) {
+    if (!partIsPresent(c.when, el)) continue;
+    if (c.axis === "width") widthPx += c.sizePx;
+    else heightPx += c.sizePx;
+  }
   if (rule.scalesWith) {
     const size = scaledInternalPx(rule.scalesWith, el, theme);
     widthPx += rule.scalesWith.widthCoefficient * size;

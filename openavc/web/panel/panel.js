@@ -97,6 +97,19 @@ const REM_BASE_PX = 14;
 // by every reasonable reading.
 const MATRIX_DRAG_THRESHOLD_PX = 8;
 
+// A crosspoint cell sizes itself to the room the element was given, between
+// these two. The floor is the 9mm finger rule the rest of the panel is held
+// to; above it a cell grows so a matrix given half a page draws a grid you can
+// hit from across the room instead of a postage stamp in the corner. The
+// ceiling is where growth stops paying: the dot inside is 16px (20px lit), and
+// past ~72px the grid is mostly gap and reads worse, not better.
+//
+// Below the floor a cell does not shrink -- .matrix-scroll scrolls instead --
+// which is what makes the floor a MINIMUM BOX rather than a preference, and is
+// why openavc/ui/control_minimums.py can state what a given grid needs.
+const MATRIX_CELL_MIN_PX = 44;
+const MATRIX_CELL_MAX_PX = 72;
+
 // Overlay and sidebar boxes, as percentages of the viewport. These are the
 // old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
 // against the 1280x800 reference, so an overlay that never set a size keeps
@@ -2579,7 +2592,13 @@ class PanelApp {
         const style = this.getThemedStyle('matrix', element.style);
         const activeColor = style.crosspoint_active_color || '#4CAF50';
         const inactiveColor = style.crosspoint_inactive_color || '#333333';
-        const cellSize = style.cell_size || 44 / REM_BASE_PX;
+        // An authored cell_size still pins the cell at exactly that size, which
+        // is what it has always meant. With nothing authored the cell fits
+        // itself to the box instead of sitting at a hardcoded 44px forever, so
+        // a matrix given half a page draws a grid worth touching.
+        const authoredCellPx = style.cell_size ? style.cell_size * REM_BASE_PX : null;
+        const cellMinPx = authoredCellPx ?? MATRIX_CELL_MIN_PX;
+        const cellMaxPx = authoredCellPx ?? MATRIX_CELL_MAX_PX;
 
         this.applyStyle(el, style);
 
@@ -2592,6 +2611,11 @@ class PanelApp {
 
         const scrollWrap = document.createElement('div');
         scrollWrap.className = 'matrix-scroll';
+
+        // The crosspoint grid's source names, read out under it. Built here so
+        // it can be appended after the grid; null in list style, where every
+        // row already carries its source name in a dropdown.
+        let legend = null;
 
         // Matrix state tracking
         const lockedOutputs = new Set();
@@ -2735,28 +2759,42 @@ class PanelApp {
             scrollWrap.appendChild(list);
         } else {
             // --- Crosspoint view ---
+            // The lock and mute columns are touch targets, so they get the same
+            // floor as a crosspoint rather than the 2rem they used to declare.
+            // That 2rem never was the drawn width: .matrix-cell carried a 44px
+            // min-width, so the button was laid out 44px wide inside a 28px
+            // track and overhung its neighbour. One number now, in one place.
             const extraColDefs = [];
-            if (showLock) extraColDefs.push('2rem');
-            if (showMute) extraColDefs.push('2rem');
+            if (showLock) extraColDefs.push(`${MATRIX_CELL_MIN_PX}px`);
+            if (showMute) extraColDefs.push(`${MATRIX_CELL_MIN_PX}px`);
             const table = document.createElement('div');
             table.className = 'matrix-grid';
-            table.style.gridTemplateColumns = `auto repeat(${inputCount}, ${cellSize}rem) ${extraColDefs.join(' ')}`.trim();
-            table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellSize}rem)`;
+            // minmax() is what does the fitting: the track cannot go below the
+            // floor (so a starved grid scrolls rather than drawing untouchable
+            // cells) and grows toward the ceiling with whatever room is spare.
+            // The stylesheet's `justify-content: start` keeps the auto label
+            // column from swallowing that spare room first.
+            const cellTrack = `minmax(${cellMinPx}px, ${cellMaxPx}px)`;
+            table.style.gridTemplateColumns =
+                `auto repeat(${inputCount}, ${cellTrack}) ${extraColDefs.join(' ')}`.trim();
+            table.style.gridTemplateRows = `auto repeat(${outputCount}, ${cellTrack})`;
 
             // Top-left corner cell
             const corner = document.createElement('div');
             corner.className = 'matrix-corner';
             table.appendChild(corner);
 
-            // Input headers (top row)
+            // Input headers (top row) — the column NUMBER, never the source
+            // name. Names went in here rotated 45 degrees and clipped, which
+            // left seven of eight realistic source names unreadable ("Laptop
+            // HDMI" drew 36px of the 63px it needs), and collided outright at
+            // four inputs or fewer, where they did not rotate at all. A number
+            // always fits, and the names go to the legend under the grid where
+            // there is room to read them.
             for (let i = 0; i < inputCount; i++) {
                 const header = document.createElement('div');
                 header.className = 'matrix-header matrix-input-header';
-                const span = document.createElement('span');
-                span.textContent = inputLabels[i] || `In ${i + 1}`;
-                span.dataset.inputIdx = String(i);
-                if (inputCount > 4) header.classList.add('rotated');
-                header.appendChild(span);
+                header.textContent = String(i + 1);
                 table.appendChild(header);
             }
             // Lock/Mute column headers
@@ -2961,9 +2999,32 @@ class PanelApp {
             }
 
             scrollWrap.appendChild(table);
+
+            // The source legend: which name each numbered column is. This is
+            // the half of F8 that makes numbered columns readable rather than
+            // merely unclipped, and it is where a live input name now lands --
+            // data-input-idx moved here from the header, so the state updater
+            // writes the name where there is room for it.
+            legend = document.createElement('div');
+            legend.className = 'matrix-legend';
+            for (let i = 0; i < inputCount; i++) {
+                const item = document.createElement('span');
+                item.className = 'matrix-legend-item';
+                item.dataset.inputIdx = String(i);
+                const num = document.createElement('span');
+                num.className = 'matrix-legend-num';
+                num.textContent = String(i + 1);
+                const name = document.createElement('span');
+                name.dataset.labelText = '';
+                name.textContent = inputLabels[i] || `In ${i + 1}`;
+                item.appendChild(num);
+                item.appendChild(name);
+                legend.appendChild(item);
+            }
         }
 
         el.appendChild(scrollWrap);
+        if (legend) el.appendChild(legend);
         this.elementMap[element.id] = { el, elementDef: element };
 
         // State binding for routes. Carry every glob pattern the matrix reads

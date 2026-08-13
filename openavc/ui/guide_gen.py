@@ -213,6 +213,45 @@ authored value by %(rem)s before working one out.
 |---|---|---|---|---|
 """
 
+COUNTED_INTRO = """\
+
+## The matrix, whose floor is a function of the grid you asked for
+
+A matrix has no single floor. A crosspoint grid is `input_count` columns by
+`output_count` rows of a cell that does not shrink below the finger rule, so its
+floor is a line rather than a point -- and the two `matrix_style` values are not
+the same line, because a list matrix is one dropdown per destination and its
+width does not move with the input count at all.
+
+| Type and `matrix_style` | Floor |
+|---|---|
+%(formulas)s
+
+`cell` is %(cell)spx unless `style.cell_size` authors another size, in which case the
+slope moves with it. **That value is in rem** -- px / %(rem)s, like every other style
+measurement -- and the formulas are in pixels, so multiply before using one.
+
+Then add, for each of these the matrix actually has:
+
+| Part | Adds |
+|---|---|
+%(conditionals)s
+
+Worked, for a matrix with a label and the lock column it gets by default:
+
+| Grid | %(style_names)s |
+%(example_rule)s
+%(examples)s
+
+What the floor does **not** hold is the destination names. They are a column that
+ellipsises down to its own padding, so a crosspoint grid at exactly this size is
+numbered columns and nameless rows. Text is content and is not a minimum box
+anywhere in this file. What it does hold is every crosspoint, drawn at the finger
+rule, visible without scrolling.
+
+%(notes)s
+"""
+
 NO_FLOOR_INTRO = """\
 
 ## Types with no floor at all
@@ -340,7 +379,7 @@ exactly the same way a correct one is stored and used.
 |---|---|
 | `input_count` / `output_count` | Grid size. **Default %(default_count)d each.** An 8x8 switcher that omits these silently draws half of itself. |
 | `route_key_pattern` | **The one that lights the crosspoints.** No default. |
-| `input_labels` / `output_labels` | Column and row captions. Default `In 1`..`In N` / `Out 1`..`Out N`. |
+| `input_labels` / `output_labels` | Source and destination names. Default `In 1`..`In N` / `Out 1`..`Out N`. In `crosspoint` the columns are **numbered** and the source names are read out in a legend under the grid, so a long source name costs nothing; a destination name is a row caption and ellipsises to fit its column. |
 | `input_key_pattern` / `output_key_pattern` | Captions driven from live state instead, same `*` substitution. |
 | `audio_route_key_pattern` | Audio routes, which also drives the per-output A!=V badge. |
 | `audio_follow_video` | Send the audio route alongside the video one. Needs a `do.audio_route` binding. |
@@ -477,10 +516,124 @@ def _master_section() -> str:
     return MASTER_INTRO % {"buried": buried[0].message}
 
 
+def _variants(name: str, rule) -> list[tuple[str, dict, object]]:
+    """Every rule a type can resolve to, with an element that selects it.
+
+    One entry for a normal type; for the matrix, one per ``matrix_style``, with
+    the rule in the table being the default style rather than a separate row.
+    """
+    if not rule.style_property:
+        return [(name, {"type": name}, rule)]
+    out = [(f"{name} ({rule.style_default})", {"type": name}, rule)]
+    out += [
+        (f"{name} ({style})", {"type": name, rule.style_property: style}, sub)
+        for style, sub in rule.styles.items()
+    ]
+    return out
+
+
+def _axis_formula(rule, axis: str) -> str:
+    """One axis of a counted rule, as the sum an author can work out."""
+    base = "width" if axis == "width" else "height"
+    terms = [_px(getattr(rule, f"base_{base}_px"))]
+    for repeated in rule.repeated:
+        if repeated.axis != axis:
+            continue
+        if repeated.size_property:
+            terms.append(f"{repeated.count_key} x (cell + {_px(repeated.gap_px)})")
+        else:
+            terms.append(
+                f"{repeated.count_key} x {_px(repeated.size_px + repeated.gap_px)}"
+            )
+    return " + ".join(terms)
+
+
+def _counted_formula_rows(counted) -> str:
+    return "\n".join(
+        f"| {label} | "
+        f"{_axis_formula(rule, 'width')} wide, "
+        f"{_axis_formula(rule, 'height')} tall |"
+        for label, _element, rule in counted
+    )
+
+
+def _counted_conditional_rows(counted) -> str:
+    """Every conditional part, once, with what it costs in each style."""
+    styles = [label.split("(")[1].rstrip(")") for label, _e, _r in counted]
+    order: list[tuple[str, str]] = []
+    costs: dict[tuple[str, str], dict[str, float]] = {}
+    for style, (_label, _element, rule) in zip(styles, counted, strict=True):
+        for part in rule.conditionals:
+            key = (part.when, part.axis)
+            if key not in costs:
+                costs[key] = {}
+                order.append(key)
+            costs[key][style] = part.size_px
+    described = {
+        "label": "a `label`",
+        "presets": "`presets`",
+        "lock_column": "the lock column (`show_lock`, on unless turned off)",
+        "mute_column": "the mute column (`show_mute` plus a `do.mute_route` binding)",
+    }
+    rows = []
+    for when, axis in order:
+        per_style = costs[(when, axis)]
+        sizes = set(per_style.values())
+        cost = (
+            f"{_px(sizes.pop())}px"
+            if len(sizes) == 1
+            else ", ".join(
+                f"{_px(per_style[s])}px in `{s}`" for s in styles if s in per_style
+            )
+        )
+        rows.append(f"| {described[when]} | {cost}, on the {axis} |")
+    return "\n".join(rows)
+
+
+def _counted_example_rows(counted) -> str:
+    rows = []
+    for n in (4, 8, 16):
+        boxes = []
+        for _label, element, _rule in counted:
+            grid = dict(element)
+            grid["label"] = "Routing"
+            grid["matrix_config"] = {"input_count": n, "output_count": n}
+            boxes.append(f"{_box(grid)} px")
+        rows.append(f"| {n}x{n} | {' | '.join(boxes)} |")
+    return "\n".join(rows)
+
+
+def _counted_section() -> str:
+    counted = [
+        variant
+        for name, rule in RULES.items()
+        if rule.repeated or rule.styles
+        for variant in _variants(name, rule)
+    ]
+    cell = next(
+        r.size_px for _l, _e, rule in counted for r in rule.repeated if r.size_property
+    )
+    notes = "\n".join(
+        f"**{label}** -- {rule.note}\n" for label, _e, rule in counted if rule.note
+    )
+    return COUNTED_INTRO % {
+        "formulas": _counted_formula_rows(counted),
+        "conditionals": _counted_conditional_rows(counted),
+        "examples": _counted_example_rows(counted),
+        "style_names": " | ".join(
+            label.split("(")[1].rstrip(")") for label, _e, _r in counted
+        ),
+        "example_rule": "|" + "---|" * (len(counted) + 1),
+        "cell": _px(cell),
+        "rem": _px(REM_BASE_PX),
+        "notes": notes,
+    }
+
+
 def _fixed_rows() -> str:
     rows = []
     for name, rule in RULES.items():
-        if rule.scales_with or rule.caption_width_bonus_px:
+        if rule.scales_with or rule.caption_width_bonus_px or rule.repeated:
             continue
         element = {"type": name}
         rows.append(
@@ -535,12 +688,13 @@ def _scaled_rows() -> str:
 
 def _font_driven_rows() -> str:
     seen: dict[str, list[str]] = {}
-    for name in RULES:
-        box = minimum_box({"type": name})
-        assert box is not None
-        for i in box.internals:
-            if i.origin == "font-driven":
-                seen.setdefault(_internal(i, mark_origin=False), []).append(name)
+    for name, rule in RULES.items():
+        for label, element, _sub in _variants(name, rule):
+            box = minimum_box(element)
+            assert box is not None
+            for i in box.internals:
+                if i.origin == "font-driven":
+                    seen.setdefault(_internal(i, mark_origin=False), []).append(label)
     return "\n".join(
         f"- **{part}** -- {', '.join(types)}" for part, types in seen.items()
     )
@@ -550,12 +704,14 @@ def _note_rows() -> str:
     """The notes on the rules, which say things no table column can.
 
     ``status_led`` is skipped because its note IS the caption section's prose --
-    printing it there and here would read as the same paragraph twice.
+    printing it there and here would read as the same paragraph twice. The
+    matrix's is skipped for the same reason: it belongs to the section that
+    publishes its formula.
     """
     return "\n".join(
         f"- **{name}** -- {rule.note}"
         for name, rule in RULES.items()
-        if rule.note and not rule.caption_width_bonus_px
+        if rule.note and not rule.caption_width_bonus_px and not rule.repeated
     ) + "\n"
 
 
@@ -666,6 +822,7 @@ def render() -> str:
         _caption_rows(),
         SCALED_INTRO % {"rem": _px(REM_BASE_PX)},
         _scaled_rows(),
+        _counted_section(),
         NOTES_INTRO,
         _note_rows(),
         NO_FLOOR_INTRO % {"names": _and_list(no_floor)},

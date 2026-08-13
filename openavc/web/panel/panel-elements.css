@@ -410,11 +410,23 @@
     overflow: auto;
     min-height: 0;
 }
-/* Crosspoint grid */
+/* Crosspoint grid.
+   The cell tracks are minmax(floor, ceiling) (panel.js renderMatrix), so the
+   grid has to be told it may use the whole wrapper before there is any spare
+   room for them to grow into -- hence 100% on both axes rather than the
+   fit-content it used to be, which pinned every cell at its floor no matter
+   how much of the page the matrix had been given.
+   `justify-content`/`align-content: start` are what stop the auto label
+   tracks from absorbing that spare room first: an auto track stretches under
+   the default `normal`, so the destination-name column would have eaten every
+   pixel and the cells would never have moved. */
 .panel-matrix .matrix-grid {
     display: grid;
     gap: 1px;
-    width: fit-content;
+    width: 100%;
+    height: 100%;
+    justify-content: start;
+    align-content: start;
 }
 .panel-matrix .matrix-corner {
     /* empty top-left cell */
@@ -430,17 +442,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* A column header is its NUMBER. The source names are in .matrix-legend under
+   the grid, because a name in here had nowhere to go: rotated 45 degrees and
+   capped at 4.2857rem of text above four inputs, and colliding with its
+   neighbours below that. */
 .panel-matrix .matrix-input-header {
     justify-content: center;
-}
-.panel-matrix .matrix-input-header.rotated span {
-    display: inline-block;
-    transform: rotate(-45deg);
-    transform-origin: center center;
-    font-size: 0.7143rem;
-    max-width: 4.2857rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+    /* A declared floor for the number's own row. .matrix-header sets
+       `overflow: hidden`, which makes a grid track's min-content height ZERO,
+       so without this the header row compressed to its 8px of padding and cut
+       the column numbers in half at exactly the size the review calls the
+       minimum. Declared rather than left to the line box on purpose: this is
+       the one bit of text in the control that is generated rather than
+       authored, so it can be a number the floor states rather than a font the
+       floor guesses at. */
+    min-height: 1.7857rem;
 }
 .panel-matrix .matrix-output-header {
     justify-content: flex-end;
@@ -461,6 +479,10 @@
 .panel-matrix .matrix-route-mismatch {
     flex-shrink: 0;
 }
+/* No min-width/min-height here: the grid TRACK owns the cell size now
+   (minmax in renderMatrix), and a second floor in here only contradicted it --
+   an authored cell_size below 44 got a 44px cell laid out in a smaller track,
+   which overlapped its neighbour. */
 .panel-matrix .matrix-cell {
     display: flex;
     align-items: center;
@@ -468,8 +490,6 @@
     cursor: pointer;
     border-radius: 0.2857rem;
     transition: background 0.15s;
-    min-width: 3.1429rem;
-    min-height: 3.1429rem;
 }
 .panel-matrix .matrix-cell:hover {
     background: rgba(255, 255, 255, 0.05);
@@ -484,6 +504,46 @@
     width: 1.4286rem;
     height: 1.4286rem;
     box-shadow: 0 0 0.5714rem currentColor;
+}
+/* Source legend — what each numbered column is.
+   One strip that scrolls sideways, never a block that wraps. Wrapping reads
+   better on a 4x4 and is the wrong trade everywhere else: sixteen sources with
+   real names wrap to four rows, and every one of those rows comes out of the
+   grid's height, so the control silently loses crosspoints to its own key. A
+   strip is also what lets openavc/ui/control_minimums.py state a floor at all
+   -- its height is one row whatever the names say, where a wrapping legend's
+   is text and cannot be declared. */
+.panel-matrix .matrix-legend {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5714rem;
+    flex-shrink: 0;
+    overflow-x: auto;
+    font-size: 0.7857rem;
+    line-height: 1.2rem;
+}
+.panel-matrix .matrix-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.2857rem;
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: 12rem;
+}
+.panel-matrix .matrix-legend-item > [data-label-text] {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.panel-matrix .matrix-legend-num {
+    flex-shrink: 0;
+    min-width: 1.2rem;
+    padding: 0 0.2143rem;
+    border-radius: 0.2143rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, currentColor 12%, transparent);
 }
 /* List view */
 .panel-matrix .matrix-list {
@@ -507,8 +567,14 @@
     text-overflow: ellipsis;
     flex-shrink: 0;
 }
+/* min-width: 0 so the dropdown can shrink past its own longest option. A flex
+   item's default `min-width: auto` is its min-content, which for a <select> is
+   the widest source name in it -- so the smallest box a list matrix fitted in
+   moved with whatever the sources happened to be called, and no floor could be
+   stated for it. */
 .panel-matrix .matrix-list-select {
     flex: 1;
+    min-width: 0;
     padding: 0.4286rem 0.5714rem;
     border-radius: 0.4286rem;
     border: 1px solid var(--el-surface-border, var(--panel-surface-border));
@@ -559,12 +625,20 @@
     line-height: 1rem;
     background: color-mix(in srgb, var(--panel-warning, #d4a017) 12%, transparent);
 }
-/* Presets */
+/* Presets — one strip that scrolls sideways, for the same reason the legend is
+   (see .matrix-legend): wrapped rows come out of the grid's height, and a bar
+   whose height is however many buttons someone named cannot be declared as a
+   minimum. */
 .matrix-presets {
     display: flex;
     gap: 0.2857rem;
     padding: 0.2857rem 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+.matrix-preset-btn {
+    flex-shrink: 0;
 }
 .matrix-preset-btn {
     padding: 0.2857rem 0.7143rem;

@@ -73,7 +73,7 @@ Two kinds of number live here, and the difference matters when one changes:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 # The panel's rem base: `style` measurements are px / 14 (project format 0.8.0).
@@ -167,6 +167,64 @@ def _has_caption(element: Mapping[str, Any]) -> bool:
 
 
 @dataclass(frozen=True)
+class RepeatedInternal:
+    """A part drawn once per item the element's config asks for.
+
+    The matrix is the type this exists for: a crosspoint grid is
+    ``input_count`` columns by ``output_count`` rows of a cell that does not
+    shrink, so its floor is a line rather than a point. Measured slope is
+    exactly ``size_px + gap_px`` on both axes across 2, 3, 4, 5, 6, 8, 12 and
+    16, and it stays exact when the cell is authored to another size.
+    """
+
+    part: str
+    size_px: float
+    gap_px: float
+    """The gap after each item. Slope is size + gap, not size."""
+
+    count_key: str
+    count_in: str
+    """The element property holding the count map (``matrix_config``)."""
+
+    default_count: int
+    axis: str
+    """``width`` or ``height``."""
+
+    size_property: str = ""
+    """A key in ``element.style`` (in rem) that overrides ``size_px``."""
+
+    origin: str = "declared"
+    source: str = ""
+
+
+#: Every condition a ConditionalPart may name. A closed set on purpose: each one
+#: is mirrored in TypeScript (``partIsPresent`` in uiBuilderHelpers.ts), so it is
+#: four cases in two languages rather than an expression language in either.
+CONDITIONS = ("label", "presets", "lock_column", "mute_column")
+
+
+@dataclass(frozen=True)
+class ConditionalPart:
+    """Chrome that is there or not, depending on how the element is configured.
+
+    Not an internal being crushed -- a part that either takes room or does not,
+    so it moves the floor without ever being what a starvation warning blames.
+    The lock column is the one that matters most: it is on by default and costs
+    a whole cell's width, so a floor that ignored it overstated every matrix
+    that turns it off by 45px.
+    """
+
+    part: str
+    axis: str
+    size_px: float
+    when: str
+    """One of ``CONDITIONS``."""
+
+    origin: str = "declared"
+    source: str = ""
+
+
+@dataclass(frozen=True)
 class ScalingInternal:
     """An internal whose size is authored rather than fixed.
 
@@ -194,8 +252,116 @@ class MinimumRule:
     internals: tuple[FixedInternal, ...] = ()
     scales_with: ScalingInternal | None = None
     caption_width_bonus_px: float = 0.0
+    repeated: tuple[RepeatedInternal, ...] = ()
+    conditionals: tuple[ConditionalPart, ...] = ()
+    style_property: str = ""
+    """An element property that picks a different rule -- ``matrix_style``.
+
+    The rule carrying this IS the default style, so a matrix that says nothing
+    gets the crosspoint numbers, exactly as ``renderMatrix`` does. ``styles``
+    holds only the alternatives.
+    """
+
+    styles: Mapping[str, MinimumRule] = field(default_factory=dict)
+    style_default: str = ""
+    """What the style this rule IS is called, for anything that has to name it."""
+
     note: str = ""
 
+
+# --- The matrix, whose floor is the one that is a line rather than a point ---
+#
+# It used to be recorded as a constant 278x236 for every matrix ever authored,
+# with a note saying the constant was deliberate: .matrix-scroll scrolls, so a
+# 16x16 in a 278px box "held" in the sense that nothing was crushed -- it just
+# showed a corner of itself. That reading made the floor useless for the thing
+# a floor is for. An 8x8 needs 432x429 and a 16x16 needs 792x789, and the
+# editor silently accepted either in a quarter of the room.
+#
+# Both styles measure exactly linear in their counts (2, 3, 4, 5, 6, 8, 12, 16
+# each, plus the off-diagonal 8x2, 2x8 and 16x4 to prove the axes are
+# independent), and stay exact when the cell is authored to another size.
+#
+# What the floor does NOT hold, on purpose: the destination names. They are a
+# flex column that ellipsises to its padding, so at the floor a crosspoint grid
+# is numbered columns and nameless rows. Text is content -- unbounded and
+# theme-dependent -- and this module has never claimed to size it. What the
+# floor DOES hold is every crosspoint, visible without scrolling, which is what
+# nothing anywhere could say before.
+_MATRIX_LIST = MinimumRule(
+    148, 9,
+    (FixedInternal("matrix-list-row", None, 28, "font-driven",
+                   "panel-elements.css .matrix-list-select padding + inherited font"),),
+    repeated=(
+        RepeatedInternal(
+            "matrix-list-row", 28, 6, "output_count", "matrix_config", 4, "height",
+            origin="font-driven",
+            source="panel-elements.css .matrix-list gap 0.4286rem + row height",
+        ),
+    ),
+    conditionals=(
+        ConditionalPart("matrix-label", "height", 23, "label", "font-driven",
+                        "panel-elements.css .panel-matrix gap + .matrix-label line box"),
+        ConditionalPart("matrix-presets", "height", 36, "presets", "font-driven",
+                        "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
+        ConditionalPart("matrix-lock-btn", "width", 32, "lock_column", "font-driven",
+                        "panel-elements.css .matrix-lock-btn + .matrix-list-row gap"),
+        ConditionalPart("matrix-mute-btn", "width", 28, "mute_column", "font-driven",
+                        "panel-elements.css .matrix-mute-btn + .matrix-list-row gap"),
+    ),
+    note="A list matrix is one dropdown per destination, so its width does not "
+         "move with the input count at all -- sixteen sources are sixteen "
+         "options, not sixteen columns. Recording the crosspoint floor for both "
+         "styles is what the old constant did, and it told a 16-input list it "
+         "needed 792px when it needs 180. The lock and mute buttons differ in "
+         "width here because they are glyphs rather than grid tracks, and an "
+         "unlock glyph is wider than an M.",
+)
+
+_MATRIX_CROSSPOINT = MinimumRule(
+    # 63 of that height is the element's padding, the grid gaps and the 25px
+    # column-number row (.matrix-input-header min-height 1.7857rem). That row
+    # is declared rather than left to its line box because .matrix-header sets
+    # `overflow: hidden`, which makes a grid track's min-content ZERO: without
+    # it the row compressed to 8px of padding and cut the column numbers in
+    # half at exactly the size this file calls the minimum.
+    27, 63,
+    (FixedInternal("matrix-cell", 44, 44, "declared", "panel.js MATRIX_CELL_MIN_PX"),),
+    repeated=(
+        RepeatedInternal(
+            "matrix-cell", 44, 1, "input_count", "matrix_config", 4, "width",
+            size_property="cell_size",
+            source="panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+        ),
+        RepeatedInternal(
+            "matrix-cell", 44, 1, "output_count", "matrix_config", 4, "height",
+            size_property="cell_size",
+            source="panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+        ),
+    ),
+    conditionals=(
+        ConditionalPart("matrix-label", "height", 23, "label", "font-driven",
+                        "panel-elements.css .panel-matrix gap + .matrix-label line box"),
+        ConditionalPart("matrix-presets", "height", 36, "presets", "font-driven",
+                        "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
+        ConditionalPart("lock column", "width", 45, "lock_column", "declared",
+                        "panel.js renderMatrix extraColDefs + .matrix-grid gap"),
+        ConditionalPart("mute column", "width", 45, "mute_column", "declared",
+                        "panel.js renderMatrix extraColDefs + .matrix-grid gap"),
+    ),
+    style_property="matrix_style",
+    styles={"list": _MATRIX_LIST},
+    style_default="crosspoint",
+    note="A function of the counts, which is the whole point of it: 27 + "
+         "inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the "
+         "lock and mute columns and the element's own label row. The cell is "
+         "44 -- the touch floor it will not go below, whatever room it is "
+         "given -- unless style.cell_size authors another size, in which case "
+         "the slope moves with it and stays exact. The source legend is one "
+         "strip that scrolls sideways rather than a block that wraps, so it "
+         "costs one row rather than however many rows the source names take; "
+         "the same is true of the preset bar.",
+)
 
 # The whole table. Everything below is interpretation of these rows, and the
 # generated TypeScript is a serialisation of them, so the two surfaces cannot
@@ -224,20 +390,7 @@ RULES: dict[str, MinimumRule] = {
         ),
         note="Row height does not change how wide a list has to be.",
     ),
-    "matrix": MinimumRule(
-        278, 236,
-        (FixedInternal("matrix-cell", 44, 44, "declared", "panel.js:2294 cell_size"),),
-        note="Constant, NOT a function of the crosspoint count: 2x2, 3x3 and "
-             "4x4 all floor here, because .matrix-scroll scrolls the grid "
-             "internally once it runs out of room. 278x236 rather than the "
-             "277x234 first recorded because both of those push a cell outside "
-             "the box somewhere: these floors are text-driven and move a pixel "
-             "or two with the font stack, so this is the largest of three "
-             "machines (274..278 wide, 234..236 tall) rather than any one "
-             "measurement. Where they disagree the larger wins -- a slightly "
-             "generous floor rejects a layout that would have rendered, but a "
-             "short one draws a broken control and says nothing.",
-    ),
+    "matrix": _MATRIX_CROSSPOINT,
     "level_meter": MinimumRule(13, 80, (_SEGMENT,)),
     "keypad": MinimumRule(
         86, 221, (_KEY,),
@@ -268,6 +421,64 @@ def _scaled_px(
     return float(value) * REM_BASE_PX if value is not None else scale.default_px
 
 
+def _config(element: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+    value = element.get(name)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _style_px(element: Mapping[str, Any], key: str) -> float | None:
+    """An authored measurement out of ``element.style``, in px.
+
+    Style measurements are rem (project format 0.8.0), so this is the one place
+    that multiplies back up.
+    """
+    if not key:
+        return None
+    value = _config(element, "style").get(key)
+    return float(value) * REM_BASE_PX if isinstance(value, int | float) else None
+
+
+def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
+    """Whether a ConditionalPart is drawn. Mirrored in uiBuilderHelpers.ts.
+
+    Each case is ``renderMatrix``'s own test, written the same way round: the
+    lock column is on unless turned off, and the mute column additionally needs
+    a mute_route binding, because without one the button sends a command the
+    engine has no action for and ``renderMatrix`` declines to draw it.
+    """
+    config = _config(element, "matrix_config")
+    if when == "label":
+        return _has_caption(element)
+    if when == "presets":
+        return bool(config.get("presets"))
+    if when == "lock_column":
+        return config.get("show_lock") is not False
+    if when == "mute_column":
+        return (
+            config.get("show_mute") is not False
+            and bool(_config(_config(element, "bindings"), "do").get("mute_route"))
+        )
+    return False
+
+
+def _count(repeated: RepeatedInternal, element: Mapping[str, Any]) -> int:
+    value = _config(element, repeated.count_in).get(repeated.count_key)
+    try:
+        count = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return repeated.default_count
+    return count if count > 0 else repeated.default_count
+
+
+def rule_for(element: Mapping[str, Any]) -> MinimumRule | None:
+    """The rule this element is measured against, style variant resolved."""
+    rule = RULES.get(str(element.get("type")))
+    if rule is None or not rule.style_property:
+        return rule
+    style = str(element.get(rule.style_property) or "")
+    return rule.styles.get(style, rule)
+
+
 def minimum_box(
     element: Mapping[str, Any],
     theme: Mapping[str, Any] | None = None,
@@ -277,13 +488,45 @@ def minimum_box(
     None means the type has no fixed internals at all -- a button, a label, an
     image. Those are limited by their text, which is not a minimum box.
     """
-    rule = RULES.get(str(element.get("type")))
+    rule = rule_for(element)
     if rule is None:
         return None
 
     width = rule.base_width_px
     height = rule.base_height_px
     internals = rule.internals
+
+    if rule.repeated:
+        # The resolved cell replaces the declared one, so a warning blames the
+        # size this matrix actually draws rather than the default it does not.
+        # A crosspoint declares the same part on both axes, so they are merged
+        # into one internal rather than reported twice with a hole in each.
+        resolved: dict[str, dict[str, Any]] = {}
+        for repeated in rule.repeated:
+            size = _style_px(element, repeated.size_property) or repeated.size_px
+            span = _count(repeated, element) * (size + repeated.gap_px)
+            if repeated.axis == "width":
+                width += span
+            else:
+                height += span
+            part = resolved.setdefault(
+                repeated.part,
+                {"width": None, "height": None,
+                 "origin": repeated.origin, "source": repeated.source},
+            )
+            part[repeated.axis] = size
+        internals = tuple(i for i in internals if i.part not in resolved) + tuple(
+            FixedInternal(name, p["width"], p["height"], p["origin"], p["source"])
+            for name, p in resolved.items()
+        )
+
+    for part in rule.conditionals:
+        if not part_is_present(part.when, element):
+            continue
+        if part.axis == "width":
+            width += part.size_px
+        else:
+            height += part.size_px
 
     if rule.scales_with:
         size = _scaled_px(rule.scales_with, element, theme)

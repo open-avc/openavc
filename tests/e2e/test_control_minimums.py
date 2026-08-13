@@ -46,7 +46,11 @@ SPECIMENS: dict[str, dict] = {
     "fader": {"label": "Ch", "min": -80, "max": 10},
     "slider": {"label": "Vol", "min": 0, "max": 100},
     "keypad": {"label": "PIN"},
-    "matrix": {"label": "Route", "matrix_config": {"inputs": 2, "outputs": 2}},
+    # input_count / output_count, not inputs / outputs. The keys renderMatrix
+    # reads: the pair that used to be here were ignored, so the "2x2" specimen
+    # was silently a 4x4 and the floor it recorded belonged to a grid nobody
+    # meant to measure.
+    "matrix": {"label": "Route", "matrix_config": {"input_count": 4, "output_count": 4}},
     "list": {"label": "Presets", "options": [{"value": "a", "label": "A"}]},
     "select": {"label": "Src", "options": [{"value": "a", "label": "A"}]},
     "text_input": {"label": "Name"},
@@ -148,20 +152,53 @@ ASSERT_JS = r"""
       break;
     }
     case 'matrix': {
-      const cells = qa('.matrix-cell'), rows = qa('.matrix-list-row');
+      // VISIBLE, not merely laid out. .matrix-scroll clips, so a cell can sit
+      // inside the element's own rect and still be behind a scrollbar -- which
+      // is how a 16x16 in a 278px box counted as "holding" under the constant
+      // floor this replaced, while showing a corner of itself.
+      const scroll = q('.matrix-scroll');
+      // The lock and mute buttons are .matrix-cell too, and they are NOT
+      // crosspoints: they keep the touch floor whatever cell_size authors.
+      const cells = qa('.matrix-cell:not(.matrix-toggle)');
+      const toggles = qa('.matrix-cell.matrix-toggle');
+      const rows = qa('.matrix-list-row');
+      const cellFloor = extra.style && extra.style.cell_size
+        ? extra.style.cell_size * 14 : 44;
       if (cells.length) {
         for (const c of cells) {
           const r = R(c);
-          if (r.width < 44 - TOL || r.height < 44 - TOL)
+          if (r.width < cellFloor - TOL || r.height < cellFloor - TOL)
             return bad(`cell shrank to ${r.width.toFixed(1)}x${r.height.toFixed(1)}`);
-          if (!inside(c)) return bad('a cell sits outside the box');
+        }
+        for (const t of toggles) {
+          const r = R(t);
+          if (r.width < 44 - TOL)
+            return bad(`a lock/mute button crushed to ${r.width.toFixed(1)}px wide`);
+        }
+        // The column numbers are the only thing saying which source a column
+        // is. .matrix-header sets overflow:hidden, which lets a grid track
+        // compress below its own line box, so this row halved the digits
+        // silently before it had a declared minimum.
+        for (const h of qa('.matrix-input-header')) {
+          if (R(h).height < 24.9)
+            return bad(`the column numbers are cut to ${R(h).height.toFixed(1)}px tall`);
         }
       } else if (rows.length) {
         for (const r0 of rows) {
-          if (R(r0).height < 1) return bad('a list row collapsed');
-          if (!inside(r0)) return bad('a row sits outside the box');
+          if (R(r0).height < 28 - TOL)
+            return bad(`a list row crushed to ${R(r0).height.toFixed(1)}px`);
+          const sel = r0.querySelector('.matrix-list-select');
+          if (!sel) return bad('a row lost its dropdown');
+          if (R(sel).width < 44 - TOL)
+            return bad(`a dropdown crushed to ${R(sel).width.toFixed(1)}px wide`);
         }
       } else return bad('no cells or rows');
+      if (scroll.scrollWidth > scroll.clientWidth + 1)
+        return bad(`${scroll.scrollWidth - scroll.clientWidth}px of it is off to the side`);
+      if (scroll.scrollHeight > scroll.clientHeight + 1)
+        return bad(`${scroll.scrollHeight - scroll.clientHeight}px of it is below the fold`);
+      const legend = q('.matrix-legend');
+      if (legend && !inside(legend)) return bad('the source legend is clipped');
       break;
     }
     case 'list': {
@@ -260,8 +297,10 @@ def panel_page(browser):
     context.close()
 
 
-def _holds(page, type_: str, w: float, h: float) -> tuple[bool, str]:
-    result = page.evaluate(ASSERT_JS, [type_, SPECIMENS[type_], w, h])
+def _holds(
+    page, type_: str, w: float, h: float, extra: dict | None = None,
+) -> tuple[bool, str]:
+    result = page.evaluate(ASSERT_JS, [type_, extra or SPECIMENS[type_], w, h])
     return result.get("ok", False), result.get("reason", "")
 
 
@@ -363,6 +402,112 @@ def test_an_unlabelled_status_led_is_just_the_dot(panel_page) -> None:
         assert not narrow_ok, "an unlabelled LED still fits at 19px -- 20 is too big"
     finally:
         SPECIMENS["status_led"] = {"label": "On"}
+
+
+#: Matrices whose floor the model has to predict, not just the default one.
+#:
+#: The counts are the point: an 8x8 and a 16x16 are the sizes that were being
+#: silently accepted in a box that showed a third of them, and the off-diagonal
+#: pairs are what prove the two axes are independent rather than one number
+#: fitted to the square cases. The list style is here because it is the case a
+#: single recorded constant got most wrong -- sixteen sources are sixteen
+#: options in one dropdown, not sixteen columns, so its width does not move at
+#: all.
+MATRIX_GRIDS: list[tuple[str, dict]] = [
+    ("2x2", {"matrix_config": {"input_count": 2, "output_count": 2}}),
+    ("8x8", {"matrix_config": {"input_count": 8, "output_count": 8}}),
+    ("12x12", {"matrix_config": {"input_count": 12, "output_count": 12}}),
+    ("16x4", {"matrix_config": {"input_count": 16, "output_count": 4}}),
+    ("4x16", {"matrix_config": {"input_count": 4, "output_count": 16}}),
+    ("8x8 no lock", {"matrix_config": {
+        "input_count": 8, "output_count": 8, "show_lock": False}}),
+    ("4x4 with presets", {"matrix_config": {
+        "input_count": 4, "output_count": 4,
+        "presets": [{"name": "All to 1", "macro": "m"}]}}),
+    ("8x8 cell 60", {"style": {"cell_size": 60 / 14},
+                     "matrix_config": {"input_count": 8, "output_count": 8}}),
+    ("list 8 out", {"matrix_style": "list",
+                    "matrix_config": {"input_count": 4, "output_count": 8}}),
+    ("list 16 in", {"matrix_style": "list",
+                    "matrix_config": {"input_count": 16, "output_count": 4}}),
+    ("list 16 out", {"matrix_style": "list",
+                     "matrix_config": {"input_count": 4, "output_count": 16}}),
+]
+
+
+@pytest.mark.parametrize(("name", "extra"), MATRIX_GRIDS, ids=[n for n, _ in MATRIX_GRIDS])
+def test_the_matrix_floor_predicts_every_grid_not_just_the_default(
+    panel_page, name: str, extra: dict,
+) -> None:
+    """The floor is a line now, and a line is only as good as its other points.
+
+    A constant that happened to be right for a 4x4 is what this replaced, and
+    nothing could tell -- the recorded number was checked against one grid and
+    asserted to hold for all of them. So each of these is measured both ways:
+    it must draw whole at the computed floor, and must not still draw whole
+    comfortably under it, or the model is inventing room the control does not
+    need and the Builder will reject layouts that would have rendered.
+    """
+    element = {"type": "matrix", "label": "Route", **extra}
+    box = minimum_box(element)
+    assert box is not None
+    ok, reason = _holds(panel_page, "matrix", box.width_px, box.height_px, element)
+    assert ok, (
+        f"a {name} matrix is drawn broken at its computed floor "
+        f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}"
+    )
+    narrow = box.width_px - 1 - TIGHTNESS_SLACK_PX
+    short = box.height_px - 1 - TIGHTNESS_SLACK_PX
+    narrow_ok, _ = _holds(panel_page, "matrix", narrow, box.height_px, element)
+    short_ok, _ = _holds(panel_page, "matrix", box.width_px, short, element)
+    assert not narrow_ok, (
+        f"a {name} matrix still draws whole at {narrow:.0f}px wide, more than "
+        f"{TIGHTNESS_SLACK_PX}px under its computed {box.width_px:.0f} -- the "
+        f"model overstates the width"
+    )
+    assert not short_ok, (
+        f"a {name} matrix still draws whole at {short:.0f}px tall, more than "
+        f"{TIGHTNESS_SLACK_PX}px under its computed {box.height_px:.0f} -- the "
+        f"model overstates the height"
+    )
+
+
+def test_a_matrix_at_its_floor_shows_every_crosspoint(panel_page) -> None:
+    """The floor has to mean the whole grid, not a scrollable corner of it.
+
+    This is the defect the constant hid, and it is not the same assertion as
+    the one above: a cell can keep its 44px, sit inside the element's own
+    rectangle, and still be behind .matrix-scroll's scrollbar. Under the old
+    reading a 16x16 "held" at 278x236 -- 22 of its 256 crosspoints on screen.
+    """
+    element = {"type": "matrix", "label": "Route",
+               "matrix_config": {"input_count": 16, "output_count": 16}}
+    box = minimum_box(element)
+    assert box is not None
+    seen = panel_page.evaluate(
+        """([e, w, h]) => {
+            const app = window.__openavcPanel;
+            const box = document.getElementById('box');
+            box.innerHTML = ''; box.style.width = w+'px'; box.style.height = h+'px';
+            const node = app.renderElement(e);
+            node.classList.add('panel-element');
+            node.style.position = 'absolute';
+            node.style.left = '0px'; node.style.top = '0px';
+            node.style.width = '100%'; node.style.height = '100%';
+            box.appendChild(node); void node.offsetWidth;
+            const s = node.querySelector('.matrix-scroll').getBoundingClientRect();
+            return Array.from(node.querySelectorAll('.matrix-crosspoint')).filter(d => {
+                const r = d.getBoundingClientRect();
+                return r.left >= s.left - 0.01 && r.right <= s.right + 0.01 &&
+                       r.top >= s.top - 0.01 && r.bottom <= s.bottom + 0.01;
+            }).length;
+        }""",
+        [{"id": "probe", **element}, box.width_px, box.height_px],
+    )
+    assert seen == 256, (
+        f"a 16x16 at its own floor {box.width_px:.0f}x{box.height_px:.0f} shows "
+        f"{seen} of its 256 crosspoints"
+    )
 
 
 def test_the_overridable_internals_move_the_floor(panel_page) -> None:

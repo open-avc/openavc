@@ -76,6 +76,7 @@ FLOOR_SECTIONS = (
     "Controls with a fixed floor",
     "A status LED's floor changes when it draws a caption",
     "Controls whose floor depends on a size you set",
+    "The matrix, whose floor is a function of the grid you asked for",
 )
 
 
@@ -132,15 +133,39 @@ def test_every_floorless_type_is_named_as_having_none():
         assert f"`{name}`" in listed, f"{name} has no floor and the guide never says so"
 
 
-def test_every_type_with_a_rule_appears_in_exactly_one_floor_section():
+def _owning_section(rule) -> str:
+    """Which floor section is responsible for documenting this rule.
+
+    Derived from the rule rather than from the text, because the text can no
+    longer answer it: the matrix section names a `matrix_style` called `list`,
+    and `list` is also an element type, so scanning for the word finds it twice.
+    """
+    if rule.caption_width_bonus_px:
+        return "A status LED's floor changes when it draws a caption"
+    if rule.repeated or rule.styles:
+        return "The matrix, whose floor is a function of the grid you asked for"
+    if rule.scales_with:
+        return "Controls whose floor depends on a size you set"
+    return "Controls with a fixed floor"
+
+
+def test_every_type_with_a_rule_is_documented_once_and_in_the_right_place():
+    """A type dropped from the guide is a floor the remote client never learns.
+
+    Both halves matter. Missing means the reader authors without the number;
+    listed twice means two numbers for one control, and nothing says which is
+    current when one of them stops being.
+    """
     sections = _sections()
-    for name in RULES:
-        hits = [
-            title
-            for title in FLOOR_SECTIONS
-            if name in sections[title]
-        ]
-        assert len(hits) == 1, f"{name} appears in {hits or 'no floor section'}"
+    for name, rule in RULES.items():
+        owner = _owning_section(rule)
+        assert owner in FLOOR_SECTIONS, f"{owner} is not a floor section"
+        assert name in sections[owner], f"{name} is missing from '{owner}'"
+        for title in FLOOR_SECTIONS:
+            if title == owner:
+                continue
+            named = [cells[0] for cells in _rows(sections[title])]
+            assert name not in named, f"{name} also has a row in '{title}'"
 
 
 def test_a_floor_that_is_a_formula_is_printed_as_one():

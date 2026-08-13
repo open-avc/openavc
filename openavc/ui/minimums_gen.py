@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 
 from openavc.ui.control_minimums import (
+    CONDITIONS,
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     REM_BASE_PX,
@@ -59,6 +60,34 @@ export interface ControlFixedInternal {
   source: string;
 }
 
+/** A part drawn once per item the element's config asks for. */
+export interface ControlRepeatedInternal {
+  part: string;
+  sizePx: number;
+  /** The gap after each item: the floor's slope is size + gap. */
+  gapPx: number;
+  /** The key holding the count, inside `countIn`. */
+  countKey: string;
+  countIn: string;
+  defaultCount: number;
+  axis: "width" | "height";
+  /** A key in `element.style` (in rem) that overrides `sizePx`. */
+  sizeProperty: string;
+  origin: "declared" | "font-driven";
+  source: string;
+}
+
+/** Chrome that is there or not, depending on how the element is configured. */
+export interface ControlConditionalPart {
+  part: string;
+  axis: "width" | "height";
+  sizePx: number;
+  /** One of CONTROL_MINIMUM_CONDITIONS. */
+  when: string;
+  origin: "declared" | "font-driven";
+  source: string;
+}
+
 /** An internal whose size is authored rather than fixed. */
 export interface ControlScalingInternal {
   part: string;
@@ -81,6 +110,16 @@ export interface ControlMinimumRule {
   scalesWith: ControlScalingInternal | null;
   /** Extra width once the control draws a caption beside its control. */
   captionWidthBonusPx: number;
+  repeated: ControlRepeatedInternal[];
+  conditionals: ControlConditionalPart[];
+  /**
+   * An element property that picks a different rule -- `matrix_style`. The rule
+   * carrying this IS the default style; `styles` holds only the alternatives.
+   */
+  styleProperty: string;
+  styles: Record<string, ControlMinimumRule>;
+  /** What the style this rule IS is called, for anything that has to name it. */
+  styleDefault: string;
   note: string;
 }
 
@@ -89,6 +128,9 @@ export const UI_REFERENCE = { widthPx: %(ref_w)d, heightPx: %(ref_h)d };
 
 /** The panel's rem base: style measurements are px / %(rem_base)d. */
 export const REM_BASE_PX = %(rem_base)d;
+
+/** Every condition a ControlConditionalPart may name. */
+export const CONTROL_MINIMUM_CONDITIONS = %(conditions)s as const;
 
 """
 
@@ -100,6 +142,32 @@ def _internal(i) -> dict:
         "heightPx": i.height_px,
         "origin": i.origin,
         "source": i.source,
+    }
+
+
+def _repeated(r) -> dict:
+    return {
+        "part": r.part,
+        "sizePx": r.size_px,
+        "gapPx": r.gap_px,
+        "countKey": r.count_key,
+        "countIn": r.count_in,
+        "defaultCount": r.default_count,
+        "axis": r.axis,
+        "sizeProperty": r.size_property,
+        "origin": r.origin,
+        "source": r.source,
+    }
+
+
+def _conditional(c) -> dict:
+    return {
+        "part": c.part,
+        "axis": c.axis,
+        "sizePx": c.size_px,
+        "when": c.when,
+        "origin": c.origin,
+        "source": c.source,
     }
 
 
@@ -118,6 +186,11 @@ def _rule(r) -> dict:
             "fromTheme": r.scales_with.from_theme,
         },
         "captionWidthBonusPx": r.caption_width_bonus_px,
+        "repeated": [_repeated(i) for i in r.repeated],
+        "conditionals": [_conditional(c) for c in r.conditionals],
+        "styleProperty": r.style_property,
+        "styles": {name: _rule(sub) for name, sub in r.styles.items()},
+        "styleDefault": r.style_default,
         "note": r.note,
     }
 
@@ -132,6 +205,7 @@ def render() -> str:
         "ref_w": REFERENCE_WIDTH_PX,
         "ref_h": REFERENCE_HEIGHT_PX,
         "rem_base": REM_BASE_PX,
+        "conditions": json.dumps(list(CONDITIONS)),
     }
     table = (
         "export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =\n"

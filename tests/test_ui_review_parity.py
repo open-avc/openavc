@@ -470,9 +470,12 @@ CASES["vocabulary"] = _project([
             {"id": "mtx_no_feedback", "type": "matrix",
              "matrix_config": {"input_count": 8, "output_count": 8}},
             # Fully correct: this one must come back clean, or the check would
-            # be firing on the spelling it is trying to teach.
+            # be firing on the spelling it is trying to teach. A 4x4 rather than
+            # an 8x8 because the floor is a function of the counts now, and an
+            # 8x8 does not fit the box the other three sit in -- which is what
+            # the three of them are covering.
             {"id": "mtx_ok", "type": "matrix", "matrix_config": {
-                "input_count": 8, "output_count": 8,
+                "input_count": 4, "output_count": 4,
                 "route_key_pattern": "device.acme.output.*.input",
                 "show_lock": False, "show_mute": False,
             }},

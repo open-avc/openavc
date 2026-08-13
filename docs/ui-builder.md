@@ -306,9 +306,14 @@ A **Matrix** is configured under **Basic**, not through the binding cards, and o
 |---|---|
 | **Inputs** / **Outputs** | Grid size. Both default to 4, so an 8x8 switcher needs both set or it draws half of itself. |
 | **Route key pattern** | The state key that lights the crosspoints. **No default.** |
-| **Input labels** / **Output labels** | Column and row captions. Default to "In 1"..."In N" and "Out 1"..."Out N". |
+| **Input labels** / **Output labels** | Source and destination names. Default to "In 1"..."In N" and "Out 1"..."Out N". |
 | **Audio route key pattern** | Audio routes. Also drives the badge that appears on an output whose audio route differs from its video route. |
 | **Show lock** / **Show mute** | Per-output lock and mute buttons. Lock is panel-side only: it stops that row being changed on this panel and sends nothing. Mute only appears when the Mute interaction has an action on it. |
+| **Cell size** | How big each crosspoint is drawn. Leave it blank and the grid sizes itself to the element, between 44 and 72 pixels. Type a number to pin it. |
+
+**Source names go under the grid, not above it.** In the crosspoint style the columns are numbered, and a legend under the grid says which source each number is. That legend is one strip: if there are more names than fit, it slides sideways rather than stacking up and taking room away from the grid. Destination names are the row captions down the left, and a name too long for its column is shortened from the end.
+
+**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. An 8x8 needs about 432 x 446 pixels on a 1280 x 800 panel and a 16x16 needs about 792 x 806. The Builder tells you the number for your grid if the box you drew is too small.
 
 **Route key pattern is the one to get right.** It is the state key of one output's routed input, with the output number replaced by `*`:
 

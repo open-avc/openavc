@@ -28,6 +28,34 @@ export interface ControlFixedInternal {
   source: string;
 }
 
+/** A part drawn once per item the element's config asks for. */
+export interface ControlRepeatedInternal {
+  part: string;
+  sizePx: number;
+  /** The gap after each item: the floor's slope is size + gap. */
+  gapPx: number;
+  /** The key holding the count, inside `countIn`. */
+  countKey: string;
+  countIn: string;
+  defaultCount: number;
+  axis: "width" | "height";
+  /** A key in `element.style` (in rem) that overrides `sizePx`. */
+  sizeProperty: string;
+  origin: "declared" | "font-driven";
+  source: string;
+}
+
+/** Chrome that is there or not, depending on how the element is configured. */
+export interface ControlConditionalPart {
+  part: string;
+  axis: "width" | "height";
+  sizePx: number;
+  /** One of CONTROL_MINIMUM_CONDITIONS. */
+  when: string;
+  origin: "declared" | "font-driven";
+  source: string;
+}
+
 /** An internal whose size is authored rather than fixed. */
 export interface ControlScalingInternal {
   part: string;
@@ -50,6 +78,16 @@ export interface ControlMinimumRule {
   scalesWith: ControlScalingInternal | null;
   /** Extra width once the control draws a caption beside its control. */
   captionWidthBonusPx: number;
+  repeated: ControlRepeatedInternal[];
+  conditionals: ControlConditionalPart[];
+  /**
+   * An element property that picks a different rule -- `matrix_style`. The rule
+   * carrying this IS the default style; `styles` holds only the alternatives.
+   */
+  styleProperty: string;
+  styles: Record<string, ControlMinimumRule>;
+  /** What the style this rule IS is called, for anything that has to name it. */
+  styleDefault: string;
   note: string;
 }
 
@@ -58,6 +96,9 @@ export const UI_REFERENCE = { widthPx: 1280, heightPx: 800 };
 
 /** The panel's rem base: style measurements are px / 14. */
 export const REM_BASE_PX = 14;
+
+/** Every condition a ControlConditionalPart may name. */
+export const CONTROL_MINIMUM_CONDITIONS = ["label", "presets", "lock_column", "mute_column"] as const;
 
 export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
 {
@@ -75,6 +116,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 9,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": "Dot is 20 and never shrinks. A caption adds an 8px gap plus a sliver of text, so a labelled LED needs 29 before any of the caption is legible; how much more is content, not a minimum."
   },
   "fader": {
@@ -98,6 +144,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": ""
   },
   "slider": {
@@ -114,6 +165,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       "fromTheme": true
     },
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": ""
   },
   "list": {
@@ -130,23 +186,159 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       "fromTheme": false
     },
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": "Row height does not change how wide a list has to be."
   },
   "matrix": {
-    "baseWidthPx": 278,
-    "baseHeightPx": 236,
+    "baseWidthPx": 27,
+    "baseHeightPx": 63,
     "internals": [
       {
         "part": "matrix-cell",
         "widthPx": 44,
         "heightPx": 44,
         "origin": "declared",
-        "source": "panel.js:2294 cell_size"
+        "source": "panel.js MATRIX_CELL_MIN_PX"
       }
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
-    "note": "Constant, NOT a function of the crosspoint count: 2x2, 3x3 and 4x4 all floor here, because .matrix-scroll scrolls the grid internally once it runs out of room. 278x236 rather than the 277x234 first recorded because both of those push a cell outside the box somewhere: these floors are text-driven and move a pixel or two with the font stack, so this is the largest of three machines (274..278 wide, 234..236 tall) rather than any one measurement. Where they disagree the larger wins -- a slightly generous floor rejects a layout that would have rendered, but a short one draws a broken control and says nothing."
+    "repeated": [
+      {
+        "part": "matrix-cell",
+        "sizePx": 44,
+        "gapPx": 1,
+        "countKey": "input_count",
+        "countIn": "matrix_config",
+        "defaultCount": 4,
+        "axis": "width",
+        "sizeProperty": "cell_size",
+        "origin": "declared",
+        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px"
+      },
+      {
+        "part": "matrix-cell",
+        "sizePx": 44,
+        "gapPx": 1,
+        "countKey": "output_count",
+        "countIn": "matrix_config",
+        "defaultCount": 4,
+        "axis": "height",
+        "sizeProperty": "cell_size",
+        "origin": "declared",
+        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px"
+      }
+    ],
+    "conditionals": [
+      {
+        "part": "matrix-label",
+        "axis": "height",
+        "sizePx": 23,
+        "when": "label",
+        "origin": "font-driven",
+        "source": "panel-elements.css .panel-matrix gap + .matrix-label line box"
+      },
+      {
+        "part": "matrix-presets",
+        "axis": "height",
+        "sizePx": 36,
+        "when": "presets",
+        "origin": "font-driven",
+        "source": "panel-elements.css .matrix-presets padding + .matrix-preset-btn"
+      },
+      {
+        "part": "lock column",
+        "axis": "width",
+        "sizePx": 45,
+        "when": "lock_column",
+        "origin": "declared",
+        "source": "panel.js renderMatrix extraColDefs + .matrix-grid gap"
+      },
+      {
+        "part": "mute column",
+        "axis": "width",
+        "sizePx": 45,
+        "when": "mute_column",
+        "origin": "declared",
+        "source": "panel.js renderMatrix extraColDefs + .matrix-grid gap"
+      }
+    ],
+    "styleProperty": "matrix_style",
+    "styles": {
+      "list": {
+        "baseWidthPx": 148,
+        "baseHeightPx": 9,
+        "internals": [
+          {
+            "part": "matrix-list-row",
+            "widthPx": null,
+            "heightPx": 28,
+            "origin": "font-driven",
+            "source": "panel-elements.css .matrix-list-select padding + inherited font"
+          }
+        ],
+        "scalesWith": null,
+        "captionWidthBonusPx": 0.0,
+        "repeated": [
+          {
+            "part": "matrix-list-row",
+            "sizePx": 28,
+            "gapPx": 6,
+            "countKey": "output_count",
+            "countIn": "matrix_config",
+            "defaultCount": 4,
+            "axis": "height",
+            "sizeProperty": "",
+            "origin": "font-driven",
+            "source": "panel-elements.css .matrix-list gap 0.4286rem + row height"
+          }
+        ],
+        "conditionals": [
+          {
+            "part": "matrix-label",
+            "axis": "height",
+            "sizePx": 23,
+            "when": "label",
+            "origin": "font-driven",
+            "source": "panel-elements.css .panel-matrix gap + .matrix-label line box"
+          },
+          {
+            "part": "matrix-presets",
+            "axis": "height",
+            "sizePx": 36,
+            "when": "presets",
+            "origin": "font-driven",
+            "source": "panel-elements.css .matrix-presets padding + .matrix-preset-btn"
+          },
+          {
+            "part": "matrix-lock-btn",
+            "axis": "width",
+            "sizePx": 32,
+            "when": "lock_column",
+            "origin": "font-driven",
+            "source": "panel-elements.css .matrix-lock-btn + .matrix-list-row gap"
+          },
+          {
+            "part": "matrix-mute-btn",
+            "axis": "width",
+            "sizePx": 28,
+            "when": "mute_column",
+            "origin": "font-driven",
+            "source": "panel-elements.css .matrix-mute-btn + .matrix-list-row gap"
+          }
+        ],
+        "styleProperty": "",
+        "styles": {},
+        "styleDefault": "",
+        "note": "A list matrix is one dropdown per destination, so its width does not move with the input count at all -- sixteen sources are sixteen options, not sixteen columns. Recording the crosspoint floor for both styles is what the old constant did, and it told a 16-input list it needed 792px when it needs 180. The lock and mute buttons differ in width here because they are glyphs rather than grid tracks, and an unlock glyph is wider than an M."
+      }
+    },
+    "styleDefault": "crosspoint",
+    "note": "A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. The source legend is one strip that scrolls sideways rather than a block that wraps, so it costs one row rather than however many rows the source names take; the same is true of the preset bar."
   },
   "level_meter": {
     "baseWidthPx": 13,
@@ -162,6 +354,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": ""
   },
   "keypad": {
@@ -178,6 +375,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": "86 wide rather than the 84 first recorded. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so this is the widest of the machines measured: 84 is right where that glyph is narrow and two pixels short where it is not. A keypad can never floor below 84 on any machine, because that is where three equal columns reach 20px."
   },
   "select": {
@@ -194,6 +396,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": ""
   },
   "text_input": {
@@ -210,6 +417,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
+    "repeated": [],
+    "conditionals": [],
+    "styleProperty": "",
+    "styles": {},
+    "styleDefault": "",
     "note": ""
   }
 } as const;

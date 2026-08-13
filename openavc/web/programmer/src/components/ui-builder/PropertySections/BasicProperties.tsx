@@ -977,12 +977,16 @@ export function BasicProperties({
           <FieldRow label="Cell Size">
             <input
               type="number"
-              value={remToPx(element.style?.cell_size as number) ?? 44}
+              value={remToPx(element.style?.cell_size as number) ?? ""}
+              placeholder="Auto"
               onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? pxToRem(Number(e.target.value)) : undefined } })}
               min={24} max={80} style={{ flex: 1 }}
             />
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
           </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            Blank sizes the crosspoints to the element, between 44 and 72px. A number pins them.
+          </div>
         </>
       )}
 

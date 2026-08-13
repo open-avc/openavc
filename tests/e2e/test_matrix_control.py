@@ -330,6 +330,176 @@ def test_live_input_names_reach_the_list_dropdown(panel_page) -> None:
     assert options == names, f"dropdown options are {options}"
 
 
+# ---------------------------------------------------------------------------
+# How it fits the box
+# ---------------------------------------------------------------------------
+
+def _cell_size(page) -> tuple[float, float]:
+    box = page.locator('.matrix-cell:not(.matrix-toggle)').first.bounding_box()
+    return round(box["width"], 1), round(box["height"], 1)
+
+
+def _scroll_overflow(page) -> dict:
+    return page.evaluate("""() => {
+        const s = document.querySelector('.matrix-scroll');
+        return { x: s.scrollWidth - s.clientWidth, y: s.scrollHeight - s.clientHeight };
+    }""")
+
+
+def test_crosspoint_cells_grow_into_the_room_they_are_given(panel_page) -> None:
+    """A cell was a hardcoded 44px whatever the element's box was.
+
+    So a matrix given half a page drew a postage stamp in the corner of it,
+    with the rest of the box empty -- and the only way to make the crosspoints
+    bigger was to know that `style.cell_size` existed and type a number.
+    """
+    _mount(panel_page, _matrix(), 1000, 700)
+    assert _cell_size(panel_page) == (72, 72), (
+        f"a 4x4 in a 1000x700 box drew {_cell_size(panel_page)} cells; with that "
+        f"much room they should reach the 72px maximum"
+    )
+
+
+def test_cells_stop_at_a_comfortable_maximum(panel_page) -> None:
+    """Growth is capped, not proportional. Past ~72px the dot inside is the
+    same 16px and the grid is mostly gap, so a 2x2 on a whole page would
+    otherwise draw two 500px squares."""
+    _mount(panel_page, _matrix(input_count=2, output_count=2), 1200, 760)
+    assert _cell_size(panel_page) == (72, 72)
+
+
+def test_a_tighter_box_shrinks_the_cells_before_the_grid_scrolls(panel_page) -> None:
+    """Between the maximum and the touch floor the cells give way, not the view.
+
+    Scrolling is the last resort: the gesture that scrolls an oversized grid is
+    the one a finger makes on a crosspoint, which is the whole of F2.
+    """
+    _mount(panel_page, _matrix(input_count=8, output_count=8), 520, 500)
+    w, h = _cell_size(panel_page)
+    assert 44 < w < 72 and 44 < h < 72, (
+        f"an 8x8 in a 520x500 box drew {w}x{h} cells; it has room for more than "
+        f"the 44px floor and less than the 72px maximum"
+    )
+    assert _scroll_overflow(panel_page) == {"x": 0, "y": 0}, (
+        "it shrank AND scrolled; shrinking is what avoids the scroll"
+    )
+
+
+def test_cells_stop_at_the_touch_floor_and_the_grid_scrolls(panel_page) -> None:
+    """Below 44px a crosspoint is not a touch target, so the grid scrolls
+    instead. That is the boundary openavc/ui/control_minimums.py records."""
+    _mount(panel_page, _matrix(input_count=16, output_count=16), 420, 300)
+    assert _cell_size(panel_page) == (44, 44)
+    overflow = _scroll_overflow(panel_page)
+    assert overflow["x"] > 0 and overflow["y"] > 0, (
+        f"a 16x16 in a 420x300 box should be scrolling, not fitting: {overflow}"
+    )
+
+
+def test_an_authored_cell_size_still_pins_the_cell(panel_page) -> None:
+    """Fitting is what happens when nobody said otherwise.
+
+    `style.cell_size` has always meant "this size", and a project that set it
+    must keep getting it -- in a roomy box, where fitting would have grown the
+    cell, and in a tight one, where fitting would have shrunk it.
+    """
+    element = _matrix()
+    element["style"] = {"cell_size": 60 / 14}
+    for w, h in ((1000, 700), (400, 340)):
+        _mount(panel_page, element, w, h)
+        assert _cell_size(panel_page) == (60, 60), (
+            f"an authored 60px cell drew {_cell_size(panel_page)} in a {w}x{h} box"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Source names (F8)
+# ---------------------------------------------------------------------------
+
+SOURCES = ["Apple TV", "Room PC", "Laptop HDMI", "Doc Cam",
+           "Blu-ray", "Camera 1", "Wireless", "Signage"]
+
+
+def test_column_headers_are_numbers_not_clipped_source_names(panel_page) -> None:
+    """Above four inputs the header rotated 45 degrees and capped at 4.2857rem
+    of text, which clipped seven of these eight names; at four or fewer it did
+    not rotate and they collided instead. A number always fits."""
+    _mount(panel_page, _matrix(input_count=8, input_labels=SOURCES), 700, 500)
+    headers = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-input-header')).map(h => h.textContent)""")
+    assert headers == [str(i) for i in range(1, 9)], (
+        f"column headers read {headers}"
+    )
+    assert panel_page.locator('.matrix-input-header.rotated').count() == 0, (
+        "a column header is still rotated"
+    )
+
+
+def test_the_source_legend_names_every_input_in_full(panel_page) -> None:
+    """The names have to go somewhere, and the legend is where they go.
+
+    Legible means not truncated: each entry's own text has to fit the box it is
+    drawn in, which is exactly what the rotated header could not do.
+    """
+    _mount(panel_page, _matrix(input_count=8, input_labels=SOURCES), 700, 500)
+    entries = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-legend-item')).map(item => ({
+            num: item.querySelector('.matrix-legend-num').textContent,
+            name: item.querySelector('[data-label-text]').textContent,
+            needed: item.querySelector('[data-label-text]').scrollWidth,
+            available: item.querySelector('[data-label-text]').clientWidth,
+        }))""")
+    assert [e["name"] for e in entries] == SOURCES, "the legend lost a source"
+    assert [e["num"] for e in entries] == [str(i) for i in range(1, 9)], (
+        "the legend's numbers do not line up with the column numbers"
+    )
+    clipped = [e["name"] for e in entries if e["needed"] > e["available"] + 0.5]
+    assert not clipped, f"the legend truncates {clipped}"
+
+
+def test_live_input_names_reach_the_legend(panel_page) -> None:
+    """`input_key_pattern` updates whatever carries data-input-idx, which moved
+    from the (now numbered) column header onto the legend entry."""
+    _mount(panel_page, _matrix(input_count=4,
+                               input_key_pattern="device.mx.input.*.name"), 700, 500)
+    live = ["Apple TV", "Laptop", "Camera", "Signage"]
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        f"device.mx.input.{i}.name": n for i, n in enumerate(live, 1)
+    })
+    shown = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-legend-item [data-label-text]')).map(n => n.textContent)""")
+    assert shown == live, f"the legend reads {shown}"
+    headers = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-input-header')).map(h => h.textContent)""")
+    assert headers == ["1", "2", "3", "4"], (
+        f"live names overwrote the column numbers: {headers}"
+    )
+
+
+def test_the_legend_is_one_strip_and_cannot_eat_the_grid(panel_page) -> None:
+    """Eight long names wrapped would be four rows, and every row of it comes
+    out of the grid's height -- so the control would lose crosspoints to its
+    own key, and no floor could be stated for it. It scrolls sideways instead.
+    """
+    long_names = [f"{n} in the Main Lecture Hall" for n in SOURCES]
+    _mount(panel_page, _matrix(input_count=8, input_labels=long_names), 500, 460)
+    legend = panel_page.evaluate("""() => {
+        const l = document.querySelector('.matrix-legend');
+        const items = l.querySelectorAll('.matrix-legend-item');
+        return {
+            rows: new Set(Array.from(items).map(
+                i => Math.round(i.getBoundingClientRect().top))).size,
+            wrapped: l.scrollHeight - l.clientHeight,
+            reachable: l.scrollWidth > l.clientWidth,
+        };
+    }""")
+    assert legend["rows"] == 1, f"the legend wrapped to {legend['rows']} rows"
+    assert legend["wrapped"] == 0
+    assert legend["reachable"], (
+        "these names are meant to overflow the strip, so this proves nothing"
+    )
+
+
 def test_a_long_destination_name_loses_its_tail_not_its_head(panel_page) -> None:
     """A right-aligned flex box with overflow:hidden clips the START of a line,
     and text-overflow does not apply to it -- so "Main LCD" rendered as "ain

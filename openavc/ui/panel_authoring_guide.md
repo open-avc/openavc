@@ -49,7 +49,6 @@ the container instead when the element sits in one.
 | Type | Smallest box | Of a full page | What does not shrink |
 |---|---|---|---|
 | fader | 72 x 100 px | 5.62% x 12.5% | fader-handle 44 x 44, fader-scale 28 wide |
-| matrix | 278 x 236 px | 21.72% x 29.5% | matrix-cell 44 x 44 |
 | level_meter | 13 x 80 px | 1.02% x 10% | meter-segment 2 tall |
 | keypad | 86 x 221 px | 6.72% x 27.62% | keypad-key 36 tall (font-driven) |
 | select | 44 x 51 px | 3.44% x 6.38% | native control 30 tall (font-driven) |
@@ -86,12 +85,56 @@ authored value by 14 before working one out.
 | slider | 24 + thumb_size wide, 37 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 81 px | 5.31% x 10.12% |
 | list | 28 wide, 33 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 77 px | 2.19% x 9.62% |
 
+## The matrix, whose floor is a function of the grid you asked for
+
+A matrix has no single floor. A crosspoint grid is `input_count` columns by
+`output_count` rows of a cell that does not shrink below the finger rule, so its
+floor is a line rather than a point -- and the two `matrix_style` values are not
+the same line, because a list matrix is one dropdown per destination and its
+width does not move with the input count at all.
+
+| Type and `matrix_style` | Floor |
+|---|---|
+| matrix (crosspoint) | 27 + input_count x (cell + 1) wide, 63 + output_count x (cell + 1) tall |
+| matrix (list) | 148 wide, 9 + output_count x 34 tall |
+
+`cell` is 44px unless `style.cell_size` authors another size, in which case the
+slope moves with it. **That value is in rem** -- px / 14, like every other style
+measurement -- and the formulas are in pixels, so multiply before using one.
+
+Then add, for each of these the matrix actually has:
+
+| Part | Adds |
+|---|---|
+| a `label` | 23px, on the height |
+| `presets` | 36px, on the height |
+| the lock column (`show_lock`, on unless turned off) | 45px in `crosspoint`, 32px in `list`, on the width |
+| the mute column (`show_mute` plus a `do.mute_route` binding) | 45px in `crosspoint`, 28px in `list`, on the width |
+
+Worked, for a matrix with a label and the lock column it gets by default:
+
+| Grid | crosspoint | list |
+|---|---|---|
+| 4x4 | 252 x 266 px | 180 x 168 px |
+| 8x8 | 432 x 446 px | 180 x 304 px |
+| 16x16 | 792 x 806 px | 180 x 576 px |
+
+What the floor does **not** hold is the destination names. They are a column that
+ellipsises down to its own padding, so a crosspoint grid at exactly this size is
+numbered columns and nameless rows. Text is content and is not a minimum box
+anywhere in this file. What it does hold is every crosspoint, drawn at the finger
+rule, visible without scrolling.
+
+**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. The source legend is one strip that scrolls sideways rather than a block that wraps, so it costs one row rather than however many rows the source names take; the same is true of the preset bar.
+
+**matrix (list)** -- A list matrix is one dropdown per destination, so its width does not move with the input count at all -- sixteen sources are sixteen options, not sixteen columns. Recording the crosspoint floor for both styles is what the old constant did, and it told a 16-input list it needed 792px when it needs 180. The lock and mute buttons differ in width here because they are glyphs rather than grid tracks, and an unlock glyph is wider than an M.
+
+
 ## Per-type notes
 
 Where a floor is not what the shape of the control suggests.
 
 - **list** -- Row height does not change how wide a list has to be.
-- **matrix** -- Constant, NOT a function of the crosspoint count: 2x2, 3x3 and 4x4 all floor here, because .matrix-scroll scrolls the grid internally once it runs out of room. 278x236 rather than the 277x234 first recorded because both of those push a cell outside the box somewhere: these floors are text-driven and move a pixel or two with the font stack, so this is the largest of three machines (274..278 wide, 234..236 tall) rather than any one measurement. Where they disagree the larger wins -- a slightly generous floor rejects a layout that would have rendered, but a short one draws a broken control and says nothing.
 - **keypad** -- 86 wide rather than the 84 first recorded. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so this is the widest of the machines measured: 84 is right where that glyph is narrow and two pixels short where it is not. A keypad can never floor below 84 on any machine, because that is where three equal columns reach 20px.
 
 ## Types with no floor at all
@@ -109,6 +152,7 @@ plus the finger rule below where the type is one you touch.
 
 ## Some numbers above are the theme's, not a declared size
 
+- **matrix-list-row 28 tall** -- matrix (list)
 - **keypad-key 36 tall** -- keypad
 - **native control 30 tall** -- select, text_input
 
@@ -229,7 +273,7 @@ exactly the same way a correct one is stored and used.
 |---|---|
 | `input_count` / `output_count` | Grid size. **Default 4 each.** An 8x8 switcher that omits these silently draws half of itself. |
 | `route_key_pattern` | **The one that lights the crosspoints.** No default. |
-| `input_labels` / `output_labels` | Column and row captions. Default `In 1`..`In N` / `Out 1`..`Out N`. |
+| `input_labels` / `output_labels` | Source and destination names. Default `In 1`..`In N` / `Out 1`..`Out N`. In `crosspoint` the columns are **numbered** and the source names are read out in a legend under the grid, so a long source name costs nothing; a destination name is a row caption and ellipsises to fit its column. |
 | `input_key_pattern` / `output_key_pattern` | Captions driven from live state instead, same `*` substitution. |
 | `audio_route_key_pattern` | Audio routes, which also drives the per-output A!=V badge. |
 | `audio_follow_video` | Send the audio route alongside the video one. Needs a `do.audio_route` binding. |
