@@ -165,7 +165,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": ""
   },
   "keypad": {
-    "baseWidthPx": 84,
+    "baseWidthPx": 86,
     "baseHeightPx": 221,
     "internals": [
       {
@@ -178,7 +178,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     ],
     "scalesWith": null,
     "captionWidthBonusPx": 0.0,
-    "note": ""
+    "note": "86 wide rather than the 84 first recorded. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so this is the widest of the machines measured: 84 is right where that glyph is narrow and two pixels short where it is not. A keypad can never floor below 84 on any machine, because that is where three equal columns reach 20px."
   },
   "select": {
     "baseWidthPx": 44,

@@ -25,6 +25,28 @@ box no longer holds, and also fails if one pixel LESS still holds -- which is
 what keeps these tight rather than merely safe as the panel styling changes.
 Without that second half they would rot into round numbers nobody trusts.
 
+When two machines disagree
+--------------------------
+Several of these floors are text-driven: a keypad key is as wide as the glyph
+on it needs, and a glyph is not the same width in every font stack. So the same
+control measures differently on macOS, on Linux and on the CI runner, and there
+is no single true answer to record.
+
+**The number here is the largest of the machines it has been measured on.** A
+panel is drawn on whatever the room has -- an iPad as readily as the Linux box
+the browser suite happens to run on -- and one project opens on all of them, so
+a floor that is only true on the machine that recorded it is not a floor. Being
+two pixels generous makes the review refuse a layout that would have rendered,
+and it says which control and by how much; being two pixels short draws a broken
+control on the device it was short for and says nothing at all. So where they
+disagree the larger wins.
+
+What stops "largest" from sliding into "add ten and stop thinking" is
+``TIGHTNESS_SLACK_PX`` in the e2e test: it tolerates the disagreement that has
+actually been measured between machines and fails on anything wider. That is
+also why raising one of these numbers does not need every platform re-measured
+by hand -- the suite's other half will say so on whichever machine runs it.
+
 What is deliberately NOT here
 -----------------------------
 Intrinsic content -- how wide a caption is, whether a button's label wraps.
@@ -217,7 +239,18 @@ RULES: dict[str, MinimumRule] = {
              "short one draws a broken control and says nothing.",
     ),
     "level_meter": MinimumRule(13, 80, (_SEGMENT,)),
-    "keypad": MinimumRule(84, 221, (_KEY,)),
+    "keypad": MinimumRule(
+        86, 221, (_KEY,),
+        note="86 wide rather than the 84 first recorded. The enter key's glyph "
+             "is wider than a digit, so the grid's three equal columns stop "
+             "being equal -- that column takes the room it needs and the two "
+             "digit columns divide what is left, which is what actually gets "
+             "crushed. How much it needs depends on the font, so this is the "
+             "widest of the machines measured: 84 is right where that glyph is "
+             "narrow and two pixels short where it is not. A keypad can never "
+             "floor below 84 on any machine, because that is where three equal "
+             "columns reach 20px.",
+    ),
     "select": MinimumRule(44, 51, (_CONTROL,)),
     "text_input": MinimumRule(44, 51, (_CONTROL,)),
 }
