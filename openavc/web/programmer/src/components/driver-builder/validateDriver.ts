@@ -302,6 +302,7 @@ const SECTION_BY_PATH_ROOT: Record<string, IssueSection> = {
   responses: "behavior",
   polling: "behavior",
   device_settings: "behavior",
+  routing: "behavior",
 
   // Tabs of their own.
   discovery: "discovery",

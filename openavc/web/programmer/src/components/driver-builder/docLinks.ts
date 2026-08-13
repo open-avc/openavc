@@ -35,6 +35,7 @@ export const DOCS = {
   polling: `${DOCS_BASE}/creating-drivers/#polling-section`,
   deviceSettings: `${DOCS_BASE}/creating-drivers/#device_settings-entry`,
   childEntityTypes: `${DOCS_BASE}/creating-drivers/#child_entity_types-entry`,
+  routing: `${DOCS_BASE}/creating-drivers/#routing-section`,
 
   // Single-section tabs
   discovery: `${DOCS_BASE}/creating-drivers/#discovery`,

@@ -638,6 +638,9 @@ FIELDS = {
     'discovery': {
         'ref': 'discoveryBlock',
     },
+    'routing': {
+        'ref': 'routingBlock',
+    },
 }
 
 DEFS = {
@@ -1991,6 +1994,101 @@ DEFS = {
                 'doc': 'Unsolicited messages emitted on state change, keyed by state variable.',
             },
         },
+        'extra': False,
+    },
+    'routingBlock': {
+        'type': 'object',
+        'doc': 'Optional. Says where this driver\'s routing lives, so a Matrix control can be set up from the device instead of typed from the manual. Purely additive: a driver that declares nothing is read by the same inference as before, and nothing about how the driver RUNS changes — this is answered when somebody draws a panel. Declare it when the guess is wrong or incomplete: a routing command that needs a fixed extra parameter the property name cannot supply (a signal/stream selector), a device that routes itself and has no destination child at all, or a driver carrying properties that merely read like routing (a clip indicator, a priority mode). Declaring it REPLACES the guess: these planes are the planes, in this order.',
+        'since': '0.27.0',
+        'fields': {
+            'destination_child_type': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Default child type holding the things routed TO, in the driver\'s own words (output, decoder, rx, window, zone — or input, on an audio processor whose channels each select a source). Must name a declared child_entity_type. Omit it when the device IS the destination: an AVoIP endpoint that routes its own display has no destination child, and its matrix has one row.',
+            },
+            'source_child_type': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Default child type enumerating the things routed FROM (input, encoder, tx). Must name a declared child_entity_type. Omit it when the sources come from the routing command\'s own parameter values or its declared range, which is where they are read from otherwise.',
+            },
+            'command': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Default command that performs a route. Must name a declared command. Omit it only when every plane names its own.',
+            },
+            'destination_param': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Which parameter of that command takes the destination. Optional: without it the parameter is worked out from the command, which is right for anything named output/zone/decoder or typed to the destination child type. Say it when the name is unusual, and leave it out entirely when the command addresses the device itself and takes no destination.',
+            },
+            'source_param': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Which parameter of that command takes the source. Optional in the same way as destination_param.',
+            },
+            'params': {
+                'type': 'object',
+                'doc': 'Fixed extra parameters sent with every route on every plane, on top of the source and destination. Rarely needed at this level — a signal or stream selector belongs on the plane that selects it.',
+                'extra': ANY,
+            },
+            'planes': {
+                'type': 'array',
+                'min_items': 1,
+                'doc': 'The independent things this device routes, in the order they should be offered. Usually one. A decoder that routes video, audio, IR, RS-232, USB and CEC independently declares six, because each is a separate Matrix control watching a different property — one destination with six planes is not one destination.',
+                'items': {
+                    'ref': 'routingPlane',
+                },
+            },
+        },
+        'required': ('planes',),
+        'extra': False,
+    },
+    'routingPlane': {
+        'type': 'object',
+        'doc': 'One independently routable thing. Every key the block declares can be overridden here, for a device whose planes do not all route the same way.',
+        'fields': {
+            'label': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'What to call this plane where somebody picks between them ("Video", "Extracted Audio", "RS-232"). Defaults to the routed property\'s own label.',
+            },
+            'route_property': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'The property reporting what is currently routed here — the one a crosspoint lights from. A state variable of the destination child type, or of the device itself when there is no destination child. This is the one field a plane cannot leave out: without it a Matrix can switch and can never show.',
+            },
+            'destination_child_type': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Overrides the block\'s destination child type for this plane.',
+            },
+            'source_child_type': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Overrides the block\'s source child type for this plane.',
+            },
+            'command': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Overrides the block\'s routing command for this plane. Needed wherever each plane has its own (route_video / route_audio / route_usb).',
+            },
+            'destination_param': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Overrides the block\'s destination parameter for this plane.',
+            },
+            'source_param': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Overrides the block\'s source parameter for this plane.',
+            },
+            'params': {
+                'type': 'object',
+                'doc': 'Fixed extra parameters that select THIS plane, sent with every route on it — a decoder whose one command carries signal: VIDEO / AUDIO / IR, or an encoder whose one command carries stream: usb. This is what a plane name alone cannot supply, and a required parameter left unfilled is a command the device refuses.',
+                'extra': ANY,
+            },
+        },
+        'required': ('route_property',),
         'extra': False,
     },
     'discoveryBlock': {

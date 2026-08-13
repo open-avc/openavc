@@ -156,7 +156,7 @@ def _sent(page):
     return page.evaluate("() => window.__sent")
 
 
-def _crosspoint(page, inp: int, out: int):
+def _crosspoint(page, inp, out):
     """The cell at one crosspoint, addressed by what it routes.
 
     Deliberately not `.matrix-cell` by index: the per-output lock and mute
@@ -990,3 +990,186 @@ def test_a_live_port_name_from_the_driver_reaches_the_label(panel_page) -> None:
     rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
         '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
     assert rows[0] == "Boardroom"
+
+
+# ---------------------------------------------------------------------------
+# What a driver that DECLARES its routing produces, drawn by the real renderer
+#
+# The guess is structural, so there are shapes it cannot reach: a routing
+# command needing a value no property name supplies, and a device that routes
+# itself and has no ports to enumerate. Both are in the shipped corpus, and
+# both are silent -- the first sends a command the device refuses, the second
+# offers nothing at all. These mount what a declaration produces and check the
+# renderer can use it.
+# ---------------------------------------------------------------------------
+
+#: An invented decoder whose one routing command covers several signals and is
+#: told which by a parameter. The routed property is a plain `source`, so
+#: nothing in its name says which signal -- which is exactly when the guess
+#: cannot fill the parameter in.
+ACME_UNNAMEABLE = {
+    "child_entity_types": {
+        "decoder": {
+            "label": "Decoder", "label_plural": "Decoders",
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {"source": {"type": "integer", "label": "Source"}},
+        },
+        "encoder": {
+            "label": "Encoder", "label_plural": "Encoders",
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {"name": {"type": "string"}},
+        },
+    },
+    "commands": {
+        "switch": {"params": {
+            "decoder_id": {"type": "child_id", "child_type": "decoder"},
+            "encoder_id": {"type": "child_id", "child_type": "encoder"},
+            "signal": {"type": "enum", "required": True,
+                       "values": ["ALL", "VIDEO", "IR"]},
+        }},
+    },
+    "routing": {
+        "destination_child_type": "decoder",
+        "source_child_type": "encoder",
+        "command": "switch",
+        "planes": [{"label": "Source", "route_property": "source",
+                    "params": {"signal": "ALL"}}],
+    },
+}
+
+#: An invented endpoint that IS one end of a route: it shows one thing at a
+#: time, has no destination child, and its command addresses the device.
+ACME_ENDPOINT = {
+    "state_variables": {
+        "video_source": {"type": "enum", "label": "Video Source",
+                         "values": ["None", "Input1", "Input2", "Stream"]},
+    },
+    "commands": {
+        "set_video_source": {"params": {
+            "source": {"type": "enum", "required": True,
+                       "values": ["None", "Input1", "Input2", "Stream"]},
+        }},
+    },
+    "routing": {"planes": [
+        {"label": "Video", "route_property": "video_source",
+         "command": "set_video_source", "source_param": "source"},
+    ]},
+}
+
+#: A channel carrying a real source selector alongside one that only READS
+#: like a route: it picks between Dante and analogue, not between sources.
+#: Nothing about its shape says so, so only the driver can.
+ACME_NOISY = {
+    "child_entity_types": {
+        "channel": {
+            "label": "Channel", "label_plural": "Channels",
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {
+                "primary_source": {"type": "string", "label": "Primary Source"},
+                "dante_audio_source": {"type": "enum", "label": "Dante Audio Source",
+                                       "values": ["DANTE", "NATIVE"]},
+            },
+        },
+    },
+    "commands": {
+        "set_primary_source": {"params": {
+            "channel": {"type": "child_id", "child_type": "channel"},
+            "source": {"type": "enum", "values": ["Analog 1", "Analog 2"]},
+        }},
+        "set_dante_audio_source": {"params": {
+            "channel": {"type": "child_id", "child_type": "channel"},
+            "source": {"type": "enum", "values": ["DANTE", "NATIVE"]},
+        }},
+    },
+    "routing": {"planes": [
+        {"label": "Source", "destination_child_type": "channel",
+         "route_property": "primary_source", "command": "set_primary_source"},
+    ]},
+}
+
+
+def _declared(driver: dict, device_id: str = "mx", index: int = 0):
+    """A matrix element built from a DECLARED driver, the way the picker builds one."""
+    from openavc.ui.matrix_inference import propose_matrices
+
+    proposals = propose_matrices(device_id, driver, None)
+    assert len(proposals) > index, (
+        f"this driver declares its routing and {len(proposals)} plane(s) came "
+        f"back, so there is no matrix to draw"
+    )
+    proposal = proposals[index]
+    return {
+        "id": "mx1", "type": "matrix", "label": "Routing",
+        "matrix_config": {
+            "sources": proposal["sources"],
+            "destinations": proposal["destinations"],
+        },
+        "bindings": {"do": {"route": proposal["route"]}},
+    }, proposal, proposals
+
+
+def test_a_declared_plane_routes_with_the_value_its_command_requires(panel_page) -> None:
+    """The guess leaves `signal` out, so the route is refused on the wire.
+
+    Nothing about that is visible on the panel -- the tap looks identical --
+    which is why it survived: the crosspoint lights from feedback that never
+    arrives because the command never ran.
+    """
+    element, proposal, _ = _declared(ACME_UNNAMEABLE)
+    assert proposal["route"][0]["params"] == {
+        "decoder_id": "$output", "encoder_id": "$input", "signal": "ALL",
+    }
+    _mount(panel_page, element, 700, 500)
+    _crosspoint(panel_page, 2, 1).click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": 2, "output": 1}
+    ]
+
+
+def test_a_device_that_routes_itself_draws_a_row(panel_page) -> None:
+    """No destination child at all, so the guess offers nothing to draw."""
+    _, proposal, proposals = _declared(ACME_ENDPOINT, device_id="nvx")
+    assert len(proposals) == 1, "a self-routing endpoint proposed nothing"
+    element = _declared(ACME_ENDPOINT, device_id="nvx")[0]
+    _mount(panel_page, element, 700, 500)
+    rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
+    assert rows == ["nvx"]
+    assert panel_page.locator(".matrix-crosspoint").count() == 4
+
+
+def test_a_self_routing_device_lights_off_its_own_key(panel_page) -> None:
+    """The route key has no child segment, and the renderer must read it whole."""
+    element, proposal, _ = _declared(ACME_ENDPOINT, device_id="nvx")
+    assert proposal["destinations"][0]["route_key"] == "device.nvx.video_source"
+    _mount(panel_page, element, 700, 500)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.nvx.video_source": "Input2"})
+    lit = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-crosspoint.active')
+    ).map(c => `${c.dataset.input}->${c.dataset.output}`)""")
+    assert lit == ["Input2->nvx"]
+
+
+def test_a_self_routing_tap_sends_the_source_and_the_device(panel_page) -> None:
+    element, _, _ = _declared(ACME_ENDPOINT, device_id="nvx")
+    _mount(panel_page, element, 700, 500)
+    _crosspoint(panel_page, "Input1", "nvx").click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": "Input1", "output": "nvx"}
+    ]
+
+
+def test_a_declaration_leaves_only_the_planes_it_declared(panel_page) -> None:
+    """The selector that only reads like a route must not be offered.
+
+    A matrix built from it would draw two convincing crosspoints per channel
+    that switch the audio backend rather than the source.
+    """
+    element, proposal, proposals = _declared(ACME_NOISY, device_id="amp")
+    assert [p["route_property"] for p in proposals] == ["primary_source"]
+    _mount(panel_page, element, 700, 500)
+    assert panel_page.locator(".matrix-crosspoint").count() == 4
+    assert proposal["destinations"][0]["route_key"] == (
+        "device.amp.channel.1.primary_source"
+    )

@@ -157,6 +157,11 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "liveness",
     ),
     (
+        "routing",
+        _d(routing={"planes": [{"route_property": "nowhere"}]}),
+        "routing",
+    ),
+    (
         "actions (block)",
         _d(quick_actions="noop"),
         "actions",

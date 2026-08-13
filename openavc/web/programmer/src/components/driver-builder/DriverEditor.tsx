@@ -22,6 +22,7 @@ import { ResponseBuilder } from "./ResponseBuilder";
 import { PollingConfig } from "./PollingConfig";
 import { StateVariableEditor } from "./StateVariableEditor";
 import { ChildEntityTypesEditor } from "./ChildEntityTypesEditor";
+import { RoutingEditor } from "./RoutingEditor";
 import { DiscoveryHintsEditor } from "./DiscoveryHintsEditor";
 import { DeviceSettingsEditor } from "./DeviceSettingsEditor";
 import { SimulatorEditor } from "./SimulatorEditor";
@@ -218,6 +219,7 @@ export function DriverEditor({
   // which sections are populated without expanding every panel.
   const stateCount = Object.keys(draft.state_variables ?? {}).length;
   const childTypeCount = Object.keys(draft.child_entity_types ?? {}).length;
+  const routingPlaneCount = draft.routing?.planes?.length ?? 0;
   const commandCount = Object.keys(draft.commands ?? {}).length;
   const responseCount = (draft.responses ?? []).length;
   // Actions header meta: explicit actions plus legacy quick_actions count as
@@ -882,6 +884,16 @@ export function DriverEditor({
               helpHref={DOCS.childEntityTypes}
             >
               <ChildEntityTypesEditor draft={draft} onUpdate={onUpdate} />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Routing"
+              subtitle="Optional — where this driver's routing lives, so a Matrix control can be set up from the device. Leave it off for anything that does not switch."
+              meta={routingPlaneCount ? countMeta(routingPlaneCount, "plane") : "not declared"}
+              defaultOpen={routingPlaneCount > 0}
+              helpHref={DOCS.routing}
+            >
+              <RoutingEditor draft={draft} onUpdate={onUpdate} />
             </CollapsibleSection>
 
             <CollapsibleSection

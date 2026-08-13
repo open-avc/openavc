@@ -2019,6 +2019,15 @@ def validate_driver_definition(
         "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
     )
 
+    # Validate the optional `routing:` block (where this driver's routing
+    # lives, so a Matrix can be set up from the device). Every rule here is a
+    # cross-reference: a plane naming a child type, a property or a command the
+    # driver does not declare produces a Matrix that draws nothing or sends a
+    # command the device refuses, and it does it at the moment somebody is
+    # commissioning a space rather than here.
+    errors.ctx = "routing"
+    errors.extend(routing_block_errors(driver_def))
+
     # Every {name} the driver writes into a wire template has to resolve.
     # Sits with the other cross-reference rules in spirit: it is the same
     # question — does this name point at something the driver declares — asked
@@ -2042,6 +2051,209 @@ def validate_driver_definition(
         errors.extend(platform_version_errors(driver_def))
 
     return errors
+
+
+#: The keys a plane may inherit from the block above it.
+_ROUTING_INHERITED: tuple[str, ...] = (
+    "destination_child_type",
+    "source_child_type",
+    "command",
+    "destination_param",
+    "source_param",
+)
+
+
+def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
+    """Check the optional ``routing:`` block against what the driver declares.
+
+    The block is a set of names pointing at other parts of the same file —
+    a child type, a property on it, a command, that command's parameters — and
+    every one of them is a place a typo hides. It hides *well*: nothing here
+    runs when the driver runs. A wrong `route_property` is a Matrix whose
+    crosspoints never light, a wrong `command` is a tap that sends nothing, and
+    both surface weeks later in a commissioned space rather than at the moment
+    the driver was written.
+
+    Declaring the block REPLACES the guess (``matrix_inference``), so an
+    unusable declaration is worse than none: it silently takes the place of an
+    inference that would have worked.
+    """
+    block = driver_def.get("routing")
+    if block is None:
+        return []
+    errors: list[str] = []
+    if not isinstance(block, dict):
+        return ["routing: must be a mapping with a 'planes' list"]
+
+    child_types = driver_def.get("child_entity_types")
+    child_types = child_types if isinstance(child_types, dict) else {}
+    commands = driver_def.get("commands")
+    commands = commands if isinstance(commands, dict) else {}
+    device_vars = driver_def.get("state_variables")
+    device_vars = device_vars if isinstance(device_vars, dict) else {}
+
+    def child_state_vars(child_type: str) -> dict[str, Any] | None:
+        schema = child_types.get(child_type)
+        if not isinstance(schema, dict):
+            return None
+        declared = schema.get("state_variables")
+        # A Python driver that builds its child properties at construction time
+        # reads back as UNEVALUATED here. That is not a missing property, so
+        # the check has nothing to say about it.
+        if declared == UNEVALUATED_KEY:
+            return None
+        return declared if isinstance(declared, dict) else {}
+
+    def command_params(command: str) -> dict[str, Any] | None:
+        entry = commands.get(command)
+        if not isinstance(entry, dict):
+            return None
+        params = entry.get("params")
+        if params == UNEVALUATED_KEY:
+            return None
+        return params if isinstance(params, dict) else {}
+
+    planes = block.get("planes")
+    if not isinstance(planes, list) or not planes:
+        errors.append(
+            "routing: needs a non-empty 'planes' list — the independent things "
+            "this device routes (usually one; a decoder that routes video, "
+            "audio and USB separately declares three)"
+        )
+        planes = []
+
+    for key in _ROUTING_INHERITED:
+        value = block.get(key)
+        if value is not None and (not isinstance(value, str) or not value):
+            errors.append(f"routing.{key}: must be a non-empty string")
+
+    seen: dict[tuple[str, str], int] = {}
+    for index, raw in enumerate(planes):
+        where = f"routing.planes[{index}]"
+        if not isinstance(raw, dict):
+            errors.append(f"{where}: must be a mapping")
+            continue
+        plane = {**{k: block.get(k) for k in _ROUTING_INHERITED}, **raw}
+
+        route_property = raw.get("route_property")
+        if not isinstance(route_property, str) or not route_property:
+            errors.append(
+                f"{where}: missing required 'route_property' (the property "
+                f"reporting what is routed here — without it a Matrix can "
+                f"switch and can never show what is on)"
+            )
+            route_property = ""
+
+        dest_type = plane.get("destination_child_type")
+        if dest_type is not None and not isinstance(dest_type, str):
+            dest_type = None
+        if dest_type and dest_type not in child_types:
+            errors.append(
+                f"{where}: destination_child_type '{dest_type}' is not a "
+                f"declared child_entity_type"
+                + _did_you_mean(dest_type, set(child_types))
+            )
+        elif route_property:
+            # Where the routed property has to live: on the destination child
+            # when there is one, on the device itself when the device IS the
+            # destination.
+            if dest_type:
+                declared_vars = child_state_vars(dest_type)
+                origin = f"child type '{dest_type}'"
+            else:
+                declared_vars = device_vars
+                origin = "this driver"
+            if declared_vars is not None and route_property not in declared_vars:
+                errors.append(
+                    f"{where}: route_property '{route_property}' is not a "
+                    f"state variable of {origin}"
+                    + _did_you_mean(route_property, set(declared_vars))
+                )
+
+        source_type = plane.get("source_child_type")
+        if isinstance(source_type, str) and source_type and source_type not in child_types:
+            errors.append(
+                f"{where}: source_child_type '{source_type}' is not a "
+                f"declared child_entity_type"
+                + _did_you_mean(source_type, set(child_types))
+            )
+
+        command = plane.get("command")
+        if command is not None and not isinstance(command, str):
+            command = None
+        params: dict[str, Any] | None = None
+        if command:
+            if command not in commands:
+                errors.append(
+                    f"{where}: command '{command}' is not a declared command"
+                    + _did_you_mean(command, set(commands))
+                )
+            else:
+                params = command_params(command)
+
+        # A parameter name, or a fixed extra, without a command to send it on.
+        # Nothing would carry it, so it is a line that reads as configured and
+        # does nothing.
+        named = [
+            key for key in ("destination_param", "source_param", "params")
+            if raw.get(key) is not None or (key != "params" and block.get(key) is not None)
+        ]
+        if not command and raw.get("params") is not None:
+            errors.append(
+                f"{where}: 'params' needs a 'command' to send them on — "
+                f"declare the routing command here or on the routing block"
+            )
+        elif not command and any(k in named for k in ("destination_param", "source_param")):
+            errors.append(
+                f"{where}: names a routing parameter but no 'command' — "
+                f"declare the routing command here or on the routing block"
+            )
+
+        taken: list[str] = []
+        for key in ("destination_param", "source_param"):
+            value = plane.get(key)
+            if not isinstance(value, str) or not value:
+                continue
+            taken.append(value)
+            if params is not None and value not in params:
+                errors.append(
+                    f"{where}: {key} '{value}' is not a parameter of "
+                    f"command '{command}'" + _did_you_mean(value, set(params))
+                )
+
+        extra = raw.get("params")
+        if extra is not None and not isinstance(extra, dict):
+            errors.append(f"{where}: 'params' must be a mapping of parameter name to value")
+        elif isinstance(extra, dict):
+            for name in extra:
+                if name in taken:
+                    errors.append(
+                        f"{where}: params.{name} is already the route's "
+                        f"{'destination' if name == plane.get('destination_param') else 'source'}"
+                        f" — a fixed value here would overwrite what the panel routes"
+                    )
+                elif params is not None and name not in params:
+                    errors.append(
+                        f"{where}: params.{name} is not a parameter of "
+                        f"command '{command}'" + _did_you_mean(name, set(params))
+                    )
+
+        if route_property:
+            key = (dest_type or "", route_property)
+            if key in seen:
+                errors.append(
+                    f"{where}: already declared by routing.planes[{seen[key]}] "
+                    f"— two planes watching one property are the same matrix twice"
+                )
+            else:
+                seen[key] = index
+
+    return errors
+
+
+def _did_you_mean(name: str, candidates: set[str]) -> str:
+    closest = _closest_name(name, candidates)
+    return f" (did you mean '{closest}'?)" if closest else ""
 
 
 def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:

@@ -101,6 +101,11 @@ NOT_A_CONTRACT_KEY = {
                      "keepalive.",
     "verify_timeout": "A default_config key that bounds the pre-connect "
                       "reachability probe.",
+    "signal": "A routing command's own parameter name, quoted in the routing "
+              "section as the example of a value a plane must supply. What "
+              "an author calls it is theirs, not the contract's.",
+    "stream": "Same: the other spelling a shipped AVoIP decoder uses for the "
+              "parameter that says which signal is being routed.",
 }
 
 _FENCE = re.compile(r"^```yaml\n(.*?)^```", re.DOTALL | re.MULTILINE)

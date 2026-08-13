@@ -63,6 +63,13 @@ _NOT_ROUTED = frozenset({
     "signal_input", "sync_input", "active_input_format",
     # The source's own name, not the source.
     "source_name", "input_name", "source_label", "input_label",
+    # Its kind, how it is being selected, or all of them at once -- each is a
+    # fact ABOUT the routing rather than a thing that can be routed. Every one
+    # of these is in the shipped corpus: a "Priority Mode" of Override/Backup
+    # proposed a matrix of two dozen analog inputs, and a list of the window
+    # aliases on an output proposed one with no command at all.
+    "source_type", "input_type", "source_mode", "input_mode",
+    "source_list", "input_list",
 })
 
 #: A command parameter that names the DESTINATION of a route. The trailing
@@ -511,12 +518,18 @@ def _proposal_warnings(
     route_var: Mapping[str, Any],
     unfilled_params: Sequence[str],
     from_roster: bool,
+    declared: bool = False,
 ) -> list[str]:
     """What this proposal cannot know, said before it is applied rather than after.
 
     Every one of these is a real state a shipped driver reaches. They are
     warnings and not refusals because the author is the one who can settle them,
     and the picker is where they are standing.
+
+    A declaration answers the one question that is about STRUCTURE -- whether
+    this really is the end being routed to -- and none of the others, which are
+    all about VALUES. A driver can say where its routing lives and still accept
+    route tokens it does not report back.
     """
     warnings: list[str] = []
     if not destinations:
@@ -573,7 +586,7 @@ def _proposal_warnings(
             f"what to send. Fill that in on the Video route action in the Bindings "
             f"tab, or the command will be refused.",
         )
-    if _SOURCE_CHILD_TYPE.match(dest_ctype):
+    if _SOURCE_CHILD_TYPE.match(dest_ctype) and not declared:
         warnings.append(
             f"The destinations here are children called '{dest_ctype}', which usually "
             f"names a source. That is correct on some audio processors and wrong on a "
@@ -582,33 +595,191 @@ def _proposal_warnings(
     return warnings
 
 
-def propose_matrices(
-    device_id: str,
-    driver_info: Mapping[str, Any] | None,
-    children: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
-) -> list[dict[str, Any]]:
-    """Every routing plane this device declares, as a matrix somebody could apply.
+#: Keys a declared plane may inherit from the ``routing:`` block above it.
+_INHERITED: tuple[str, ...] = (
+    "destination_child_type",
+    "source_child_type",
+    "command",
+    "destination_param",
+    "source_param",
+)
 
-    Ordered most-confident first. An empty list means the driver declares nothing
-    that looks like routing, which is a real answer and not a failure -- most
-    drivers are not switchers.
+
+class _Plane:
+    """One routing plane, however it was arrived at: guessed or declared.
+
+    The two paths differ entirely in how these fields are FOUND and not at all
+    in what is done with them, so they meet here and one builder renders both.
     """
-    info = _as_mapping(driver_info)
-    child_types = _as_mapping(info.get("child_entity_types"))
-    commands = _as_mapping(info.get("commands"))
-    roster = _Children(children)
 
-    proposals: list[dict[str, Any]] = []
+    __slots__ = (
+        "dest_ctype", "prop", "route_var", "source_ctype", "command",
+        "dest_param", "source_param", "source_param_def", "params",
+        "unfilled", "label", "declared", "typed",
+    )
+
+    def __init__(
+        self, *, dest_ctype: str, prop: str, route_var: Mapping[str, Any],
+        source_ctype: str | None, command: str | None, dest_param: str,
+        source_param: str, source_param_def: Mapping[str, Any],
+        params: Mapping[str, Any], unfilled: Sequence[str], label: str,
+        declared: bool, typed: bool,
+    ) -> None:
+        self.dest_ctype = dest_ctype
+        self.prop = prop
+        self.route_var = dict(route_var)
+        self.source_ctype = source_ctype
+        self.command = command
+        self.dest_param = dest_param
+        self.source_param = source_param
+        self.source_param_def = dict(source_param_def)
+        self.params = dict(params)
+        self.unfilled = list(unfilled)
+        self.label = label
+        self.declared = declared
+        self.typed = typed
+
+
+def _route_ends(
+    params: Mapping[str, Any], dest_ctype: str,
+    declared_dest: str, declared_source: str,
+) -> tuple[str, str]:
+    """Which parameter of a NAMED command takes each end of a route.
+
+    The guessing path searches every command for a pair; here the command is
+    already known, so this only has to say which parameter is which. A driver
+    that says so is believed outright, including saying nothing: a command
+    addressing the device itself takes no destination at all, which is what an
+    AVoIP endpoint's ``set_video_source(source)`` looks like.
+    """
+    dest = declared_dest
+    if not dest:
+        dest = next(
+            (
+                p for p, d in params.items()
+                if _as_mapping(d).get("type") == "child_id"
+                and str(_as_mapping(d).get("child_type") or "") == dest_ctype
+            ),
+            "",
+        ) or next((p for p in params if _DESTINATION_PARAM.match(p)), "")
+    source = declared_source or next(
+        (p for p in params if p != dest and _SOURCE_PARAM.match(p)), "",
+    )
+    return dest, source
+
+
+def _declared_unfilled(
+    params: Mapping[str, Any], taken: Sequence[str], provided: Mapping[str, Any],
+) -> list[str]:
+    """Required parameters of a declared route that nothing supplies a value for."""
+    return [
+        name for name, raw in params.items()
+        if name not in taken and name not in provided
+        and _as_mapping(raw).get("required") and "default" not in _as_mapping(raw)
+    ]
+
+
+def _declared_planes(
+    info: Mapping[str, Any], child_types: Mapping[str, Any], commands: Mapping[str, Any],
+) -> list[_Plane] | None:
+    """The planes a driver DECLARES, or None when it declares none.
+
+    A ``routing:`` block replaces the guess rather than joining it: the planes
+    it lists are the planes, in the order it lists them. That is most of its
+    value. Inference is structural, so a property that merely reads like routing
+    -- a clip indicator, a priority mode, a list of window aliases -- proposes a
+    matrix whose crosspoints mean nothing, and only the driver can say it is not
+    one.
+
+    A block that yields no usable plane returns None and the guess runs, because
+    the authoring gates already refuse a malformed block (``routing_block_errors``)
+    and a driver that reached a running instance broken is better served by the
+    guess than by nothing.
+    """
+    block = _as_mapping(info.get("routing"))
+    raw_planes = block.get("planes")
+    if not isinstance(raw_planes, Sequence) or isinstance(raw_planes, str | bytes):
+        return None
+
+    planes: list[_Plane] = []
+    for raw in raw_planes:
+        if not isinstance(raw, Mapping):
+            continue
+        merged: dict[str, Any] = {k: block.get(k) for k in _INHERITED}
+        merged.update(raw)
+        prop = str(merged.get("route_property") or "").strip()
+        if not prop:
+            continue
+
+        dest_ctype = str(merged.get("destination_child_type") or "").strip()
+        source_ctype = str(merged.get("source_child_type") or "").strip() or None
+        command = str(merged.get("command") or "").strip() or None
+        # Fixed extras belong to the plane, and only the plane's own -- a
+        # `signal: VIDEO` inherited onto the audio plane would route video.
+        params = _as_mapping(raw.get("params")) or _as_mapping(block.get("params"))
+
+        dest_param = source_param = ""
+        source_param_def: Mapping[str, Any] = {}
+        unfilled: list[str] = []
+        if command:
+            command_params = _as_mapping(_as_mapping(commands.get(command)).get("params"))
+            dest_param, source_param = _route_ends(
+                command_params, dest_ctype,
+                str(merged.get("destination_param") or "").strip(),
+                str(merged.get("source_param") or "").strip(),
+            )
+            source_param_def = _as_mapping(command_params.get(source_param))
+            unfilled = _declared_unfilled(
+                command_params, [dest_param, source_param], params,
+            )
+        if source_param_def.get("type") == "child_id":
+            source_ctype = str(source_param_def.get("child_type") or "") or source_ctype
+
+        schema = _as_mapping(child_types.get(dest_ctype)) if dest_ctype else {}
+        route_var = _as_mapping(_as_mapping(schema.get("state_variables")).get(prop))
+        if not dest_ctype:
+            route_var = _as_mapping(_as_mapping(info.get("state_variables")).get(prop))
+
+        planes.append(_Plane(
+            dest_ctype=dest_ctype,
+            prop=prop,
+            route_var=route_var,
+            source_ctype=source_ctype,
+            command=command,
+            dest_param=dest_param,
+            source_param=source_param,
+            source_param_def=source_param_def,
+            params=params,
+            unfilled=unfilled,
+            label=str(raw.get("label") or "").strip() or _plane_label(prop, route_var),
+            declared=True,
+            # A declared plane is not a guess, so it never reads as a weaker
+            # one. The picker shows a caveat below "high" and there is nothing
+            # here to be unsure about.
+            typed=True,
+        ))
+    return planes or None
+
+
+def _guessed_planes(
+    child_types: Mapping[str, Any], commands: Mapping[str, Any], roster: _Children,
+) -> list[_Plane]:
+    """Every plane a driver's shape implies, for a driver that declares none."""
+    planes: list[_Plane] = []
     for dest_ctype, raw_schema in child_types.items():
         schema = _as_mapping(raw_schema)
         state_vars = _as_mapping(schema.get("state_variables"))
-        name_prop = _child_name_property(state_vars)
-        ports = roster.entries(dest_ctype, schema)
 
         for prop, raw_var in state_vars.items():
             if prop.lower() in _NOT_ROUTED or not _ROUTED_PROPERTY.match(prop):
                 continue
             route_var = _as_mapping(raw_var)
+            # A routed source is a port, a name or a number; it is never a
+            # yes/no. Two shipped drivers carry a boolean `input_clip` and
+            # `input_signal_detect` -- clip and presence read-outs -- and each
+            # proposed a matrix offering two dozen inputs against true/false.
+            if route_var.get("type") == "boolean":
+                continue
 
             source_ctype = next(
                 (c for c in child_types if c != dest_ctype and _SOURCE_CHILD_TYPE.match(c)),
@@ -623,78 +794,157 @@ def propose_matrices(
             if source_param_def.get("type") == "child_id":
                 source_ctype = str(source_param_def.get("child_type") or "") or source_ctype
 
-            sources, source_origin = _sources_from(
-                device_id, source_param_def, source_ctype, child_types, roster, route_var,
-            )
-
-            destinations = []
-            for position, (local, padded, label) in enumerate(ports):
-                entry: dict[str, Any] = {
-                    "value": local,
-                    "label": _entry_label(label, schema, dest_ctype, position + 1),
-                    "route_key": f"device.{device_id}.{dest_ctype}.{padded}.{prop}",
-                }
-                if name_prop:
-                    entry["label_key"] = (
-                        f"device.{device_id}.{dest_ctype}.{padded}.{name_prop}"
-                    )
-                destinations.append(entry)
-
-            plane_params: dict[str, Any] = {}
+            params: dict[str, Any] = {}
             unfilled: list[str] = []
             if command:
-                plane_params, unfilled = _plane_params(
+                params, unfilled = _plane_params(
                     _as_mapping(_as_mapping(commands.get(command)).get("params")),
                     (dest_param, source_param),
                     _plane_token(prop),
                 )
-            route = (
-                [{
-                    "action": "device.command",
-                    "device": device_id,
-                    "command": command,
-                    "params": {
-                        dest_param: "$output",
-                        source_param: "$input",
-                        **plane_params,
-                    },
-                }]
-                if command
-                else None
+
+            planes.append(_Plane(
+                dest_ctype=dest_ctype,
+                prop=prop,
+                route_var=route_var,
+                source_ctype=source_ctype,
+                command=command,
+                dest_param=dest_param,
+                source_param=source_param,
+                source_param_def=source_param_def,
+                params=params,
+                unfilled=unfilled,
+                label=_plane_label(prop, route_var),
+                declared=False,
+                typed=bool(found) and found.typed,
+            ))
+    return planes
+
+
+def _proposal(
+    device_id: str, plane: _Plane, child_types: Mapping[str, Any], roster: _Children,
+) -> dict[str, Any]:
+    """One plane, rendered as the matrix somebody could apply."""
+    dest_ctype = plane.dest_ctype
+    schema = _as_mapping(child_types.get(dest_ctype)) if dest_ctype else {}
+    name_prop = _child_name_property(_as_mapping(schema.get("state_variables")))
+
+    sources, source_origin = _sources_from(
+        device_id, plane.source_param_def, plane.source_ctype, child_types,
+        roster, plane.route_var,
+    )
+
+    destinations: list[dict[str, Any]] = []
+    if dest_ctype:
+        for position, (local, padded, label) in enumerate(
+            roster.entries(dest_ctype, schema),
+        ):
+            entry: dict[str, Any] = {
+                "value": local,
+                "label": _entry_label(label, schema, dest_ctype, position + 1),
+                "route_key": f"device.{device_id}.{dest_ctype}.{padded}.{plane.prop}",
+            }
+            if name_prop:
+                entry["label_key"] = f"device.{device_id}.{dest_ctype}.{padded}.{name_prop}"
+            destinations.append(entry)
+        from_roster = roster.registered(dest_ctype)
+        plural = str(schema.get("label_plural") or schema.get("label") or dest_ctype)
+        where = f"Each '{dest_ctype}' reports its routed source in '{plane.prop}'"
+    else:
+        # The device routes ITSELF: an AVoIP endpoint whose display shows one
+        # source at a time has no destination child, and its matrix is one row.
+        # A room of them is one element per device, which the model already
+        # allows -- every destination carries its own route key.
+        destinations = [{
+            "value": device_id,
+            "label": device_id,
+            "route_key": f"device.{device_id}.{plane.prop}",
+        }]
+        from_roster = True
+        plural = "This device"
+        where = f"This device reports its routed source in '{plane.prop}'"
+
+    route = (
+        [{
+            "action": "device.command",
+            "device": device_id,
+            "command": plane.command,
+            "params": {
+                **({plane.dest_param: "$output"} if plane.dest_param else {}),
+                **({plane.source_param: "$input"} if plane.source_param else {}),
+                **plane.params,
+            },
+        }]
+        if plane.command
+        else None
+    )
+
+    if plane.command:
+        ends = (
+            f"'{plane.command}' takes "
+            + (
+                f"the destination as '{plane.dest_param}' and "
+                if plane.dest_param
+                else "no destination (it addresses the device itself) and "
             )
+            + (
+                f"the source as '{plane.source_param}'."
+                if plane.source_param
+                else "no source, which is a route that cannot say what to route."
+            )
+        )
+    else:
+        ends = "no command on this driver routes one to another."
 
-            plural = str(schema.get("label_plural") or schema.get("label") or dest_ctype)
-            plane = _plane_label(prop, route_var)
-            typed = bool(found) and found.typed
-            proposals.append({
-                "id": f"{dest_ctype}.{prop}",
-                "device_id": device_id,
-                "label": f"{plural} -- {plane}",
-                "destination_child_type": dest_ctype,
-                "route_property": prop,
-                "source_child_type": source_ctype,
-                "command": command,
-                "confidence": "high" if typed else "medium" if command else "low",
-                "why": (
-                    f"Each '{dest_ctype}' reports its routed source in '{prop}', and "
-                    + (
-                        f"'{command}' takes the destination as '{dest_param}' and the "
-                        f"source as '{source_param}'."
-                        if command
-                        else "no command on this driver routes one to another."
-                    )
-                    + f" Sources come from {source_origin}."
-                ),
-                "from_roster": roster.registered(dest_ctype),
-                "warnings": _proposal_warnings(
-                    sources, destinations, command, dest_ctype, route_var, unfilled,
-                    roster.registered(dest_ctype),
-                ),
-                "sources": sources,
-                "destinations": destinations,
-                "route": route,
-            })
+    return {
+        "id": f"{dest_ctype}.{plane.prop}" if dest_ctype else plane.prop,
+        "device_id": device_id,
+        "label": f"{plural} -- {plane.label}",
+        "destination_child_type": dest_ctype,
+        "route_property": plane.prop,
+        "source_child_type": plane.source_ctype,
+        "command": plane.command,
+        "confidence": "high" if plane.typed else "medium" if plane.command else "low",
+        "why": (
+            ("The driver declares this: " if plane.declared else "")
+            + f"{where}, and {ends} Sources come from {source_origin}."
+        ),
+        "from_roster": from_roster,
+        "warnings": _proposal_warnings(
+            sources, destinations, plane.command, dest_ctype, plane.route_var,
+            plane.unfilled, from_roster, declared=plane.declared,
+        ),
+        "sources": sources,
+        "destinations": destinations,
+        "route": route,
+    }
 
+
+def propose_matrices(
+    device_id: str,
+    driver_info: Mapping[str, Any] | None,
+    children: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    """Every routing plane this device has, as a matrix somebody could apply.
+
+    A driver that declares a ``routing:`` block gets exactly what it declared,
+    in its own order. Everything else is guessed from its shape and ordered
+    most-confident first. An empty list means neither found any routing, which
+    is a real answer and not a failure -- most drivers are not switchers.
+    """
+    info = _as_mapping(driver_info)
+    child_types = _as_mapping(info.get("child_entity_types"))
+    commands = _as_mapping(info.get("commands"))
+    roster = _Children(children)
+
+    declared = _declared_planes(info, child_types, commands)
+    if declared is not None:
+        return [_proposal(device_id, plane, child_types, roster) for plane in declared]
+
+    proposals = [
+        _proposal(device_id, plane, child_types, roster)
+        for plane in _guessed_planes(child_types, commands, roster)
+    ]
     order = {"high": 0, "medium": 1, "low": 2}
     proposals.sort(
         key=lambda p: (order[p["confidence"]], _plane_rank(p["route_property"]), p["id"]),

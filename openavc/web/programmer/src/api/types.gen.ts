@@ -108,7 +108,7 @@ export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = 
  * __root__ is the top level; the rest are $defs names.
  */
 export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>> = {
-  __root__: new Set(["actions", "auth", "author", "bridge", "category", "child_entity_types", "command_prefix", "command_suffix", "commands", "compatible_models", "config_derived", "config_schema", "default_config", "delimiter", "deprecated", "description", "device_settings", "discovery", "frame_parser", "help", "id", "inline_protocol", "ir_codes", "liveness", "manufacturer", "min_platform_version", "name", "on_connect", "polling", "ports", "protocols", "push", "quick_actions", "replacement_id", "responses", "send_frame", "simulated", "simulator", "source_url", "state_variables", "tags", "transport", "transports", "verified", "version", "web_ui"]),
+  __root__: new Set(["actions", "auth", "author", "bridge", "category", "child_entity_types", "command_prefix", "command_suffix", "commands", "compatible_models", "config_derived", "config_schema", "default_config", "delimiter", "deprecated", "description", "device_settings", "discovery", "frame_parser", "help", "id", "inline_protocol", "ir_codes", "liveness", "manufacturer", "min_platform_version", "name", "on_connect", "polling", "ports", "protocols", "push", "quick_actions", "replacement_id", "responses", "routing", "send_frame", "simulated", "simulator", "source_url", "state_variables", "tags", "transport", "transports", "verified", "version", "web_ui"]),
   helpBlock: new Set(["connection", "overview", "setup"]),
   compatibleModelsEntry: new Set(["confidence", "manufacturer", "models", "notes"]),
   stateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
@@ -133,6 +133,8 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   deviceSettingEntry: new Set(["default", "help", "label", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
   deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
   simulatorSection: new Set(["command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),
+  routingBlock: new Set(["command", "destination_child_type", "destination_param", "params", "planes", "source_child_type", "source_param"]),
+  routingPlane: new Set(["command", "destination_child_type", "destination_param", "label", "params", "route_property", "source_child_type", "source_param"]),
   discoveryBlock: new Set(["amx_ddp", "hostname", "manufacturer_alias", "mdns", "oui", "port_open", "python", "requires", "snmp_pen", "ssdp", "tcp_probe", "udp_probe"]),
   amxDdpItem: new Set(["cross_vendor", "make", "model_pattern"]),
 };
@@ -1043,6 +1045,109 @@ export interface DriverLivenessDef {
   args?: unknown[];
 }
 
+/**
+ * One independently routable thing. Every key the block declares can be
+ * overridden here, for a device whose planes do not all route the same way.
+ */
+export interface DriverRoutingPlane {
+  /**
+   * What to call this plane where somebody picks between them ("Video",
+   * "Extracted Audio", "RS-232"). Defaults to the routed property's own label.
+   */
+  label?: string;
+  /**
+   * The property reporting what is currently routed here — the one a
+   * crosspoint lights from. A state variable of the destination child type, or
+   * of the device itself when there is no destination child. This is the one
+   * field a plane cannot leave out: without it a Matrix can switch and can
+   * never show.
+   */
+  route_property: string;
+  /** Overrides the block's destination child type for this plane. */
+  destination_child_type?: string;
+  /** Overrides the block's source child type for this plane. */
+  source_child_type?: string;
+  /**
+   * Overrides the block's routing command for this plane. Needed wherever each
+   * plane has its own (route_video / route_audio / route_usb).
+   */
+  command?: string;
+  /** Overrides the block's destination parameter for this plane. */
+  destination_param?: string;
+  /** Overrides the block's source parameter for this plane. */
+  source_param?: string;
+  /**
+   * Fixed extra parameters that select THIS plane, sent with every route on it
+   * — a decoder whose one command carries signal: VIDEO / AUDIO / IR, or an
+   * encoder whose one command carries stream: usb. This is what a plane name
+   * alone cannot supply, and a required parameter left unfilled is a command
+   * the device refuses.
+   */
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Optional. Says where this driver's routing lives, so a Matrix control can be
+ * set up from the device instead of typed from the manual. Purely additive: a
+ * driver that declares nothing is read by the same inference as before, and
+ * nothing about how the driver RUNS changes — this is answered when somebody
+ * draws a panel. Declare it when the guess is wrong or incomplete: a routing
+ * command that needs a fixed extra parameter the property name cannot supply
+ * (a signal/stream selector), a device that routes itself and has no
+ * destination child at all, or a driver carrying properties that merely read
+ * like routing (a clip indicator, a priority mode). Declaring it REPLACES the
+ * guess: these planes are the planes, in this order. Requires platform 0.27.0.
+ */
+export interface DriverRoutingDef {
+  /**
+   * Default child type holding the things routed TO, in the driver's own words
+   * (output, decoder, rx, window, zone — or input, on an audio processor whose
+   * channels each select a source). Must name a declared child_entity_type.
+   * Omit it when the device IS the destination: an AVoIP endpoint that routes
+   * its own display has no destination child, and its matrix has one row.
+   */
+  destination_child_type?: string;
+  /**
+   * Default child type enumerating the things routed FROM (input, encoder,
+   * tx). Must name a declared child_entity_type. Omit it when the sources come
+   * from the routing command's own parameter values or its declared range,
+   * which is where they are read from otherwise.
+   */
+  source_child_type?: string;
+  /**
+   * Default command that performs a route. Must name a declared command. Omit
+   * it only when every plane names its own.
+   */
+  command?: string;
+  /**
+   * Which parameter of that command takes the destination. Optional: without
+   * it the parameter is worked out from the command, which is right for
+   * anything named output/zone/decoder or typed to the destination child type.
+   * Say it when the name is unusual, and leave it out entirely when the
+   * command addresses the device itself and takes no destination.
+   */
+  destination_param?: string;
+  /**
+   * Which parameter of that command takes the source. Optional in the same way
+   * as destination_param.
+   */
+  source_param?: string;
+  /**
+   * Fixed extra parameters sent with every route on every plane, on top of the
+   * source and destination. Rarely needed at this level — a signal or stream
+   * selector belongs on the plane that selects it.
+   */
+  params?: Record<string, unknown>;
+  /**
+   * The independent things this device routes, in the order they should be
+   * offered. Usually one. A decoder that routes video, audio, IR, RS-232, USB
+   * and CEC independently declares six, because each is a separate Matrix
+   * control watching a different property — one destination with six planes is
+   * not one destination.
+   */
+  planes: DriverRoutingPlane[];
+}
+
 export interface DriverBridgePortDef {
   /** Port id referenced by a downstream device's bridge_port (e.g. "serial:1"). */
   id: string;
@@ -1291,6 +1396,7 @@ export interface DriverDefinition {
   send_frame?: { type: string; [key: string]: unknown } | null;
   simulator?: DriverSimulatorDef;
   discovery?: DriverDiscoveryConfig;
+  routing?: DriverRoutingDef;
   /**
    * Where the file lives on disk — set by the list endpoint, not authored.
    * builtin ships with the platform (read-only; use Customize a Copy); user

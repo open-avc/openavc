@@ -178,6 +178,8 @@ A response rule can also switch its kind to **JSON body** for devices that reply
 
 **Device Settings** — writable values stored on the device hardware (labels, IDs, lock codes). Pending writes queue while the device is offline and replay on reconnect. Less common than state variables — most drivers don't need this.
 
+**Routing** — for devices that switch something. Says which ports are routed to, which property reports what is routed there, and which command does the routing, so a **Matrix** control can be set up from the device instead of typed in port by port. Every field is a pick from what you have already declared. Leave it off for anything that doesn't switch, and leave it off for an ordinary switcher too — OpenAVC reads the driver and works that out. Turn it on when it wouldn't: a routing command that needs a fixed extra value (one command covering video, audio and USB, told which by a `signal` parameter), a device that routes itself and has no output ports to list, or a property that reads like routing and isn't. See [`routing` section](#routing-section).
+
 #### 5. Discovery tab (optional)
 
 Declarations the discovery engine uses to match found devices to this driver. The Discovery tab has four sections: **Fingerprints**, **Hints**, **Advanced**, and **Help**.
@@ -1197,6 +1199,65 @@ Pick a probe the device always answers — a status query the driver already pol
 Valid on `tcp`, `serial`, `udp`, and `osc`. HTTP drivers don't need it: every HTTP poll already awaits its response, so missed polls flip the device offline on their own. Use it whenever the device is UDP/OSC-polled, or push-based over TCP with long idle gaps.
 
 For plain TCP request/response devices you can also enable OS-level keepalive instead: set `tcp_keepalive: true` in `default_config` and the socket itself detects a dead peer (roughly 90 seconds, tuned by the platform). The two are complementary — `tcp_keepalive` proves the TCP path is up; `liveness` proves the device is actually answering the protocol.
+
+#### `routing` section
+
+Optional, and only for devices that switch something. It tells OpenAVC where your driver's routing lives, so somebody building a panel can set a **Matrix** control up from the device instead of typing every port in from the manual.
+
+You do not need it. Without it OpenAVC reads the same driver and works the routing out on its own: it looks for a child type that reports what is routed to it, then for the command that switches it. That is right for an ordinary switcher and it is how every driver behaved before this block existed. Declare it when the answer would be wrong:
+
+- **The routing command needs a value the property name cannot supply.** One command covering six signals, told which by a `signal:` or `stream:` parameter. If nothing fills that in, the route goes out missing a required parameter and the device refuses it.
+- **The device routes itself.** An AV-over-IP endpoint shows one source at a time and has no output ports to list, so there is no destination child to find.
+- **Something reads like routing and is not.** A `dante_audio_source` that picks between Dante and analogue, not between encoders. Only your driver knows.
+
+```yaml
+routing:
+  destination_child_type: decoder   # the ports routed TO, in your own words. Omit it
+                                    # when the device itself is the destination.
+  source_child_type: encoder        # the ports routed FROM. Omit it when the sources
+                                    # are the routing command's own accepted values.
+  command: dec_route                # the command that routes, when every plane shares one
+  planes:                           # one per independently routable thing
+    - label: Video                  # what to call it where somebody picks between planes
+      route_property: source_video  # the property a crosspoint lights from  (required)
+      params: {signal: VIDEO}       # fixed values sent with every route on this plane
+    - {label: Audio, route_property: source_audio, params: {signal: AUDIO}}
+    - {label: USB,   route_property: source_usb,   params: {signal: USB}}
+```
+
+**A destination with several planes is not one destination.** A decoder that routes video, audio, IR, RS-232, USB and CEC independently declares six planes, because each becomes its own Matrix control watching its own property. That is the case no amount of renaming reaches, and it is why this block exists in this shape.
+
+Every plane may override any of the shared keys, for a device whose planes do not all route the same way — one command per stream rather than a selector parameter:
+
+```yaml
+routing:
+  destination_child_type: rx
+  source_child_type: tx
+  planes:
+    - {label: All Streams, route_property: source,       command: route}
+    - {label: Video,       route_property: video_source, command: route_video}
+    - {label: Audio,       route_property: audio_source, command: route_audio}
+```
+
+Two more keys exist for commands whose parameter names are unusual: `destination_param` and `source_param` name which parameter takes which end. Leave them out and OpenAVC works it out from the command, which is right for anything called `output`/`zone`/`decoder` or typed to the destination child type. Leave `destination_param` out **entirely** when the command addresses the device itself and takes no destination:
+
+```yaml
+routing:
+  planes:                                   # no destination_child_type: this device IS
+    - label: Video                          # the destination, so the matrix has one row
+      route_property: video_source
+      command: set_video_source
+      source_param: source
+```
+
+Notes:
+
+- **Declaring the block replaces the guess.** The planes you list are the planes offered, in your order. That is most of its value: it is the only way to stop a property that merely looks like routing from being proposed.
+- **It changes nothing about how the driver runs.** No command is sent differently and no state is read differently. This is answered when somebody draws a panel.
+- Every name in the block must point at something the driver declares — a child type, a state variable on it, a command, that command's parameters. The validator checks all of them and names the nearest match on a typo, because a wrong name here fails silently later: a Matrix whose crosspoints never light.
+- It says where routing lives, not what the values mean. If your device accepts one vocabulary and reports another (takes `0`, reports `Mic`), the person setting the panel up is still told — that is theirs to settle, not the driver's.
+- The Driver Builder has a **Routing** section on the Behavior tab where every field is a pick from what the driver already declares.
+- Needs platform 0.27.0, so set `min_platform_version: "0.27.0"` when you use it.
 
 #### `frame_parser` (advanced)
 
@@ -2831,6 +2892,18 @@ DRIVER_INFO = {
             "extract_manufacturer": "Extron",
         },
         "oui": ["00:05:a6"],            # hint; produces "possible" state
+    },
+
+    # --- Where routing lives (optional — only for devices that switch) ---
+    # Same shape as the YAML block; see the `routing` section above for when
+    # it is worth declaring and when the platform works it out on its own.
+    "routing": {
+        "destination_child_type": "output",
+        "source_child_type": "input",
+        "command": "route",
+        "planes": [
+            {"label": "Video", "route_property": "input"},
+        ],
     },
 }
 ```

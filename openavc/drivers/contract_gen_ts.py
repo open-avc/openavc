@@ -54,6 +54,8 @@ DEF_TS_NAMES: dict[str, str] = {
     "authBlock": "DriverAuthDef",
     "livenessBlock": "DriverLivenessDef",
     "pushBlock": "DriverPushDef",
+    "routingBlock": "DriverRoutingDef",
+    "routingPlane": "DriverRoutingPlane",
     "discoveryBlock": "DriverDiscoveryConfig",
     "mdnsItem": "DriverDiscoveryMdnsFingerprint",
     "ssdpItem": "DriverDiscoverySsdpFingerprint",
@@ -422,6 +424,21 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         lambda: spec.DEFS["livenessBlock"],
         {"args": _D(type="unknown[]")},
         _D(all_optional=True),
+    ),
+    (
+        "DriverRoutingPlane",
+        lambda: spec.DEFS["routingPlane"],
+        {"params": _D(type="Record<string, unknown>")},
+        _D(),
+    ),
+    (
+        "DriverRoutingDef",
+        lambda: spec.DEFS["routingBlock"],
+        {
+            "planes": _D(type="DriverRoutingPlane[]"),
+            "params": _D(type="Record<string, unknown>"),
+        },
+        _D(),
     ),
     (
         "DriverBridgePortDef",
