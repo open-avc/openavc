@@ -399,6 +399,39 @@ def test_a_routing_declaration_that_names_nothing_is_refused_on_both(broken, nam
         assert message in through_python, message
 
 
+def test_a_block_whose_targets_are_computed_is_skipped_and_named():
+    """Three shipped Python drivers build their commands and child properties
+    at construction time, so a source reader sees an empty command map and a
+    marker where the properties go. Every name in a perfectly correct block
+    then reads as dangling, which is the same "not in a set we could not read"
+    non-finding the sibling rules already decline to make -- and declining
+    quietly would be worse, so the gap is named."""
+    definition = _routed()
+    definition["commands"] = {}          # built at connect, invisible here
+    assert python_driver_info_issues(definition) == []
+    (skip,) = [s for s in python_driver_reference_skips(definition) if "routing" in s]
+    assert "1 routing plane(s)" in skip
+
+
+def test_a_computed_child_property_set_also_skips():
+    definition = _routed()
+    definition["child_entity_types"]["zone"]["state_variables"] = UNEVALUATED_KEY
+    assert python_driver_info_issues(definition) == []
+    assert any("routing" in s for s in python_driver_reference_skips(definition))
+
+
+def test_a_device_that_routes_itself_is_still_checked():
+    """It names no child type, so nothing a computed roster could hide -- and
+    skipping it would silence the one shape that has no other cover."""
+    definition = _definition()
+    definition["routing"] = {
+        "command": "set_zone_levl",
+        "planes": [{"label": "Video", "route_property": "power"}],
+    }
+    assert python_driver_reference_skips(definition) == []
+    assert any("set_zone_levl" in m for m in python_driver_info_issues(definition))
+
+
 def test_a_driver_that_declares_no_routing_is_not_asked_about_it():
     assert routing_block_errors(_definition()) == []
     assert python_driver_info_issues(_definition()) == []

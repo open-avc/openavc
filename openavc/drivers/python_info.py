@@ -243,14 +243,21 @@ def python_driver_info_issues(
     issues.extend(platform_version_errors(info))
 
     # And the routing declaration, from the same shared rule the YAML half
-    # runs. Nothing about the block is YAML-shaped -- it names child types,
-    # properties and commands this driver declares, and the rule already
-    # tolerates the ones built at construction time. It was simply never
-    # called here, so a Python driver could name a child type it does not
-    # have and be told by nobody: not the CLI check, not catalog CI, not the
-    # IDE, not the server log. That failure surfaces as a matrix whose
-    # crosspoints never light, in a room, weeks later.
-    issues.extend(routing_block_errors(info))
+    # runs. It names child types, properties and commands this driver
+    # declares, and it was never called here, so a Python driver could name a
+    # child type it does not have and be told by nobody: not the CLI check,
+    # not catalog CI, not the IDE, not the server log. That failure surfaces
+    # as a matrix whose crosspoints never light, in a room, weeks later.
+    #
+    # Only when the sets it resolves against were actually readable. Three
+    # shipped drivers build their commands and child properties at
+    # construction time, so a source reader sees an empty command map and a
+    # marker where the properties go -- and every name in a perfectly correct
+    # block then reads as dangling. Same rule as every other cross-reference
+    # here: "not in a set we could not read" is not a finding. The gap is
+    # named by python_driver_reference_skips rather than passed over.
+    if _routing_targets_are_readable(info):
+        issues.extend(routing_block_errors(info))
 
     actions = info.get("actions")
     declares_setup = isinstance(actions, list) and any(
@@ -299,6 +306,48 @@ def python_driver_info_issues(
     return issues
 
 
+def _routing_targets_are_readable(info: dict[str, Any]) -> bool:
+    """Can the routing block's references be resolved from what was read?
+
+    Two ways a source reader comes up short, and both produce a clean block
+    that looks entirely wrong: the command map is empty or computed, and the
+    destination child type's ``state_variables`` is a marker rather than a
+    mapping. Either one, and this declines to judge.
+    """
+    block = info.get("routing")
+    if not isinstance(block, dict):
+        return True
+
+    commands = info.get("commands")
+    if not isinstance(commands, dict) or not commands or UNEVALUATED_KEY in commands:
+        return False
+
+    planes = block.get("planes")
+    named = {block.get("destination_child_type"), block.get("source_child_type")}
+    if isinstance(planes, list):
+        for plane in planes:
+            if isinstance(plane, dict):
+                named.add(plane.get("destination_child_type"))
+                named.add(plane.get("source_child_type"))
+    named = {name for name in named if isinstance(name, str)}
+    if not named:
+        # A device that routes ITSELF names no child type, so there is
+        # nothing here that a computed roster could hide. Readable.
+        return True
+
+    child_types = info.get("child_entity_types")
+    if not isinstance(child_types, dict) or UNEVALUATED_KEY in child_types:
+        return False
+    for child_type in named:
+        schema = child_types.get(child_type)
+        if not isinstance(schema, dict):
+            continue
+        declared = schema.get("state_variables")
+        if declared is not None and not isinstance(declared, dict):
+            return False
+    return True
+
+
 def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
     """Cross-references that could not be decided, and why.
 
@@ -323,6 +372,18 @@ def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
         skips.append(
             f"{len(settings)} device_settings state_key reference(s) — "
             f"state_variables is computed"
+        )
+
+    # The routing block, skipped whole when the sets it resolves against
+    # were computed. Unlike the two above it is one declaration rather than a
+    # list of references, so the count is of planes.
+    block = info.get("routing")
+    if isinstance(block, dict) and not _routing_targets_are_readable(info):
+        planes = block.get("planes")
+        count = len(planes) if isinstance(planes, list) else 1
+        skips.append(
+            f"{count} routing plane(s) -- the commands or child properties "
+            f"they name are computed"
         )
 
     # The actions / quick_actions -> commands reference, skipped by
