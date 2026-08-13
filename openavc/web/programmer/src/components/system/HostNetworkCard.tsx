@@ -451,6 +451,7 @@ function WifiSection({
 export function HostNetworkCard() {
   const [status, setStatus] = useState<HostNetworkStatus | null>(null);
   const [hidden, setHidden] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(false);
   const [hostname, setHostname] = useState("");
   const [hostnameBusy, setHostnameBusy] = useState(false);
 
@@ -462,8 +463,15 @@ export function HostNetworkCard() {
     } catch (e) {
       // 404 = no backend on this deployment; anything else also hides the
       // card rather than presenting a broken control surface.
+      const message = e instanceof Error ? e.message : String(e);
+      // 403 is different from missing: the settings are here, this session
+      // just cannot change them. Vanishing would read as "not supported".
+      if (/^API 403/.test(message)) {
+        setNeedsPassword(true);
+        return;
+      }
       setHidden(true);
-      if (!(e instanceof Error && /^API 404/.test(e.message))) {
+      if (!/^API 404/.test(message)) {
         console.warn("Host network status unavailable:", e);
       }
     }
@@ -472,6 +480,19 @@ export function HostNetworkCard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  if (needsPassword) {
+    return (
+      <div style={cardStyle}>
+        <h4 style={subTitle}>This Device's Network</h4>
+        <p style={{ ...description, marginBottom: 0 }}>
+          Changing these settings needs this device's own password. Open the
+          Programmer directly and sign in with it, or change them on the
+          device's own screen.
+        </p>
+      </div>
+    );
+  }
 
   if (hidden || status === null) return null;
 

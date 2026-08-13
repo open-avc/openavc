@@ -26,6 +26,7 @@ API clients. See `openavc/api/session_tokens.py`.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -218,6 +219,8 @@ def claim_instance(password: str, username: str = "") -> None:
 def programmer_auth_satisfied(
     request: Request,
     credentials: HTTPBasicCredentials | None,
+    *,
+    allow_cloud_session: bool = True,
 ) -> bool:
     """Return True if the request carries valid programmer auth (or none is required).
 
@@ -236,8 +239,14 @@ def programmer_auth_satisfied(
 
     Non-raising so callers that compose auth schemes (e.g. plugin routers that
     also accept a plugin token) can fall through to their own checks.
+
+    ``allow_cloud_session=False`` drops check 1 for the one surface that is
+    deliberately narrower than the Programmer: the host's own network settings
+    (`require_local_or_programmer_auth`). Every other credential still counts,
+    so somebody in such a session who *does* hold the password gets in by
+    typing it.
     """
-    if _is_cloud_session(cloud_session_secret(request)):
+    if allow_cloud_session and _is_cloud_session(cloud_session_secret(request)):
         return True
 
     pw = _get_password()
@@ -338,11 +347,43 @@ async def require_local_or_programmer_auth(
     cloud remote-UI tunnel proxies remote traffic to loopback, and a remote
     caller must not inherit a trust anchor that means *physical access*. See
     `openavc/utils/request_origin.py`.
+
+    **A cloud-authorized session does not count here**, which is the one place
+    this surface is narrower than the rest of the Programmer. Everything else a
+    remote session can do is undoable remotely — a project can be replaced, an
+    update rolled back, a service restarted — and changing this box's address
+    is the one action that can end remote access altogether and put somebody in
+    a van. So it asks for the password the room's own people set, whether the
+    session belongs to OpenAVC support or to the customer with password-free
+    programming turned on. On the device's own screen it stays free, which is
+    where these settings are actually changed.
     """
     if is_local_console_request(request):
         return
-    if programmer_auth_satisfied(request, credentials):
+    if programmer_auth_satisfied(request, credentials, allow_cloud_session=False):
         return
+
+    if _is_cloud_session(cloud_session_secret(request)):
+        # Authenticated, just not for this — so 403, not 401. A 401 tells the
+        # Programmer its session has expired and it shows the sign-in screen
+        # over the whole app, for a password this caller does not have and did
+        # not need to open anything else.
+        from openavc.system import network as host_network
+
+        # And on a deployment with no host network at all (Windows, Docker, a
+        # dev checkout) there is nothing to refuse: let the route answer its
+        # own 404, so the Programmer hides the card instead of showing a lock
+        # on a door that was never built.
+        if await asyncio.to_thread(host_network.get_backend) is None:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Changing this system's network settings needs the system's "
+                "own password, even in a remote session."
+            ),
+        )
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required",

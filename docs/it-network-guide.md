@@ -442,6 +442,12 @@ Within the session, staff reach what the Programmer reaches. They do **not** rea
 
 If your security model does not permit this at all, the control is the same as for the rest of the management plane: leave cloud disabled, or stay paired and never grant a support session. Nothing in the product creates one on your behalf.
 
+**The second exception: password-free programming.** An organization can choose, in the cloud portal, to let its own signed-in people open the Programmer for its own systems without typing each system's password. It is off unless someone turns it on, and on an integrator-managed organization both the integrator and the organization have to turn it on before it does anything. Turning either switch off ends the sessions already running on it.
+
+It works the same way a support session does: the device generates a per-tunnel secret, valid only while that tunnel is open, and accepts it in place of the Programmer credential. The same limit applies. **Host network configuration is not reachable in such a session** — changing this device's own address, WiFi or hostname asks for the device's password from any remote session, or is done on the device's own screen.
+
+If you do not want this available at all, leave it switched off. Nothing turns it on by default and nothing suggests it during setup.
+
 ### Disabling cloud entirely
 
 Cloud is disabled by default. To confirm it is disabled, verify that `cloud.enabled` is `false` in `system.json` (or that the `OPENAVC_CLOUD_ENABLED` environment variable is not set to `true`). When disabled, no cloud-related code runs and no outbound connections to `cloud.openavc.com` are made.

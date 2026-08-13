@@ -16,7 +16,10 @@ What is pinned here is the whole promise and its limits:
 - it dies with the tunnel, which is what makes withdrawing the authorization
   enough;
 - it authenticates the Programmer and its WebSocket, and it does NOT become the
-  device's own console, so host network configuration stays behind the password.
+  device's own console;
+- and it does not reach the host's own network settings at all. That surface
+  wants the password the room's people set, from any remote session, because it
+  is the one change that can end remote access and put somebody in a van.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -270,13 +273,8 @@ async def test_a_lan_client_cannot_use_a_leaked_secret(claimed):
 async def test_an_authorized_session_does_not_become_the_console(claimed):
     """Physical access to the appliance's own screen is a different trust
     anchor, and configuring the host's network rests on it with no password.
-    A staff session is remote by definition and must not inherit it."""
+    A remote session is remote by definition and must not inherit it."""
     secret = cloud_session.open_session("t-live")
-    resp = await _get("/api/system/network", headers=_session_headers(secret))
-    # 404 = allowed through to a route with no backend; 401 = refused.
-    # Either way it must not be the credential-free console grant, which is
-    # what the plain-console call returns.
-    assert resp.status_code == 404, "programmer-level access, not console access"
 
     from openavc.utils.request_origin import is_local_console_request
 
@@ -285,6 +283,57 @@ async def test_an_authorized_session_does_not_become_the_console(claimed):
         headers = {TUNNEL_HEADER: "1", CLOUD_SESSION_HEADER: secret}
 
     assert is_local_console_request(_Req()) is False
+
+
+@pytest.mark.asyncio
+async def test_the_hosts_network_still_wants_the_rooms_own_password(claimed):
+    """The one surface this session does NOT reach.
+
+    Everything else it can do is undoable from the same seat -- a project
+    replaced, an update rolled back, a service restarted. Changing this box's
+    address is the one action that can end remote access altogether, so it asks
+    for the password whoever runs the room set, whether the session belongs to
+    OpenAVC support or to the customer with password-free programming on.
+    """
+    secret = cloud_session.open_session("t-live")
+
+    with patch.object(netmod, "get_backend", lambda: object()):
+        resp = await _get("/api/system/network", headers=_session_headers(secret))
+    # 403, not 401: this caller IS authenticated, just not for this surface.
+    # A 401 tells the Programmer its session expired and puts a sign-in screen
+    # over the whole app — which the bench found it doing.
+    assert resp.status_code == 403
+    assert "own password" in resp.json()["detail"]
+
+    # And it is only that surface: the Programmer itself is unaffected.
+    assert (await _get("/api/project", headers=_session_headers(secret))).status_code != 401
+
+
+@pytest.mark.asyncio
+async def test_a_deployment_with_no_host_network_refuses_nothing(claimed):
+    """Windows, Docker and a dev checkout have no host network to configure, so
+    the route answers 404 as it always did. A 401 there would put "this needs
+    the password" in front of somebody on a box with no such settings at all,
+    which reads as a lock on a door that was never built."""
+    secret = cloud_session.open_session("t-live")
+
+    resp = await _get("/api/system/network", headers=_session_headers(secret))
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_the_password_still_opens_it_inside_such_a_session(claimed):
+    """Refusing the session is not refusing the person. Somebody who holds the
+    room's password types it and gets in from where they already are -- 404
+    here is the route admitting them and having no backend to answer with."""
+    import base64
+
+    basic = base64.b64encode(b"admin:secret-pw-123").decode()
+    headers = {**_session_headers(cloud_session.open_session("t-live")),
+               "Authorization": f"Basic {basic}"}
+
+    resp = await _get("/api/system/network", headers=headers)
+    assert resp.status_code == 404, "past the credential check, no backend on this host"
 
 
 @pytest.mark.asyncio
