@@ -811,3 +811,182 @@ def test_a_matrix_that_reached_the_panel_unexpanded_draws_nothing(panel_page) ->
     }
     _mount(panel_page, element, 700, 600)
     assert panel_page.locator(".matrix-crosspoint").count() == 0
+
+
+# ---------------------------------------------------------------------------
+# What the device picker writes, drawn by the real renderer
+#
+# Phase 4 changed no renderer code, so these do not guard a rendering defect.
+# They guard the JOIN: the inference produces route keys, opaque values and an
+# action list, and the only thing that can say those are usable is the renderer
+# reading them. Every field below comes out of `propose_matrices` -- nothing in
+# these fixtures is hand-written, which is the point, because a hand-written
+# fixture proves the test author agrees with themselves.
+# ---------------------------------------------------------------------------
+
+#: An invented decoder carrying two independent routing planes, chosen by a
+#: parameter on one command. The shape is the AVoIP one from the plan's §2.1a
+#: (a decoder routes video, audio, USB and more separately); the names are not
+#: any product's.
+ACME_AVOIP = {
+    "child_entity_types": {
+        "decoder": {
+            "label": "Decoder", "label_plural": "Decoders",
+            "id_format": {"type": "integer", "min": 1, "max": 3},
+            "state_variables": {
+                "source_video": {"type": "integer", "label": "Video Source"},
+                "source_audio": {"type": "integer", "label": "Audio Source"},
+                "name": {"type": "string"},
+            },
+        },
+        "encoder": {
+            "label": "Encoder", "label_plural": "Encoders",
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {"name": {"type": "string"}},
+        },
+    },
+    "commands": {
+        "route": {"params": {
+            "decoder_id": {"type": "child_id", "child_type": "decoder"},
+            "encoder_id": {"type": "child_id", "child_type": "encoder"},
+            "stream": {"type": "enum", "required": True, "values": ["VIDEO", "AUDIO"]},
+        }},
+    },
+}
+
+
+def _from_driver(plane: str, roster=None) -> dict:
+    """A matrix element built the way the picker builds one.
+
+    The picker writes the axes out entry by entry (matrix plan D5), so this is
+    the resolved form already -- there is nothing left to expand.
+    """
+    from openavc.ui.matrix_inference import propose_matrices
+
+    proposal = next(
+        p for p in propose_matrices("mx", ACME_AVOIP, roster) if p["id"] == plane
+    )
+    return {
+        "id": "mx1", "type": "matrix", "label": "Routing",
+        "matrix_config": {
+            "sources": proposal["sources"],
+            "destinations": proposal["destinations"],
+        },
+        "bindings": {"do": {"route": proposal["route"]}},
+    }, proposal
+
+
+def test_a_matrix_read_off_a_driver_draws_what_the_driver_declares(panel_page) -> None:
+    """Three decoders and two encoders, with nothing typed by hand."""
+    element, _ = _from_driver("decoder.source_video")
+    _mount(panel_page, element, 700, 500)
+    assert panel_page.locator(".matrix-crosspoint").count() == 6
+    rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
+    assert rows == ["Decoder 1", "Decoder 2", "Decoder 3"]
+
+
+def test_the_crosspoints_light_off_the_keys_the_driver_was_read_for(panel_page) -> None:
+    """The inference's route_key and the renderer's state lookup must be one key.
+
+    A key that is one segment out lights nothing, and looks exactly like a
+    device that is not reporting -- which is the defect this whole plan started
+    from, arrived at from the other end.
+    """
+    element, proposal = _from_driver("decoder.source_video")
+    _mount(panel_page, element, 700, 500)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        proposal["destinations"][0]["route_key"]: 2,
+        proposal["destinations"][2]["route_key"]: 1,
+    })
+    lit = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-crosspoint.active')
+    ).map(c => `${c.dataset.input}->${c.dataset.output}`).sort()""")
+    assert lit == ["1->3", "2->1"]
+
+
+def test_the_two_planes_of_one_decoder_watch_different_keys(panel_page) -> None:
+    """One element covers one plane, and the plane is part of the key.
+
+    Six routing planes needed no new machinery at all (matrix plan §3.1), and
+    this is that claim tested rather than asserted: the audio matrix must not
+    light for a video route.
+    """
+    video, video_proposal = _from_driver("decoder.source_video")
+    _mount(panel_page, video, 700, 500)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        video_proposal["destinations"][0]["route_key"]: 2,
+        "device.mx.decoder.1.source_audio": 1,
+    })
+    lit = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-crosspoint.active')
+    ).map(c => `${c.dataset.input}->${c.dataset.output}`)""")
+    assert lit == ["2->1"], "the video matrix lit for the audio route"
+
+    audio, audio_proposal = _from_driver("decoder.source_audio")
+    assert audio_proposal["destinations"][0]["route_key"].endswith("source_audio")
+    _mount(panel_page, audio, 700, 500)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        video_proposal["destinations"][0]["route_key"]: 2,
+        "device.mx.decoder.1.source_audio": 1,
+    })
+    lit = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-crosspoint.active')
+    ).map(c => `${c.dataset.input}->${c.dataset.output}`)""")
+    assert lit == ["1->1"]
+
+
+def test_a_tap_sends_the_values_the_driver_named(panel_page) -> None:
+    """And the route action carries the plane, so the audio matrix routes audio."""
+    element, proposal = _from_driver("decoder.source_audio")
+    _mount(panel_page, element, 700, 500)
+    _crosspoint(panel_page, 2, 3).click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": 2, "output": 3}
+    ]
+    assert proposal["route"][0]["params"] == {
+        "decoder_id": "$output", "encoder_id": "$input", "stream": "AUDIO",
+    }
+
+
+def test_a_patched_frame_read_live_draws_only_the_ports_that_are_there(panel_page) -> None:
+    """The declared range says three decoders; this unit has two, numbered 1 and 3.
+
+    Reading the live roster rather than the file is what makes the difference
+    visible, and the gap in the numbering is what the pattern form could never
+    say.
+    """
+    roster = {
+        "decoder": [
+            {"local_id": 1, "local_id_padded": "1", "label": "Lobby"},
+            {"local_id": 3, "local_id_padded": "3", "label": "Boardroom"},
+        ],
+        "encoder": [{"local_id": 2, "local_id_padded": "2", "label": "Laptop"}],
+    }
+    element, _ = _from_driver("decoder.source_video", roster)
+    _mount(panel_page, element, 700, 500)
+    rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
+    assert rows == ["Lobby", "Boardroom"]
+    _crosspoint(panel_page, 2, 3).click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": 2, "output": 3}
+    ]
+
+
+def test_a_live_port_name_from_the_driver_reaches_the_label(panel_page) -> None:
+    """The picker binds a label_key only where the DRIVER declares a name.
+
+    The platform puts a `label` on every child, but that one is the project's
+    own name for the port -- which is what the author is editing in the picker,
+    so binding it would make renaming do nothing.
+    """
+    element, proposal = _from_driver("decoder.source_video")
+    assert proposal["destinations"][0]["label_key"] == "device.mx.decoder.1.name"
+    _mount(panel_page, element, 700, 500)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.decoder.1.name": "Boardroom",
+    })
+    rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
+    assert rows[0] == "Boardroom"

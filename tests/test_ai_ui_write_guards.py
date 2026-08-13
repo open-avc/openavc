@@ -603,3 +603,68 @@ async def test_a_declared_child_property_stays_quiet(handler, mock_engine, mock_
     }))
     warnings = " | ".join(result.get("warnings", []))
     assert "does not declare" not in warnings, warnings
+
+
+# --- The matrix config is a schema now, and it refuses ---------------------
+
+
+@pytest.mark.asyncio
+async def test_an_invented_matrix_config_is_refused_rather_than_stored(
+    handler, mock_engine, mock_agent,
+):
+    """It used to store perfectly and draw nothing.
+
+    `matrix_config` is dict[str, Any] at every layer, so counts at the wrong
+    level round-tripped through save, export and reload without a word -- and
+    the panel drew an empty box, because nothing in that shape resolves to a
+    destination.
+    """
+    payload = await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "mx1", "type": "matrix",
+            "placement": {"x": 0, "y": 0, "w": 60, "h": 60},
+            "matrix_config": {"destinations": {"count": 8}},
+        }],
+    })
+    assert payload["success"] is False
+    assert "inside 'from'" in payload["result"]["error"]
+    page = mock_engine.project.ui.pages[0]
+    assert not any(el.id == "mx1" for el in page.elements)
+
+
+@pytest.mark.asyncio
+async def test_a_destination_with_no_value_is_refused_on_an_update(
+    handler, mock_engine, mock_agent,
+):
+    """The write door refuses, so a list can never draw shorter than it reads."""
+    from openavc.core.project_loader import UIElement
+
+    mock_engine.project.ui.pages[0].elements.append(
+        UIElement(id="mx2", type="matrix", matrix_config={"sources": [1], "destinations": []}),
+    )
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "mx2",
+        "matrix_config": {"destinations": [{"label": "Main LCD", "route_key": "device.mx.out"}]},
+    })
+    assert payload["success"] is False
+    assert "no 'value'" in payload["result"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_matrix_config_that_says_what_it_means_lands(
+    handler, mock_engine, mock_agent,
+):
+    payload = await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "mx3", "type": "matrix",
+            "placement": {"x": 0, "y": 0, "w": 60, "h": 60},
+            "matrix_config": {
+                "sources": [{"value": 1, "label": "PC"}],
+                "destinations": [{"value": 1, "label": "LCD",
+                                  "route_key": "device.mx.output.1.input"}],
+            },
+        }],
+    })
+    assert _result(payload)["status"] == "created"

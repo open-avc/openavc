@@ -11,9 +11,10 @@ from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
+from openavc.ui.matrix_inference import propose_matrices
 from openavc.ui.matrix_model import resolve_matrix_config
 from openavc.utils.log_buffer import get_log_buffer
-from openavc.drivers.registry import is_driver_registered
+from openavc.drivers.registry import get_driver_class, is_driver_registered
 
 router = APIRouter()
 
@@ -77,6 +78,73 @@ async def resolve_matrix_configs(request: Request) -> dict[str, Any]:
             for element_id, config in configs.items()
         }
     }
+
+
+@router.get("/ui/matrix-proposals/{device_id}")
+async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
+    """What this device says about its own routing, as matrices somebody could apply.
+
+    The Builder's "Set up from a device" picker. Everything a matrix needs is
+    already in the driver -- which child type holds the destinations, which
+    property on it holds the routed source, which command routes -- and typing
+    it again by hand is how an 8x8 shipped as a dead 4x4.
+
+    Read from the LIVE driver rather than from its file, for two reasons that
+    both bite: ``atlona_ome_ms``, ``biamp_tesira_ttp`` and ``symetrix_composer``
+    build their DRIVER_INFO programmatically, so a file reader sees an empty
+    driver; and a running instance knows which ports actually registered, which
+    is the difference between "a 16x16 frame" and "the eight outputs this unit
+    has". A device with no live driver falls back to its registered class, which
+    still answers for every driver that declares its shape in the file.
+
+    A proposal is a proposal (matrix plan D3): the caller ticks, renames and
+    reorders, and what lands in the project is an explicit list.
+    """
+    engine = _get_engine()
+    if not engine.project or not any(d.id == device_id for d in engine.project.devices):
+        raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+
+    driver = engine.devices.get_driver(device_id)
+    children: dict[str, list[dict[str, Any]]] = {}
+    if driver is not None:
+        driver_info = getattr(driver, "DRIVER_INFO", {}) or {}
+        for child_type in driver.get_child_entity_types():
+            children[child_type] = [
+                {
+                    "local_id": local_id,
+                    "local_id_padded": driver.format_child_id(child_type, local_id),
+                    "label": _child_label(engine, device_id, child_type,
+                                          driver.format_child_id(child_type, local_id)),
+                }
+                for local_id in driver.list_children(child_type)
+            ]
+    else:
+        # Orphaned, disabled, or simply not started. The class still declares
+        # its child types and commands, so a panel can be drawn against a device
+        # that is not powered on -- which is most of them, at the point somebody
+        # is drawing the panel.
+        device = next(d for d in engine.project.devices if d.id == device_id)
+        driver_class = get_driver_class(device.driver)
+        driver_info = getattr(driver_class, "DRIVER_INFO", {}) or {}
+
+    return {
+        # "live" is whether any port actually REGISTERED, not whether a driver
+        # object exists. A configured-but-unconnected switcher has a driver and
+        # an empty roster, and answering "live" for that one is how a 4x4 on the
+        # bench offers a perfectly convincing sixteen outputs.
+        "device_id": device_id,
+        "live": any(children.values()),
+        "proposals": propose_matrices(device_id, driver_info, children),
+    }
+
+
+def _child_label(engine: Any, device_id: str, child_type: str, padded: str) -> str:
+    """What the project calls one child, or "" to let the picker name it."""
+    for device in engine.project.devices:
+        if device.id == device_id:
+            entry = device.child_entities.get(child_type, {}).get(padded)
+            return entry.label if entry else ""
+    return ""
 
 
 @router.post("/project/reload")

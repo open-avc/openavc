@@ -4,6 +4,7 @@ from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.ui_events import resolve_press
+from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     PAGE_BOX,
     absolute_placements,
@@ -470,6 +471,26 @@ def _reject_retired_geometry(data: dict, what: str) -> None:
             })
 
 
+def _reject_bad_matrix_config(data: dict, what: str) -> None:
+    """Refuse a matrix_config the renderer would answer by drawing less than it says.
+
+    The other matrix checks are the page review's and only warn, because they
+    are judgement ("did you mean four destinations?"). These are structure: a
+    destination with no ``value`` is not a debatable destination, it is one that
+    silently will not be there, and the caller cannot see that in the reply it
+    gets back. So this one refuses -- the round trip it costs is cheaper than a
+    panel that draws six rows where eight were written.
+    """
+    if "matrix_config" not in data:
+        return
+    problems = matrix_config_problems(data["matrix_config"])
+    if problems:
+        raise ToolEditError({
+            "error": f"{what}: " + " ".join(problems),
+            "errors": problems,
+        })
+
+
 def _take_placement(el_data: dict, what: str) -> dict | None:
     """Lift an element's box out of its definition, where the box no longer lives.
 
@@ -479,6 +500,7 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     its box in one breath, so the tools split them back apart here.
     """
     _reject_retired_geometry(el_data, what)
+    _reject_bad_matrix_config(el_data, what)
     place = el_data.pop("placement", None)
     if place is None:
         return None
@@ -1137,6 +1159,7 @@ class UIToolsMixin:
                     })
                 raise ToolEditError({"error": f"UI element '{element_id}' not found"})
             _reject_retired_geometry(input, f"Element '{element_id}'")
+            _reject_bad_matrix_config(input, f"Element '{element_id}'")
             # Geometry and per-layout visibility belong to one arrangement. The
             # primary is where a box lives unless the caller is authoring a
             # variant and says so.
@@ -1309,6 +1332,7 @@ class UIToolsMixin:
             # page's layout, which is exactly what used to make the same master
             # land somewhere different on each page.
             _reject_retired_geometry(el_data, f"Master element '{element_id}'")
+            _reject_bad_matrix_config(el_data, f"Master element '{element_id}'")
             if "placement" in el_data:
                 raise ToolEditError({
                     "error": f"Master element '{element_id}': use 'placements' keyed by orientation, "
@@ -1385,6 +1409,7 @@ class UIToolsMixin:
                 raise ToolEditError({"error": f"Master element '{element_id}' not found"})
 
             _reject_retired_geometry(input, f"Master element '{element_id}'")
+            _reject_bad_matrix_config(input, f"Master element '{element_id}'")
             if "placement" in input:
                 raise ToolEditError({
                     "error": f"Master element '{element_id}': use 'placements' keyed by "

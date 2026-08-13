@@ -55,10 +55,8 @@ from typing import Any
 
 #: Every key the matrix renderer reads out of ``matrix_config``.
 #:
-#: ``matrix_config`` is ``dict[str, Any]`` at every layer -- no schema, at any
-#: door -- so this list is the only thing that knows a key from a typo. Giving
-#: it a real schema is the next phase; until then an invented shape stores
-#: perfectly, and the page review reads this to say so.
+#: The page review reads this to name keys nothing reads; ``matrix_config_problems``
+#: below reads it to check the ones that ARE read are shaped right.
 MATRIX_CONFIG_KEYS = frozenset({
     "sources", "destinations",
     "audio_follow_video", "show_lock", "show_mute", "presets",
@@ -279,6 +277,231 @@ def resolve_matrix_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
     resolved["sources"] = resolve_axis(config, "sources")
     resolved["destinations"] = resolve_axis(config, "destinations")
     return resolved
+
+
+# --- The schema -------------------------------------------------------------
+#
+# What a matrix_config MAY say, as opposed to what happens to survive being
+# stored. Those were the same thing until now: matrix_config is dict[str, Any]
+# at every layer, so an invented shape round-tripped through save, reload and
+# export perfectly and drew nothing. Every rule below names a real silence --
+# a list of eight destinations that resolves to six, a generator whose count
+# sits one level too high, a key on the wrong axis -- and the sentence it
+# produces is what somebody reads instead of staring at an empty box.
+
+
+#: The keys a generator's ``from`` may carry, per axis. Read straight off what
+#: ``_generate`` above actually substitutes: a source has no route, so
+#: ``route_key`` on the sources axis is a line that does nothing, which is
+#: exactly the mistake worth catching.
+_GENERATOR_FROM_KEYS = {
+    "sources": frozenset({"count", "values", "labels", "label_key"}),
+    "destinations": frozenset({
+        "count", "values", "labels", "label_key",
+        "route_key", "audio_route_key", "route",
+    }),
+}
+
+#: The keys one written-out entry may carry, per axis.
+_ENTRY_KEYS = {"sources": SOURCE_KEYS, "destinations": DESTINATION_KEYS}
+
+#: What a preset button is: a caption and the macro it runs (``panel.js``
+#: reads exactly these two).
+_PRESET_KEYS = frozenset({"name", "macro"})
+
+#: The matrix_config keys that are simply on or off.
+_FLAG_KEYS = ("audio_follow_video", "show_lock", "show_mute")
+
+
+def _type_name(value: Any) -> str:
+    """What a wrong value IS, in words an author recognises."""
+    if isinstance(value, bool):
+        return "true/false"
+    if isinstance(value, Mapping):
+        return "an object"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, int | float):
+        return "a number"
+    if isinstance(value, Sequence):
+        return "a list"
+    return "nothing" if value is None else type(value).__name__
+
+
+def _unknown(keys: Any, allowed: frozenset[str]) -> list[str]:
+    return sorted(str(k) for k in keys if str(k) not in allowed)
+
+
+def _generator_problems(spec: Mapping[str, Any], axis: str, where: str) -> list[str]:
+    """One axis written as a generator."""
+    problems: list[str] = []
+    stray = _unknown(spec, GENERATOR_KEYS)
+    if stray:
+        problems.append(
+            f"{where}.{axis} is a generator, so it may only say "
+            f"{', '.join(sorted(GENERATOR_KEYS))} -- not {', '.join(repr(s) for s in stray)}. "
+            f"A count goes inside 'from'.",
+        )
+    source = spec.get("from")
+    if "from" in spec and not isinstance(source, Mapping):
+        problems.append(
+            f"{where}.{axis}.from must be an object saying what to generate, "
+            f"not {_type_name(source)}.",
+        )
+    elif isinstance(source, Mapping):
+        stray = _unknown(source, _GENERATOR_FROM_KEYS[axis])
+        if stray:
+            problems.append(
+                f"{where}.{axis}.from sets {', '.join(repr(s) for s in stray)}, which "
+                f"nothing expands. It may say "
+                f"{', '.join(sorted(_GENERATOR_FROM_KEYS[axis]))}.",
+            )
+        if "count" in source and not isinstance(source["count"], int | str):
+            problems.append(
+                f"{where}.{axis}.from.count must be a whole number, "
+                f"not {_type_name(source['count'])}.",
+            )
+        for key in ("values", "labels", "route"):
+            value = source.get(key)
+            if key in source and (
+                not isinstance(value, Sequence) or isinstance(value, str | bytes)
+            ):
+                problems.append(
+                    f"{where}.{axis}.from.{key} must be a list, not {_type_name(value)}.",
+                )
+    exclude = spec.get("exclude")
+    if "exclude" in spec and (
+        not isinstance(exclude, Sequence) or isinstance(exclude, str | bytes)
+    ):
+        problems.append(
+            f"{where}.{axis}.exclude must be a list of the values to leave out, "
+            f"not {_type_name(exclude)}.",
+        )
+    overrides = spec.get("overrides")
+    if "overrides" in spec and not isinstance(overrides, Mapping):
+        problems.append(
+            f"{where}.{axis}.overrides must be an object keyed by value, "
+            f"not {_type_name(overrides)}.",
+        )
+    elif isinstance(overrides, Mapping):
+        for key, value in overrides.items():
+            if not isinstance(value, Mapping):
+                problems.append(
+                    f"{where}.{axis}.overrides['{key}'] must be an object of the "
+                    f"fields to change, not {_type_name(value)}.",
+                )
+            else:
+                stray = _unknown(value, _ENTRY_KEYS[axis] - {"value"})
+                if stray:
+                    problems.append(
+                        f"{where}.{axis}.overrides['{key}'] sets "
+                        f"{', '.join(repr(s) for s in stray)}, which a "
+                        f"{axis[:-1]} does not have.",
+                    )
+    return problems
+
+
+def _entry_problems(entry: Any, axis: str, position: int, where: str) -> list[str]:
+    """One written-out entry."""
+    at = f"{where}.{axis}[{position}]"
+    if isinstance(entry, str | int | float) and not isinstance(entry, bool):
+        return []
+    if not isinstance(entry, Mapping):
+        return [
+            f"{at} must be an entry object or a bare value, not {_type_name(entry)} -- "
+            f"and an entry the renderer cannot read is dropped, so the list draws "
+            f"shorter than it was written.",
+        ]
+    problems: list[str] = []
+    if "value" not in entry:
+        problems.append(
+            f"{at} has no 'value', so it is dropped and the list draws one entry "
+            f"shorter. A value is whatever the device reports and accepts for it "
+            f"(a port number, a name, an address).",
+        )
+    elif isinstance(entry["value"], bool) or not isinstance(
+        entry["value"], str | int | float,
+    ):
+        problems.append(
+            f"{at}.value must be a number or text, not {_type_name(entry['value'])}.",
+        )
+    stray = _unknown(entry, _ENTRY_KEYS[axis])
+    if stray:
+        problems.append(
+            f"{at} sets {', '.join(repr(s) for s in stray)}, which a {axis[:-1]} "
+            f"does not have. It may say {', '.join(sorted(_ENTRY_KEYS[axis]))}.",
+        )
+    if "route" in entry and not isinstance(entry["route"], list):
+        problems.append(
+            f"{at}.route must be a list of actions (an empty list makes the row "
+            f"deliberately do nothing), not {_type_name(entry['route'])}.",
+        )
+    return problems
+
+
+def matrix_config_problems(
+    config: Any, *, where: str = "matrix_config",
+) -> list[str]:
+    """Everything wrong with a matrix_config, said one sentence at a time.
+
+    Empty for a config that will draw what it says. Every problem here is one
+    the renderer answers by drawing LESS than was written and saying nothing:
+    the point of the check is that silence.
+
+    Deliberately not a check of what the values MEAN -- whether a route key
+    names a real device, whether two entries collide, whether an axis came out
+    empty. Those need the project or the driver registry and are the page
+    review's, which warns rather than refuses because they are judgement calls.
+    This one is structure, and structure is answerable without asking anybody.
+    """
+    if config is None:
+        return []
+    if not isinstance(config, Mapping):
+        return [f"{where} must be an object, not {_type_name(config)}."]
+
+    problems: list[str] = []
+    for axis in ("sources", "destinations"):
+        if axis not in config:
+            continue
+        spec = config[axis]
+        if isinstance(spec, Mapping):
+            problems.extend(_generator_problems(spec, axis, where))
+        elif isinstance(spec, Sequence) and not isinstance(spec, str | bytes):
+            for position, entry in enumerate(spec):
+                problems.extend(_entry_problems(entry, axis, position, where))
+        else:
+            problems.append(
+                f"{where}.{axis} must be a list of entries or a generator object, "
+                f"not {_type_name(spec)}.",
+            )
+
+    for flag in _FLAG_KEYS:
+        if flag in config and not isinstance(config[flag], bool):
+            problems.append(
+                f"{where}.{flag} must be true or false, not {_type_name(config[flag])}.",
+            )
+
+    presets = config.get("presets")
+    if "presets" in config and (
+        not isinstance(presets, Sequence) or isinstance(presets, str | bytes)
+    ):
+        problems.append(f"{where}.presets must be a list, not {_type_name(presets)}.")
+    elif isinstance(presets, Sequence) and not isinstance(presets, str | bytes):
+        for position, preset in enumerate(presets):
+            at = f"{where}.presets[{position}]"
+            if not isinstance(preset, Mapping):
+                problems.append(
+                    f"{at} must be an object with a name and the macro it runs, "
+                    f"not {_type_name(preset)}.",
+                )
+                continue
+            stray = _unknown(preset, _PRESET_KEYS)
+            if stray:
+                problems.append(
+                    f"{at} sets {', '.join(repr(s) for s in stray)}; a preset button "
+                    f"is a 'name' and the 'macro' it runs.",
+                )
+    return problems
 
 
 def destination_for(config: Mapping[str, Any] | None, value: Any) -> dict[str, Any] | None:

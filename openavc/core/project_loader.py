@@ -433,6 +433,27 @@ class UIElement(_ForwardCompatModel):
     def id_no_dots(cls, v: str) -> str:
         return _validate_id(v, "UI element ID")
 
+    @model_validator(mode="after")
+    def matrix_config_is_shaped_right(self) -> "UIElement":
+        """Say so in the log when a matrix will draw less than it says.
+
+        Logged rather than raised, deliberately. The write doors refuse this
+        (``ui_tools._reject_bad_matrix_config``), so a bad shape can only reach
+        here from a hand-edited file, an import, or a project written before the
+        check existed -- and a project that cannot be OPENED is a far worse
+        outcome than a matrix that draws six rows where eight were written.
+        This is also the one place every door passes through, which is why it
+        lives on the model rather than in ``load_project``.
+        """
+        if self.type == "matrix" and self.matrix_config:
+            from openavc.ui.matrix_model import matrix_config_problems
+
+            for problem in matrix_config_problems(
+                self.matrix_config, where=f"'{self.id}' matrix_config",
+            ):
+                log.warning("Matrix element %s", problem)
+        return self
+
 
 class PageBackground(_ForwardCompatModel):
     color: str | None = None

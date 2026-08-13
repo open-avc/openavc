@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X } from "lucide-react";
-import type { UIElement, UIPage, UIElementOption, Placement } from "../../../api/types";
+import type { UIElement, UIPage, UIElementOption, Placement, ProjectConfig } from "../../../api/types";
 import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
@@ -11,6 +11,7 @@ import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
 import { MacroRefPicker, DeviceRefPicker } from "../../shared/RefPickers";
 import { MatchDriverRangeRow } from "../BindingEditor/DeviceValuePicker";
+import { MatrixSetupDialog } from "../MatrixSetupDialog";
 import { CustomControlConfig } from "./CustomControlConfig";
 import { FieldRow } from "./FieldRow";
 import { GrantEditor } from "./GrantEditor";
@@ -27,6 +28,8 @@ interface MatrixPreset {
 
 interface BasicPropertiesProps {
   element: UIElement;
+  /** Read by the matrix setup picker, which needs the device list. */
+  project: ProjectConfig;
   pages: UIPage[];
   macros?: { id: string; name: string }[];
   /** Where the element sits — geometry lives in the page's layout now, so the
@@ -39,6 +42,7 @@ interface BasicPropertiesProps {
 
 export function BasicProperties({
   element,
+  project,
   pages,
   macros = [],
   placement,
@@ -818,6 +822,7 @@ export function BasicProperties({
       {/* Matrix properties */}
       {element.type === "matrix" && (
         <>
+          <MatrixSetupRow element={element} project={project} onChange={onChange} />
           <FieldRow label="Style">
             <select value={element.matrix_style || "crosspoint"} onChange={(e) => onChange({ matrix_style: e.target.value })} style={{ flex: 1 }}>
               <option value="crosspoint">Crosspoint Grid</option>
@@ -1164,6 +1169,70 @@ export function BasicProperties({
  */
 type MatrixAxis = "sources" | "destinations";
 type MatrixConfig = Record<string, unknown> | undefined;
+
+/**
+ * The way into the device picker, and the one line that says what it did.
+ *
+ * The fields under it author the GENERATOR -- a count, a key with a `*` in it,
+ * a row of labels -- which covers a frame whose ports run 1..N and nothing
+ * else. The picker writes the axes out entry by entry (matrix plan D5), which
+ * is what a patched frame, string port ids or destinations on two devices need,
+ * so once it has run those fields step aside and this row is where the lists
+ * are edited from.
+ */
+function MatrixSetupRow({
+  element,
+  project,
+  onChange,
+}: {
+  element: UIElement;
+  project: ProjectConfig;
+  onChange: (patch: Partial<UIElement>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const written =
+    matrixAxisIsList(element.matrix_config, "sources") ||
+    matrixAxisIsList(element.matrix_config, "destinations");
+
+  return (
+    <>
+      <FieldRow label="From device">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          style={{
+            flex: 1,
+            padding: "4px 8px",
+            borderRadius: "var(--border-radius)",
+            border: "1px dashed var(--accent)",
+            background: "rgba(138,180,147,0.08)",
+            color: "var(--accent)",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+          title="Fill the sources, destinations and route keys in from what the driver declares"
+        >
+          {written ? "Set up again from a device…" : "Set up from a device…"}
+        </button>
+      </FieldRow>
+      {written && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+          {matrixList(element.matrix_config, "sources").length} sources and{" "}
+          {matrixList(element.matrix_config, "destinations").length} destinations are
+          written out. Re-open this to rename, reorder or pick up new ports.
+        </div>
+      )}
+      {open && (
+        <MatrixSetupDialog
+          element={element}
+          project={project}
+          onApply={onChange}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
 
 /**
  * One axis of a matrix, as the list it already is.

@@ -306,6 +306,14 @@ A **Matrix** is configured under **Basic**, not through the binding cards, and o
 
 A matrix is **two lists**: the sources you can pick from, and the destinations you can send them to. Everything else is a way of drawing them.
 
+**Start with Set up from a device.** Your switcher already knows what it has, so the first field under **Basic** reads it: pick the device, and OpenAVC fills in the sources, the destinations, each destination's route key, and the routing command. Every row arrives with a tick box, an editable name and arrows to reorder, so you keep the ports you use, rename them to what the room calls them, and drop the rest before pressing **Apply**. Nothing is applied until you do.
+
+A device that routes more than one thing offers one setup per signal. A decoder that routes video, audio and USB separately shows all three, and each one is a separate Matrix element pointed at that signal, so a page that needs two carries two matrices. Devices whose ports are not a plain 1-to-N frame, and devices whose driver says nothing about routing, are set up by hand with the fields below.
+
+Some things the picker cannot know, and it says so above the lists rather than after you have built the panel: a device that is not running lists the ports its driver declares rather than the ones it has, a routing command may need a setting the picker cannot guess, and some devices report a routed source in different words from the ones their route command accepts. Read those lines before pressing Apply.
+
+**Re-read device** picks up ports the device has gained since. Your ticks, names and order are kept for every port that is still there, and anything new arrives at the bottom marked **new** and unticked, so nothing appears on a finished panel without you saying so.
+
 | Setting | What it does |
 |---|---|
 | **Sources** / **Destinations** | How many of each. Both default to 4, so an 8x8 switcher needs both set or it draws half of itself. |

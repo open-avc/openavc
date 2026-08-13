@@ -11,6 +11,7 @@ from __future__ import annotations
 from openavc.ui.matrix_model import (
     axis_count,
     destination_for,
+    matrix_config_problems,
     resolve_axis,
     resolve_matrix_config,
     resolve_ui,
@@ -279,3 +280,139 @@ def test_resolve_ui_reaches_page_elements_and_masters_and_nothing_else():
         "id": "btn", "type": "button", "label": "Go"
     }
     assert len(resolved["master_elements"][0]["matrix_config"]["destinations"]) == 3
+
+
+# --- The schema: what a matrix_config may say ------------------------------
+#
+# The value of these is REJECTION. matrix_config is dict[str, Any] at every
+# layer, so before this an invented shape stored perfectly, exported perfectly,
+# reloaded perfectly and drew nothing -- and the renderer's answer to each case
+# below is to draw LESS than was written, silently. Every assertion is one of
+# those silences.
+
+
+def test_a_config_that_says_what_it_means_has_no_problems():
+    assert matrix_config_problems({
+        "sources": [{"value": 1, "label": "Apple TV", "label_key": "device.mx.input.1.name"}],
+        "destinations": {"from": {"count": 8, "route_key": "device.mx.output.*.input"},
+                         "exclude": [7, 8], "overrides": {"1": {"label": "Main LCD"}}},
+        "audio_follow_video": False,
+        "presets": [{"name": "All to PC", "macro": "all_pc"}],
+    }) == []
+    assert matrix_config_problems(None) == []
+    assert matrix_config_problems({}) == []
+
+
+def test_an_entry_with_no_value_is_named_because_it_is_simply_dropped():
+    """Eight destinations written, seven drawn, and nothing said so."""
+    problems = matrix_config_problems({
+        "destinations": [{"value": 1}, {"label": "Stream", "route_key": "device.enc.source"}],
+    })
+    assert len(problems) == 1
+    assert "destinations[1]" in problems[0] and "no 'value'" in problems[0]
+
+
+def test_a_count_one_level_too_high_is_the_generator_mistake_worth_catching():
+    """`{count: 8}` instead of `{from: {count: 8}}` resolves to an empty axis."""
+    problems = matrix_config_problems({"destinations": {"count": 8}})
+    assert len(problems) == 1
+    assert "'count'" in problems[0] and "inside 'from'" in problems[0]
+
+
+def test_a_route_key_on_the_sources_axis_is_a_line_that_does_nothing():
+    """Sources are not routed anywhere, so nothing ever substitutes into it."""
+    problems = matrix_config_problems({"sources": {"from": {"count": 4, "route_key": "x.*"}}})
+    assert len(problems) == 1
+    assert "'route_key'" in problems[0]
+    # ... and the same key on the destinations axis is exactly right.
+    assert matrix_config_problems({"destinations": {"from": {"count": 4, "route_key": "x.*"}}}) == []
+
+
+def test_an_entry_key_the_wrong_axis_carries_is_named():
+    assert any(
+        "'route_key'" in p
+        for p in matrix_config_problems({"sources": [{"value": 1, "route_key": "x"}]})
+    )
+    assert any(
+        "'name'" in p
+        for p in matrix_config_problems({"destinations": [{"value": 1, "name": "Main"}]})
+    )
+
+
+def test_an_axis_that_is_neither_a_list_nor_a_generator_is_refused():
+    for spec in (4, "eight", True):
+        problems = matrix_config_problems({"destinations": spec})
+        assert len(problems) == 1 and "must be a list of entries" in problems[0]
+
+
+def test_a_bare_value_is_a_perfectly_good_entry():
+    assert matrix_config_problems({"sources": [1, 2, "HDMI_A"]}) == []
+
+
+def test_a_destination_route_override_must_be_a_list_of_actions():
+    assert matrix_config_problems({
+        "destinations": [{"value": 1, "route": []}],
+    }) == []
+    problems = matrix_config_problems({
+        "destinations": [{"value": 1, "route": {"action": "macro"}}],
+    })
+    assert len(problems) == 1 and "list of actions" in problems[0]
+
+
+def test_the_flags_are_flags():
+    problems = matrix_config_problems({"show_lock": "yes", "audio_follow_video": 1})
+    assert len(problems) == 2
+    assert all("true or false" in p for p in problems)
+
+
+def test_a_preset_is_a_name_and_a_macro():
+    assert matrix_config_problems({"presets": [{"name": "A", "macro": "m"}]}) == []
+    assert any(
+        "'target'" in p
+        for p in matrix_config_problems({"presets": [{"name": "A", "target": "m"}]})
+    )
+    assert any(
+        "must be a list" in p for p in matrix_config_problems({"presets": {"a": 1}})
+    )
+
+
+def test_the_generators_own_fields_are_checked_too():
+    problems = matrix_config_problems({
+        "destinations": {"from": {"count": [], "labels": "Main"}, "exclude": 7,
+                         "overrides": {"1": "Main LCD"}},
+    })
+    assert len(problems) == 4
+    assert any("count must be a whole number" in p for p in problems)
+    assert any("labels must be a list" in p for p in problems)
+    assert any("exclude must be a list" in p for p in problems)
+    assert any("overrides['1'] must be an object" in p for p in problems)
+
+
+def test_every_declared_generator_field_really_does_expand():
+    """The schema and the expander must name the same fields, or one of them lies."""
+    resolved = resolve_axis({"destinations": {"from": {
+        "values": [3], "labels": ["Main"], "label_key": "device.mx.output.*.name",
+        "route_key": "device.mx.output.*.input",
+        "audio_route_key": "device.mx.output.*.audio",
+        "route": [{"action": "macro", "macro": "m"}],
+    }}}, "destinations")
+    assert resolved == [{
+        "value": 3, "label": "Main",
+        "label_key": "device.mx.output.3.name",
+        "route_key": "device.mx.output.3.input",
+        "audio_route_key": "device.mx.output.3.audio",
+        "route": [{"action": "macro", "macro": "m"}],
+    }]
+    assert matrix_config_problems({"destinations": {"from": {
+        "count": 1, "values": [3], "labels": ["Main"], "label_key": "a.*",
+        "route_key": "b.*", "audio_route_key": "c.*", "route": [],
+    }}}) == []
+
+
+def test_the_config_itself_must_be_an_object():
+    assert matrix_config_problems([1, 2]) == ["matrix_config must be an object, not a list."]
+
+
+def test_the_element_it_belongs_to_can_be_named_in_the_sentence():
+    problems = matrix_config_problems({"destinations": 4}, where="'mx1' matrix_config")
+    assert problems[0].startswith("'mx1' matrix_config.destinations")

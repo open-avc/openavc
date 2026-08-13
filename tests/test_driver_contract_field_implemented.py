@@ -133,9 +133,6 @@ RUNTIME_OPT_OUT = {
     "childEntityType.label_field":
         "Child presentation: which state field names a child. "
         "Read by the Builder (ChildEntityTypesEditor, validateDriver).",
-    "childEntityType.label_plural":
-        "Child presentation: plural noun for a child type. "
-        "Read by the Builder (ChildEntityTypesEditor).",
     "childEntityType.summary_fields":
         "Child presentation: which fields show on a child's summary row. "
         "Read by the Builder (ChildEntityTypesEditor).",

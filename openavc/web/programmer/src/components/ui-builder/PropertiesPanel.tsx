@@ -300,6 +300,7 @@ export function PropertiesPanel({
       <Section title="Basic" defaultOpen>
         <BasicProperties
           element={element}
+          project={project}
           pages={project.ui.pages}
           macros={(project.macros || []).map((m) => ({ id: m.id, name: m.name }))}
           placement={getPlacement(page, element.id, activeLayoutId)}
@@ -506,6 +507,7 @@ function MasterElementProperties({
       <Section title="Basic" defaultOpen>
         <BasicProperties
           element={masterElement}
+          project={project}
           pages={project.ui.pages}
           macros={(project.macros || []).map((m) => ({ id: m.id, name: m.name }))}
           onChange={handleElementChange}
