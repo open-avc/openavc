@@ -112,6 +112,26 @@ def test_ssrf_allows_loopback_in_dev(monkeypatch):
     assert _validate("http://127.0.0.1:8000/") == "http://127.0.0.1:8000"
 
 
+def test_ssrf_allows_ipv6_loopback_in_dev(monkeypatch):
+    """`::1` is loopback and also reserved (::/8) -- loopback has to win."""
+    monkeypatch.setattr("openavc.api.auth._deployment_is_dev", lambda: True)
+    assert _validate("http://[::1]:8000/") == "http://[::1]:8000"
+
+
+def test_ssrf_allows_localhost_in_dev(monkeypatch):
+    """The name a developer actually types, which resolves to ::1 first."""
+    monkeypatch.setattr("openavc.api.auth._deployment_is_dev", lambda: True)
+    assert _validate("http://localhost:8000/") == "http://localhost:8000"
+
+
+def test_ssrf_blocks_ipv6_loopback_on_shipped_deployment(monkeypatch):
+    monkeypatch.setattr("openavc.api.auth._deployment_is_dev", lambda: False)
+    with pytest.raises(HTTPException) as e:
+        _validate("http://[::1]:8000/")
+    assert e.value.status_code == 400
+    assert "points back at this machine" in e.value.detail
+
+
 def test_ssrf_allows_public_and_private_hosts():
     # Public IP literal (no DNS) and an RFC1918 self-hosted-cloud address both pass.
     assert _validate("https://8.8.8.8:443/x/") == "https://8.8.8.8:443/x"

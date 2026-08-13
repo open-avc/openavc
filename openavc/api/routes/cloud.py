@@ -90,12 +90,26 @@ async def _validate_cloud_api_url(url: str) -> str:
             ip = ipaddress.ip_address(info[4][0])
         except ValueError:
             continue
+        # Loopback is decided on its own, first. `::1` is loopback AND reserved
+        # (it sits inside ::/8), so folding it into the test below refused
+        # `localhost` even on a dev checkout where loopback is meant to be
+        # allowed -- and a dual-stack machine resolves `localhost` to ::1 before
+        # 127.0.0.1, so pairing a local instance to a local cloud never worked.
+        if ip.is_loopback:
+            if allow_loopback:
+                continue
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cloud API URL points back at this machine ({ip}). "
+                    "Use the address other machines reach the cloud on."
+                ),
+            )
         if (
             ip.is_link_local
             or ip.is_multicast
             or ip.is_reserved
             or ip.is_unspecified
-            or (ip.is_loopback and not allow_loopback)
         ):
             raise HTTPException(
                 status_code=400,
