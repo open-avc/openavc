@@ -91,6 +91,12 @@
 // <old px> / REM_BASE_PX so they still land on the pixel they always did.
 const REM_BASE_PX = 14;
 
+// How far a finger may travel on a matrix crosspoint before the gesture stops
+// being a tap and becomes a drag-to-route. Deliberately generous: a wall panel
+// is touched with a thumb, and a few pixels of travel on the way down is a tap
+// by every reasonable reading.
+const MATRIX_DRAG_THRESHOLD_PX = 8;
+
 // Overlay and sidebar boxes, as percentages of the viewport. These are the
 // old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
 // against the 1280x800 reference, so an overlay that never set a size keeps
@@ -2499,6 +2505,54 @@ class PanelApp {
 
     // --- Matrix ---
 
+    /**
+     * A routed-source value in comparable form, or null when nothing is routed.
+     *
+     * Everything about which crosspoint lights, and whether audio agrees with
+     * video, used to go through parseInt(). That is wrong in both directions:
+     * parseInt('IN1') is NaN and NaN never equals itself, so a switcher that
+     * labels its ports lit EVERY audio-mismatch badge while audio and video
+     * were byte-for-byte identical, and lit no crosspoint at all.
+     *
+     * 0 counts as unrouted rather than as port zero. Every routing driver in
+     * the corpus numbers its ports from 1, and AV gear conventionally reports
+     * 0 for an idle port -- so "audio is on nothing" would otherwise read as
+     * "audio is on something else", which is the badge's whole meaning.
+     */
+    _routeValue(v) {
+        if (v === null || v === undefined) return null;
+        if (typeof v === 'number') return Number.isFinite(v) && v !== 0 ? v : null;
+        const s = String(v).trim();
+        if (s === '' || s === '0') return null;
+        if (/^[+-]?\d+(?:\.\d+)?$/.test(s)) return Number(s);
+        return s.toLowerCase();
+    }
+
+    /** The single digit run in a string, or null when it does not have exactly one. */
+    _routeDigits(s) {
+        if (typeof s !== 'string') return null;
+        const runs = s.match(/\d+/g);
+        return runs && runs.length === 1 ? Number(runs[0]) : null;
+    }
+
+    /**
+     * Do two routed-source values name the same source?
+     *
+     * Equality first, so identical values can never read as a mismatch. Then a
+     * single embedded number, so a device reporting 'IN2' or 'HDMI 3' can still
+     * light its crosspoint -- but only when there is exactly one digit run, so
+     * nothing is guessed from a source NAME ('Laptop') or a value that happens
+     * to carry two numbers ('1080p60').
+     */
+    _routeMatches(a, b) {
+        const x = this._routeValue(a), y = this._routeValue(b);
+        if (x === null || y === null) return false;
+        if (x === y) return true;
+        const dx = typeof x === 'number' ? x : this._routeDigits(x);
+        const dy = typeof y === 'number' ? y : this._routeDigits(y);
+        return dx !== null && dx === dy;
+    }
+
     renderMatrix(element) {
         const el = document.createElement('div');
         el.className = 'panel-element panel-matrix';
@@ -2542,6 +2596,19 @@ class PanelApp {
         // Matrix state tracking
         const lockedOutputs = new Set();
         const mutedOutputs = new Set();
+
+        // The one place that turns "the user chose this input for that output"
+        // into messages. The tap, the drag and the list dropdown all come here,
+        // so they cannot drift apart on whether audio follows -- which they had,
+        // three near-copies of the same audio_follow_video block.
+        const sendRoute = (input, output) => {
+            this.send({ type: 'ui.route', element_id: element.id, input, output });
+            if (config.audio_follow_video && element.bindings?.do?.audio_route) {
+                this.send({
+                    type: 'ui.route', element_id: element.id, input, output, audio: true,
+                });
+            }
+        };
 
         // Presets bar (if presets defined in matrix config)
         const presets = element.matrix_config?.presets || [];
@@ -2600,24 +2667,7 @@ class PanelApp {
 
                 select.addEventListener('change', () => {
                     if (lockedOutputs.has(o + 1)) return;
-                    const inputIdx = parseInt(select.value);
-                    const outputIdx = o + 1;
-                    this.send({
-                        type: 'ui.route',
-                        element_id: element.id,
-                        input: inputIdx,
-                        output: outputIdx,
-                    });
-                    // Audio follow video
-                    if (config.audio_follow_video && element.bindings?.do?.audio_route) {
-                        this.send({
-                            type: 'ui.route',
-                            element_id: element.id,
-                            input: inputIdx,
-                            output: outputIdx,
-                            audio: true,
-                        });
-                    }
+                    sendRoute(parseInt(select.value), o + 1);
                 });
 
                 if (showLock) {
@@ -2766,87 +2816,96 @@ class PanelApp {
                     dot.dataset.input = String(i + 1);
                     dot.dataset.output = String(o + 1);
 
-                    cell.addEventListener('click', () => {
-                        if (lockedOutputs.has(o + 1)) return;
-                        this.send({
-                            type: 'ui.route',
-                            element_id: element.id,
-                            input: i + 1,
-                            output: o + 1,
-                        });
-                        if (config.audio_follow_video && element.bindings?.do?.audio_route) {
-                            this.send({
-                                type: 'ui.route',
-                                element_id: element.id,
-                                input: i + 1,
-                                output: o + 1,
-                                audio: true,
-                            });
-                        }
-                    });
-
-                    // Drag-to-route: start drag from input header, drop on output row
+                    // ONE gesture, ONE route. The cell used to carry a click
+                    // handler AND a drag handler whose pointerup routed as
+                    // well, so a tap sent the command twice (four times with
+                    // audio-follow-video on) -- invisible on a healthy device,
+                    // and only visible on the wire. Worse, it routed on the
+                    // drag that SCROLLS an oversized grid, which is the very
+                    // gesture a matrix bigger than its box forces on you.
+                    //
+                    // So the whole interaction is one pointer sequence:
+                    //   tap      -> route this cell
+                    //   drag     -> route the cell released over
+                    //   scrolled -> nothing; the finger was moving the grid
                     cell.addEventListener('pointerdown', (e) => {
                         if (lockedOutputs.has(o + 1)) return;
-                        dragStartInput = i + 1;
-                        // Create visual feedback line
+                        const startX = e.clientX, startY = e.clientY;
+                        const startLeft = scrollWrap.scrollLeft;
+                        const startTop = scrollWrap.scrollTop;
                         const rect = cell.getBoundingClientRect();
-                        dragLine = document.createElement('div');
-                        dragLine.className = 'matrix-drag-line';
-                        dragLine.style.cssText = `
-                            position: fixed; pointer-events: none; z-index: 999;
-                            height: 2px; width: 0;
-                            background: ${activeColor};
-                            border-radius: 1px;
-                            transform-origin: left center;
-                            left: ${rect.left + rect.width / 2}px;
-                            top: ${rect.top + rect.height / 2}px;
-                        `;
-                        document.body.appendChild(dragLine);
-                        const onMove = (me) => {
-                            if (!dragLine) return;
-                            const dx = me.clientX - (rect.left + rect.width / 2);
-                            const dy = me.clientY - (rect.top + rect.height / 2);
-                            const len = Math.sqrt(dx * dx + dy * dy);
-                            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-                            dragLine.style.width = len + 'px';
-                            dragLine.style.transform = `rotate(${angle}deg)`;
-                            dragLine.style.transformOrigin = '0 0';
+                        const originX = rect.left + rect.width / 2;
+                        const originY = rect.top + rect.height / 2;
+                        let dragging = false;
+                        dragStartInput = i + 1;
+
+                        // The grid moved under the finger, so the gesture was
+                        // a scroll no matter where it ended up.
+                        const scrolled = () =>
+                            scrollWrap.scrollLeft !== startLeft ||
+                            scrollWrap.scrollTop !== startTop;
+
+                        const dropLine = () => {
+                            if (dragLine) { dragLine.remove(); dragLine = null; }
                         };
-                        const onUp = (ue) => {
+
+                        const onMove = (me) => {
+                            if (scrolled()) { dropLine(); dragging = false; return; }
+                            const dx = me.clientX - startX, dy = me.clientY - startY;
+                            if (!dragging && Math.hypot(dx, dy) < MATRIX_DRAG_THRESHOLD_PX) return;
+                            dragging = true;
+                            if (!dragLine) {
+                                dragLine = document.createElement('div');
+                                dragLine.className = 'matrix-drag-line';
+                                dragLine.style.cssText = `
+                                    position: fixed; pointer-events: none; z-index: 999;
+                                    height: 2px; width: 0;
+                                    background: ${activeColor};
+                                    border-radius: 1px;
+                                    transform-origin: 0 0;
+                                    left: ${originX}px;
+                                    top: ${originY}px;
+                                `;
+                                document.body.appendChild(dragLine);
+                            }
+                            const lx = me.clientX - originX, ly = me.clientY - originY;
+                            dragLine.style.width = Math.hypot(lx, ly) + 'px';
+                            dragLine.style.transform =
+                                `rotate(${Math.atan2(ly, lx) * 180 / Math.PI}deg)`;
+                        };
+
+                        const finish = (ue, cancelled) => {
                             document.removeEventListener('pointermove', onMove);
                             document.removeEventListener('pointerup', onUp);
-                            if (dragLine) { dragLine.remove(); dragLine = null; }
-                            // Find which cell we dropped on
-                            const target = document.elementFromPoint(ue.clientX, ue.clientY);
-                            const cp = target?.closest?.('.matrix-crosspoint') || target?.closest?.('.matrix-cell')?.querySelector('.matrix-crosspoint');
-                            if (cp && cp.dataset.output && dragStartInput) {
-                                const dropOutput = parseInt(cp.dataset.output);
-                                if (!lockedOutputs.has(dropOutput)) {
-                                    this.send({ type: 'ui.route', element_id: element.id, input: dragStartInput, output: dropOutput });
-                                    // Audio follow video: mirror the click handler so the drag
-                                    // gesture and tap gesture behave the same with AFV on.
-                                    if (config.audio_follow_video && element.bindings?.do?.audio_route) {
-                                        this.send({
-                                            type: 'ui.route',
-                                            element_id: element.id,
-                                            input: dragStartInput,
-                                            output: dropOutput,
-                                            audio: true,
-                                        });
-                                    }
-                                }
-                            }
+                            document.removeEventListener('pointercancel', onCancel);
+                            el._matrixDragCleanup = null;
+                            dropLine();
+                            const wasDragging = dragging;
+                            const input = dragStartInput;
+                            dragging = false;
                             dragStartInput = null;
+                            // A cancelled pointer is the browser saying it took
+                            // this gesture over to scroll with; a moved
+                            // scrollbar says the same thing after the fact.
+                            if (cancelled || scrolled() || !input) return;
+                            let output = o + 1;
+                            if (wasDragging) {
+                                const target = document.elementFromPoint(ue.clientX, ue.clientY);
+                                const cp = target?.closest?.('.matrix-crosspoint')
+                                    || target?.closest?.('.matrix-cell')?.querySelector('.matrix-crosspoint');
+                                if (!cp || !cp.dataset.output) return;
+                                output = parseInt(cp.dataset.output);
+                            }
+                            if (!output || lockedOutputs.has(output)) return;
+                            sendRoute(input, output);
                         };
+                        const onUp = (ue) => finish(ue, false);
+                        const onCancel = () => finish(null, true);
+
                         document.addEventListener('pointermove', onMove);
                         document.addEventListener('pointerup', onUp);
-                        el._matrixDragCleanup = () => {
-                            document.removeEventListener('pointermove', onMove);
-                            document.removeEventListener('pointerup', onUp);
-                            if (dragLine) { dragLine.remove(); dragLine = null; }
-                            dragStartInput = null;
-                        };
+                        document.addEventListener('pointercancel', onCancel);
+                        el._matrixDragCleanup = () => finish(null, true);
                     });
 
                     cell.appendChild(dot);
@@ -2938,36 +2997,27 @@ class PanelApp {
         const { routePattern, audioRoutePattern, inputKeyPattern, outputKeyPattern, inputCount, outputCount, activeColor, inactiveColor, matrixStyle } = b._matrix;
         const el = b.element;
 
-        // Read current video routes from state
-        const routes = {};  // output (1-based) -> input (1-based)
+        // Read current video routes from state. The RAW value is kept -- the
+        // device decides what a routed source looks like, and _routeMatches
+        // decides whether two of them name the same thing.
+        const routes = {};  // output (1-based) -> whatever the device reports
         for (let o = 1; o <= outputCount; o++) {
-            const key = routePattern.replace('*', String(o));
-            const val = this.state[key];
-            if (val !== undefined && val !== null) {
-                routes[o] = parseInt(String(val));
-            }
+            routes[o] = this.state[routePattern.replace('*', String(o))];
         }
 
         // Read audio routes if a pattern is configured, so we can flag any
         // output whose audio route diverges from its video route.
-        const audioRoutes = {};
         if (audioRoutePattern) {
-            for (let o = 1; o <= outputCount; o++) {
-                const key = audioRoutePattern.replace('*', String(o));
-                const val = this.state[key];
-                if (val !== undefined && val !== null) {
-                    audioRoutes[o] = parseInt(String(val));
-                }
-            }
-            // Toggle the per-output mismatch badge.
             const badges = el.querySelectorAll('.matrix-route-mismatch');
             badges.forEach(badge => {
                 const idx = parseInt(badge.dataset.mismatchIdx) + 1;
-                const video = routes[idx];
-                const audio = audioRoutes[idx];
-                const mismatch =
-                    video !== undefined && audio !== undefined && video !== audio;
-                badge.hidden = !mismatch;
+                const video = this._routeValue(routes[idx]);
+                const audio = this._routeValue(
+                    this.state[audioRoutePattern.replace('*', String(idx))]);
+                // Only when BOTH are routed and they disagree. An unreported or
+                // idle audio port is not a mismatch, it is an absence.
+                badge.hidden = !(video !== null && audio !== null
+                    && !this._routeMatches(video, audio));
             });
         }
 
@@ -2987,7 +3037,13 @@ class PanelApp {
             });
         }
         if (outputKeyPattern) {
-            const headers = el.querySelectorAll('[data-output-idx]');
+            // Scoped to the LABEL nodes. The list view's <select> carries the
+            // same data-output-idx (its change handler reads it), so an
+            // unscoped query wrote the output's name into the dropdown --
+            // and setting textContent on a <select> destroys every <option>
+            // in it. Live output names emptied the control outright.
+            const headers = el.querySelectorAll(
+                '.matrix-output-header[data-output-idx], .matrix-list-label[data-output-idx]');
             headers.forEach(h => {
                 const idx = parseInt(h.dataset.outputIdx);
                 const key = outputKeyPattern.replace('*', String(idx + 1));
@@ -3000,11 +3056,29 @@ class PanelApp {
         }
 
         if (matrixStyle === 'list') {
-            // Update select values
             const selects = el.querySelectorAll('.matrix-list-select');
             selects.forEach(sel => {
+                // Live INPUT names reach the dropdown here. The label updater
+                // above only touches nodes tagged data-input-idx, which the
+                // list view has none of, so its options kept their authored
+                // captions no matter what the device reported.
+                if (inputKeyPattern) {
+                    for (const opt of sel.options) {
+                        const val = this.state[inputKeyPattern.replace('*', opt.value)];
+                        if (val !== undefined && val !== null && String(val) !== '') {
+                            opt.textContent = String(val);
+                        }
+                    }
+                }
                 const oIdx = parseInt(sel.dataset.outputIdx) + 1;
-                if (routes[oIdx]) sel.value = String(routes[oIdx]);
+                // Select the option whose value the device's report names, so a
+                // device reporting 'IN2' still moves the dropdown to Input 2.
+                const routed = routes[oIdx];
+                if (this._routeValue(routed) !== null) {
+                    const hit = Array.from(sel.options)
+                        .find(opt => this._routeMatches(opt.value, routed));
+                    if (hit) sel.value = hit.value;
+                }
             });
         } else {
             // Update crosspoint dots
@@ -3012,7 +3086,7 @@ class PanelApp {
             dots.forEach(dot => {
                 const inp = parseInt(dot.dataset.input);
                 const out = parseInt(dot.dataset.output);
-                const isActive = routes[out] === inp;
+                const isActive = this._routeMatches(dot.dataset.input, routes[out]);
                 dot.style.backgroundColor = isActive ? activeColor : inactiveColor;
                 dot.classList.toggle('active', isActive);
                 dot.setAttribute('aria-label', isActive ? `Active: input ${inp} to output ${out}` : `Inactive: input ${inp} to output ${out}`);

@@ -446,6 +446,21 @@
     justify-content: flex-end;
     padding-right: 0.5714rem;
 }
+/* A destination name too long for its column has to lose its TAIL, with an
+   ellipsis to say so. The header is a flex box aligned to its right edge, and
+   overflow on a flex container hides the START of the line while
+   text-overflow does not apply to it at all -- so "Main LCD" silently became
+   "ain LCD", which reads as a typo rather than as a column too narrow. The
+   ellipsis belongs on the text node, and min-width lets it actually shrink. */
+.panel-matrix .matrix-output-header > [data-label-text] {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.panel-matrix .matrix-route-mismatch {
+    flex-shrink: 0;
+}
 .panel-matrix .matrix-cell {
     display: flex;
     align-items: center;
@@ -485,7 +500,12 @@
     font-size: 0.9em;
     color: inherit;
     min-width: 5.7143rem;
+    max-width: 40%;
     text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
 }
 .panel-matrix .matrix-list-select {
     flex: 1;
