@@ -25,6 +25,7 @@ import pytest
 from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
+    routing_block_errors,
     validate_substitutions,
     validate_actions,
 )
@@ -353,6 +354,54 @@ def test_the_python_path_carries_no_second_copy_of_the_action_rules():
         assert message in through_python, message
     # And the duplicate-id rule, which the hand-rolled copy never had at all.
     assert any("duplicate action id" in m for m in through_python)
+
+
+def _routed(**routing) -> dict:
+    """The shared driver, plus a routing declaration to check."""
+    definition = _definition()
+    definition["routing"] = {
+        "destination_child_type": "zone",
+        "command": "set_zone_level",
+        "destination_param": "zone",
+        "planes": [{"label": "Level", "route_property": "level"}],
+        **routing,
+    }
+    return definition
+
+
+def test_a_correct_routing_declaration_passes_on_both_surfaces():
+    definition = _routed()
+    assert routing_block_errors(definition) == []
+    assert "routing" not in " ".join(python_driver_info_issues(definition))
+
+
+@pytest.mark.parametrize("broken, names", [
+    ({"destination_child_type": "zoen"}, "zoen"),
+    ({"command": "set_zone_levl"}, "set_zone_levl"),
+    ({"planes": [{"label": "Level", "route_property": "levl"}]}, "levl"),
+])
+def test_a_routing_declaration_that_names_nothing_is_refused_on_both(broken, names):
+    """A Python driver's routing block used to be checked by nobody.
+
+    The block names a child type, a property on it and a command, and it is
+    read when somebody draws a panel rather than when the driver runs -- so a
+    wrong name here surfaces as a matrix whose crosspoints never light, in a
+    room, long after the driver was written. YAML got that checked from the
+    day the block existed; a `.py` driver declaring the same thing got nothing,
+    which is the asymmetry this file exists to prevent.
+    """
+    definition = _routed(**broken)
+    shared = routing_block_errors(definition)
+    assert shared, "the shared rule should refuse this"
+    assert any(names in message for message in shared)
+    through_python = python_driver_info_issues(definition)
+    for message in shared:
+        assert message in through_python, message
+
+
+def test_a_driver_that_declares_no_routing_is_not_asked_about_it():
+    assert routing_block_errors(_definition()) == []
+    assert python_driver_info_issues(_definition()) == []
 
 
 def test_a_yaml_definition_never_produces_a_skip():

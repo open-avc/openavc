@@ -27,6 +27,7 @@ from openavc.drivers.avcdriver_semantic import (
     child_param_reference_errors,
     device_setting_state_key_errors,
     platform_version_errors,
+    routing_block_errors,
     validate_actions,
 )
 
@@ -240,6 +241,16 @@ def python_driver_info_issues(
     # builds at runtime is simply invisible here, which understates the floor
     # and never invents one.
     issues.extend(platform_version_errors(info))
+
+    # And the routing declaration, from the same shared rule the YAML half
+    # runs. Nothing about the block is YAML-shaped -- it names child types,
+    # properties and commands this driver declares, and the rule already
+    # tolerates the ones built at construction time. It was simply never
+    # called here, so a Python driver could name a child type it does not
+    # have and be told by nobody: not the CLI check, not catalog CI, not the
+    # IDE, not the server log. That failure surfaces as a matrix whose
+    # crosspoints never light, in a room, weeks later.
+    issues.extend(routing_block_errors(info))
 
     actions = info.get("actions")
     declares_setup = isinstance(actions, list) and any(
