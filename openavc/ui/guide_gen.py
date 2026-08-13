@@ -216,11 +216,13 @@ COUNTED_INTRO = """\
 
 ## The matrix, whose floor is a function of the grid you asked for
 
-A matrix has no single floor. A crosspoint grid is `input_count` columns by
-`output_count` rows of a cell that does not shrink below the finger rule, so its
-floor is a line rather than a point -- and the two `matrix_style` values are not
-the same line, because a list matrix is one dropdown per destination and its
-width does not move with the input count at all.
+A matrix has no single floor. A crosspoint grid is one column per `sources` entry
+by one row per `destinations` entry, of a cell that does not shrink below the
+finger rule, so its floor is a line rather than a point -- and the three
+`matrix_style` values are not the same line. A list matrix is one dropdown per
+destination, so its width does not move with the source count at all. A tiles
+matrix is one card per destination and no sources on the wall at all, laid out
+`ceil(destinations / rows)` across by `rows = floor(sqrt(destinations))` down.
 
 | Type and `matrix_style` | Floor |
 |---|---|
@@ -236,21 +238,25 @@ Then add, for each of these the matrix actually has:
 |---|---|
 %(conditionals)s
 
-Worked, for a matrix with a label and the lock column it gets by default:
+Worked, for a matrix with a label:
 
 | Grid | %(style_names)s |
 %(example_rule)s
 %(examples)s
 
-What this holds is every crosspoint, drawn at the finger rule and visible without
-scrolling, plus enough room to read the destination names and the column numbers.
+The tiles column ignores the source count in those rows, because a tile wall has
+no source axis: `4x4`, `8x8` and `16x16` are four, eight and sixteen destinations.
+
+What this holds is every crosspoint (or every tile), drawn at the finger rule and
+visible without scrolling, plus enough room to read the destination names and the
+column numbers.
 
 What it does **not** hold is the *whole* of a name. The destination column keeps a
 declared 80px and grows to the longest name when there is room; past that the name
 ellipsises. The source legend is the same bargain turned sideways: one row tall
-whatever the sources are called, scrolling if there are more than fit. A floor that
-held any name anyone typed would be a floor whose value is whatever they typed, and
-nothing in this file sizes text.
+whatever the sources are called, scrolling if there are more than fit. A tile's two
+names ellipsise inside it. A floor that held any name anyone typed would be a floor
+whose value is whatever they typed, and nothing in this file sizes text.
 
 %(notes)s
 """
@@ -386,7 +392,7 @@ exactly the same way a correct one is stored and used.
 | `sources` | What can be routed. A list of entries, or a generator standing for one. **No default** -- a matrix that omits it draws nothing to route from. |
 | `destinations` | What can be routed to. Same two forms, same absence of a default. |
 | `audio_follow_video` | Send the audio route alongside the video one. Needs a `do.audio_route` binding. |
-| `show_lock` | Per-destination lock buttons. **Defaults on.** Client-side only -- locking sends nothing, it just stops that row being changed on this panel. |
+| `show_lock` | Per-destination lock buttons. **Defaults off.** Give each destination a `lock_key` under `var.` and the lock is a variable every panel reads; without one it is this panel's own memory and is forgotten when the page redraws. |
 | `show_mute` | Per-destination mute buttons. Drawn only when there is also a `do.mute_route` binding. |
 | `presets` | `[{name, macro}]`. A preset bar above the grid; each button runs its macro. |
 
@@ -410,8 +416,22 @@ matrix can span several devices, skip the ports nobody patched, use string ids,
 and cover one **routing plane** of a device that has several (the plane is part
 of the key, so a decoder routing video and USB independently is two elements).
 Optional per entry: `label_key` for a live name from state, `audio_route_key` on
-a destination for the audio route and its A!=V badge, and `route` on a
-destination for an action list that overrides `do.route` for that row alone.
+a destination for the audio route (whose source is then named beside the video
+one wherever the two differ), `lock_key` on a destination for the variable
+backing its lock, and `route` on a destination for an action list that overrides
+`do.route` for that row alone.
+
+A **source** may also carry a `report_value`. `value` is what gets SENT and
+`report_value` is what gets MATCHED, and they are the same thing on almost every
+device, which is why one value is normally enough. Where they differ they must be
+said separately or the source can never light: `at_atdm_0604a` is routed by
+sending `"0"` and reports back `"Mic"`, and `"0"` is what every renderer reads as
+"nothing is routed".
+
+A destination whose reported source matches no entry does not draw as an unrouted
+one. It says what the device reported, because "routed to something not on this
+list" and "routed to nothing" are different facts about the room -- the first
+usually means a port was left out of the list or patched at the rack since.
 
 Writing every entry out is tedious for a frame whose ports run 1..N, so an axis
 may instead be a **generator**: `from` holds a `count` (or explicit `values`),
@@ -427,7 +447,10 @@ by value.
 
 In `crosspoint` style the columns are **numbered** and the source names are read
 out in a legend under the grid, so a long source name costs nothing; a
-destination name is a row caption and ellipsises to fit its column.
+destination name is a row caption and ellipsises to fit its column. In `tiles`
+style there is one card per destination naming what is routed to it in large
+type, and the sources are not on the wall at all -- a tap opens them as a chooser
+over the panel, so a tile wall's floor does not move with the source count.
 
 Routing itself is a `do` binding, not config: `do.route` with `$input` and
 `$output` (which carry the source's and destination's own `value`), plus
@@ -563,6 +586,12 @@ def _variants(name: str, rule) -> list[tuple[str, dict, object]]:
     return out
 
 
+#: What a repeated part's count is CALLED in a formula, per layout. A linear
+#: part counts its own list; a tile wall's two axes both count `destinations`,
+#: so saying so twice would read as a square wall of them.
+_COUNT_NAME = {"grid_columns": "columns", "grid_rows": "rows"}
+
+
 def _axis_formula(rule, axis: str) -> str:
     """One axis of a counted rule, as the sum an author can work out."""
     base = "width" if axis == "width" else "height"
@@ -570,12 +599,11 @@ def _axis_formula(rule, axis: str) -> str:
     for repeated in rule.repeated:
         if repeated.axis != axis:
             continue
+        count = _COUNT_NAME.get(repeated.layout, repeated.count_key)
         if repeated.size_property:
-            terms.append(f"{repeated.count_key} x (cell + {_px(repeated.gap_px)})")
+            terms.append(f"{count} x (cell + {_px(repeated.gap_px)})")
         else:
-            terms.append(
-                f"{repeated.count_key} x {_px(repeated.size_px + repeated.gap_px)}"
-            )
+            terms.append(f"{count} x {_px(repeated.size_px + repeated.gap_px)}")
     return " + ".join(terms)
 
 
@@ -603,7 +631,7 @@ def _counted_conditional_rows(counted) -> str:
     described = {
         "label": "a `label`",
         "presets": "`presets`",
-        "lock_column": "the lock column (`show_lock`, on unless turned off)",
+        "lock_column": "the lock column (`show_lock`, off unless asked for)",
         "mute_column": "the mute column (`show_mute` plus a `do.mute_route` binding)",
     }
     rows = []
@@ -622,13 +650,24 @@ def _counted_conditional_rows(counted) -> str:
 
 
 def _counted_example_rows(counted) -> str:
+    """The worked examples, from a matrix in the form the renderer is handed.
+
+    Two resolved LISTS, never the counts. These were still being written as
+    ``{input_count, output_count}`` after project format 0.10.0 deleted that
+    shape, so every row resolved to an empty axis and the table published one
+    floor for 4x4, 8x8 and 16x16 alike -- 140x86 for all three, in the artifact
+    the cloud AI fetches to decide whether a layout fits.
+    """
     rows = []
     for n in (4, 8, 16):
         boxes = []
         for _label, element, _rule in counted:
             grid = dict(element)
             grid["label"] = "Routing"
-            grid["matrix_config"] = {"input_count": n, "output_count": n}
+            grid["matrix_config"] = {
+                "sources": [{"value": i} for i in range(1, n + 1)],
+                "destinations": [{"value": i} for i in range(1, n + 1)],
+            }
             boxes.append(f"{_box(grid)} px")
         rows.append(f"| {n}x{n} | {' | '.join(boxes)} |")
     return "\n".join(rows)

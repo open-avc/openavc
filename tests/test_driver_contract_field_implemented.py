@@ -108,6 +108,15 @@ NOT_AN_IMPLEMENTATION = frozenset({
     # driver contract -- and a dict `.values()` call beside it was enough to
     # make config_schema.*.values look read by the runtime.
     "openavc/core/project_migration.py",
+    # The PANEL-authoring generators. They render the control minimums, the
+    # binding-reach table and the authoring guide, none of which is a driver
+    # contract field -- and they talk about a page's `columns`, `rows` and
+    # `values` in exactly the words a config table uses, which is the same
+    # collision the migration above hit. A tile wall's column count was enough
+    # to make config_schema.*.values look read by the runtime.
+    "openavc/ui/guide_gen.py",
+    "openavc/ui/minimums_gen.py",
+    "openavc/ui/review_gen.py",
 })
 
 # The runtime half is the whole package, simulator included: a contract field

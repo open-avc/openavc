@@ -43,6 +43,12 @@ export interface ControlRepeatedInternal {
   sizeProperty: string;
   origin: "declared" | "font-driven";
   source: string;
+  /**
+   * How the count becomes a number of parts along this axis. One of
+   * CONTROL_MINIMUM_LAYOUTS: `linear` is one part per item; `grid_columns` /
+   * `grid_rows` are the tile wall, where one list fills both axes.
+   */
+  layout: string;
 }
 
 /** Chrome that is there or not, depending on how the element is configured. */
@@ -99,6 +105,9 @@ export const REM_BASE_PX = 14;
 
 /** Every condition a ControlConditionalPart may name. */
 export const CONTROL_MINIMUM_CONDITIONS = ["label", "presets", "lock_column", "mute_column"] as const;
+
+/** Every layout a ControlRepeatedInternal may name. */
+export const CONTROL_MINIMUM_LAYOUTS = ["linear", "grid_columns", "grid_rows"] as const;
 
 export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
 {
@@ -218,7 +227,8 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "axis": "width",
         "sizeProperty": "cell_size",
         "origin": "declared",
-        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px"
+        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+        "layout": "linear"
       },
       {
         "part": "matrix-cell",
@@ -230,7 +240,8 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "axis": "height",
         "sizeProperty": "cell_size",
         "origin": "declared",
-        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px"
+        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+        "layout": "linear"
       }
     ],
     "conditionals": [
@@ -294,7 +305,8 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
             "axis": "height",
             "sizeProperty": "",
             "origin": "font-driven",
-            "source": "panel-elements.css .matrix-list gap 0.4286rem + row height"
+            "source": "panel-elements.css .matrix-list gap 0.4286rem + row height",
+            "layout": "linear"
           }
         ],
         "conditionals": [
@@ -335,10 +347,75 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "styles": {},
         "styleDefault": "",
         "note": "A list matrix is one dropdown per destination, so its width does not move with the input count at all -- sixteen sources are sixteen options, not sixteen columns. Recording the crosspoint floor for both styles is what the old constant did, and it told a 16-input list it needed 792px when it needs 180. The lock and mute buttons differ in width here because they are glyphs rather than grid tracks, and an unlock glyph is wider than an M."
+      },
+      "tiles": {
+        "baseWidthPx": 10,
+        "baseHeightPx": 10,
+        "internals": [
+          {
+            "part": "matrix-tile",
+            "widthPx": 120,
+            "heightPx": 64,
+            "origin": "declared",
+            "source": "panel.js MATRIX_TILE_MIN_W_PX / MATRIX_TILE_MIN_H_PX"
+          }
+        ],
+        "scalesWith": null,
+        "captionWidthBonusPx": 0.0,
+        "repeated": [
+          {
+            "part": "matrix-tile",
+            "sizePx": 120,
+            "gapPx": 6,
+            "countKey": "destinations",
+            "countIn": "matrix_config",
+            "defaultCount": 0,
+            "axis": "width",
+            "sizeProperty": "",
+            "origin": "declared",
+            "source": "panel.js MATRIX_TILE_MIN_W_PX + .matrix-tiles gap",
+            "layout": "grid_columns"
+          },
+          {
+            "part": "matrix-tile",
+            "sizePx": 64,
+            "gapPx": 6,
+            "countKey": "destinations",
+            "countIn": "matrix_config",
+            "defaultCount": 0,
+            "axis": "height",
+            "sizeProperty": "",
+            "origin": "declared",
+            "source": "panel.js MATRIX_TILE_MIN_H_PX + .matrix-tiles gap",
+            "layout": "grid_rows"
+          }
+        ],
+        "conditionals": [
+          {
+            "part": "matrix-label",
+            "axis": "height",
+            "sizePx": 23,
+            "when": "label",
+            "origin": "font-driven",
+            "source": "panel-elements.css .panel-matrix gap + .matrix-label line box"
+          },
+          {
+            "part": "matrix-presets",
+            "axis": "height",
+            "sizePx": 36,
+            "when": "presets",
+            "origin": "font-driven",
+            "source": "panel-elements.css .matrix-presets padding + .matrix-preset-btn"
+          }
+        ],
+        "styleProperty": "",
+        "styles": {},
+        "styleDefault": "",
+        "note": "ONE list across both axes: a tile per destination, and the sources are not on the wall at all -- they are the chooser a tile opens, which is drawn over the panel and so has no floor here. The shape is a function of the count (tile_grid_shape), not of the box, because a floor is a rectangle and a wall that reflowed to any width would have no smallest one. What the tile holds is its destination's name, the name of what is routed to it in large type, and room for a finger; what it does not hold is the WHOLE of either name, for the same reason nothing else here sizes text."
       }
     },
     "styleDefault": "crosspoint",
-    "note": "A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number."
+    "note": "A function of the counts, which is the whole point of it: 95 + sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number."
   },
   "level_meter": {
     "baseWidthPx": 13,

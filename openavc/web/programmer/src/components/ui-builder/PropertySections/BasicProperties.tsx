@@ -5,7 +5,8 @@ import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { getAssetUrl } from "../../../api/systemClient";
-import { pxToRem, remToPx } from "../uiBuilderHelpers";
+import { pxToRem, remToPx, resolveMatrixAxis } from "../uiBuilderHelpers";
+import { MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
@@ -827,6 +828,7 @@ export function BasicProperties({
             <select value={element.matrix_style || "crosspoint"} onChange={(e) => onChange({ matrix_style: e.target.value })} style={{ flex: 1 }}>
               <option value="crosspoint">Crosspoint Grid</option>
               <option value="list">List (Dropdowns)</option>
+              <option value="tiles">Tiles (One Card Per Destination)</option>
             </select>
           </FieldRow>
           {matrixAxisIsList(element.matrix_config, "sources") ? (
@@ -952,11 +954,35 @@ export function BasicProperties({
           <FieldRow label="Show Lock">
             <input
               type="checkbox"
-              checked={element.matrix_config?.show_lock !== false}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_lock: e.target.checked } })}
+              checked={element.matrix_config?.show_lock === true}
+              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_lock: e.target.checked || undefined } })}
             />
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Lock buttons per output</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Lock buttons per destination</span>
           </FieldRow>
+          {element.matrix_config?.show_lock === true &&
+            !matrixAxisIsList(element.matrix_config, "destinations") && (
+            <>
+              <FieldRow label="Lock Key">
+                <input
+                  value={String(matrixFrom(element.matrix_config, "destinations").lock_key || "")}
+                  onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { lock_key: e.target.value || undefined }) })}
+                  placeholder="var.lock_*"
+                  style={{ flex: 1, fontSize: 11 }}
+                />
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                A variable per destination, holding whether it is locked. Use * for
+                the destination number.
+              </div>
+            </>
+          )}
+          {element.matrix_config?.show_lock === true &&
+            matrixLockUnbacked(element.matrix_config) && (
+            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+              Without a variable, a lock is only remembered by the panel that set
+              it: it is forgotten when the page redraws, and no other panel sees it.
+            </div>
+          )}
           <FieldRow label="Show Mute">
             <input
               type="checkbox"
@@ -1251,6 +1277,19 @@ function matrixList(config: MatrixConfig, axis: MatrixAxis): unknown[] {
 
 function matrixAxisIsList(config: MatrixConfig, axis: MatrixAxis): boolean {
   return Array.isArray(config?.[axis]);
+}
+
+/** Whether any destination's lock would be this panel's own memory.
+ *
+ *  A lock nothing stores is forgotten the next time the page draws and is
+ *  invisible to every other panel, which is what made it decorative. The page
+ *  review says the same thing at the project level; this is the same fact
+ *  beside the checkbox that turns it on. */
+function matrixLockUnbacked(config: MatrixConfig): boolean {
+  return resolveMatrixAxis(config, "destinations").some(
+    (entry) => !MATRIX_PANEL_WRITABLE_PREFIXES.some(
+      (prefix) => String(entry.lock_key ?? "").startsWith(prefix)),
+  );
 }
 
 /** The generator behind one axis, or an empty one to start from. */

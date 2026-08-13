@@ -18,6 +18,7 @@ from pathlib import Path
 
 from openavc.ui.control_minimums import (
     CONDITIONS,
+    LAYOUTS,
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     REM_BASE_PX,
@@ -75,6 +76,12 @@ export interface ControlRepeatedInternal {
   sizeProperty: string;
   origin: "declared" | "font-driven";
   source: string;
+  /**
+   * How the count becomes a number of parts along this axis. One of
+   * CONTROL_MINIMUM_LAYOUTS: `linear` is one part per item; `grid_columns` /
+   * `grid_rows` are the tile wall, where one list fills both axes.
+   */
+  layout: string;
 }
 
 /** Chrome that is there or not, depending on how the element is configured. */
@@ -132,6 +139,9 @@ export const REM_BASE_PX = %(rem_base)d;
 /** Every condition a ControlConditionalPart may name. */
 export const CONTROL_MINIMUM_CONDITIONS = %(conditions)s as const;
 
+/** Every layout a ControlRepeatedInternal may name. */
+export const CONTROL_MINIMUM_LAYOUTS = %(layouts)s as const;
+
 """
 
 
@@ -157,6 +167,7 @@ def _repeated(r) -> dict:
         "sizeProperty": r.size_property,
         "origin": r.origin,
         "source": r.source,
+        "layout": r.layout,
     }
 
 
@@ -206,6 +217,7 @@ def render() -> str:
         "ref_h": REFERENCE_HEIGHT_PX,
         "rem_base": REM_BASE_PX,
         "conditions": json.dumps(list(CONDITIONS)),
+        "layouts": json.dumps(list(LAYOUTS)),
     }
     table = (
         "export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =\n"

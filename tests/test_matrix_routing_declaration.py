@@ -312,12 +312,20 @@ def test_a_declaration_settles_that_question_and_the_warning_goes():
 
 
 def test_a_declaration_does_not_settle_what_the_device_REPORTS():
-    """Structure is declarable; vocabulary is not. This device accepts "0" and
-    reports "Mic", so its crosspoints cannot light, and saying where the
-    routing lives does not change that."""
-    (proposal,) = propose_matrices("dsp", _DECLARED_PROCESSOR, {})
-    assert any("not the same vocabulary" in w for w in proposal["warnings"])
-    assert any("value 0" in w for w in proposal["warnings"])
+    """Structure is declarable; vocabulary is not, and a declaration says nothing
+    about it either way.
+
+    This device accepts "0" and reports "Mic". What answers that is the source
+    entry carrying both -- which the DRIVER already declared twice, once as the
+    command's options and once as the property's values -- and it is read off
+    the same declaration whether or not there is a `routing:` block above it.
+    """
+    (declared,) = propose_matrices("dsp", _DECLARED_PROCESSOR, {})
+    (guessed,) = propose_matrices("dsp", INVERTED_PROCESSOR, {})
+    both = [(s["value"], s.get("report_value")) for s in declared["sources"]]
+    assert both == [(s["value"], s.get("report_value")) for s in guessed["sources"]]
+    assert both[0] == ("0", "Mic")
+    assert all(sent != reported for sent, reported in both)
 
 
 def test_a_declaration_does_not_settle_which_ports_are_really_there():

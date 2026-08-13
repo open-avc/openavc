@@ -476,8 +476,16 @@
     white-space: nowrap;
     text-overflow: ellipsis;
 }
-.panel-matrix .matrix-route-mismatch {
-    flex-shrink: 0;
+/* The audio source's name, and the raw value of a source this matrix does not
+   list. Both may shrink to an ellipsis rather than pushing the row apart: the
+   destination name is what the row is FOR, and a chip that refused to shrink
+   took the dropdown's width on a list row. */
+.panel-matrix .matrix-audio-source,
+.panel-matrix .matrix-unlisted {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 /* No min-width/min-height here: the grid TRACK owns the cell size now
    (minmax in renderMatrix), and a second floor in here only contradicted it --
@@ -585,6 +593,144 @@
     -webkit-appearance: none;
     appearance: none;
 }
+/* Tile wall — one card per destination, naming what is on it in large type.
+   The tracks are minmax(floor, 1fr) (panel.js renderMatrix), so a tile grows
+   into whatever room the element has and never draws below the floor
+   openavc/ui/control_minimums.py states for it. The column and row COUNTS come
+   from the destination count rather than from the box (matrixTileGridShape),
+   which is what lets that floor be a rectangle at all. */
+.panel-matrix .matrix-tiles {
+    display: grid;
+    gap: 0.4286rem;
+    width: 100%;
+    height: 100%;
+    align-content: start;
+}
+.panel-matrix .matrix-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.1429rem;
+    min-width: 0;
+    padding: 0.4286rem 0.5714rem;
+    border-radius: 0.4286rem;
+    border: 1px solid var(--el-surface-border, var(--panel-surface-border));
+    background: var(--el-surface, var(--panel-surface));
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.15s, filter 0.15s;
+}
+.panel-matrix .matrix-tile:hover {
+    filter: brightness(1.1);
+}
+.panel-matrix .matrix-tile.locked {
+    cursor: default;
+    border-color: var(--panel-warning);
+}
+.panel-matrix .matrix-tile-head {
+    display: flex;
+    align-items: center;
+    gap: 0.2857rem;
+    flex-shrink: 0;
+}
+.panel-matrix .matrix-tile-dest {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.7857rem;
+    opacity: 0.75;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+/* The reason this style exists: what is routed here, big enough to read from
+   across the room. It is one line and ellipsises, for the same reason nothing
+   else in the control sizes itself to text. */
+.panel-matrix .matrix-tile-source {
+    font-size: 1.2857rem;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.panel-matrix .matrix-tile-source.idle {
+    opacity: 0.4;
+    font-weight: 400;
+}
+/* Routed to something this matrix does not list. Deliberately not styled as an
+   error -- it is usually a port left out of the list, or one patched at the
+   rack since -- but it must not read as the same nothing an idle tile shows. */
+.panel-matrix .matrix-tile-source.unlisted {
+    font-style: italic;
+    color: var(--panel-warning, #d4a017);
+}
+.panel-matrix .matrix-tile .matrix-audio-source {
+    display: block;
+    max-width: 100%;
+}
+/* The source chooser a tile opens, over the whole panel rather than inside the
+   element: a wall of destinations may be small, and a chooser confined to one
+   tile is a list of sources in a 120px card. */
+.matrix-chooser {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.1429rem;
+    background: rgba(0, 0, 0, 0.55);
+}
+.matrix-chooser-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5714rem;
+    max-width: 40rem;
+    max-height: 100%;
+    width: 100%;
+    padding: 1.1429rem;
+    border-radius: 0.5714rem;
+    border: 1px solid var(--panel-surface-border);
+    background: var(--panel-surface);
+    color: var(--panel-text);
+}
+.matrix-chooser-title {
+    font-size: 1.1429rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.matrix-chooser-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8.5714rem, 1fr));
+    gap: 0.4286rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+.matrix-chooser-source {
+    min-height: 3.1429rem;
+    padding: 0.5714rem;
+    border-radius: 0.4286rem;
+    border: 1px solid var(--panel-button-border);
+    background: var(--panel-button-bg);
+    color: var(--panel-button-text);
+    font-size: 1rem;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.matrix-chooser-source:hover {
+    filter: brightness(1.15);
+}
+.matrix-chooser-cancel {
+    flex-shrink: 0;
+    min-height: 3.1429rem;
+    border-radius: 0.4286rem;
+    border: 1px solid var(--panel-surface-border);
+    background: none;
+    color: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+}
 /* Lock/mute toggles — derive states from theme semantic colors. */
 .matrix-lock-btn, .matrix-mute-btn {
     background: none;
@@ -613,17 +759,23 @@
     align-items: center;
     justify-content: center;
 }
-/* Mismatch badge shown when audio route diverges from video route. */
-.matrix-route-mismatch {
-    font-size: 0.6429rem;
-    font-weight: 600;
+/* What the audio is on, when it is not on what the video is. This replaced an
+   "A≠V" badge whose meaning lived in a title attribute -- which is a tooltip,
+   and a touch panel has no pointer to hover one with. */
+.matrix-audio-source {
+    font-size: 0.7143rem;
     color: var(--panel-warning, #d4a017);
-    border: 1px solid var(--panel-warning, #d4a017);
-    border-radius: 0.2143rem;
-    padding: 0 0.2857rem;
-    margin-left: 0.4286rem;
+    margin-left: 0.2857rem;
     line-height: 1rem;
-    background: color-mix(in srgb, var(--panel-warning, #d4a017) 12%, transparent);
+}
+/* And what the DEVICE says is routed, when it is not one of the sources listed.
+   Same warning colour, because both are "this is not what the page describes". */
+.matrix-unlisted {
+    font-size: 0.7143rem;
+    font-style: italic;
+    color: var(--panel-warning, #d4a017);
+    margin-left: 0.2857rem;
+    line-height: 1rem;
 }
 /* Presets — one strip that scrolls sideways, for the same reason the legend is
    (see .matrix-legend): wrapped rows come out of the grid's height, and a bar

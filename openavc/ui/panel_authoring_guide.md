@@ -87,16 +87,19 @@ authored value by 14 before working one out.
 
 ## The matrix, whose floor is a function of the grid you asked for
 
-A matrix has no single floor. A crosspoint grid is `input_count` columns by
-`output_count` rows of a cell that does not shrink below the finger rule, so its
-floor is a line rather than a point -- and the two `matrix_style` values are not
-the same line, because a list matrix is one dropdown per destination and its
-width does not move with the input count at all.
+A matrix has no single floor. A crosspoint grid is one column per `sources` entry
+by one row per `destinations` entry, of a cell that does not shrink below the
+finger rule, so its floor is a line rather than a point -- and the three
+`matrix_style` values are not the same line. A list matrix is one dropdown per
+destination, so its width does not move with the source count at all. A tiles
+matrix is one card per destination and no sources on the wall at all, laid out
+`ceil(destinations / rows)` across by `rows = floor(sqrt(destinations))` down.
 
 | Type and `matrix_style` | Floor |
 |---|---|
 | matrix (crosspoint) | 95 + sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall |
 | matrix (list) | 148 wide, 9 + destinations x 34 tall |
+| matrix (tiles) | 10 + columns x 126 wide, 10 + rows x 70 tall |
 
 `cell` is 44px unless `style.cell_size` authors another size, in which case the
 slope moves with it. **That value is in rem** -- px / 14, like every other style
@@ -108,30 +111,36 @@ Then add, for each of these the matrix actually has:
 |---|---|
 | a `label` | 23px, on the height |
 | `presets` | 36px, on the height |
-| the lock column (`show_lock`, on unless turned off) | 45px in `crosspoint`, 32px in `list`, on the width |
+| the lock column (`show_lock`, off unless asked for) | 45px in `crosspoint`, 32px in `list`, on the width |
 | the mute column (`show_mute` plus a `do.mute_route` binding) | 45px in `crosspoint`, 28px in `list`, on the width |
 
-Worked, for a matrix with a label and the lock column it gets by default:
+Worked, for a matrix with a label:
 
-| Grid | crosspoint | list |
-|---|---|---|
-| 4x4 | 140 x 86 px | 180 x 32 px |
-| 8x8 | 140 x 86 px | 180 x 32 px |
-| 16x16 | 140 x 86 px | 180 x 32 px |
+| Grid | crosspoint | list | tiles |
+|---|---|---|---|
+| 4x4 | 275 x 266 px | 148 x 168 px | 262 x 173 px |
+| 8x8 | 455 x 446 px | 148 x 304 px | 514 x 173 px |
+| 16x16 | 815 x 806 px | 148 x 576 px | 514 x 313 px |
 
-What this holds is every crosspoint, drawn at the finger rule and visible without
-scrolling, plus enough room to read the destination names and the column numbers.
+The tiles column ignores the source count in those rows, because a tile wall has
+no source axis: `4x4`, `8x8` and `16x16` are four, eight and sixteen destinations.
+
+What this holds is every crosspoint (or every tile), drawn at the finger rule and
+visible without scrolling, plus enough room to read the destination names and the
+column numbers.
 
 What it does **not** hold is the *whole* of a name. The destination column keeps a
 declared 80px and grows to the longest name when there is room; past that the name
 ellipsises. The source legend is the same bargain turned sideways: one row tall
-whatever the sources are called, scrolling if there are more than fit. A floor that
-held any name anyone typed would be a floor whose value is whatever they typed, and
-nothing in this file sizes text.
+whatever the sources are called, scrolling if there are more than fit. A tile's two
+names ellipsise inside it. A floor that held any name anyone typed would be a floor
+whose value is whatever they typed, and nothing in this file sizes text.
 
-**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 27 + inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number.
+**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 95 + sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number.
 
 **matrix (list)** -- A list matrix is one dropdown per destination, so its width does not move with the input count at all -- sixteen sources are sixteen options, not sixteen columns. Recording the crosspoint floor for both styles is what the old constant did, and it told a 16-input list it needed 792px when it needs 180. The lock and mute buttons differ in width here because they are glyphs rather than grid tracks, and an unlock glyph is wider than an M.
+
+**matrix (tiles)** -- ONE list across both axes: a tile per destination, and the sources are not on the wall at all -- they are the chooser a tile opens, which is drawn over the panel and so has no floor here. The shape is a function of the count (tile_grid_shape), not of the box, because a floor is a rectangle and a wall that reflowed to any width would have no smallest one. What the tile holds is its destination's name, the name of what is routed to it in large type, and room for a finger; what it does not hold is the WHOLE of either name, for the same reason nothing else here sizes text.
 
 
 ## Per-type notes
@@ -281,7 +290,7 @@ exactly the same way a correct one is stored and used.
 | `sources` | What can be routed. A list of entries, or a generator standing for one. **No default** -- a matrix that omits it draws nothing to route from. |
 | `destinations` | What can be routed to. Same two forms, same absence of a default. |
 | `audio_follow_video` | Send the audio route alongside the video one. Needs a `do.audio_route` binding. |
-| `show_lock` | Per-destination lock buttons. **Defaults on.** Client-side only -- locking sends nothing, it just stops that row being changed on this panel. |
+| `show_lock` | Per-destination lock buttons. **Defaults off.** Give each destination a `lock_key` under `var.` and the lock is a variable every panel reads; without one it is this panel's own memory and is forgotten when the page redraws. |
 | `show_mute` | Per-destination mute buttons. Drawn only when there is also a `do.mute_route` binding. |
 | `presets` | `[{name, macro}]`. A preset bar above the grid; each button runs its macro. |
 
@@ -305,8 +314,22 @@ matrix can span several devices, skip the ports nobody patched, use string ids,
 and cover one **routing plane** of a device that has several (the plane is part
 of the key, so a decoder routing video and USB independently is two elements).
 Optional per entry: `label_key` for a live name from state, `audio_route_key` on
-a destination for the audio route and its A!=V badge, and `route` on a
-destination for an action list that overrides `do.route` for that row alone.
+a destination for the audio route (whose source is then named beside the video
+one wherever the two differ), `lock_key` on a destination for the variable
+backing its lock, and `route` on a destination for an action list that overrides
+`do.route` for that row alone.
+
+A **source** may also carry a `report_value`. `value` is what gets SENT and
+`report_value` is what gets MATCHED, and they are the same thing on almost every
+device, which is why one value is normally enough. Where they differ they must be
+said separately or the source can never light: `at_atdm_0604a` is routed by
+sending `"0"` and reports back `"Mic"`, and `"0"` is what every renderer reads as
+"nothing is routed".
+
+A destination whose reported source matches no entry does not draw as an unrouted
+one. It says what the device reported, because "routed to something not on this
+list" and "routed to nothing" are different facts about the room -- the first
+usually means a port was left out of the list or patched at the rack since.
 
 Writing every entry out is tedious for a frame whose ports run 1..N, so an axis
 may instead be a **generator**: `from` holds a `count` (or explicit `values`),
@@ -322,7 +345,10 @@ by value.
 
 In `crosspoint` style the columns are **numbered** and the source names are read
 out in a legend under the grid, so a long source name costs nothing; a
-destination name is a row caption and ellipsises to fit its column.
+destination name is a row caption and ellipsises to fit its column. In `tiles`
+style there is one card per destination naming what is routed to it in large
+type, and the sources are not on the wall at all -- a tap opens them as a chooser
+over the panel, so a tile wall's floor does not move with the source count.
 
 Routing itself is a `do` binding, not config: `do.route` with `$input` and
 `$output` (which carry the source's and destination's own `value`), plus

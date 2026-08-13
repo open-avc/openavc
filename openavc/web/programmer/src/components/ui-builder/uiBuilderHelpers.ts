@@ -14,6 +14,7 @@ import {
   HONORED_PROPERTIES,
   HONORED_SHOW_SLOTS,
   MATRIX_CONFIG_KEYS,
+  MATRIX_PANEL_WRITABLE_PREFIXES,
   NAVIGATION_SENTINELS,
   REVIEWED_SHOW_SLOTS,
   STATE_LABEL_TYPES,
@@ -243,7 +244,11 @@ export const DEFAULT_ELEMENT_SIZES: Record<string, { w: number; h: number }> = {
   clock: { w: 25, h: 12.5 },
   keypad: { w: 25, h: 62.5 },
   list: { w: 25, h: 50 },
-  matrix: { w: 50, h: 62.5 },
+  // Sized for the tile wall a new matrix now is: four cards in 426x300 draw
+  // about 207x144 each, where the old 640x500 gave four cards a third of a page
+  // to hold two short lines. It still holds the seeded 4x4 in either of the
+  // other two styles (a crosspoint 4x4 needs 275x266, a list 148x168).
+  matrix: { w: 33.3333, h: 37.5 },
   custom: { w: 33.3333, h: 37.5 },
 };
 
@@ -425,15 +430,18 @@ export function createDefaultElement(
             from: { count: 4, labels: ["Output 1", "Output 2", "Output 3", "Output 4"] },
           },
         },
-        // A new matrix is a list: one row per destination with its source in a
-        // dropdown. It reads at a glance, it fits a panel, and it is what
-        // somebody standing in the room actually wants -- which destination is
-        // showing what, not a grid of dots. Crosspoint stays a click away in
-        // Style, for the rack.
+        // A new matrix is a tile wall: one card per destination naming what is
+        // on it, in type you can read across a room, with the sources behind a
+        // tap rather than spread across the control. That is what somebody
+        // standing in a space actually wants to know -- what is on the main
+        // display -- where a grid of dots is a transliteration of a 1990s front
+        // panel. List and Crosspoint stay a click away in Style.
         //
-        // Only NEW matrices. The panel still falls back to crosspoint when an
-        // element says nothing, so no panel already built changes shape.
-        matrix_style: "list",
+        // Aaron's call, made by looking at all three rendered side by side
+        // (2026-08-13). Only NEW matrices: the panel still falls back to
+        // crosspoint when an element says nothing, so no panel already built
+        // changes shape.
+        matrix_style: "tiles",
         // No cell_size: absent means the crosspoint cells fit themselves to the
         // box. The seed used to be 44, which is the floor, so every new matrix
         // was pinned at its smallest cell however much room it was given.
@@ -3061,6 +3069,7 @@ export interface ReviewFinding {
     | "matrix_no_route_feedback"
     | "matrix_default_size"
     | "matrix_duplicate_values"
+    | "matrix_lock_unbacked"
     | "custom_page_elements_not_drawn"
     | "custom_page_without_a_file"
     | "covers_master";
@@ -3199,7 +3208,9 @@ function partIsPresent(when: string, el: UIElement): boolean {
     case "presets":
       return Array.isArray(config.presets) && config.presets.length > 0;
     case "lock_column":
-      return config.show_lock !== false;
+      // Opt-in, where it used to be on unless turned off: it cost every matrix
+      // ever authored a whole column for a button that sent nothing (F10).
+      return config.show_lock === true;
     case "mute_column":
       return (
         config.show_mute !== false &&
@@ -3210,12 +3221,24 @@ function partIsPresent(when: string, el: UIElement): boolean {
   }
 }
 
+/** How many columns and rows a wall of `count` tiles is drawn in.
+ *
+ *  Mirrors `tile_grid_shape` in openavc/ui/control_minimums.py and
+ *  `matrixTileGridShape` in panel.js. All three agree or the floor stated here
+ *  is for a shape the panel does not draw. */
+export function matrixTileGridShape(count: number): [number, number] {
+  if (count <= 0) return [0, 0];
+  const rows = Math.max(1, Math.floor(Math.sqrt(count)));
+  return [Math.ceil(count / rows), rows];
+}
+
 /** The count a RepeatedInternal repeats over. Mirrors `_count` in Python. */
 function repeatedCount(
   el: UIElement,
   countIn: string,
   countKey: string,
   fallback: number,
+  layout: string,
 ): number {
   // Two spellings, because two things say a count: a number, and a LIST of the
   // things being counted. A matrix says it the second way -- its sources and
@@ -3224,18 +3247,25 @@ function repeatedCount(
   // openavc/ui/control_minimums.py.
   const config = subObject(el, countIn);
   const raw = config[countKey];
+  let count: number;
   if (Array.isArray(raw) || (!!raw && typeof raw === "object")) {
-    return matrixAxisCount(config, countKey);
+    count = matrixAxisCount(config, countKey);
+  } else {
+    const value = Number(raw);
+    count = Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
   }
-  const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
+  // Then the layout decides how that count lands on an axis: usually one part
+  // per item, but a tile wall's one list fills BOTH axes.
+  if (layout === "linear") return count;
+  const [columns, rows] = matrixTileGridShape(count);
+  return layout === "grid_columns" ? columns : rows;
 }
 
 /** The rule this element is measured against, style variant resolved.
  *
  *  Mirrors `rule_for` in openavc/ui/control_minimums.py: the matrix's floor is
- *  a different function for `crosspoint` and `list`, and the rule in the table
- *  IS the default (crosspoint), exactly as renderMatrix reads it. */
+ *  a different function for `crosspoint`, `list` and `tiles`, and the rule in
+ *  the table IS the default (crosspoint), exactly as renderMatrix reads it. */
 function ruleFor(el: UIElement): ControlMinimumRule | undefined {
   const rule = own(CONTROL_MINIMUMS, el.type);
   if (!rule || !rule.styleProperty) return rule;
@@ -3263,7 +3293,8 @@ export function controlMinimumBox(
   const resolved = new Map<string, ResolvedInternal>();
   for (const r of rule.repeated) {
     const size = stylePx(el, r.sizeProperty) ?? r.sizePx;
-    const span = repeatedCount(el, r.countIn, r.countKey, r.defaultCount) * (size + r.gapPx);
+    const span =
+      repeatedCount(el, r.countIn, r.countKey, r.defaultCount, r.layout) * (size + r.gapPx);
     if (r.axis === "width") widthPx += span;
     else heightPx += span;
     const part = resolved.get(r.part) ?? { part: r.part, widthPx: null, heightPx: null };
@@ -4400,7 +4431,10 @@ export interface MatrixEntry {
   label_key?: string;
   route_key?: string;
   audio_route_key?: string;
+  lock_key?: string;
   route?: unknown[];
+  /** A source's second value: what the DEVICE calls it. See matrixSourceReports. */
+  report_value?: unknown;
 }
 
 export type MatrixAxisName = "sources" | "destinations";
@@ -4489,6 +4523,8 @@ function generateMatrixAxis(
     if (routeKey) entry.route_key = routeKey;
     const audioKey = matrixSubstitute(from.audio_route_key, value);
     if (audioKey) entry.audio_route_key = audioKey;
+    const lockKey = matrixSubstitute(from.lock_key, value);
+    if (lockKey) entry.lock_key = lockKey;
     if (Array.isArray(from.route)) entry.route = from.route;
     const override = own(overrides as Record<string, unknown>, String(value));
     entries.push(isPlainObject(override) ? { ...entry, ...override } as MatrixEntry : entry);
@@ -4525,6 +4561,20 @@ export function resolveMatrixAxis(config: unknown, axis: MatrixAxisName): Matrix
     return entries;
   }
   return [];
+}
+
+/**
+ * What a source looks like when the DEVICE names it.
+ *
+ * `value` is what gets SENT and `report_value` is what gets MATCHED; omit it and
+ * they are the same, which is every driver in the corpus but one. Mirrors
+ * `source_report_value` in openavc/ui/matrix_model.py.
+ */
+export function matrixSourceReports(entry: MatrixEntry | undefined): unknown {
+  if (!entry) return undefined;
+  return entry.report_value === undefined || entry.report_value === null
+    ? entry.value
+    : entry.report_value;
 }
 
 /** How many entries this axis draws -- the question controlMinimumBox asks. */
@@ -4713,10 +4763,14 @@ export function matrixFindings(el: UIElement): ReviewFinding[] {
     const seen: unknown[] = [];
     const collided: string[] = [];
     for (const entry of entries) {
-      if (seen.some((other) => matrixRouteMatches(entry.value, other))) {
+      // By what the DEVICE calls it, which is what a report is matched against
+      // -- the same thing as the value on all but a couple of drivers, and the
+      // only thing that can collide on those.
+      const value = axis === "sources" ? matrixSourceReports(entry) : entry.value;
+      if (seen.some((other) => matrixRouteMatches(value, other))) {
         collided.push(String(entry.label ?? entry.value));
       } else {
-        seen.push(entry.value);
+        seen.push(value);
       }
     }
     if (collided.length) {
@@ -4729,6 +4783,35 @@ export function matrixFindings(el: UIElement): ReviewFinding[] {
           `source is matched by value -- so they cannot be told apart. Give ` +
           `each one the value its device actually reports.`,
         key: `matrix_duplicate_values|${el.id}|${axis}|${collided.join("|")}`,
+      });
+    }
+  }
+
+  // A lock only the panel that pressed it remembers is not a lock: it is gone
+  // the next time the page draws, the panel by the other door never hears about
+  // it, and the rack does not know either. Backing it with a variable is what
+  // makes it one, and `var.`/`plugin.` are the only prefixes a panel is allowed
+  // to write, so the check is the prefix rather than merely presence.
+  if (config.show_lock === true) {
+    const unbacked = resolveMatrixAxis(config, "destinations")
+      .filter((entry) => !MATRIX_PANEL_WRITABLE_PREFIXES.some(
+        (prefix) => String(entry.lock_key ?? "").startsWith(prefix)))
+      .map((entry) => String(entry.label ?? entry.value));
+    if (unbacked.length) {
+      findings.push({
+        elementId: el.id,
+        kind: "matrix_lock_unbacked",
+        message:
+          `${el.id} (matrix) draws lock buttons, but ${unbacked.length} ` +
+          `destination${unbacked.length === 1 ? "" : "s"} ` +
+          `(${matrixNamed(unbacked)}) ` +
+          `${unbacked.length === 1 ? "has" : "have"} no lock_key under ` +
+          `${MATRIX_PANEL_WRITABLE_PREFIXES.map((p) => `'${p}'`).join(" or ")}, so locking ` +
+          `${unbacked.length === 1 ? "it" : "them"} is this panel's own memory ` +
+          `-- forgotten when the page redraws, and invisible to every other ` +
+          `panel in the space. Give each one a variable, e.g. ` +
+          `'var.${el.id}_lock_1'.`,
+        key: `matrix_lock_unbacked|${el.id}`,
       });
     }
   }

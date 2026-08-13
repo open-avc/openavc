@@ -72,6 +72,7 @@ Two kinds of number live here, and the difference matters when one changes:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -204,11 +205,48 @@ class RepeatedInternal:
     origin: str = "declared"
     source: str = ""
 
+    layout: str = "linear"
+    """How the count becomes a number of parts along this axis.
+
+    ``linear`` is one part per item: a crosspoint grid's columns are its
+    sources and its rows are its destinations, and a list's rows are its
+    destinations. Two axes, each counting its own list.
+
+    ``grid_columns`` / ``grid_rows`` are the tiles style, where ONE list fills
+    BOTH axes -- eight destinations are four across and two down. The shape has
+    to be a function of the count rather than of the box, because a floor is a
+    rectangle: a wall that reflowed to whatever width it was given would have no
+    single smallest box, and publishing the one-column corner of that curve
+    would tell an author their eight tiles need 576px of height when they draw
+    perfectly in 179. So the renderer commits to the same shape this does.
+    """
+
 
 #: Every condition a ConditionalPart may name. A closed set on purpose: each one
 #: is mirrored in TypeScript (``partIsPresent`` in uiBuilderHelpers.ts), so it is
 #: four cases in two languages rather than an expression language in either.
 CONDITIONS = ("label", "presets", "lock_column", "mute_column")
+
+#: Every layout a RepeatedInternal may name, closed for the same reason.
+LAYOUTS = ("linear", "grid_columns", "grid_rows")
+
+
+def tile_grid_shape(count: int) -> tuple[int, int]:
+    """How many columns and rows a wall of ``count`` tiles is drawn in.
+
+    Rows first, from the square root, so the wall comes out wider than it is
+    tall -- panels are landscape and a destination's name has to be readable
+    across a room. Eight tiles are four across and two down; sixteen are four
+    and four; seven are four and two with one gap.
+
+    Mirrored in ``panel.js`` (which draws it) and in ``uiBuilderHelpers.ts``
+    (which mirrors this file). All three have to agree or the floor is for a
+    shape nothing renders.
+    """
+    if count <= 0:
+        return 0, 0
+    rows = max(1, int(math.isqrt(count)))
+    return math.ceil(count / rows), rows
 
 
 @dataclass(frozen=True)
@@ -330,6 +368,45 @@ _MATRIX_LIST = MinimumRule(
          "unlock glyph is wider than an M.",
 )
 
+_MATRIX_TILES = MinimumRule(
+    # 16 of each axis is the element's own padding, less the one gap the slope
+    # over-counts: n tiles have n-1 gaps between them and the slope below is
+    # (tile + gap) per tile, exactly as the crosspoint rule's 95 and 63 absorb
+    # the same off-by-one. Everything else is tiles -- the lock and mute live
+    # INSIDE a tile as glyphs rather than taking a column, so neither is a
+    # conditional here.
+    10, 10,
+    (FixedInternal("matrix-tile", 120, 64, "declared",
+                   "panel.js MATRIX_TILE_MIN_W_PX / MATRIX_TILE_MIN_H_PX"),),
+    repeated=(
+        RepeatedInternal(
+            "matrix-tile", 120, 6, "destinations", "matrix_config", 0, "width",
+            source="panel.js MATRIX_TILE_MIN_W_PX + .matrix-tiles gap",
+            layout="grid_columns",
+        ),
+        RepeatedInternal(
+            "matrix-tile", 64, 6, "destinations", "matrix_config", 0, "height",
+            source="panel.js MATRIX_TILE_MIN_H_PX + .matrix-tiles gap",
+            layout="grid_rows",
+        ),
+    ),
+    conditionals=(
+        ConditionalPart("matrix-label", "height", 23, "label", "font-driven",
+                        "panel-elements.css .panel-matrix gap + .matrix-label line box"),
+        ConditionalPart("matrix-presets", "height", 36, "presets", "font-driven",
+                        "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
+    ),
+    note="ONE list across both axes: a tile per destination, and the sources "
+         "are not on the wall at all -- they are the chooser a tile opens, "
+         "which is drawn over the panel and so has no floor here. The shape is "
+         "a function of the count (tile_grid_shape), not of the box, because a "
+         "floor is a rectangle and a wall that reflowed to any width would have "
+         "no smallest one. What the tile holds is its destination's name, the "
+         "name of what is routed to it in large type, and room for a finger; "
+         "what it does not hold is the WHOLE of either name, for the same "
+         "reason nothing else here sizes text.",
+)
+
 _MATRIX_CROSSPOINT = MinimumRule(
     # 95 of that width is the element's padding, the grid gaps and the 80px
     # destination-name column (panel.js MATRIX_LABEL_MIN_PX); 63 of the height
@@ -366,11 +443,11 @@ _MATRIX_CROSSPOINT = MinimumRule(
                         "panel.js renderMatrix extraColDefs + .matrix-grid gap"),
     ),
     style_property="matrix_style",
-    styles={"list": _MATRIX_LIST},
+    styles={"list": _MATRIX_LIST, "tiles": _MATRIX_TILES},
     style_default="crosspoint",
-    note="A function of the counts, which is the whole point of it: 27 + "
-         "inputs x (cell + 1) wide, 46 + outputs x (cell + 1) tall, plus the "
-         "lock and mute columns and the element's own label row. The cell is "
+    note="A function of the counts, which is the whole point of it: 95 + "
+         "sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall, plus "
+         "the lock and mute columns and the element's own label row. The cell is "
          "44 -- the touch floor it will not go below, whatever room it is "
          "given -- unless style.cell_size authors another size, in which case "
          "the slope moves with it and stays exact. Everything that is TEXT is "
@@ -460,9 +537,14 @@ def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
     """Whether a ConditionalPart is drawn. Mirrored in uiBuilderHelpers.ts.
 
     Each case is ``renderMatrix``'s own test, written the same way round: the
-    lock column is on unless turned off, and the mute column additionally needs
-    a mute_route binding, because without one the button sends a command the
-    engine has no action for and ``renderMatrix`` declines to draw it.
+    lock column is drawn only when it is asked for, and the mute column
+    additionally needs a mute_route binding, because without one the button
+    sends a command the engine has no action for and ``renderMatrix`` declines
+    to draw it.
+
+    The lock used to be on unless turned off, which cost every matrix ever
+    authored a whole cell's width for a button that sent nothing (F10). It is
+    opt-in now, so ``show_lock`` is read the way every other flag is.
     """
     config = _config(element, "matrix_config")
     if when == "label":
@@ -470,7 +552,7 @@ def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
     if when == "presets":
         return bool(config.get("presets"))
     if when == "lock_column":
-        return config.get("show_lock") is not False
+        return config.get("show_lock") is True
     if when == "mute_column":
         return (
             config.get("show_mute") is not False
@@ -480,23 +562,33 @@ def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
 
 
 def _count(repeated: RepeatedInternal, element: Mapping[str, Any]) -> int:
-    """How many of this part the element draws.
+    """How many of this part the element draws along this axis.
 
     Two spellings, because two things say a count. A number says it outright.
     A LIST of the things being counted says it by being that long -- a matrix's
     sources are entries now rather than a tally, and half of them may be written
     out while the other half is generated, so the only honest count is the
     resolved one.
+
+    Then the layout decides how that count lands on an axis. Usually one part
+    per item; for a tile wall the one list fills both axes, so each axis asks
+    for its own half of ``tile_grid_shape``.
     """
     config = _config(element, repeated.count_in)
     value = config.get(repeated.count_key)
     if isinstance(value, Mapping | list):
-        return axis_count(config, repeated.count_key)
-    try:
-        count = int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return repeated.default_count
-    return count if count > 0 else repeated.default_count
+        count = axis_count(config, repeated.count_key)
+    else:
+        try:
+            count = int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            count = repeated.default_count
+        if count <= 0:
+            count = repeated.default_count
+    if repeated.layout == "linear":
+        return count
+    columns, rows = tile_grid_shape(count)
+    return columns if repeated.layout == "grid_columns" else rows
 
 
 def rule_for(element: Mapping[str, Any]) -> MinimumRule | None:

@@ -572,11 +572,53 @@ CASES["vocabulary"] = _project([
                 ],
                 "show_lock": False, "show_mute": False,
             }},
+            # Lock buttons backed by nothing. Drawn, pressable, and remembered
+            # only by the panel that pressed them -- gone on the next redraw and
+            # invisible to every other panel in the space, which is the whole of
+            # F10 and is why the lock is opt-in now.
+            {"id": "mtx_lock_local", "type": "matrix", "matrix_config": {
+                "sources": [{"value": 1, "label": "Cam"}, {"value": 2, "label": "PC"}],
+                "destinations": [
+                    {"value": 1, "label": "Main LCD",
+                     "route_key": "device.acme.output.1.input"},
+                    {"value": 2, "label": "Confidence",
+                     "route_key": "device.acme.output.2.input",
+                     "lock_key": "device.acme.output.2.locked"},
+                ],
+                "show_lock": True, "show_mute": False,
+            }},
+            # A tile wall, correct: a lock per destination in a variable the
+            # panel is allowed to write, and a source routed by one vocabulary
+            # while the device reports another. Must stay quiet on both sides.
+            {"id": "mtx_tiles_ok", "type": "matrix", "matrix_style": "tiles",
+             "matrix_config": {
+                 "sources": [
+                     {"value": "0", "label": "Mic", "report_value": "Mic"},
+                     {"value": "1", "label": "Line", "report_value": "Line"},
+                 ],
+                 "destinations": [
+                     {"value": 1, "label": "Main LCD",
+                      "route_key": "device.acme.output.1.input",
+                      "lock_key": "var.mtx_tiles_ok_lock_1"},
+                     {"value": 2, "label": "Confidence",
+                      "route_key": "device.acme.output.2.input",
+                      "lock_key": "var.mtx_tiles_ok_lock_2"},
+                     {"value": 3, "label": "Lobby",
+                      "route_key": "device.acme.output.3.input",
+                      "lock_key": "var.mtx_tiles_ok_lock_3"},
+                     {"value": 4, "label": "Stream",
+                      "route_key": "device.acme.output.4.input",
+                      "lock_key": "var.mtx_tiles_ok_lock_4"},
+                 ],
+                 "show_lock": True, "show_mute": False,
+             }},
         ],
         [_landscape({
             "mtx_collide": _pct_box(0, 0, 30, 40),
             "mtx_half_blind": _pct_box(35, 0, 30, 40),
             "mtx_written_ok": _pct_box(0, 45, 30, 45),
+            "mtx_lock_local": _pct_box(70, 0, 28, 40),
+            "mtx_tiles_ok": _pct_box(35, 45, 30, 45),
         })],
     ),
 ])
@@ -1354,6 +1396,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "matrix_no_route_feedback",
         "matrix_default_size",
         "matrix_duplicate_values",
+        "matrix_lock_unbacked",
         "custom_page_elements_not_drawn",
         "custom_page_without_a_file",
         "covers_master",
@@ -1393,6 +1436,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "lbl_right",                           # a label's static content IS `text`
         "mtx_ok",                              # a matrix spelled the way it works
         "mtx_written_ok",                      # ...and the same, written out entry by entry
+        "mtx_tiles_ok",                        # a tile wall whose locks are real variables
         "lbl_bound",                           # show.value supplies the text
         "custom_ok",                           # a custom control that names its page
         "clean",                               # a custom page with nothing left on it

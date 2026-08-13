@@ -24,6 +24,7 @@ import json
 from pathlib import Path
 
 from openavc.ui.page_references import NAVIGATION_SENTINELS
+from openavc.ui.matrix_model import PANEL_WRITABLE_PREFIXES
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
@@ -99,6 +100,15 @@ export const STRUCTURAL_PROPERTIES: string[] = %(structural)s;
 export const MATRIX_CONFIG_KEYS: string[] = %(matrix_keys)s;
 
 /**
+ * The state-key prefixes an unauthenticated panel may write.
+ *
+ * Which is what a destination's `lock_key` has to be under, because a lock a
+ * panel cannot write is a lock nothing can engage. Mirrors
+ * PANEL_WRITABLE_PREFIXES in openavc/core/state_store.py.
+ */
+export const MATRIX_PANEL_WRITABLE_PREFIXES: string[] = %(panel_prefixes)s;
+
+/**
  * Navigation targets that are not page ids and never will be.
  *
  * The panel resolves both itself: `$back` dismisses an open overlay or pops the
@@ -127,6 +137,7 @@ def render() -> str:
         ),
         "structural": json.dumps(sorted(STRUCTURAL_PROPERTIES), ensure_ascii=False),
         "matrix_keys": json.dumps(sorted(MATRIX_CONFIG_KEYS), ensure_ascii=False),
+        "panel_prefixes": json.dumps(list(PANEL_WRITABLE_PREFIXES), ensure_ascii=False),
         "sentinels": json.dumps(sorted(NAVIGATION_SENTINELS), ensure_ascii=False),
     }
 

@@ -14,6 +14,8 @@ that routes video when the author asked for audio.
 
 from __future__ import annotations
 
+import json
+
 from openavc.ui.matrix_inference import propose_matrices
 
 # --- Invented drivers, one per shape the corpus forced ----------------------
@@ -267,16 +269,43 @@ def test_a_processor_routes_from_an_enum_and_says_which_way_round_it_is():
     assert any("route TO" in w for w in proposal["warnings"])
 
 
-def test_a_source_value_of_zero_is_flagged_because_a_panel_reads_it_as_unrouted():
-    """0 means "nothing is routed" to every renderer, so that crosspoint is dead."""
+def test_a_device_routed_by_one_vocabulary_and_reporting_another_gets_both():
+    """The device says "Mic"; the command takes "0". Both are already declared.
+
+    This used to be two warnings -- "value 0 reads as nothing routed" and "not
+    the same vocabulary" -- because a source entry held ONE value and there was
+    nowhere to put the second. There is now, and pairing them by label is the
+    whole fix: send "0", match on "Mic".
+    """
     found = _by_id(propose_matrices("dsp", INVERTED_PROCESSOR))
-    assert any("value 0" in w for w in found["input.source"]["warnings"])
+    proposal = found["input.source"]
+    assert [(s["value"], s.get("report_value")) for s in proposal["sources"]] == [
+        ("0", "Mic"), ("1", "Line"), ("2", "USB"),
+    ]
+    assert not any("value 0" in w for w in proposal["warnings"])
+    assert not any("not the same vocabulary" in w for w in proposal["warnings"])
 
 
-def test_a_reported_vocabulary_that_differs_from_the_commanded_one_is_flagged():
-    """The device says "Mic"; the command takes "0". Routing works, feedback does not."""
-    found = _by_id(propose_matrices("dsp", INVERTED_PROCESSOR))
-    assert any("not the same vocabulary" in w for w in found["input.source"]["warnings"])
+def test_a_vocabulary_that_does_not_line_up_is_still_flagged_rather_than_guessed():
+    """Pairing is all-or-nothing: a partial map is a guess about which end is wrong."""
+    driver = json.loads(json.dumps(INVERTED_PROCESSOR))
+    driver["child_entity_types"]["input"]["state_variables"]["source"]["values"] = [
+        "Microphone", "Line", "USB",
+    ]
+    proposal = _by_id(propose_matrices("dsp", driver))["input.source"]
+    assert all(s.get("report_value") is None for s in proposal["sources"])
+    assert any("not the same vocabulary" in w for w in proposal["warnings"])
+    assert any("value 0" in w for w in proposal["warnings"])
+
+
+def test_a_device_that_reports_what_it_accepts_gets_no_second_value():
+    """One value is enough for every other driver in the corpus, and stays enough."""
+    driver = json.loads(json.dumps(INVERTED_PROCESSOR))
+    driver["commands"]["set_input_source"]["params"]["source"]["values"] = [
+        "Mic", "Line", "USB",
+    ]
+    proposal = _by_id(propose_matrices("dsp", driver))["input.source"]
+    assert all(s.get("report_value") is None for s in proposal["sources"])
 
 
 def test_a_command_that_copies_settings_between_channels_proposes_nothing():

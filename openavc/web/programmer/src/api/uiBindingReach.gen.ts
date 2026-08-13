@@ -257,6 +257,15 @@ export const STRUCTURAL_PROPERTIES: string[] = ["aspect_lock", "bindings", "css_
 export const MATRIX_CONFIG_KEYS: string[] = ["audio_follow_video", "destinations", "presets", "show_lock", "show_mute", "sources"];
 
 /**
+ * The state-key prefixes an unauthenticated panel may write.
+ *
+ * Which is what a destination's `lock_key` has to be under, because a lock a
+ * panel cannot write is a lock nothing can engage. Mirrors
+ * PANEL_WRITABLE_PREFIXES in openavc/core/state_store.py.
+ */
+export const MATRIX_PANEL_WRITABLE_PREFIXES: string[] = ["var.", "plugin."];
+
+/**
  * Navigation targets that are not page ids and never will be.
  *
  * The panel resolves both itself: `$back` dismisses an open overlay or pops the

@@ -289,8 +289,13 @@ def test_crosspoints_light_for_what_the_device_actually_reports(
 
 
 def _badges_lit(page) -> list[int]:
+    """Which destinations are naming an audio source separate from their video.
+
+    It was an 'A\u2260V' badge until Phase 6; what it says changed, and WHEN it
+    says it did not, which is what these cases are about.
+    """
     vis = page.evaluate("""() => Array.from(
-        document.querySelectorAll('.matrix-route-mismatch')).map(b => !b.hidden)""")
+        document.querySelectorAll('.matrix-audio-source')).map(b => !b.hidden)""")
     return [i + 1 for i, v in enumerate(vis) if v]
 
 
@@ -303,7 +308,7 @@ def _badges_lit(page) -> list[int]:
     (1, None, False),        # device publishes no audio route at all
     (1, 3, True),            # a real mismatch, which is the whole point
 ])
-def test_the_audio_mismatch_badge_means_a_mismatch(
+def test_a_separate_audio_source_is_named_only_when_there_IS_one(
     panel_page, video, audio, expect_lit: bool,
 ) -> None:
     _mount(panel_page, _matrix(audio_route_key_pattern=AUDIO_KEY))
@@ -313,7 +318,8 @@ def test_the_audio_mismatch_badge_means_a_mismatch(
     panel_page.evaluate("(s) => window.__setState(s)", state)
     lit = _badges_lit(panel_page)
     assert bool(lit) is expect_lit, (
-        f"video={video!r} audio={audio!r} lit the mismatch badge on {lit or 'nothing'}"
+        f"video={video!r} audio={audio!r} named a separate audio source on "
+        f"{lit or 'nothing'}"
     )
 
 
@@ -327,13 +333,15 @@ def test_live_output_names_do_not_empty_the_dropdowns(panel_page) -> None:
     element["matrix_style"] = "list"
     _mount(panel_page, element)
     before = panel_page.evaluate(
-        "() => document.querySelector('.matrix-list-select').options.length")
+        "() => document.querySelector('.matrix-list-select')"
+        ".querySelectorAll('option[data-source-idx]').length")
     panel_page.evaluate("(s) => window.__setState(s)", {
         f"device.mx.output.{o}.name": n for o, n in
         enumerate(["Main LCD", "Left Proj", "Right Proj", "Confidence"], 1)
     })
     after = panel_page.evaluate("""() => ({
-        options: document.querySelector('.matrix-list-select').options.length,
+        options: document.querySelector('.matrix-list-select')
+            .querySelectorAll('option[data-source-idx]').length,
         label: document.querySelector('.matrix-list-label').textContent,
     })""")
     assert after["options"] == before == 4, (
@@ -353,7 +361,8 @@ def test_live_input_names_reach_the_list_dropdown(panel_page) -> None:
         f"device.mx.input.{i}.name": n for i, n in enumerate(names, 1)
     })
     options = panel_page.evaluate("""() => Array.from(
-        document.querySelector('.matrix-list-select').options).map(o => o.textContent)""")
+        document.querySelector('.matrix-list-select')
+            .querySelectorAll('option[data-source-idx]')).map(o => o.textContent)""")
     assert options == names, f"dropdown options are {options}"
 
 
@@ -721,15 +730,15 @@ def test_one_destination_can_watch_audio_while_the_others_do_not(panel_page) -> 
         ],
     )
     _mount(panel_page, element, 700, 400)
-    assert panel_page.locator(".matrix-route-mismatch").count() == 1, (
-        "only the destination that names an audio key can carry the badge"
+    assert panel_page.locator(".matrix-audio-source").count() == 1, (
+        "only the destination that names an audio key can name an audio source"
     )
     panel_page.evaluate("(s) => window.__setState(s)", {
         "device.mx.output.1.input": 1,
         "device.mx.output.1.audio": 2,
         "device.mx.output.2.input": 1,
     })
-    assert panel_page.locator(".matrix-route-mismatch:not([hidden])").count() == 1
+    assert panel_page.locator(".matrix-audio-source:not([hidden])").count() == 1
 
 
 def test_a_live_name_is_per_entry_not_per_axis(panel_page) -> None:
@@ -761,8 +770,10 @@ def test_a_list_dropdown_sends_the_sources_typed_value(panel_page) -> None:
     )
     element["matrix_style"] = "list"
     _mount(panel_page, element, 400, 300)
-    panel_page.select_option(".matrix-list-select", index=0)
+    # Index 0 is the "nothing routed" placeholder, which is disabled and cannot
+    # be chosen -- that is the point of it. The sources start at 1.
     panel_page.select_option(".matrix-list-select", index=1)
+    panel_page.select_option(".matrix-list-select", index=2)
     assert _sent(panel_page) == [
         {"type": "ui.route", "element_id": "mx1", "input": 3, "output": 6},
         {"type": "ui.route", "element_id": "mx1", "input": "HDMI_A", "output": 6},
@@ -1173,3 +1184,362 @@ def test_a_declaration_leaves_only_the_planes_it_declared(panel_page) -> None:
     assert proposal["destinations"][0]["route_key"] == (
         "device.amp.channel.1.primary_source"
     )
+
+
+# ---------------------------------------------------------------------------
+# Destination-first: the tile wall
+# ---------------------------------------------------------------------------
+
+def _tiles(**config):
+    element = _resolved(**config)
+    element["matrix_style"] = "tiles"
+    return element
+
+
+def _wall(destinations=4, sources=3, **extra):
+    return _tiles(
+        sources=[{"value": i, "label": f"Src {i}"} for i in range(1, sources + 1)],
+        destinations=[
+            {"value": i, "label": f"Dest {i}",
+             "route_key": f"device.mx.output.{i}.input"}
+            for i in range(1, destinations + 1)
+        ],
+        **extra,
+    )
+
+
+def test_a_tile_wall_draws_one_card_per_destination(panel_page) -> None:
+    """And no crosspoints at all: the sources are not on the wall.
+
+    That is the whole shape of the style. A crosspoint grid is inputs times
+    outputs of dots; a wall is one card per destination saying what is on it,
+    and the sources live in the chooser a card opens.
+    """
+    _mount(panel_page, _wall(destinations=6, sources=12), 800, 500)
+    assert panel_page.locator(".matrix-tile").count() == 6
+    assert panel_page.locator(".matrix-crosspoint").count() == 0
+    names = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-tile-dest [data-label-text]')).map(n => n.textContent)""")
+    assert names == [f"Dest {i}" for i in range(1, 7)]
+
+
+def test_a_tile_wall_draws_the_shape_its_floor_is_stated_for(panel_page) -> None:
+    """Eight destinations are four across and two down, on both sides of the mirror.
+
+    The floor in control_minimums.py is a rectangle only because the renderer
+    commits to a shape rather than reflowing to whatever width it is given. If
+    the two ever disagree, the published minimum is for a layout nothing draws
+    -- and the way that shows up in a room is tiles below the fold at exactly
+    the size the Builder called big enough.
+    """
+    _mount(panel_page, _wall(destinations=8), 900, 500)
+    rows = panel_page.evaluate("""() => {
+        const tops = Array.from(document.querySelectorAll('.matrix-tile'))
+            .map(t => Math.round(t.getBoundingClientRect().top));
+        return [...new Set(tops)].length;
+    }""")
+    columns = panel_page.evaluate("""() => {
+        const lefts = Array.from(document.querySelectorAll('.matrix-tile'))
+            .map(t => Math.round(t.getBoundingClientRect().left));
+        return [...new Set(lefts)].length;
+    }""")
+    assert (columns, rows) == (4, 2)
+
+
+def test_a_tile_names_what_is_routed_to_it(panel_page) -> None:
+    _mount(panel_page, _wall(), 800, 500)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.2.input": 3})
+    shown = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-tile-source')).map(n => n.textContent)""")
+    assert shown == ["—", "Src 3", "—", "—"]
+
+
+def test_a_tile_tap_opens_the_chooser_and_routes_once(panel_page) -> None:
+    """One card, one chooser, one message. Never a route on the way in."""
+    _mount(panel_page, _wall(), 800, 500)
+    panel_page.locator('.matrix-tile[data-dest-idx="2"]').click()
+    assert panel_page.locator(".matrix-chooser").count() == 1
+    assert _sent(panel_page) == [], "opening a chooser must not route anything"
+    panel_page.locator('.matrix-chooser-source[data-source-idx="1"]').click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": 2, "output": 3},
+    ]
+    assert panel_page.locator(".matrix-chooser").count() == 0
+
+
+def test_a_tile_chooser_cancels_without_routing(panel_page) -> None:
+    _mount(panel_page, _wall(), 800, 500)
+    panel_page.locator('.matrix-tile[data-dest-idx="0"]').click()
+    panel_page.locator(".matrix-chooser-cancel").click()
+    assert panel_page.locator(".matrix-chooser").count() == 0
+    assert _sent(panel_page) == []
+
+
+# ---------------------------------------------------------------------------
+# D8 -- the audio source by name, where a badge used to say they disagree
+# ---------------------------------------------------------------------------
+
+def _with_audio(style):
+    element = _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[{"value": 1, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input",
+                       "audio_route_key": "device.mx.output.1.audio"}],
+    )
+    element["matrix_style"] = style
+    return element
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
+def test_a_diverging_audio_route_is_named_rather_than_flagged(panel_page, style) -> None:
+    """'A≠V' said two things disagree and put what they were in a tooltip.
+
+    A touch panel has no pointer to hover a tooltip with, so the one place the
+    meaning lived was the one place nobody standing at the panel could reach.
+    """
+    _mount(panel_page, _with_audio(style), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.output.1.input": 1,
+        "device.mx.output.1.audio": 2,
+    })
+    node = panel_page.locator(".matrix-audio-source")
+    assert node.count() == 1
+    assert node.is_visible()
+    assert node.text_content() == "Audio: Room PC"
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
+def test_an_agreeing_audio_route_says_nothing(panel_page, style) -> None:
+    _mount(panel_page, _with_audio(style), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.output.1.input": 1,
+        "device.mx.output.1.audio": 1,
+    })
+    assert not panel_page.locator(".matrix-audio-source").is_visible()
+
+
+def test_a_diverging_audio_route_uses_the_live_source_name(panel_page) -> None:
+    """The name a device reports, not the one that was typed at build time."""
+    element = _with_audio("tiles")
+    element["matrix_config"]["sources"][1]["label_key"] = "device.mx.input.2.name"
+    _mount(panel_page, element, 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.output.1.input": 1,
+        "device.mx.output.1.audio": 2,
+        "device.mx.input.2.name": "Lectern PC",
+    })
+    assert panel_page.locator(".matrix-audio-source").text_content() == "Audio: Lectern PC"
+
+
+# ---------------------------------------------------------------------------
+# D8a -- routed to nothing and routed to something unlisted are different facts
+# ---------------------------------------------------------------------------
+
+def _subset(style):
+    """A patched frame: the device is on port 3 and port 3 is not in the list."""
+    element = _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[{"value": 1, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input"}],
+    )
+    element["matrix_style"] = style
+    return element
+
+
+def test_a_list_row_routed_to_nothing_does_not_claim_the_first_source(panel_page) -> None:
+    """Older than this plan and just as wrong: a <select> shows its first option
+    when nothing has selected one, so four rows read 'Main LCD -> Apple TV' in
+    one screenshot with nothing routed to any of them."""
+    _mount(panel_page, _subset("list"), 500, 300)
+    select = panel_page.locator(".matrix-list-select")
+    assert select.input_value() == ""
+    assert select.evaluate("s => s.selectedOptions[0].textContent") == "—"
+
+
+def test_a_list_row_routed_to_an_unlisted_source_says_what_it_is(panel_page) -> None:
+    """A subset is the normal way to author a matrix now, so 'the device is on a
+    port you left out' stopped being an edge case the day format 0.10.0 landed."""
+    _mount(panel_page, _subset("list"), 500, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.1.input": 3})
+    shown = panel_page.locator(".matrix-list-select").evaluate(
+        "s => s.selectedOptions[0].textContent")
+    assert shown == "3 (not listed)"
+
+
+def test_an_unlisted_source_cannot_be_re_sent_from_the_dropdown(panel_page) -> None:
+    """It is what the device said, not a source this matrix can route to."""
+    _mount(panel_page, _subset("list"), 500, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.1.input": 3})
+    disabled = panel_page.locator(".matrix-list-select").evaluate(
+        "s => s.selectedOptions[0].disabled")
+    assert disabled is True
+    assert _sent(panel_page) == []
+
+
+def test_a_crosspoint_row_routed_to_an_unlisted_source_says_so(panel_page) -> None:
+    """No dot lit is what a row routed to NOTHING looks like too."""
+    _mount(panel_page, _subset("crosspoint"), 600, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.1.input": 3})
+    node = panel_page.locator(".matrix-unlisted")
+    assert node.is_visible()
+    assert node.text_content() == "3"
+    assert panel_page.locator(".matrix-crosspoint.active").count() == 0
+
+
+def test_a_crosspoint_row_routed_to_nothing_stays_quiet(panel_page) -> None:
+    """The other half of the same check: silence has to still mean something."""
+    _mount(panel_page, _subset("crosspoint"), 600, 300)
+    panel_page.evaluate("(s) => window.__setState(s)", {})
+    assert not panel_page.locator(".matrix-unlisted").is_visible()
+
+
+def test_a_tile_routed_to_an_unlisted_source_shows_the_raw_value(panel_page) -> None:
+    _mount(panel_page, _subset("tiles"), 500, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.1.input": "HDMI_9"})
+    tile = panel_page.locator(".matrix-tile-source")
+    assert tile.text_content() == "HDMI_9"
+    assert "unlisted" in tile.get_attribute("class")
+
+
+# ---------------------------------------------------------------------------
+# D8a, the second case -- a device routed by one vocabulary, reporting another
+# ---------------------------------------------------------------------------
+
+def _two_vocabularies(style="crosspoint"):
+    """at_atdm_0604a's shape: send "0", read back "Mic"."""
+    element = _resolved(
+        sources=[
+            {"value": "0", "label": "Mic", "report_value": "Mic"},
+            {"value": "1", "label": "Line", "report_value": "Line"},
+        ],
+        destinations=[{"value": 1, "label": "Channel 1",
+                       "route_key": "device.dsp.input.1.source"}],
+    )
+    element["matrix_style"] = style
+    return element
+
+
+def test_a_source_lights_on_what_the_device_REPORTS(panel_page) -> None:
+    """The crosspoint that could never light.
+
+    Its route value is "0", and 0 is what every renderer reads as "nothing is
+    routed" -- so the source that works is the one that looks dead. Both
+    vocabularies are declared on the driver; what was missing was somewhere to
+    put the second one.
+    """
+    _mount(panel_page, _two_vocabularies(), 600, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.dsp.input.1.source": "Mic"})
+    lit = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-crosspoint.active')
+    ).map(c => c.dataset.input)""")
+    assert lit == ["0"]
+
+
+def test_a_source_still_SENDS_what_the_route_command_takes(panel_page) -> None:
+    """Matching on one value must not change what goes on the wire."""
+    _mount(panel_page, _two_vocabularies(), 600, 300)
+    _crosspoint(panel_page, "0", 1).click()
+    assert _sent(panel_page) == [
+        {"type": "ui.route", "element_id": "mx1", "input": "0", "output": 1},
+    ]
+
+
+def test_a_reported_vocabulary_reaches_the_tile_and_the_dropdown(panel_page) -> None:
+    _mount(panel_page, _two_vocabularies("tiles"), 500, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.dsp.input.1.source": "Line"})
+    assert panel_page.locator(".matrix-tile-source").text_content() == "Line"
+    _mount(panel_page, _two_vocabularies("list"), 500, 300)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.dsp.input.1.source": "Line"})
+    assert panel_page.locator(".matrix-list-select").input_value() == "1"
+
+
+# ---------------------------------------------------------------------------
+# D9 / F10 -- the lock
+# ---------------------------------------------------------------------------
+
+def _locked(style, backed=True):
+    element = _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[
+            {"value": 1, "label": "Main LCD", "route_key": "device.mx.output.1.input",
+             **({"lock_key": "var.mx_lock_1"} if backed else {})},
+        ],
+        show_lock=True,
+    )
+    element["matrix_style"] = style
+    return element
+
+
+def test_the_lock_is_off_unless_it_is_asked_for(panel_page) -> None:
+    """It used to be on unless turned off, and cost every matrix ever authored a
+    whole column for a button that sent nothing."""
+    _mount(panel_page, _subset("crosspoint"), 600, 300)
+    assert panel_page.locator(".matrix-lock-btn").count() == 0
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
+def test_pressing_a_backed_lock_writes_its_variable(panel_page, style) -> None:
+    """Which is what makes it a lock: every panel reads that key."""
+    _mount(panel_page, _locked(style), 700, 400)
+    panel_page.locator(".matrix-lock-btn").click()
+    assert _sent(panel_page) == [
+        {"type": "state.set", "key": "var.mx_lock_1", "value": True},
+    ]
+
+
+def test_a_backed_lock_reflects_the_variable_rather_than_the_press(panel_page) -> None:
+    """No optimistic flip: the state is what every other panel sees, so the one
+    that pressed it should be showing the same thing they are."""
+    _mount(panel_page, _locked("list"), 600, 300)
+    panel_page.locator(".matrix-lock-btn").click()
+    assert "locked" not in (panel_page.locator(".matrix-lock-btn").get_attribute("class"))
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": True})
+    assert "locked" in (panel_page.locator(".matrix-lock-btn").get_attribute("class"))
+
+
+def test_a_locked_destination_refuses_a_route(panel_page) -> None:
+    _mount(panel_page, _locked("crosspoint"), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": True})
+    _crosspoint(panel_page, 2, 1).click()
+    assert _sent(panel_page) == []
+
+
+def test_a_locked_tile_does_not_open_the_chooser(panel_page) -> None:
+    _mount(panel_page, _locked("tiles"), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": True})
+    panel_page.locator('.matrix-tile[data-dest-idx="0"]').click()
+    assert panel_page.locator(".matrix-chooser").count() == 0
+
+
+def test_a_backed_lock_survives_a_re_render(panel_page) -> None:
+    """F10's fourth clause. A lock that is forgotten when the page redraws is
+    not a lock, and the page redraws on every project save."""
+    element = _locked("crosspoint")
+    _mount(panel_page, element, 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": True})
+    engaged = panel_page.evaluate("""([e, w, h]) => {
+        const app = window.__openavcPanel;
+        const kept = app.state;
+        window.__mount(e, w, h);
+        app.state = kept;
+        app.evaluateAllBindings(null);
+        return document.querySelector('.matrix-lock-btn').classList.contains('locked');
+    }""", [element, 700, 400])
+    assert engaged is True
+
+
+def test_an_unbacked_lock_is_still_a_button_and_still_local(panel_page) -> None:
+    """Losing the button would be worse than keeping the old behaviour; the page
+    review is what says the lock is going nowhere."""
+    _mount(panel_page, _locked("list", backed=False), 600, 300)
+    panel_page.locator(".matrix-lock-btn").click()
+    assert _sent(panel_page) == []
+    assert "locked" in (panel_page.locator(".matrix-lock-btn").get_attribute("class"))

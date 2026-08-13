@@ -179,6 +179,7 @@ ASSERT_JS = r"""
       const cells = qa('.matrix-cell:not(.matrix-toggle)');
       const toggles = qa('.matrix-cell.matrix-toggle');
       const rows = qa('.matrix-list-row');
+      const tiles = qa('.matrix-tile');
       const cellFloor = extra.style && extra.style.cell_size
         ? extra.style.cell_size * 14 : 44;
       if (cells.length) {
@@ -209,7 +210,13 @@ ASSERT_JS = r"""
           if (R(sel).width < 44 - TOL)
             return bad(`a dropdown crushed to ${R(sel).width.toFixed(1)}px wide`);
         }
-      } else return bad('no cells or rows');
+      } else if (tiles.length) {
+        for (const t of tiles) {
+          const r = R(t);
+          if (r.width < 120 - TOL || r.height < 64 - TOL)
+            return bad(`a tile shrank to ${r.width.toFixed(1)}x${r.height.toFixed(1)}`);
+        }
+      } else return bad('no cells, rows or tiles');
       if (scroll.scrollWidth > scroll.clientWidth + 1)
         return bad(`${scroll.scrollWidth - scroll.clientWidth}px of it is off to the side`);
       if (scroll.scrollHeight > scroll.clientHeight + 1)
@@ -442,6 +449,18 @@ MATRIX_GRIDS: list[tuple[str, dict]] = [
     ("list 8 out", {"matrix_style": "list", **_grid(4, 8)}),
     ("list 16 in", {"matrix_style": "list", **_grid(16, 4)}),
     ("list 16 out", {"matrix_style": "list", **_grid(4, 16)}),
+    # A tile wall counts ONE list across both axes, so the source count in
+    # these is deliberately varied and deliberately irrelevant: 16 sources cost
+    # a wall nothing, where they cost a crosspoint grid sixteen columns.
+    ("tiles 2 out", {"matrix_style": "tiles", **_grid(4, 2)}),
+    ("tiles 4 out", {"matrix_style": "tiles", **_grid(4, 4)}),
+    ("tiles 7 out", {"matrix_style": "tiles", **_grid(4, 7)}),
+    ("tiles 8 out", {"matrix_style": "tiles", **_grid(16, 8)}),
+    ("tiles 16 out", {"matrix_style": "tiles", **_grid(4, 16)}),
+    ("tiles with presets",
+     {"matrix_style": "tiles", **_grid(4, 8),
+      "matrix_config": {**_grid(4, 8)["matrix_config"],
+                        "presets": [{"name": "All to 1", "macro": "m"}]}}),
 ]
 
 
@@ -479,6 +498,45 @@ def test_the_matrix_floor_predicts_every_grid_not_just_the_default(
         f"a {name} matrix still draws whole at {short:.0f}px tall, more than "
         f"{TIGHTNESS_SLACK_PX}px under its computed {box.height_px:.0f} -- the "
         f"model overstates the height"
+    )
+
+
+def test_a_tile_wall_at_its_floor_shows_every_tile(panel_page) -> None:
+    """A wall's floor is a rectangle, and the shape it names has to be the one drawn.
+
+    The column and row counts come from the destination count rather than from
+    the box (panel.js matrixTileGridShape, mirrored as tile_grid_shape), which is
+    the whole reason a floor can be stated for a layout that wraps. If those two
+    ever disagree the floor is for a shape nothing renders, and the way that
+    shows up is tiles below the fold at the size the review calls the minimum.
+    """
+    element = {"type": "matrix", "label": "Route", "matrix_style": "tiles",
+               **_grid(4, 16)}
+    box = minimum_box(element)
+    assert box is not None
+    seen = panel_page.evaluate(
+        """([e, w, h]) => {
+            const app = window.__openavcPanel;
+            const box = document.getElementById('box');
+            box.innerHTML = ''; box.style.width = w+'px'; box.style.height = h+'px';
+            const node = app.renderElement(e);
+            node.classList.add('panel-element');
+            node.style.position = 'absolute';
+            node.style.left = '0px'; node.style.top = '0px';
+            node.style.width = '100%'; node.style.height = '100%';
+            box.appendChild(node); void node.offsetWidth;
+            const s = node.querySelector('.matrix-scroll').getBoundingClientRect();
+            return Array.from(node.querySelectorAll('.matrix-tile')).filter(t => {
+                const r = t.getBoundingClientRect();
+                return r.left >= s.left - 0.01 && r.right <= s.right + 0.01 &&
+                       r.top >= s.top - 0.01 && r.bottom <= s.bottom + 0.01;
+            }).length;
+        }""",
+        [{"id": "probe", **element}, box.width_px, box.height_px],
+    )
+    assert seen == 16, (
+        f"a 16-destination tile wall at its own floor {box.width_px:.0f}x"
+        f"{box.height_px:.0f} shows {seen} of its 16 tiles"
     )
 
 

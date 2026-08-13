@@ -471,7 +471,9 @@ def _sources_from(
     enum = _enum_values(source_param_def)
     if enum:
         return (
-            [{"value": e["value"], "label": e["label"]} for e in enum],
+            _with_report_values(
+                [{"value": e["value"], "label": e["label"]} for e in enum], route_var,
+            ),
             f"the values the route command's '{source_param_def.get('label') or 'source'}' "
             f"parameter accepts",
         )
@@ -508,6 +510,46 @@ def _sources_from(
             )
 
     return [], "nothing -- the driver does not say what this can be routed from"
+
+
+def _reported_vocabulary(route_var: Mapping[str, Any]) -> list[str]:
+    """The words the routed-source property says it reports, if it enumerates them."""
+    values = route_var.get("values")
+    if not isinstance(values, Sequence) or isinstance(values, str | bytes):
+        return []
+    return [str(v) for v in values if isinstance(v, str | int | float)]
+
+
+def _with_report_values(
+    sources: list[dict[str, Any]], route_var: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Pair what the route command ACCEPTS with what the property REPORTS.
+
+    A route command's options are ``{value, label}``, and on the drivers that
+    report in words the property's own enum IS that list of labels. So
+    ``at_atdm_0604a`` declares both vocabularies already: send ``"0"``, read back
+    ``"Mic"``. Nothing new has to be authored -- what was missing was somewhere
+    to put the second one, and a source entry now carries it.
+
+    All or nothing, and by label only. A partial pairing would be a guess about
+    which end of the mapping was wrong, and this runs before an author has
+    looked at anything; where the two do not line up the proposal keeps its
+    warning and says so instead.
+    """
+    reported = {v.strip().casefold(): v for v in _reported_vocabulary(route_var)}
+    if not reported or len(reported) < len(sources):
+        return sources
+    paired = []
+    for entry in sources:
+        match = reported.get(str(entry["label"]).strip().casefold())
+        if match is None:
+            return sources
+        paired.append(entry | {"report_value": match})
+    # Only worth saying when the two vocabularies actually differ; a device that
+    # accepts and reports the same tokens needs no second value.
+    if all(str(e["value"]) == str(e["report_value"]) for e in paired):
+        return sources
+    return paired
 
 
 def _proposal_warnings(
@@ -558,23 +600,30 @@ def _proposal_warnings(
             "No routing command was found, so tapping a crosspoint will not send "
             "anything until you add a Video route action in the Bindings tab.",
         )
-    zero = [str(s.get("label") or s.get("value")) for s in sources if str(s.get("value")) == "0"]
+    # Both of the next two are about a source whose SENT value is not what comes
+    # back, and both stand down for a source that carries the reported value as
+    # well -- which is the whole point of pairing them: the panel matches on what
+    # is reported and sends what is accepted, so neither is a problem any more.
+    zero = [
+        str(s.get("label") or s.get("value"))
+        for s in sources
+        if str(s.get("value")) == "0" and s.get("report_value") is None
+    ]
     if zero:
         warnings.append(
             f"{zero[0]} has the value 0, which a panel reads as 'nothing is routed', "
             f"so its crosspoint can never light. Give it the value the device "
             f"reports when it is selected.",
         )
-    reported = route_var.get("values")
+    reported = _reported_vocabulary(route_var)
     if (
         sources
-        and isinstance(reported, Sequence)
-        and not isinstance(reported, str | bytes)
         and reported
-        and {str(s.get("value")) for s in sources} != {str(v) for v in reported}
+        and not any(s.get("report_value") is not None for s in sources)
+        and {str(s.get("value")) for s in sources} != set(reported)
     ):
         warnings.append(
-            f"The device reports this as one of {', '.join(str(v) for v in reported)}, "
+            f"The device reports this as one of {', '.join(reported)}, "
             f"which is not the same vocabulary the route command takes -- so the "
             f"crosspoints may not light for a route that worked. Check the values "
             f"against the driver before relying on the feedback.",

@@ -21,12 +21,19 @@ export interface ProposedSource {
   value: string | number;
   label: string;
   label_key?: string;
+  /**
+   * What the DEVICE calls this source, where that is not what its route command
+   * accepts. Present only when the driver declares both vocabularies and they
+   * differ -- `at_atdm_0604a` is routed by sending "0" and reports back "Mic".
+   */
+  report_value?: string | number;
 }
 
 /** One thing a matrix can route to, with its own key for what is routed there. */
 export interface ProposedDestination extends ProposedSource {
   route_key?: string;
   audio_route_key?: string;
+  lock_key?: string;
   route?: Record<string, unknown>[];
 }
 

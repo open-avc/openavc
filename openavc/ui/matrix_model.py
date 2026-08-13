@@ -65,14 +65,23 @@ MATRIX_CONFIG_KEYS = frozenset({
 #: What a generator entry (``{from: ..., exclude: ..., overrides: ...}``) may say.
 GENERATOR_KEYS = frozenset({"from", "exclude", "overrides"})
 
-#: What a resolved source entry carries.
-SOURCE_KEYS = frozenset({"value", "label", "label_key"})
+#: What a resolved source entry carries. ``report_value`` is the second value --
+#: see ``source_report_value``.
+SOURCE_KEYS = frozenset({"value", "label", "label_key", "report_value"})
 
 #: What a resolved destination entry carries. ``route`` is the per-destination
 #: action-list override; absent means the element's own ``bindings.do.route``.
+#: ``lock_key`` is the variable backing this row's lock.
 DESTINATION_KEYS = frozenset({
     "value", "label", "label_key", "route_key", "audio_route_key", "route",
+    "lock_key",
 })
+
+#: The state-key prefixes an unauthenticated panel may write, which is what a
+#: lock has to be stored under to be a lock at all. Mirrors
+#: ``state_store.PANEL_WRITABLE_PREFIXES``; kept here as a literal rather than
+#: imported because this module is pure stdlib and is mirrored into TypeScript.
+PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
 
 #: How each axis names an entry nobody labelled. These are the captions the
 #: pattern-form renderer produced ("In 1", "Out 3"), kept so a migrated project
@@ -119,6 +128,26 @@ def _route_digits(text: str) -> int | None:
     """The single digit run in a string, or None when it does not have exactly one."""
     runs = _DIGIT_RUN.findall(text)
     return int(runs[0]) if len(runs) == 1 else None
+
+
+def source_report_value(entry: Mapping[str, Any] | None) -> Any:
+    """What this source looks like when the DEVICE names it.
+
+    Usually the same thing it is routed by, which is why a source carries one
+    value and every project written so far says it once. Two vocabularies is a
+    real shape though, and ``at_atdm_0604a`` is the corpus case: its route
+    command takes ``"0"`` and it reports back ``"Mic"``. One value cannot be
+    both, so that source could never light -- and worse, ``"0"`` is what every
+    renderer reads as "nothing is routed".
+
+    So a source may carry a second value. ``value`` is what gets SENT and
+    ``report_value`` is what gets MATCHED; omit it and they are the same, which
+    is every other driver in the corpus.
+    """
+    if not isinstance(entry, Mapping):
+        return None
+    reported = entry.get("report_value")
+    return entry.get("value") if reported is None else reported
 
 
 def route_matches(a: Any, b: Any) -> bool:
@@ -219,6 +248,7 @@ def _generate(spec: Mapping[str, Any], axis: str) -> list[dict[str, Any]]:
             ("label_key", "label_key"),
             ("route_key", "route_key"),
             ("audio_route_key", "audio_route_key"),
+            ("lock_key", "lock_key"),
         ):
             resolved = _substitute(source.get(pattern_key), value)
             if resolved:
@@ -298,7 +328,7 @@ _GENERATOR_FROM_KEYS = {
     "sources": frozenset({"count", "values", "labels", "label_key"}),
     "destinations": frozenset({
         "count", "values", "labels", "label_key",
-        "route_key", "audio_route_key", "route",
+        "route_key", "audio_route_key", "route", "lock_key",
     }),
 }
 
@@ -435,6 +465,15 @@ def _entry_problems(entry: Any, axis: str, position: int, where: str) -> list[st
         problems.append(
             f"{at}.route must be a list of actions (an empty list makes the row "
             f"deliberately do nothing), not {_type_name(entry['route'])}.",
+        )
+    if "report_value" in entry and (
+        isinstance(entry["report_value"], bool)
+        or not isinstance(entry["report_value"], str | int | float)
+    ):
+        problems.append(
+            f"{at}.report_value must be a number or text -- it is what the device "
+            f"calls this source when it reports one -- not "
+            f"{_type_name(entry['report_value'])}.",
         )
     return problems
 

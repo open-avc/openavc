@@ -60,8 +60,10 @@ from openavc.ui.control_minimums import (
 )
 from openavc.ui.matrix_model import (
     MATRIX_CONFIG_KEYS,
+    PANEL_WRITABLE_PREFIXES,
     resolve_axis,
     route_matches,
+    source_report_value,
 )
 from openavc.ui.page_geometry import (
     PAGE_BOX,
@@ -1394,9 +1396,9 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
     of project format 0.10.0: each destination owns its key, so half a matrix can
     be blind while the other half reports, and that is worth naming precisely.
 
-    The other three are the ones that make it hard to notice: a config full of
-    keys nothing reads, an axis that resolves to nothing, and two entries that
-    claim the same value.
+    The other four are the ones that make it hard to notice: a config full of
+    keys nothing reads, an axis that resolves to nothing, two entries that claim
+    the same value, and a lock button backed by nothing.
     """
     if str(element.get("type", "")) != "matrix":
         return []
@@ -1446,10 +1448,16 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
         seen: list[Any] = []
         collided: list[str] = []
         for entry in entries:
-            if any(route_matches(entry.get("value"), other) for other in seen):
+            # By what the DEVICE calls it, which is what a report is matched
+            # against -- the same thing as the value on all but a couple of
+            # drivers, and the only thing that can collide on those.
+            value = (
+                source_report_value(entry) if axis == "sources" else entry.get("value")
+            )
+            if any(route_matches(value, other) for other in seen):
                 collided.append(str(entry.get("label", entry.get("value"))))
             else:
-                seen.append(entry.get("value"))
+                seen.append(value)
         if collided:
             findings.append(Finding(
                 el_id,
@@ -1459,6 +1467,32 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
                 f"source is matched by value -- so they cannot be told apart. Give "
                 f"each one the value its device actually reports.",
                 key=("matrix_duplicate_values", el_id, axis, *collided),
+            ))
+
+    # A lock only the panel that pressed it remembers is not a lock: it is gone
+    # the next time the page draws, the panel by the other door never hears
+    # about it, and the rack does not know either. Backing it with a variable is
+    # what makes it one, and `var.`/`plugin.` are the only prefixes a panel is
+    # allowed to write, so the check is the prefix rather than merely presence.
+    if config.get("show_lock") is True:
+        unbacked = [
+            str(entry.get("label", entry.get("value")))
+            for entry in resolve_axis(config, "destinations")
+            if not str(entry.get("lock_key") or "").startswith(PANEL_WRITABLE_PREFIXES)
+        ]
+        if unbacked:
+            findings.append(Finding(
+                el_id,
+                "matrix_lock_unbacked",
+                f"{el_id} (matrix) draws lock buttons, but {len(unbacked)} "
+                f"destination{'' if len(unbacked) == 1 else 's'} "
+                f"({_matrix_named(unbacked)}) "
+                f"{'has' if len(unbacked) == 1 else 'have'} no lock_key under "
+                f"{' or '.join(repr(p) for p in PANEL_WRITABLE_PREFIXES)}, so locking "
+                f"{'it' if len(unbacked) == 1 else 'them'} is this panel's own memory "
+                f"-- forgotten when the page redraws, and invisible to every other "
+                f"panel in the space. Give each one a variable, e.g. "
+                f"'var.{el_id}_lock_1'.",
             ))
 
     blind = [

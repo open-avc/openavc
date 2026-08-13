@@ -77,7 +77,7 @@ Sizes are worked out against a 1280x800 reference panel, which is what the perce
 | **Clock** | Time, date, countdown, elapsed, meeting timer | Current time display, meeting countdown |
 | **Keypad** | Numeric 0-9 pad with display | TV channel entry, passcode input |
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
-| **Matrix** | Routing, as a list of destinations or a crosspoint grid | Video/audio switcher routing |
+| **Matrix** | Routing: a wall of destination tiles, a list of dropdowns, or a crosspoint grid | Video/audio switcher routing |
 | **Custom Control** | A page you wrote yourself, running inside the element's box | Seating map, rack diagram, a control nothing else covers |
 
 ## Custom Controls
@@ -302,7 +302,13 @@ A **List** populates its rows either from the static items configured under **Ba
 
 A **Matrix** is configured under **Basic**, not through the binding cards, and one of its settings decides whether it can show anything at all.
 
-**Style** picks how it draws. A new matrix is a **List**: one row per destination, with its current source in a dropdown. It reads at a glance and it fits on a panel. **Crosspoint Grid** is the rack view, a dot per input-to-output pair, and it needs a lot more room (see below).
+**Style** picks how it draws, and there are three.
+
+- **Tiles** is one card per destination, naming what is on it in large type. Tap a card and the sources open over the panel to pick from. It reads from across a room and it is the shape most people in a space actually want: they are not thinking about crosspoints, they are thinking about what is on the main display.
+- **List** is one row per destination with its current source in a dropdown. Compact, and it fits a lot of destinations in a small box.
+- **Crosspoint Grid** is the rack view, a dot per source-to-destination pair. It is the technician's view, and it needs a lot more room than the other two (see below).
+
+A matrix you drag onto a page starts as **Tiles**. Changing the style never changes a panel that is already built.
 
 A matrix is **two lists**: the sources you can pick from, and the destinations you can send them to. Everything else is a way of drawing them.
 
@@ -321,12 +327,12 @@ Some things the picker cannot know, and it says so above the lists rather than a
 | **Source labels** / **Destination labels** | The names. Default to "In 1"..."In N" and "Out 1"..."Out N". |
 | **Audio route key** | Audio routes. Also drives the badge that appears on a destination whose audio route differs from its video route. |
 | **Source name key** / **Destination name key** | Live names read from state instead of typed here. |
-| **Show lock** / **Show mute** | Per-destination lock and mute buttons. Lock is panel-side only: it stops that row being changed on this panel and sends nothing. Mute only appears when the Mute interaction has an action on it. |
+| **Show lock** / **Show mute** | Per-destination lock and mute buttons, both off unless you ask for them. See **Locking a destination** below. Mute only appears when the Mute interaction has an action on it. |
 | **Cell size** | How big each crosspoint is drawn. Leave it blank and the grid sizes itself to the element, between 44 and 72 pixels. Type a number to pin it. |
 
 **Source names go under the grid, not above it.** In the crosspoint style the columns are numbered, and a legend under the grid says which source each number is. That legend is one strip: if there are more names than fit, it slides sideways rather than stacking up and taking room away from the grid. Destination names are the row captions down the left, and a name too long for its column is shortened from the end.
 
-**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. An 8x8 needs about 500 x 446 pixels on a 1280 x 800 panel and a 16x16 needs about 860 x 806. The Builder tells you the number for your grid if the box you drew is too small.
+**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. On a 1280 x 800 panel an 8x8 crosspoint grid needs about 455 x 446 pixels and a 16x16 about 815 x 806. The other two styles are much smaller, because neither of them draws a column per source: eight destinations need about 148 x 304 as a list and about 514 x 173 as tiles. The Builder tells you the number for your own matrix if the box you drew is too small.
 
 **Route key is the one to get right.** It is the state key of one destination's routed source, with the destination number replaced by `*`:
 
@@ -337,6 +343,12 @@ device.matrix_1.output.*.input
 The panel substitutes 1 through your destination count and reads each key to decide which crosspoint in that row lights up. Leave it blank and the grid still draws, and clicking a crosspoint still routes correctly, but **no crosspoint ever changes colour** -- so the panel shows no feedback about what is currently routed. The Value picker on any output's routed-input state key will show you the exact key to copy; replace the output number with `*`.
 
 Routing itself is a **Does** action, not a setting: the Video route interaction sends the command, with `$input` and `$output` carrying the source and destination the user touched.
+
+**When a destination is on something the matrix does not list, it says so.** Leave a source out, patch a new one at the rack, or point a matrix at a signal whose sources differ, and the device can report a source that is not on the list. That is not the same thing as nothing being routed, and the panel does not draw it the same way: the tile or the row shows what the device actually reported, marked, instead of going quiet. A destination with nothing routed to it reads as nothing routed, which is what it is.
+
+**Some devices answer in different words from the ones they take.** An Audio-Technica mixer is told to select source `0` and reports back `Mic`. Set up from the device and OpenAVC fills both in for you, because the driver already declares both; the panel then sends what the device accepts and lights up on what it reports. Nothing about that is visible on the panel, which is the point.
+
+**Locking a destination.** A lock button stops that destination being changed from the panel. It is off unless you turn it on, and it only means something if you give each destination a **Lock key**: a variable, like `var.lock_*`, that holds whether it is locked. Every panel in the space reads that variable, so a destination locked at the lectern is locked on the wall plate too, and it survives the page redrawing. Set up from the device and tick **Give each destination a lock button** to have the variables named for you. Without a key the button still works, but only on the panel it was pressed on and only until the page redraws, and the Builder says so.
 
 **Each destination can hold its own key instead**, which is how a matrix covers things that are not a plain rectangular frame: an 8x8 frame with only six ports patched, ports the device names rather than numbers, destinations spread across two devices, or a decoder that routes video and USB independently (a separate matrix per signal, each pointed at that signal's own keys). A matrix set up that way is a list of entries rather than a count, and the properties panel says so and steps aside -- the count and key fields have nothing to fill in, because each entry carries its own. A destination can also carry its own action, so one row of an otherwise ordinary matrix can start a stream instead of moving a crosspoint.
 

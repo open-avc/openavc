@@ -43,6 +43,10 @@ interface Row {
   label_key?: string;
   route_key?: string;
   audio_route_key?: string;
+  lock_key?: string;
+  /** A source's second value, where the device REPORTS in different words from
+   *  the ones its route command accepts. Read off the driver, never typed. */
+  report_value?: string | number;
   route?: Record<string, unknown>[];
   include: boolean;
   /** The device has this and the project did not, at the last re-read. */
@@ -100,6 +104,7 @@ function mergeRows(
       // the project set is the author's and is left alone.
       label_key: entry.label_key ?? device?.label_key,
       route_key: entry.route_key ?? device?.route_key,
+      report_value: entry.report_value ?? device?.report_value,
       label: entry.label || device?.label || String(entry.value),
       include: true,
       isNew: false,
@@ -126,12 +131,23 @@ function move(rows: Row[], index: number, delta: number): Row[] {
 function toEntry(row: Row, axis: Axis): Record<string, unknown> {
   const entry: Record<string, unknown> = { value: row.value, label: row.label };
   if (row.label_key) entry.label_key = row.label_key;
+  if (axis === "sources" && row.report_value !== undefined) {
+    entry.report_value = row.report_value;
+  }
   if (axis === "destinations") {
     if (row.route_key) entry.route_key = row.route_key;
     if (row.audio_route_key) entry.audio_route_key = row.audio_route_key;
     if (row.route) entry.route = row.route;
   }
   return entry;
+}
+
+/** The variable backing one destination's lock, named after the element and the
+ *  port it belongs to. Generated rather than typed: the author has already said
+ *  which destinations there are, and a lock key per row is bookkeeping. */
+function lockKeyFor(elementId: string, value: string | number): string {
+  const slug = String(value).replace(/[^A-Za-z0-9_]+/g, "_");
+  return `var.${elementId}_lock_${slug}`;
 }
 
 export function MatrixSetupDialog({
@@ -150,6 +166,9 @@ export function MatrixSetupDialog({
   const [sources, setSources] = useState<Row[]>([]);
   const [destinations, setDestinations] = useState<Row[]>([]);
   const [setRoute, setSetRoute] = useState(true);
+  // Off by default, like the lock itself. It costs a column and a variable per
+  // destination, and most matrices do not want one.
+  const [setLocks, setSetLocks] = useState(false);
 
   const chosen = useMemo(
     () => proposals?.find((p) => p.id === chosenId) ?? null,
@@ -212,7 +231,11 @@ export function MatrixSetupDialog({
       matrix_config: {
         ...(element.matrix_config as Record<string, unknown> | undefined),
         sources: keptSources.map((r) => toEntry(r, "sources")),
-        destinations: keptDestinations.map((r) => toEntry(r, "destinations")),
+        destinations: keptDestinations.map((r) => ({
+          ...toEntry(r, "destinations"),
+          ...(setLocks ? { lock_key: r.lock_key ?? lockKeyFor(element.id, r.value) } : {}),
+        })),
+        ...(setLocks ? { show_lock: true } : {}),
       },
     };
     if (setRoute && chosen?.route) {
@@ -358,6 +381,15 @@ export function MatrixSetupDialog({
               {" "}(replaces whatever is on it now)
             </label>
           )}
+
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "var(--space-sm)", fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={setLocks}
+              onChange={(e) => setSetLocks(e.target.checked)}
+            />
+            Give each destination a lock button, backed by its own variable
+          </label>
         </>
       )}
 
@@ -427,9 +459,13 @@ function RowEditor({
             <span style={valueStyle} title={
               axis === "destinations" && row.route_key
                 ? `value ${row.value} · reads ${row.route_key}`
-                : `value ${row.value}`
+                : row.report_value !== undefined
+                  ? `sends ${row.value} · the device calls it ${row.report_value}`
+                  : `value ${row.value}`
             }>
-              {row.value}
+              {row.report_value !== undefined
+                ? `${row.value} → ${row.report_value}`
+                : row.value}
             </span>
             {row.isNew && <span style={newBadgeStyle}>new</span>}
             <button
