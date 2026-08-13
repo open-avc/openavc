@@ -450,3 +450,92 @@ def test_a_property_built_at_runtime_is_not_reported_as_missing():
                     "planes": [{"route_property": "source_video"}]},
     }
     assert routing_block_errors(driver) == []
+
+
+# --- Reaching the picker from a .avcdriver file -----------------------------
+
+
+#: The same declaration, written the way an author writes one: in the YAML
+#: file, alongside the child types and the command it names.
+ROUTED_FRAME_DEFINITION = {
+    "id": "acme_frame",
+    "name": "Acme Frame",
+    "transport": "tcp",
+    "child_entity_types": {
+        "output": {
+            "label": "Output", "label_plural": "Outputs",
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {
+                "input": {"type": "integer", "label": "Source"},
+                "mode": {"type": "string", "label": "Scaling Mode"},
+            },
+        },
+    },
+    "commands": {
+        "route": {
+            "label": "Route",
+            "send": "R{out},{inp}\r",
+            "params": {
+                "out": {"type": "child_id", "child_type": "output"},
+                "inp": {"type": "integer", "min": 1, "max": 4},
+            },
+        },
+        "set_mode": {
+            "label": "Set Mode",
+            "send": "M{out},{mode}\r",
+            "params": {
+                "out": {"type": "child_id", "child_type": "output"},
+                "mode": {"type": "string"},
+            },
+        },
+    },
+    "routing": {
+        "destination_child_type": "output",
+        "command": "route",
+        "destination_param": "out",
+        "source_param": "inp",
+        "planes": [{"label": "Video", "route_property": "input"}],
+    },
+}
+
+
+def _live_driver_info(definition):
+    """What the picker actually reads: DRIVER_INFO off the built class.
+
+    Not the file. `GET /api/ui/matrix-proposals` asks the LIVE driver, because
+    three shipped drivers build their child properties at construction time
+    and a file reader sees an empty driver.
+    """
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    return create_configurable_driver_class(definition).DRIVER_INFO
+
+
+def test_a_declaration_in_the_file_reaches_the_driver_the_picker_reads():
+    """The gap this closes: a declaration can be valid, published in the
+    schema, offered by the Driver Builder and read by the inference, and still
+    do nothing, because the YAML runtime never carried it onto the driver.
+    Every test above hands `propose_matrices` a dict directly, so none of them
+    crosses the one boundary an author's file has to."""
+    assert _live_driver_info(ROUTED_FRAME_DEFINITION)["routing"] == \
+        ROUTED_FRAME_DEFINITION["routing"]
+
+
+def test_the_declaration_settles_the_plane_a_yaml_driver_offers():
+    """And it has to change the answer, or carrying it means nothing."""
+    info = _live_driver_info(ROUTED_FRAME_DEFINITION)
+    (proposal,) = propose_matrices("frame", info, {})
+    assert proposal["route_property"] == "input"
+    assert proposal["command"] == "route"
+    assert proposal["why"].startswith("The driver declares this:")
+
+
+def test_a_yaml_driver_that_declares_nothing_is_still_guessed_at():
+    """Purely additive: dropping the block puts the driver back on the guess,
+    which reaches the same plane here and offers the scaling mode besides."""
+    silent = {k: v for k, v in ROUTED_FRAME_DEFINITION.items() if k != "routing"}
+    info = _live_driver_info(silent)
+    assert "routing" not in info
+    proposals = propose_matrices("frame", info, {})
+    assert "input" in [p["route_property"] for p in proposals]
+    assert not any(p["why"].startswith("The driver declares this:") for p in proposals)

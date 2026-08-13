@@ -2820,7 +2820,7 @@ class PanelApp {
 
             const title = document.createElement('div');
             title.className = 'matrix-chooser-title';
-            title.textContent = dest.label || `Out ${o + 1}`;
+            title.textContent = this._entryLabel(dest) || `Out ${o + 1}`;
             sheet.appendChild(title);
 
             const grid = document.createElement('div');
@@ -3439,7 +3439,7 @@ class PanelApp {
             node.hidden = !differs;
             if (!differs) return;
             const src = this._routedSource(sources, raw);
-            const name = src ? this._sourceLabel(src) : String(raw);
+            const name = src ? this._entryLabel(src) : String(raw);
             node.textContent = `Audio: ${name}`;
             node.title = `Audio is on ${name}`;
         });
@@ -3518,7 +3518,7 @@ class PanelApp {
                 node.classList.toggle('unlisted', routed.state === 'unlisted');
                 node.classList.toggle('idle', routed.state === 'none');
                 if (routed.state === 'listed') {
-                    node.textContent = this._sourceLabel(routed.source);
+                    node.textContent = this._entryLabel(routed.source);
                     node.style.color = activeColor;
                     node.title = '';
                 } else if (routed.state === 'unlisted') {
@@ -3561,12 +3561,18 @@ class PanelApp {
         }
     }
 
-    /** A source's live name when it has one, else the name it was authored with. */
-    _sourceLabel(src) {
-        if (!src) return '';
-        const live = src.label_key ? this.state[src.label_key] : undefined;
+    /**
+     * An entry's live name when it has one, else the name it was authored with.
+     *
+     * Either axis: a destination carries a `label_key` exactly as a source does,
+     * and a tile showing the device's own channel name over a chooser headed with
+     * the name somebody typed months ago is the same row twice.
+     */
+    _entryLabel(entry) {
+        if (!entry) return '';
+        const live = entry.label_key ? this.state[entry.label_key] : undefined;
         if (live !== undefined && live !== null && String(live) !== '') return String(live);
-        return String(src.label ?? src.value);
+        return String(entry.label ?? entry.value);
     }
 
     /**

@@ -790,6 +790,17 @@ def _migrate_matrix_config_0_9_to_0_10(config: dict) -> dict:
     An axis whose count was never stated migrates to a stated 4, because 4 is
     what it was drawing. Recording the number it drew is the honest reading of a
     migration; the review is where "did you mean 4?" belongs.
+
+    **The lock column is the one thing that does change, deliberately.** A
+    matrix that never said ``show_lock`` used to draw a lock button per
+    destination and now does not, so an older panel opens a column narrower
+    than it was. Nothing here restores it, and nothing should: that button sent
+    nothing, reached no other panel, and was forgotten the next time the
+    element redrew. Writing ``show_lock: true`` into every migrated matrix
+    would preserve the picture by preserving a control that does not work,
+    and the lock that replaced it is per destination and asked for by name
+    (``lock_key``), so there is no old value to carry into it. A project that
+    wants the button back turns it on and says which variable backs it.
     """
     out = {k: v for k, v in config.items() if k not in _MATRIX_LEGACY_KEYS}
 

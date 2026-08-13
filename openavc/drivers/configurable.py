@@ -2344,6 +2344,14 @@ def create_configurable_driver_class(
     if "ir_codes" in driver_def:
         driver_info["ir_codes"] = driver_def["ir_codes"]
 
+    # Copy the routing declaration — where this driver's routing lives, in its
+    # own words, so the Matrix picker reads the device instead of guessing at
+    # it. Read by ui.matrix_inference off the LIVE driver, which is why it has
+    # to be here and not only in the file: a definition on disk is not what the
+    # picker asks.
+    if "routing" in driver_def:
+        driver_info["routing"] = driver_def["routing"]
+
     # Copy help from each state variable
     state_vars = driver_info.get("state_variables", {})
     for var_name, var_def in state_vars.items():

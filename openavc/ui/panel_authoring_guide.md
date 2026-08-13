@@ -322,9 +322,9 @@ backing its lock, and `route` on a destination for an action list that overrides
 A **source** may also carry a `report_value`. `value` is what gets SENT and
 `report_value` is what gets MATCHED, and they are the same thing on almost every
 device, which is why one value is normally enough. Where they differ they must be
-said separately or the source can never light: `at_atdm_0604a` is routed by
-sending `"0"` and reports back `"Mic"`, and `"0"` is what every renderer reads as
-"nothing is routed".
+said separately or the source can never light: a mixer input selected by sending
+`"0"` may report back `"Mic"`, and `"0"` on its own is what every renderer reads
+as "nothing is routed".
 
 A destination whose reported source matches no entry does not draw as an unrouted
 one. It says what the device reported, because "routed to something not on this
@@ -333,8 +333,8 @@ usually means a port was left out of the list or patched at the rack since.
 
 Writing every entry out is tedious for a frame whose ports run 1..N, so an axis
 may instead be a **generator**: `from` holds a `count` (or explicit `values`),
-plus `labels`, `label_key`, `route_key` and `audio_route_key` as patterns where
-`*` becomes the entry's value. `exclude` drops entries and `overrides` edits them
+plus `labels`, `label_key`, `route_key`, `audio_route_key` and `lock_key` as
+patterns where `*` becomes the entry's value. `exclude` drops entries and `overrides` edits them
 by value.
 
     "destinations": {

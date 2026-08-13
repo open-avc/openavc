@@ -1268,6 +1268,34 @@ def test_a_tile_tap_opens_the_chooser_and_routes_once(panel_page) -> None:
     assert panel_page.locator(".matrix-chooser").count() == 0
 
 
+def test_a_chooser_is_headed_with_the_name_its_tile_is_showing(panel_page) -> None:
+    """A destination's live name reaches its chooser, not only its card.
+
+    Both halves of the same row: a wall drawn from a device shows the names the
+    device reports, so a tile reading `CH 2` opening a sheet headed `Input 2`
+    -- the name somebody typed months earlier -- is two names for one output.
+    """
+    wall = _wall(destinations=2)
+    for i, dest in enumerate(wall["matrix_config"]["destinations"], start=1):
+        dest["label_key"] = f"device.mx.output.{i}.name"
+    _mount(panel_page, wall, 800, 500)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.2.name": "CH 2"})
+    panel_page.locator('.matrix-tile[data-dest-idx="1"]').click()
+    assert panel_page.locator(".matrix-chooser-title").text_content() == "CH 2"
+    # The chooser is a fixed overlay on document.body, so it outlives the element
+    # a re-mount replaces -- leaving one open is a stray overlay in the next test.
+    panel_page.locator(".matrix-chooser-cancel").click()
+
+
+def test_a_chooser_falls_back_to_the_authored_name(panel_page) -> None:
+    """A destination with no live name, or one that has not arrived yet."""
+    _mount(panel_page, _wall(destinations=2), 800, 500)
+    panel_page.locator('.matrix-tile[data-dest-idx="1"]').click()
+    assert panel_page.locator(".matrix-chooser-title").text_content() == "Dest 2"
+    panel_page.locator(".matrix-chooser-cancel").click()
+
+
 def test_a_tile_chooser_cancels_without_routing(panel_page) -> None:
     _mount(panel_page, _wall(), 800, 500)
     panel_page.locator('.matrix-tile[data-dest-idx="0"]').click()
