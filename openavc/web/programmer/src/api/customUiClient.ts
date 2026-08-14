@@ -32,10 +32,25 @@ function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
+export interface CustomUiSaveResult {
+  status: string;
+  path: string;
+  size: number;
+  /**
+   * What the saved file will get wrong in a real space, one sentence each.
+   *
+   * The review runs on the server and only there: a save is already a round
+   * trip, so a second copy of these checks in the browser would be two
+   * implementations to keep saying the same thing. Absent when there is
+   * nothing to report.
+   */
+  warnings?: string[];
+}
+
 export async function writeCustomUiFile(
   path: string,
   content: string,
-): Promise<{ status: string; path: string; size: number }> {
+): Promise<CustomUiSaveResult> {
   return request(`/projects/default/ui/${encodePath(path)}`, {
     method: "PUT",
     body: JSON.stringify({ content }),

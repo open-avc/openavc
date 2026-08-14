@@ -42,6 +42,7 @@ from openavc.core.custom_ui import (
     resolve_within,
     tree_totals,
 )
+from openavc.core.custom_ui_review import review_saved_file
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
@@ -133,7 +134,7 @@ def _check_room_for(
         )
 
 
-async def _announce_ui_files_changed(path: str) -> None:
+async def announce_ui_files_changed(path: str) -> None:
     """Tell every panel a file moved under it.
 
     A custom control is a file, not project data, so writing one changes
@@ -148,6 +149,10 @@ async def _announce_ui_files_changed(path: str) -> None:
     counter does in the design canvas. Milliseconds rather than a counter so it
     still moves forward across a restart, when a browser may be holding a
     cached copy stamped with the count from last time.
+
+    Public because the AI's write tool is a fifth door into the same folder and
+    owes the panels the same frame -- a control the assistant saves has to
+    appear on the wall exactly like one saved in the editor.
     """
     engine = _get_engine()
     await engine.broadcast_ws({
@@ -203,8 +208,20 @@ async def write_ui_file(project_id: str, file_path: str, request: Request) -> di
     target.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(target, content)
     log.info("Custom UI file saved: %s", rel)
-    await _announce_ui_files_changed(rel)
-    return {"status": "saved", "path": rel, "size": len(encoded)}
+    await announce_ui_files_changed(rel)
+
+    # What the file will get wrong in a room, in the reply the editor is already
+    # reading. The same review the AI's write tool gets, from the same module --
+    # a human starves a control by pasting a CDN script tag exactly as easily as
+    # the assistant does by writing one, and the editor is where they find out.
+    warnings = [
+        f.message
+        for f in review_saved_file(ui_dir, rel, project=_get_engine().project)
+    ]
+    result: dict[str, Any] = {"status": "saved", "path": rel, "size": len(encoded)}
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 @router.delete(
@@ -223,7 +240,7 @@ async def delete_ui_file(project_id: str, file_path: str) -> dict[str, str]:
     else:
         raise HTTPException(status_code=404, detail="File not found")
     log.info("Custom UI file deleted: %s", rel)
-    await _announce_ui_files_changed(rel)
+    await announce_ui_files_changed(rel)
     return {"status": "deleted", "path": rel}
 
 
@@ -254,7 +271,7 @@ async def upload_ui_file(
 
     if (file.filename or "").lower().endswith(".zip"):
         unpacked = _unpack_zip(ui_dir, content, folder)
-        await _announce_ui_files_changed(folder or ".")
+        await announce_ui_files_changed(folder or ".")
         return unpacked
 
     # Only the basename: a browser may report "room_map/index.html" as the
@@ -269,7 +286,7 @@ async def upload_ui_file(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(content)
     log.info("Custom UI file uploaded: %s", rel)
-    await _announce_ui_files_changed(rel)
+    await announce_ui_files_changed(rel)
     return {"status": "saved", "written": [rel], "skipped": []}
 
 

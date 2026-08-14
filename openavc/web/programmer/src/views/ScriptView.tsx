@@ -49,6 +49,11 @@ export function ScriptView() {
   const [pythonDrivers, setPythonDrivers] = useState<PythonDriverInfo[]>([]);
   const [driverReloadErrors, setDriverReloadErrors] = useState<RuntimeError[]>([]);
   const [uiFiles, setUiFiles] = useState<CustomUiFile[]>([]);
+  // What the last save of a custom UI file reported. The server is the only
+  // thing that can answer it — a control runs in a sandboxed frame in the
+  // panel, so there is no console here and no way to tell from the markup
+  // alone that a script came from the internet or a page is sized in pixels.
+  const [uiWarnings, setUiWarnings] = useState<string[]>([]);
 
   const editorInstanceRef = useRef<any>(null);
   const pendingLineRef = useRef<number | null>(null);
@@ -126,6 +131,8 @@ export function ScriptView() {
     setSelectedId(id);
     setSelectedType(type);
     setDriverReloadErrors([]);
+    // Last file's warnings belong to last file.
+    setUiWarnings([]);
     setLoading(true);
     try {
       if (type === "ui") {
@@ -240,7 +247,11 @@ export function ScriptView() {
     setSaving(true);
     try {
       if (selectedType === "ui") {
-        await writeCustomUiFile(selectedId, source);
+        const saved = await writeCustomUiFile(selectedId, source);
+        // The save is already a round trip, so the review runs there and this
+        // renders what it said. Cleared when there is nothing, so a fixed file
+        // stops showing the problem it no longer has.
+        setUiWarnings(saved.warnings ?? []);
         // The file changed, not the project, so this is the only thing that
         // tells the design canvas to draw the new version.
         useUiFilesStore.getState().bump();
@@ -857,7 +868,12 @@ export function ScriptView() {
               {loading ? (
                 <div style={loadingStyle}>Loading...</div>
               ) : (
-                <CustomUiEditor path={selectedId} source={source} onChange={setSource} />
+                <CustomUiEditor
+                  path={selectedId}
+                  source={source}
+                  onChange={setSource}
+                  warnings={uiWarnings}
+                />
               )}
             </div>
           ) : selectedId ? (

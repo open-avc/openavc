@@ -20,9 +20,19 @@ export interface CustomUiEditorProps {
   path: string;
   source: string;
   onChange: (source: string) => void;
+  /**
+   * What the last save reported about this file, one sentence each.
+   *
+   * A control runs in a sandboxed frame in the panel, not in this process, so
+   * there is nothing to show in a console and no way to tell from here whether
+   * it works. What the server can say is what will go wrong in a real space --
+   * a script loaded from the internet, storage that throws in a sandbox, a
+   * page sized in pixels -- and this is where that lands.
+   */
+  warnings?: string[];
 }
 
-export function CustomUiEditor({ path, source, onChange }: CustomUiEditorProps) {
+export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEditorProps) {
   const language = languageForUiPath(path);
 
   if (!language) {
@@ -52,25 +62,76 @@ export function CustomUiEditor({ path, source, onChange }: CustomUiEditorProps) 
   }
 
   return (
-    <Editor
-      height="100%"
-      language={language}
-      theme="vs-dark"
-      value={source}
-      onChange={(value) => onChange(value ?? "")}
-      options={{
-        minimap: { enabled: false },
-        fontSize: 13,
-        scrollBeyondLastLine: false,
-        wordWrap: "on",
-        automaticLayout: true,
-        tabSize: 2,
-        insertSpaces: true,
-        renderWhitespace: "selection",
-        lineNumbers: "on",
-        folding: true,
-        bracketPairColorization: { enabled: true },
-      }}
-    />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <Editor
+          height="100%"
+          language={language}
+          theme="vs-dark"
+          value={source}
+          onChange={(value) => onChange(value ?? "")}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 13,
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            automaticLayout: true,
+            tabSize: 2,
+            insertSpaces: true,
+            renderWhitespace: "selection",
+            lineNumbers: "on",
+            folding: true,
+            bracketPairColorization: { enabled: true },
+          }}
+        />
+      </div>
+      {warnings && warnings.length > 0 && (
+        <div
+          role="status"
+          style={{
+            flexShrink: 0,
+            maxHeight: "40%",
+            overflowY: "auto",
+            borderTop: "1px solid var(--border-color)",
+            background: "var(--color-warning-bg)",
+            padding: "var(--space-sm) var(--space-md)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "var(--font-size-sm)",
+              fontWeight: 600,
+              color: "var(--color-warning)",
+              marginBottom: "var(--space-xs)",
+            }}
+          >
+            Saved. {warnings.length} thing{warnings.length === 1 ? "" : "s"} to fix
+            before this goes on a panel
+          </div>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "1.1rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-xs)",
+            }}
+          >
+            {warnings.map((warning) => (
+              <li
+                key={warning}
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-secondary)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {warning}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

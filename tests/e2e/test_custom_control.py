@@ -285,6 +285,51 @@ def test_a_control_that_throws_says_so_in_the_box(panel) -> None:
     assert "ReferenceError" in fault.inner_text()
 
 
+# --- What the static review claims about this sandbox, proved in one --------
+#
+# `core/custom_ui_review.py` warns about `localStorage` and `window.parent.x`
+# on the strength of one premise: the frame is sandboxed WITHOUT
+# `allow-same-origin`, so both fail. That premise is a fact about a browser, and
+# the only place it can be checked is a browser. If the sandbox flags ever
+# loosen, those checks quietly become wrong advice -- authored around, for no
+# reason -- and the tests above would all still pass, because none of them
+# touches storage.
+
+
+def test_storage_really_does_throw_inside_a_control(panel) -> None:
+    """The premise behind the review's sandbox_fatal_api finding.
+
+    It is not a degradation: the access raises, inside an opaque origin where
+    nothing outside the frame can see it, and the control simply stops.
+    """
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "room_map/index.html",
+    })
+    panel.frame_locator('[data-element-id="map"] iframe').locator("#room").wait_for(timeout=5000)
+
+    for api in ("localStorage.setItem('k', '1')", "sessionStorage.getItem('k')"):
+        threw = panel.frames[1].evaluate(
+            "(code) => { try { eval(code); return false; } catch (e) { return true; } }",
+            api,
+        )
+        assert threw is True, f"{api} did not throw -- the sandbox premise has changed"
+
+
+def test_reaching_the_panels_window_really_is_blocked(panel) -> None:
+    """The premise behind the review's frame_escape finding."""
+    _render_control(panel, {
+        "id": "map", "type": "custom", "custom_file": "room_map/index.html",
+    })
+    panel.frame_locator('[data-element-id="map"] iframe').locator("#room").wait_for(timeout=5000)
+
+    blocked = panel.frames[1].evaluate(
+        "() => { try { return !window.parent.location.href; } catch (e) { return true; } }"
+    )
+    assert blocked is True, "a control could read the panel's location"
+    # And the one door stays open, or every correct control would be broken.
+    assert panel.frames[1].evaluate("() => typeof parent.postMessage") == "function"
+
+
 # --- A file that changes under a running panel -----------------------------
 
 

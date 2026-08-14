@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.ui.page_review import Finding
@@ -237,6 +238,65 @@ def _page_grant_findings(page: Any, device_ids: set[str]) -> list[Finding]:
     return findings
 
 
+@dataclass(frozen=True)
+class CustomFileUse:
+    """One place a page names a file in the project's ``ui/`` folder."""
+
+    what: str
+    """How it reads mid-sentence: ``page`` or ``custom control``."""
+
+    holder_id: str
+    file: str
+    granted: tuple[str, ...]
+    """The device and variable ids that holder's grant lets the markup reach."""
+
+
+def _granted_ids(grant: Any) -> tuple[str, ...]:
+    dump = _mapping(grant) or {}
+    ids: list[str] = []
+    for field in ("devices", "variables"):
+        value = dump.get(field)
+        if isinstance(value, (list, tuple)):
+            ids.extend(str(v) for v in value if isinstance(v, str))
+    return tuple(ids)
+
+
+def custom_file_references(page: Any) -> list[CustomFileUse]:
+    """Every place this page names a file in the project's ``ui/`` folder.
+
+    The page itself when it has handed the screen over to markup, then each
+    ``custom`` element on it, in the order they are written. One walk with three
+    callers -- the missing-file warning below, the tool that lists the folder
+    with what uses each file, and the tool that refuses to delete a file
+    something still points at. A second implementation of "where can a
+    custom_file appear" is how one of them would end up disagreeing with the
+    panel about whether a control is still in use.
+
+    Each use carries its grant, because the review of the markup itself asks a
+    question only the pair can answer: whether the control's own source ever
+    names what it was given.
+    """
+    found: list[CustomFileUse] = []
+    if str(getattr(page, "render_mode", "") or "") == "custom":
+        named = getattr(page, "custom_file", None)
+        if isinstance(named, str) and named:
+            found.append(CustomFileUse(
+                "page", str(getattr(page, "id", "?")), named,
+                _granted_ids(getattr(page, "grant", None)),
+            ))
+    for element in getattr(page, "elements", []) or []:
+        dump = _mapping(element)
+        if dump is None or dump.get("type") != "custom":
+            continue
+        named = dump.get("custom_file")
+        if isinstance(named, str) and named:
+            found.append(CustomFileUse(
+                "custom control", str(dump.get("id", "?")), named,
+                _granted_ids(dump.get("grant")),
+            ))
+    return found
+
+
 def _custom_file_finding(
     what: str, holder_id: str, page_id: str, named: Any, ui_files: set[str] | None,
 ) -> Finding | None:
@@ -304,11 +364,18 @@ def reference_findings(
     # A page that hands the screen to markup names its file the same way an
     # element does, and is missing it the same way. Not scoped by `touched`,
     # like the page grant beside it: the page is not one of its elements.
-    if str(getattr(page, "render_mode", "") or "") == "custom":
+    # One walk answers both sites below, so what counts as naming a file lives
+    # in one place -- see custom_file_references.
+    named_files = custom_file_references(page)
+    page_file = next((use.file for use in named_files if use.what == "page"), None)
+    element_files = {
+        use.holder_id: use.file for use in named_files if use.what != "page"
+    }
+
+    if page_file is not None:
         page_id_str = str(getattr(page, "id", "?"))
         missing = _custom_file_finding(
-            "page", page_id_str, page_id_str,
-            getattr(page, "custom_file", None), ui_files,
+            "page", page_id_str, page_id_str, page_file, ui_files,
         )
         if missing:
             findings.append(missing)
@@ -323,10 +390,10 @@ def reference_findings(
         plugin_issue = plugin_element_finding(dump, el_id, plugin_elements)
         if plugin_issue:
             findings.append(plugin_issue)
-        if dump.get("type") == "custom":
+        if el_id in element_files:
             missing_file = _custom_file_finding(
                 "custom control", el_id, str(getattr(page, "id", "?")),
-                dump.get("custom_file"), ui_files,
+                element_files[el_id], ui_files,
             )
             if missing_file:
                 findings.append(missing_file)

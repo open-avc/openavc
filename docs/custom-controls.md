@@ -200,6 +200,8 @@ if (msg.type === 'openavc:init') {
 
 Saving a file into `ui/` redraws the control on the canvas. You do not need to reload the IDE, and you do not need to touch the panels either: any panel showing that control picks the new version up on its own.
 
+Saving also reads the file for the handful of things that only go wrong in a real space, and lists them under the editor: a script or font loaded from the internet, an address that starts at the server root, storage that is unavailable inside the control's own window, a page sized in pixels, a file it loads that is not in `ui/`. It is a read, not a run, so it never tells you the control works. It also does not stop the save.
+
 ## When something goes wrong, say so
 
 A control runs in its own window, so nothing outside it can see a script error inside it. Report your own in one line and the panel shows it in the element's box, and in the IDE while you are building:

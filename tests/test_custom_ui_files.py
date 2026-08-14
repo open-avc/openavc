@@ -269,6 +269,34 @@ def test_a_refused_page_is_a_document_too(client, project_dir, tmp_path):
     assert "detail" not in resp.text
 
 
+def test_a_save_carries_what_the_file_will_get_wrong_in_a_room(client):
+    """The editor's half of the review, and the only place it can come from.
+
+    A control runs in a sandboxed frame in the panel, so the IDE cannot tell
+    from the markup that a script came from the internet -- and a browser-side
+    copy of these checks would be a second implementation of something a save
+    already round-trips for. So the answer rides back on the PUT.
+    """
+    resp = client.put(
+        "/api/projects/default/ui/room_map/index.html",
+        json={"content": '<script src="https://cdn.example.com/chart.js"></script>'},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "saved"
+    assert any("no internet" in w for w in body["warnings"])
+
+
+def test_a_clean_save_carries_no_warnings_key_at_all(client):
+    """Nothing to say is said by silence: an empty list would draw an empty
+    strip under the editor."""
+    body = client.put(
+        "/api/projects/default/ui/notes.md", json={"content": "# How this room works"},
+    ).json()
+    assert "warnings" not in body
+
+
 def test_saves_show_up_rather_than_serving_a_cached_copy(client, project_dir):
     client.put("/api/projects/default/ui/a.html", json={"content": "one"})
     resp = client.get("/api/projects/default/ui/a.html")

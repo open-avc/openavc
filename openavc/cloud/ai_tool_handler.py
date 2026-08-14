@@ -601,6 +601,7 @@ def _tool_result_is_error(result: Any) -> bool:
     return bool(result.get("error"))
 
 
+from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
 from openavc.cloud.tools.device_tools import DeviceToolsMixin
 from openavc.cloud.tools.macro_tools import MacroToolsMixin
 from openavc.cloud.tools.plugin_tools import PluginToolsMixin
@@ -613,6 +614,7 @@ class AIToolHandler(
     ProjectToolsMixin,
     DeviceToolsMixin,
     UIToolsMixin,
+    CustomUIToolsMixin,
     PluginToolsMixin,
     MacroToolsMixin,
     SystemToolsMixin,
@@ -641,6 +643,7 @@ class AIToolHandler(
         "get_isc_status", "list_isc_peers",
         "get_device_settings", "check_references",
         "get_discovery_results", "wait",
+        "list_ui_files", "read_ui_file", "get_project_stylesheet",
     }
 
     # Tools that may run without the project-serialization lock: every
@@ -752,6 +755,17 @@ class AIToolHandler(
             # Device settings
             "get_device_settings": self._get_device_settings,
             "set_device_setting": self._set_device_setting,
+            # Custom UI: the project's own ui/ folder, and the stylesheet that
+            # restyles the built-in controls. The three writers are deliberately
+            # outside _CONCURRENT_SAFE_TOOLS, so they take the project lock and
+            # ride the one-time pre-AI backup that already covers ui/.
+            "list_ui_files": self._list_ui_files,
+            "read_ui_file": self._read_ui_file,
+            "write_ui_file": self._write_ui_file,
+            "delete_ui_file": self._delete_ui_file,
+            "get_project_stylesheet": self._get_project_stylesheet,
+            "set_project_stylesheet": self._set_project_stylesheet,
+            "review_custom_ui": self._review_custom_ui,
             # UI simulation
             "simulate_ui_action": self._simulate_ui_action,
             "review_ui": self._review_ui,
