@@ -851,3 +851,83 @@ async def test_a_locked_element_can_still_be_restyled_and_unlocked(
     assert _result(await _run(handler, mock_engine, mock_agent, "update_ui_element", {
         "element_id": "title", "placement": {"x": 5.0},
     }))["changed"] == ["placement"]
+
+
+# --- A page can be handed over to markup, and handed back ------------------
+
+
+@pytest.mark.asyncio
+async def test_a_page_can_be_switched_to_custom_and_back(
+    handler, mock_engine, mock_agent,
+):
+    """V10's other half: the AI could read `render_mode` and never write it.
+
+    `_update_ui_page` took name, layouts, snap, page_type, overlay and
+    background, so a page it had just been told draws its own markup could not
+    be pointed at a different file, re-granted, or set back to drawing its
+    controls. The reply was `No fields to update`.
+    """
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_page", {
+        "page_id": "main",
+        "render_mode": "custom",
+        "custom_file": "room_map/index.html",
+        "custom_config": {"room": "204"},
+        "grant": {"devices": ["amp"], "navigate": True},
+    })
+    result = _result(payload)
+    assert set(result["changed"]) == {
+        "render_mode", "custom_file", "custom_config", "grant",
+    }
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    assert page.render_mode == "custom"
+    assert page.custom_file == "room_map/index.html"
+    assert page.grant.devices == ["amp"] and page.grant.navigate is True
+
+    back = await _run(handler, mock_engine, mock_agent, "update_ui_page", {
+        "page_id": "main", "render_mode": "elements",
+    })
+    assert _result(back)["changed"] == ["render_mode"]
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    assert page.render_mode == "elements"
+    # Switching away is reversible because nothing was deleted on the way in.
+    assert {e.id for e in page.elements} == {"strip", "title"}
+
+
+@pytest.mark.asyncio
+async def test_a_page_can_be_created_as_one_that_draws_its_own_markup(
+    handler, mock_engine, mock_agent,
+):
+    payload = await _run(handler, mock_engine, mock_agent, "add_ui_page", {
+        "id": "lobby", "name": "Lobby",
+        "render_mode": "custom", "custom_file": "wall/index.html",
+    })
+    assert _result(payload)["status"] == "created"
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "lobby")
+    assert page.render_mode == "custom" and page.custom_file == "wall/index.html"
+
+
+@pytest.mark.asyncio
+async def test_a_render_mode_that_is_not_one_of_the_two_is_refused(
+    handler, mock_engine, mock_agent,
+):
+    """The model declares a Literal and does not validate on assignment, so a
+    typo would land and the page would quietly go back to drawing elements."""
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_page", {
+        "page_id": "main", "render_mode": "Custom",
+    })
+    assert payload["success"] is False
+    assert "render_mode is 'elements'" in payload["result"]["error"]
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    assert page.render_mode == "elements"
+
+
+@pytest.mark.asyncio
+async def test_a_page_grant_is_shape_checked_like_an_element_grant(
+    handler, mock_engine, mock_agent,
+):
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_page", {
+        "page_id": "main", "grant": {"devices": "amp"},
+    })
+    assert payload["success"] is False
+    assert "not shaped right" in payload["result"]["error"]

@@ -388,9 +388,15 @@ Two things follow for a write:
 - **A page set to custom that names no file still draws its controls**, which is
   the one case where adding one is not wasted. The review answers: *lobby is set to show a page you wrote but names no file, so it still draws its controls. Choose a file in the project's ui/ folder, or set the page back to controls.*
 
-The `ui/` folder is not writable from here, so a custom page is set up by the
-person building the panel. Leave `render_mode` alone unless you are asked to
-change it.
+`render_mode`, `custom_file`, `custom_config` and `grant` are yours to set, on a
+page you add and on one that already exists. What you cannot do is put the file
+there: the `ui/` folder is written by the person building the panel, so point a
+page only at a file that is already in it. Naming one that is not there draws an
+empty screen, and the review says so.
+
+Leave `render_mode` alone unless you are asked to change it. A page switched to
+custom stops drawing every control on it, which is rarely what somebody asking
+for a change to one control meant.
 
 ## The elements that are on every page and are not in the page
 

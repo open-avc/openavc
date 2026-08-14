@@ -518,3 +518,87 @@ def test_a_grant_on_a_device_that_exists_is_silent() -> None:
         "id": "map", "type": "custom", "custom_file": "map/index.html",
         "grant": {"devices": ["acme_amp"], "variables": ["invented_later"], "macros": True},
     }]) == []
+
+
+# --- A custom control pointed at a file that is not there -------------------
+
+
+def test_a_custom_control_naming_a_missing_file_is_reported():
+    """The Builder's picker shows `(missing)`; nothing told the write door.
+
+    Now that a file can be renamed out from under an element the AI placed,
+    silence here is an empty box on a wall with nothing anywhere saying why.
+    """
+    messages = _messages(
+        [{"id": "map", "type": "custom", "custom_file": "room_map/index.html"}],
+        ui_files={"wall/index.html"},
+    )
+    assert any(
+        "map (custom control) shows 'room_map/index.html', which is not in the "
+        "project's ui/ folder, so it draws an empty box." in m
+        for m in messages
+    ), messages
+    # It names what IS there, so the fix does not need a second call.
+    assert any("wall/index.html" in m for m in messages)
+
+
+def test_a_custom_control_whose_file_is_there_is_silent():
+    assert _messages(
+        [{"id": "map", "type": "custom", "custom_file": "room_map/index.html"}],
+        ui_files={"room_map/index.html"},
+    ) == []
+
+
+def test_no_file_list_means_no_opinion():
+    """The rule every injected lookup here follows. A caller that cannot
+    enumerate the folder must not turn every custom control into a warning."""
+    assert _messages(
+        [{"id": "map", "type": "custom", "custom_file": "room_map/index.html"}],
+    ) == []
+
+
+def test_an_empty_ui_folder_still_reports_it():
+    """Distinct from "no opinion": an empty folder is an answer, and the
+    control is definitely not going to draw."""
+    messages = _messages(
+        [{"id": "map", "type": "custom", "custom_file": "room_map/index.html"}],
+        ui_files=set(),
+    )
+    assert any("none yet" in m for m in messages), messages
+
+
+def test_a_custom_page_naming_a_missing_file_is_reported():
+    """The page carries the same field and is missing it the same way."""
+    project = ProjectConfig.model_validate({
+        "project": {"id": "refs", "name": "Refs", "description": ""},
+        "ui": {"settings": {}, "pages": [{
+            "id": "lobby", "name": "Lobby", "elements": [], "layouts": [],
+            "render_mode": "custom", "custom_file": "wall/index.html",
+        }], "master_elements": []},
+    })
+    findings = reference_findings(
+        project.ui.pages[0],
+        page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS,
+        ui_files={"room_map/index.html"},
+    )
+    assert any(
+        "lobby (page) shows 'wall/index.html', which is not in the project's ui/ folder"
+        in f.message for f in findings
+    ), [f.message for f in findings]
+
+
+def test_a_page_that_draws_its_own_controls_is_not_asked_about_a_file():
+    """`custom_file` is only read when render_mode is custom, so a leftover
+    value on a normal page is not a dangling reference."""
+    project = ProjectConfig.model_validate({
+        "project": {"id": "refs", "name": "Refs", "description": ""},
+        "ui": {"settings": {}, "pages": [{
+            "id": "lobby", "name": "Lobby", "elements": [], "layouts": [],
+            "custom_file": "wall/index.html",
+        }], "master_elements": []},
+    })
+    assert reference_findings(
+        project.ui.pages[0],
+        page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS,
+        ui_files={"room_map/index.html"},
+    ) == []

@@ -237,6 +237,31 @@ def _page_grant_findings(page: Any, device_ids: set[str]) -> list[Finding]:
     return findings
 
 
+def _custom_file_finding(
+    what: str, holder_id: str, page_id: str, named: Any, ui_files: set[str] | None,
+) -> Finding | None:
+    """A custom control or page pointed at a file that is not in ``ui/``.
+
+    ``ui_files`` is None for "no opinion" and must never warn -- the same rule
+    every injected lookup here follows. A renamed file is the whole reason this
+    exists: the element keeps drawing, the box comes up empty, and the only
+    other thing that says so is the Builder's picker showing ``(missing)`` to
+    somebody who is not looking at it.
+    """
+    if ui_files is None or not isinstance(named, str) or not named:
+        return None
+    wanted = named.replace("\\", "/").strip("/")
+    if wanted in ui_files:
+        return None
+    listed = _listed(sorted(ui_files)) if ui_files else "none yet"
+    return Finding(
+        page_id, "dangling_reference",
+        f"{holder_id} ({what}) shows '{named}', which is not in the project's ui/ "
+        f"folder, so it draws an empty box. The files there are: {listed}.",
+        key=("dangling_reference", holder_id, f"custom_file.{named}"),
+    )
+
+
 def reference_findings(
     page: Any,
     *,
@@ -248,12 +273,17 @@ def reference_findings(
     plugin_elements: Callable[[str], set[str] | None] | None = None,
     undeclared_property: Callable[[str], set[str] | None] | None = None,
     unknown_child_id: Callable[[str], set[str] | None] | None = None,
+    ui_files: set[str] | None = None,
 ) -> list[Finding]:
     """Every binding on this page that names something that is not there.
 
     ``touched`` scopes it the way ``review_page`` is scoped: a write answers for
     what it wrote. Re-reporting the other fifty elements on every call is how a
     caller learns to skip the field.
+
+    ``ui_files`` is every path in the project's ``ui/`` folder, or None for the
+    same "no opinion" -- a caller that cannot enumerate it must not turn every
+    custom control into a warning.
 
     ``device_commands`` returns a driver's declared command names, or None for
     "no opinion" -- a device with no driver loaded, one that is disabled, a
@@ -271,6 +301,18 @@ def reference_findings(
     # page can no longer reach what it was given.
     findings.extend(_page_grant_findings(page, device_ids))
 
+    # A page that hands the screen to markup names its file the same way an
+    # element does, and is missing it the same way. Not scoped by `touched`,
+    # like the page grant beside it: the page is not one of its elements.
+    if str(getattr(page, "render_mode", "") or "") == "custom":
+        page_id_str = str(getattr(page, "id", "?"))
+        missing = _custom_file_finding(
+            "page", page_id_str, page_id_str,
+            getattr(page, "custom_file", None), ui_files,
+        )
+        if missing:
+            findings.append(missing)
+
     for element in getattr(page, "elements", []) or []:
         dump = _mapping(element)
         if dump is None:
@@ -281,6 +323,13 @@ def reference_findings(
         plugin_issue = plugin_element_finding(dump, el_id, plugin_elements)
         if plugin_issue:
             findings.append(plugin_issue)
+        if dump.get("type") == "custom":
+            missing_file = _custom_file_finding(
+                "custom control", el_id, str(getattr(page, "id", "?")),
+                dump.get("custom_file"), ui_files,
+            )
+            if missing_file:
+                findings.append(missing_file)
         findings.extend(_element_findings(
             dump, el_id, page_ids, device_ids, macro_ids, device_commands,
             undeclared_property, unknown_child_id,

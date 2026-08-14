@@ -1,6 +1,9 @@
 """Mixin for AI tool handlers that manage UI pages and elements."""
 
+from pathlib import Path
 from typing import Any
+
+from pydantic import ValidationError
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.ui_events import resolve_press
@@ -473,6 +476,51 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     return place
 
 
+def _project_ui_files(engine: Any) -> set[str] | None:
+    """Every path in the project's ``ui/`` folder, or None when it cannot say.
+
+    None is "no opinion" and never warns, which is the only safe answer when
+    there is no project path to look under -- a caller that guessed an empty set
+    there would report every custom control in the project as missing its file.
+    """
+    try:
+        from openavc.core.custom_ui import UI_DIR_NAME, iter_files
+        project_path = getattr(engine, "project_path", None)
+        if not project_path:
+            return None
+        ui_dir = Path(project_path).parent / UI_DIR_NAME
+        if not ui_dir.is_dir():
+            return set()
+        return {f.relative_to(ui_dir).as_posix() for f in iter_files(ui_dir)}
+    except Exception:  # pragma: no cover - advisory path only
+        log.debug("Could not list the project's ui/ folder", exc_info=True)
+        return None
+
+
+def _validated_grant(value: Any, what: str) -> Any:
+    """Coerce a grant, or say what is wrong with it.
+
+    The one field checked rather than assigned raw, and the reason is the panel:
+    a grant is the whole reach model for author markup, the panel enforces it
+    and nothing else can (a WS frame carries no element identity), and the model
+    does not validate on assignment. So a string where a list belongs would land
+    intact -- and the panel asks ``grant.devices.includes(id)``, which a
+    **string** answers too, matching every device id that is a substring of it.
+
+    Shared by the element door and the page door, which take the same grant.
+    """
+    if value is None:
+        return None
+    from openavc.core.project_loader import ElementGrant
+    try:
+        return ElementGrant(**value) if isinstance(value, dict) else ElementGrant(value)
+    except (ValidationError, TypeError) as exc:
+        raise ToolEditError({
+            "error": f"{what}: 'grant' is not shaped right -- devices and variables "
+                     f"are lists of ids, macros and navigate are true/false. ({exc})"
+        }) from exc
+
+
 def _assign_plain_fields(
     target: Any, input: dict, skip: set[str], what: str, changed: list[str],
 ) -> None:
@@ -503,17 +551,8 @@ def _assign_plain_fields(
     for field, value in input.items():
         if field in skip:
             continue
-        if field == "grant" and value is not None:
-            from pydantic import ValidationError
-
-            from openavc.core.project_loader import ElementGrant
-            try:
-                value = ElementGrant(**value) if isinstance(value, dict) else ElementGrant(value)
-            except (ValidationError, TypeError) as exc:
-                raise ToolEditError({
-                    "error": f"{what}: 'grant' is not shaped right -- devices and variables "
-                             f"are lists of ids, macros and navigate are true/false. ({exc})"
-                }) from exc
+        if field == "grant":
+            value = _validated_grant(value, what)
         if field == "id":
             raise ToolEditError({
                 "error": f"{what}: an id cannot be changed here -- delete it and add "
@@ -834,6 +873,7 @@ class UIToolsMixin:
             unknown_child_id=lambda key: _unknown_child_id(
                 self._devices, device_ids, key,
             ),
+            ui_files=_project_ui_files(self._get_engine()),
         ))
         if findings:
             log.info(
@@ -896,13 +936,30 @@ class UIToolsMixin:
             if problems:
                 raise _batch_error(problems, "added")
 
-            new_page = UIPage(
-                id=page_id,
-                name=input.get("name", page_id),
-                snap=input.get("snap", {}),
-                elements=elements,
-                layouts=input.get("layouts", []),
-            )
+            # Built through the model rather than field by field, so a page can
+            # be created as one that draws its own markup instead of having to
+            # be created and then converted. Pydantic answers for the Literal
+            # and the grant shape here; the update door checks them by hand
+            # because assignment does not.
+            extra = {
+                field: input[field]
+                for field in ("render_mode", "custom_file", "custom_config", "grant",
+                              "page_type", "overlay", "background")
+                if field in input
+            }
+            try:
+                new_page = UIPage(
+                    id=page_id,
+                    name=input.get("name", page_id),
+                    snap=input.get("snap", {}),
+                    elements=elements,
+                    layouts=input.get("layouts", []),
+                    **extra,
+                )
+            except ValidationError as exc:
+                raise ToolEditError({
+                    "error": f"Page '{page_id}' is not shaped right: {exc}"
+                }) from exc
             # Elements are shared by every arrangement; their boxes are not, so
             # a new control's box belongs in the primary -- the one every other
             # layout inherits from.
@@ -967,6 +1024,34 @@ class UIToolsMixin:
                 from openavc.core.project_loader import PageBackground
                 page.background = PageBackground(**input["background"]) if input["background"] else None
                 changed.append("background")
+            # What the page DRAWS: its own controls, or one page out of the
+            # project's ui/ folder given the whole screen. The element door
+            # takes the same three fields plus the grant; a page that could not
+            # take them left the AI able to see `render_mode: "custom"` in a
+            # page it read and unable to set it back, which is the shape of the
+            # element defect one level up.
+            if "render_mode" in input:
+                # Checked rather than assigned: the model declares a Literal and
+                # does not validate on assignment, so "Custom" or a typo would
+                # land and the page would quietly go back to drawing its
+                # elements -- the silent-write failure this door just spent a
+                # commit removing.
+                mode = input["render_mode"]
+                if mode not in ("elements", "custom"):
+                    raise ToolEditError({
+                        "error": f"Page '{page_id}': render_mode is 'elements' (draw the "
+                                 f"page's own controls) or 'custom' (give the screen to a "
+                                 f"page in the project's ui/ folder), not {mode!r}."
+                    })
+                page.render_mode = mode
+                changed.append("render_mode")
+            for field in ("custom_file", "custom_config"):
+                if field in input:
+                    setattr(page, field, input[field])
+                    changed.append(field)
+            if "grant" in input:
+                page.grant = _validated_grant(input["grant"], f"Page '{page_id}'")
+                changed.append("grant")
 
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
@@ -1597,6 +1682,9 @@ class UIToolsMixin:
         device_ids = sorted((d.id for d in project.devices), key=len, reverse=True)
         page_ids = {p.id for p in project.ui.pages}
         macro_ids = {m.id for m in project.macros}
+        # Listed once rather than per page: it is a directory walk, and every
+        # page asks the same question of it.
+        ui_files = _project_ui_files(self._get_engine())
         by_page: dict[str, list[str]] = {}
         total = 0
 
@@ -1628,6 +1716,7 @@ class UIToolsMixin:
                 unknown_child_id=lambda key: _unknown_child_id(
                     self._devices, device_ids, key,
                 ),
+                ui_files=ui_files,
             ))
             if findings:
                 by_page[page.id] = [f.message for f in findings]
