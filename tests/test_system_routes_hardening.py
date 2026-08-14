@@ -242,6 +242,81 @@ def test_cloud_pair_save_oserror_is_clear_500(client, monkeypatch):
     assert started["called"] is False  # never proceeded to start the agent
 
 
+# ── Pairing tells the cloud what this room is called ────────────────────────
+
+
+def _captured_pair_body(monkeypatch, engine, response):
+    """Fake httpx that keeps the body the relay sent."""
+    sent: dict = {}
+
+    async def _start():
+        engine.cloud_agent = object()
+
+    engine._start_cloud_agent = _start
+
+    class _FakeAsyncClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None):
+            sent.update(json or {})
+            return response
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    return sent
+
+
+_PAIRED = {"endpoint": "wss://x", "system_key": "k", "system_id": "s1"}
+
+
+def test_cloud_pair_sends_the_project_name(client, monkeypatch):
+    """So the room arrives in the portal named instead of "Unnamed System"."""
+    c, engine = client
+    engine.project.project.name = "Whitfield Hall 214"
+    _pair_env(monkeypatch)
+    sent = _captured_pair_body(monkeypatch, engine, _FakeResponse(200, _PAIRED))
+
+    assert c.post(
+        "/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"},
+    ).status_code == 200
+    assert sent["token"] == "t"
+    assert sent["name"] == "Whitfield Hall 214"
+
+
+def test_a_long_project_name_is_shortened_rather_than_failing_the_pairing(
+    client, monkeypatch,
+):
+    """The cloud's rename field caps at 200; pairing is not the place to argue."""
+    c, engine = client
+    engine.project.project.name = "W" * 400
+    _pair_env(monkeypatch)
+    sent = _captured_pair_body(monkeypatch, engine, _FakeResponse(200, _PAIRED))
+
+    assert c.post(
+        "/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"},
+    ).status_code == 200
+    assert sent["name"] == "W" * 200
+
+
+def test_no_project_means_no_name_rather_than_a_blank_one(client, monkeypatch):
+    """An instance with nothing loaded pairs; the cloud names it its own way."""
+    c, engine = client
+    engine.project = None
+    _pair_env(monkeypatch)
+    sent = _captured_pair_body(monkeypatch, engine, _FakeResponse(200, _PAIRED))
+
+    assert c.post(
+        "/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"},
+    ).status_code == 200
+    assert "name" not in sent
+
+
 # ── M-049: agent-start failure surfaced ─────────────────────────────────────
 
 

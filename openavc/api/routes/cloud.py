@@ -127,13 +127,26 @@ async def cloud_pair(request: Request) -> dict[str, Any]:
 
     cloud_api_url = await _validate_cloud_api_url(data.cloud_api_url)
 
+    # Tell the cloud what this room is called, so it arrives in the portal
+    # named rather than as one more "Unnamed System" in a list of them. The
+    # project name is the only name this instance has, and it is the one the
+    # person pairing has just been looking at. It seeds the cloud's name and
+    # nothing more: renaming the project later does not reach back, because the
+    # cloud name is the customer's word for the room and may not be ours.
+    room = str(engine.project.project.name or "").strip() if engine.project else ""
+
     # Exchange the pairing token with the cloud API
     import httpx
+    payload: dict[str, Any] = {"token": data.token}
+    if room:
+        # Capped to what the cloud's own rename field accepts, so a long
+        # project name seeds a shorter name instead of failing the pairing.
+        payload["name"] = room[:200]
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{cloud_api_url}/api/v1/systems/pair",
-                json={"token": data.token},
+                json=payload,
             )
             if resp.status_code != 200:
                 try:
