@@ -473,6 +473,83 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     return place
 
 
+def _assign_plain_fields(
+    target: Any, input: dict, skip: set[str], what: str, changed: list[str],
+) -> None:
+    """Assign every field the caller named that the model declares.
+
+    The alternative -- an if-block per settable field -- is what left
+    ``update_ui_element`` able to change eight properties of an existing
+    element and silently drop the rest. A caller could re-range a fader, fix a
+    matrix, or point a custom control at a different file, get
+    ``{"status": "updated"}`` back, and have none of it land: ``min`` and
+    ``max`` were even read to decide whether to run the range check, and then
+    thrown away. The master-element door already worked this way for the same
+    reason ("limiting it twice is what left a master image with no way to be
+    given a src"); this is that rule, shared, so the two cannot drift again.
+
+    ``skip`` names the fields whose caller handles them itself, because they
+    do not live on the element: a box and a hide belong to a layout, a parent
+    needs the percentage conversion, bindings need validating first.
+
+    One field is checked rather than assigned raw. ``grant`` is the whole reach
+    model for a custom control -- the panel enforces it and nothing else can
+    (a WS frame carries no element identity) -- and the model does not validate
+    on assignment, so a string where a list belongs would land intact. The
+    panel then asks ``grant.devices.includes(id)``, and a **string** answers
+    that too: a grant of ``"projector1"`` matches every device id that is a
+    substring of it. Coerce it, and say what was wrong.
+    """
+    for field, value in input.items():
+        if field in skip:
+            continue
+        if field == "grant" and value is not None:
+            from pydantic import ValidationError
+
+            from openavc.core.project_loader import ElementGrant
+            try:
+                value = ElementGrant(**value) if isinstance(value, dict) else ElementGrant(value)
+            except (ValidationError, TypeError) as exc:
+                raise ToolEditError({
+                    "error": f"{what}: 'grant' is not shaped right -- devices and variables "
+                             f"are lists of ids, macros and navigate are true/false. ({exc})"
+                }) from exc
+        if field == "id":
+            raise ToolEditError({
+                "error": f"{what}: an id cannot be changed here -- delete it and add "
+                         f"it again under the new id."
+            })
+        if not hasattr(target, field) and field not in type(target).model_fields:
+            # extra='allow' means an unknown field would be stored and never
+            # read. Say so rather than accept it silently.
+            raise ToolEditError({
+                "error": f"{what}: '{field}' is not a field on a UI element."
+            })
+        setattr(target, field, value)
+        changed.append(field)
+
+
+def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
+    """A locked element cannot be moved or re-homed, exactly as on the canvas.
+
+    ``locked`` is authoring-time protection: the Builder refuses to drag,
+    resize, nudge or delete one (``lockedIdsFor`` + the guards in
+    UIBuilderView), and it has no runtime meaning. Nothing here asked, so
+    somebody could pin the background art and have it moved out from under
+    them on the next request -- the one failure the flag exists to prevent,
+    one door over. Property edits stay allowed, the way the Properties panel
+    allows them, which is also how the flag gets turned back off.
+    """
+    if not getattr(target, "locked", False):
+        return
+    blocked = [f for f in ("placement", "parent") if f in input]
+    if blocked:
+        raise ToolEditError({
+            "error": f"{what} is locked, so its {' and '.join(blocked)} cannot be "
+                     f"changed. Send locked: false first if you meant to move it."
+        })
+
+
 def _problem(exc: Exception, el_id: str) -> str:
     """One rejected element, said the way the single-element path says it."""
     if isinstance(exc, ToolEditError):
@@ -1089,6 +1166,10 @@ class UIToolsMixin:
         element_id = input.get("element_id", "")
         findings: list = []
         adjustments: list = []
+        # What actually landed, named in the reply. A caller that asked for a
+        # grant change and a range change should not have to re-read the
+        # element to find out which of them the door accepted.
+        changed: list[str] = []
         # An edit that says nothing about a control's range gets no auto-fill:
         # completing a bound the caller never mentioned would be a surprise
         # mutation on an unrelated update.
@@ -1144,10 +1225,8 @@ class UIToolsMixin:
                 if err:
                     raise ToolEditError({"error": f"Element '{element_id}': {err}"})
 
-            if "label" in input:
-                target_el.label = input["label"]
-            if "text" in input:
-                target_el.text = input["text"]
+            _refuse_if_locked(target_el, input, f"Element '{element_id}'")
+
             if "parent" in input:
                 # Percentages are of the parent box, so changing only the parent
                 # teleports the element. The conversion runs across every
@@ -1159,6 +1238,7 @@ class UIToolsMixin:
                 # cycle into the project.
                 new_parent = input["parent"] or None
                 _reparent_element(target_page, element_id, new_parent)
+                changed.append("parent")
             if "placement" in input:
                 from openavc.core.project_loader import Placement
                 # Partial merge: keep omitted fields (don't snap x/y back to 0)
@@ -1170,6 +1250,7 @@ class UIToolsMixin:
                 layout.placements[target_el.id] = _rounded_placement(_merge_forward_compat(
                     existing, Placement, input["placement"],
                 ))
+                changed.append("placement")
             if "hidden" in input:
                 # Hiding is per-arrangement: a portrait variant can drop a wide
                 # banner that will not fit without touching the landscape panel.
@@ -1190,12 +1271,21 @@ class UIToolsMixin:
                                          f"Unhide it there, or the whole chain keeps it hidden."
                             })
                     layout.hidden = [i for i in layout.hidden if i != element_id]
-            if "aspect_lock" in input:
-                target_el.aspect_lock = input["aspect_lock"]
-            if "style" in input:
-                target_el.style = input["style"]
+                changed.append("hidden")
             if "bindings" in input:
                 target_el.bindings = bindings
+                changed.append("bindings")
+
+            # Everything else is a plain field on the element. The four above
+            # are handled by hand because they do not live on it: a box and a
+            # hide belong to a layout, a parent needs the percentage
+            # conversion, and bindings were validated before anything moved.
+            _assign_plain_fields(
+                target_el, input,
+                skip={"element_id", "layout_id", "parent", "placement", "hidden", "bindings"},
+                what=f"Element '{element_id}'",
+                changed=changed,
+            )
 
             found, filled = self._review_write(
                 project, target_page, {element_id}, ranges=touches_range,
@@ -1208,7 +1298,8 @@ class UIToolsMixin:
             return err
 
         return _with_findings(
-            {"status": "updated", "element_id": element_id}, findings, adjustments,
+            {"status": "updated", "element_id": element_id, "changed": sorted(changed)},
+            findings, adjustments,
         )
 
     async def _delete_ui_elements(self, input: dict) -> Any:
@@ -1224,6 +1315,23 @@ class UIToolsMixin:
         deleted_ids = []
 
         def mutate(project):
+            # A locked element is protected from deletion here for the same
+            # reason the canvas protects it from the Delete key: it was pinned
+            # on purpose. Named individually, because a batch of twenty that
+            # contains one pinned logo should say which one.
+            pinned = sorted(
+                el.id
+                for page in project.ui.pages
+                for el in page.elements
+                if el.id in ids_set and getattr(el, "locked", False)
+            )
+            if pinned:
+                raise ToolEditError({
+                    "error": "Locked, so nothing was deleted: "
+                             + ", ".join(f"'{i}'" for i in pinned)
+                             + ". Unlock with update_ui_element locked: false first."
+                })
+
             for page in project.ui.pages:
                 before_ids = {el.id for el in page.elements}
                 doomed = ids_set & before_ids
@@ -1414,26 +1522,14 @@ class UIToolsMixin:
             # Everything else is a plain field on the element. Anything the
             # model declares is settable -- the schema is what limits the
             # caller, and limiting it twice is what left a master image with no
-            # way to be given a src.
-            for field, value in input.items():
-                if field in ("element_id", "bindings", "placements", "placement"):
-                    continue
-                if field == "id":
-                    raise ToolEditError({
-                        "error": "A master element's id cannot be changed here -- delete it "
-                                 "and add it again under the new id."
-                    })
-                if not hasattr(target, field) and field not in (
-                    type(target).model_fields
-                ):
-                    # extra='allow' means an unknown field would be stored and
-                    # never read. Say so rather than accept it silently.
-                    raise ToolEditError({
-                        "error": f"Master element '{element_id}': '{field}' is not a field "
-                                 f"on a UI element."
-                    })
-                setattr(target, field, value)
-                changed.append(field)
+            # way to be given a src. Shared with update_ui_element, which had
+            # exactly that defect until the rule moved into one place.
+            _assign_plain_fields(
+                target, input,
+                skip={"element_id", "bindings", "placements", "placement"},
+                what=f"Master element '{element_id}'",
+                changed=changed,
+            )
 
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})

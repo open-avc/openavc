@@ -668,3 +668,186 @@ async def test_a_matrix_config_that_says_what_it_means_lands(
         }],
     })
     assert _result(payload)["status"] == "created"
+
+
+# --- An update changes what it was told to change --------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_update_persists_every_field_it_was_given(
+    handler, mock_engine, mock_agent,
+):
+    """The defect this replaced: eight fields landed and the rest vanished.
+
+    ``update_ui_element`` assigned label, text, parent, placement, hidden,
+    aspect_lock, style and bindings, and silently dropped everything else --
+    while replying ``{"status": "updated"}``. So re-ranging a fader, setting
+    ``display_decimals`` on a readout, or fixing a matrix did nothing, and the
+    caller was told it had worked. ``min`` and ``max`` were even read to decide
+    whether to run the range check, and then thrown away.
+    """
+    payload = await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{"id": "fader1", "type": "fader",
+                      "placement": {"x": 50, "y": 10, "w": 20, "h": 70}}],
+    })
+    assert _result(payload)["status"] == "created"
+
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "fader1",
+        "min": -80.0, "max": 0.0, "step": 0.5, "unit": "dB",
+        "display_decimals": 1, "orientation": "vertical",
+        "css_class": "brand-fader",
+    })
+    result = _result(payload)
+    assert result["status"] == "updated"
+    # The reply names what landed, so a caller never has to re-read the element
+    # to find out which half of its request the door took.
+    assert set(result["changed"]) == {
+        "min", "max", "step", "unit", "display_decimals", "orientation", "css_class",
+    }
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    el = next(e for e in page.elements if e.id == "fader1")
+    assert (el.min, el.max, el.step, el.unit) == (-80.0, 0.0, 0.5, "dB")
+    assert el.display_decimals == 1
+    assert el.orientation == "vertical"
+    assert el.css_class == "brand-fader"
+
+
+@pytest.mark.asyncio
+async def test_an_update_still_refuses_a_field_no_element_has(
+    handler, mock_engine, mock_agent,
+):
+    """Assigning what the model declares must not mean assigning anything.
+
+    The element model is ``extra='allow'``, so an invented key would be stored
+    and never read -- the silent-write failure one level down.
+    """
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "colour": "#ff0000",
+    })
+    assert payload["success"] is False
+    assert "'colour' is not a field" in payload["result"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_custom_control_can_be_repointed_and_regranted(
+    handler, mock_engine, mock_agent,
+):
+    """Both halves of a custom control stay editable after it is placed.
+
+    ``custom_file`` and ``grant`` were settable when the element was created
+    and unreachable forever after, so a control could not be pointed at a
+    renamed file and what it may reach could not be narrowed.
+    """
+    payload = await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "map", "type": "custom",
+            "placement": {"x": 30, "y": 10, "w": 40, "h": 40},
+            "custom_file": "room_map/index.html",
+            "grant": {"devices": ["amp"], "macros": True},
+        }],
+    })
+    assert _result(payload)["status"] == "created"
+
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "map",
+        "custom_file": "room_map/v2.html",
+        "grant": {"devices": [], "variables": [], "macros": False, "navigate": False},
+    })
+    assert set(_result(payload)["changed"]) == {"custom_file", "grant"}
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    el = next(e for e in page.elements if e.id == "map")
+    assert el.custom_file == "room_map/v2.html"
+    assert el.grant.devices == [] and el.grant.macros is False
+
+
+@pytest.mark.asyncio
+async def test_a_grant_that_is_not_shaped_like_a_grant_is_refused(
+    handler, mock_engine, mock_agent,
+):
+    """The one field checked rather than assigned raw, and why.
+
+    The model does not validate on assignment, so ``"amp"`` where a list
+    belongs would land intact -- and the panel asks ``grant.devices.includes(id)``,
+    which a **string** answers too. A grant of ``"amp"`` would then match every
+    device id that is a substring of it, which is not what anyone ticked.
+    """
+    payload = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "grant": {"devices": "amp"},
+    })
+    assert payload["success"] is False
+    assert "not shaped right" in payload["result"]["error"]
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    el = next(e for e in page.elements if e.id == "title")
+    assert getattr(el, "grant", None) is None
+
+
+# --- A locked element is pinned against the AI too -------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_locked_element_cannot_be_moved_or_deleted(
+    handler, mock_engine, mock_agent,
+):
+    """``locked`` had no meaning at this door, only on the canvas.
+
+    So somebody could pin the background art in the Builder and have it moved
+    or deleted on the next request -- the one thing the flag exists to prevent,
+    one door over.
+    """
+    await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "locked": True,
+    })
+
+    moved = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "placement": {"x": 90.0},
+    })
+    assert moved["success"] is False
+    assert "is locked" in moved["result"]["error"]
+
+    deleted = await _run(handler, mock_engine, mock_agent, "delete_ui_elements", {
+        "element_ids": ["title"],
+    })
+    assert deleted["success"] is False
+    assert "Locked, so nothing was deleted" in deleted["result"]["error"]
+    assert "'title'" in deleted["result"]["error"]
+
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    assert any(e.id == "title" for e in page.elements)
+
+
+@pytest.mark.asyncio
+async def test_a_locked_element_can_still_be_restyled_and_unlocked(
+    handler, mock_engine, mock_agent,
+):
+    """Locking pins the box, not the element -- as in the Properties panel,
+    which is also the only way to turn the flag back off."""
+    await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "locked": True,
+    })
+
+    restyled = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "text": "Amplifier Rack",
+    })
+    assert _result(restyled)["changed"] == ["text"]
+
+    # Unlocking and moving are two calls, deliberately: whether an element is
+    # pinned is read when the call arrives, so the answer never depends on
+    # which order the fields happened to be assigned in. It is also what the
+    # refusal above tells the caller to do.
+    both_at_once = await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "locked": False, "placement": {"x": 5.0},
+    })
+    assert both_at_once["success"] is False
+
+    assert _result(await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "locked": False,
+    }))["changed"] == ["locked"]
+    assert _result(await _run(handler, mock_engine, mock_agent, "update_ui_element", {
+        "element_id": "title", "placement": {"x": 5.0},
+    }))["changed"] == ["placement"]
