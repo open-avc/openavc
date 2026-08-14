@@ -1,112 +1,82 @@
-# OpenAVC v0.26.0
+# OpenAVC v0.27.0
 
-A space can now ask for help and find out that someone heard. Panels can carry
-your own CSS instead of only the built-in themes. The UI Builder tells you when
-a control will draw wrong before anyone stands in front of it. And the IDE and
-the simulator both work properly from a laptop that is not the server.
+OpenAVC v0.27.0 adds custom controls and full custom panel pages, along with a completely rebuilt Matrix control that can configure itself from the device. The cloud also gets major improvements to alerts, webhooks, system health, two-step verification and remote access.
 
-## Ask for help
+## Custom controls and custom pages
 
-A panel button, a script, or a trigger can now raise a help request to whoever
-supports the space.
+You can now write your own HTML, CSS and JavaScript when the built-in panel elements aren't enough. Custom controls can live alongside normal controls on a Builder page, or a custom page can take over the entire panel screen.
 
-It is a macro step, not a stock control, so nothing appears on a panel that you
-did not put there. Wiring it as a step means it works from all three places: a
-button press, a script, and a trigger firing with nobody in the room. A space
-that has failed to power on three times can ask before anyone thinks to.
+* Custom UI can be written directly in the Programmer or added as files, folders or ZIPs.
+* Files live in the project's `ui/` folder and travel with the project through exports, backups and restores.
+* Custom controls render directly on the Builder canvas using the project's theme and current system state. They can only control the live system while in Preview or on the actual panel.
+* Each control can have its own JSON settings, so the same control can be reused with different configurations.
+* **Can reach** controls exactly what a custom control or page is allowed to access, including devices, child entities, variables, macros and page navigation. Nothing is allowed by default.
+* Custom pages still work with master elements, overlays, the lock screen, offline notifications, idle behavior and page triggers.
 
-The answer comes back. Acknowledging it sends word down to the panel, so the
-room can show "Help requested 9:02. Ben acknowledged 9:04." A button with no
-visible effect is a black hole and gets pressed four more times.
+## Matrix, rebuilt
 
-The message is written as a sentence and fills in as one, so a trigger can say
-what is actually wrong instead of "someone pressed help." Use `$var.room_name
-projector failed to power on` and that is what arrives.
+The Matrix control has been substantially reworked. Instead of manually recreating a switcher's inputs, outputs and routing commands, **Set up from a device** can now read that information directly from the driver.
 
-If the cloud cannot be reached, the panel says so rather than claiming help is
-on the way. Nothing is queued: a request that arrives forty minutes later
-arrives after the class ended.
+Choose a device and OpenAVC builds the source and destination lists, routing keys and commands for you. Ports can be enabled or removed, renamed and reordered before anything is applied. Devices with multiple independent routing planes can provide a separate Matrix for each one.
 
-## Your own styling on the built-in controls
+There are now three Matrix styles:
 
-Every project can carry a stylesheet that applies on top of the theme, so the
-controls we ship can be made to look like yours. Ordinary CSS, targeting real
-class names.
+* **Tiles**, the new default, shows each destination as a card with its currently routed source.
+* **List** gives each destination a source dropdown.
+* **Crosspoint Grid** provides the traditional matrix view.
 
-The UI Builder has an editor for it, beside Theme and Settings, with the panel
-live beside your code as you type. Name a class in the stylesheet and it turns
-up as a chip under Properties, Style, Custom classes, ready to click onto any
-element. The theme colours are exposed as CSS variables, so a rule can follow
-the theme instead of fighting it.
+The underlying Matrix model is also much more flexible. Sources and destinations no longer have to be a simple numbered grid, individual destinations can have their own routing keys, unused ports can be omitted, and a Matrix can work with more complex routing devices and AV-over-IP endpoints.
 
-## The UI Builder tells you what will draw wrong
+Feedback has also been improved, including clearer handling of routes OpenAVC does not recognize, separate audio/video routing and optional destination locks backed by variables so their state is shared across panels.
 
-Page review now catches a set of layouts that used to reach a panel looking
-broken with nothing anywhere to say so.
+Drivers can now explicitly describe their routing when it cannot be reliably inferred. The Driver Builder includes a new Routing section for configuring and validating this information.
 
-- A control drawn too small for what it contains. The warning names the size it
-  is, the size it needs, which internal part breaks first, and the percentage to
-  give it.
-- A control with nothing to draw at all: an image with no source, a label with
-  no text and nothing bound to supply one, a navigation button with nowhere to
-  go, a select with no options.
-- A binding this element type's renderer never reads, which looks like a stale
-  value rather than a setting that was never wired.
-- A matrix whose key patterns do not match anything, checked like any other
-  binding now.
+## Alert management
 
-A Cancel button that says "go back" validates as well. That has always worked on
-a panel, but the checker did not know the spelling and reported it as a page
-that does not exist.
+The cloud Alerts page has been expanded into a much more useful management view. Alerts can be searched and filtered by client, system, severity and type, and multiple alerts can be acknowledged at once.
 
-## Panels
+Individual alerts now show more detail about the problem, whether it is still active and previous occurrences. Help requests are clearly identified, and acknowledging one reports back to the originating system when it can be reached.
 
-A label can show a state's words instead of its raw value. Showing a device as
-ONLINE or OFFLINE is on nearly every panel and used to need two stacked labels
-with opposite visibility rules, or a button dressed up to look like a label.
+Alert rules are also easier to create and edit, with better state-key selection and validation.
 
-Preview shows a dialog as a dialog. A confirm dialog with a Cancel button worked
-on real glass and looked broken in Preview, which is the surface you use to
-check whether a panel works.
+## Webhooks
 
-Simulating a press on a toggle now resolves the toggle the way a real press
-does, so a working toggle no longer reports as broken. Preview can also reach
-master elements, and check a panel without firing the commands behind it.
+Alerts can now be delivered to a webhook as JSON.
 
-## Working from another machine
+Webhook routes support optional HMAC-SHA256 signing, test delivery, automatic retries for temporary failures and delivery status directly in the portal. Failed routes are clearly identified so problems can be found without digging through logs.
 
-Commissioning happens with the IDE on a laptop and the server in the rack, and
-two things assumed otherwise.
+## System and fleet health
 
-The browser's own sign-in dialog could still appear over the UI Builder. The
-simulator opened at an address that named your laptop rather than the server, so
-it did not open at all from anywhere else. Both are fixed. The simulator is now
-served by the main server and works from another machine and through the cloud
-tunnel.
+System pages now provide a much better view of what is happening at each space, including CPU, memory, disk usage, uptime, device counts, temperature, connection information and the age of the latest report.
 
-The simulator also opens correctly on a system that has no password set.
+Fleet-level views add version health, searchable and paginated system lists, and direct links from dashboard numbers to the systems behind them. Organization views also surface offline systems and active alerts so problem clients are easier to spot.
 
-## Remote support
+Remote session history is now visible to organizations, including who accessed a system, how long the session lasted and whether a system password was required.
 
-When you grant OpenAVC access to a system from the portal, the session now gets
-past that system's own sign-in. Before, the grant reached the door and stopped,
-and the only way through was putting your instance password on a support thread,
-which is a worse thing to hand over than the access itself. The grant is the
-credential now, it never leaves the box, and revoking it is enough.
+## Two-step verification
 
-Host network configuration still asks for the password. A support session is not
-the console.
+Two-step verification is now available for portal accounts using an authenticator app.
 
-## Fixes
+Accounts can require it for their own users, and integrators can require it for individual client organizations. Users can also enable it for themselves even when it is not required.
 
-A tunnelled request now reports where it actually came from. Requests arriving
-through the cloud tunnel could present a caller-supplied address to checks that
-decide what a local caller may do.
+Enabling a requirement does not immediately lock out users who have not enrolled yet. They are guided through setup when they next sign in, and administrators can reset two-step verification for a user if needed.
 
-Quitting the OpenAVC menu bar app on macOS no longer leaves you with no way to
-open it again. Quit closes the icon only, which is correct, because a status
-icon must not be able to take a space offline.
+API keys are not affected.
 
-A child entity bound on a panel is checked against the roster the driver
-declares, so a typo in a channel or output number is caught while you are
-building rather than at the panel.
+## Remote programming and support access
+
+Organizations can now allow their own signed-in users to remotely open the Programmer without entering the system's local password. This is disabled by default.
+
+For integrator-managed organizations, both the integrator and the organization must allow this access. Disabling it closes the sessions that permission was keeping open.
+
+Remote Access now also distinguishes between Panel and Programmer sessions and gives clearer feedback when a tunnel cannot be opened.
+
+Host network settings remain protected. Changing the OpenAVC host's network configuration from any remote session requires the system's local password.
+
+## Before you update
+
+* **OpenAVC staff support requires systems to be running v0.27.0 or newer.** Older systems use the previous remote-session protocol and staff support will stop at the system's sign-in screen.
+* Existing notification routes configured for the webhook channel need to be recreated with a webhook URL.
+* Existing Matrix controls are migrated automatically and keep their sources, destinations and routing information. Old per-panel destination locks are removed unless a variable is assigned to preserve the lock state.
+* Cloud API list endpoints are now paginated and return a page plus total count. Anything using an API key and consuming those endpoints may need to be updated.
+* Community drivers using the new routing declarations require this version of OpenAVC.
