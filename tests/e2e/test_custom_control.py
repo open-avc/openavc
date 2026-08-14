@@ -283,3 +283,99 @@ def test_a_control_that_throws_says_so_in_the_box(panel) -> None:
     fault = panel.locator('[data-element-id="map"] .panel-iframe-fault')
     fault.wait_for(timeout=5000)
     assert "ReferenceError" in fault.inner_text()
+
+
+# --- A file that changes under a running panel -----------------------------
+
+
+def test_a_changed_file_redraws_a_panel_that_is_already_showing_it(browser) -> None:
+    """The panel re-fetches on ui.files, which is the whole point of the push.
+
+    A custom control is a file, so replacing one changes nothing the project
+    push carries and the panel had no reason to look again: it kept drawing the
+    old control until somebody navigated away and back. Nothing short of a real
+    browser proves the fix -- the assertion is that the iframe went and got the
+    new bytes, which is a fetch, a cache decision and a re-render.
+
+    Its own fixture rather than the shared one: this test needs to change what
+    the control URL serves half way through.
+    """
+    def _version(word: str) -> str:
+        # Its own markup rather than CONTROL_HTML: that one rewrites its
+        # visible text when the opening message arrives, which would overwrite
+        # the very thing this test reads.
+        return f'<!DOCTYPE html><html><body style="margin:0">' \
+               f'<div id="ver">{word}</div></body></html>'
+
+    served = {"body": _version("VERSION ONE")}
+    context = browser.new_context(viewport={"width": REF_W, "height": REF_H})
+    page = context.new_page()
+    page.route(PANEL_URL + "*", lambda route: route.fulfill(
+        status=200, content_type="text/html", body=_panel_html(),
+    ))
+    # Matches the cache-busted URL too -- the version rides as a query string.
+    page.route(CONTROL_URL + "*", lambda route: route.fulfill(
+        status=200, content_type="text/html", body=served["body"],
+    ))
+    page.goto(PANEL_URL)
+
+    try:
+        page.evaluate(
+            """() => {
+                const app = window.__openavcPanel;
+                app.root = document.getElementById('box');
+                app.snapshotReceived = true;
+                app.currentPage = 'main';
+                app.uiDef = {pages: [{
+                    id: 'main', name: 'Main',
+                    elements: [{id: 'map', type: 'custom',
+                                custom_file: 'room_map/index.html', custom_config: {}}],
+                    layouts: [{id: 'landscape', primary: true,
+                               placements: {map: {x: 0, y: 0, w: 50, h: 50}}}],
+                }]};
+                app.renderCurrentPage();
+            }"""
+        )
+        frame = page.frame_locator('[data-element-id="map"] iframe')
+        frame.locator("#ver").wait_for(timeout=5000)
+        assert frame.locator("#ver").inner_text() == "VERSION ONE"
+
+        # The author saves. Nothing about the project moved.
+        served["body"] = _version("VERSION TWO")
+        page.evaluate(
+            "() => window.__openavcPanel.handleMessage("
+            "{type: 'ui.files', version: '1755180000000', path: 'room_map/index.html'})"
+        )
+
+        frame = page.frame_locator('[data-element-id="map"] iframe')
+        frame.locator("#ver").wait_for(timeout=5000)
+        assert frame.locator("#ver").inner_text() == "VERSION TWO"
+    finally:
+        context.close()
+
+
+def test_a_page_with_no_author_markup_on_it_does_not_redraw(panel) -> None:
+    """A redraw is cheap but visible -- it restarts page-enter animations and
+    drops whatever transient state a control was holding. So a panel sitting on
+    a page built entirely from shipped controls stays put."""
+    panel.evaluate(
+        """() => {
+            const app = window.__openavcPanel;
+            app.root = document.getElementById('box');
+            app.snapshotReceived = true;
+            app.currentPage = 'main';
+            app.uiDef = {pages: [{
+                id: 'main', name: 'Main',
+                elements: [{id: 'btn', type: 'button', label: 'On'}],
+                layouts: [{id: 'landscape', primary: true,
+                           placements: {btn: {x: 0, y: 0, w: 20, h: 10}}}],
+            }]};
+            window.__renders = 0;
+            const real = app.renderCurrentPage.bind(app);
+            app.renderCurrentPage = () => { window.__renders++; return real(); };
+            app.handleMessage({type: 'ui.files', version: '1755180000001', path: 'x.html'});
+        }"""
+    )
+    assert panel.evaluate("() => window.__renders") == 0
+    # The version still lands, so the next redraw for any other reason carries it.
+    assert panel.evaluate("() => window.__openavcPanel._uiFilesVersion") == "1755180000001"

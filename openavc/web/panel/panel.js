@@ -607,6 +607,23 @@ class PanelApp {
                 this.resetIdleTimer();
                 break;
 
+            case 'ui.files':
+                // A file in the project's ui/ tree changed. Nothing about the
+                // project moved, so no ui.definition follows and this page
+                // would keep drawing the control the browser already has --
+                // for as long as nobody navigated away and back. The version
+                // rides onto each frame's src, so a re-render re-fetches.
+                //
+                // Embedded is the Builder's canvas, which runs its own counter
+                // over postMessage and would fight this one. Same reason
+                // ui.definition is ignored there.
+                if (this.embedded) break;
+                this._uiFilesVersion = msg.version;
+                if (this.snapshotReceived && this._pageRunsAuthorMarkup()) {
+                    this.renderCurrentPage();
+                }
+                break;
+
             case 'ui.navigate':
                 if (msg.page_id) {
                     this.navigateToPage(msg.page_id);
@@ -4705,6 +4722,26 @@ class PanelApp {
      *  half way through setting it up. */
     _isCustomPage(page) {
         return !!page && page.render_mode === 'custom' && !!page.custom_file;
+    }
+
+    /** Is anything on screen right now drawn from a file in `ui/`?
+     *
+     *  Asked before re-rendering on a ui.files push, so a panel showing a page
+     *  with no author markup on it does not redraw -- a redraw is cheap but not
+     *  free, and it is visible: it restarts page-enter animations and drops any
+     *  transient state a control was holding. A master element can be a custom
+     *  control too, and one draws on every page it names, so a panel sitting on
+     *  a plain page still redraws when the logo strip's markup changes. */
+    _pageRunsAuthorMarkup() {
+        const pages = this.uiDef?.pages || [];
+        const page = pages.find(p => p.id === this.currentPage);
+        if (this._isCustomPage(page)) return true;
+        if ((page?.elements || []).some(el => el?.type === 'custom')) return true;
+        return (this.uiDef?.master_elements || []).some(mEl => {
+            if (mEl?.type !== 'custom') return false;
+            const on = mEl.pages;
+            return on === '*' || (Array.isArray(on) && page && on.includes(page.id));
+        });
     }
 
     /** A custom PAGE is a custom control sized to the page.

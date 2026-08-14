@@ -5,6 +5,7 @@ import { useLogStore } from "../store/logStore";
 import type { LogEntry, StepPathSegment } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
+import { useUiFilesStore } from "../store/uiFilesStore";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { invalidatePluginMacroActions } from "../components/macros/pluginMacroActions";
@@ -128,6 +129,15 @@ export function useWebSocket() {
       // Explicit key removals (sent when state.delete() is called server-side)
       if (msg.type === "state.delete" && Array.isArray(msg.keys)) {
         useConnectionStore.getState().applyStateDelete(msg.keys as string[]);
+      }
+
+      // A file in the project's ui/ folder changed somewhere else — the AI,
+      // another session, a drop on a second browser. The store's counter rides
+      // on every custom control's URL in the design canvas, so bumping it here
+      // redraws them against what is now on disk. Our own writes bump it
+      // directly and simply arrive here a second time, which is harmless.
+      if (msg.type === "ui.files") {
+        useUiFilesStore.getState().bump();
       }
 
       // Project was modified (by AI, fleet push, or other source) — refetch

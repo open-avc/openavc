@@ -14,7 +14,7 @@ import json
 import os
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -185,6 +185,10 @@ def client(project_dir):
 
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
+    # Every write door announces itself to the panels, so the fake engine has
+    # to be awaitable here or the routes fail on the broadcast rather than on
+    # anything these tests are about.
+    engine.broadcast_ws = AsyncMock()
 
     app = FastAPI()
     app.include_router(ui_files.open_router, prefix="/api")
@@ -486,3 +490,68 @@ def test_backup_carries_the_controls_and_restore_replaces_them(tmp_path):
     restore_from_backup(backup, project_dir)
     assert (project_dir / "ui" / "room_map" / "index.html").read_text() == "<h1>map</h1>"
     assert not (project_dir / "ui" / "added_later").exists()
+
+
+# --- A panel on the wall hears about it ------------------------------------
+
+
+def _announcements(client):
+    """The ui.files pushes this app's engine was asked to broadcast."""
+    import openavc.api._engine as engine_mod
+    return [
+        call.args[0]
+        for call in engine_mod._engine.broadcast_ws.await_args_list
+        if call.args and call.args[0].get("type") == "ui.files"
+    ]
+
+
+def test_every_write_door_tells_the_panels(client, project_dir):
+    """A file changed with no project change reached nobody.
+
+    A custom control is a file, so writing one moves nothing the project push
+    carries, and a panel only re-fetches a control when it re-renders. A wall
+    panel therefore kept drawing the old control until somebody navigated away
+    and back -- with the file already replaced on disk. Every door into the
+    folder has to say so, not just whichever one prompted the fix.
+    """
+    assert client.put(
+        "/api/projects/default/ui/room_map/index.html",
+        json={"content": "<p>v1</p>"},
+    ).status_code == 200
+
+    assert client.post(
+        "/api/projects/default/ui",
+        files={"file": ("logo.svg", b"<svg/>", "image/svg+xml")},
+        data={"path": "room_map"},
+    ).status_code == 200
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("wall/index.html", "<p>wall</p>")
+    assert client.post(
+        "/api/projects/default/ui",
+        files={"file": ("control.zip", buf.getvalue(), "application/zip")},
+    ).status_code == 200
+
+    assert client.delete(
+        "/api/projects/default/ui/room_map/index.html"
+    ).status_code == 200
+
+    pushes = _announcements(client)
+    assert len(pushes) == 4, f"a door stayed quiet: {pushes}"
+    assert [p["path"] for p in pushes] == [
+        "room_map/index.html", "room_map/logo.svg", ".", "room_map/index.html",
+    ]
+    # The version is what rides onto each frame's URL, so it has to move.
+    versions = [p["version"] for p in pushes]
+    assert all(v.isdigit() for v in versions)
+    assert versions == sorted(versions)
+
+
+def test_a_refused_write_announces_nothing(client, project_dir):
+    """Nothing changed on disk, so nothing should redraw."""
+    assert client.put(
+        "/api/projects/default/ui/notes.exe", json={"content": "nope"},
+    ).status_code == 400
+    assert client.delete("/api/projects/default/ui/missing.html").status_code == 404
+    assert _announcements(client) == []
