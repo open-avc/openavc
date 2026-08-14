@@ -659,8 +659,18 @@ export function DeviceDetail({
         )}
       </div>
 
-      {/* Child Entities (only renders when the driver declares any) */}
-      <ChildEntities deviceId={deviceId} search={searchTerm} />
+      {/* Child Entities (only renders when the driver declares any).
+          hiddenChildKeyCount is the count the Live State panel below reports as
+          living up here, and it is also how this panel hears that the roster
+          changed — the two used to contradict each other on one screen. */}
+      <ChildEntities
+        deviceId={deviceId}
+        search={searchTerm}
+        connected={connected}
+        childKeyCount={hiddenChildKeyCount}
+        config={deviceConfig?.config}
+        driverInfo={deviceInfo?.driver_info}
+      />
 
       {/* Live State */}
       <div style={sectionStyle}>

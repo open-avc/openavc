@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-react";
 import * as api from "../../api/restClient";
@@ -34,11 +35,29 @@ const LIST_HEIGHT = 480;
 export function ChildEntities({
   deviceId,
   search,
+  connected,
+  childKeyCount,
+  config,
+  driverInfo,
 }: {
   deviceId: string;
   /** Controlled filter term, owned by the parent device page so one box
       filters both child rows and the Live State list. */
   search: string;
+  /** Live `device.<id>.connected`. Decides whether "connect the device" is
+      advice or an insult. */
+  connected: boolean;
+  /** How many child-entity state keys this device has in live state, counted
+      by the page above (the same number its Live State panel reports as
+      hidden). It changes exactly when children register or deregister, which
+      is the event this list has no other way to hear about. */
+  childKeyCount: number;
+  /** This device's saved config. A roster built from a config field is fixed
+      by setting that field, so the panel has to know whether it is set. */
+  config: Record<string, unknown> | undefined;
+  /** The driver's DRIVER_INFO, for `config_schema` labels: the field has to be
+      named the way the settings form spells it. */
+  driverInfo: Record<string, unknown> | undefined;
 }) {
   const [data, setData] = useState<ChildEntitiesListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -46,6 +65,7 @@ export function ChildEntities({
   const [activeType, setActiveType] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<unknown>(null);
+  const [refreshOutcome, setRefreshOutcome] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -59,25 +79,54 @@ export function ChildEntities({
         if (current && types.includes(current)) return current;
         return types[0] ?? null;
       });
+      return resp;
     } catch (err) {
       setLoadError(String(err));
+      return null;
     } finally {
       setLoading(false);
     }
   }, [deviceId]);
 
+  // On mount, and again whenever the roster moves underneath this panel --
+  // which nothing used to say. A device whose child count comes from its
+  // settings registers every child the moment those settings are saved, and
+  // this list went on showing "Outputs 0 / Inputs 0" until somebody pressed
+  // Refresh from Device, while the Live State panel on the same screen said 56
+  // child keys were being shown up here.
+  //
+  // Two signals, because a roster can change without any child key moving.
+  // `connected` covers the driver itself coming and going: the types this
+  // panel is built from come from a LIVE driver, so a device that was
+  // disabled while this page was open answered with no types at all, and the
+  // whole section stayed gone after it was switched back on.
+  const settledKeyCount = useSettled(childKeyCount, 400);
   useEffect(() => {
     void reload();
-  }, [reload]);
+  }, [reload, settledKeyCount, connected]);
+
+  // The refresh line is about the refresh that was just pressed, so it goes
+  // away on its own rather than sitting over a list that has since changed --
+  // "the device reported no children" above four outputs is the same kind of
+  // contradiction this panel was fixed for.
+  useEffect(() => {
+    if (refreshOutcome == null) return;
+    const timer = setTimeout(() => setRefreshOutcome(null), 6000);
+    return () => clearTimeout(timer);
+  }, [refreshOutcome]);
 
   const handleDriverRefresh = useCallback(async () => {
     setRefreshing(true);
     setRefreshError(null);
+    setRefreshOutcome(null);
     try {
       await api.refreshChildEntities(deviceId);
       // After the driver reconciles its child set, re-fetch so removed
       // children disappear from the list.
-      await reload();
+      const resp = await reload();
+      // Say what happened. A refresh that succeeds and finds nothing looked
+      // exactly like a button that does not work, so it was pressed again.
+      setRefreshOutcome(resp ? refreshSummary(resp) : null);
     } catch (err) {
       setRefreshError(err);
     } finally {
@@ -197,6 +246,15 @@ export function ChildEntities({
         </div>
       )}
 
+      {refreshError == null && refreshOutcome && (
+        <div
+          style={{ ...mutedStyle, marginBottom: "var(--space-sm)" }}
+          data-testid="child-refresh-outcome"
+        >
+          {refreshOutcome}
+        </div>
+      )}
+
       {term ? (
         <ChildSearchResults data={data} term={term} deviceId={deviceId} />
       ) : (
@@ -206,10 +264,105 @@ export function ChildEntities({
             childType={activeType!}
             schema={schema}
             entries={entries}
+            emptyMessage={emptyRosterMessage(schema, connected, config, driverInfo)}
           />
         )
       )}
     </Section>
+  );
+}
+
+
+/** A value that only changes once it has stopped changing.
+ *
+ * Children register in bursts — 56 state keys arrive over a handful of
+ * updates — and re-fetching the list on each burst would fetch it four times
+ * to land on the same answer.
+ */
+function useSettled<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (value === settled) return;
+    const timer = setTimeout(() => setSettled(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, settled, delayMs]);
+  return settled;
+}
+
+
+/** What a refresh actually did, counted off the list it produced.
+ *
+ * Read from the reloaded list rather than from the endpoint's `result`,
+ * because drivers return their own shapes there and this sentence must not be
+ * able to disagree with the tabs right below it.
+ */
+function refreshSummary(data: ChildEntitiesListResponse): string {
+  const counted = Object.entries(data.child_entity_types)
+    .map(([type, schema]) => {
+      const n = data.children[type]?.length ?? 0;
+      const noun = n === 1
+        ? (schema.label ?? type)
+        : (schema.label_plural ?? schema.label ?? type);
+      return `${n} ${noun.toLowerCase()}`;
+    });
+  if (counted.length === 0) return "Refreshed. This driver has no child entities.";
+  const nothing = Object.values(data.children).every((rows) => rows.length === 0);
+  return nothing
+    ? "Refreshed. The device reported no children."
+    : `Refreshed: ${counted.join(", ")}.`;
+}
+
+
+/** Why this type has no children yet, and the one thing that would change it.
+ *
+ * The sentence this replaced told the user to connect a device that was
+ * already connected, green dot and all. A declarative driver that covers a
+ * family of frames sizes its roster from a field on the device
+ * (`instances.count_from`), and until that field is filled in there are no
+ * children — no cable, no reconnect and no amount of pressing Refresh from
+ * Device will produce one.
+ */
+function emptyRosterMessage(
+  schema: ChildEntityTypeSchema,
+  connected: boolean,
+  config: Record<string, unknown> | undefined,
+  driverInfo: Record<string, unknown> | undefined,
+): ReactNode {
+  const noun = schema.label_plural?.toLowerCase()
+    ?? schema.label?.toLowerCase()
+    ?? "children";
+  const instances = schema.instances ?? {};
+  const field = instances.count_from ?? instances.ids_from ?? "";
+  const value = field ? config?.[field] : undefined;
+  const unset = value === undefined || value === null || value === "" || value === 0;
+
+  // `count_from_state` means the hardware settles the count once it answers,
+  // so the config field is only a fallback and the device is what to ask.
+  if (field && unset && !instances.count_from_state) {
+    const schemaField = (
+      (driverInfo?.config_schema ?? {}) as Record<string, { label?: string }>
+    )[field];
+    return (
+      <>
+        No {noun} yet. This driver builds them from{" "}
+        <strong>{schemaField?.label || field}</strong> in this device&rsquo;s
+        settings — set it and save.
+      </>
+    );
+  }
+  if (!connected) {
+    return (
+      <>
+        No {noun} registered yet. Connect the device or click{" "}
+        <em>Refresh from Device</em> to populate the list.
+      </>
+    );
+  }
+  return (
+    <>
+      No {noun} registered yet. The device has not reported any — click{" "}
+      <em>Refresh from Device</em> to ask it again.
+    </>
   );
 }
 
@@ -403,11 +556,15 @@ function ChildEntityList({
   childType,
   schema,
   entries,
+  emptyMessage,
 }: {
   deviceId: string;
   childType: string;
   schema: ChildEntityTypeSchema;
   entries: ChildEntityEntry[];
+  /** What to say when this type has no children, worked out by the panel
+      above from what the driver declares and whether the device is up. */
+  emptyMessage: ReactNode;
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
   // local_id is a number for numbered children, a string for name-keyed
@@ -524,9 +681,7 @@ function ChildEntityList({
   if (entries.length === 0) {
     return (
       <div style={mutedStyle} data-testid="child-empty">
-        No {schema.label_plural?.toLowerCase() ?? schema.label?.toLowerCase() ?? "children"}{" "}
-        registered yet. Connect the device or click <em>Refresh from Device</em>{" "}
-        to populate the list.
+        {emptyMessage}
       </div>
     );
   }

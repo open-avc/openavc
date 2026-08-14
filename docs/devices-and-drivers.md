@@ -131,7 +131,9 @@ The tab groups the sub-units by type (Encoders, Decoders, Zones, and so on), eac
 - **A searchable, scrollable list.** Filter by ID, label, or the device-reported name. The list stays fast even with thousands of entries.
 - **Summary columns** chosen by the driver, plus an online indicator, so you can scan status at a glance.
 - **Inline labels.** Click a row's label to give the sub-unit a friendly name ("Lobby TV", "Stage Camera"). Your label is saved in the project and is separate from the name the device reports for itself. Labels are what show up in pickers when you build panels, macros, and routing.
-- **Refresh from Device.** Re-poll the controller so newly added or removed sub-units appear without reloading.
+- **Refresh from Device.** Re-poll the controller so newly added or removed sub-units appear without reloading. It tells you what it found, including when the answer is nothing.
+
+Some drivers cover a whole family of frames, so how many sub-units *this* one has is a setting on the device rather than something it reports — a matrix switcher with an **Input Count** and an **Output Count**, for example. Until you fill those in there are no sub-units to list, and no amount of connecting or refreshing will produce any. The empty list names the setting to fill in when that is the case, and the sub-units appear as soon as you save it.
 
 Each sub-unit's state is addressable everywhere a state key is, using the pattern `device.<id>.<type>.<local_id>.<property>` (for example `device.matrix_main.encoder.005.signal_present`). You rarely type these by hand. The pickers in UI bindings, macros, triggers, and scripts surface them for you.
 

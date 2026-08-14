@@ -658,10 +658,29 @@ export interface ChildEntityIdFormat {
   max_length?: number;
 }
 
+// How a YAML driver declares its roster. One driver covers a family of frames,
+// so the count is often a field on the DEVICE rather than a fact about the
+// driver — and a type with no children and a `count_from` naming an empty
+// field is fixed by setting that field, not by checking the cable.
+export interface ChildEntityInstances {
+  /** Fixed ids 1..N. */
+  count?: number;
+  /** An integer config field on this device holding the count. */
+  count_from?: string;
+  /** A comma-separated config field holding sparse ids. */
+  ids_from?: string;
+  /** A literal id list. */
+  ids?: (string | number)[];
+  /** A device-reported state variable the roster follows once it answers;
+      the config source above is only the offline fallback. */
+  count_from_state?: string;
+}
+
 export interface ChildEntityTypeSchema {
   label?: string;
   label_plural?: string;
   id_format: ChildEntityIdFormat;
+  instances?: ChildEntityInstances;
   state_variables: Record<string, ChildEntityStateVarDef>;
   summary_fields?: string[];
   label_field?: string;
