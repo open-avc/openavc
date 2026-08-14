@@ -10,10 +10,12 @@ the divergence in place silently. Restores now save against the server's
 current ETag and force-reload the project store.
 
 Also covered: a failed (onError) send left a dangling undo entry that
-inflated the "Revert all N" count; optimistic message ids used bare
-Date.now() (a sub-ms double-send corrupted both bubbles); and the
-conversation list/select/delete paths surfaced raw 'AI API 500: {json}'
-strings instead of the friendly copy the streaming path already maps.
+inflated the "Revert all N" count; it also deleted the user's own message,
+so a prompt someone spent minutes typing was gone the moment the request
+failed; optimistic message ids used bare Date.now() (a sub-ms double-send
+corrupted both bubbles); and the conversation list/select/delete paths
+surfaced raw 'AI API 500: {json}' strings instead of the friendly copy the
+streaming path already maps.
 
 Two layers: the harness bundles the real ``aiErrors.ts`` with the esbuild
 in ``openavc/web/programmer/node_modules`` (skips when the Node toolchain is
@@ -123,6 +125,36 @@ def test_failed_send_cleans_up_its_undo_entry() -> None:
         "onError must drop the undo entry pushed for the failed send — "
         "phantom entries inflate the 'Revert all N' count"
     )
+
+
+def test_a_failed_send_keeps_the_prompt() -> None:
+    """The user's message used to be deleted alongside the placeholder, and
+    the textarea had already cleared on send — so a tunnel timeout, a rate
+    limit or a version mismatch destroyed the prompt outright, with nothing
+    left to copy and nothing to retry from."""
+    src = STORE_TS.read_text(encoding="utf-8")
+    on_error = src[src.index("onError: (message)"):]
+    on_error = on_error[: on_error.index("undoStack:")]
+    assert "failed: message" in on_error, (
+        "onError must mark the user's message with why it didn't send"
+    )
+    assert not re.search(r"m\.id !== userMsg\.id", on_error), (
+        "the user's message must survive a failed send, not be filtered out"
+    )
+
+
+def test_a_failed_message_can_be_retried_and_copied() -> None:
+    """Marking it is only half of it — the two things you'd want next have to
+    be on the message itself."""
+    src_dir = STORE_TS.parents[1]
+    bubble = (src_dir / "components" / "ai" / "ChatMessage.tsx").read_text(encoding="utf-8")
+    assert "onRetry" in bubble and "Retry" in bubble
+    assert "copyToClipboard" in bubble, (
+        "copy must go through the shared helper — navigator.clipboard is "
+        "undefined on the plain-HTTP LAN deployments this ships as"
+    )
+    view = (src_dir / "views" / "AIChatView.tsx").read_text(encoding="utf-8")
+    assert "handleRetry" in view and "discardMessage" in view
 
 
 def test_optimistic_ids_are_unique_per_send() -> None:

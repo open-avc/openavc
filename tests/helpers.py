@@ -46,6 +46,31 @@ async def wait_for_condition(
     raise TimeoutError(f"{message} within {timeout}s")
 
 
+def tunnel_stream_client(response) -> Any:
+    """A stand-in httpx client whose ``.stream()`` hands back ``response``.
+
+    The tunnel proxies every request with ``client.stream(...)``, which returns
+    an async context manager rather than a coroutine -- so a bare AsyncMock
+    does not stand in for it. Any attribute the caller doesn't set on
+    ``response`` (``aread``, ``aiter_bytes``) gets a default here, so a test
+    that only cares about request headers can pass a two-field MagicMock.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    if not isinstance(getattr(response, "aread", None), AsyncMock):
+        response.aread = AsyncMock()
+
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=response)
+    context.__aexit__ = AsyncMock(return_value=False)
+
+    client = MagicMock()
+    client.stream = MagicMock(return_value=context)
+    # stop() closes whatever client it was handed.
+    client.aclose = AsyncMock()
+    return client
+
+
 def make_cloud_cert_pem(
     label: str,
     zone: str,

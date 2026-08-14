@@ -66,6 +66,11 @@ class TunnelConnection:
     # Programmer accepts the session without the instance's password. Empty on
     # every ordinary tunnel.
     session_secret: str = ""
+    # True when the cloud said it can receive a response in pieces. Sent on
+    # tunnel_open; absent on an older cloud, which is why it defaults off --
+    # streaming at a cloud that doesn't understand it would be answered by
+    # nothing at all.
+    stream_responses: bool = False
     data_ws: Any = None  # websockets.WebSocketClientProtocol
     local_ws_connections: dict[str, Any] = field(default_factory=dict)  # ws_id -> websockets conn
     # ws_id -> list of queued ws_frame / ws_close messages received from the
@@ -77,6 +82,9 @@ class TunnelConnection:
     # tunnel doesn't accumulate one dead Task per connection/request.
     _forward_tasks: set[asyncio.Task] = field(default_factory=set)
     _data_tasks: set[asyncio.Task] = field(default_factory=set)
+    # request_id -> the task proxying it, so an http_cancel can stop reading a
+    # response the cloud is no longer delivering. Same self-pruning.
+    http_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
 
 
 class TunnelHandler:
@@ -93,7 +101,17 @@ class TunnelHandler:
             # the tunnel only ever connects to localhost, and the only TLS
             # cert in play is the self-signed one we generated ourselves.
             # The flag is moot for http:// URLs (plain HTTP, no handshake).
-            self._http_client = httpx.AsyncClient(timeout=30.0, verify=False)
+            #
+            # `read` is the gap between two pieces of a response, not the time
+            # the response is allowed to take. At 30s it capped how long a
+            # local endpoint could hold a connection open producing output --
+            # which is every server-sent event stream, the AI assistant most
+            # of all. What bounds a stalled response now is the cloud: it
+            # gives up on silence and sends http_cancel, and nothing reaches
+            # here at all until the local server has answered with headers.
+            self._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, read=300.0), verify=False,
+            )
         return self._http_client
 
     @staticmethod
@@ -185,7 +203,11 @@ class TunnelHandler:
 
         log.info(f"Tunnel open: {tunnel_id} → localhost:{target_port}")
 
-        conn = TunnelConnection(tunnel_id=tunnel_id, target_port=target_port)
+        conn = TunnelConnection(
+            tunnel_id=tunnel_id,
+            target_port=target_port,
+            stream_responses=bool(payload.get("stream_responses")),
+        )
 
         # A tunnel the cloud authorized to act as a signed-in Programmer
         # client. Neither caller holds this instance's password -- OpenAVC
@@ -328,9 +350,22 @@ class TunnelHandler:
                 msg_type = msg.get("type", "")
 
                 if msg_type == "http_request":
+                    request_id = msg.get("id", "")
                     task = asyncio.create_task(self._handle_http_request(conn, msg))
                     conn._data_tasks.add(task)
                     task.add_done_callback(conn._data_tasks.discard)
+                    if request_id:
+                        conn.http_tasks[request_id] = task
+                        task.add_done_callback(
+                            lambda _t, rid=request_id: conn.http_tasks.pop(rid, None)
+                        )
+                elif msg_type == "http_cancel":
+                    # Nobody is reading this response any more -- the browser
+                    # went away, or the cloud gave up on it. Stop pulling it
+                    # out of the local server.
+                    task = conn.http_tasks.pop(msg.get("id", ""), None)
+                    if task and not task.done():
+                        task.cancel()
                 elif msg_type == "ws_open":
                     # A48: reserve the ws_id BEFORE awaiting anything. Frames
                     # that race ahead of the local connect get queued behind
@@ -379,6 +414,11 @@ class TunnelHandler:
         local_origin = self._loopback_origin(conn.target_port)
         url = f"{local_origin}{path}"
 
+        # True once this response's status and headers have gone up. After
+        # that a failure can no longer be reported as a 502 -- the only honest
+        # thing left is to end the body.
+        started = False
+
         try:
             client = await self._get_http_client()
             body = base64.b64decode(body_b64) if body_b64 else None
@@ -409,65 +449,138 @@ class TunnelHandler:
                 req_headers[CLOUD_SESSION_HEADER] = conn.session_secret
 
             max_response_size = 10 * 1024 * 1024  # 10MB
-            response = await client.request(
+            async with client.stream(
                 method=method,
                 url=url,
                 headers=req_headers,
                 content=body,
-            )
+            ) as response:
+                resp_headers = self._rewrite_location(conn, dict(response.headers))
 
-            # Reject oversized responses to prevent memory exhaustion
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > max_response_size:
-                raise ValueError(f"Response too large: {content_length} bytes")
-            if len(response.content) > max_response_size:
-                raise ValueError(f"Response too large: {len(response.content)} bytes")
+                if not self._should_stream(conn, method, response):
+                    # Reject oversized responses to prevent memory exhaustion.
+                    # A declared length is now checked BEFORE the body is read
+                    # rather than after: the request is streamed, so finding
+                    # out how big it is no longer means holding all of it.
+                    content_length = response.headers.get("content-length")
+                    if content_length and int(content_length) > max_response_size:
+                        raise ValueError(f"Response too large: {content_length} bytes")
 
-            # Build response message — rewrite Location headers so redirects
-            # stay within the tunnel instead of pointing to localhost. When TLS
-            # is on, both the redirect listener (http -> https) and the main
-            # TLS app emit Location values that need stripping, so we check
-            # both schemes/host variants.
-            resp_headers = dict(response.headers)
-            from openavc import config as _cfg
-            local_origins = [
-                f"http://localhost:{conn.target_port}",
-                f"http://127.0.0.1:{conn.target_port}",
-            ]
-            if _cfg.TLS_ENABLED and conn.target_port == _cfg.HTTP_PORT:
-                local_origins.extend([
-                    f"https://localhost:{_cfg.TLS_PORT}",
-                    f"https://127.0.0.1:{_cfg.TLS_PORT}",
-                ])
-            if "location" in resp_headers:
-                loc = resp_headers["location"]
-                for origin in local_origins:
-                    if loc.startswith(origin):
-                        resp_headers["location"] = loc[len(origin):]
-                        break
-            resp_msg = {
-                "type": "http_response",
-                "id": request_id,
-                "status": response.status_code,
-                "headers": resp_headers,
-                "body": base64.b64encode(response.content).decode(),
-            }
+                    await response.aread()
+                    if len(response.content) > max_response_size:
+                        raise ValueError(f"Response too large: {len(response.content)} bytes")
 
+                    resp_msg = {
+                        "type": "http_response",
+                        "id": request_id,
+                        "status": response.status_code,
+                        "headers": resp_headers,
+                        "body": base64.b64encode(response.content).decode(),
+                    }
+                else:
+                    # Send it as it arrives. No size ceiling here on purpose:
+                    # that one exists because the buffered path holds the whole
+                    # body in memory, and this path holds one chunk.
+                    #
+                    # Both length and encoding are dropped: the bytes below are
+                    # decoded (httpx undoes any content-encoding), and the cloud
+                    # re-frames the response anyway, so forwarding either header
+                    # would describe a body that isn't the one being sent.
+                    for header in ("content-length", "content-encoding"):
+                        resp_headers.pop(header, None)
+                    await self._send_data(conn, {
+                        "type": "http_response_start",
+                        "id": request_id,
+                        "status": response.status_code,
+                        "headers": resp_headers,
+                    })
+                    started = True
+                    async for chunk in response.aiter_bytes():
+                        if not chunk:
+                            continue
+                        await self._send_data(conn, {
+                            "type": "http_body",
+                            "id": request_id,
+                            "data": base64.b64encode(chunk).decode(),
+                        })
+                    resp_msg = {"type": "http_body_end", "id": request_id}
+
+        except asyncio.CancelledError:
+            # The cloud asked us to stop, so it has already torn down its side
+            # and needs no closing message. Just stop reading.
+            raise
         except (httpx.HTTPError, OSError, ValueError) as e:
             log.warning(f"Tunnel {conn.tunnel_id}: HTTP proxy error: {e}")
-            resp_msg = {
-                "type": "http_response",
-                "id": request_id,
-                "status": 502,
-                "headers": {},
-                "body": base64.b64encode(b"Bad Gateway").decode(),
-            }
+            if started:
+                # Status and headers are already gone; all that's left is to
+                # end the body honestly rather than leave the reader waiting.
+                resp_msg = {"type": "http_body_end", "id": request_id, "error": str(e)}
+            else:
+                resp_msg = {
+                    "type": "http_response",
+                    "id": request_id,
+                    "status": 502,
+                    "headers": {},
+                    "body": base64.b64encode(b"Bad Gateway").decode(),
+                }
 
-        if conn.data_ws:
-            try:
-                await conn.data_ws.send(json.dumps(resp_msg))
-            except (ConnectionClosed, OSError):
-                log.warning(f"Tunnel {conn.tunnel_id}: failed to send http_response")
+        await self._send_data(conn, resp_msg)
+
+    @staticmethod
+    def _should_stream(conn: TunnelConnection, method: str, response: Any) -> bool:
+        """Whether to send this response in pieces instead of buffering it.
+
+        Two shapes qualify, and both are cases where measuring the body first
+        is the wrong move: an event stream, which is deliberately open-ended,
+        and anything the local server sent without a declared length, which it
+        is by definition still producing.
+        """
+        if not conn.stream_responses:
+            return False
+        if method.upper() == "HEAD" or response.status_code in (204, 304):
+            return False
+        content_type = response.headers.get("content-type", "").lower()
+        if content_type.startswith("text/event-stream"):
+            return True
+        return "content-length" not in response.headers
+
+    @staticmethod
+    def _rewrite_location(conn: TunnelConnection, resp_headers: dict) -> dict:
+        """Strip the loopback origin off a redirect so it stays in the tunnel.
+
+        When TLS is on, both the redirect listener (http -> https) and the main
+        TLS app emit Location values that need stripping, so both schemes/host
+        variants are checked.
+        """
+        from openavc import config as _cfg
+        local_origins = [
+            f"http://localhost:{conn.target_port}",
+            f"http://127.0.0.1:{conn.target_port}",
+        ]
+        if _cfg.TLS_ENABLED and conn.target_port == _cfg.HTTP_PORT:
+            local_origins.extend([
+                f"https://localhost:{_cfg.TLS_PORT}",
+                f"https://127.0.0.1:{_cfg.TLS_PORT}",
+            ])
+        if "location" in resp_headers:
+            loc = resp_headers["location"]
+            for origin in local_origins:
+                if loc.startswith(origin):
+                    resp_headers["location"] = loc[len(origin):]
+                    break
+        return resp_headers
+
+    @staticmethod
+    async def _send_data(conn: TunnelConnection, msg: dict) -> None:
+        """Send one message up the tunnel's data WS, if it's still there."""
+        if not conn.data_ws:
+            return
+        try:
+            await conn.data_ws.send(json.dumps(msg))
+        except (ConnectionClosed, OSError):
+            log.warning(
+                f"Tunnel {conn.tunnel_id}: failed to send {msg.get('type', '?')}"
+            )
 
     async def _handle_ws_open(self, conn: TunnelConnection, msg: dict) -> None:
         """Open a local WebSocket connection for proxying."""

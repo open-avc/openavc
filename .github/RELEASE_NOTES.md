@@ -73,6 +73,12 @@ Remote Access now also distinguishes between Panel and Programmer sessions and g
 
 Host network settings remain protected. Changing the OpenAVC host's network configuration from any remote session requires the system's local password.
 
+## The AI assistant through Remote Access
+
+The AI assistant now works properly over a remote connection. Answers stream back as they are written rather than being held until the whole response is finished, so a request that takes a while, or that works through several steps, no longer fails partway with a timeout.
+
+If a request does fail for any reason, your message now stays in the conversation with the reason underneath it, along with buttons to send it again or copy the text. Previously the message was discarded, so a long prompt had to be typed out again from scratch.
+
 ## Before you update
 
 * **OpenAVC staff support requires systems to be running v0.27.0 or newer.** Older systems use the previous remote-session protocol and staff support will stop at the system's sign-in screen.

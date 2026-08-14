@@ -35,6 +35,7 @@ from openavc.middleware.rate_limit import (
 )
 from openavc.system import network as netmod
 from openavc.utils.request_origin import TUNNEL_HEADER
+from tests.helpers import tunnel_stream_client
 
 TUNNEL_HEADERS = {TUNNEL_HEADER: "1"}
 
@@ -63,10 +64,9 @@ def _http_conn(handler, tunnel_id="t-mark"):
 
     response = MagicMock()
     response.status_code = 200
-    response.headers = {}
+    response.headers = {"content-length": "2"}
     response.content = b"ok"
-    client = AsyncMock()
-    client.request = AsyncMock(return_value=response)
+    client = tunnel_stream_client(response)
     handler._http_client = client
     return conn, client
 
@@ -80,7 +80,7 @@ async def test_proxied_http_request_is_marked(tunnel_handler):
         {"id": "r1", "method": "GET", "path": "/api/system/network", "headers": {}, "body": ""},
     )
 
-    sent_headers = client.request.call_args.kwargs["headers"]
+    sent_headers = client.stream.call_args.kwargs["headers"]
     assert sent_headers[TUNNEL_HEADER] == "1"
     await tunnel_handler.stop()
 
@@ -105,7 +105,7 @@ async def test_upstream_cannot_suppress_or_forge_the_marker(tunnel_handler):
         },
     )
 
-    sent_headers = client.request.call_args.kwargs["headers"]
+    sent_headers = client.stream.call_args.kwargs["headers"]
     marker_keys = [k for k in sent_headers if k.lower() == TUNNEL_HEADER]
     assert marker_keys == [TUNNEL_HEADER], "exactly one marker, stamped by us"
     assert sent_headers[TUNNEL_HEADER] == "1"
@@ -335,7 +335,7 @@ async def test_marker_reaches_the_local_server_as_the_agent_sent_it(tunnel_handl
         conn,
         {"id": "r3", "method": "GET", "path": "/api/setup/status", "headers": {}, "body": ""},
     )
-    sent = client.request.call_args.kwargs["headers"]
+    sent = client.stream.call_args.kwargs["headers"]
 
     scope = {
         "type": "http",
@@ -462,9 +462,9 @@ async def test_the_proxy_strips_forwarded_headers(tunnel_handler):
         },
     )
 
-    sent = {k.lower() for k in client.request.call_args.kwargs["headers"]}
+    sent = {k.lower() for k in client.stream.call_args.kwargs["headers"]}
     assert not sent & {"x-forwarded-for", "x-forwarded-proto", "x-real-ip", "forwarded"}
-    assert "Accept" in client.request.call_args.kwargs["headers"], "other headers untouched"
+    assert "Accept" in client.stream.call_args.kwargs["headers"], "other headers untouched"
     await tunnel_handler.stop()
 
 

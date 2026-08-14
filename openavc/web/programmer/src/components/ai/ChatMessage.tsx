@@ -1,12 +1,16 @@
-import { Bot, User, Undo2 } from "lucide-react";
+import { useState } from "react";
+import { Bot, User, Undo2, AlertCircle, RotateCw, Copy, Check } from "lucide-react";
 import type { Message, ContentBlock } from "../../store/aiChatStore";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { MarkdownContent } from "./MarkdownContent";
+import { copyToClipboard } from "../shared/clipboard";
 
 interface ChatMessageProps {
   message: Message;
   canUndo?: boolean;
   onUndo?: () => void;
+  /** Send this message again. Only passed for one that failed to send. */
+  onRetry?: () => void;
 }
 
 const bubbleBase: React.CSSProperties = {
@@ -53,10 +57,72 @@ function renderBlocks(blocks: ContentBlock[], streaming?: boolean) {
   });
 }
 
-export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
+const smallButton: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 3,
+  padding: "1px 6px",
+  borderRadius: "var(--border-radius)",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-secondary)",
+  color: "var(--text-secondary)",
+  fontSize: 10,
+  cursor: "pointer",
+};
+
+/**
+ * The footer on a message that never sent: what went wrong, and the two
+ * things you'd want next — send it again, or take the text somewhere else.
+ */
+function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!(await copyToClipboard(message.content))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        flexWrap: "wrap",
+        gap: "var(--space-sm)",
+      }}
+    >
+      <span
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 10,
+          color: "var(--color-danger, #9b2c2c)",
+          textAlign: "right",
+        }}
+      >
+        <AlertCircle size={10} style={{ flexShrink: 0 }} />
+        Not sent. {message.failed}
+      </span>
+      {onRetry && (
+        <button onClick={onRetry} style={smallButton} title="Send this message again">
+          <RotateCw size={10} /> Retry
+        </button>
+      )}
+      <button onClick={handleCopy} style={smallButton} title="Copy this message">
+        {copied ? <Check size={10} /> : <Copy size={10} />} {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+export function ChatMessage({ message, canUndo, onUndo, onRetry }: ChatMessageProps) {
   const isUser = message.role === "user";
   const blocks = message.contentBlocks;
   const hasBlocks = blocks && blocks.length > 0;
+  const failed = Boolean(message.failed);
 
   return (
     <div
@@ -88,7 +154,15 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
           renderBlocks(blocks, message.streaming)
         ) : (
           /* Fallback: single bubble (user messages, or assistant without blocks) */
-          <div style={isUser ? userBubble : assistantBubble}>
+          <div
+            style={
+              failed
+                ? { ...userBubble, opacity: 0.75, border: "1px solid var(--color-danger, #9b2c2c)" }
+                : isUser
+                  ? userBubble
+                  : assistantBubble
+            }
+          >
             {isUser ? (
               message.content
             ) : (
@@ -99,6 +173,9 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
             )}
           </div>
         )}
+
+        {/* Why it didn't send, and what to do about it */}
+        {failed && <FailedFooter message={message} onRetry={onRetry} />}
 
         {/* Token count + undo (after streaming completes) */}
         {!isUser && !message.streaming && (
@@ -126,18 +203,7 @@ export function ChatMessage({ message, canUndo, onUndo }: ChatMessageProps) {
             {canUndo && onUndo && (
               <button
                 onClick={onUndo}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 3,
-                  padding: "1px 6px",
-                  borderRadius: "var(--border-radius)",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--bg-secondary)",
-                  color: "var(--text-secondary)",
-                  fontSize: 10,
-                  cursor: "pointer",
-                }}
+                style={smallButton}
                 title="Undo changes from this response"
               >
                 <Undo2 size={10} /> Undo

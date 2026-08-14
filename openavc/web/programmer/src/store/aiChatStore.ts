@@ -41,6 +41,11 @@ export interface Message {
   // True when the pre-send project snapshot couldn't be captured, so this
   // response's edits can't be rolled back — surfaced in the message footer.
   undoUnavailable?: boolean;
+  // Set on a user message that never reached the assistant, to the reason it
+  // didn't. The message stays in the transcript rather than being deleted:
+  // what someone typed is theirs, and a prompt that took two minutes to write
+  // should not be destroyed by a timeout that took thirty seconds to happen.
+  failed?: string;
 }
 
 interface AIChatStore {
@@ -76,6 +81,7 @@ interface AIChatStore {
   newConversation: () => void;
   deleteConversation: (id: string) => Promise<void>;
   sendMessage: (text: string, systemId?: string, snapshot?: unknown) => void;
+  discardMessage: (messageId: string) => void;
   stopGeneration: () => void;
   setError: (error: string | null) => void;
   pushSnapshot: (messageId: string, snapshot: unknown) => void;
@@ -336,15 +342,24 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         },
 
         onError: (message) => {
-          // Remove the placeholder messages and the undo entry pushed for
-          // this send — a phantom entry inflates the "Revert all N" count
-          // and points at a message that never landed.
+          // The user's message stays, marked with what went wrong and
+          // offering Retry and Copy. It used to be deleted along with the
+          // placeholder, which meant a tunnel timeout, a rate limit or a
+          // version mismatch took the prompt with it — the textarea had
+          // already cleared on send, so there was nothing left to copy and
+          // nothing to retry from.
+          //
+          // The empty assistant placeholder does go, and so does the undo
+          // entry pushed for this send: a phantom entry inflates the
+          // "Revert all N" count and points at a message that never landed.
+          //
+          // The reason rides on the message rather than the banner at the
+          // bottom of the view, so it sits next to the prompt it belongs to.
           set((s) => ({
-            messages: s.messages.filter(
-              (m) => m.id !== userMsg.id && m.id !== assistantId
-            ),
+            messages: s.messages
+              .filter((m) => m.id !== assistantId)
+              .map((m) => (m.id === userMsg.id ? { ...m, failed: message } : m)),
             undoStack: s.undoStack.filter((e) => e.messageId !== assistantId),
-            error: message,
             sending: false,
             streamingAbort: null,
             streamingPhase: null,
@@ -355,6 +370,10 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
     );
 
     set({ streamingAbort: controller });
+  },
+
+  discardMessage: (messageId) => {
+    set((s) => ({ messages: s.messages.filter((m) => m.id !== messageId) }));
   },
 
   stopGeneration: () => {

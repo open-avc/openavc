@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers import tunnel_stream_client
+
 
 @pytest.fixture
 def mock_agent():
@@ -304,11 +306,10 @@ async def test_http_request_proxied(tunnel_handler, mock_agent):
     # Mock httpx response
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.headers = {"content-type": "text/html"}
+    mock_response.headers = {"content-type": "text/html", "content-length": "18"}
     mock_response.content = b"<html>Hello</html>"
 
-    mock_client = AsyncMock()
-    mock_client.request = AsyncMock(return_value=mock_response)
+    mock_client = tunnel_stream_client(mock_response)
     tunnel_handler._http_client = mock_client
 
     msg = {
@@ -353,11 +354,10 @@ async def test_http_request_preserves_query_string(tunnel_handler, mock_agent):
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.headers = {}
+    mock_response.headers = {"content-length": "2"}
     mock_response.content = b"ok"
 
-    mock_client = AsyncMock()
-    mock_client.request = AsyncMock(return_value=mock_response)
+    mock_client = tunnel_stream_client(mock_response)
     tunnel_handler._http_client = mock_client
 
     msg = {
@@ -371,7 +371,7 @@ async def test_http_request_preserves_query_string(tunnel_handler, mock_agent):
     await tunnel_handler._handle_http_request(conn, msg)
 
     # The httpx call should have included the query string in the URL.
-    call_kwargs = mock_client.request.call_args.kwargs
+    call_kwargs = mock_client.stream.call_args.kwargs
     url = call_kwargs["url"]
     assert "?enabled=true&owner=aaron" in url
     assert url == "http://localhost:8080/api/scripts?enabled=true&owner=aaron"

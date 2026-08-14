@@ -18,6 +18,9 @@ export function friendlyAIError(e: unknown, fallback: string): string {
   if (status === 503) {
     return "AI is not available. Make sure this system is paired and connected to the cloud.";
   }
+  if (status === 502 || status === 504) {
+    return "The remote connection dropped before the AI answered.";
+  }
   try {
     const detail = (JSON.parse(m[2]) as { detail?: unknown }).detail;
     if (typeof detail === "string" && detail) return detail;

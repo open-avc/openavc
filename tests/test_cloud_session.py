@@ -29,6 +29,7 @@ from httpx import ASGITransport, AsyncClient
 
 import openavc.api.auth as auth_mod
 from openavc.api import cloud_session
+from tests.helpers import tunnel_stream_client
 from openavc.main import app
 from openavc.system import network as netmod
 from openavc.utils.request_origin import (
@@ -67,10 +68,9 @@ def _conn(handler, *, authorized: bool, tunnel_id="t-sup"):
 
     response = MagicMock()
     response.status_code = 200
-    response.headers = {}
+    response.headers = {"content-length": "2"}
     response.content = b"ok"
-    client = AsyncMock()
-    client.request = AsyncMock(return_value=response)
+    client = tunnel_stream_client(response)
     handler._http_client = client
     return conn, client
 
@@ -89,7 +89,7 @@ async def test_ordinary_tunnel_carries_no_marker(tunnel_handler):
         conn, {"id": "r1", "method": "GET", "path": "/api/project", "headers": {}, "body": ""}
     )
 
-    sent = client.request.call_args.kwargs["headers"]
+    sent = client.stream.call_args.kwargs["headers"]
     assert CLOUD_SESSION_HEADER not in {k.lower() for k in sent}
     await tunnel_handler.stop()
 
@@ -102,7 +102,7 @@ async def test_authorized_tunnel_stamps_the_minted_secret(tunnel_handler):
         conn, {"id": "r1", "method": "GET", "path": "/api/project", "headers": {}, "body": ""}
     )
 
-    sent = client.request.call_args.kwargs["headers"]
+    sent = client.stream.call_args.kwargs["headers"]
     assert sent[CLOUD_SESSION_HEADER] == conn.session_secret
     assert cloud_session.is_active(conn.session_secret)
     await tunnel_handler.stop()
@@ -125,7 +125,7 @@ async def test_upstream_cannot_forge_or_suppress_the_marker(tunnel_handler):
         },
     )
 
-    sent = client.request.call_args.kwargs["headers"]
+    sent = client.stream.call_args.kwargs["headers"]
     keys = [k for k in sent if k.lower() == CLOUD_SESSION_HEADER]
     assert keys == [CLOUD_SESSION_HEADER], "exactly one marker, stamped by us"
     assert sent[CLOUD_SESSION_HEADER] == conn.session_secret
@@ -150,7 +150,7 @@ async def test_an_ordinary_tunnel_strips_a_forged_marker(tunnel_handler):
         },
     )
 
-    sent = client.request.call_args.kwargs["headers"]
+    sent = client.stream.call_args.kwargs["headers"]
     assert CLOUD_SESSION_HEADER not in {k.lower() for k in sent}
     await tunnel_handler.stop()
 

@@ -194,6 +194,12 @@ export function streamChatMessage(
           callbacks.onError?.(
             "AI is not available. Make sure this system is paired and connected to the cloud."
           );
+        } else if (res.status === 502 || res.status === 504) {
+          // Reached over a remote connection that gave up before the answer
+          // came back. Nothing about the raw status tells anyone that.
+          callbacks.onError?.(
+            "The remote connection dropped before the AI answered."
+          );
         } else {
           callbacks.onError?.(`AI API ${res.status}: ${body}`);
         }

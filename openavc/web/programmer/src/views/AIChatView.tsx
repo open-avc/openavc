@@ -49,6 +49,7 @@ export function AIChatView() {
   const newConversation = useAIChatStore((s) => s.newConversation);
   const deleteConversation = useAIChatStore((s) => s.deleteConversation);
   const sendMessage = useAIChatStore((s) => s.sendMessage);
+  const discardMessage = useAIChatStore((s) => s.discardMessage);
   const stopGeneration = useAIChatStore((s) => s.stopGeneration);
   const setError = useAIChatStore((s) => s.setError);
   const undoMessage = useAIChatStore((s) => s.undoMessage);
@@ -115,6 +116,16 @@ export function AIChatView() {
       sendMessage(text, systemId || undefined, snap);
     },
     [sendMessage, systemId]
+  );
+
+  // Send a failed message again. The old one goes first so the retry doesn't
+  // leave a duplicate of the same prompt sitting above it.
+  const handleRetry = useCallback(
+    (messageId: string, text: string) => {
+      discardMessage(messageId);
+      handleSend(text);
+    },
+    [discardMessage, handleSend]
   );
 
   const handleRevertAll = useCallback(async () => {
@@ -410,6 +421,11 @@ export function AIChatView() {
                   message={msg}
                   canUndo={hasUndo}
                   onUndo={hasUndo ? () => undoMessage(msg.id) : undefined}
+                  onRetry={
+                    msg.failed && !sending
+                      ? () => handleRetry(msg.id, msg.content)
+                      : undefined
+                  }
                 />
               );
             })}
