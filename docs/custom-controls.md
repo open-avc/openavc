@@ -198,7 +198,7 @@ if (msg.type === 'openavc:init') {
 
 **Preview** runs the control exactly as it will on the glass: live state, working commands, the real room. That is the one to trust before you hand a space over.
 
-Saving a file into `ui/` redraws the control on the canvas. You do not need to reload the IDE.
+Saving a file into `ui/` redraws the control on the canvas. You do not need to reload the IDE, and you do not need to touch the panels either: any panel showing that control picks the new version up on its own.
 
 ## When something goes wrong, say so
 
