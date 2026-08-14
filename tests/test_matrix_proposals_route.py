@@ -80,6 +80,81 @@ class _AcmeFrame(BaseDriver):
         return None
 
 
+class _AcmeSizedFrame(BaseDriver):
+    """An invented switcher covering a family of frame sizes.
+
+    How many ports THIS one has is a field on the device, so nothing registers
+    until the device is running and the picker has to read the settings to know
+    what it is looking at.
+    """
+
+    DRIVER_INFO: dict[str, Any] = {
+        "id": "acme_sized_frame",
+        "name": "Acme Sized Frame",
+        "transport": "tcp",
+        "state_variables": {},
+        "config_schema": {
+            "input_count": {"type": "integer", "default": 0, "label": "Input Count"},
+            "output_count": {"type": "integer", "default": 0, "label": "Output Count"},
+        },
+        "child_entity_types": {
+            "output": {
+                "label": "Output", "label_plural": "Outputs",
+                "id_format": {"type": "integer", "min": 1, "max": 128},
+                "instances": {"count_from": "output_count", "label": "Output {id}"},
+                "state_variables": {"input": {"type": "integer", "label": "Routed Input"}},
+            },
+            "input": {
+                "label": "Input", "label_plural": "Inputs",
+                "id_format": {"type": "integer", "min": 1, "max": 128},
+                "instances": {"count_from": "input_count", "label": "Input {id}"},
+                "state_variables": {"name": {"type": "string"}},
+            },
+        },
+        "commands": {
+            "route": {"params": {
+                "output": {"type": "child_id", "child_type": "output"},
+                "input": {"type": "child_id", "child_type": "input"},
+            }},
+        },
+    }
+
+    async def connect(self) -> None:
+        return None
+
+    async def disconnect(self) -> None:
+        return None
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+@pytest.fixture
+async def sized_engine(tmp_path):
+    register_driver(_AcmeSizedFrame)
+    project_path = str(tmp_path / "project.avc")
+    engine = Engine(project_path)
+    engine.project = ProjectConfig(
+        project=ProjectMeta(id="proj1", name="Test Project"),
+        devices=[DeviceConfig(
+            id="mx", driver="acme_sized_frame", name="Frame",
+            config={"input_count": 8, "output_count": 4},
+        )],
+    )
+    save_project(project_path, engine.project)
+    for device in engine.project.devices:
+        await engine.devices.add_device(engine.resolved_device_config(device))
+    rest.set_engine(engine)
+    ws.set_engine(engine)
+    try:
+        yield TestClient(app), engine
+    finally:
+        await engine.devices.disconnect_all()
+        rest.set_engine(None)
+        ws.set_engine(None)
+        unregister_driver("acme_sized_frame")
+
+
 @pytest.fixture
 async def frame_engine(tmp_path):
     register_driver(_AcmeFrame)
@@ -162,3 +237,30 @@ async def test_a_device_with_no_live_driver_falls_back_to_the_declaration(frame_
     assert body["live"] is False
     assert [d["value"] for d in found["output.input"]["destinations"]] == list(range(1, 9))
     assert found["output.input"]["destinations"][0]["route_key"] == "device.mx.output.01.input"
+
+
+async def test_the_size_on_the_device_reaches_the_picker(sized_engine):
+    """8x4 because the settings say 8x4, though not one port has registered.
+
+    This driver can be a 128x128, and reading only its id_format offered
+    exactly that -- all of it ticked -- for a frame the user had already told
+    the system was a 4x4.
+    """
+    client, _ = sized_engine
+    body, found = _proposals(client)
+    assert body["live"] is False
+    assert [d["value"] for d in found["output.input"]["destinations"]] == [1, 2, 3, 4]
+    assert [s["value"] for s in found["output.input"]["sources"]] == list(range(1, 9))
+    assert found["output.input"]["warnings"] == []
+
+
+async def test_an_orphan_reads_the_same_settings_as_a_running_device(sized_engine):
+    """The two branches of this door must not answer differently about size."""
+    client, engine = sized_engine
+    _, live = _proposals(client)
+    await engine.devices.remove_device("mx")
+    _, orphaned = _proposals(client)
+    assert (
+        [d["value"] for d in orphaned["output.input"]["destinations"]]
+        == [d["value"] for d in live["output.input"]["destinations"]]
+    )

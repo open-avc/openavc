@@ -16,7 +16,8 @@ rule is identical wherever it happens:
 Coercion says nothing about whether the id *exists* — that belongs to the
 driver's child registry, and ``_format_child_id`` is the validating inverse of
 this (a typed id back to its padded string form). It does now answer whether
-an id is in the declared RANGE: see ``child_id_range_error``.
+an id is in the declared RANGE: see ``child_id_range_error``, and which ids the
+type declares at all: see ``declared_child_ids``.
 
 Callers own the failure. Every function here returns ``None`` rather than
 raising, because the same bad input is a 404 to a REST route, a rejected
@@ -67,6 +68,69 @@ def coerce_child_local_id(
             return None
     text = str(raw).strip()
     return text or None
+
+
+def declared_child_ids(
+    type_def: dict[str, Any] | None, config: dict[str, Any] | None,
+) -> list[Any] | None:
+    """The ids this child type DECLARES for this device, in order, or ``None``.
+
+    The declared roster, never the live one. A page is usually authored against
+    a device that is not connected — the whole point of commissioning ahead of
+    the install — and an unconnected device has no children at all. Believing an
+    empty live roster is how a 4x4 on the bench offers a convincing sixteen
+    outputs, and how a warning that fires on every offline device becomes noise.
+
+    ``None`` whenever the declaration cannot settle it, which is a real answer
+    and the common one:
+
+    * ``count_from_state`` — the device resizes the roster once it answers, so
+      anything said here is a prediction rather than a fact.
+    * ``count_from`` / ``ids_from`` naming a config field this device has not
+      filled in. The FIELD is what the caller should name in that case; it is
+      right there in ``instances``.
+    * no ``instances`` block at all, which is every Python driver that registers
+      its children in code.
+
+    Values come back as the declaration spells them — ``1..N`` as integers for a
+    count, the literal entries for ``ids``, the split parts for ``ids_from``.
+    Coercing them to the type's id kind is the caller's job (``ids`` on a
+    string-keyed type is names), and so is what to do with the ``None``.
+    """
+    if not isinstance(type_def, dict):
+        return None
+    instances = type_def.get("instances")
+    if not isinstance(instances, dict):
+        return None
+    # A device-reported count can exceed anything declared here.
+    if instances.get("count_from_state"):
+        return None
+    cfg = config if isinstance(config, dict) else {}
+
+    ids = instances.get("ids")
+    if isinstance(ids, list) and ids:
+        return list(ids)
+
+    count = instances.get("count")
+    if isinstance(count, bool):  # bool is an int; not a roster
+        return None
+    if isinstance(count, int) and count >= 1:
+        return list(range(1, count + 1))
+
+    if field := instances.get("count_from"):
+        try:
+            resolved = int(cfg.get(field))
+        except (TypeError, ValueError):
+            return None
+        return list(range(1, resolved + 1)) if resolved >= 1 else None
+
+    if field := instances.get("ids_from"):
+        raw = cfg.get(field)
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        return [part.strip() for part in raw.split(",") if part.strip()]
+
+    return None
 
 
 def child_id_range_error(

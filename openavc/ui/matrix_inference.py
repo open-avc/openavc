@@ -30,8 +30,9 @@ device: a Chazy decoder carries six (video, audio, IR, RS-232, USB, CEC) and an
 AVPro AC-MX carries two (video, and the extracted-audio matrix). Each is a
 separate matrix element, and the picker asks which one you meant.
 
-Pure stdlib and free of platform imports, so it can be handed a plain
-``DRIVER_INFO`` dict in a test without a running engine behind it.
+Pure stdlib apart from the child-id leaf (itself pure), so it can be handed a
+plain ``DRIVER_INFO`` dict and a plain config dict in a test without a running
+engine behind it.
 """
 
 from __future__ import annotations
@@ -39,6 +40,8 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
 
 #: A state variable on a child that holds "what is routed here".
 #:
@@ -252,32 +255,67 @@ def _generated_ids(id_format: Mapping[str, Any]) -> list[int]:
     return list(range(low, high + 1))
 
 
-class _Children:
-    """The registered children of a device, as the picker needs to read them.
+#: Where a list of ports came from, weakest last. The whole difference between
+#: "the eight outputs this unit has" and "the 128 an SIS frame can have".
+REGISTERED, DECLARED, RANGE = "registered", "declared", "range"
 
-    A live driver knows which ports exist; a driver that is not running does
-    not. Both cases arrive here, and the difference is visible to the caller
-    (``registered``) so a proposal can say which one it read.
+
+class _Children:
+    """The children of a device, as the picker needs to read them.
+
+    Three answers, in that order of authority. A live driver knows which ports
+    actually registered. A driver that is not running still has a DECLARED
+    roster whenever its child type sizes itself from a config field somebody has
+    filled in -- an SIS frame with Output Count 4 has four outputs whether it is
+    plugged in or not, and that is the answer the platform already gives the
+    bound-child-id check. Only when neither says anything does the id_format
+    range stand in, and a caller can tell which it got (``origin``) because 128
+    ports offered as though they were real is exactly the trap this avoids.
     """
 
-    def __init__(self, rows: Mapping[str, Sequence[Mapping[str, Any]]] | None) -> None:
+    def __init__(
+        self,
+        rows: Mapping[str, Sequence[Mapping[str, Any]]] | None,
+        config: Mapping[str, Any] | None = None,
+    ) -> None:
         self._rows = {
             str(ctype): [dict(r) for r in entries if isinstance(r, Mapping)]
             for ctype, entries in _as_mapping(rows).items()
             if isinstance(entries, Sequence) and not isinstance(entries, str | bytes)
         }
+        self._config = _as_mapping(config)
 
     def registered(self, ctype: str) -> bool:
         return bool(self._rows.get(ctype))
+
+    def declared(self, type_schema: Mapping[str, Any]) -> list[Any] | None:
+        """The ids this type declares for THIS device's config, typed, or None.
+
+        None is the honest answer for a roster the device sizes itself
+        (``count_from_state``), a config field left empty, and every Python
+        driver that registers its children in code.
+        """
+        type_def = dict(type_schema)
+        raw = declared_child_ids(type_def, self._config)
+        if raw is None:
+            return None
+        typed = [coerce_child_local_id(type_def, value) for value in raw]
+        return [value for value in typed if value is not None] or None
+
+    def origin(self, ctype: str, type_schema: Mapping[str, Any]) -> str:
+        if self.registered(ctype):
+            return REGISTERED
+        return DECLARED if self.declared(type_schema) else RANGE
 
     def entries(
         self, ctype: str, type_schema: Mapping[str, Any],
     ) -> list[tuple[Any, str, str]]:
         """``(local_id, padded_id, label)`` for each child of this type.
 
-        Falls back to the declared id range when nothing has registered, so a
-        matrix can be built against a device that is powered off -- which is
-        most of them, at the point somebody is drawing the panel.
+        Falls back to the declared roster and then to the declared id range when
+        nothing has registered, so a matrix can be built against a device that is
+        powered off -- which is most of them, at the point somebody is drawing
+        the panel.
         """
         rows = self._rows.get(ctype)
         if rows:
@@ -287,11 +325,15 @@ class _Children:
                 padded = str(row.get("local_id_padded") or local)
                 out.append((local, padded, str(row.get("label") or "")))
             return out
-        pad = _as_mapping(type_schema.get("id_format")).get("pad_width")
+        id_format = _as_mapping(type_schema.get("id_format"))
+        pad = id_format.get("pad_width")
         width = int(pad) if isinstance(pad, int) and pad > 0 else 0
+        ids = self.declared(type_schema)
+        if ids is None:
+            ids = _generated_ids(id_format)
         return [
-            (i, str(i).zfill(width) if width else str(i), "")
-            for i in _generated_ids(_as_mapping(type_schema.get("id_format")))
+            (i, str(i).zfill(width) if width and isinstance(i, int) else str(i), "")
+            for i in ids
         ]
 
 
@@ -491,7 +533,11 @@ def _sources_from(
                 entry["label_key"] = f"device.{device_id}.{source_ctype}.{padded}.{name_prop}"
             entries.append(entry)
         if entries:
-            word = "registered" if children.registered(source_ctype) else "declared"
+            word = {
+                REGISTERED: "registered",
+                DECLARED: "configured",
+                RANGE: "possible",
+            }[children.origin(source_ctype, schema)]
             return entries, f"the {word} '{source_ctype}' children"
 
     for declared, where in (
@@ -552,6 +598,28 @@ def _with_report_values(
     return paired
 
 
+def _roster_field(
+    type_schema: Mapping[str, Any], config_schema: Mapping[str, Any],
+) -> str:
+    """What to SET so this child type has ports, in the Settings form's own words.
+
+    A declarative driver that covers a whole family of frames does not know how
+    big this one is until somebody says: ``count_from: output_count`` makes the
+    roster a config field, and until that field is filled in there are no
+    outputs and nothing on the wire will change that. Telling the author to
+    connect the device is then advice about a device that is already connected.
+
+    "" when the roster comes from anywhere else -- code, a fixed count, or the
+    device's own answer -- where connecting it really is the remedy.
+    """
+    instances = _as_mapping(type_schema.get("instances"))
+    field = str(instances.get("count_from") or instances.get("ids_from") or "")
+    if not field:
+        return ""
+    declared = _as_mapping(_as_mapping(config_schema).get(field))
+    return str(declared.get("label") or "").strip() or field
+
+
 def _proposal_warnings(
     sources: Sequence[Mapping[str, Any]],
     destinations: Sequence[Mapping[str, Any]],
@@ -559,7 +627,8 @@ def _proposal_warnings(
     dest_ctype: str,
     route_var: Mapping[str, Any],
     unfilled_params: Sequence[str],
-    from_roster: bool,
+    origin: str,
+    roster_field: str = "",
     declared: bool = False,
 ) -> list[str]:
     """What this proposal cannot know, said before it is applied rather than after.
@@ -577,18 +646,29 @@ def _proposal_warnings(
     if not destinations:
         warnings.append(
             "This device has not told the system which ports it has, so there is "
-            "nothing to route to yet. Connect it and press Re-read device, or add "
-            "the destinations by hand.",
+            "nothing to route to yet. "
+            + (
+                f"Set '{roster_field}' on this device, then press Re-read device."
+                if roster_field
+                else "Connect it and press Re-read device, or add the "
+                     "destinations by hand."
+            ),
         )
-    elif not from_roster:
+    elif origin == RANGE:
         # The difference between "a 16x16 frame" and "the four outputs this unit
         # has". A driver that is not connected registers no children, so the
         # list here is the widest thing the driver can be -- which draws a
         # perfectly convincing 16x16 for a 4x4 that is sitting on the bench.
         warnings.append(
             f"These are the {len(destinations)} ports this driver can have, not the "
-            f"ones this device reports -- it has not registered any. Connect it and "
-            f"press Re-read device, or untick the ones that are not there.",
+            f"ones this device has. "
+            + (
+                f"Set '{roster_field}' on this device and press Re-read device, "
+                f"or untick the ones that are not there."
+                if roster_field
+                else "Connect it and press Re-read device, or untick the ones "
+                     "that are not there."
+            ),
         )
     if not sources:
         warnings.append(
@@ -871,7 +951,11 @@ def _guessed_planes(
 
 
 def _proposal(
-    device_id: str, plane: _Plane, child_types: Mapping[str, Any], roster: _Children,
+    device_id: str,
+    plane: _Plane,
+    child_types: Mapping[str, Any],
+    roster: _Children,
+    config_schema: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One plane, rendered as the matrix somebody could apply."""
     dest_ctype = plane.dest_ctype
@@ -896,7 +980,8 @@ def _proposal(
             if name_prop:
                 entry["label_key"] = f"device.{device_id}.{dest_ctype}.{padded}.{name_prop}"
             destinations.append(entry)
-        from_roster = roster.registered(dest_ctype)
+        origin = roster.origin(dest_ctype, schema)
+        roster_field = _roster_field(schema, _as_mapping(config_schema))
         plural = str(schema.get("label_plural") or schema.get("label") or dest_ctype)
         where = f"Each '{dest_ctype}' reports its routed source in '{plane.prop}'"
     else:
@@ -909,7 +994,8 @@ def _proposal(
             "label": device_id,
             "route_key": f"device.{device_id}.{plane.prop}",
         }]
-        from_roster = True
+        origin = REGISTERED
+        roster_field = ""
         plural = "This device"
         where = f"This device reports its routed source in '{plane.prop}'"
 
@@ -958,10 +1044,10 @@ def _proposal(
             ("The driver declares this: " if plane.declared else "")
             + f"{where}, and {ends} Sources come from {source_origin}."
         ),
-        "from_roster": from_roster,
+        "from_roster": origin == REGISTERED,
         "warnings": _proposal_warnings(
             sources, destinations, plane.command, dest_ctype, plane.route_var,
-            plane.unfilled, from_roster, declared=plane.declared,
+            plane.unfilled, origin, roster_field, declared=plane.declared,
         ),
         "sources": sources,
         "destinations": destinations,
@@ -973,6 +1059,7 @@ def propose_matrices(
     device_id: str,
     driver_info: Mapping[str, Any] | None,
     children: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+    config: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Every routing plane this device has, as a matrix somebody could apply.
 
@@ -980,18 +1067,28 @@ def propose_matrices(
     in its own order. Everything else is guessed from its shape and ordered
     most-confident first. An empty list means neither found any routing, which
     is a real answer and not a failure -- most drivers are not switchers.
+
+    ``config`` is this device's resolved config, and it is what makes the
+    proposal the right SIZE: one declarative driver covers a family of frames
+    and sizes its roster from a field on the device (``count_from``), so an SIS
+    frame with Output Count 4 offers four outputs rather than the 128 the
+    protocol allows. Without it every unconnected switcher proposes its maximum.
     """
     info = _as_mapping(driver_info)
     child_types = _as_mapping(info.get("child_entity_types"))
     commands = _as_mapping(info.get("commands"))
-    roster = _Children(children)
+    config_schema = _as_mapping(info.get("config_schema"))
+    roster = _Children(children, config)
 
     declared = _declared_planes(info, child_types, commands)
     if declared is not None:
-        return [_proposal(device_id, plane, child_types, roster) for plane in declared]
+        return [
+            _proposal(device_id, plane, child_types, roster, config_schema)
+            for plane in declared
+        ]
 
     proposals = [
-        _proposal(device_id, plane, child_types, roster)
+        _proposal(device_id, plane, child_types, roster, config_schema)
         for plane in _guessed_planes(child_types, commands, roster)
     ]
     order = {"high": 0, "medium": 1, "low": 2}

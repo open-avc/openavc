@@ -331,7 +331,7 @@ def test_a_declaration_does_not_settle_what_the_device_REPORTS():
 def test_a_declaration_does_not_settle_which_ports_are_really_there():
     (proposal,) = propose_matrices("dsp", _DECLARED_PROCESSOR, {})
     assert proposal["from_roster"] is False
-    assert any("not the ones this device reports" in w for w in proposal["warnings"])
+    assert any("not the ones this device has" in w for w in proposal["warnings"])
 
 
 # --- What the authoring gate refuses ---------------------------------------

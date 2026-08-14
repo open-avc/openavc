@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
+from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
 from openavc.ui.matrix_inference import propose_matrices
@@ -108,6 +109,10 @@ async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
     children: dict[str, list[dict[str, Any]]] = {}
     if driver is not None:
         driver_info = getattr(driver, "DRIVER_INFO", {}) or {}
+        # The device's own settings, because a declarative driver covering a
+        # family of frames sizes its roster from one of them -- an SIS frame
+        # with Output Count 4 has four outputs before it is ever plugged in.
+        config = dict(getattr(driver, "config", None) or {})
         for child_type in driver.get_child_entity_types():
             children[child_type] = [
                 {
@@ -126,6 +131,9 @@ async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
         device = next(d for d in engine.project.devices if d.id == device_id)
         driver_class = get_driver_class(device.driver)
         driver_info = getattr(driver_class, "DRIVER_INFO", {}) or {}
+        # Resolved the same way the device manager would have, so an orphan and
+        # a running device size their rosters from the same numbers.
+        config = resolve_device_config(device, engine.project).get("config", {})
 
     return {
         # "live" is whether any port actually REGISTERED, not whether a driver
@@ -134,7 +142,7 @@ async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
         # bench offers a perfectly convincing sixteen outputs.
         "device_id": device_id,
         "live": any(children.values()),
-        "proposals": propose_matrices(device_id, driver_info, children),
+        "proposals": propose_matrices(device_id, driver_info, children, config),
     }
 
 

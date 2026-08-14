@@ -4,6 +4,7 @@ from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.ui_events import resolve_press
+from openavc.drivers.child_ids import declared_child_ids
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     PAGE_BOX,
@@ -165,53 +166,14 @@ def _undeclared_state_property(devices: Any, device_ids: list[str], key: str) ->
 def _declared_child_roster(type_def: dict, config: Any) -> set[str] | None:
     """The child IDs this type declares, or None when it will not say.
 
-    Read from the DECLARED roster rather than the live one on purpose. A page is
-    usually authored against a device that is not connected -- the whole point of
-    commissioning ahead of the install -- and an unconnected device has no
-    children at all. Believing an empty live roster would flag every binding on
-    every offline device, which is the fastest way to make a warning worthless.
-
-    None whenever the declaration cannot settle it:
-
-    * ``count_from_state`` -- the device resizes the roster once it answers, so
-      an ID past the declared count is a prediction, not a mistake.
-    * ``count_from`` / ``ids_from`` naming a config field this device has not
-      filled in.
-    * no ``instances`` block at all, which is every Python driver that registers
-      its children in code.
+    The rule itself is ``drivers.child_ids.declared_child_ids`` -- the same one
+    the matrix picker builds its destination list from, so a page checked
+    against an eight-output frame and a matrix drawn on one cannot disagree
+    about how many outputs it has. Here they are only ever compared with the id
+    written in a state key, so they arrive as text and lose their order.
     """
-    instances = type_def.get("instances")
-    if not isinstance(instances, dict):
-        return None
-    # A device-reported count can exceed anything declared here.
-    if instances.get("count_from_state"):
-        return None
-
-    ids = instances.get("ids")
-    if isinstance(ids, list) and ids:
-        return {str(v) for v in ids}
-
-    count = instances.get("count")
-    if isinstance(count, bool):  # bool is an int; not a roster
-        return None
-    if isinstance(count, int) and count >= 1:
-        return {str(i) for i in range(1, count + 1)}
-
-    if (field := instances.get("count_from")):
-        raw = config.get(field)
-        try:
-            resolved = int(raw)
-        except (TypeError, ValueError):
-            return None
-        return {str(i) for i in range(1, resolved + 1)} if resolved >= 1 else None
-
-    if (field := instances.get("ids_from")):
-        raw = config.get(field)
-        if not isinstance(raw, str) or not raw.strip():
-            return None
-        return {part.strip() for part in raw.split(",") if part.strip()}
-
-    return None
+    ids = declared_child_ids(type_def, config)
+    return {str(v) for v in ids} if ids else None
 
 
 def _unknown_child_id(devices: Any, device_ids: list[str], key: str) -> set[str] | None:

@@ -318,7 +318,118 @@ def test_a_driver_that_declares_no_routing_proposes_nothing():
     assert propose_matrices("x", None) == []
 
 
+#: One declarative driver covering a whole family of frames: how many ports THIS
+#: unit has is a field on the device, not a fact about the driver. The protocol
+#: reaches 128 either way, so a driver that only reads its id_format offers a
+#: 128x128 for a frame somebody has already told it is a 4x4.
+CONFIGURED_FRAME = {
+    "config_schema": {
+        "input_count": {"type": "integer", "default": 0, "label": "Input Count"},
+        "output_count": {"type": "integer", "default": 0, "label": "Output Count"},
+    },
+    "child_entity_types": {
+        "output": {
+            "label": "Output", "label_plural": "Outputs",
+            "id_format": {"type": "integer", "min": 1, "max": 128},
+            "instances": {"count_from": "output_count", "label": "Output {id}"},
+            "state_variables": {"input": {"type": "integer", "min": 1, "max": 128}},
+        },
+        "input": {
+            "label": "Input", "label_plural": "Inputs",
+            "id_format": {"type": "integer", "min": 1, "max": 128},
+            "instances": {"count_from": "input_count", "label": "Input {id}"},
+            "state_variables": {"name": {"type": "string"}},
+        },
+    },
+    "commands": {
+        "route": {"params": {
+            "output": {"type": "child_id", "child_type": "output"},
+            "input": {"type": "child_id", "child_type": "input"},
+        }},
+    },
+}
+
+
 # --- Reading the live device rather than its declaration -------------------
+
+
+def test_a_roster_sized_from_config_is_what_gets_offered():
+    """8x4 because the device says 8x4, without it being connected.
+
+    The platform already resolves a roster this way for the bound-child-id
+    check. Reading id_format instead offered 128 sources and 128 destinations,
+    every one ticked, and Apply wrote a real 128x128.
+    """
+    config = {"input_count": 8, "output_count": 4}
+    proposal = _by_id(propose_matrices("mx", CONFIGURED_FRAME, None, config))["output.input"]
+
+    assert [d["value"] for d in proposal["destinations"]] == [1, 2, 3, 4]
+    assert [s["value"] for s in proposal["sources"]] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert proposal["destinations"][0]["route_key"] == "device.mx.output.1.input"
+    # Nothing to warn about: this is the size the device was configured for,
+    # which is a different thing from the size it could be.
+    assert proposal["warnings"] == []
+    # Still not the live roster, and it does not claim to be.
+    assert proposal["from_roster"] is False
+
+
+def test_a_sparse_roster_from_config_keeps_the_ids_it_was_given():
+    """Ports 1, 4 and 9 of a frame, because that is what is patched."""
+    driver = json.loads(json.dumps(CONFIGURED_FRAME))
+    driver["child_entity_types"]["output"]["instances"] = {"ids_from": "output_ids"}
+    proposal = _by_id(
+        propose_matrices("mx", driver, None, {"output_ids": "1, 4, 9", "input_count": 2}),
+    )["output.input"]
+    assert [d["value"] for d in proposal["destinations"]] == [1, 4, 9]
+    assert proposal["warnings"] == []
+
+
+def test_an_unfilled_count_field_is_named_instead_of_the_cable():
+    """The remedy is a number in this device's settings, not a connection.
+
+    With the field left at its default there are no ports and nothing on the
+    wire will ever produce one, so "connect it and press Re-read device" sends
+    the author to check a cable that is already plugged in.
+    """
+    proposal = _by_id(propose_matrices("mx", CONFIGURED_FRAME, None, {}))["output.input"]
+    assert len(proposal["destinations"]) == 128
+    (warning,) = [w for w in proposal["warnings"] if "ports this driver can have" in w]
+    # Named as the Settings form spells it, not as the YAML does.
+    assert "Set 'Output Count' on this device" in warning
+    assert "Connect it" not in warning
+
+
+def test_a_driver_that_declares_no_roster_still_says_connect_it():
+    """The max fallback and its original advice, for a driver with no field to set."""
+    proposal = _by_id(propose_matrices("mx", TYPED_FRAME))["output.input"]
+    (warning,) = [w for w in proposal["warnings"] if "ports this driver can have" in w]
+    assert "Connect it and press Re-read device" in warning
+
+
+def test_registered_children_still_win_over_a_configured_roster():
+    """Two ports patched on a frame configured for four is a two-row list."""
+    roster = {"output": [{"local_id": 2, "local_id_padded": "2", "label": "Main LCD"}]}
+    proposal = _by_id(propose_matrices(
+        "mx", CONFIGURED_FRAME, roster, {"input_count": 8, "output_count": 4},
+    ))["output.input"]
+    assert [d["value"] for d in proposal["destinations"]] == [2]
+    assert proposal["from_roster"] is True
+    assert proposal["warnings"] == []
+
+
+def test_a_roster_the_device_resizes_is_never_predicted_from_config():
+    """`count_from_state` means the hardware settles it, so the config is a floor.
+
+    Offering the config number as though it were the answer would be a guess
+    dressed as a reading -- the same mistake in the other direction.
+    """
+    driver = json.loads(json.dumps(CONFIGURED_FRAME))
+    driver["child_entity_types"]["output"]["instances"]["count_from_state"] = "num_outputs"
+    proposal = _by_id(propose_matrices(
+        "mx", driver, None, {"input_count": 8, "output_count": 4},
+    ))["output.input"]
+    assert len(proposal["destinations"]) == 128
+    assert any("ports this driver can have" in w for w in proposal["warnings"])
 
 
 def test_registered_children_win_over_the_declared_range():
