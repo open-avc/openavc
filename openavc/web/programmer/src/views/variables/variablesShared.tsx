@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, ExternalLink, X, Zap, Layout, FileCode } from "lucide-react";
+import { Activity, ChevronRight, ExternalLink, X, Zap, Layout, FileCode } from "lucide-react";
 import { useNavigationStore, type FocusTarget } from "../../store/navigationStore";
 import type { ProjectConfig, ScriptReference } from "../../api/types";
 import type { ViewId } from "../../components/layout/Sidebar";
@@ -10,7 +10,7 @@ import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasG
 // ==========================================================================
 
 export interface VariableUsage {
-  type: "macro" | "ui" | "script";
+  type: "macro" | "ui" | "script" | "monitor";
   icon: typeof Zap;
   label: string;
   detail: string;
@@ -42,7 +42,10 @@ export function HelpBanner({ storageKey, children }: { storageKey: string; child
 export function UsageRow({ usage }: { usage: VariableUsage }) {
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const hasNav = !!usage.nav;
-  const typeLabel = usage.type === "macro" ? "Macro" : usage.type === "ui" ? "UI" : "Script";
+  const typeLabel = usage.type === "macro" ? "Macro"
+    : usage.type === "ui" ? "UI"
+    : usage.type === "monitor" ? "Monitor"
+    : "Script";
 
   return (
     <div
@@ -140,6 +143,18 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
     list.push(usage);
     map.set(varId, list);
   };
+
+  // A monitored variable IS used — it is on the Dashboard, in the cloud, and
+  // possibly behind an alert. Without this, "Delete unused" would sweep away
+  // the one thing somebody deliberately put on the Dashboard.
+  for (const monitor of project.monitors ?? []) {
+    if (!monitor.key?.startsWith("var.")) continue;
+    addUsage(monitor.key.slice(4), {
+      type: "monitor", icon: Activity,
+      label: monitor.label || monitor.key,
+      detail: "Monitored — shown on the Dashboard and in the cloud",
+    });
+  }
 
   for (const macro of project.macros) {
     const macroNav = { view: "macros" as ViewId, focus: { type: "macro", id: macro.id } };

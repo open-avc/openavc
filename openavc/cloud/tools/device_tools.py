@@ -113,6 +113,8 @@ class DeviceToolsMixin:
             # Drop the connections-table entry too — leaving it behind hands a
             # stale host/port to any future device re-added with the same id.
             project.connections.pop(device_id, None)
+            from openavc.core.monitors import drop_monitors_for_device
+            project.monitors = drop_monitors_for_device(project.monitors, device_id)
 
         # The devices reconcile removes the runtime device and sweeps its
         # orphaned device.<id>.* state keys; the revision bump means a stale

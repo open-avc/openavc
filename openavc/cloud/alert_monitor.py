@@ -12,13 +12,15 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Callable
 from fnmatch import fnmatch
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import (
-    ALERT, ALERT_RESOLVED,
-    build_alert_payload, build_alert_resolved_payload,
+    ALERT, ALERT_RESOLVED, MONITORS,
+    build_alert_payload, build_alert_resolved_payload, build_monitors_payload,
 )
+from openavc.core.monitors import compile_alert_rules
 from openavc.utils.logger import get_logger
 from openavc.utils.regex_safety import regex_safety_error
 
@@ -44,13 +46,26 @@ class AlertMonitor:
         agent: CloudAgent,
         state: StateStore,
         events: EventBus,
+        monitors_provider: Callable[[], list[dict[str, Any]]] | None = None,
     ):
         self._agent = agent
         self._state = state
         self._events = events
+        # Reads the project's monitor list. A callable rather than the project
+        # itself because the project is replaced wholesale on every save, and
+        # this must always see the one that is running.
+        self._monitors_provider = monitors_provider
 
         # Custom rules from cloud (list of dicts, keyed by "id")
         self._rules: list[dict[str, Any]] = []
+
+        # Rules compiled from the project's monitor list. Kept SEPARATE from
+        # the cloud's on purpose: a cloud push replaces its own set wholesale,
+        # and folding these in would mean every push silently deleted what the
+        # project declared. Two sources, one evaluator, neither editing the
+        # other's rows.
+        self._project_rules: list[dict[str, Any]] = []
+        self._project_handler_id: Any = None
 
         # Active alerts: alert_key -> agent_alert_id
         # Tracks what's currently firing to avoid re-firing and to auto-resolve
@@ -83,12 +98,23 @@ class AlertMonitor:
         self._rules_handler_id = self._events.on(
             "cloud.alert_rules_update", self._on_rules_update_sync
         )
+        # A monitor is declared in the project, so it changes when the project
+        # does -- not on the daily snapshot, which is up to 24 hours stale and
+        # would make "tag it and see it" a lie.
+        self._project_handler_id = self._events.on(
+            "system.project.reloaded", self._on_project_applied_sync
+        )
         self._check_task = asyncio.create_task(self._periodic_check_loop())
         self._send_task = asyncio.create_task(self._send_loop())
-        if not self._rules:
+        self._reload_project_rules()
+        self._queue_send(MONITORS, build_monitors_payload(self._read_monitors()))
+        if not self._rules and not self._project_rules:
             log.info("Alert monitor: started (no rules loaded, waiting for cloud push)")
         else:
-            log.info("Alert monitor: started with %d rule(s)", len(self._rules))
+            log.info(
+                "Alert monitor: started with %d cloud rule(s) and %d from the project",
+                len(self._rules), len(self._project_rules),
+            )
 
     async def stop(self) -> None:
         """Stop the alert monitor."""
@@ -101,6 +127,10 @@ class AlertMonitor:
         if self._rules_handler_id is not None:
             self._events.off(self._rules_handler_id)
             self._rules_handler_id = None
+
+        if self._project_handler_id is not None:
+            self._events.off(self._project_handler_id)
+            self._project_handler_id = None
 
         for task in [self._check_task, self._send_task]:
             if task and not task.done():
@@ -130,8 +160,9 @@ class AlertMonitor:
             if len(parts) >= 2:
                 self._last_state_times[parts[1]] = time.time()
 
-        # Evaluate threshold and pattern rules (all rules come from cloud push)
-        for rule in self._rules:
+        # Evaluate threshold and pattern rules. Two sources — the cloud's
+        # fleet-wide rules and the project's own monitors — one evaluator.
+        for rule in self._all_rules():
             if not rule.get("enabled", True):
                 continue
             rule_type = rule.get("rule_type", "")
@@ -142,6 +173,10 @@ class AlertMonitor:
 
     # --- Rule Evaluation ---
 
+    def _all_rules(self) -> list[dict[str, Any]]:
+        """Every rule this instance evaluates, from both sources."""
+        return self._rules + self._project_rules
+
     def _evaluate_threshold(self, rule: dict, key: str, value: Any) -> None:
         """Check if a threshold rule triggers or resolves.
 
@@ -149,6 +184,11 @@ class AlertMonitor:
         When present, the alert fires when ``value <op> threshold`` but only
         resolves when the value crosses ``resolve_value`` in the opposite
         direction.  For example, fire at disk > 90% but resolve at disk < 85%.
+
+        An optional ``duration_seconds`` means the same thing it means on a
+        pattern rule: the reading has to stay wrong that long before anybody is
+        told. A projector that is off is correct at 3am and a problem ten
+        minutes into a lecture, and the difference is time, not the value.
         """
         condition = rule.get("condition", {})
         pattern = condition.get("key", "")
@@ -163,50 +203,103 @@ class AlertMonitor:
         triggered = _compare(value, operator, threshold)
         alert_key = f"rule:{rule['id']}:{key}"
 
-        if triggered and alert_key not in self._active_alerts:
-            alert_id = str(uuid.uuid4())
-            self._active_alerts[alert_key] = alert_id
-            device_id = _extract_device_id(key)
-            self._queue_send(ALERT, build_alert_payload(
-                alert_id=alert_id,
-                rule_id=rule["id"],
-                severity=rule.get("severity", "warning"),
-                category=rule.get("category", "device"),
-                device_id=device_id,
-                message=_clip_message(
-                    f"{rule['name']}: {key} {operator} {threshold} (current: {value})"
-                ),
-                detail={"rule_id": rule["id"], "key": key, "value": value, "threshold": threshold},
-            ))
-        elif not triggered and alert_key in self._active_alerts:
+        if triggered:
+            if alert_key in self._active_alerts:
+                return
+            if _duration_of(rule) > 0:
+                # Arm it; the periodic loop fires once it has held.
+                self._pattern_timers.setdefault(alert_key, time.time())
+                return
+            self._queue_send(ALERT, self._threshold_alert(rule, key, value))
+        else:
+            self._pattern_timers.pop(alert_key, None)
+            if alert_key not in self._active_alerts:
+                return
             # Hysteresis: use resolve_value if set, otherwise same as threshold
             resolve_value = condition.get("resolve_value", threshold)
-            resolved = _check_resolved(value, operator, resolve_value)
-            if resolved:
+            if _check_resolved(value, operator, resolve_value):
                 resolved_id = self._active_alerts.pop(alert_key)
                 self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
 
+    def _threshold_alert(self, rule: dict, key: str, value: Any) -> dict[str, Any]:
+        """Register a threshold alert as active and build its payload."""
+        condition = rule.get("condition", {})
+        operator = condition.get("operator", ">")
+        threshold = condition.get("value")
+        alert_key = f"rule:{rule['id']}:{key}"
+        alert_id = str(uuid.uuid4())
+        self._active_alerts[alert_key] = alert_id
+        return build_alert_payload(
+            alert_id=alert_id,
+            rule_id=rule["id"],
+            severity=rule.get("severity", "warning"),
+            category=rule.get("category", "device"),
+            device_id=_extract_device_id(key),
+            message=_clip_message(
+                f"{rule['name']}: {key} {operator} {threshold} (current: {value})"
+            ),
+            detail={"rule_id": rule["id"], "key": key, "value": value,
+                    "threshold": threshold},
+        )
+
     def _evaluate_pattern(self, rule: dict, key: str, value: Any) -> None:
-        """Check pattern rules (value matches for N seconds)."""
+        """Check pattern rules (value matches, held for N seconds).
+
+        ``condition.operator`` defaults to ``=`` — the original spelling, and
+        what every cloud-authored pattern rule uses. A project monitor compiles
+        to ``not_in`` against the set of values its author called normal, which
+        is the same question asked the way a room asks it: not "did it become
+        this bad value" but "did it leave the good ones".
+        """
         condition = rule.get("condition", {})
         pattern = condition.get("key", "")
         if not fnmatch(key, pattern):
             return
 
         expected = condition.get("value")
+        operator = condition.get("operator", "=")
         alert_key = f"rule:{rule['id']}:{key}"
 
-        if _compare(value, "=", expected):
-            # Value matches — start or continue timer
-            if alert_key not in self._pattern_timers:
-                self._pattern_timers[alert_key] = time.time()
-            # Actual trigger check happens in _periodic_check_loop
+        if _compare(value, operator, expected):
+            if alert_key in self._active_alerts:
+                return
+            duration = _duration_of(rule)
+            if duration > 0:
+                # Value matches — start or continue the timer. The trigger
+                # check happens in _periodic_check_loop.
+                self._pattern_timers.setdefault(alert_key, time.time())
+                return
+            # No duration means immediately, and immediately must not mean
+            # "within the next 30 seconds, when the loop next ticks".
+            self._pattern_timers.pop(alert_key, None)
+            self._queue_send(ALERT, self._pattern_alert(rule, key, value, 0))
         else:
             # Value no longer matches — clear timer and resolve if active
             self._pattern_timers.pop(alert_key, None)
             if alert_key in self._active_alerts:
                 resolved_id = self._active_alerts.pop(alert_key)
                 self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
+
+    def _pattern_alert(
+        self, rule: dict, key: str, value: Any, duration: float
+    ) -> dict[str, Any]:
+        """Register a pattern alert as active and build its payload."""
+        alert_key = f"rule:{rule['id']}:{key}"
+        alert_id = str(uuid.uuid4())
+        self._active_alerts[alert_key] = alert_id
+        held = f" for {duration:g}s" if duration else ""
+        return build_alert_payload(
+            alert_id=alert_id,
+            rule_id=rule["id"],
+            severity=rule.get("severity", "warning"),
+            category=rule.get("category", "device"),
+            device_id=_extract_device_id(key),
+            message=_clip_message(
+                f"{rule['name']}: {key} is {value}{held}"
+            ),
+            detail={"rule_id": rule["id"], "key": key, "value": value,
+                    "duration_seconds": duration},
+        )
 
     # --- Periodic Check Loop ---
 
@@ -231,7 +324,8 @@ class AlertMonitor:
         Split out from `_periodic_check_loop` so tests can drive a single
         evaluation without waiting on the 30-second sleep.
         """
-        # Check pattern rule timers
+        # Check armed timers — a threshold or a pattern that has been wrong
+        # since it armed and now has to have held long enough.
         for alert_key, start_time in list(self._pattern_timers.items()):
             if alert_key in self._active_alerts:
                 continue  # Already fired
@@ -241,27 +335,26 @@ class AlertMonitor:
                 self._pattern_timers.pop(alert_key, None)
                 continue
 
-            duration = rule.get("condition", {}).get("duration_seconds", 0)
-            if now - start_time >= duration:
-                alert_id = str(uuid.uuid4())
-                self._active_alerts[alert_key] = alert_id
-                device_id = _extract_device_id(alert_key.split(":", 2)[-1])
-                await self._agent.send_message(ALERT, build_alert_payload(
-                    alert_id=alert_id,
-                    rule_id=rule["id"],
-                    severity=rule.get("severity", "warning"),
-                    category=rule.get("category", "device"),
-                    device_id=device_id,
-                    message=_clip_message(f"{rule['name']}: condition held for {duration}s"),
-                    detail={"rule_id": rule["id"], "duration_seconds": duration},
-                ))
+            duration = _duration_of(rule)
+            if now - start_time < duration:
+                continue
+
+            # The value is read LIVE rather than remembered from arming time,
+            # so the alert states what is true when it is sent.
+            key = alert_key.split(":", 2)[-1]
+            value = self._state.get(key)
+            if rule.get("rule_type") == "threshold":
+                payload = self._threshold_alert(rule, key, value)
+            else:
+                payload = self._pattern_alert(rule, key, value, duration)
+            await self._agent.send_message(ALERT, payload)
 
         # Prune stale device entries. The horizon must outlast the largest
         # absence threshold, or a device would be evicted before its absence
         # rule can fire (the absence check below iterates _last_state_times).
         # A hardcoded 24h floor made any threshold above 86400s unreachable.
         max_absence = 0
-        for rule in self._rules:
+        for rule in self._all_rules():
             if rule.get("rule_type") == "absence" and rule.get("enabled", True):
                 try:
                     max_absence = max(
@@ -277,7 +370,7 @@ class AlertMonitor:
             self._last_state_times.pop(dev_id, None)
 
         # Check absence rules
-        for rule in self._rules:
+        for rule in self._all_rules():
             if rule.get("rule_type") != "absence" or not rule.get("enabled", True):
                 continue
 
@@ -350,31 +443,70 @@ class AlertMonitor:
         else:
             raw_rules = []
 
-        rules = self._sanitize_rules(raw_rules)
+        self._rules = self._swap_rules(self._rules, raw_rules)
+        log.info("Alert monitor: updated to %d cloud rule(s)", len(self._rules))
+
+    def _swap_rules(
+        self, old: list[dict[str, Any]], raw_new: Any
+    ) -> list[dict[str, Any]]:
+        """Replace one source's rule set, clearing what its removed rules left.
+
+        Both sources go through here — the cloud's push and the project's
+        monitor list — so a rule that goes away resolves its firing alert and
+        drops its armed timer the same way whichever door removed it. A rule
+        deleted while its alert was still open would otherwise sit in the
+        portal forever with nothing left that could ever resolve it.
+        """
+        rules = self._sanitize_rules(raw_new)
 
         # Safe now that _sanitize_rules guarantees every stored/incoming rule
         # is a dict with a string "id": a malformed rule used to raise KeyError
         # here, BEFORE self._rules was reassigned, and the event bus swallowed
         # it — silently dropping the whole update and keeping the stale rule set.
-        old_rule_ids = {r["id"] for r in self._rules}
-        new_rule_ids = {r["id"] for r in rules}
+        deleted_ids = {r["id"] for r in old} - {r["id"] for r in rules}
 
-        # Resolve alerts for deleted rules
-        deleted_ids = old_rule_ids - new_rule_ids
         for alert_key in list(self._active_alerts.keys()):
             parts = alert_key.split(":")
             if len(parts) >= 2 and parts[0] == "rule" and parts[1] in deleted_ids:
                 resolved_id = self._active_alerts.pop(alert_key)
                 self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
 
-        # Clear pattern timers for deleted rules
         for alert_key in list(self._pattern_timers.keys()):
             parts = alert_key.split(":")
             if len(parts) >= 2 and parts[0] == "rule" and parts[1] in deleted_ids:
                 self._pattern_timers.pop(alert_key, None)
 
-        self._rules = rules
-        log.info("Alert monitor: updated to %d rule(s)", len(rules))
+        return rules
+
+    # --- Project monitors ---
+
+    def _read_monitors(self) -> list[dict[str, Any]]:
+        """The project's monitor list, or nothing if there is no provider."""
+        if self._monitors_provider is None:
+            return []
+        try:
+            monitors = self._monitors_provider()
+        except Exception:
+            log.exception("Alert monitor: could not read the project's monitors")
+            return []
+        return [m for m in monitors if isinstance(m, dict)]
+
+    def _reload_project_rules(self) -> None:
+        """Recompile what the project declares, and swap it in."""
+        compiled = compile_alert_rules(self._read_monitors())
+        self._project_rules = self._swap_rules(self._project_rules, compiled)
+
+    def _on_project_applied_sync(self, event: str, data: Any) -> None:
+        """The project changed: recompile its limits and re-send the manifest.
+
+        The manifest is what lets the cloud card draw a tile at all, so it must
+        ride the project change rather than the daily snapshot — "tag it and see
+        it" is the whole experience, and a 24-hour wait is not that.
+        """
+        if not self._running:
+            return
+        self._reload_project_rules()
+        self._queue_send(MONITORS, build_monitors_payload(self._read_monitors()))
 
     # --- Helpers ---
 
@@ -429,7 +561,7 @@ class AlertMonitor:
         if len(parts) < 2 or parts[0] != "rule":
             return None
         rule_id = parts[1]
-        for r in self._rules:
+        for r in self._all_rules():
             if r.get("id") == rule_id:
                 return r
         return None
@@ -464,11 +596,49 @@ def _matches_key_prefix(key: str, key_prefix: str) -> bool:
     return key.startswith(key_prefix)
 
 
+def _duration_of(rule: dict[str, Any]) -> float:
+    """How long a rule's condition must hold before it fires. 0 = at once."""
+    try:
+        return max(0.0, float(rule.get("condition", {}).get("duration_seconds") or 0))
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
+
+
+def _norm_for_set(value: Any) -> str:
+    """A value as the string a set comparison agrees on.
+
+    Same rule as ``core.monitors._norm`` and for the same reason: a driver
+    reports a Python ``True``, a project spells the same thing ``"true"``, and
+    the two must be one value from either direction. Everything else stays
+    case-sensitive — "Mic" and "mic" are different inputs on plenty of frames.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value)
+    lowered = text.lower()
+    return lowered if lowered in ("true", "false") else text
+
+
 def _compare(value: Any, operator: str, threshold: Any) -> bool:
     """Compare a value against a threshold using the given operator."""
     import re
 
     try:
+        # Set membership comes first: it is the one pair of operators whose
+        # threshold is a LIST, so the scalar coercions below would all be
+        # comparing against "['a', 'b']".
+        if operator in ("in", "not_in"):
+            # A key that has never reported is neither in the set nor out of
+            # it. `not_in` would otherwise fire on every monitored reading the
+            # moment the agent connects, before the device has said anything —
+            # and the tile beside it correctly reads "no reading yet". Absence
+            # is what the absence rule type is for.
+            if value is None:
+                return False
+            options = threshold if isinstance(threshold, (list, tuple, set)) else [threshold]
+            present = _norm_for_set(value) in {_norm_for_set(o) for o in options}
+            return present if operator == "in" else not present
+
         # Handle None explicitly
         if value is None:
             return operator in ("=", "==") and threshold is None

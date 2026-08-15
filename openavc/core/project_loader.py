@@ -145,11 +145,70 @@ class VariableConfig(_ForwardCompatModel):
     default: Any = None
     label: str = ""
     description: str = ""  # freeform text explaining the variable's purpose
-    dashboard: bool = False
     persist: bool = False  # save value to disk, restore on restart
     source_key: str | None = None  # auto-sync from this state key
     source_map: dict[str, Any] | None = None  # value mapping for source
     validation: VariableValidation | None = None  # optional validation rules
+
+
+class MonitorStateEntry(_ForwardCompatModel):
+    """One value of a monitored reading: what it is called, and whether it is normal.
+
+    Borrowed in SHAPE from the panel's ``show.look.states`` -- a map keyed by
+    value, each entry carrying a label -- so tagging a reading uses the
+    authoring muscle memory that already exists. Not borrowed in CONTENT: the
+    panel's entries also carry ``bg_color``, ``icon`` and ``text_color``, which
+    are theme and brand decisions. A room's accent colour is not a severity, so
+    a monitor state says only what a person needs read to them and whether it
+    means everything is fine.
+
+    ``normal`` unset is unset, not False: a state entry that only names a value
+    ("0" is "Mic") is vocabulary, and declaring vocabulary must not silently
+    turn every other value into an alert.
+    """
+    label: str = ""
+    normal: bool | None = None
+
+
+class MonitorConfig(_ForwardCompatModel):
+    """One monitored reading: a state key this room says matters.
+
+    Written by both authoring doors -- the State tab's Monitor button and the
+    same block on a device's live state -- into this ONE project-level list, so
+    the local Dashboard, the cloud card and the alert all compile from a single
+    declaration and cannot disagree about what "bad" means.
+
+    Everything except ``key`` is optional, and the common case writes nothing
+    else: type, label, unit and range are already declared by the driver or the
+    variable, and the IDE fills them in when the reading is tagged. What the
+    author supplies is only what is genuinely their judgement -- what counts as
+    normal in *this* room, and how long it has to be wrong before somebody is
+    told.
+
+    With no limits declared this is informational: the tile shows the value,
+    its label and its age, drawn neutral, and nothing fires.
+    """
+    key: str
+    label: str = ""      # empty falls back to the key
+    unit: str = ""       # "dB", "hours", "%" -- shown beside the value
+    type: str = "string"  # string | integer | number | boolean | enum | float
+    #: A number's normal range. Either end alone is a one-sided limit.
+    normal_min: float | None = None
+    normal_max: float | None = None
+    #: Value -> word, and which values are normal (booleans, enums, strings).
+    states: dict[str, MonitorStateEntry] = Field(default_factory=dict)
+    #: How long the reading must be outside normal before it fires. 0 fires at
+    #: once. This is not decoration: a projector that is off is correct at 3am
+    #: and a problem ten minutes into a lecture, and a mute held four seconds is
+    #: somebody pressing a button. Without it, monitoring a boolean is noise.
+    duration_seconds: float = 0
+
+    @field_validator("key")
+    @classmethod
+    def key_is_a_state_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Monitor key must not be empty")
+        return v
 
 
 class StepCondition(_ForwardCompatModel):
@@ -632,7 +691,7 @@ class ProjectConfig(_ForwardCompatModel):
     # A stale default here is not cosmetic: a project written with it gets the
     # whole 0.7->0.8 migration re-run over an already-0.8 body on its next
     # save, which collapses every placement and re-divides every rem value.
-    openavc_version: str = "0.10.0"
+    openavc_version: str = "0.11.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)
     device_groups: list[DeviceGroup] = Field(default_factory=list)
@@ -641,6 +700,11 @@ class ProjectConfig(_ForwardCompatModel):
     plugin_dependencies: list[PluginDependency] = Field(default_factory=list)
     plugins: dict[str, PluginConfig] = Field(default_factory=dict)
     variables: list[VariableConfig] = Field(default_factory=list)
+    # Readings this room says matter, from both authoring doors. A peer of
+    # variables rather than a field on one, because most of what a room's
+    # health actually is -- lamp hours, fault flags, signal presence, a DSP's
+    # temperature -- lives on device.* state, which has nowhere to carry a flag.
+    monitors: list[MonitorConfig] = Field(default_factory=list)
     macros: list[MacroConfig] = Field(default_factory=list)
     ui: UIConfig = Field(default_factory=UIConfig)
     scripts: list[ScriptConfig] = Field(default_factory=list)

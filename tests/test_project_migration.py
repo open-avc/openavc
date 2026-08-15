@@ -14,6 +14,7 @@ from openavc.core.project_migration import (
     migrate_0_7_to_0_8,
     migrate_0_8_to_0_9,
     migrate_0_9_to_0_10,
+    migrate_0_10_to_0_11,
     migrate_project,
 )
 from openavc.ui.matrix_model import resolve_axis
@@ -385,7 +386,8 @@ class TestFullMigrationChain:
         data = migrate_0_6_to_0_7(data)
         data = migrate_0_7_to_0_8(data)
         data = migrate_0_8_to_0_9(data)
-        data = migrate_0_9_to_0_10(data)  # Now at CURRENT_VERSION
+        data = migrate_0_9_to_0_10(data)
+        data = migrate_0_10_to_0_11(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
@@ -542,6 +544,83 @@ class TestFullMigrationChain:
 
         assert migrated is True
         assert result["openavc_version"] == CURRENT_VERSION
+
+
+# ---------------------------------------------------------------------------
+# 0.10.0 -> 0.11.0 — the project says which readings matter
+# ---------------------------------------------------------------------------
+
+class TestMigrate010To011:
+    def test_a_project_with_nothing_tagged_only_gains_a_version(self):
+        """The whole story for almost every project: nothing moves."""
+        data = {
+            "openavc_version": "0.10.0",
+            "project": {"id": "p", "name": "P"},
+            "variables": [{"id": "mode", "type": "string", "label": "Room Mode"}],
+        }
+        result = migrate_0_10_to_0_11(copy.deepcopy(data))
+        assert result["openavc_version"] == "0.11.0"
+        assert result["variables"] == data["variables"]
+        assert "monitors" not in result
+
+    def test_dashboard_true_becomes_a_monitor_with_no_limits(self):
+        data = {
+            "openavc_version": "0.10.0",
+            "project": {"id": "p", "name": "P"},
+            "variables": [
+                {"id": "occupied", "type": "boolean", "label": "Occupancy",
+                 "dashboard": True},
+                {"id": "quiet", "type": "string", "label": "Quiet", "dashboard": False},
+            ],
+        }
+        result = migrate_0_10_to_0_11(copy.deepcopy(data))
+
+        assert result["monitors"] == [
+            {"key": "var.occupied", "label": "Occupancy", "type": "boolean"},
+        ]
+        # The flag goes with it. Two fields meaning one thing is how the
+        # Dashboard and the cloud card end up disagreeing about what is on them.
+        assert all("dashboard" not in v for v in result["variables"])
+
+    def test_validation_does_not_become_a_limit(self):
+        """What may be STORED is a different claim from what is HEALTHY. A
+        migration that turned every validation rule into an alert would light up
+        rooms whose owners never asked to be told anything."""
+        data = {
+            "openavc_version": "0.10.0",
+            "project": {"id": "p", "name": "P"},
+            "variables": [{
+                "id": "level", "type": "number", "label": "Level", "dashboard": True,
+                "validation": {"min": 0, "max": 100},
+            }],
+        }
+        result = migrate_0_10_to_0_11(copy.deepcopy(data))
+        monitor = result["monitors"][0]
+        assert "normal_min" not in monitor
+        assert "normal_max" not in monitor
+        # ...and the variable keeps validating exactly as it did.
+        assert result["variables"][0]["validation"] == {"min": 0, "max": 100}
+
+    def test_a_hand_written_monitor_list_is_not_replaced(self):
+        data = {
+            "openavc_version": "0.10.0",
+            "project": {"id": "p", "name": "P"},
+            "monitors": [{"key": "var.occupied", "label": "Kept", "normal_min": 1}],
+            "variables": [{"id": "occupied", "type": "boolean", "dashboard": True}],
+        }
+        result = migrate_0_10_to_0_11(copy.deepcopy(data))
+        assert result["monitors"] == [
+            {"key": "var.occupied", "label": "Kept", "normal_min": 1},
+        ]
+
+    def test_a_malformed_variable_entry_does_not_stop_the_migration(self):
+        data = {
+            "openavc_version": "0.10.0",
+            "project": {"id": "p", "name": "P"},
+            "variables": ["not a dict", {"dashboard": True}, {"id": "ok", "dashboard": True}],
+        }
+        result = migrate_0_10_to_0_11(copy.deepcopy(data))
+        assert [m["key"] for m in result["monitors"]] == ["var.ok"]
 
 
 # ---------------------------------------------------------------------------

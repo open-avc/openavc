@@ -85,6 +85,7 @@ DIAGNOSTIC_RESULT = "diagnostic_result"
 PONG = "pong"
 AI_TOOL_RESULT = "ai_tool_result"
 PROJECT_DATA = "project_data"
+MONITORS = "monitors"
 DEVICE_COMMANDS_DATA = "device_commands_data"
 GAP_REPORT = "gap_report"
 CERT_REQUEST = "cert_request"
@@ -409,6 +410,25 @@ def build_project_data_payload(
     else:
         payload["error"] = error
     return payload
+
+
+def build_monitors_payload(
+    monitors: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Which readings this room says matter, and what normal is for each.
+
+    Sent unprompted on connect and on every project apply — NOT read out of the
+    daily project snapshot, which is up to 24 hours stale. Tagging a reading and
+    seeing it appear is the whole of the feature, and a day's wait is not that.
+
+    A peer of ``project_data`` rather than a field on the handshake because the
+    list changes while the agent is running, and a handshake happens once.
+
+    It carries the DECLARATION, not the reading: the values themselves already
+    reach the cloud through the state relay every two seconds, which is fifteen
+    times faster than the metrics on the health card. Nothing here is telemetry.
+    """
+    return {"monitors": monitors if monitors is not None else []}
 
 
 def build_device_commands_data_payload(

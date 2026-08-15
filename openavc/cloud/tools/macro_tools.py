@@ -3,9 +3,30 @@
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core.monitors import drop_monitors_for_variable
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+def _set_monitored(project: Any, variable: Any, monitored: bool) -> None:
+    """Add or remove this variable's entry on the project's monitor list.
+
+    Tagging is one concept with several doors, so this writes the same list the
+    IDE writes -- and untagging removes the entry outright rather than blanking
+    it, because a monitor with nothing left to say is not a monitor.
+    """
+    from openavc.core.project_loader import MonitorConfig
+
+    key = f"var.{variable.id}"
+    if not monitored:
+        project.monitors = [m for m in project.monitors if m.key != key]
+        return
+    if any(m.key == key for m in project.monitors):
+        return
+    project.monitors.append(
+        MonitorConfig(key=key, label=variable.label or "", type=variable.type)
+    )
 
 
 class MacroToolsMixin:
@@ -61,9 +82,13 @@ class MacroToolsMixin:
             type=var_type,
             default=default,
             label=input.get("label", ""),
-            dashboard=input.get("dashboard", False),
             persist=input.get("persist", False),
         )
+        # The old per-variable `dashboard` flag is now a monitor entry on the
+        # project's one monitor list (project format 0.11.0). The tool input
+        # keeps its name so the cloud's tool schema still describes something
+        # real; what it writes is the declaration every surface now reads.
+        monitored = bool(input.get("dashboard", False))
 
         def mutate(project):
             if any(v.id == var_id for v in project.variables):
@@ -71,6 +96,8 @@ class MacroToolsMixin:
             # The variables reconcile seeds var.<id> from the default and
             # registers persistence/bindings/validation.
             project.variables.append(new_var)
+            if monitored:
+                _set_monitored(project, new_var, True)
 
         err = await apply_tool_edit(engine, mutate)
         if err:
@@ -111,7 +138,7 @@ class MacroToolsMixin:
             if "label" in input:
                 existing.label = input["label"]
             if "dashboard" in input:
-                existing.dashboard = input["dashboard"]
+                _set_monitored(project, existing, bool(input["dashboard"]))
             if "persist" in input:
                 existing.persist = input["persist"]
 
@@ -138,6 +165,7 @@ class MacroToolsMixin:
             project.variables = [v for v in project.variables if v.id != var_id]
             if len(project.variables) == original_count:
                 raise ToolEditError({"error": f"Variable '{var_id}' not found"})
+            project.monitors = drop_monitors_for_variable(project.monitors, var_id)
 
         err = await apply_tool_edit(engine, mutate)
         if err:

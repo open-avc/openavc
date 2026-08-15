@@ -1,11 +1,25 @@
 """Tests for the agent-side AlertMonitor — rule evaluation, alerts, resolution."""
 
 import asyncio
+import time
 import uuid
 
 import pytest
 
 from openavc.cloud.alert_monitor import AlertMonitor, _compare, _extract_device_id
+
+
+def alerts(agent):
+    """Just the alert traffic.
+
+    The monitor also sends its project monitor manifest on start and on every
+    project apply, which is a declaration rather than an event and is not what
+    these tests are about.
+    """
+    return [
+        (t, p) for t, p in agent.sent_messages
+        if t in ("alert", "alert_resolved")
+    ]
 
 
 # --- Mock classes ---
@@ -201,8 +215,8 @@ async def test_threshold_rule_fires_alert():
     for msg_type, payload in batch:
         await agent.send_message(msg_type, payload)
 
-    assert len(agent.sent_messages) == 1
-    msg_type, payload = agent.sent_messages[0]
+    assert len(alerts(agent)) == 1
+    msg_type, payload = alerts(agent)[0]
     assert msg_type == "alert"
     assert payload["severity"] == "warning"
     assert "projector1" in payload["message"]
@@ -253,7 +267,7 @@ async def test_pattern_alert_includes_rule_id():
     import time as _t
     await monitor._run_periodic_checks(now=_t.time())
 
-    assert len(agent.sent_messages) == 1
+    assert len(alerts(agent)) == 1
     msg_type, payload = agent.sent_messages[0]
     assert msg_type == "alert"
     assert payload["rule_id"] == rule_id
@@ -289,7 +303,7 @@ async def test_absence_alert_includes_rule_id():
 
     await monitor._run_periodic_checks(now=now)
 
-    assert len(agent.sent_messages) == 1
+    assert len(alerts(agent)) == 1
     msg_type, payload = agent.sent_messages[0]
     assert msg_type == "alert"
     assert payload["rule_id"] == rule_id
@@ -337,7 +351,7 @@ async def test_threshold_rule_resolves():
     for msg_type, payload in batch:
         await agent.send_message(msg_type, payload)
 
-    assert len(agent.sent_messages) == 1
+    assert len(alerts(agent)) == 1
 
     # Resolve
     state.set("device.projector1.lamp_hours", 1400)
@@ -349,8 +363,8 @@ async def test_threshold_rule_resolves():
     for msg_type, payload in batch:
         await agent.send_message(msg_type, payload)
 
-    assert len(agent.sent_messages) == 2
-    assert agent.sent_messages[1][0] == "alert_resolved"
+    assert len(alerts(agent)) == 2
+    assert alerts(agent)[1][0] == "alert_resolved"
 
     await monitor.stop()
 
@@ -453,7 +467,7 @@ async def test_rules_update_resolves_deleted_rules():
     for msg_type, payload in batch:
         await agent.send_message(msg_type, payload)
 
-    assert len(agent.sent_messages) == 1
+    assert len(alerts(agent)) == 1
 
     # Now delete the rule
     monitor._on_rules_update_sync("cloud.alert_rules_update", {"rules": []})
@@ -466,8 +480,8 @@ async def test_rules_update_resolves_deleted_rules():
     for msg_type, payload in batch:
         await agent.send_message(msg_type, payload)
 
-    assert len(agent.sent_messages) == 2
-    assert agent.sent_messages[1][0] == "alert_resolved"
+    assert len(alerts(agent)) == 2
+    assert alerts(agent)[1][0] == "alert_resolved"
 
     await monitor.stop()
 
@@ -716,8 +730,239 @@ async def test_alert_message_truncated_to_column_limit():
         batch = monitor._pending_sends[:]
         monitor._pending_sends.clear()
 
-    alerts = [b for b in batch if b[0] == "alert"]
-    assert len(alerts) == 1
-    assert len(alerts[0][1]["message"]) <= 2000
+    fired = [b for b in batch if b[0] == "alert"]
+    assert len(fired) == 1
+    assert len(fired[0][1]["message"]) <= 2000
 
     await monitor.stop()
+
+
+# --- Project-declared monitors (the monitor plan, §6) ---
+#
+# The point of every test below: the tile the Dashboard draws and the alert the
+# cloud receives come from ONE declaration in the project. Nothing here teaches
+# the alert monitor what a monitor is — a monitor compiles to an ordinary rule
+# and is evaluated by the code that was already here.
+
+
+async def _drain(monitor, agent):
+    """Push whatever the sync callbacks queued through the agent."""
+    await asyncio.sleep(0)
+    async with monitor._pending_lock:
+        batch = monitor._pending_sends[:]
+        monitor._pending_sends.clear()
+    for msg_type, payload in batch:
+        await agent.send_message(msg_type, payload)
+
+
+@pytest.mark.asyncio
+async def test_the_manifest_is_sent_on_connect():
+    """The cloud cannot draw a tile for a reading it has never been told about,
+    and reading the list off the daily project snapshot would mean tagging
+    something and waiting up to a day to see it."""
+    agent = MockAgent()
+    monitors = [{"key": "device.proj.lamp_hours", "label": "Lamp Hours", "unit": "hours"}]
+    monitor = AlertMonitor(
+        agent, MockStateStore(), MockEventBus(), monitors_provider=lambda: monitors
+    )
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    sent = [(t, p) for t, p in agent.sent_messages if t == "monitors"]
+    assert len(sent) == 1
+    assert sent[0][1] == {"monitors": monitors}
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_project_save_re_sends_the_manifest_and_recompiles():
+    agent = MockAgent()
+    monitors: list[dict] = []
+    monitor = AlertMonitor(
+        agent, MockStateStore(), MockEventBus(), monitors_provider=lambda: monitors
+    )
+    await monitor.start()
+    await _drain(monitor, agent)
+    assert monitor._project_rules == []
+
+    monitors.append({
+        "key": "device.proj.lamp_hours", "label": "Lamp Hours", "normal_max": 2000,
+    })
+    monitor._on_project_applied_sync("system.project.reloaded", None)
+    await _drain(monitor, agent)
+
+    assert [r["id"] for r in monitor._project_rules] == [
+        "monitor.device.proj.lamp_hours.above",
+    ]
+    assert [t for t, _ in agent.sent_messages if t == "monitors"] == [
+        "monitors", "monitors",
+    ]
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_project_limit_fires_through_the_ordinary_alert_path():
+    """No cloud rule row behind it — exactly what "Ask for help" already does."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.proj.lamp_hours", "label": "Lamp Hours",
+            "unit": "hours", "normal_max": 2000,
+        }],
+    )
+    await monitor.start()
+
+    state.set("device.proj.lamp_hours", 2400)
+    await _drain(monitor, agent)
+
+    fired = alerts(agent)
+    assert len(fired) == 1
+    assert fired[0][0] == "alert"
+    assert fired[0][1]["rule_id"] == "monitor.device.proj.lamp_hours.above"
+    assert fired[0][1]["device_id"] == "proj"
+    assert "Lamp Hours" in fired[0][1]["message"]
+
+    # ...and it resolves when the reading comes back inside normal.
+    state.set("device.proj.lamp_hours", 1200)
+    await _drain(monitor, agent)
+    assert alerts(agent)[1][0] == "alert_resolved"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_cloud_push_does_not_delete_what_the_project_declared():
+    """The two sources are separate lists for exactly this reason."""
+    agent = MockAgent()
+    monitor = AlertMonitor(
+        agent, MockStateStore(), MockEventBus(),
+        monitors_provider=lambda: [{"key": "var.occupied",
+                                    "states": {"true": {"normal": True}}}],
+    )
+    await monitor.start()
+    assert len(monitor._project_rules) == 1
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(rule_id="cloud-1",
+                             condition={"key": "system.disk_percent",
+                                        "operator": ">", "value": 90})],
+    })
+
+    assert len(monitor._project_rules) == 1
+    assert len(monitor._rules) == 1
+    assert {r["id"] for r in monitor._all_rules()} == {
+        "cloud-1", "monitor.var.occupied",
+    }
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_value_leaving_the_normal_set_fires_after_the_duration():
+    """A mute held forty minutes is a story; a mute held four seconds is
+    somebody pressing a button."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.amp.fault", "label": "Amp",
+            "states": {"false": {"label": "OK", "normal": True},
+                       "true": {"label": "Faulted"}},
+            "duration_seconds": 600,
+        }],
+    )
+    await monitor.start()
+
+    state.set("device.amp.fault", True)
+    await _drain(monitor, agent)
+    assert alerts(agent) == []          # armed, not fired
+    assert len(monitor._pattern_timers) == 1
+
+    # Not long enough yet...
+    await monitor._run_periodic_checks(time.time() + 60)
+    assert alerts(agent) == []
+
+    # ...and now it has held.
+    await monitor._run_periodic_checks(time.time() + 700)
+    assert len(alerts(agent)) == 1
+    assert alerts(agent)[0][1]["rule_id"] == "monitor.device.amp.fault"
+
+    # Back to normal clears it.
+    state.set("device.amp.fault", False)
+    await _drain(monitor, agent)
+    assert alerts(agent)[1][0] == "alert_resolved"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_number_outside_its_range_also_honours_the_duration():
+    """A threshold rule used to fire the instant the value crossed, so the one
+    duration control could not have meant the same thing for a number."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.dsp.temp_c", "label": "DSP Temp",
+            "normal_max": 45, "duration_seconds": 300,
+        }],
+    )
+    await monitor.start()
+
+    state.set("device.dsp.temp_c", 61)
+    await _drain(monitor, agent)
+    assert alerts(agent) == []
+
+    await monitor._run_periodic_checks(time.time() + 400)
+    assert len(alerts(agent)) == 1
+    # The value is read live at fire time, so the alert states what is true now.
+    assert "61" in alerts(agent)[0][1]["message"]
+
+    state.set("device.dsp.temp_c", 20)
+    await _drain(monitor, agent)
+    assert alerts(agent)[1][0] == "alert_resolved"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_reading_that_has_never_reported_does_not_fire():
+    """The tile beside it reads "no reading yet"; the alert must agree. A
+    `not_in` that treated None as "not one of the good values" would fire on
+    every monitored reading the moment the agent connected."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.amp.fault",
+            "states": {"false": {"normal": True}},
+        }],
+    )
+    await monitor.start()
+
+    state.set("device.amp.fault", None)
+    await _drain(monitor, agent)
+    assert alerts(agent) == []
+
+    await monitor.stop()
+
+
+def test_compare_set_membership():
+    assert _compare("hdmi1", "in", ["hdmi1", "hdmi2"]) is True
+    assert _compare("hdmi3", "in", ["hdmi1", "hdmi2"]) is False
+    assert _compare("hdmi3", "not_in", ["hdmi1", "hdmi2"]) is True
+    # A live boolean and a project's JSON-string spelling are one value.
+    assert _compare(True, "in", ["true"]) is True
+    assert _compare(False, "not_in", ["true"]) is True
+    # ...and everything else stays case-sensitive.
+    assert _compare("mic", "in", ["Mic"]) is False
+    # Absence is neither in the set nor out of it.
+    assert _compare(None, "not_in", ["true"]) is False
+    assert _compare(None, "in", ["true"]) is False

@@ -52,6 +52,39 @@ Browse all devices and their live state properties. Each property shows:
 
 Use this view to discover available state keys when building macros or UI bindings.
 
+## Monitor a reading
+
+Some readings tell you whether the room is all right: projector lamp hours, a DSP's temperature, whether the amp is faulted, whether the room is occupied. Tag one with **Monitor** and it appears on the Dashboard with its live value, and on the system's health card in OpenAVC Cloud if this system is paired.
+
+You can tag a reading from either place it already appears:
+
+- **State > Variables**, on the variable you want to watch.
+- **State > Device States**, on any property you have selected.
+- **Devices**, on any row of a device's Live State list.
+
+They all write to the same list, so it does not matter which you use.
+
+### Setting what normal looks like
+
+Tagging alone is enough. The reading shows up with its value and label, and nothing is claimed about whether it is good or bad.
+
+If you want to be told when it goes wrong, open the monitor and fill in two things:
+
+- **Normal is.** For a number, the range it should stay inside. For anything else, the values that mean everything is fine. Anything you tick is normal; anything else is not.
+- **Tell me if it stays wrong for.** How many minutes it has to be wrong before an alert is raised. Leave it blank to be told straight away.
+
+The delay matters more than it looks. A projector that is off is perfectly normal at 3am and a problem ten minutes into a lecture, and a mute that has been on for four seconds is somebody pressing a button.
+
+The label, unit, type and range are filled in from what the driver or the variable already declares, so most readings need nothing typed. All of it stays editable: a driver's 0–10000 hour lamp range is the lamp's range, not the point at which you want telling.
+
+### Words instead of raw values
+
+A reading with a handful of possible values can carry a word for each one, so a panel or a card reads "Occupied" rather than `true`, or "No Signal" rather than `none`. Naming a value does not say anything about whether it is healthy. That is the tick beside it.
+
+### Where the alert goes
+
+A monitor with limits raises an alert through OpenAVC Cloud, using whatever notification routes you have already set up. The limit lives in the project, so it travels with the room and works before the system is ever paired. Fleet-wide rules ("tell me when any system's disk goes above 90%") still belong in the cloud portal's Alert Rules page, which is a different job.
+
 ## `$` references
 
 A `$`-prefixed value is a live reference that resolves to the current value when it runs, instead of a fixed value you type in:

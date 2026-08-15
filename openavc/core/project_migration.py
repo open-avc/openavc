@@ -9,7 +9,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.10.0"
+CURRENT_VERSION = "0.11.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -871,6 +871,61 @@ def migrate_0_9_to_0_10(data: dict) -> dict:
     return data
 
 
+def migrate_0_10_to_0_11(data: dict) -> dict:
+    """
+    Migrate from 0.10.0 to 0.11.0 -- the project says which readings matter.
+
+    Almost nothing in an existing project moves, and that is the point: 0.11.0
+    adds a top-level ``monitors`` list, and a project that declares none reads
+    exactly as it did. The stamped version exists so an older platform opening
+    the file knows there may be a declaration it has no idea what to do with,
+    rather than quietly ignoring the thing the room was set up to watch.
+
+    The one mechanical change is the old ``dashboard: true`` flag on a
+    variable. It said "show this on the local Dashboard", which is precisely a
+    monitored reading with NO limits, so it becomes one -- carrying only the
+    label and type the variable already declared, which is all the tile ever
+    had. The flag itself is dropped rather than left beside its replacement:
+    two fields meaning the same thing is how the Dashboard and the card end up
+    disagreeing about what is on them.
+
+    The variable's ``validation`` block is deliberately NOT carried across as
+    limits. It says what may be STORED in the variable, which is a different
+    claim from what is healthy in the room -- and a migration that turned every
+    existing validation rule into an alert would light up rooms whose owners
+    never asked to be told anything.
+    """
+    existing = data.get("monitors")
+    monitors = list(existing) if isinstance(existing, list) else []
+    already = {
+        m.get("key") for m in monitors
+        if isinstance(m, dict) and isinstance(m.get("key"), str)
+    }
+
+    for var in data.get("variables", []) or []:
+        if not isinstance(var, dict):
+            continue
+        tracked = var.pop("dashboard", None)
+        var_id = var.get("id")
+        if not tracked or not isinstance(var_id, str) or not var_id:
+            continue
+        key = f"var.{var_id}"
+        if key in already:
+            continue
+        already.add(key)
+        monitors.append({
+            "key": key,
+            "label": var.get("label") or "",
+            "type": var.get("type") or "string",
+        })
+
+    if monitors:
+        data["monitors"] = monitors
+
+    data["openavc_version"] = "0.11.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -882,6 +937,7 @@ MIGRATIONS = [
     ("0.7.0", "0.8.0", migrate_0_7_to_0_8),
     ("0.8.0", "0.9.0", migrate_0_8_to_0_9),
     ("0.9.0", "0.10.0", migrate_0_9_to_0_10),
+    ("0.10.0", "0.11.0", migrate_0_10_to_0_11),
 ]
 
 

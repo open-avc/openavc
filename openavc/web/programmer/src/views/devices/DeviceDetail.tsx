@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown, Pause, Play } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
@@ -8,6 +8,10 @@ import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../../components/shared/ParamInput";
+import {
+  MonitorControl, MonitorLimitsPanel, type DeclaredReading,
+} from "../../components/shared/MonitorControl";
+import type { MonitorConfig } from "../../api/types";
 import { normalizeOptionList, optionLabel, parseStateOptionList } from "../../components/shared/paramOptions";
 import {
   hasInvalidParams,
@@ -55,6 +59,20 @@ export function DeviceDetail({
   const [testing, setTesting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  // Which Live State row has its Monitor limits open. One at a time: the panel
+  // is drawn in a full-width row of its own, and a table with six of them open
+  // stops being a table.
+  const [openMonitor, setOpenMonitor] = useState<string | null>(null);
+
+  const monitors = project?.monitors ?? [];
+  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
+  const handleMonitors = useCallback(
+    (next: MonitorConfig[], description: string) => {
+      updateWithUndo({ monitors: next }, description);
+      useProjectStore.getState().debouncedSave(1500);
+    },
+    [updateWithUndo],
+  );
 
   const refetchDeviceInfo = useCallback(() => {
     api.getDevice(deviceId).then(setDeviceInfo).catch(console.error);
@@ -176,6 +194,13 @@ export function DeviceDetail({
 
   const commands = deviceInfo?.commands ?? {};
   const commandNames = Object.keys(commands);
+
+  // What the driver declares about each state variable — label, unit, type,
+  // range, allowed values. Monitor pre-fills from this, which is why tagging
+  // lamp hours is one click rather than a form: the projector's driver already
+  // said it is a number called "Lamp Hours" measured in hours.
+  const declaredStateVars = (deviceInfo?.driver_info?.state_variables ?? {}) as
+    Record<string, DeclaredReading & { values?: string[] }>;
 
   // State vars that back a param dropdown (any command/action param declaring
   // `options_state`) hold a JSON-encoded {value,label} list. The Live State
@@ -710,10 +735,13 @@ export function DeviceDetail({
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
-                {stateEntries.map(([key, value]) => (
+                {stateEntries.map(([key, value]) => {
+                  const fullKey = `device.${deviceId}.${key}`;
+                  const monitor = monitors.find((m) => m.key === fullKey);
+                  return (
+                  <Fragment key={key}>
                   <tr
-                    key={key}
-                    style={{ borderBottom: "1px solid var(--border-color)" }}
+                    style={{ borderBottom: monitor && openMonitor === fullKey ? undefined : "1px solid var(--border-color)" }}
                   >
                     <td
                       style={{
@@ -742,8 +770,39 @@ export function DeviceDetail({
                         value
                       )}
                     </td>
+                    {/* The second authoring door. Most of what a room's health
+                        actually is lives here — lamp hours, fault flags, input
+                        signal presence, a DSP's temperature — and until now
+                        none of it could be tagged at all. */}
+                    <td style={{ padding: "var(--space-xs) var(--space-md)", textAlign: "right", width: 1 }}>
+                      <MonitorControl
+                        compact
+                        toggleOnly
+                        stateKey={fullKey}
+                        declared={declaredStateVars[key]}
+                        monitors={monitors}
+                        liveValue={liveState[fullKey]}
+                        onChange={handleMonitors}
+                        open={openMonitor === fullKey}
+                        onOpenChange={(next) => setOpenMonitor(next ? fullKey : null)}
+                      />
+                    </td>
                   </tr>
-                ))}
+                  {monitor && openMonitor === fullKey && (
+                    <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+                      <td colSpan={3} style={{ padding: "0 var(--space-md) var(--space-md)" }}>
+                        <MonitorLimitsPanel
+                          monitor={monitor}
+                          declared={declaredStateVars[key]}
+                          monitors={monitors}
+                          onChange={handleMonitors}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}

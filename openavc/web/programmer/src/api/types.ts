@@ -50,11 +50,33 @@ export interface VariableConfig {
   default: unknown;
   label: string;
   description?: string;
-  dashboard?: boolean;
   persist?: boolean;
   source_key?: string;
   source_map?: Record<string, unknown>;
   validation?: VariableValidation | null;
+}
+
+/** One value of a monitored reading: what it is called, and whether it is normal.
+ *  `normal` unset is unset, not false — naming a value is vocabulary, and
+ *  vocabulary must not silently turn every other value into an alert. */
+export interface MonitorStateEntry {
+  label?: string;
+  normal?: boolean | null;
+}
+
+/** One monitored reading: a state key this room says matters.
+ *  Written by both authoring doors into the project's one `monitors` list.
+ *  See openavc/core/monitors.py — the judgement lives there and is mirrored in
+ *  monitorHelpers.ts. */
+export interface MonitorConfig {
+  key: string;
+  label?: string;
+  unit?: string;
+  type?: string;
+  normal_min?: number | null;
+  normal_max?: number | null;
+  states?: Record<string, MonitorStateEntry>;
+  duration_seconds?: number;
 }
 
 export interface StepCondition {
@@ -484,6 +506,7 @@ export interface ProjectConfig {
   plugin_dependencies: PluginDependency[];
   plugins: Record<string, PluginConfig>;
   variables: VariableConfig[];
+  monitors: MonitorConfig[];
   macros: MacroConfig[];
   ui: UIConfig;
   scripts: ScriptConfig[];

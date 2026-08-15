@@ -265,6 +265,11 @@ async def delete_device(device_id: str) -> dict[str, Any]:
         # Clean up connections table entry
         project.connections.pop(device_id, None)
 
+        # ...and anything the project said to watch on it. A monitor whose key
+        # can never report again is a tile that reads "—" forever.
+        from openavc.core.monitors import drop_monitors_for_device
+        project.monitors = drop_monitors_for_device(project.monitors, device_id)
+
     # The reconcile removes the runtime device AND sweeps its orphaned
     # device.{id}.* state keys (the old direct remove_device left them).
     await engine.apply_project_edit(mutate)

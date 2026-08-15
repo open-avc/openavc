@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 import { Zap, Cpu } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { listDrivers, getScriptReferences } from "../../api/restClient";
-import type { DriverInfo, ScriptReference } from "../../api/types";
+import type { DriverInfo, MonitorConfig, ScriptReference } from "../../api/types";
+import { MonitorControl } from "../../components/shared/MonitorControl";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
 
 export function DeviceStatesSubTab() {
@@ -12,6 +13,15 @@ export function DeviceStatesSubTab() {
   const liveState = useConnectionStore((s) => s.liveState);
 
   const devices = project?.devices ?? [];
+  const monitors = project?.monitors ?? [];
+  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
+  const handleMonitors = useCallback(
+    (next: MonitorConfig[], description: string) => {
+      updateWithUndo({ monitors: next }, description);
+      useProjectStore.getState().debouncedSave(1500);
+    },
+    [updateWithUndo],
+  );
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [selectedProp, setSelectedProp] = useState<string | null>(null);
 
@@ -85,11 +95,11 @@ export function DeviceStatesSubTab() {
 
     const prefix = `device.${selectedDeviceId}.`;
     const seen = new Set<string>();
-    const entries: { prop: string; key: string; value: unknown; meta: { type?: string; label?: string; values?: string[] } | null }[] = [];
+    const entries: { prop: string; key: string; value: unknown; meta: { type?: string; label?: string; values?: string[]; unit?: string; min?: number; max?: number } | null }[] = [];
 
     // Get state_variables from driver registry
     const driverDef = driverRegistry.find((d) => d.id === selectedDevice.driver);
-    const declaredVars = (driverDef?.state_variables ?? {}) as Record<string, { type?: string; label?: string; values?: string[] }>;
+    const declaredVars = (driverDef?.state_variables ?? {}) as Record<string, { type?: string; label?: string; values?: string[]; unit?: string; min?: number; max?: number }>;
 
     // 1. Start with driver-declared state variables (always available once loaded)
     for (const [prop, meta] of Object.entries(declaredVars)) {
@@ -266,6 +276,19 @@ export function DeviceStatesSubTab() {
                               Possible values: {meta.values.join(", ")}
                             </div>
                           )}
+
+                          {/* The same Monitor tag as the Devices view, offered
+                              where somebody is already looking at the key.
+                              Same one project list behind both. */}
+                          <div style={{ marginBottom: "var(--space-md)" }}>
+                            <MonitorControl
+                              stateKey={entry.key}
+                              declared={meta ?? undefined}
+                              monitors={monitors}
+                              liveValue={entry.value}
+                              onChange={handleMonitors}
+                            />
+                          </div>
 
                           <h4 style={{ ...sectionTitle, fontSize: 11, marginBottom: "var(--space-sm)" }}>
                             Where Used ({selectedPropUsages.length})

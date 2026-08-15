@@ -13,6 +13,10 @@ import { copyToClipboard } from "../components/shared/clipboard";
 import { showError } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { CloudStatus, TlsStatus } from "../api/restClient";
+import type { MonitorConfig } from "../api/types";
+import {
+  ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
+} from "../api/monitorHelpers";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -459,12 +463,74 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
   );
 }
 
+/** One monitored reading.
+ *
+ *  The rules it exists to hold, all from the monitor plan §3:
+ *   - a reading nobody set limits on is drawn NEUTRAL, never green. Green is a
+ *     claim, and a green light on a reading nobody defined as healthy is a lie
+ *     its author did not tell;
+ *   - a key that has never reported draws "—", not 0;
+ *   - a boolean reads as a word.
+ *  The verdict itself comes from monitorHelpers, which is pinned to the
+ *  server's copy — so this row and the alert cannot disagree.
+ */
+function MonitorRow({ monitor, value, first }: {
+  monitor: MonitorConfig;
+  value: unknown;
+  first: boolean;
+}) {
+  const status = monitorStatus(monitor, value);
+  const tone = status === ABNORMAL ? "var(--status-error, #ef4444)"
+    : status === NORMAL ? "var(--accent)"
+    : value === undefined || value === null ? "var(--text-muted)"
+    : "var(--text-primary)";
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "var(--space-sm)",
+        padding: "var(--space-sm) var(--space-md)",
+        borderTop: first ? undefined : "1px solid var(--border-color)",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
+          {monitorLabel(monitor)}
+        </div>
+        <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          {monitor.key}
+        </code>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
+        {status === ABNORMAL && (
+          <AlertTriangle size={13} style={{ color: tone }} />
+        )}
+        <div style={{
+          fontSize: "var(--font-size-sm)",
+          fontWeight: 600,
+          fontFamily: "var(--font-mono)",
+          color: tone,
+          background: "var(--bg-hover)",
+          padding: "2px 8px",
+          borderRadius: "var(--border-radius)",
+        }}>
+          {monitorReading(monitor, value)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardView() {
   const projectName = useProjectStore((s) => s.project?.project?.name);
   const devices = useProjectStore((s) => s.project?.devices);
   const macros = useProjectStore((s) => s.project?.macros);
   const scripts = useProjectStore((s) => s.project?.scripts);
   const variables = useProjectStore((s) => s.project?.variables);
+  const monitors = useProjectStore((s) => s.project?.monitors);
   const isc = useProjectStore((s) => s.project?.isc);
   const liveState = useConnectionStore((s) => s.liveState);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
@@ -541,7 +607,9 @@ export function DashboardView() {
     }))
   );
 
-  const trackedVars = variables.filter(v => v.dashboard);
+  // Whatever the project says matters in this room — variables and device
+  // state alike. One list, the same one the cloud card and the alerts read.
+  const monitored = monitors ?? [];
 
   // Snapshot of recent log entries (non-reactive to avoid rapid re-renders)
   const logEntries = useLogStore.getState().logEntries;
@@ -816,46 +884,19 @@ export function DashboardView() {
           {/* Panel Access */}
           <PanelAccessCard systemStatus={systemStatus} tlsStatus={tlsStatus} roomName={String(projectName ?? "")} />
 
-          {/* Tracked Variables */}
-          {trackedVars.length > 0 && (
+          {/* Monitored readings */}
+          {monitored.length > 0 && (
             <div style={{ marginBottom: "var(--space-xl)" }}>
-              <h3 style={sectionTitle}>Variables</h3>
+              <h3 style={sectionTitle}>Monitored</h3>
               <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
-                {trackedVars.map((v, i) => {
-                  const live = liveState[`var.${v.id}`];
-                  return (
-                    <div
-                      key={v.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "var(--space-sm) var(--space-md)",
-                        borderTop: i > 0 ? "1px solid var(--border-color)" : undefined,
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
-                          {String(v.label || v.id)}
-                        </div>
-                        <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                          {"var." + String(v.id)}
-                        </code>
-                      </div>
-                      <div style={{
-                        fontSize: "var(--font-size-sm)",
-                        fontWeight: 600,
-                        fontFamily: "var(--font-mono)",
-                        color: live !== undefined ? "var(--text-primary)" : "var(--text-muted)",
-                        background: "var(--bg-hover)",
-                        padding: "2px 8px",
-                        borderRadius: "var(--border-radius)",
-                      }}>
-                        {live !== undefined ? String(live) : "—"}
-                      </div>
-                    </div>
-                  );
-                })}
+                {monitored.map((m, i) => (
+                  <MonitorRow
+                    key={m.key}
+                    monitor={m}
+                    value={liveState[m.key]}
+                    first={i === 0}
+                  />
+                ))}
               </div>
             </div>
           )}

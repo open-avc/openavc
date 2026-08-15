@@ -207,7 +207,6 @@ def test_variable_config_backward_compat():
         "type": "boolean",
         "default": False,
         "label": "Room Active",
-        "dashboard": True,
     })
     assert var.source_key is None
     assert var.source_map is None

@@ -194,7 +194,7 @@ Click **Program** in the sidebar. At the bottom, you'll see the **Project Librar
 
 The sidebar has these sections:
 
-- **Dashboard.** System status overview with device grid, active triggers, tracked variables, and panel access URLs.
+- **Dashboard.** System status overview with device grid, active triggers, monitored readings, and panel access URLs.
 - **Program.** Create, save, and manage projects. Import/export. Backups.
 - **Devices.** Connected equipment, driver library, device groups, and network discovery.
 - **State.** Variables, device states, and activity feed.

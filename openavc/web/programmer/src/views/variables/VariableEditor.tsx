@@ -1,9 +1,13 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Plus, Trash2, HardDrive, X, Link, Pencil, LayoutDashboard } from "lucide-react";
+import { Plus, Trash2, HardDrive, X, Link, Pencil } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { Modal } from "../../components/shared/Modal";
 import { VariableKeyPicker } from "../../components/shared/VariableKeyPicker";
+import { MonitorControl } from "../../components/shared/MonitorControl";
+import {
+  dropMonitorsForVariable, renameMonitorKey,
+} from "../../api/monitorHelpers";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { getScriptReferences } from "../../api/restClient";
@@ -86,6 +90,7 @@ export function VariablesSubTab() {
   }, []);
 
   const variables = project?.variables ?? [];
+  const monitors = project?.monitors ?? [];
   const filteredVariables = variables.filter(v =>
     !search || v.id.toLowerCase().includes(search.toLowerCase()) ||
     (v.label && v.label.toLowerCase().includes(search.toLowerCase()))
@@ -134,8 +139,16 @@ export function VariablesSubTab() {
         confirmLabel: `Delete ${unused.length}`,
         onConfirm: () => {
           const ids = new Set(unused.map((v) => v.id));
+          // Monitoring a variable counts as using it (buildUsageMap), so a
+          // monitored one is never in this list. Sweeping anyway keeps the
+          // rule in one shape at every delete door.
+          let keptMonitors = useProjectStore.getState().project?.monitors ?? [];
+          for (const id of ids) keptMonitors = dropMonitorsForVariable(keptMonitors, id);
           updateWithUndo(
-            { variables: currentVars.filter((v) => !ids.has(v.id)) },
+            {
+              variables: currentVars.filter((v) => !ids.has(v.id)),
+              monitors: keptMonitors,
+            },
             `Delete ${unused.length} unused variable(s)`
           );
           if (selectedId && ids.has(selectedId)) setSelectedId(null);
@@ -212,13 +225,21 @@ export function VariablesSubTab() {
         confirmLabel: "Delete",
         onConfirm: () => {
           setPendingConfirm(null);
-          updateWithUndo({ variables: variables.filter((v) => v.id !== id) }, `Delete variable "${id}"`);
+          updateWithUndo(
+            {
+              variables: variables.filter((v) => v.id !== id),
+              // ...and whatever was watching it. A monitor on a key that can
+              // never report again is a tile that reads "—" forever.
+              monitors: dropMonitorsForVariable(monitors, id),
+            },
+            `Delete variable "${id}"`,
+          );
           if (selectedId === id) setSelectedId(null);
           useProjectStore.getState().debouncedSave();
         },
       });
     },
-    [variables, usageMap, selectedId, updateWithUndo]
+    [variables, monitors, usageMap, selectedId, updateWithUndo]
   );
 
   const handleUpdate = useCallback(
@@ -229,6 +250,14 @@ export function VariablesSubTab() {
       useProjectStore.getState().debouncedSave(1500);
     },
     [variables, update]
+  );
+
+  const handleMonitors = useCallback(
+    (next: typeof monitors, description: string) => {
+      updateWithUndo({ monitors: next }, description);
+      useProjectStore.getState().debouncedSave(1500);
+    },
+    [updateWithUndo]
   );
 
   const handleStartRename = useCallback((oldId: string) => {
@@ -346,13 +375,18 @@ export function VariablesSubTab() {
     }));
 
     updateWithUndo(
-      { variables: newVars, macros: newMacros, ui: { ...project.ui, pages: newPages } },
+      {
+        variables: newVars,
+        macros: newMacros,
+        ui: { ...project.ui, pages: newPages },
+        monitors: renameMonitorKey(monitors, oldKey, newKey),
+      },
       `Rename variable "${oldId}" to "${safeNewId}"`
     );
     setSelectedId(safeNewId);
     setRenameTarget(null);
     useProjectStore.getState().debouncedSave();
-  }, [renameTarget, project, variables, updateWithUndo]);
+  }, [renameTarget, project, variables, monitors, updateWithUndo]);
 
   const selectedVar = variables.find((v) => v.id === selectedId);
   const selectedUsages = selectedId ? usageMap.get(selectedId) ?? [] : [];
@@ -723,29 +757,25 @@ export function VariablesSubTab() {
               })()}
             </div>
 
-            {/* Dashboard tracking + Persistence */}
-            <div style={{ display: "flex", gap: "var(--space-md)", marginBottom: "var(--space-xl)", flexWrap: "wrap" }}>
+            {/* Monitor + Persistence */}
+            <div style={{ display: "flex", gap: "var(--space-md)", marginBottom: "var(--space-xl)", flexWrap: "wrap", alignItems: "flex-start" }}>
               <div>
-                <button
-                  onClick={() => handleUpdate(selectedVar.id, { dashboard: !selectedVar.dashboard })}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-sm)",
-                    padding: "var(--space-sm) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: selectedVar.dashboard ? "rgba(138,180,147,0.15)" : "var(--bg-surface)",
-                    border: "1px solid " + (selectedVar.dashboard ? "rgba(138,180,147,0.3)" : "var(--border-color)"),
-                    color: selectedVar.dashboard ? "var(--accent)" : "var(--text-secondary)",
-                    fontSize: "var(--font-size-sm)",
-                    cursor: "pointer",
+                <MonitorControl
+                  stateKey={`var.${selectedVar.id}`}
+                  declared={{
+                    label: selectedVar.label,
+                    type: selectedVar.type,
+                    min: selectedVar.validation?.min ?? null,
+                    max: selectedVar.validation?.max ?? null,
+                    values: selectedVar.validation?.allowed ?? undefined,
                   }}
-                >
-                  <LayoutDashboard size={14} />
-                  {selectedVar.dashboard ? "Shown on Dashboard" : "Show on Dashboard"}
-                </button>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
-                  Tracked variables appear on the Dashboard with their live value.
+                  monitors={monitors}
+                  liveValue={selectedLiveValue}
+                  onChange={handleMonitors}
+                />
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)", maxWidth: 300 }}>
+                  Monitored readings appear on the Dashboard with their live
+                  value, and in the cloud if this system is paired.
                 </div>
               </div>
               <div>

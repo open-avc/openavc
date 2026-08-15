@@ -68,7 +68,7 @@ def _make_project():
             DeviceConfig(id="switcher1", driver="extron_sis", name="HDMI Switch", config={"host": "192.168.1.20"}),
         ],
         variables=[
-            VariableConfig(id="room_mode", type="string", default="normal", label="Room Mode", dashboard=True),
+            VariableConfig(id="room_mode", type="string", default="normal", label="Room Mode"),
             VariableConfig(id="is_occupied", type="boolean", default=False),
         ],
         macros=[
@@ -353,6 +353,10 @@ async def test_add_variable(handler, mock_agent, mock_engine):
     # Variable was added
     assert any(v.id == "volume_level" for v in mock_engine.project.variables)
 
+    # ...and the tool's `dashboard` input now writes the project's monitor
+    # list (project format 0.11.0), which is the one list every surface reads.
+    assert [m.key for m in mock_engine.project.monitors] == ["var.volume_level"]
+
     # Applied through the seam — the variables reconcile seeds the default
     # into state (the old manual state.set is gone)
     mock_engine.apply_project_edit.assert_awaited_once()
@@ -389,9 +393,12 @@ async def test_update_variable(handler, mock_agent, mock_engine):
     # Check that the variable was updated in-place
     var = next(v for v in mock_engine.project.variables if v.id == "room_mode")
     assert var.label == "Current Mode"
-    assert var.dashboard is True
     # Type should remain unchanged
     assert var.type == "string"
+    # `dashboard: true` puts it on the project's monitor list, carrying the
+    # label and type the variable already declared.
+    monitor = next(m for m in mock_engine.project.monitors if m.key == "var.room_mode")
+    assert monitor.type == "string"
 
 
 @pytest.mark.asyncio

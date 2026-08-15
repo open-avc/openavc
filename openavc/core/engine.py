@@ -876,6 +876,19 @@ class Engine:
             self._bind_variable_sources()
             self._register_variable_validation()
 
+    def monitors(self) -> list[dict]:
+        """The readings this project says matter, as plain dicts.
+
+        One list, read by everything that needs it: the alert monitor compiles
+        the ones carrying limits into rules, and the cloud manifest carries the
+        whole set so the health card can draw a tile. Handed out as dicts rather
+        than models so a consumer never holds a live reference into the project
+        that is about to be replaced.
+        """
+        if not self.project:
+            return []
+        return [m.model_dump(mode="json") for m in self.project.monitors]
+
     def resolved_device_config(self, device) -> dict:
         """The config this device actually dials — driver defaults, project
         config, and the connection table layered, with bridge/USB bindings
@@ -1653,7 +1666,10 @@ class Engine:
             )
             self.cloud_agent.set_ai_tool_handler(ai_tool_handler)
 
-            alert_monitor = AlertMonitor(self.cloud_agent, self.state, self.events)
+            alert_monitor = AlertMonitor(
+                self.cloud_agent, self.state, self.events,
+                monitors_provider=self.monitors,
+            )
             self.cloud_agent.set_alert_monitor(alert_monitor)
 
             tunnel_handler = TunnelHandler(self.cloud_agent)

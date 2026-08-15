@@ -7,7 +7,7 @@ A tour of the OpenAVC Programmer IDE: what each section does and how to approach
 ## Overview
 
 The Programmer IDE is a web-based design environment with these sidebar sections:
-- **Dashboard**: System status at a glance, panel access URLs, tracked variables
+- **Dashboard**: System status at a glance, panel access URLs, monitored readings
 - **Program**: Create and manage projects, backups, import/export
 - **Devices**: Add equipment, test commands, browse drivers, device groups, and network discovery
 - **State**: Variables, device states, and activity feed
@@ -57,7 +57,7 @@ The Dashboard is the landing page of the Programmer IDE, giving you a system sta
 - **Cloud status**: shows whether the system is paired to OpenAVC Cloud and the connection state
 - **Uptime**: how long the server has been running since last restart
 - **Panel Access**: shows the URLs you can use to open the Panel UI on tablets, phones, or other devices on the network (e.g., `http://192.168.1.100:8080/panel`). If the server is bound to localhost only, it tells you how to enable network access in Settings.
-- **Tracked variables**: any variable with "Show on Dashboard" enabled displays its live value here, useful for monitoring room state without opening the Variables view
+- **Monitored readings**: anything you tagged with **Monitor** shows its live value here — a variable, or a reading off a device such as lamp hours, a DSP temperature, or a fault flag. Where you set limits, a reading outside them is flagged; where you did not, the value is shown without any judgement. See [Variables and State](variables-and-state.md#monitor-a-reading)
 - **ISC status**: if Inter-System Communication is enabled, shows connected peer instances
 - **Recent activity**: a feed of recent system log entries so you can spot errors or confirm actions without switching to the Log view
 - **Update notification**: when a new version of OpenAVC is available, a card appears with a link to the Updates view
