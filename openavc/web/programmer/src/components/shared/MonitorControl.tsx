@@ -23,7 +23,7 @@
 import { useState } from "react";
 import { Activity, ChevronDown, ChevronRight } from "lucide-react";
 import type { MonitorConfig, MonitorStateEntry } from "../../api/types";
-import { monitorStatus, NORMAL, ABNORMAL } from "../../api/monitorHelpers";
+import { monitorStatus, hasLimits, normalValues, ABNORMAL } from "../../api/monitorHelpers";
 
 /** What the driver or the variable already says about this reading. Everything
  *  here is pre-filled and stays editable — a driver's 0–10000 lamp-hour range
@@ -62,20 +62,26 @@ function isNumeric(type: string | undefined): boolean {
   return NUMERIC_TYPES.has(type ?? "");
 }
 
-/** The values a "normal is..." picker can offer: what the author already named,
- *  then what the driver declares, and true/false for a bare boolean. */
+/** The values a "normal is..." picker can offer: what the driver declares, in
+ *  the order it declares them, then anything the author named that the driver
+ *  did not, and true/false for a bare boolean.
+ *
+ *  The declared order leads on purpose. Listing the author's entries first
+ *  meant a value JUMPED TO THE TOP the moment you typed a word for it, so the
+ *  rows reordered under the cursor mid-edit and the next tick could land on a
+ *  different value than the one being looked at. */
 function candidateValues(monitor: MonitorConfig, declared?: DeclaredReading): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   const add = (v: string) => {
     if (!seen.has(v)) { seen.add(v); out.push(v); }
   };
-  for (const v of Object.keys(monitor.states ?? {})) add(v);
   for (const v of declared?.values ?? []) add(v);
   if (monitor.type === "boolean" || declared?.type === "boolean") {
     add("true");
     add("false");
   }
+  for (const v of Object.keys(monitor.states ?? {})) add(v);
   return out;
 }
 
@@ -201,15 +207,35 @@ export function MonitorLimitsPanel({
   );
 }
 
-/** What the collapsed row says about the limits. Never a colour word for a
- *  monitor nobody set limits on — that would be claiming a judgement its
- *  author did not make. */
+/** What the collapsed row says: the limit that was declared, so the face of the
+ *  control states the declaration and the form behind it is where you change
+ *  it. Never a colour word for a monitor nobody set limits on — that would be
+ *  claiming a judgement its author did not make.
+ *
+ *  It used to say "Normal" once limits existed, which is the live verdict
+ *  rather than the setting, and sat one word away from a control called "Set
+ *  what normal looks like" — so the same slot read as a noun on one row and a
+ *  verdict on the next. The verdict is still here, but only in the case worth
+ *  interrupting for: the reading is outside normal right now. */
 function statusWord(monitor: MonitorConfig, status: string | null): string {
-  if (status === NORMAL) return "Normal";
-  if (status === ABNORMAL) return "Outside normal";
-  const limits = monitor.normal_min != null || monitor.normal_max != null
-    || Object.values(monitor.states ?? {}).some((s) => s?.normal === true);
-  return limits ? "Limits set" : "Set what normal looks like";
+  if (!hasLimits(monitor)) return "Set what normal looks like";
+  const summary = limitSummary(monitor);
+  return status === ABNORMAL ? `${summary} · outside now` : summary;
+}
+
+/** "Normal 0–80 %" / "Normal up to 2000 hours" / "Normal: Healthy, Standby". */
+function limitSummary(monitor: MonitorConfig): string {
+  const words = normalValues(monitor).map((v) => wordFor(monitor, v));
+  if (words.length > 0) {
+    const shown = words.slice(0, 2).join(", ");
+    return `Normal: ${shown}${words.length > 2 ? ` +${words.length - 2}` : ""}`;
+  }
+  const unit = monitor.unit ? ` ${monitor.unit}` : "";
+  const low = monitor.normal_min;
+  const high = monitor.normal_max;
+  if (low != null && high != null) return `Normal ${low}–${high}${unit}`;
+  if (high != null) return `Normal up to ${high}${unit}`;
+  return `Normal from ${low}${unit}`;
 }
 
 function MonitorLimits({

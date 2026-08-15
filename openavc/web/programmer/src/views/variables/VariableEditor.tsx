@@ -37,6 +37,30 @@ function coerceToBool(value: unknown): boolean {
   return false;
 }
 
+/**
+ * The type family this editor's three choices cover.
+ *
+ * A variable's `type` is free text in the project format, and the starter
+ * templates ship `integer` — which is a number, but is not the literal string
+ * this editor used to compare against. So every numeric branch fell through:
+ * `var.volume` drew as a String in the picker, its Default Value lost its
+ * number input, and its Validation Rules said *"Boolean variables don't need
+ * validation rules"* under a badge reading INTEGER. Nothing was corrupted, but
+ * the editor was describing the variable wrongly, and picking any option in
+ * that dropdown would then have made the description true.
+ */
+const NUMERIC_VAR_TYPES = new Set(["number", "integer", "float"]);
+
+function isNumericVar(type: string | undefined): boolean {
+  return NUMERIC_VAR_TYPES.has(type ?? "");
+}
+
+/** Which of the three choices represents this variable's declared type. */
+function typeChoice(type: string | undefined): string {
+  if (isNumericVar(type)) return "number";
+  return type === "boolean" ? "boolean" : "string";
+}
+
 // ==========================================================================
 // Variables Actions (header button)
 // ==========================================================================
@@ -606,7 +630,7 @@ export function VariablesSubTab() {
                 <label style={detailLabel}>Type</label>
                 <select
                   style={detailInput}
-                  value={selectedVar.type}
+                  value={typeChoice(selectedVar.type)}
                   onChange={(e) => {
                     const newType = e.target.value;
                     const patch: Partial<VariableConfig> = { type: newType };
@@ -635,14 +659,14 @@ export function VariablesSubTab() {
                 ) : (
                   <input
                     style={detailInput}
-                    type={selectedVar.type === "number" ? "number" : "text"}
+                    type={isNumericVar(selectedVar.type) ? "number" : "text"}
                     value={selectedVar.default != null ? String(selectedVar.default) : ""}
                     onChange={(e) => {
                       const v = e.target.value;
-                      if (selectedVar.type === "number") handleUpdate(selectedVar.id, { default: v === "" ? 0 : Number(v) });
+                      if (isNumericVar(selectedVar.type)) handleUpdate(selectedVar.id, { default: v === "" ? 0 : Number(v) });
                       else handleUpdate(selectedVar.id, { default: v });
                     }}
-                    placeholder={selectedVar.type === "number" ? "0" : ""}
+                    placeholder={isNumericVar(selectedVar.type) ? "0" : ""}
                   />
                 )}
               </div>
@@ -659,7 +683,7 @@ export function VariablesSubTab() {
                         if (val === null) return;
                         let parsed: unknown = val;
                         if (selectedVar.type === "boolean") parsed = val === "true";
-                        else if (selectedVar.type === "number") parsed = Number(val) || 0;
+                        else if (isNumericVar(selectedVar.type)) parsed = Number(val) || 0;
                         setStateValue(`var.${selectedVar.id}`, parsed).catch(() => showError("Failed to set value"));
                       }}
                       style={{ ...iconBtn, fontSize: 11, padding: "1px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)" }}
@@ -686,7 +710,7 @@ export function VariablesSubTab() {
             {/* Validation rules (10.3) */}
             <div style={{ maxWidth: 500, marginBottom: "var(--space-xl)" }}>
               <label style={detailLabel}>Validation Rules</label>
-              {selectedVar.type === "number" ? (
+              {isNumericVar(selectedVar.type) ? (
                 <div style={{ display: "flex", gap: "var(--space-md)", alignItems: "center" }}>
                   <div style={{ flex: 1 }}>
                     <label style={{ ...miniLabel, marginBottom: 2 }}>Min</label>
@@ -746,7 +770,7 @@ export function VariablesSubTab() {
               {selectedLiveValue !== undefined && (() => {
                 const v = selectedVar.validation;
                 if (!v) return null;
-                if (selectedVar.type === "number" && typeof selectedLiveValue === "number") {
+                if (isNumericVar(selectedVar.type) && typeof selectedLiveValue === "number") {
                   if (v.min != null && selectedLiveValue < v.min) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value {selectedLiveValue} is below minimum ({v.min})</div>;
                   if (v.max != null && selectedLiveValue > v.max) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value {selectedLiveValue} is above maximum ({v.max})</div>;
                 }
