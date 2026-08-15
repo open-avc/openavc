@@ -187,6 +187,45 @@ def test_an_ordinary_property_called_parent_is_not_an_escape():
     assert review_file("room_map/app.js", source, ui_files=None) == []
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "const parent = document.getElementById('root');\nparent.appendChild(el);",
+        "let parent;\nparent.replaceChildren();",
+        "var parent = host;\nparent.classList.add('on');",
+        "const {parent, label} = opts;\nparent.append(label);",
+        "const [parent] = boxes;\nparent.append(el);",
+        "function chip(parent, label) { parent.appendChild(tag(label)); }",
+        "const chip = (parent, label) => { parent.textContent = label; };",
+        "boxes.forEach(parent => parent.classList.add('fault'));",
+        "try { draw() } catch (parent) { parent.report() }",
+    ],
+)
+def test_a_control_that_declares_its_own_parent_is_not_escaping(source):
+    """The false positive that cost the first real AI-authored control a write.
+
+    ``parent`` is an ordinary name for the box you are about to append to, and
+    a control that binds it is reading its own variable, not the panel's window.
+    The pattern cannot demand ``window.`` to tell them apart, because the one
+    documented way out of the frame is bare ``parent.postMessage`` -- so a local
+    binding anywhere in the file is what silences the bare form.
+    """
+    assert review_file("room_map/app.js", source, ui_files=None) == []
+
+
+def test_declaring_a_parent_does_not_excuse_reaching_for_the_real_one():
+    """The half that keeps the check: ``window.parent`` names the global outright.
+
+    A control is free to have its own ``parent`` and still try to read the
+    panel's session out of the window above it. That still fires.
+    """
+    source = "function chip(parent) { parent.append(el); }\nconst u = window.parent.location.href;"
+    findings = review_file("room_map/app.js", source, ui_files=None)
+
+    assert _kinds(findings) == {"frame_escape"}
+    assert "window.parent.location" in findings[0].message
+
+
 # --- The whole control -----------------------------------------------------
 
 

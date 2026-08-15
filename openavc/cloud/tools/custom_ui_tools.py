@@ -67,6 +67,16 @@ _WRITABLE_EXTENSIONS = frozenset({
 #: its bytes -- there is no reason to spend a context window on an image.
 _READABLE_EXTENSIONS = _WRITABLE_EXTENSIONS
 
+#: How much of a text file a read hands back. The folder accepts 5 MB per file
+#: (``core/custom_ui.py``), which is right for what may be *stored* -- a control
+#: may legitimately carry a font or an image that big -- and wrong for what may
+#: be *returned*, because this reply crosses to the cloud and lands in a model's
+#: context whole. A control is a widget: the first real one written was 18 KB,
+#: so nothing legitimate reaches this. What does reach it is a bundled library
+#: or generated output, which is exactly what should not be read a byte at a
+#: time. The reply says how much there was, so the caller is never guessing.
+_MAX_READ_BYTES = 64 * 1024
+
 #: Said once per reply that carries warnings, and the second sentence is the
 #: whole point: a static review can say what a control will get wrong here, and
 #: cannot say whether it works. Nothing on this path executes the markup -- the
@@ -255,6 +265,21 @@ class CustomUIToolsMixin:
             content = target.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             return {"error": f"'{rel}' could not be read as text ({exc.__class__.__name__})."}
+        encoded = content.encode("utf-8")
+        if len(encoded) > _MAX_READ_BYTES:
+            # Decoding a byte slice can land mid-character; dropping the partial
+            # one is right here, since this is the tail of a truncated file.
+            return {
+                "path": rel,
+                "size": size,
+                "content": encoded[:_MAX_READ_BYTES].decode("utf-8", errors="ignore"),
+                "truncated": True,
+                "note": f"'{rel}' is {size} bytes and this is the first "
+                        f"{_MAX_READ_BYTES // 1024} KB of it. The rest cannot be read "
+                        f"here. A control is a widget, so a file this size is usually a "
+                        f"bundled library or generated output -- write the control's own "
+                        f"markup as its own file rather than editing this one blind.",
+            }
         return {"path": rel, "size": size, "content": content}
 
     async def _get_project_stylesheet(self, input: dict) -> Any:

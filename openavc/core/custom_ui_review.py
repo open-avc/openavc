@@ -227,6 +227,35 @@ _FRAME_ESCAPE_RE = re.compile(
     r"|\bdocument\s*\.\s*referrer\b"
 )
 
+#: The same trap ``top`` was spared, one name over: a control that declares its
+#: own ``parent`` shadows the global, and every read of it after that is local.
+#: The pattern cannot require ``window.`` -- the documented bridge call is bare
+#: ``parent.postMessage`` -- so the shadow has to be looked for instead. Found
+#: on the first real AI-authored control (plan 11.11, T19), where a chip helper
+#: took a ``parent`` element and cost the model a whole extra write.
+#:
+#: A declaration anywhere in the file silences the bare form for the whole file.
+#: That is the deliberate half: there is no scope here to be more precise with,
+#: and a file that has a local ``parent`` is a file whose bare reads cannot be
+#: read as escapes without one. ``window.parent`` and ``window.top`` name the
+#: global outright and go on firing either way, which is what keeps the check.
+_PARENT_SHADOWED_RE = re.compile(
+    r"""
+      \b(?:const|let|var)\s+parent\b                    # const parent = ...
+    | \b(?:const|let|var)\s+[\{\[][^;=]*?\bparent\b     # const {parent} = ...
+    | \bfunction\b[^(){}]*\(\s*[^()]*?\bparent\b        # function draw(parent)
+    | \(\s*[^()]*?\bparent\b[^()]*?\)\s*=>              # (el, parent) => ...
+    | (?<![.\w$])parent\s*=>                            # parent => ...
+    | \bcatch\s*\(\s*parent\b                           # catch (parent)
+    """,
+    re.VERBOSE,
+)
+
+
+def _shadows_parent(text: str) -> bool:
+    """Does this file bind the name ``parent`` itself?"""
+    return _PARENT_SHADOWED_RE.search(text) is not None
+
 
 def _sandbox_findings(path: str, text: str) -> list[Finding]:
     findings: list[Finding] = []
@@ -245,8 +274,11 @@ def _sandbox_findings(path: str, text: str) -> list[Finding]:
             f"JavaScript variable in the page.",
         ))
     reached: set[str] = set()
+    shadowed = _shadows_parent(text)
     for match in _FRAME_ESCAPE_RE.finditer(text):
         what = match.group(0).replace(" ", "")
+        if shadowed and what.startswith("parent."):
+            continue
         if what in reached:
             continue
         reached.add(what)

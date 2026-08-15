@@ -214,6 +214,38 @@ async def test_reading_an_image_answers_with_its_size_and_never_its_bytes(
 
 
 @pytest.mark.asyncio
+async def test_a_file_too_big_to_hand_back_comes_back_capped_and_says_so(
+    handler, mock_engine, mock_agent, project_dir,
+):
+    """The folder takes 5 MB per file; this reply lands in a context window.
+
+    A control is a widget -- nothing legitimate gets near this. What does is a
+    bundled library or generated output, and reading one of those whole through
+    the cloud floods the conversation that was supposed to fix it.
+    """
+    body = "<!-- " + "x" * (200 * 1024) + " -->"
+    (project_dir / "ui" / "room_map" / "vendor.js").write_text(body, encoding="utf-8")
+    result = _result(await _run(
+        handler, mock_engine, mock_agent, "read_ui_file", {"path": "room_map/vendor.js"},
+    ))
+
+    assert result["truncated"] is True
+    assert len(result["content"].encode("utf-8")) == 64 * 1024
+    assert result["size"] == len(body)          # the real size, not what came back
+    assert str(len(body)) in result["note"]
+    assert "cannot be read here" in result["note"]
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_fits_is_not_marked_truncated(handler, mock_engine, mock_agent):
+    """The cap is a backstop, not a mode -- an ordinary control is untouched."""
+    result = _result(await _run(handler, mock_engine, mock_agent, "read_ui_file", {"path": ENTRY}))
+
+    assert "truncated" not in result
+    assert "note" not in result
+
+
+@pytest.mark.asyncio
 async def test_reading_a_file_that_is_not_there_lists_what_is(
     handler, mock_engine, mock_agent,
 ):
