@@ -85,6 +85,8 @@ A reading with a handful of possible values can carry a word for each one, so a 
 
 A monitor with limits raises an alert through OpenAVC Cloud, using whatever notification routes you have already set up. The limit lives in the project, so it travels with the room and works before the system is ever paired. Fleet-wide rules ("tell me when any system's disk goes above 90%") still belong in the cloud portal's Alert Rules page, which is a different job.
 
+That page lists what each room's project monitors under **Set in the project**, so an alert from a limit you set here can be traced back to it. They are shown there, not edited there: the project owns them, and the next time the project loads it would overwrite anything the portal had changed.
+
 ## `$` references
 
 A `$`-prefixed value is a live reference that resolves to the current value when it runs, instead of a fixed value you type in:
