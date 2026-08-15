@@ -23,7 +23,9 @@ from openavc.core.monitors import (
     compile_alert_rules, monitor_reading, monitor_status, monitor_word,
 )
 
-CORPUS_PATH = Path(__file__).parent / "data" / "monitor_parity_cases.json"
+#: In ``fixtures/``, not ``data/``: .gitignore carries a bare ``data/`` rule, so
+#: a corpus under tests/data/ is silently untracked -- green here, ENOENT in CI.
+CORPUS_PATH = Path(__file__).parent / "fixtures" / "monitor_parity_cases.json"
 CASES = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))["cases"]
 
 

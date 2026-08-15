@@ -36,7 +36,7 @@ type Case = {
 // is not a file URL under jsdom. vitest runs with its config's directory as the
 // cwd, which is openavc/web/programmer.
 const corpusPath = resolve(
-  process.cwd(), "../../../tests/data/monitor_parity_cases.json",
+  process.cwd(), "../../../tests/fixtures/monitor_parity_cases.json",
 );
 const cases: Case[] = JSON.parse(readFileSync(corpusPath, "utf-8")).cases;
 

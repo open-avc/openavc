@@ -12,7 +12,7 @@ So the judgement lives here, once, as a pure function of (monitor, value), and
 everything that needs it asks. The Programmer IDE's mirror is
 ``monitorHelpers.ts``, pinned to this module case-for-case by
 ``tests/test_monitor_parity.py`` and its vitest twin over the shared corpus in
-``tests/data/monitor_parity_cases.json`` -- the same arrangement that holds
+``tests/fixtures/monitor_parity_cases.json`` -- the same arrangement that holds
 ``page_review`` and ``reviewPage`` together, and for the same reason: a person
 reading a tile and an alert arriving on a phone must not disagree.
 

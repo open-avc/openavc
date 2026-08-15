@@ -1,0 +1,272 @@
+{
+  "_comment": [
+    "THE shared corpus for the monitor rule. Read by tests/test_monitor_parity.py",
+    "(over openavc/core/monitors.py) and by",
+    "openavc/web/programmer/src/api/monitorHelpers.test.ts (over monitorHelpers.ts).",
+    "Both push every case through their side and compare against the same",
+    "expectation, so a check or a wording that changes on one side lands on the",
+    "other in the same commit or the suite goes red. Same arrangement as",
+    "test_ui_review_parity.py, and for the same reason: the tile a person is",
+    "looking at and the alert arriving on their phone must not disagree.",
+    "",
+    "It lives in tests/fixtures/ rather than tests/data/ because .gitignore has a",
+    "bare `data/` rule, so a corpus under tests/data/ is silently untracked: it",
+    "passes locally, where the file is on disk, and both suites fail in CI with",
+    "ENOENT. That happened once; do not move it back.",
+    "",
+    "`status` is one of unset | no_value | normal | abnormal.",
+    "`word` is the word a tile shows, or null when the value speaks for itself."
+  ],
+  "cases": [
+    {
+      "name": "no limits declared is never green",
+      "monitor": { "key": "device.proj.lamp_hours", "label": "Lamp Hours", "unit": "hours", "type": "number" },
+      "value": 412,
+      "status": "unset",
+      "word": null,
+      "reading": "412 hours"
+    },
+    {
+      "name": "no limits and no reading",
+      "monitor": { "key": "device.proj.lamp_hours", "type": "number" },
+      "value": null,
+      "status": "unset",
+      "word": null,
+      "reading": "—"
+    },
+    {
+      "name": "a key that has never reported draws no value, not zero",
+      "monitor": { "key": "device.proj.lamp_hours", "type": "number", "normal_max": 2000 },
+      "value": null,
+      "status": "no_value",
+      "word": null,
+      "reading": "—"
+    },
+    {
+      "name": "inside a two-sided range",
+      "monitor": { "key": "device.dsp.temp_c", "unit": "°C", "type": "number", "normal_min": 10, "normal_max": 45 },
+      "value": 31.5,
+      "status": "normal",
+      "word": null,
+      "reading": "31.5 °C"
+    },
+    {
+      "name": "below the minimum",
+      "monitor": { "key": "device.dsp.temp_c", "type": "number", "normal_min": 10, "normal_max": 45 },
+      "value": 4,
+      "status": "abnormal",
+      "word": null,
+      "reading": "4"
+    },
+    {
+      "name": "above the maximum",
+      "monitor": { "key": "device.dsp.temp_c", "type": "number", "normal_min": 10, "normal_max": 45 },
+      "value": 61,
+      "status": "abnormal",
+      "word": null,
+      "reading": "61"
+    },
+    {
+      "name": "exactly on the boundary is inside it",
+      "monitor": { "key": "device.dsp.temp_c", "type": "number", "normal_min": 10, "normal_max": 45 },
+      "value": 45,
+      "status": "normal",
+      "word": null,
+      "reading": "45"
+    },
+    {
+      "name": "a one-sided ceiling",
+      "monitor": { "key": "device.proj.lamp_hours", "unit": "hours", "type": "number", "normal_max": 2000 },
+      "value": 2400,
+      "status": "abnormal",
+      "word": null,
+      "reading": "2400 hours"
+    },
+    {
+      "name": "a number arriving as a string still compares",
+      "monitor": { "key": "device.amp.temp", "type": "number", "normal_max": 50 },
+      "value": "72.5",
+      "status": "abnormal",
+      "word": null,
+      "reading": "72.5"
+    },
+    {
+      "name": "a range cannot judge a word, so it claims nothing",
+      "monitor": { "key": "device.amp.temp", "type": "number", "normal_max": 50 },
+      "value": "warming up",
+      "status": "unset",
+      "word": null,
+      "reading": "warming up"
+    },
+    {
+      "name": "a range cannot judge a boolean either (float(True) is 1.0)",
+      "monitor": { "key": "device.amp.temp", "type": "number", "normal_min": 5 },
+      "value": true,
+      "status": "unset",
+      "word": "Yes",
+      "reading": "Yes"
+    },
+    {
+      "name": "a boolean reads as a word, never true/false",
+      "monitor": { "key": "var.occupied", "type": "boolean" },
+      "value": true,
+      "status": "unset",
+      "word": "Yes",
+      "reading": "Yes"
+    },
+    {
+      "name": "the author's words win over Yes/No",
+      "monitor": {
+        "key": "var.occupied",
+        "type": "boolean",
+        "states": { "true": { "label": "Occupied", "normal": true }, "false": { "label": "Vacant" } }
+      },
+      "value": true,
+      "status": "normal",
+      "word": "Occupied",
+      "reading": "Occupied"
+    },
+    {
+      "name": "the value the author did not call normal is abnormal",
+      "monitor": {
+        "key": "var.occupied",
+        "type": "boolean",
+        "states": { "true": { "label": "Occupied", "normal": true }, "false": { "label": "Vacant" } }
+      },
+      "value": false,
+      "status": "abnormal",
+      "word": "Vacant",
+      "reading": "Vacant"
+    },
+    {
+      "name": "a live boolean matches a states map keyed by JSON strings",
+      "monitor": {
+        "key": "device.amp.fault",
+        "type": "boolean",
+        "states": { "false": { "label": "OK", "normal": true }, "true": { "label": "Faulted" } }
+      },
+      "value": true,
+      "status": "abnormal",
+      "word": "Faulted",
+      "reading": "Faulted"
+    },
+    {
+      "name": "naming values is vocabulary, not a limit",
+      "monitor": {
+        "key": "device.sw.input",
+        "type": "enum",
+        "states": { "hdmi1": { "label": "Laptop" }, "hdmi2": { "label": "Room PC" } }
+      },
+      "value": "hdmi2",
+      "status": "unset",
+      "word": "Room PC",
+      "reading": "Room PC"
+    },
+    {
+      "name": "an enum inside its normal set",
+      "monitor": {
+        "key": "device.sw.input",
+        "type": "enum",
+        "states": {
+          "hdmi1": { "label": "Laptop", "normal": true },
+          "hdmi2": { "label": "Room PC", "normal": true },
+          "none": { "label": "No Signal" }
+        }
+      },
+      "value": "hdmi1",
+      "status": "normal",
+      "word": "Laptop",
+      "reading": "Laptop"
+    },
+    {
+      "name": "an enum outside it",
+      "monitor": {
+        "key": "device.sw.input",
+        "type": "enum",
+        "states": {
+          "hdmi1": { "label": "Laptop", "normal": true },
+          "hdmi2": { "label": "Room PC", "normal": true },
+          "none": { "label": "No Signal" }
+        }
+      },
+      "value": "none",
+      "status": "abnormal",
+      "word": "No Signal",
+      "reading": "No Signal"
+    },
+    {
+      "name": "a value nobody named is still judged, and shows itself",
+      "monitor": {
+        "key": "device.sw.input",
+        "type": "enum",
+        "states": { "hdmi1": { "label": "Laptop", "normal": true } }
+      },
+      "value": "hdmi3",
+      "status": "abnormal",
+      "word": null,
+      "reading": "hdmi3"
+    },
+    {
+      "name": "enum comparison stays case-sensitive (Mic and mic are different inputs)",
+      "monitor": {
+        "key": "device.mx.out.1.input",
+        "type": "enum",
+        "states": { "Mic": { "normal": true } }
+      },
+      "value": "mic",
+      "status": "abnormal",
+      "word": null,
+      "reading": "mic"
+    },
+    {
+      "name": "a states map with limits and no reading",
+      "monitor": {
+        "key": "device.amp.fault",
+        "type": "boolean",
+        "states": { "false": { "label": "OK", "normal": true } }
+      },
+      "value": null,
+      "status": "no_value",
+      "word": null,
+      "reading": "—"
+    },
+    {
+      "name": "values win over a range when both are declared",
+      "monitor": {
+        "key": "device.proj.power",
+        "type": "enum",
+        "normal_min": 0,
+        "normal_max": 1,
+        "states": { "on": { "label": "On", "normal": true } }
+      },
+      "value": "standby",
+      "status": "abnormal",
+      "word": null,
+      "reading": "standby"
+    },
+    {
+      "name": "a unit rides beside the number, not inside it",
+      "monitor": { "key": "device.dsp.gain", "unit": "dB", "type": "number", "normal_min": -20, "normal_max": 0 },
+      "value": -6,
+      "status": "normal",
+      "word": null,
+      "reading": "-6 dB"
+    },
+    {
+      "name": "zero is a reading, not an absence",
+      "monitor": { "key": "device.proj.lamp_hours", "unit": "hours", "type": "number", "normal_max": 2000 },
+      "value": 0,
+      "status": "normal",
+      "word": null,
+      "reading": "0 hours"
+    },
+    {
+      "name": "an empty string is not a number",
+      "monitor": { "key": "device.amp.temp", "type": "number", "normal_max": 50 },
+      "value": "",
+      "status": "unset",
+      "word": null,
+      "reading": ""
+    }
+  ]
+}

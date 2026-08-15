@@ -6,7 +6,7 @@
  * phone; this file decides what the Dashboard tile beside them says. A tile
  * reading calm while an alert is firing over it is worse than either alone, so
  * `tests/test_monitor_parity.py` and `monitorHelpers.test.ts` push the shared
- * corpus in `tests/data/monitor_parity_cases.json` through both sides and
+ * corpus in `tests/fixtures/monitor_parity_cases.json` through both sides and
  * compare answer for answer. Change a rule here and it lands there in the same
  * commit, or the suite goes red.
  *
