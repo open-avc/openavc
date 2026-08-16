@@ -811,3 +811,55 @@ class TestFindDriverFilesById:
         )
         deps = [{"driver_id": "acme_widget", "source": "builtin"}]
         assert _find_driver_files(deps) == []
+
+
+class TestABadBodyIsARequestError:
+    """A missing field is the caller's mistake, and the reply should say so.
+
+    These four routes read the raw JSON and built their model by hand, so
+    pydantic's ValidationError escaped as a 500 Internal Server Error naming
+    nothing. `POST /api/project/open-from-library` with the wrong key was ten
+    minutes of reading a traceback for what is one line of feedback: which
+    field is missing.
+    """
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from openavc.api.routes import project as project_routes
+
+        app = FastAPI()
+        app.include_router(project_routes.router, prefix="/api")
+        return TestClient(app)
+
+    @pytest.mark.parametrize(
+        "method,path,body,missing",
+        [
+            ("post", "/api/library", {}, "id"),
+            ("post", "/api/project/open-from-library", {"project_id": "x"}, "library_id"),
+            ("post", "/api/library/lobby/duplicate", {"new_id": "x"}, "new_name"),
+        ],
+    )
+    def test_a_missing_field_is_422_and_is_named(self, method, path, body, missing):
+        response = getattr(self._client(), method)(path, json=body)
+        assert response.status_code == 422, response.text
+        assert missing in response.text
+
+    def test_a_body_that_is_not_an_object_is_also_422(self):
+        """`Model(**body)` raised TypeError on this one, not ValidationError,
+        so it stayed a 500 even after the validation half was fixed."""
+        response = self._client().post("/api/project/open-from-library", json=["nope"])
+        assert response.status_code == 422, response.text
+
+    def test_a_good_body_still_reaches_the_handler(self, tmp_lib):
+        """The guard above is worthless if the routes now reject everything.
+
+        This one gets past validation and fails on the library lookup, which
+        is the handler's own 404 rather than the request's.
+        """
+        response = self._client().post(
+            "/api/library/nosuchproject/duplicate",
+            json={"new_id": "copy", "new_name": "Copy"},
+        )
+        assert response.status_code == 404, response.text

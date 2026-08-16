@@ -9,6 +9,12 @@ from pydantic import ValidationError
 
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
+from openavc.api.models import (
+    LibraryDuplicateRequest,
+    LibraryOpenRequest,
+    LibrarySaveRequest,
+    LibraryUpdateRequest,
+)
 from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
@@ -324,17 +330,14 @@ async def get_library_project(project_id: str) -> dict[str, Any]:
 
 
 @router.post("/library")
-async def save_to_library(request: Request) -> dict[str, Any]:
+async def save_to_library(data: LibrarySaveRequest) -> dict[str, Any]:
     """Save the current project to the library."""
-    from openavc.api.models import LibrarySaveRequest
     from openavc.core.project_library import save_to_library as _save
 
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
 
-    body = await request.json()
-    data = LibrarySaveRequest(**body)
     scripts_dir = engine.project_path.parent / "scripts"
     assets_dir = engine.project_path.parent / "assets"
     ui_dir = engine.project_path.parent / "ui"
@@ -359,13 +362,11 @@ async def delete_library_project(project_id: str) -> dict[str, Any]:
 
 
 @router.patch("/library/{project_id}")
-async def update_library_project(project_id: str, request: Request) -> dict[str, Any]:
+async def update_library_project(
+    project_id: str, data: LibraryUpdateRequest
+) -> dict[str, Any]:
     """Update a saved project's name and/or description."""
-    from openavc.api.models import LibraryUpdateRequest
     from openavc.core.project_library import update_project_meta
-
-    body = await request.json()
-    data = LibraryUpdateRequest(**body)
 
     try:
         update_project_meta(project_id, data.name, data.description)
@@ -376,13 +377,11 @@ async def update_library_project(project_id: str, request: Request) -> dict[str,
 
 
 @router.post("/library/{project_id}/duplicate")
-async def duplicate_library_project(project_id: str, request: Request) -> dict[str, Any]:
+async def duplicate_library_project(
+    project_id: str, data: LibraryDuplicateRequest
+) -> dict[str, Any]:
     """Duplicate a saved project."""
-    from openavc.api.models import LibraryDuplicateRequest
     from openavc.core.project_library import duplicate_project
-
-    body = await request.json()
-    data = LibraryDuplicateRequest(**body)
 
     try:
         duplicate_project(project_id, data.new_id, data.new_name)
@@ -456,15 +455,12 @@ async def import_library_project(request: Request) -> dict[str, Any]:
 
 
 @router.post("/project/open-from-library")
-async def open_from_library(request: Request) -> dict[str, Any]:
+async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
     """Replace the current project with a saved project from the library."""
-    from openavc.api.models import LibraryOpenRequest
     from openavc.core.project_library import open_from_library as _open, sanitize_id
     from openavc.core.backup_manager import create_backup
 
     engine = _get_engine()
-    body = await request.json()
-    data = LibraryOpenRequest(**body)
 
     project_id = sanitize_id(data.project_id or data.project_name)
     scripts_dir = engine.project_path.parent / "scripts"
