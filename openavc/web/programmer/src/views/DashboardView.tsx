@@ -465,7 +465,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
 
 /** One monitored reading.
  *
- *  The rules it exists to hold, all from the monitor plan §3:
+ *  The rules it exists to hold:
  *   - a reading nobody set limits on is drawn NEUTRAL, never green. Green is a
  *     claim, and a green light on a reading nobody defined as healthy is a lie
  *     its author did not tell;

@@ -9,7 +9,7 @@ POSSIBLE`` path.
 
 Uses invented devices and hint values — no real product, no read of the
 community drivers repo. Validation that a *specific* shipped driver participates
-in matching lives next to that driver in openavc-drivers. See CLAUDE.md.
+in matching lives next to that driver in openavc-drivers.
 """
 
 from __future__ import annotations

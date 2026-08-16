@@ -13,8 +13,7 @@ synthetic payloads:
 There are deliberately no real product names, captured fixtures, or reads of
 the community drivers repo here. Core tests the *feature*; validation that a
 specific driver's probe matches a real captured response lives next to that
-driver in openavc-drivers (``tests/test_discovery_probe_fixtures.py``). See the
-testing rule in CLAUDE.md.
+driver in openavc-drivers (``tests/test_discovery_probe_fixtures.py``).
 """
 
 from __future__ import annotations

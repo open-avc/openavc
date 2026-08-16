@@ -1,8 +1,8 @@
 """The monitor list survives the round trip through the API, as a DECLARED field.
 
-The recurring trap this guards is in CLAUDE.md and in the monitor plan §8.4: a
-project field the runtime reads that no request model declares gets dropped, or
-kept only as an untyped extra. Both look identical from the outside -- the
+The trap this guards is a recurring one: a project field the runtime reads that
+no request model declares gets dropped, or kept only as an untyped extra. Both
+look identical from the outside -- the
 response parses, the save returns 200 -- so a test that only checks the body
 comes back proves nothing. These assert on ``model_fields`` and ``model_extra``
 directly.

@@ -6,7 +6,6 @@ the ``requires:`` platform gate, and that ``build_signal_index``
 isolates fingerprint collisions (drops the colliding rule, keeps the
 rest of the index).
 
-Schema reference: ``OpenAVC-Discovery-Spec.md`` §2 (workspace root).
 """
 
 import pytest

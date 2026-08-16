@@ -4,7 +4,7 @@ A driver's ``discovery.oui`` hint may be written bare (``001122``), dashed,
 dotted, or as a full MAC; all must register the same key an observed MAC
 resolves to, or the vendor label and OUI tier match silently never fire.
 Uses an invented vendor — no real product, no read of the community drivers
-repo. See CLAUDE.md.
+repo.
 """
 
 from __future__ import annotations
