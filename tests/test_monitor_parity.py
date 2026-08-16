@@ -109,6 +109,34 @@ def test_a_value_limit_compiles_to_a_pattern_rule_holding_the_normal_set():
     assert rule["category"] == "system"
 
 
+def test_the_corpus_carries_a_bound_that_is_not_a_number():
+    """...and one that never meets a word where a number belongs proves nothing
+    about it. A bound this rule cannot evaluate raised out of ``float()`` here
+    and quietly drew NORMAL in the IDE, which is two wrong answers to one
+    declaration -- so the corpus has to keep meeting one."""
+    assert any(
+        isinstance(c["monitor"].get("normal_min"), str)
+        or isinstance(c["monitor"].get("normal_max"), str)
+        for c in CASES
+    ), "no non-numeric bound in the corpus"
+
+
+def test_a_bound_that_is_not_a_number_compiles_to_no_rule():
+    """Nothing is claimed, so nothing fires. A threshold rule carrying "warm"
+    as its value would arm on every reading and go off on none."""
+    assert compile_alert_rules([
+        {"key": "device.amp.temp", "normal_max": "warm"},
+    ]) == []
+
+
+def test_the_good_half_of_a_range_still_compiles():
+    rules = compile_alert_rules([
+        {"key": "device.amp.temp", "normal_min": 10, "normal_max": "warm"},
+    ])
+    assert [r["id"] for r in rules] == ["monitor.device.amp.temp.below"]
+    assert rules[0]["condition"]["value"] == 10.0
+
+
 def test_a_compiled_rule_id_carries_no_colon():
     """The alert monitor's bookkeeping key is ``rule:<id>:<state key>`` and it
     splits on the colon, so a rule id containing one silently resolves to the

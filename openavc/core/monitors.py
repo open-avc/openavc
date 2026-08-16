@@ -91,6 +91,31 @@ def as_number(value: Any) -> float | None:
     return None
 
 
+def normal_bounds(monitor: dict[str, Any]) -> tuple[float | None, float | None]:
+    """The declared range, as the two numbers this rule can actually compare.
+
+    **A bound that is not a number is not a limit.** ``normal_max: "warm"``
+    states nothing this system can evaluate, so nothing is claimed about the
+    reading and it stays informational -- the same answer ``monitor_status``
+    already gives to the mirror-image case one function down, where a range is
+    declared and the *reading* turns out not to be a number. Judging one and
+    raising on the other would have been two rules for one situation.
+
+    This is not theoretical tidiness. Before it, ``has_limits`` accepted any
+    non-``None`` bound and the comparison then called ``float()`` on it, so a
+    room declaring a word raised ``ValueError`` out of the shared rule. No door
+    we ship can author that -- the project loader types both bounds as
+    ``float | None`` -- but the cloud reads this list off the wire as raw JSON
+    with no model behind it, and the copy of the rule that runs there samples
+    history *inside the heartbeat's transaction*. So the reading nobody could
+    judge took the whole room offline. It is the same lesson as a list naming
+    one key twice: the door that wrote this did not have to be one of ours.
+
+    A boolean is not a bound either, for the reason ``as_number`` gives.
+    """
+    return as_number(monitor.get("normal_min")), as_number(monitor.get("normal_max"))
+
+
 def normal_values(monitor: dict[str, Any]) -> list[str]:
     """The values this monitor calls normal, normalised, in declared order.
 
@@ -109,8 +134,13 @@ def normal_values(monitor: dict[str, Any]) -> list[str]:
 
 
 def has_limits(monitor: dict[str, Any]) -> bool:
-    """Whether anybody said what normal looks like for this reading."""
-    if monitor.get("normal_min") is not None or monitor.get("normal_max") is not None:
+    """Whether anybody said what normal looks like for this reading.
+
+    "Said something" is not enough -- it has to be something this rule can
+    evaluate, so a bound that is not a number does not count (``normal_bounds``).
+    """
+    low, high = normal_bounds(monitor)
+    if low is not None or high is not None:
         return True
     return bool(normal_values(monitor))
 
@@ -133,17 +163,16 @@ def monitor_status(monitor: dict[str, Any], value: Any) -> str:
     if allowed:
         return NORMAL if _norm(value) in allowed else ABNORMAL
 
-    low = monitor.get("normal_min")
-    high = monitor.get("normal_max")
+    low, high = normal_bounds(monitor)
     number = as_number(value)
     if number is None:
         # A range was declared and the reading is not a number. Saying ABNORMAL
         # would be a judgement about a value the limits cannot address; the
         # honest answer is that nothing here applies to it.
         return UNSET
-    if low is not None and number < float(low):
+    if low is not None and number < low:
         return ABNORMAL
-    if high is not None and number > float(high):
+    if high is not None and number > high:
         return ABNORMAL
     return NORMAL
 
@@ -289,8 +318,11 @@ def compile_alert_rules(monitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
             })
             continue
 
-        low = monitor.get("normal_min")
-        high = monitor.get("normal_max")
+        # The bounds as numbers, so a rule is never compiled around a word. A
+        # threshold rule carrying "warm" as its value would arm on every reading
+        # and fire on none, which is an alert that exists and cannot go off --
+        # worse than the tile that is now honestly neutral beside it.
+        low, high = normal_bounds(monitor)
         if low is not None:
             rules.append({
                 **base,

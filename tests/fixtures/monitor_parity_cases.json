@@ -267,6 +267,59 @@
       "status": "unset",
       "word": null,
       "reading": ""
+    },
+    {
+      "name": "a bound that is not a number is not a limit",
+      "monitor": { "key": "device.amp.temp", "unit": "C", "type": "number", "normal_max": "warm" },
+      "value": 47,
+      "status": "unset",
+      "word": null,
+      "reading": "47 C"
+    },
+    {
+      "name": "a non-numeric bound on a key that has never reported is still unset, not no_value",
+      "monitor": { "key": "device.amp.temp", "type": "number", "normal_min": "cold" },
+      "value": null,
+      "status": "unset",
+      "word": null,
+      "reading": "—"
+    },
+    {
+      "name": "one good bound beside one that is not a number still judges on the good one",
+      "monitor": { "key": "device.amp.temp", "unit": "C", "type": "number", "normal_min": 10, "normal_max": "warm" },
+      "value": 4,
+      "status": "abnormal",
+      "word": null,
+      "reading": "4 C"
+    },
+    {
+      "name": "a bound written as a numeric string is a limit",
+      "monitor": { "key": "device.amp.temp", "unit": "C", "type": "number", "normal_max": "40" },
+      "value": 47,
+      "status": "abnormal",
+      "word": null,
+      "reading": "47 C"
+    },
+    {
+      "name": "a boolean is not a bound either",
+      "monitor": { "key": "device.amp.temp", "unit": "C", "type": "number", "normal_min": false },
+      "value": -3,
+      "status": "unset",
+      "word": null,
+      "reading": "-3 C"
+    },
+    {
+      "name": "declared words still hold when a bound beside them is a word too",
+      "monitor": {
+        "key": "device.amp.fault",
+        "type": "enum",
+        "normal_max": "warm",
+        "states": { "ok": { "label": "Healthy", "normal": true } }
+      },
+      "value": "faulted",
+      "status": "abnormal",
+      "word": null,
+      "reading": "faulted"
     }
   ]
 }

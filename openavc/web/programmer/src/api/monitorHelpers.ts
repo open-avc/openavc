@@ -74,9 +74,27 @@ export function normalValues(monitor: MonitorConfig): string[] {
   return out;
 }
 
-/** Whether anybody said what normal looks like for this reading. */
+/** The declared range, as the two numbers this rule can actually compare.
+ *
+ *  A bound that is not a number is not a limit — `normal_max: "warm"` states
+ *  nothing that can be evaluated, so nothing is claimed and the reading stays
+ *  informational. Same answer `monitorStatus` already gives when the *reading*
+ *  is not a number under a declared range.
+ *
+ *  The types say this cannot happen and the types are not the authority: the
+ *  same declaration is read on the cloud straight off the wire as raw JSON.
+ *  Before this, the two sides answered a word-valued bound three different
+ *  ways — Python raised, and here `num < "warm"` is `false`, so a reading
+ *  outside a limit nobody could evaluate quietly drew as NORMAL. */
+export function normalBounds(monitor: MonitorConfig): [number | null, number | null] {
+  return [asNumber(monitor.normal_min), asNumber(monitor.normal_max)];
+}
+
+/** Whether anybody said what normal looks like for this reading. "Said
+ *  something" is not enough — it has to be something this rule can evaluate. */
 export function hasLimits(monitor: MonitorConfig): boolean {
-  if (monitor.normal_min != null || monitor.normal_max != null) return true;
+  const [low, high] = normalBounds(monitor);
+  if (low !== null || high !== null) return true;
   return normalValues(monitor).length > 0;
 }
 
@@ -92,14 +110,13 @@ export function monitorStatus(monitor: MonitorConfig, value: unknown): MonitorSt
     return allowed.includes(norm(value)) ? NORMAL : ABNORMAL;
   }
 
-  const low = monitor.normal_min;
-  const high = monitor.normal_max;
+  const [low, high] = normalBounds(monitor);
   const num = asNumber(value);
   // A range was declared and the reading is not a number. Saying ABNORMAL
   // would be a judgement about a value the limits cannot address.
   if (num === null) return UNSET;
-  if (low != null && num < low) return ABNORMAL;
-  if (high != null && num > high) return ABNORMAL;
+  if (low !== null && num < low) return ABNORMAL;
+  if (high !== null && num > high) return ABNORMAL;
   return NORMAL;
 }
 
