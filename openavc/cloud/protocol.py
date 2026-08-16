@@ -86,6 +86,19 @@ PONG = "pong"
 AI_TOOL_RESULT = "ai_tool_result"
 PROJECT_DATA = "project_data"
 MONITORS = "monitors"
+#: Everything this instance currently has firing, sent once per connection.
+#: An alert resolves when the reading recovers -- and the record of what is
+#: firing lives in memory, so a restart loses it and the resolve is never sent.
+#: The alert then sits in the cloud forever with nothing left that could clear
+#: it. This is what closes that: the cloud resolves anything open for this
+#: system that is not named here.
+#:
+#: An instance too old to send it sends NOTHING, and nothing must mean nothing
+#: -- see the cloud's reader. That is why the list rides its own message rather
+#: than becoming a field on the heartbeat: a missing field and an empty list
+#: are indistinguishable in a dict, and reading one as the other resolves every
+#: open alert in the fleet.
+ACTIVE_ALERTS = "active_alerts"
 DEVICE_COMMANDS_DATA = "device_commands_data"
 GAP_REPORT = "gap_report"
 CERT_REQUEST = "cert_request"
@@ -124,9 +137,9 @@ HANDSHAKE_TYPES = {
 }
 
 UPSTREAM_TYPES = {
-    HEARTBEAT, STATE_BATCH, ALERT, ALERT_RESOLVED,
+    HEARTBEAT, STATE_BATCH, ALERT, ALERT_RESOLVED, ACTIVE_ALERTS,
     COMMAND_RESULT, TUNNEL_READY, TUNNEL_FAILED, DIAGNOSTIC_RESULT, PONG,
-    AI_TOOL_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA, GAP_REPORT,
+    AI_TOOL_RESULT, PROJECT_DATA, MONITORS, DEVICE_COMMANDS_DATA, GAP_REPORT,
     CERT_REQUEST, CERT_STATUS,
 }
 
@@ -145,6 +158,9 @@ MESSAGE_PRIORITY = {
     HEARTBEAT: 2,
     ALERT_RESOLVED: 3,
     ALERT: 4,
+    # Dropped from a full buffer, this leaves an alert nobody can clear —
+    # the failure it exists to prevent — so it is worth as much as an alert.
+    ACTIVE_ALERTS: 4,
     COMMAND_RESULT: 5,
     TUNNEL_READY: 5,
     TUNNEL_FAILED: 5,
@@ -365,6 +381,23 @@ def build_alert_resolved_payload(alert_id: str) -> dict[str, Any]:
     return {"alert_id": alert_id}
 
 
+def build_active_alerts_payload(alert_ids: list[str]) -> dict[str, Any]:
+    """Everything firing here right now, as the cloud's reconcile list.
+
+    Sent once per connection. An empty list is a real answer -- "nothing is
+    firing in this room" -- and is the usual one after a restart, because what
+    was firing before the restart was remembered in memory and is gone. The
+    cloud resolves what it still has open for this system and this list does not
+    name; that is the only thing that keeps *unresolved* meaning *the reading is
+    still wrong*.
+
+    It says nothing about a help request. Those are raised by a person, never
+    recover on their own, and are not in the set this reads from -- the cloud
+    leaves them alone rather than trusting the omission.
+    """
+    return {"alert_ids": list(alert_ids)}
+
+
 def _request_result_payload(
     request_id: str, success: bool, result: Any, error: str | None
 ) -> dict[str, Any]:
@@ -488,6 +521,8 @@ UPSTREAM_PAYLOAD_BUILDERS = {
     STATE_BATCH: build_state_batch_payload,
     ALERT: build_alert_payload,
     ALERT_RESOLVED: build_alert_resolved_payload,
+    ACTIVE_ALERTS: build_active_alerts_payload,
+    MONITORS: build_monitors_payload,
     COMMAND_RESULT: build_command_result_payload,
     DIAGNOSTIC_RESULT: build_diagnostic_result_payload,
     AI_TOOL_RESULT: build_ai_tool_result_payload,

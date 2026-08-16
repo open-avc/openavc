@@ -17,8 +17,9 @@ from fnmatch import fnmatch
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import (
-    ALERT, ALERT_RESOLVED, MONITORS,
-    build_alert_payload, build_alert_resolved_payload, build_monitors_payload,
+    ACTIVE_ALERTS, ALERT, ALERT_RESOLVED, MONITORS,
+    build_active_alerts_payload, build_alert_payload,
+    build_alert_resolved_payload, build_monitors_payload,
 )
 from openavc.core.monitors import compile_alert_rules
 from openavc.utils.logger import get_logger
@@ -68,7 +69,18 @@ class AlertMonitor:
         self._project_handler_id: Any = None
 
         # Active alerts: alert_key -> agent_alert_id
-        # Tracks what's currently firing to avoid re-firing and to auto-resolve
+        # Tracks what's currently firing to avoid re-firing and to auto-resolve.
+        #
+        # In memory, and deliberately: what is firing is a fact about the
+        # readings this instance can see right now, and after a restart it can
+        # see them again within a poll. Persisting it would preserve a claim
+        # about a room from before the process that made it — a projector
+        # swapped overnight would come back "still failing".
+        #
+        # But the CLOUD's copy outlives the restart, and it has no way to learn
+        # that this dict is empty: a resolve is only ever sent for a key found
+        # here, so an alert raised before a restart could never be cleared by
+        # anybody. That is what _send_active_alert_set closes, on every connect.
         self._active_alerts: dict[str, str] = {}
 
         # Pattern rule timers: alert_key -> first_match_epoch
@@ -108,6 +120,12 @@ class AlertMonitor:
         self._send_task = asyncio.create_task(self._send_loop())
         self._reload_project_rules()
         self._queue_send(MONITORS, build_monitors_payload(self._read_monitors()))
+        # _reload_project_rules has already swept the project's; these are the
+        # cloud's, held in memory across a reconnect. Both happen BEFORE the set
+        # is sent, and that order is the whole of it: the set has to say what is
+        # wrong now, or the cloud resolves a fault that is still happening.
+        self._raise_what_is_already_wrong(self._rules)
+        self._send_active_alert_set()
         if not self._rules and not self._project_rules:
             log.info("Alert monitor: started (no rules loaded, waiting for cloud push)")
         else:
@@ -143,6 +161,71 @@ class AlertMonitor:
         self._check_task = None
         self._send_task = None
         log.info("Alert monitor: stopped")
+
+    # --- Reconciliation on connect ---
+
+    def _raise_what_is_already_wrong(self, rules: list[dict[str, Any]]) -> None:
+        """Evaluate these rules against the state as it stands, now.
+
+        Everything else here is edge-triggered: a rule is evaluated when its key
+        CHANGES, and ``StateStore.set`` notifies nobody when the value it is
+        handed is the one already stored. A reading that is wrong and stays
+        wrong therefore produces exactly one evaluation, at the moment it went
+        wrong — and a process that was not running for that moment never sees
+        it.
+
+        Two things need this and one of them is new. A rule authored (or pushed)
+        while a reading is already outside it used to sit there doing nothing
+        until the value happened to move. And a restart now clears the room's
+        open alerts from the cloud (`_send_active_alert_set`), so without this
+        a fault that survives a reboot would be resolved and never raised
+        again — a room reading fine while the projector is still cooking. That
+        would be a worse bug than the one the reconciliation fixes, which is why
+        the two land together.
+
+        Absence rules are deliberately not swept: "nothing has been heard from
+        this device" is measured from when this process started hearing things,
+        and the periodic loop already owns that clock.
+        """
+        for rule in rules:
+            if not rule.get("enabled", True):
+                continue
+            rule_type = rule.get("rule_type", "")
+            if rule_type not in ("threshold", "pattern"):
+                continue
+            pattern = rule.get("condition", {}).get("key", "")
+            if not isinstance(pattern, str) or not pattern:
+                continue
+            for key, value in self._state.get_matching(pattern).items():
+                if rule_type == "threshold":
+                    self._evaluate_threshold(rule, key, value)
+                else:
+                    self._evaluate_pattern(rule, key, value)
+
+    def _send_active_alert_set(self) -> None:
+        """Tell the cloud everything this instance has firing, right now.
+
+        Sent on every connect, because that is every point at which the two
+        sides can have drifted apart. The drift that matters is a restart: this
+        instance's record of what is firing is in memory, a resolve is only ever
+        sent for something in it, so an alert raised before a restart has
+        nothing left in the world that could clear it. It sits in the portal
+        amber forever, and the next reboot adds another one beside it.
+
+        The list is what is firing, not what changed — the cloud resolves what
+        it still holds open and this does not name. So the empty list a restarted
+        instance sends is the whole point of the message, not a degenerate case
+        of it: it says "nothing is wrong in this room".
+
+        What makes that safe is `_raise_what_is_already_wrong` having run first:
+        anything still outside its limits has been re-raised by then and IS
+        named here, so a room whose fault survived the reboot comes back with
+        one alert rather than none.
+        """
+        self._queue_send(
+            ACTIVE_ALERTS,
+            build_active_alerts_payload(sorted(self._active_alerts.values())),
+        )
 
     # --- State Change Handler (synchronous) ---
 
@@ -444,6 +527,10 @@ class AlertMonitor:
             raw_rules = []
 
         self._rules = self._swap_rules(self._rules, raw_rules)
+        # The push lands milliseconds after connect, so a rule that arrives here
+        # missed the sweep in start(). Nothing else would evaluate it until its
+        # key next changed.
+        self._raise_what_is_already_wrong(self._rules)
         log.info("Alert monitor: updated to %d cloud rule(s)", len(self._rules))
 
     def _swap_rules(
@@ -495,6 +582,11 @@ class AlertMonitor:
         """Recompile what the project declares, and swap it in."""
         compiled = compile_alert_rules(self._read_monitors())
         self._project_rules = self._swap_rules(self._project_rules, compiled)
+        # Tagging a reading whose value is already outside the limits just typed
+        # is the commonest way to author one, and it fired nothing until the
+        # value next moved. This is also what covers the project half on
+        # connect, since start() calls straight through here.
+        self._raise_what_is_already_wrong(self._project_rules)
 
     def _on_project_applied_sync(self, event: str, data: Any) -> None:
         """The project changed: recompile its limits and re-send the manifest.

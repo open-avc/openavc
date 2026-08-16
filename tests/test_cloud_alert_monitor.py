@@ -45,6 +45,11 @@ class MockStateStore:
     def get(self, key):
         return self._data.get(key)
 
+    def get_matching(self, pattern):
+        from fnmatch import fnmatch
+
+        return {k: v for k, v in self._data.items() if fnmatch(k, pattern)}
+
     def set(self, key, value, source="test"):
         old = self._data.get(key)
         self._data[key] = value
@@ -966,3 +971,277 @@ def test_compare_set_membership():
     # Absence is neither in the set nor out of it.
     assert _compare(None, "not_in", ["true"]) is False
     assert _compare(None, "in", ["true"]) is False
+
+
+# --- What is firing here, told to the cloud on connect ---
+#
+# The dict above is in memory. A resolve is only ever sent for something still
+# in it, so an alert raised before a restart had nothing left in the world that
+# could clear it -- it sat in the portal amber forever and the next reboot put
+# another one beside it.
+
+
+def active_alert_sets(agent):
+    """Just the reconcile messages."""
+    return [p for t, p in agent.sent_messages if t == "active_alerts"]
+
+
+@pytest.mark.asyncio
+async def test_a_restarted_instance_says_nothing_is_firing():
+    """The empty list is the whole point of the message, not a degenerate case
+    of it: it is what a fresh process has to say, and it is what lets the cloud
+    clear what that process can no longer speak for."""
+    agent = MockAgent()
+    monitor = AlertMonitor(agent, MockStateStore(), MockEventBus())
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    assert active_alert_sets(agent) == [{"alert_ids": []}]
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_set_names_what_is_actually_firing():
+    """A reconnect inside one process has not forgotten anything, so the alert
+    it raised before the drop must be named -- or the cloud would resolve a
+    fault that is still happening."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.dsp.temp_c", "label": "DSP Temp", "normal_max": 45,
+        }],
+    )
+    await monitor.start()
+    state.set("device.dsp.temp_c", 61)
+    await _drain(monitor, agent)
+
+    fired = [p for t, p in agent.sent_messages if t == "alert"]
+    assert len(fired) == 1
+
+    # The connection drops and comes back; the process did not.
+    await monitor.stop()
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    assert active_alert_sets(agent)[-1] == {"alert_ids": [fired[0]["alert_id"]]}
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_recovered_reading_leaves_the_set():
+    """Resolving already sent alert_resolved. The set has to agree with it, or
+    a reconnect would re-open the question the resolve settled."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.dsp.temp_c", "label": "DSP Temp", "normal_max": 45,
+        }],
+    )
+    await monitor.start()
+    state.set("device.dsp.temp_c", 61)
+    await _drain(monitor, agent)
+    state.set("device.dsp.temp_c", 20)
+    await _drain(monitor, agent)
+
+    await monitor.stop()
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    assert active_alert_sets(agent)[-1] == {"alert_ids": []}
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_set_is_sent_on_every_connect():
+    """Not once per process: the cloud's copy can drift on any reconnect, and
+    the cloud has no way to ask."""
+    agent = MockAgent()
+    monitor = AlertMonitor(agent, MockStateStore(), MockEventBus())
+    for _ in range(3):
+        await monitor.start()
+        await _drain(monitor, agent)
+        await monitor.stop()
+
+    assert active_alert_sets(agent) == [{"alert_ids": []}] * 3
+
+
+def test_the_wire_name_matches_the_cloud():
+    """Mirrors openavc-cloud api/ws/protocol.py — a paired pin lives there.
+
+    Rename it on one side and the message is simply never routed: no error, no
+    log line either side reads as a fault, and every restarted instance quietly
+    goes back to leaving alerts nobody can clear.
+    """
+    from openavc.cloud.protocol import ACTIVE_ALERTS
+
+    assert ACTIVE_ALERTS == "active_alerts"
+
+
+# --- What is already wrong when we start looking ---
+#
+# Evaluation is edge-triggered, and StateStore.set notifies nobody when the
+# value handed to it is the one already stored. A reading that is wrong and
+# STAYS wrong is therefore evaluated exactly once, when it went wrong -- so a
+# process that was not running at that moment never sees it at all.
+
+
+@pytest.mark.asyncio
+async def test_a_fault_that_survives_a_restart_is_raised_again():
+    """The half that makes the reconciliation safe.
+
+    A restart tells the cloud nothing is firing, so the old alert resolves. If
+    the reading is still outside its limits and nothing re-raised it, the room
+    would read fine with the fault still happening -- worse than the stuck alert
+    the reconciliation removes. Seen on the bench before this existed.
+    """
+    agent = MockAgent()
+    state = MockStateStore()
+    # Set before the monitor is watching, the way a persisted variable is
+    # restored (or a device reports) before the cloud connection comes up.
+    state.set("var.volume", 92)
+
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "var.volume", "label": "Volume", "normal_min": 0, "normal_max": 80,
+        }],
+    )
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    fired = [p for t, p in agent.sent_messages if t == "alert"]
+    assert len(fired) == 1
+    assert "92" in fired[0]["message"]
+    # And the set says so, so the cloud keeps it rather than resolving it.
+    assert active_alert_sets(agent)[-1] == {"alert_ids": [fired[0]["alert_id"]]}
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_reading_that_is_fine_at_startup_raises_nothing():
+    """The sweep is an evaluation, not an announcement."""
+    agent = MockAgent()
+    state = MockStateStore()
+    state.set("var.volume", 30)
+
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "var.volume", "normal_min": 0, "normal_max": 80,
+        }],
+    )
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    assert alerts(agent) == []
+    assert active_alert_sets(agent)[-1] == {"alert_ids": []}
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_cloud_rule_pushed_onto_a_wrong_reading_fires_at_once():
+    """The push lands milliseconds after connect, so its rules missed the sweep
+    in start(). Nothing else would evaluate them until the key next changed --
+    and a disk that is full at 92% and stays there does not change."""
+    agent = MockAgent()
+    state = MockStateStore()
+    state.set("system.disk_percent", 92.3)
+
+    monitor = AlertMonitor(agent, state, MockEventBus())
+    await monitor.start()
+    await _drain(monitor, agent)
+    assert alerts(agent) == []
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {"rules": [{
+        "id": "disk", "name": "High disk usage", "rule_type": "threshold",
+        "severity": "critical", "category": "system",
+        "condition": {"key": "system.disk_percent", "operator": ">", "value": 90},
+    }]})
+    await _drain(monitor, agent)
+
+    assert [t for t, _ in alerts(agent)] == ["alert"]
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_tagging_a_reading_that_is_already_wrong_fires_at_once():
+    """Authoring a limit around a value that is already outside it is the
+    commonest way to write one, and it used to sit there doing nothing."""
+    agent = MockAgent()
+    state = MockStateStore()
+    state.set("device.dsp.temp_c", 61)
+
+    monitors: list[dict] = []
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(), monitors_provider=lambda: monitors,
+    )
+    await monitor.start()
+    await _drain(monitor, agent)
+    assert alerts(agent) == []
+
+    monitors.append({"key": "device.dsp.temp_c", "label": "DSP Temp", "normal_max": 45})
+    monitor._on_project_applied_sync("system.project.reloaded", None)
+    await _drain(monitor, agent)
+
+    assert [t for t, _ in alerts(agent)] == ["alert"]
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_arms_a_duration_rather_than_firing_through_it():
+    """A limit with a duration means the same thing on a restart as it does at
+    any other moment: a projector that is off is correct at 3am."""
+    agent = MockAgent()
+    state = MockStateStore()
+    state.set("device.dsp.temp_c", 61)
+
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{
+            "key": "device.dsp.temp_c", "normal_max": 45, "duration_seconds": 300,
+        }],
+    )
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    assert alerts(agent) == []
+    assert active_alert_sets(agent)[-1] == {"alert_ids": []}
+
+    await monitor._run_periodic_checks(time.time() + 400)
+    assert len(alerts(agent)) == 1
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_does_not_re_fire_what_is_already_firing():
+    """A reconnect inside one process sweeps the same wrong reading again."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{"key": "var.volume", "normal_max": 80}],
+    )
+    await monitor.start()
+    state.set("var.volume", 92)
+    await _drain(monitor, agent)
+    assert len(alerts(agent)) == 1
+
+    await monitor.stop()
+    await monitor.start()
+    await _drain(monitor, agent)
+
+    assert len(alerts(agent)) == 1
+
+    await monitor.stop()
