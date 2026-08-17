@@ -268,6 +268,17 @@ class ISCSendRequest(BaseModel):
     payload: dict[str, Any] = {}
 
 
+class ISCBroadcastRequest(BaseModel):
+    """Body for ``POST /api/isc/broadcast`` -- an event to every connected peer.
+
+    Same shape as :class:`ISCSendRequest` minus the instance, because the whole
+    mesh is the destination.
+    """
+
+    event: str
+    payload: dict[str, Any] = {}
+
+
 class ISCCommandRequest(BaseModel):
     instance_id: str
     device_id: str

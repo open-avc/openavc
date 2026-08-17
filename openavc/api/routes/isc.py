@@ -11,10 +11,13 @@ None whenever the feature is disabled in system config.
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
+from openavc.api.models import (
+    ISCBroadcastRequest, ISCCommandRequest, ISCSendRequest,
+)
 
 router = APIRouter()
 
@@ -38,14 +41,11 @@ async def isc_instances() -> dict[str, Any]:
 
 
 @router.post("/isc/send")
-async def isc_send(request: Request) -> dict[str, Any]:
+async def isc_send(data: ISCSendRequest) -> dict[str, Any]:
     """Send an event to a remote ISC peer."""
-    from openavc.api.models import ISCSendRequest
     engine = _get_engine()
     if engine.isc is None:
         raise HTTPException(status_code=503, detail="ISC not enabled")
-    body = await request.json()
-    data = ISCSendRequest(**body)
     try:
         await engine.isc.send_to(data.instance_id, data.event, data.payload)
         return {"status": "sent"}
@@ -54,29 +54,23 @@ async def isc_send(request: Request) -> dict[str, Any]:
 
 
 @router.post("/isc/broadcast")
-async def isc_broadcast(request: Request) -> dict[str, Any]:
+async def isc_broadcast(data: ISCBroadcastRequest) -> dict[str, Any]:
     """Broadcast an event to all connected ISC peers."""
     engine = _get_engine()
     if engine.isc is None:
         raise HTTPException(status_code=503, detail="ISC not enabled")
-    body = await request.json()
-    event = body.get("event", "")
-    payload = body.get("payload", {})
-    if not event:
+    if not data.event:
         raise HTTPException(status_code=422, detail="Missing 'event' field")
-    await engine.isc.broadcast(event, payload)
+    await engine.isc.broadcast(data.event, data.payload)
     return {"status": "broadcast"}
 
 
 @router.post("/isc/command")
-async def isc_command(request: Request) -> dict[str, Any]:
+async def isc_command(data: ISCCommandRequest) -> dict[str, Any]:
     """Send a device command to a remote ISC peer."""
-    from openavc.api.models import ISCCommandRequest
     engine = _get_engine()
     if engine.isc is None:
         raise HTTPException(status_code=503, detail="ISC not enabled")
-    body = await request.json()
-    data = ISCCommandRequest(**body)
     try:
         result = await engine.isc.send_command(
             data.instance_id, data.device_id, data.command, data.params,

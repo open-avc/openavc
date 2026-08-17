@@ -10,7 +10,7 @@ before auth on a dev instance); pair and unpair are protected.
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
@@ -119,11 +119,9 @@ async def _validate_cloud_api_url(url: str) -> str:
 
 
 @router.post("/cloud/pair")
-async def cloud_pair(request: Request) -> dict[str, Any]:
+async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
     """Pair this instance with the OpenAVC Cloud platform."""
     engine = _get_engine()
-    body = await request.json()
-    data = CloudPairRequest(**body)
 
     cloud_api_url = await _validate_cloud_api_url(data.cloud_api_url)
 
