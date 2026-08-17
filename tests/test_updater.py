@@ -139,6 +139,26 @@ class TestUpdateChecker:
             result = await checker.check("stable")
 
         assert result is None
+        # The genuine "you are current" answer, which must stay distinguishable
+        # from the failure below: nothing went wrong, so nothing is reported.
+        assert checker.last_error == ""
+
+    async def test_an_empty_release_list_is_a_failure_not_an_answer(self, checker):
+        """`[]` with a 200 means the API did not answer, and must not read as current.
+
+        GitHub served exactly this for about twenty minutes on 2026-08-17, while
+        /releases/latest still returned the release published minutes earlier.
+        Both return None, so the only thing separating "you are up to date" from
+        "we could not find out" is last_error -- and without it every instance
+        in the fleet reports itself current on the day a version ships, which is
+        the one wrong answer that looks like good news.
+        """
+        with patch("openavc.updater.checker.httpx.AsyncClient") as mock_client:
+            mock_client.return_value = self._make_mock_client([])
+            result = await checker.check("stable")
+
+        assert result is None
+        assert checker.last_error, "an empty release list must be reported as a failed check"
 
     async def test_check_update_available(self, checker):
         releases = [

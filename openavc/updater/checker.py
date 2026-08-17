@@ -165,6 +165,22 @@ class UpdateChecker:
             self._last_check_error = "Invalid response from GitHub API"
             return None
 
+        # An empty list is a failure, not an answer. This repo has releases, so
+        # zero of them means the API did not tell us the truth -- and on
+        # 2026-08-17 it did exactly that, serving `[]` with a 200 for about
+        # twenty minutes during a GitHub outage while /releases/latest still
+        # returned the release that had just been published. Falling through
+        # here reports "no updates available", which is the one wrong answer
+        # that looks like good news: every instance in the fleet told its owner
+        # it was current on the day a new version shipped. Say the check failed
+        # instead, so the Updates view offers a retry rather than reassurance.
+        if not releases:
+            self._last_check_error = (
+                "GitHub returned no releases, so the check could not be completed"
+            )
+            log.warning("Update check failed: %s", self._last_check_error)
+            return None
+
         # Find the best candidate release
         best: dict[str, Any] | None = None
         for release in releases:
