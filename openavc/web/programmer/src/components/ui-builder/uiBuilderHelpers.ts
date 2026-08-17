@@ -4427,7 +4427,9 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
 
 export interface MatrixEntry {
   value: unknown;
-  label: string;
+  /** Absent when the entry names a live `label_key` and nobody typed a name --
+   *  see normaliseMatrixEntry. */
+  label?: string;
   label_key?: string;
   route_key?: string;
   audio_route_key?: string;
@@ -4513,10 +4515,8 @@ function generateMatrixAxis(
   values.forEach((value, position) => {
     if (excluded.has(String(value))) return;
     const label = labels[position];
-    const entry: MatrixEntry = {
-      value,
-      label: label ? String(label) : `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`,
-    };
+    const entry: MatrixEntry = { value } as MatrixEntry;
+    if (label) entry.label = String(label);
     const labelKey = matrixSubstitute(from.label_key, value);
     if (labelKey) entry.label_key = labelKey;
     const routeKey = matrixSubstitute(from.route_key, value);
@@ -4527,7 +4527,16 @@ function generateMatrixAxis(
     if (lockKey) entry.lock_key = lockKey;
     if (Array.isArray(from.route)) entry.route = from.route;
     const override = own(overrides as Record<string, unknown>, String(value));
-    entries.push(isPlainObject(override) ? { ...entry, ...override } as MatrixEntry : entry);
+    const merged = isPlainObject(override)
+      ? ({ ...entry, ...override } as MatrixEntry)
+      : entry;
+    // Last, so an override naming either one is honoured. Same rule as
+    // normaliseMatrixEntry: a generator that names a live label key leaves the
+    // caption to the device rather than stamping "Out 2" over it.
+    if (!merged.label && !merged.label_key) {
+      merged.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+    }
+    entries.push(merged);
   });
   return entries;
 }
@@ -4543,7 +4552,12 @@ function normaliseMatrixEntry(
   else if (typeof raw === "string" || typeof raw === "number") entry = { value: raw };
   else return null;
   if (!("value" in entry)) return null;
-  if (!entry.label) entry.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+  // An entry carrying a label_key is left unlabelled on purpose: the device is
+  // about to say what it is called, and "Out 2" would win over "Lobby TV" the
+  // moment the renderer prefers the authored name.
+  if (!entry.label && !entry.label_key) {
+    entry.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+  }
   return entry as unknown as MatrixEntry;
 }
 

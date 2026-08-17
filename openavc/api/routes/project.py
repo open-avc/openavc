@@ -133,6 +133,15 @@ async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
                         driver,
                         local_id,
                     ),
+                    # `online` is platform-reserved on every registered child, so
+                    # this asks the same question of every driver. It is here
+                    # because a roster can list a port the device cannot reach --
+                    # an MXNet CBOX keeps an endpoint after it leaves the rack --
+                    # and the picker offered that one looking exactly like the
+                    # ones that are plugged in.
+                    "online": (driver.get_child_state(child_type, local_id) or {}).get(
+                        "online", True,
+                    ),
                 }
                 for local_id in driver.list_children(child_type)
             ]

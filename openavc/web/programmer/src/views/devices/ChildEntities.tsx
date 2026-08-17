@@ -411,7 +411,6 @@ function ChildSearchResults({
       type: string;
       typeLabel: string;
       entry: ChildEntityEntry;
-      name: string;
       rows: [string, string][];
     }[] = [];
     for (const type of Object.keys(data.child_entity_types)) {
@@ -436,7 +435,6 @@ function ChildSearchResults({
             type,
             typeLabel,
             entry,
-            name: formatStateValue(state.name),
             rows,
           });
         }
@@ -467,7 +465,7 @@ function ChildSearchResults({
         overflow: "auto",
       }}
     >
-      {shown.map(({ type, typeLabel, entry, name, rows }) => (
+      {shown.map(({ type, typeLabel, entry, rows }) => (
         <div
           key={`${type}/${entry.local_id_padded}`}
           data-testid={`child-row-${entry.local_id_padded}`}
@@ -507,7 +505,7 @@ function ChildSearchResults({
               {entry.local_id_padded}
             </span>
             <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
-              {entry.label || name || "(no label)"}
+              {entry.label || entry.display_name || "(no label)"}
             </span>
           </div>
           {rows.length > 0 && (
@@ -620,6 +618,14 @@ function ChildEntityList({
     [liveStateByPaddedId],
   );
 
+  // How much room the ID column needs. A numbered roster is two or three
+  // characters; a device-enumerated one is a MAC address, and 64px drew it on
+  // top of the Label column beside it.
+  const idWidth = useMemo(() => {
+    const longest = entries.reduce((n, e) => Math.max(n, e.local_id_padded.length), 0);
+    return Math.min(140, Math.max(64, longest * 8 + 8));
+  }, [entries]);
+
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: entries.length,
@@ -694,7 +700,7 @@ function ChildEntityList({
           scrolls inside the virtualizer below. */}
       <div style={headerRowStyle}>
         <div style={{ ...headerCellStyle, width: 32 }}></div>
-        <div style={{ ...headerCellStyle, width: 64 }}>ID</div>
+        <div style={{ ...headerCellStyle, width: idWidth }}>ID</div>
         <div style={{ ...headerCellStyle, flex: 1.5 }}>Label</div>
         {summaryFields.map((field) => (
           <div
@@ -736,7 +742,15 @@ function ChildEntityList({
             const isEditing = editing?.id === entry.local_id;
             const isSaving = savingId === entry.local_id;
             const liveS = liveStateForChild(entry);
-            const displayLabel = labelOverrides[entry.local_id] ?? entry.label;
+            // What this port is called: the label somebody typed here, else the
+            // name the device itself reports — which the server already resolved
+            // into `display_name` from the child type's `label_field`. Reading
+            // only the project's label made a device-enumerated roster (MXNet
+            // endpoints, Q-SYS components) render as seven "(no label)" rows
+            // while the device was naming every one of them.
+            const authored = labelOverrides[entry.local_id] ?? entry.label;
+            const displayLabel = authored || entry.display_name;
+            const fromDevice = !authored && !!entry.display_name;
 
             return (
               <div
@@ -784,11 +798,16 @@ function ChildEntityList({
                   </button>
                   <div
                     style={{
-                      width: 64,
+                      width: idWidth,
+                      flexShrink: 0,
                       fontFamily: "var(--font-mono)",
                       fontSize: "var(--font-size-sm)",
                       color: "var(--text-secondary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
+                    title={String(entry.local_id_padded)}
                   >
                     {entry.local_id_padded}
                   </div>
@@ -805,6 +824,7 @@ function ChildEntityList({
                         }}
                         onBlur={() => void saveEdit()}
                         autoFocus
+                        placeholder={entry.display_name || undefined}
                         data-testid={`child-label-input-${entry.local_id_padded}`}
                         style={{
                           width: "100%",
@@ -816,7 +836,11 @@ function ChildEntityList({
                       <button
                         onClick={() => startEdit(entry)}
                         data-testid={`child-label-${entry.local_id_padded}`}
-                        title="Click to edit"
+                        title={
+                          fromDevice
+                            ? "Name reported by the device. Click to use your own instead."
+                            : "Click to edit"
+                        }
                         style={{
                           width: "100%",
                           textAlign: "left",
@@ -825,9 +849,11 @@ function ChildEntityList({
                           border: "none",
                           cursor: "pointer",
                           fontSize: "var(--font-size-sm)",
-                          color: displayLabel
-                            ? "var(--text-primary)"
-                            : "var(--text-muted)",
+                          color: !displayLabel
+                            ? "var(--text-muted)"
+                            : fromDevice
+                              ? "var(--text-secondary)"
+                              : "var(--text-primary)",
                           fontStyle: displayLabel ? undefined : "italic",
                           whiteSpace: "nowrap",
                           overflow: "hidden",

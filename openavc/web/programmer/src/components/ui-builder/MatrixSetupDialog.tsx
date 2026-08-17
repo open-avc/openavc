@@ -51,6 +51,14 @@ interface Row {
   include: boolean;
   /** The device has this and the project did not, at the last re-read. */
   isNew: boolean;
+  /** The device lists this port and is not reaching it right now. Live: it is
+   *  never written into the project. */
+  offline?: boolean;
+  /** The caption shown here is the DEVICE's name for this port, not one the
+   *  author typed. Such a label is not written out -- the entry keeps its
+   *  `label_key` and the panel reads the live name, so a rename in the rack
+   *  still reaches the panel. Typing here clears this and the name is stored. */
+  labelFromDevice: boolean;
 }
 
 type Axis = "sources" | "destinations";
@@ -90,14 +98,21 @@ function existingRows(config: unknown, axis: Axis): ProposedDestination[] {
 function mergeRows(
   fromDevice: ProposedDestination[],
   fromProject: ProposedDestination[],
+  axis: Axis,
 ): Row[] {
+  // The caption the PANEL will draw for a row nobody has named -- same words as
+  // panel.js and the resolver, so the list here says what the wall will say
+  // rather than the port's raw id (a MAC address, on an AVoIP endpoint).
+  const caption = (i: number) =>
+    `${axis === "sources" ? "In" : "Out"} ${i + 1}`;
   const key = (v: string | number) => String(v);
   const deviceByValue = new Map(fromDevice.map((entry) => [key(entry.value), entry]));
   const firstTime = fromProject.length === 0;
 
-  const rows: Row[] = fromProject.map((entry) => {
+  const rows: Row[] = fromProject.map((entry, index) => {
     const device = deviceByValue.get(key(entry.value));
     deviceByValue.delete(key(entry.value));
+    const label = entry.label || device?.label || caption(index);
     return {
       ...entry,
       // A key the device now declares fills one the project never had; a key
@@ -105,15 +120,27 @@ function mergeRows(
       label_key: entry.label_key ?? device?.label_key,
       route_key: entry.route_key ?? device?.route_key,
       report_value: entry.report_value ?? device?.report_value,
-      label: entry.label || device?.label || String(entry.value),
+      offline: device?.offline,
+      label,
+      // A stored label that is exactly what the device currently calls the port
+      // is a copy, not a decision -- every matrix set up before this picker
+      // stopped writing them looks like that. Treating it as authored would
+      // freeze the rack's own name onto the panel for good.
+      labelFromDevice: !entry.label || entry.label === device?.label,
       include: true,
       isNew: false,
     };
   });
 
-  for (const entry of fromDevice) {
+  for (const [index, entry] of fromDevice.entries()) {
     if (!deviceByValue.has(key(entry.value))) continue;
-    rows.push({ ...entry, include: firstTime, isNew: !firstTime });
+    rows.push({
+      ...entry,
+      label: entry.label || caption(index),
+      include: firstTime,
+      isNew: !firstTime,
+      labelFromDevice: true,
+    });
   }
   return rows;
 }
@@ -129,7 +156,13 @@ function move(rows: Row[], index: number, delta: number): Row[] {
 /** One row, back in the shape the project stores. Empty fields are dropped so
  *  a written entry says only what it means. */
 function toEntry(row: Row, axis: Axis): Record<string, unknown> {
-  const entry: Record<string, unknown> = { value: row.value, label: row.label };
+  const entry: Record<string, unknown> = { value: row.value };
+  // Only a name somebody typed. A caption copied out of the device goes
+  // unwritten so the entry's `label_key` stays the one thing naming this port:
+  // rename the endpoint in the rack and every panel follows, which is the whole
+  // reason the key is here. Write the copy instead and the panel is stuck with
+  // whatever the port was called on the afternoon the matrix was set up.
+  if (row.label && !(row.labelFromDevice && row.label_key)) entry.label = row.label;
   if (row.label_key) entry.label_key = row.label_key;
   if (axis === "sources" && row.report_value !== undefined) {
     entry.report_value = row.report_value;
@@ -166,6 +199,10 @@ export function MatrixSetupDialog({
   const [sources, setSources] = useState<Row[]>([]);
   const [destinations, setDestinations] = useState<Row[]>([]);
   const [setRoute, setSetRoute] = useState(true);
+  // On by default where the device offers it. A destination showing one source
+  // with another source's sound is the failure this prevents, and nobody can see
+  // it from the panel; breakaway is the case somebody asks for deliberately.
+  const [followAudio, setFollowAudio] = useState(true);
   // Off by default, like the lock itself. It costs a column and a variable per
   // destination, and most matrices do not want one.
   const [setLocks, setSetLocks] = useState(false);
@@ -175,6 +212,18 @@ export function MatrixSetupDialog({
     [proposals, chosenId],
   );
 
+  // The plane carrying this one's audio, where the device routes it separately.
+  // Named by the server (matrix_inference._pair_audio_planes) rather than sniffed
+  // for here: which plane is which is a driver question and the plane words live
+  // beside the rest of the guess.
+  const audioPlane = useMemo(
+    () =>
+      (chosen?.audio_plane_id
+        ? proposals?.find((p) => p.id === chosen.audio_plane_id)
+        : null) ?? null,
+    [proposals, chosen],
+  );
+
   const seed = useCallback(
     (proposal: MatrixProposal | null) => {
       if (!proposal) {
@@ -182,9 +231,17 @@ export function MatrixSetupDialog({
         setDestinations([]);
         return;
       }
-      setSources(mergeRows(proposal.sources, existingRows(element.matrix_config, "sources")));
+      setSources(
+        mergeRows(
+          proposal.sources, existingRows(element.matrix_config, "sources"), "sources",
+        ),
+      );
       setDestinations(
-        mergeRows(proposal.destinations, existingRows(element.matrix_config, "destinations")),
+        mergeRows(
+          proposal.destinations,
+          existingRows(element.matrix_config, "destinations"),
+          "destinations",
+        ),
       );
     },
     [element.matrix_config],
@@ -227,15 +284,28 @@ export function MatrixSetupDialog({
   const apply = () => {
     const keptSources = sources.filter((r) => r.include);
     const keptDestinations = destinations.filter((r) => r.include);
+    const withAudio = !!audioPlane && followAudio;
+    // Each destination's audio key comes from the audio plane's own entry for the
+    // same port, so a matrix built over a subset gets only the rows it kept.
+    const audioKeys = new Map(
+      (audioPlane?.destinations ?? []).map((d) => [String(d.value), d.route_key]),
+    );
     const patch: Partial<UIElement> = {
       matrix_config: {
         ...(element.matrix_config as Record<string, unknown> | undefined),
         sources: keptSources.map((r) => toEntry(r, "sources")),
-        destinations: keptDestinations.map((r) => ({
-          ...toEntry(r, "destinations"),
-          ...(setLocks ? { lock_key: r.lock_key ?? lockKeyFor(element.id, r.value) } : {}),
-        })),
+        destinations: keptDestinations.map((r) => {
+          const audioKey = withAudio ? audioKeys.get(String(r.value)) : undefined;
+          return {
+            ...toEntry(r, "destinations"),
+            ...(audioKey ? { audio_route_key: audioKey } : {}),
+            ...(setLocks
+              ? { lock_key: r.lock_key ?? lockKeyFor(element.id, r.value) }
+              : {}),
+          };
+        }),
         ...(setLocks ? { show_lock: true } : {}),
+        ...(withAudio ? { audio_follow_video: true } : {}),
       },
     };
     if (setRoute && chosen?.route) {
@@ -243,7 +313,16 @@ export function MatrixSetupDialog({
       const doMap = (bindings.do || {}) as Record<string, unknown>;
       patch.bindings = {
         ...bindings,
-        do: { ...doMap, route: chosen.route },
+        do: {
+          ...doMap,
+          route: chosen.route,
+          // The other half of audio-follow, and the half nobody could fill in
+          // from here before: the panel sends this second action on every route
+          // (panel.js sendRoute), and the Builder's only answer used to be a
+          // warning telling the author to hand-author the action list this
+          // picker was already holding.
+          ...(withAudio && audioPlane?.route ? { audio_route: audioPlane.route } : {}),
+        },
       } as UIElement["bindings"];
     }
     onApply(patch);
@@ -377,8 +456,20 @@ export function MatrixSetupDialog({
                 onChange={(e) => setSetRoute(e.target.checked)}
               />
               Also set this matrix&rsquo;s route action to{" "}
-              <code style={{ fontFamily: "var(--font-mono)" }}>{chosen.command}</code>
+              <strong>{chosen.command_label || chosen.command}</strong>
               {" "}(replaces whatever is on it now)
+            </label>
+          )}
+
+          {audioPlane && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "var(--space-sm)", fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={followAudio}
+                onChange={(e) => setFollowAudio(e.target.checked)}
+              />
+              Move the audio with it &mdash; this device switches audio separately, with{" "}
+              <strong>{audioPlane.command_label || audioPlane.command}</strong>
             </label>
           )}
 
@@ -453,8 +544,24 @@ function RowEditor({
             />
             <input
               value={row.label}
-              onChange={(e) => patch(index, { label: e.target.value })}
-              style={{ flex: 1, minWidth: 0, fontSize: 11 }}
+              onChange={(e) =>
+                patch(index, { label: e.target.value, labelFromDevice: false })
+              }
+              title={
+                row.labelFromDevice && row.label_key
+                  ? "What the panel will show for this port, from the device. "
+                    + "Type here to name it yourself instead."
+                  : undefined
+              }
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 11,
+                color:
+                  row.labelFromDevice && row.label_key
+                    ? "var(--text-secondary)"
+                    : undefined,
+              }}
             />
             <span style={valueStyle} title={
               axis === "destinations" && row.route_key
@@ -468,6 +575,14 @@ function RowEditor({
                 : row.value}
             </span>
             {row.isNew && <span style={newBadgeStyle}>new</span>}
+            {row.offline && (
+              <span
+                style={offlineBadgeStyle}
+                title="This device lists the port but is not reaching it right now"
+              >
+                not answering
+              </span>
+            )}
             <button
               type="button"
               onClick={() => onChange(move(rows, index, -1))}
@@ -521,6 +636,15 @@ const valueStyle: React.CSSProperties = {
   maxWidth: 90,
   overflow: "hidden",
   textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const offlineBadgeStyle: React.CSSProperties = {
+  fontSize: 9,
+  padding: "0 4px",
+  borderRadius: 3,
+  border: "1px solid rgba(255,152,0,0.5)",
+  color: "var(--text-secondary)",
   whiteSpace: "nowrap",
 };
 

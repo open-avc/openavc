@@ -309,8 +309,15 @@ class _Children:
 
     def entries(
         self, ctype: str, type_schema: Mapping[str, Any],
-    ) -> list[tuple[Any, str, str]]:
-        """``(local_id, padded_id, label)`` for each child of this type.
+    ) -> list[tuple[Any, str, str, bool | None]]:
+        """``(local_id, padded_id, label, online)`` for each child of this type.
+
+        ``online`` is the platform-reserved child property every registered child
+        carries, and None means nobody said -- a roster that came from the
+        declared count or the id range has not been asked. It matters here
+        because a device can list a port it cannot reach: an MXNet CBOX keeps an
+        endpoint in its database after it leaves the rack, and offers it here
+        looking exactly like the four that are plugged in.
 
         Falls back to the declared roster and then to the declared id range when
         nothing has registered, so a matrix can be built against a device that is
@@ -323,7 +330,11 @@ class _Children:
             for row in rows:
                 local = row.get("local_id")
                 padded = str(row.get("local_id_padded") or local)
-                out.append((local, padded, str(row.get("label") or "")))
+                online = row.get("online")
+                out.append((
+                    local, padded, str(row.get("label") or ""),
+                    None if online is None else bool(online),
+                ))
             return out
         id_format = _as_mapping(type_schema.get("id_format"))
         pad = id_format.get("pad_width")
@@ -332,17 +343,161 @@ class _Children:
         if ids is None:
             ids = _generated_ids(id_format)
         return [
-            (i, str(i).zfill(width) if width and isinstance(i, int) else str(i), "")
+            (i, str(i).zfill(width) if width and isinstance(i, int) else str(i), "", None)
             for i in ids
         ]
 
 
-def _entry_label(explicit: str, type_schema: Mapping[str, Any], ctype: str, n: int) -> str:
-    """One port's caption: what the project calls it, else what its type is called."""
+def _entry_label(
+    explicit: str, type_schema: Mapping[str, Any], ctype: str, n: int, *, live: bool,
+) -> str:
+    """One port's caption, or "" to leave it to the device.
+
+    ``explicit`` is what this port is already called -- the project's label, else
+    the name the device reports. Where there is neither, a caption is invented
+    from the type's own label ("Output 3", "Encoder 1"), which beats the
+    resolver's "Out 3" because it is the driver's word for the thing.
+
+    Not when the entry carries a live ``label_key`` (``live``). A caption is a
+    stored name and a stored name is what the panel draws first, so inventing one
+    here would put "Decoder 1" on a tile for good and the endpoint's real name --
+    typed into the rack's own software an hour later -- would never arrive.
+    """
     if explicit:
         return explicit
+    if live:
+        return ""
     word = str(type_schema.get("label") or ctype).strip() or ctype
     return f"{word} {n}"
+
+
+def _command_label(commands: Mapping[str, Any], name: str | None) -> str:
+    """A routing command's declared label, falling back to its id."""
+    if not name:
+        return ""
+    declared = str(_as_mapping(commands.get(name)).get("label") or "").strip()
+    return declared or name
+
+
+def _roster_phrase(origin: str, count: int, plural: str) -> str:
+    """Where a list of ports came from, said the way a person would ask it.
+
+    The distinction is the whole reason ``origin`` exists: "the 4 Decoders this
+    device reported" is a fact, "the Outputs this driver can have" is a 128-row
+    guess for a 4x4 sitting on the bench.
+    """
+    if origin == REGISTERED:
+        return f"the {count} {plural} this device reported"
+    if origin == DECLARED:
+        return f"the {count} {plural} this device is set up for"
+    return f"the {plural} this driver can have"
+
+
+def _shown_as(plane: _Plane) -> str:
+    """What each destination tile reads, in the driver's own words.
+
+    The routed-source property's declared label ("Video Source") rather than its
+    key (``source_video``): the key is a wire name, and the author has the same
+    property in front of them under its label everywhere else in the IDE.
+    """
+    declared = str(plane.route_var.get("label") or "").strip()
+    return declared or plane.prop
+
+
+def _is_audio_plane(proposal: Mapping[str, Any]) -> bool:
+    """Is this plane the audio one?
+
+    Read off the routed property's own name and the plane's label, which is where
+    a plane says which one it is -- ``audio_input`` on a frame's extracted-audio
+    matrix, ``source_audio`` on an AVoIP decoder, a declared label of "Audio" on
+    both.
+    """
+    if _plane_token(str(proposal.get("route_property") or "")) == "audio":
+        return True
+    return "audio" in _words(str(proposal.get("label") or ""))
+
+
+def _pair_audio_planes(proposals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tell each video plane which plane carries its audio, where one does.
+
+    Every field audio-follow-video needs is already here -- the audio plane's own
+    route action and each destination's audio route key -- and without this the
+    author is told to hand-author an action list in the Bindings tab for a command
+    the picker is holding. Two independently switched planes on one destination is
+    the ordinary shape of AVoIP gear and of any frame with an extracted-audio
+    matrix, and forgetting the second half is a display showing one source with
+    another one's sound.
+
+    Only offered for the plane that is the device's MAIN route (its property
+    carries no plane word) or its video one: nothing else follows audio.
+
+    And only when audio routes with a DIFFERENT command, which is the line
+    between the two shapes. A frame with a separate ``audio_route`` genuinely
+    needs two sends. A device that switches every plane through one command and
+    tells them apart with a parameter does not: every one of those in the corpus
+    also accepts a combined value on that parameter (MXNet ``stream: all``,
+    Chazy and Darwin ``signal: ALL``), so the answer there is the plane that
+    sends the combined value, not the same command fired twice.
+    """
+    audio = [p for p in proposals if _is_audio_plane(p)]
+    if not audio:
+        return proposals
+    for proposal in proposals:
+        if _is_audio_plane(proposal):
+            continue
+        token = _plane_token(str(proposal.get("route_property") or ""))
+        if token not in ("", "video"):
+            continue
+        values = {str(d.get("value")) for d in proposal.get("destinations") or ()}
+        match = next(
+            (
+                p for p in audio
+                if p.get("destination_child_type") == proposal.get("destination_child_type")
+                and p.get("route")
+                and p.get("command") != proposal.get("command")
+                and {str(d.get("value")) for d in p.get("destinations") or ()} == values
+            ),
+            None,
+        )
+        if match is not None:
+            proposal["audio_plane_id"] = match["id"]
+    return proposals
+
+
+def _uniquify_ids(proposals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Make sure no two proposals answer to the same id.
+
+    An id is ``<child type>.<routed property>``, which is unique for every
+    driver that routes each plane through its own property. It is NOT unique for
+    a device with a combined mode: an MXNet decoder's "All streams" and "Video"
+    both watch ``source_video`` and differ only in what they send. The picker
+    keys its options by id and finds the chosen one by it, so a collision means
+    picking one plane and silently getting the other.
+    """
+    seen: dict[str, int] = {}
+    for proposal in proposals:
+        base = str(proposal["id"])
+        if base not in seen:
+            seen[base] = 1
+            continue
+        seen[base] += 1
+        slug = re.sub(r"[^a-z0-9]+", "_", str(proposal.get("label") or "").lower()).strip("_")
+        proposal["id"] = f"{base}.{slug or seen[base]}"
+    return proposals
+
+
+def _type_plural(type_schema: Mapping[str, Any], ctype: str) -> str:
+    """What a group of these ports is called, in the driver's own words.
+
+    Sentences here name ports the way the rest of the IDE does -- "the 3 Encoders
+    this device reported", not "the registered 'encoder' children". The child
+    type's own key is a wire name and an author never sees it anywhere else.
+    """
+    for key in ("label_plural", "label"):
+        word = str(type_schema.get(key) or "").strip()
+        if word:
+            return word
+    return ctype
 
 
 def _words(text: str) -> set[str]:
@@ -524,21 +679,28 @@ def _sources_from(
         schema = _as_mapping(child_types[source_ctype])
         name_prop = _child_name_property(_as_mapping(schema.get("state_variables")))
         entries = []
-        for position, (local, padded, label) in enumerate(children.entries(source_ctype, schema)):
-            entry: dict[str, Any] = {
-                "value": local,
-                "label": _entry_label(label, schema, source_ctype, position + 1),
-            }
+        for position, (local, padded, label, online) in enumerate(
+            children.entries(source_ctype, schema),
+        ):
+            entry: dict[str, Any] = {"value": local}
+            caption = _entry_label(
+                label, schema, source_ctype, position + 1, live=bool(name_prop),
+            )
+            if caption:
+                entry["label"] = caption
             if name_prop:
                 entry["label_key"] = f"device.{device_id}.{source_ctype}.{padded}.{name_prop}"
+            if online is False:
+                entry["offline"] = True
             entries.append(entry)
         if entries:
-            word = {
-                REGISTERED: "registered",
-                DECLARED: "configured",
-                RANGE: "possible",
+            plural = _type_plural(schema, source_ctype)
+            phrase = {
+                REGISTERED: f"the {len(entries)} {plural} this device reported",
+                DECLARED: f"the {len(entries)} {plural} this device is set up for",
+                RANGE: f"the {plural} this driver can have",
             }[children.origin(source_ctype, schema)]
-            return entries, f"the {word} '{source_ctype}' children"
+            return entries, phrase
 
     for declared, where in (
         (source_param_def, "the route command's source parameter"),
@@ -670,6 +832,27 @@ def _proposal_warnings(
                      "that are not there."
             ),
         )
+    # A device can list a port it cannot reach, and the two read identically here.
+    # An MXNet CBOX keeps an endpoint in its database after it leaves the rack and
+    # then refuses every route to it in its own words ("Device not online"), which
+    # is a fault nobody can see from a panel. Not a refusal and not an alarm:
+    # switched off overnight is the ordinary case and the list is still right.
+    absent = [
+        str(entry.get("label") or entry.get("value"))
+        for entry in list(destinations) + list(sources)
+        if entry.get("offline")
+    ]
+    if absent:
+        warnings.append(
+            f"Not answering right now: {', '.join(absent)}. A route to or from one "
+            f"of these will not take until it is back. Leave them in if they are "
+            f"only switched off, and untick any that have left the rack.",
+        )
+    # Deliberately NOT warned about: a port the device could name and has not.
+    # The renderer captions an unnamed row "Out 3" in the same words it uses for a
+    # row with no live key at all, so nothing reads as a raw id and there is
+    # nothing to tell anybody. Every unnamed frame in the corpus would have
+    # tripped it.
     if not sources:
         warnings.append(
             "The driver does not say what this can be routed from, so the sources "
@@ -743,8 +926,8 @@ class _Plane:
 
     __slots__ = (
         "dest_ctype", "prop", "route_var", "source_ctype", "command",
-        "dest_param", "source_param", "source_param_def", "params",
-        "unfilled", "label", "declared", "typed",
+        "command_label", "dest_param", "source_param", "source_param_def",
+        "params", "unfilled", "label", "declared", "typed",
     )
 
     def __init__(
@@ -752,8 +935,11 @@ class _Plane:
         source_ctype: str | None, command: str | None, dest_param: str,
         source_param: str, source_param_def: Mapping[str, Any],
         params: Mapping[str, Any], unfilled: Sequence[str], label: str,
-        declared: bool, typed: bool,
+        declared: bool, typed: bool, command_label: str = "",
     ) -> None:
+        # The command's own label, which is what the author sees on its Quick
+        # Action button and in the Bindings tab. Its id is a wire name.
+        self.command_label = command_label or (command or "")
         self.dest_ctype = dest_ctype
         self.prop = prop
         self.route_var = dict(route_var)
@@ -875,6 +1061,7 @@ def _declared_planes(
             route_var=route_var,
             source_ctype=source_ctype,
             command=command,
+            command_label=_command_label(commands, command),
             dest_param=dest_param,
             source_param=source_param,
             source_param_def=source_param_def,
@@ -938,6 +1125,7 @@ def _guessed_planes(
                 route_var=route_var,
                 source_ctype=source_ctype,
                 command=command,
+                command_label=_command_label(commands, command),
                 dest_param=dest_param,
                 source_param=source_param,
                 source_param_def=source_param_def,
@@ -969,21 +1157,32 @@ def _proposal(
 
     destinations: list[dict[str, Any]] = []
     if dest_ctype:
-        for position, (local, padded, label) in enumerate(
+        for position, (local, padded, label, online) in enumerate(
             roster.entries(dest_ctype, schema),
         ):
             entry: dict[str, Any] = {
                 "value": local,
-                "label": _entry_label(label, schema, dest_ctype, position + 1),
                 "route_key": f"device.{device_id}.{dest_ctype}.{padded}.{plane.prop}",
             }
+            caption = _entry_label(
+                label, schema, dest_ctype, position + 1, live=bool(name_prop),
+            )
+            if caption:
+                entry["label"] = caption
             if name_prop:
                 entry["label_key"] = f"device.{device_id}.{dest_ctype}.{padded}.{name_prop}"
+            # Live, so it rides on the proposal and never on the entry the picker
+            # writes: whether a port answers today is not a fact about the panel.
+            if online is False:
+                entry["offline"] = True
             destinations.append(entry)
         origin = roster.origin(dest_ctype, schema)
         roster_field = _roster_field(schema, _as_mapping(config_schema))
-        plural = str(schema.get("label_plural") or schema.get("label") or dest_ctype)
-        where = f"Each '{dest_ctype}' reports its routed source in '{plane.prop}'"
+        plural = _type_plural(schema, dest_ctype)
+        where = (
+            f"Destinations are {_roster_phrase(origin, len(destinations), plural)}, "
+            f"each showing its {_shown_as(plane)}"
+        )
     else:
         # The device routes ITSELF: an AVoIP endpoint whose display shows one
         # source at a time has no destination child, and its matrix is one row.
@@ -997,7 +1196,7 @@ def _proposal(
         origin = REGISTERED
         roster_field = ""
         plural = "This device"
-        where = f"This device reports its routed source in '{plane.prop}'"
+        where = f"This device is the destination, showing its {_shown_as(plane)}"
 
     route = (
         [{
@@ -1014,35 +1213,33 @@ def _proposal(
         else None
     )
 
-    if plane.command:
-        ends = (
-            f"'{plane.command}' takes "
-            + (
-                f"the destination as '{plane.dest_param}' and "
-                if plane.dest_param
-                else "no destination (it addresses the device itself) and "
-            )
-            + (
-                f"the source as '{plane.source_param}'."
-                if plane.source_param
-                else "no source, which is a route that cannot say what to route."
-            )
-        )
+    if not plane.command:
+        ends = "and nothing on this driver routes one to another."
+    elif plane.source_param or not plane.dest_param:
+        ends = f"and a tap sends {plane.command_label}."
     else:
-        ends = "no command on this driver routes one to another."
+        # A command that names the destination and no source cannot say what to
+        # route. Worth saying plainly rather than in parameter names.
+        ends = (
+            f"and a tap would send {plane.command_label}, which takes no source "
+            f"-- so it cannot say what to route."
+        )
 
     return {
         "id": f"{dest_ctype}.{plane.prop}" if dest_ctype else plane.prop,
         "device_id": device_id,
-        "label": f"{plural} -- {plane.label}",
+        "label": f"{plural} · {plane.label}",
         "destination_child_type": dest_ctype,
         "route_property": plane.prop,
         "source_child_type": plane.source_ctype,
         "command": plane.command,
+        "command_label": plane.command_label,
+        # Filled in by _pair_audio_planes once the whole set is known.
+        "audio_plane_id": None,
         "confidence": "high" if plane.typed else "medium" if plane.command else "low",
         "why": (
-            ("The driver declares this: " if plane.declared else "")
-            + f"{where}, and {ends} Sources come from {source_origin}."
+            ("The driver declares this. " if plane.declared else "")
+            + f"{where}, {ends} Sources come from {source_origin}."
         ),
         "from_roster": origin == REGISTERED,
         "warnings": _proposal_warnings(
@@ -1082,10 +1279,10 @@ def propose_matrices(
 
     declared = _declared_planes(info, child_types, commands)
     if declared is not None:
-        return [
+        return _pair_audio_planes(_uniquify_ids([
             _proposal(device_id, plane, child_types, roster, config_schema)
             for plane in declared
-        ]
+        ]))
 
     proposals = [
         _proposal(device_id, plane, child_types, roster, config_schema)
@@ -1095,4 +1292,4 @@ def propose_matrices(
     proposals.sort(
         key=lambda p: (order[p["confidence"]], _plane_rank(p["route_property"]), p["id"]),
     )
-    return proposals
+    return _pair_audio_planes(_uniquify_ids(proposals))

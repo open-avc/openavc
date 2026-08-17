@@ -450,6 +450,147 @@ def test_registered_children_win_over_the_declared_range():
     assert destinations[1]["route_key"] == "device.mx.output.7.input"
 
 
+def test_a_port_the_device_names_gets_no_invented_caption():
+    """Because an invented one would outrank the name, once it arrives.
+
+    A caption is a stored name and a stored name is what the panel draws first
+    (`_entryLabel`), so "Sink 1" written here would sit on a tile for good and
+    the endpoint's real name -- typed into the rack an hour later -- would never
+    show. The renderer captions an unnamed row instead.
+    """
+    driver = {
+        **MULTI_PLANE,
+        "child_entity_types": {
+            **MULTI_PLANE["child_entity_types"],
+            "sink": {
+                **MULTI_PLANE["child_entity_types"]["sink"],
+                "state_variables": {
+                    **MULTI_PLANE["child_entity_types"]["sink"]["state_variables"],
+                    "name": {"type": "string"},
+                },
+            },
+        },
+    }
+    roster = {"sink": [{"local_id": 1, "local_id_padded": "1", "label": ""}]}
+    (dest,) = _by_id(propose_matrices("mx", driver, roster))[
+        "sink.source_video"]["destinations"]
+    assert "label" not in dest
+    assert dest["label_key"] == "device.mx.sink.1.name"
+
+
+def test_a_port_the_device_cannot_name_still_gets_one():
+    """The other half: no live key, so a caption here is the only one there is."""
+    roster = {"output": [{"local_id": 3, "local_id_padded": "3", "label": ""}]}
+    (dest,) = _by_id(propose_matrices("mx", TYPED_FRAME, roster))[
+        "output.input"]["destinations"]
+    assert dest["label"] == "Output 1"
+    assert "label_key" not in dest
+
+
+def test_a_port_the_device_is_not_reaching_is_flagged_and_said_out_loud():
+    """A roster can list a port that is gone.
+
+    An MXNet CBOX keeps an endpoint in its database after it leaves the rack and
+    then refuses every route to it in its own words. Offered here it looked
+    exactly like the ones that are plugged in, so it got ticked, and the
+    destination it drew could never route.
+    """
+    roster = {
+        "sink": [
+            {"local_id": 1, "local_id_padded": "1", "label": "Lobby", "online": True},
+            {"local_id": 2, "local_id_padded": "2", "label": "Boardroom",
+             "online": False},
+        ],
+        "encoder": [{"local_id": 1, "local_id_padded": "1", "label": "Apple TV",
+                     "online": True}],
+    }
+    proposal = _by_id(propose_matrices("mx", MULTI_PLANE, roster))["sink.source_video"]
+    assert [d.get("offline") for d in proposal["destinations"]] == [None, True]
+    assert any("Not answering right now: Boardroom" in w for w in proposal["warnings"])
+
+
+def test_a_roster_that_says_nothing_about_presence_flags_nothing():
+    """`online` absent means nobody asked -- a declared or ranged roster."""
+    proposal = _by_id(propose_matrices("mx", MULTI_PLANE))["sink.source_video"]
+    assert all("offline" not in d for d in proposal["destinations"])
+    assert not any("Not answering" in w for w in proposal["warnings"])
+
+
+def test_a_proposal_names_its_command_the_way_the_rest_of_the_ide_does():
+    """`command` is a wire id; the author sees the label everywhere else."""
+    driver = {
+        **TYPED_FRAME,
+        "commands": {
+            **TYPED_FRAME["commands"],
+            "route": {**TYPED_FRAME["commands"]["route"],
+                      "label": "Route Source to Display"},
+        },
+    }
+    proposal = _by_id(propose_matrices("mx", driver))["output.input"]
+    assert proposal["command"] == "route"
+    assert proposal["command_label"] == "Route Source to Display"
+    assert "Route Source to Display" in proposal["why"]
+    # And the wire names of the two ends are NOT in it: an integrator cannot act
+    # on which parameter is which, and for a declared driver there is nothing
+    # there for them to confirm.
+    assert "'output'" not in proposal["why"]
+    assert "'input'" not in proposal["why"]
+
+
+def test_a_command_with_no_label_falls_back_to_its_own_name():
+    proposal = _by_id(propose_matrices("mx", TYPED_FRAME))["output.input"]
+    assert proposal["command_label"] == "route"
+
+
+def test_the_audio_plane_is_paired_when_audio_has_its_own_command():
+    """Audio-follow-video needs a second action list, and it is already here.
+
+    The Builder's answer used to be a warning telling the author to hand-author
+    it in the Bindings tab -- for a command the picker was holding.
+    """
+    found = _by_id(propose_matrices("mx", TYPED_FRAME))
+    assert found["output.input"]["audio_plane_id"] == "output.audio_input"
+    # And the audio plane does not follow itself.
+    assert found["output.audio_input"]["audio_plane_id"] is None
+
+
+def test_one_command_covering_every_plane_is_not_paired():
+    """It needs a combined value on its own plane parameter, not two sends.
+
+    Every one-command multi-plane driver in the corpus accepts one (MXNet
+    `stream: all`, Chazy and Darwin `signal: ALL`), so firing the same command
+    twice would be the wrong answer offered in place of the right one.
+    """
+    found = _by_id(propose_matrices("mx", MULTI_PLANE))
+    assert all(p["audio_plane_id"] is None for p in found.values())
+
+
+def test_two_planes_on_one_property_answer_to_different_ids():
+    """A combined mode watches the same property as the plane it contains.
+
+    The picker keys its options by id and finds the chosen one by it, so a
+    collision means picking "Video" and silently getting "All streams".
+    """
+    driver = {
+        **MULTI_PLANE,
+        "routing": {
+            "destination_child_type": "sink", "source_child_type": "encoder",
+            "command": "route",
+            "planes": [
+                {"label": "All streams", "route_property": "source_video",
+                 "params": {"stream": "ALL"}},
+                {"label": "Video", "route_property": "source_video",
+                 "params": {"stream": "VIDEO"}},
+            ],
+        },
+    }
+    proposals = propose_matrices("mx", driver)
+    assert [p["id"] for p in proposals] == [
+        "sink.source_video", "sink.source_video.sinks_video",
+    ]
+    assert len({p["id"] for p in proposals}) == 2
+
+
 def test_a_string_keyed_port_set_cannot_be_guessed_and_says_so():
     """Names come from the device. Inventing them is worse than an empty list."""
     driver = {

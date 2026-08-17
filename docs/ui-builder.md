@@ -316,7 +316,11 @@ A matrix is **two lists**: the sources you can pick from, and the destinations y
 
 A device that routes more than one thing offers one setup per signal. A decoder that routes video, audio and USB separately shows all three, and each one is a separate Matrix element pointed at that signal, so a page that needs two carries two matrices. Devices whose ports are not a plain 1-to-N frame, and devices whose driver says nothing about routing, are set up by hand with the fields below.
 
-Some things the picker cannot know, and it says so above the lists rather than after you have built the panel: a device that is not running lists the ports its driver declares rather than the ones it has, a routing command may need a setting the picker cannot guess, and some devices report a routed source in different words from the ones their route command accepts. Read those lines before pressing Apply.
+**Names: type one and it sticks, leave it and the device keeps it current.** Some switchers name their own ports -- AV-over-IP endpoints, DSP channels, mixer components -- and the picker shows you those names in grey. Leave a row alone and the panel goes on reading the device, so renaming that port at the rack moves every panel with it. Type over it and your name is the one the panel shows from then on, whatever the rack says later. A port nobody has named anywhere reads as its position ("Out 3").
+
+**Where a switcher routes audio with a command of its own,** the picker offers to move the audio with the video. Leave it ticked and each route sends both, which is what a room usually wants; untick it when audio needs to break away.
+
+Some things the picker cannot know, and it says so above the lists rather than after you have built the panel: a device that is not running lists the ports its driver declares rather than the ones it has, a port the device lists but is not reaching right now is marked **not answering**, a routing command may need a setting the picker cannot guess, and some devices report a routed source in different words from the ones their route command accepts. Read those lines before pressing Apply.
 
 **Re-read device** picks up ports the device has gained since. Your ticks, names and order are kept for every port that is still there, and anything new arrives at the bottom marked **new** and unticked, so nothing appears on a finished panel without you saying so.
 

@@ -991,7 +991,12 @@ export function BasicProperties({
             />
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Mute buttons per output</span>
           </FieldRow>
-          {element.matrix_config?.show_mute !== false && !((element.bindings as { do?: Record<string, unknown> })?.do?.mute_route) && (
+          {/* Only once somebody asked for mute. The box reads ticked when the key
+              is absent (which is what the panel does too), so warning on that
+              state put an orange line about a Bindings tab on every matrix the
+              moment it was dropped, for a button the panel does not draw until
+              the binding exists. */}
+          {element.matrix_config?.show_mute === true && !((element.bindings as { do?: Record<string, unknown> })?.do?.mute_route) && (
             <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add a Mute Route binding in the Bindings tab to wire the mute buttons to a command.
             </div>

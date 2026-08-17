@@ -2705,6 +2705,19 @@ class PanelApp {
         // can see, rather than the phantom 4x4 the old default invented.
         const sources = Array.isArray(config.sources) ? config.sources : [];
         const destinations = Array.isArray(config.destinations) ? config.destinations : [];
+        // A caption for a row nobody has named, in the same words the resolver
+        // uses for a row with no live key at all -- so a matrix reads the same
+        // either way. It lives here rather than in the stored entry because a
+        // STORED name outranks the device's own (see _entryLabel), and an
+        // invented one would then beat the endpoint's real name the moment
+        // somebody typed it into the rack. Mutated in place: replacing the
+        // entries would break the identity comparisons the routing does.
+        sources.forEach((entry, i) => {
+            if (entry && !entry.label) entry._caption = `In ${i + 1}`;
+        });
+        destinations.forEach((entry, i) => {
+            if (entry && !entry.label) entry._caption = `Out ${i + 1}`;
+        });
         const inputCount = sources.length;
         const outputCount = destinations.length;
         const matrixStyle = element.matrix_style || 'crosspoint';
@@ -2837,7 +2850,7 @@ class PanelApp {
 
             const title = document.createElement('div');
             title.className = 'matrix-chooser-title';
-            title.textContent = this._entryLabel(dest) || `Out ${o + 1}`;
+            title.textContent = this._entryLabel(dest);
             sheet.appendChild(title);
 
             const grid = document.createElement('div');
@@ -2847,7 +2860,7 @@ class PanelApp {
                 const btn = document.createElement('button');
                 btn.className = 'matrix-chooser-source';
                 btn.dataset.sourceIdx = String(i);
-                btn.textContent = src.label || `In ${i + 1}`;
+                btn.textContent = this._entryLabel(src);
                 if (routed.state === 'listed' && routed.source === src) {
                     btn.classList.add('active');
                     btn.style.borderColor = activeColor;
@@ -2941,7 +2954,7 @@ class PanelApp {
                     // value is read back off the source list on change, so a
                     // device expecting the number 3 is not sent "3".
                     opt.value = String(sources[i].value);
-                    opt.textContent = sources[i].label || `In ${i + 1}`;
+                    opt.textContent = this._entryLabel(sources[i]);
                     opt.dataset.sourceIdx = String(i);
                     select.appendChild(opt);
                 }
@@ -3180,7 +3193,7 @@ class PanelApp {
                 outHeader.dataset.outputIdx = String(o);
                 const outLabelText = document.createElement('span');
                 outLabelText.dataset.labelText = '';
-                outLabelText.textContent = dest.label || `Out ${o + 1}`;
+                outLabelText.textContent = this._entryLabel(dest);
                 outHeader.appendChild(outLabelText);
                 // The audio source's NAME, whenever it differs from the video's
                 // (see the list style for why this replaced the A≠V badge).
@@ -3378,7 +3391,7 @@ class PanelApp {
                 num.textContent = String(i + 1);
                 const name = document.createElement('span');
                 name.dataset.labelText = '';
-                name.textContent = sources[i].label || `In ${i + 1}`;
+                name.textContent = this._entryLabel(sources[i]);
                 item.appendChild(num);
                 item.appendChild(name);
                 legend.appendChild(item);
@@ -3464,14 +3477,17 @@ class PanelApp {
         // Update dynamic labels from state \u2014 write to the [data-label-text]
         // child when present (crosspoint output header has siblings), else to
         // the header element directly (input headers, list-view labels).
-        const applyLabel = (node, key) => {
-            if (!key) return;
-            const val = this.state[key];
-            if (val === undefined || val === null) return;
-            (node.querySelector('[data-label-text]') || node).textContent = String(val);
+        // Through _entryLabel, not straight off label_key: the authored name wins
+        // where there is one, and this pass runs after the render, so reading the
+        // live key here would put the device's name back over it.
+        const applyLabel = (node, entry) => {
+            if (!entry) return;
+            const text = this._entryLabel(entry);
+            if (text === '') return;
+            (node.querySelector('[data-label-text]') || node).textContent = text;
         };
         el.querySelectorAll('[data-input-idx]').forEach(h => {
-            applyLabel(h, sources[parseInt(h.dataset.inputIdx)]?.label_key);
+            applyLabel(h, sources[parseInt(h.dataset.inputIdx)]);
         });
         // Scoped to the LABEL nodes. The list view's <select> carries the same
         // data-output-idx (its change handler reads it), so an unscoped query
@@ -3482,7 +3498,7 @@ class PanelApp {
             '.matrix-output-header[data-output-idx], .matrix-list-label[data-output-idx], '
             + '.matrix-tile-dest[data-output-idx]'
         ).forEach(h => {
-            applyLabel(h, destinations[parseInt(h.dataset.outputIdx)]?.label_key);
+            applyLabel(h, destinations[parseInt(h.dataset.outputIdx)]);
         });
 
         this._applyMatrixLocks(el, destinations);
@@ -3496,12 +3512,9 @@ class PanelApp {
                 // captions no matter what the device reported.
                 for (const opt of sel.options) {
                     if (opt.dataset.sourceIdx === undefined) continue;
-                    const key = sources[parseInt(opt.dataset.sourceIdx)]?.label_key;
-                    if (!key) continue;
-                    const val = this.state[key];
-                    if (val !== undefined && val !== null && String(val) !== '') {
-                        opt.textContent = String(val);
-                    }
+                    const entry = sources[parseInt(opt.dataset.sourceIdx)];
+                    const text = entry ? this._entryLabel(entry) : '';
+                    if (text !== '') opt.textContent = text;
                 }
                 const raw = routes[parseInt(sel.dataset.outputIdx)];
                 const routed = this._routeState(sources, raw);
@@ -3579,17 +3592,35 @@ class PanelApp {
     }
 
     /**
-     * An entry's live name when it has one, else the name it was authored with.
+     * What this row is called: the name somebody typed, else the device's own.
      *
-     * Either axis: a destination carries a `label_key` exactly as a source does,
-     * and a tile showing the device's own channel name over a chooser headed with
-     * the name somebody typed months ago is the same row twice.
+     * Same precedence as `child_display_name` on the server, which is THE answer
+     * to what a port is called -- the integrator's label first, because a rack
+     * label of `DEC-04` is not what belongs on a panel. Reading the live name
+     * first (which this did until 2026-08-17) meant a name typed in the matrix
+     * picker was stored and then never drawn on any device that reports its own
+     * port names, with nothing to say so.
+     *
+     * It stays consistent between a tile and its chooser either way, which is the
+     * thing that must not drift: both come through here.
+     *
+     * The picker holds up its end -- it writes `label` only when the author
+     * changed it -- and so does the resolver, which no longer stamps "Out 2" onto
+     * an entry that names a `label_key`. Without those two, this precedence would
+     * freeze whatever the device happened to be called at setup.
      */
     _entryLabel(entry) {
         if (!entry) return '';
+        const authored = entry.label;
+        if (authored !== undefined && authored !== null && String(authored) !== '') {
+            return String(authored);
+        }
         const live = entry.label_key ? this.state[entry.label_key] : undefined;
         if (live !== undefined && live !== null && String(live) !== '') return String(live);
-        return String(entry.label ?? entry.value);
+        // Nobody has named this port -- not here and not on the device. "Out 3"
+        // beats the id it would otherwise read as, which on an AVoIP endpoint is
+        // a MAC address.
+        return String(entry._caption || entry.value);
     }
 
     /**

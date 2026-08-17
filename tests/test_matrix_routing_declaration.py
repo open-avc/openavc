@@ -247,7 +247,7 @@ def test_declared_planes_keep_the_order_the_driver_wrote_them_in():
         ],
     }}
     labels = [p["label"] for p in propose_matrices("dev", declared, ROSTER)]
-    assert labels == ["Sinks -- Second"]
+    assert labels == ["Sinks · Second"]
 
 
 def test_a_declaration_says_it_is_a_declaration():
@@ -256,7 +256,7 @@ def test_a_declaration_says_it_is_a_declaration():
         "planes": [{"route_property": "source", "params": {"signal": "ALL"}}],
     }}
     (proposal,) = propose_matrices("dev", declared, ROSTER)
-    assert proposal["why"].startswith("The driver declares this:")
+    assert proposal["why"].startswith("The driver declares this.")
     assert proposal["confidence"] == "high"
 
 
@@ -436,6 +436,35 @@ def test_two_planes_watching_one_property_are_refused():
     assert "already declared by routing.planes[0]" in error
 
 
+def test_two_planes_on_one_property_routing_it_differently_are_allowed():
+    """A combined mode is a second plane, not a duplicate of the first.
+
+    An AVoIP decoder switches every stream with one command and tells them apart
+    with a parameter -- and that parameter also takes a combined value (MXNet
+    `stream: all`, Chazy and Darwin `signal: ALL`). So the plane that routes
+    everything and the plane that routes video alone both report `source_video`
+    and send nothing alike. Refusing the pair on the property alone refused the
+    combined plane, which is the one an integrator reaches for first: a video-only
+    matrix on that gear leaves audio, USB and serial on the previous source with
+    nothing on the panel to say so.
+    """
+    assert _errors({"destination_child_type": "output", "command": "route",
+                    "planes": [{"label": "All", "route_property": "input",
+                                "params": {"signal": "ALL"}},
+                               {"label": "Video", "route_property": "input",
+                                "params": {"signal": "VIDEO"}}]}) == []
+
+
+def test_two_planes_routing_one_property_the_same_way_are_still_refused():
+    """The refinement above must not let the real duplicate back through."""
+    (error,) = _errors({"destination_child_type": "output", "command": "route",
+                        "planes": [{"route_property": "input",
+                                    "params": {"signal": "ALL"}},
+                                   {"route_property": "input",
+                                    "params": {"signal": "ALL"}}]})
+    assert "routing it the same way are the same matrix twice" in error
+
+
 def test_a_property_built_at_runtime_is_not_reported_as_missing():
     """Three shipped Python drivers build their child properties at
     construction time, so a file reader sees a marker rather than a mapping.
@@ -527,7 +556,7 @@ def test_the_declaration_settles_the_plane_a_yaml_driver_offers():
     (proposal,) = propose_matrices("frame", info, {})
     assert proposal["route_property"] == "input"
     assert proposal["command"] == "route"
-    assert proposal["why"].startswith("The driver declares this:")
+    assert proposal["why"].startswith("The driver declares this.")
 
 
 def test_a_yaml_driver_that_declares_nothing_is_still_guessed_at():
@@ -538,4 +567,4 @@ def test_a_yaml_driver_that_declares_nothing_is_still_guessed_at():
     assert "routing" not in info
     proposals = propose_matrices("frame", info, {})
     assert "input" in [p["route_property"] for p in proposals]
-    assert not any(p["why"].startswith("The driver declares this:") for p in proposals)
+    assert not any(p["why"].startswith("The driver declares this.") for p in proposals)

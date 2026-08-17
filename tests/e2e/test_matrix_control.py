@@ -742,11 +742,15 @@ def test_one_destination_can_watch_audio_while_the_others_do_not(panel_page) -> 
 
 
 def test_a_live_name_is_per_entry_not_per_axis(panel_page) -> None:
-    """Two sources on two devices, each named by its own key."""
+    """Two sources on two devices, each named by its own key.
+
+    Neither entry carries a stored name, which is what the picker writes for a
+    port nobody has renamed -- a stored one outranks the device's own.
+    """
     element = _resolved(
         sources=[
-            {"value": 1, "label": "Input 1", "label_key": "device.mx.input.1.name"},
-            {"value": 2, "label": "Input 2", "label_key": "device.enc.name"},
+            {"value": 1, "label_key": "device.mx.input.1.name"},
+            {"value": 2, "label_key": "device.enc.name"},
         ],
         destinations=[{"value": 1, "label": "Main LCD",
                        "route_key": "device.mx.output.1.input"}],
@@ -888,13 +892,22 @@ def _from_driver(plane: str, roster=None) -> dict:
 
 
 def test_a_matrix_read_off_a_driver_draws_what_the_driver_declares(panel_page) -> None:
-    """Three decoders and two encoders, with nothing typed by hand."""
+    """Three decoders and two encoders, with nothing typed by hand.
+
+    The rows read "Out 1..3" and not "Decoder 1..3", and that is the deliberate
+    half. The inference used to caption an unnamed port from its child type's
+    label, which reads better -- but a caption is a STORED name and a stored name
+    outranks the one the device reports, so "Decoder 1" sat on a tile for good
+    while the endpoint's real name, typed into the rack an hour later, never
+    arrived. Naming an unnamed row is the renderer's job now, in one place, in the
+    same words for a row with a live key and a row without one.
+    """
     element, _ = _from_driver("decoder.source_video")
     _mount(panel_page, element, 700, 500)
     assert panel_page.locator(".matrix-crosspoint").count() == 6
     rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
         '.matrix-output-header [data-label-text]')).map(s => s.textContent)""")
-    assert rows == ["Decoder 1", "Decoder 2", "Decoder 3"]
+    assert rows == ["Out 1", "Out 2", "Out 3"]
 
 
 def test_the_crosspoints_light_off_the_keys_the_driver_was_read_for(panel_page) -> None:
@@ -1278,6 +1291,7 @@ def test_a_chooser_is_headed_with_the_name_its_tile_is_showing(panel_page) -> No
     wall = _wall(destinations=2)
     for i, dest in enumerate(wall["matrix_config"]["destinations"], start=1):
         dest["label_key"] = f"device.mx.output.{i}.name"
+        dest.pop("label")
     _mount(panel_page, wall, 800, 500)
     panel_page.evaluate("(s) => window.__setState(s)",
                         {"device.mx.output.2.name": "CH 2"})
@@ -1286,6 +1300,65 @@ def test_a_chooser_is_headed_with_the_name_its_tile_is_showing(panel_page) -> No
     # The chooser is a fixed overlay on document.body, so it outlives the element
     # a re-mount replaces -- leaving one open is a stray overlay in the next test.
     panel_page.locator(".matrix-chooser-cancel").click()
+
+
+def test_a_typed_name_beats_the_one_the_device_reports(panel_page) -> None:
+    """The rename field in the picker has to reach the panel.
+
+    A name typed there was stored and then never drawn: the renderer read the
+    live key first, so on any device that reports its own port names -- an AVoIP
+    endpoint, a Q-SYS component, a DSP channel -- the author's name was dead on
+    arrival with nothing to say so. Precedence is now the platform's own:
+    `child_display_name` puts the integrator's label first, because a rack label
+    of `DEC-04` is not what belongs on a panel.
+    """
+    wall = _wall(destinations=2)
+    for i, dest in enumerate(wall["matrix_config"]["destinations"], start=1):
+        dest["label_key"] = f"device.mx.output.{i}.name"
+    wall["matrix_config"]["destinations"][1]["label"] = "Bar Left TV"
+    _mount(panel_page, wall, 800, 500)
+    panel_page.evaluate("(s) => window.__setState(s)",
+                        {"device.mx.output.2.name": "DEC-04"})
+    names = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-tile-dest')).map(n => n.textContent)""")
+    assert names[1] == "Bar Left TV"
+    # And the chooser it opens says the same thing, which is the half the live-key
+    # precedence was introduced to fix -- it holds in either direction.
+    panel_page.locator('.matrix-tile[data-dest-idx="1"]').click()
+    assert panel_page.locator(".matrix-chooser-title").text_content() == "Bar Left TV"
+    panel_page.locator(".matrix-chooser-cancel").click()
+
+
+def test_a_row_nobody_has_named_reads_as_a_position_not_an_id(panel_page) -> None:
+    """A port with a live key whose name has not arrived, or never will.
+
+    Nothing on a fresh AVoIP system is named, so every one of these keys reads
+    empty -- and the entry's own value is a MAC address.
+
+    **This passes on both sides of the change, deliberately.** It is not guarding
+    a defect; it pins a caption that used to be written out four times (the
+    crosspoint header, the source legend, the chooser's grid and its title) and is
+    now produced once, in `_entryLabel`, alongside the two names that outrank it.
+    Four copies of "what is this row called" is how the tile and its chooser came
+    to disagree in the first place.
+    """
+    element = _resolved(
+        sources=[{"value": "188A6A0067A2",
+                  "label_key": "device.mx.encoder.188A6A0067A2.name"}],
+        destinations=[
+            {"value": f"188A6A45C4A{i}",
+             "route_key": f"device.mx.decoder.188A6A45C4A{i}.source_video",
+             "label_key": f"device.mx.decoder.188A6A45C4A{i}.name"}
+            for i in (1, 2)
+        ],
+    )
+    _mount(panel_page, element, 700, 400)
+    rows = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-output-header [data-label-text]')).map(n => n.textContent)""")
+    assert rows == ["Out 1", "Out 2"]
+    columns = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-legend-item [data-label-text]')).map(n => n.textContent)""")
+    assert columns == ["In 1"]
 
 
 def test_a_chooser_falls_back_to_the_authored_name(panel_page) -> None:
@@ -1351,6 +1424,7 @@ def test_a_diverging_audio_route_uses_the_live_source_name(panel_page) -> None:
     """The name a device reports, not the one that was typed at build time."""
     element = _with_audio("tiles")
     element["matrix_config"]["sources"][1]["label_key"] = "device.mx.input.2.name"
+    element["matrix_config"]["sources"][1].pop("label")
     _mount(panel_page, element, 700, 400)
     panel_page.evaluate("(s) => window.__setState(s)", {
         "device.mx.output.1.input": 1,

@@ -2127,7 +2127,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
         if value is not None and (not isinstance(value, str) or not value):
             errors.append(f"routing.{key}: must be a non-empty string")
 
-    seen: dict[tuple[str, str], int] = {}
+    seen: dict[tuple[str, str, str, tuple[tuple[str, str], ...]], int] = {}
     for index, raw in enumerate(planes):
         where = f"routing.planes[{index}]"
         if not isinstance(raw, dict):
@@ -2239,11 +2239,30 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
                     )
 
         if route_property:
-            key = (dest_type or "", route_property)
+            # What makes two planes the same matrix is showing one property AND
+            # routing it the same way. Two that share a property and send
+            # different fixed params are two different controls: an AVoIP decoder
+            # that switches every stream with one command and tells them apart
+            # with `stream` / `signal` also accepts a combined value on that
+            # parameter, so "All streams" and "Video" both report `source_video`
+            # and route nothing alike. Keying on the property alone refused the
+            # combined plane -- which is the one an integrator wants first, since
+            # a video-only matrix on that gear leaves audio, USB and serial on
+            # the previous source with nothing to say so.
+            fixed = raw.get("params")
+            key = (
+                dest_type or "",
+                route_property,
+                str(plane.get("command") or ""),
+                tuple(sorted(
+                    (str(k), str(v)) for k, v in fixed.items()
+                )) if isinstance(fixed, dict) else (),
+            )
             if key in seen:
                 errors.append(
                     f"{where}: already declared by routing.planes[{seen[key]}] "
-                    f"— two planes watching one property are the same matrix twice"
+                    f"— two planes watching one property and routing it the same "
+                    f"way are the same matrix twice"
                 )
             else:
                 seen[key] = index

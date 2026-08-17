@@ -27,6 +27,12 @@ export interface ProposedSource {
    * differ -- `at_atdm_0604a` is routed by sending "0" and reports back "Mic".
    */
   report_value?: string | number;
+  /**
+   * The device lists this port but is not reaching it right now (the
+   * platform-reserved child `online`). Live, so it is never written into the
+   * project -- it says "this row cannot route today", not "leave it out".
+   */
+  offline?: boolean;
 }
 
 /** One thing a matrix can route to, with its own key for what is routed there. */
@@ -38,15 +44,24 @@ export interface ProposedDestination extends ProposedSource {
 }
 
 export interface MatrixProposal {
-  /** Stable within a device: "<child type>.<routed-source property>". */
+  /** Stable within a device: "<child type>.<routed-source property>", with a
+   *  plane suffix where a device routes two planes off one property (a combined
+   *  "all streams" mode beside the individual ones). */
   id: string;
   device_id: string;
-  /** What the picker shows, e.g. "Decoders -- Video Source". */
+  /** What the picker shows, e.g. "Decoders \u00b7 Video". */
   label: string;
   destination_child_type: string;
   route_property: string;
   source_child_type: string | null;
   command: string | null;
+  /** The command's own label ("Route Source to Display"), which is how the rest
+   *  of the IDE names it; `command` is its wire id. */
+  command_label: string;
+  /** The id of the plane carrying this one's audio, where the device switches
+   *  audio with its own command -- what the "move the audio with it" tick wires
+   *  up. Null when audio is not routed separately (or this IS the audio plane). */
+  audio_plane_id: string | null;
   confidence: "high" | "medium" | "low";
   /** True when the destinations are the ports that REGISTERED, false when they
    *  are the range the driver declares (an unconnected device). */
