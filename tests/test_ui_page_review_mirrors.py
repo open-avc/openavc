@@ -405,3 +405,38 @@ def test_the_degenerate_threshold_stays_under_every_measured_floor() -> None:
         f"the degenerate threshold ({MINIMUM_VISIBLE_PX}px) has reached the smallest "
         f"measured floor ({smallest}px); one of them is now wrong"
     )
+
+
+def test_the_guide_states_the_off_values_the_led_renderer_uses(
+    panel_method_bodies: dict[str, str],
+) -> None:
+    """The authoring guide names the values that leave a status LED unlit.
+
+    Worth pinning because it is prose rather than a generated table, and because
+    it documents the one thing about an LED that is NOT the colour map: the map
+    picks the colour, the value alone decides whether the dot is drawn lit. An
+    LED bound to a boolean whose healthy state is ``false`` therefore keeps its
+    green and never lights, which cost a real panel a status row that read as
+    dead. If ``evaluateColor`` ever changes which values count as off, this
+    fails rather than leaving the guide quietly wrong.
+    """
+    from openavc.system_config import PACKAGE_DIR
+
+    body = panel_method_bodies["evaluateColor"]
+    guide = (PACKAGE_DIR / "ui" / "panel_authoring_guide.md").read_text(encoding="utf-8")
+
+    # The literal strings the renderer treats as off, read out of the source.
+    off_strings = re.findall(r"\[([^\]]*)\]\.includes\(value", body)
+    assert off_strings, "evaluateColor no longer tests a list of off-like strings"
+    literals = re.findall(r"'([^']*)'", off_strings[0])
+    assert set(literals) == {"", "off", "false", "0", "no"}, literals
+
+    # ...and the non-string values it also treats as off.
+    normalized = re.sub(r"\s+", "", body)
+    for token in ("value===null", "value===undefined", "value===false", "value===0"):
+        assert token in normalized, f"evaluateColor no longer checks {token}"
+
+    section = guide.partition("## A status LED lights on its value")[2]
+    assert section, "the guide no longer documents the LED lit/unlit rule"
+    for token in ("null", "undefined", "false", "0", '""', '"off"', '"false"', '"no"'):
+        assert token in section, f"the guide's off-value list omits {token}"

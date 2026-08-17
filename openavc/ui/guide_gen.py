@@ -484,6 +484,24 @@ but only two of them ignore case.
 So `{"true": "#4CAF50"}` lights an LED bound to a boolean, and `{"True": ...}`
 does not -- while a toggle would have matched both. Write map keys in the
 device's own casing, and prefer lowercase `"true"` / `"false"` for booleans.
+
+## A status LED lights on its value, not on the colour it matched
+
+Matching a map key is what picks the colour. Whether the dot is drawn LIT is a
+separate question, answered by the value itself, and these count as off however
+they were coloured:
+
+    null   undefined   false   0   ""   "off"   "false"   "0"   "no"
+
+(the strings case-insensitively). So an LED whose healthy state is boolean
+`false` -- a `fault` flag, a `muted` flag, a `thermal` flag -- takes the green
+you mapped and is still drawn unlit, for the life of the panel. On screen that
+is a dark indicator beside a caption saying everything is fine, which reads as a
+dead panel rather than a healthy one.
+
+Bind the sense that is TRUE when the thing is working. Where only the negative
+exists as a variable, keep both and set them together, rather than mapping a
+colour onto a value that can never light.
 """
 
 CUSTOM_PAGE_INTRO = """\

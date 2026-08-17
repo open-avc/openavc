@@ -4623,6 +4623,30 @@ const INERT_WITHOUT: Record<string, [string, string | null, string]> = {
  * because no tool could set one. It stored, it took a placement, and it
  * rendered as nothing -- while the request that asked for it was reported done.
  */
+/**
+ * Whether a `show.look` puts TEXT on screen, rather than only colour.
+ *
+ * Two shapes do: a `states` map with a `label` on any entry, and the binary
+ * form's `label_active` / `label_inactive`. A look carrying only colours
+ * supplies none. Mirrors look_supplies_text in page_review.py.
+ */
+export function lookSuppliesText(look: unknown): boolean {
+  if (!look || typeof look !== "object") return false;
+  const l = look as Record<string, unknown>;
+  if (l.label_active !== undefined && l.label_active !== null) return true;
+  if (l.label_inactive !== undefined && l.label_inactive !== null) return true;
+  const states = l.states;
+  if (states && typeof states === "object") {
+    return Object.values(states as Record<string, unknown>).some(
+      (spec) =>
+        spec !== null && typeof spec === "object" &&
+        (spec as Record<string, unknown>).label !== undefined &&
+        (spec as Record<string, unknown>).label !== null,
+    );
+  }
+  return false;
+}
+
 export function contentFindings(el: UIElement): ReviewFinding[] {
   const rule = own(INERT_WITHOUT, el.type);
   if (!rule) return [];
@@ -4634,6 +4658,12 @@ export function contentFindings(el: UIElement): ReviewFinding[] {
     | Record<string, unknown>
     | undefined;
   if (slot && show && typeof show === "object" && show[slot]) return [];
+  // A label whose words come from its look is not an empty box: the renderer
+  // draws show.look's per-state text for STATE_LABEL_TYPES. Warning about it
+  // taught authors to add a dead `text` to silence the check.
+  if (STATE_LABEL_TYPES.includes(el.type) && show && lookSuppliesText(show.look)) {
+    return [];
+  }
   const instead = slot ? `, and no show.${slot} to supply one` : "";
   return [{
     elementId: el.id,

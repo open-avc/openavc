@@ -1336,6 +1336,31 @@ INERT_WITHOUT: dict[str, tuple[str, str | None, str]] = {
 }
 
 
+def look_supplies_text(look: Any) -> bool:
+    """Whether a ``show.look`` puts TEXT on screen, rather than only colour.
+
+    Two shapes do: a ``states`` map with a ``label`` on any entry, and the binary
+    form's ``label_active`` / ``label_inactive``. A look carrying only colours
+    (``style_active``, a ``map``, ``states`` entries with just a ``bg_color``)
+    supplies none, which is the whole distinction -- the renderer only calls
+    ``_setLabelText`` when one of those four fields is present.
+
+    Only meaningful for a type in ``STATE_LABEL_TYPES``; the others take colour
+    from a look and have nowhere to put text.
+    """
+    if not isinstance(look, Mapping):
+        return False
+    if look.get("label_active") is not None or look.get("label_inactive") is not None:
+        return True
+    states = look.get("states")
+    if isinstance(states, Mapping):
+        return any(
+            isinstance(spec, Mapping) and spec.get("label") is not None
+            for spec in states.values()
+        )
+    return False
+
+
 def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     """A control with nothing to draw, which draws an empty box and says nothing.
 
@@ -1354,6 +1379,17 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     bindings = element.get("bindings")
     show = bindings.get("show") if isinstance(bindings, Mapping) else None
     if slot and isinstance(show, Mapping) and show.get(slot):
+        return []
+    # A label whose words come from its look is not an empty box. The renderer
+    # draws show.look's per-state text for the types in STATE_LABEL_TYPES, and
+    # falls back to the matched default_state, so a state chip that carries its
+    # four captions in the look and no `text` at all draws correctly. Warning
+    # about it taught authors to add a dead `text` to silence the check.
+    if (
+        el_type in STATE_LABEL_TYPES
+        and isinstance(show, Mapping)
+        and look_supplies_text(show.get("look"))
+    ):
         return []
     el_id = str(element.get("id", "?"))
     instead = f", and no show.{slot} to supply one" if slot else ""

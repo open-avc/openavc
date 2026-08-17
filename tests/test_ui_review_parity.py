@@ -453,6 +453,22 @@ CASES["vocabulary"] = _project([
             # Bound instead of static: needs no `text`, and must stay quiet.
             {"id": "lbl_bound", "type": "label",
              "bindings": {"show": {"value": {"key": "device.acme.name"}}}},
+            # A label whose words come from its look, both shapes. A label DOES
+            # draw show.look's per-state text, so neither is an empty box.
+            {"id": "lbl_look_states", "type": "label",
+             "bindings": {"show": {"look": {
+                 "key": "var.room_state", "default_state": "standby",
+                 "states": {"standby": {"label": "Standby"},
+                            "active": {"label": "In Use"}}}}}},
+            {"id": "lbl_look_binary", "type": "label",
+             "bindings": {"show": {"look": {
+                 "key": "device.acme.online", "condition": {"equals": "true"},
+                 "label_active": "Online", "label_inactive": "Offline"}}}},
+            # ...but a look carrying only COLOUR still leaves nothing to draw.
+            {"id": "lbl_look_colour_only", "type": "label",
+             "bindings": {"show": {"look": {
+                 "key": "device.acme.online",
+                 "states": {"true": {"bg_color": "#0f0"}}}}}},
             # Nothing to draw at all: the shapes that render an empty box.
             {"id": "img_srcless", "type": "image"},
             {"id": "nav_nowhere", "type": "page_nav", "label": "Go"},
@@ -504,6 +520,9 @@ CASES["vocabulary"] = _project([
             "lbl_wrong": _pct_box(0, 0, 20, 8),
             "lbl_right": _pct_box(25, 0, 20, 8),
             "lbl_bound": _pct_box(70, 0, 20, 8),
+            "lbl_look_states": _pct_box(68, 25, 20, 8),
+            "lbl_look_binary": _pct_box(68, 35, 20, 8),
+            "lbl_look_colour_only": _pct_box(68, 45, 20, 8),
             "img_srcless": _pct_box(70, 10, 12, 12),
             "nav_nowhere": _pct_box(85, 10, 12, 12),
             "meter_invented": _pct_box(50, 0, 8, 40),
@@ -1438,6 +1457,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "mtx_written_ok",                      # ...and the same, written out entry by entry
         "mtx_tiles_ok",                        # a tile wall whose locks are real variables
         "lbl_bound",                           # show.value supplies the text
+        "lbl_look_states", "lbl_look_binary",  # ...and so does show.look's state text
         "custom_ok",                           # a custom control that names its page
         "clean",                               # a custom page with nothing left on it
         "kept_btn", "kept_lbl", "orphan_btn",  # controls a custom page answers FOR
