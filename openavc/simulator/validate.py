@@ -24,6 +24,11 @@ Checks performed:
                           write is an acknowledgement: counted, not warned)
     4. Poll coverage    — every polling query has a matching handler
                           (each_child queries are checked with a sample child id)
+    4b. Reply framing   — every reply a real simulator built from this
+                          definition sends back ends with the delimiter the
+                          driver splits the stream on (byte-stream transports).
+                          A reply without it never completes a frame, so the
+                          driver parses nothing it carries
     5. Type consistency — boolean/enum/number types are handled correctly
     6. State machines   — simulator.state_machines structure is well-formed
     7. Handler syntax   — inline handler: Python bodies compile
@@ -52,6 +57,7 @@ import argparse
 import ast
 import fnmatch
 import json
+import logging
 import re
 import sys
 import textwrap
@@ -62,6 +68,7 @@ import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.drivers.compiled_protocol import (
+    decode_delimiter,
     derive_config,
     safe_substitute,
     send_regex,
@@ -171,6 +178,9 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
 
         # ── Check 4: Poll query coverage ──
         _check_poll_coverage(result, queries, sim_handlers, driver_def)
+
+        # ── Check 4b: every reply ends where the driver splits the stream ──
+        _check_reply_framing(result, commands, queries, driver_def)
 
     # ── Check 5: Type consistency ──
     _check_type_consistency(result, state_vars, sim_initial, sim_handlers)
@@ -1081,6 +1091,145 @@ def _check_osc_poll_coverage(
                 "poll_coverage",
                 f"No simulator handler matches OSC polling query: {sample!r}"
             )
+
+
+# Transports where the driver reads replies by splitting a byte stream on its
+# delimiter. A datagram transport frames one message per packet, so a reply
+# there needs no terminator to be complete.
+_DELIMITED_TRANSPORTS = ("tcp", "serial")
+
+# How many unframed replies the finding quotes. The count is always exact; the
+# examples are there to recognise the shape, not to enumerate it.
+_FRAMING_EXAMPLES = 3
+
+
+def _check_reply_framing(
+    result: ValidationResult,
+    commands: dict,
+    queries: list,
+    driver_def: dict,
+) -> None:
+    """Check every simulator reply ends where the driver splits the stream.
+
+    A driver on a delimited transport reads replies by splitting incoming
+    bytes on its ``delimiter``. A reply that arrives without one never
+    completes a frame, so the driver parses **nothing at all** — no state, no
+    liveness answer — while the simulator, the connection, and every other
+    check in this file look correct. That is the whole failure: the simulator
+    is right about the protocol and unreadable anyway.
+
+    Which replies carry it is not uniform, and that is the trap. The simulator
+    appends the delimiter to the handlers it generates from ``commands`` /
+    ``responses``, to a query handler's answer, and to every push it sends. The
+    two reply forms an author writes by hand — an explicit ``respond:``
+    template and a script ``handler:`` calling ``respond()`` — are returned
+    **verbatim**, so on those the terminator is theirs to add. Nothing else
+    here can see it missing, because a reply that never arrives contradicts no
+    response rule: ``response_parsing`` compares reply text against the
+    driver's patterns, and a frame that never completes has no text to compare.
+
+    So this check asks the simulator instead of reading it. It feeds the
+    driver's own liveness, poll and command strings to a real simulator built
+    from this definition and looks at the bytes that come back — which is also
+    why it sees replies the page cannot: one built from a capture group or an
+    f-string is unresolvable as source and perfectly concrete as output.
+    """
+    if driver_def.get("transport", "tcp") not in _DELIMITED_TRANSPORTS:
+        return
+    raw_delimiter = driver_def.get("delimiter")
+    if not isinstance(raw_delimiter, str) or not raw_delimiter:
+        return
+    delimiter = decode_delimiter(raw_delimiter)
+    if not delimiter:
+        return
+
+    # Built lazily: importing the simulator pulls in its server bases, and a
+    # caller who only wants the other checks should not pay for them.
+    try:
+        from openavc.simulator.yaml_auto import YAMLAutoSimulator
+    except Exception:  # pragma: no cover - the simulator package is shipped
+        return
+
+    # Normalized the same way the poll checks do it, so an each_child template
+    # is probed with a sample child id rather than a literal {child_id} — which
+    # the simulator answers "does not exist", and an example nobody recognises
+    # is a finding an author reads past.
+    config = _effective_config(driver_def)
+    transport = driver_def.get("transport", "tcp")
+    probes: list[str] = []
+    liveness = driver_def.get("liveness")
+    if isinstance(liveness, dict) and isinstance(liveness.get("send"), str):
+        probes.append(_normalize_query_sample(liveness["send"], config, transport))
+    for query in queries or []:
+        query_text = query.get("send", "") if isinstance(query, dict) else str(query)
+        if isinstance(query_text, str) and query_text:
+            probes.append(_normalize_query_sample(query_text, config, transport))
+    for cmd_def in commands.values():
+        if not isinstance(cmd_def, dict):
+            continue
+        send_template = cmd_def.get("send")
+        if not isinstance(send_template, str) or not send_template:
+            continue
+        sample = _generate_sample_command(
+            send_template, cmd_def.get("params", {}), driver_def
+        )
+        if sample is not None:
+            probes.append(sample)
+    if not probes:
+        return
+
+    # A handler that raises logs a traceback, and a driver whose sample values
+    # do not suit every command has a few. They are ``handler_syntax``'s to
+    # report, not this check's, and a wall of them would bury its finding.
+    sim_log = logging.getLogger("openavc.simulator.yaml_auto")
+    previous_level = sim_log.level
+    sim_log.setLevel(logging.CRITICAL)
+    try:
+        try:
+            sim = YAMLAutoSimulator(
+                driver_def.get("id", result.driver_id), {}, driver_def=driver_def
+            )
+        except Exception:
+            # An unbuildable simulator is the other checks' finding to make.
+            return
+        terminator = delimiter.encode()
+        unframed: list[str] = []
+        replies = 0
+        for probe in probes:
+            try:
+                reply = sim.handle_command(probe.encode())
+            except Exception:
+                continue
+            if not reply:
+                continue
+            replies += 1
+            if not reply.endswith(terminator):
+                unframed.append(f"{probe.strip()!r} -> {reply[:40]!r}")
+    finally:
+        sim_log.setLevel(previous_level)
+
+    if not unframed:
+        if replies:
+            result.info(
+                "reply_framing",
+                f"{replies} simulator repl{'y' if replies == 1 else 'ies'} checked, "
+                f"all terminated with {raw_delimiter!r}."
+            )
+        return
+
+    shown = "; ".join(unframed[:_FRAMING_EXAMPLES])
+    more = len(unframed) - _FRAMING_EXAMPLES
+    if more > 0:
+        shown += f"; +{more} more"
+    result.error(
+        "reply_framing",
+        f"{len(unframed)} of {replies} simulator replies come back without the "
+        f"{raw_delimiter!r} this driver splits incoming bytes on, so the driver "
+        f"never completes a frame and reads nothing they carry: {shown}. "
+        f"A reply written by hand — a respond: template or a respond() call in "
+        f"a handler — is sent verbatim, so end it with the delimiter; only the "
+        f"handlers the simulator generates are terminated for you."
+    )
 
 
 # ── Simulator-section checks (handlers, notifications, controls, children) ──
