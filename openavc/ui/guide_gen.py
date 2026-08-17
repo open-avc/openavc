@@ -421,6 +421,14 @@ one wherever the two differ), `lock_key` on a destination for the variable
 backing its lock, and `route` on a destination for an action list that overrides
 `do.route` for that row alone.
 
+**An entry that names a `label_key` should carry no `label`.** The panel reads
+`label` first -- it is the name a person chose for this row, and it outranks
+whatever the rack calls the port -- then the live key, then the row's position
+("Out 3"). So a `label` written alongside a `label_key` is the last name that row
+will ever have: rename the endpoint on the device and no panel follows. Set
+`label` only where the caption is a decision ("Lobby TV" over a decoder the device
+calls `DEC-04`); leave it out and the device keeps the name current.
+
 A **source** may also carry a `report_value`. `value` is what gets SENT and
 `report_value` is what gets MATCHED, and they are the same thing on almost every
 device, which is why one value is normally enough. Where they differ they must be
