@@ -156,6 +156,18 @@ export function AIChatView() {
             AI features require a cloud connection. Pair this system with your
             OpenAVC Cloud account to get started.
           </p>
+          <p
+            style={{
+              color: "var(--text-muted)",
+              fontSize: "var(--font-size-sm)",
+              maxWidth: 400,
+              marginTop: "calc(-1 * var(--space-sm))",
+            }}
+          >
+            A free account includes one paired system, so you can try the
+            assistant and the other cloud features at no cost. On a free
+            account the assistant comes with a usage allowance.
+          </p>
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "center" }}>
             <a
               href="https://cloud.openavc.com"
