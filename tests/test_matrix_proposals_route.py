@@ -50,6 +50,9 @@ class _AcmeFrame(BaseDriver):
             "input": {
                 "label": "Input", "label_plural": "Inputs",
                 "id_format": {"type": "integer", "min": 1, "max": 8, "pad_width": 2},
+                # The device knows what is patched into each input, so the name
+                # lives on the child rather than in the project.
+                "label_field": "name",
                 "state_variables": {"name": {"type": "string"}},
             },
         },
@@ -70,8 +73,8 @@ class _AcmeFrame(BaseDriver):
         # the declared range says 1..8 and this unit has three.
         for local_id in (2, 3, 7):
             self.register_child("output", local_id)
-        for local_id in (1, 4):
-            self.register_child("input", local_id)
+        for local_id, reported in ((1, "Stage Camera"), (4, "Lectern PC")):
+            self.register_child("input", local_id, initial_state={"name": reported})
 
     async def disconnect(self) -> None:
         return None
@@ -264,3 +267,55 @@ async def test_an_orphan_reads_the_same_settings_as_a_running_device(sized_engin
         [d["value"] for d in orphaned["output.input"]["destinations"]]
         == [d["value"] for d in live["output.input"]["destinations"]]
     )
+
+
+async def test_a_name_the_DEVICE_reports_reaches_the_picker(frame_engine):
+    """A device-enumerated roster names itself, and the picker must read it.
+
+    This door used to read only the project's stored labels, so a roster whose
+    names live on the device (an MXNet endpoint, a DSP component, a discovered
+    input) offered "Input 1 / Input 2" while the param picker beside it, off
+    the same children, showed the real names. Retyping names the device already
+    knows is what matrix inference exists to prevent.
+    """
+    client, _ = frame_engine
+    _, found = _proposals(client)
+    assert [s["label"] for s in found["output.input"]["sources"]] == [
+        "Stage Camera",
+        "Lectern PC",
+    ]
+
+
+async def test_the_project_label_still_outranks_the_device_name(frame_engine):
+    """The integrator's own words win over whatever the device calls itself."""
+    client, engine = frame_engine
+    driver = engine.devices.get_driver("mx")
+    device = next(d for d in engine.project.devices if d.id == "mx")
+    device.child_entities.setdefault("input", {})["01"] = ChildEntityConfig(
+        label="Podium Feed", config={},
+    )
+    driver.set_project_child_entities({
+        ctype: {pid: {"label": e.label, "config": e.config} for pid, e in pmap.items()}
+        for ctype, pmap in device.child_entities.items()
+    })
+
+    _, found = _proposals(client)
+    labels = [s["label"] for s in found["output.input"]["sources"]]
+    assert labels == ["Podium Feed", "Lectern PC"]
+
+
+async def test_a_child_with_no_name_anywhere_is_left_for_the_picker_to_name(
+    frame_engine,
+):
+    """"" from the door, so the picker supplies its own wording.
+
+    The outputs declare no label_field and carry no project label except on 02,
+    so the other two must fall through to the generated form rather than
+    arriving as an empty string.
+    """
+    client, _ = frame_engine
+    _, found = _proposals(client)
+    labels = [d["label"] for d in found["output.input"]["destinations"]]
+    assert labels[0] == "Main LCD"          # project label
+    assert all(label.strip() for label in labels)   # nothing blank
+    assert labels[1] != labels[2]

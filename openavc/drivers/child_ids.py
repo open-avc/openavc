@@ -181,3 +181,52 @@ def child_id_range_error(
             else f"must be between {low} and {high}"
         )
     return None
+
+
+def child_display_name(
+    project_label: Any,
+    child_state: dict[str, Any] | None,
+    type_def: dict[str, Any] | None,
+) -> str:
+    """What a child is CALLED — the one place that settles the precedence.
+
+    A child entity can get its name from two independent places, and they are
+    not interchangeable:
+
+      * the **project label**, typed by the integrator and stored in the
+        project file, and
+      * the **device-reported name**, live in the child's own state under the
+        state variable the type names in ``label_field`` (a MENTOR endpoint
+        name, a DSP component's name, a light's name on its controller).
+
+    The order is: the integrator's own words win, then whatever the device
+    calls itself, then nothing. Returning ``""`` for "nothing" is deliberate —
+    the caller owns the fallback, because the useful fallback differs by
+    surface (a param picker wants ``"decoder 3"``, a matrix picker wants
+    ``"Decoder 3"``, and a report may want to say nothing at all). This
+    function answers *what it is called*, never *how to word its absence*.
+
+    It lives here, with the other child rules, because more than one door asks
+    it and the answers must agree: the child-entity REST responses (which is
+    what every param picker in the IDE renders) and the matrix-proposal picker.
+    They disagreed until 2026-08-16 — the matrix picker read only the project
+    label, so a device-enumerated roster whose names live on the device offered
+    "Encoder 1 / Encoder 2" while the param picker beside it showed the real
+    endpoint names. Retyping names the device already knows is precisely what
+    matrix inference exists to prevent.
+
+    Pure stdlib, no server imports, like everything else in this module.
+    """
+    text = "" if project_label is None else str(project_label).strip()
+    if text:
+        return text
+
+    field = (type_def or {}).get("label_field")
+    if not isinstance(field, str) or not field.strip():
+        return ""
+    reported = (child_state or {}).get(field.strip())
+    if reported is None or isinstance(reported, bool):
+        # A bool is never a name; it means the driver pointed label_field at
+        # a flag, which is an authoring mistake rather than an empty name.
+        return ""
+    return str(reported).strip()

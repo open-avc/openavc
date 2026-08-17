@@ -16,6 +16,7 @@ from openavc.api.routes.devices import _coerce_local_id
 from openavc.core.device_manager import DeviceManager
 from openavc.drivers.base import CommandParamError
 from openavc.drivers.child_ids import child_id_kind, coerce_child_local_id
+from openavc.drivers.child_ids import child_display_name
 
 INT_TYPE = {"id_format": {"type": "integer"}}
 STR_TYPE = {"id_format": {"type": "string"}}
@@ -252,3 +253,56 @@ def test_dispatch_tolerates_drivers_without_the_declarations(info):
     assert DeviceManager._coerce_child_id_params(
         _D(), "set_level", {"outlet": "003"},
     ) == {"outlet": "003"}
+
+
+# ── child_display_name: what a child is CALLED ──────────────────────────────
+
+def test_the_project_label_outranks_the_device_reported_name():
+    """The integrator's own words win. Both sources are real and they differ."""
+    assert child_display_name(
+        "Podium Feed", {"name": "HDMI-1"}, {"label_field": "name"},
+    ) == "Podium Feed"
+
+
+def test_the_device_reported_name_is_used_when_the_project_is_silent():
+    """The case a device-enumerated roster is entirely made of."""
+    for empty in ("", "   ", None):
+        assert child_display_name(
+            empty, {"name": "Stage Camera"}, {"label_field": "name"},
+        ) == "Stage Camera"
+
+
+def test_no_name_anywhere_is_empty_so_the_caller_can_word_it():
+    """Deliberately "" rather than a generated string.
+
+    The useful fallback differs by surface -- a param picker wants
+    "decoder 3", a matrix picker wants "Decoder 3" -- so this answers what a
+    child is called and never how to word its absence.
+    """
+    assert child_display_name("", {"name": ""}, {"label_field": "name"}) == ""
+    assert child_display_name(None, {}, {"label_field": "name"}) == ""
+    assert child_display_name(None, None, None) == ""
+
+
+def test_a_type_that_declares_no_label_field_has_no_device_name():
+    """Most child types are numbered ports and name nothing."""
+    assert child_display_name("", {"name": "Ignored"}, {}) == ""
+    assert child_display_name("", {"name": "Ignored"}, {"label_field": "  "}) == ""
+
+
+def test_label_field_pointed_at_a_flag_yields_no_name():
+    """An authoring mistake must not render a child called "True"."""
+    assert child_display_name("", {"online": True}, {"label_field": "online"}) == ""
+    assert child_display_name("", {"online": False}, {"label_field": "online"}) == ""
+
+
+def test_a_non_string_reported_name_is_rendered_as_text():
+    """A numbered name off the wire is still a name."""
+    assert child_display_name("", {"name": 7}, {"label_field": "name"}) == "7"
+
+
+def test_surrounding_whitespace_is_never_part_of_a_name():
+    assert child_display_name("  Lobby  ", {}, {}) == "Lobby"
+    assert child_display_name(
+        "", {"name": "  Stage  "}, {"label_field": "name"},
+    ) == "Stage"

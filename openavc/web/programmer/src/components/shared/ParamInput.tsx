@@ -133,13 +133,11 @@ export function ParamInput({
   const fetchChildType = ownChildType ?? siblingChildType ?? tfChildType;
 
   // Children register dynamically as the driver discovers them, so fetch fresh
-  // per field. `undefined` => still loading. The type's label_field names the
-  // child state var carrying the device-reported name (e.g. a light's name on
-  // the controller) — used as the display label when no project label is set.
+  // per field. `undefined` => still loading. Each entry carries the server's
+  // resolved display_name (project label, else the device-reported name).
   const [children, setChildren] = useState<ChildEntityEntry[] | undefined>(
     undefined,
   );
-  const [labelField, setLabelField] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!fetchChildType || !deviceId) return;
     let cancelled = false;
@@ -148,7 +146,6 @@ export function ParamInput({
       .then((resp) => {
         if (!cancelled) {
           setChildren(resp.children);
-          setLabelField(resp.schema?.label_field);
         }
       })
       .catch(() => {
@@ -338,13 +335,11 @@ export function ParamInput({
               : `(select ${ownChildType})`}
           </option>
           {registered.map((c) => {
-            // Display name: the user's project label wins, then the
-            // device-reported name (the type's label_field, live in the
-            // child's state). The stored/sent value is always the id.
-            const reported = labelField ? c.state?.[labelField] : undefined;
-            const name =
-              c.label ||
-              (reported == null ? "" : String(reported));
+            // Project label, else the device-reported name -- settled on the
+            // server (drivers/child_ids.child_display_name) so this picker and
+            // the matrix picker cannot disagree about what a child is called.
+            // The stored/sent value is always the id.
+            const name = c.display_name ?? "";
             return (
               <option key={c.local_id} value={String(c.local_id)}>
                 {name

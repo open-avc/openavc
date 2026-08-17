@@ -26,7 +26,11 @@ from openavc.drivers.base import (
     DeviceSettingValueError,
     UnknownCommandError,
 )
-from openavc.drivers.child_ids import child_id_kind, coerce_child_local_id
+from openavc.drivers.child_ids import (
+    child_display_name,
+    child_id_kind,
+    coerce_child_local_id,
+)
 from openavc.drivers.registry import is_driver_registered
 
 router = APIRouter()
@@ -794,13 +798,23 @@ def _build_child_entry(
     """
     padded = driver.format_child_id(child_type, local_id)
     project_entry = _project_child_entry(project_device, child_type, padded)
+    state = driver.get_child_state(child_type, local_id)
     entry: dict[str, Any] = {
         "local_id": local_id,
         "local_id_padded": padded,
         "label": project_entry["label"],
         "config": project_entry["config"],
         "registered": True,
-        "state": driver.get_child_state(child_type, local_id),
+        "state": state,
+        # What to CALL this child: the project label, else the name the device
+        # reports under the type's label_field. Resolved here rather than in
+        # each picker so every surface agrees (drivers/child_ids). "" means
+        # neither source has a name and the caller picks its own wording.
+        "display_name": child_display_name(
+            project_entry["label"],
+            state,
+            driver.get_child_entity_types().get(child_type),
+        ),
     }
     if driver.is_child_type_dynamic(child_type):
         entry["schema"] = driver.get_child_schema(child_type, local_id)

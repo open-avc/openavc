@@ -633,3 +633,46 @@ def test_patch_dynamic_child_string_id_persists_label(dsp_client):
     assert (engine.project.devices[0].child_entities["component"]["PgmGain"].label
             == "Program Gain")
     assert driver.get_child_state("component", "PgmGain")["label"] == "Program Gain"
+
+
+def test_child_entries_carry_the_resolved_display_name(child_client):
+    """The name every param picker renders, settled on the server.
+
+    Composing it in each picker is how the matrix picker came to disagree with
+    the param picker about what the same child was called (2026-08-16): one
+    read the device-reported name, the other only the project label. The rule
+    is drivers/child_ids.child_display_name and the answer travels with the
+    entry so no caller has to re-derive it.
+    """
+    c, _engine, driver, _cfg = child_client
+    # The device names this one; nobody has typed a project label for it.
+    driver.register_child("encoder", 8, initial_state={"name": "Stage Camera"})
+    # The decoder type declares no label_field, so it has no device name.
+    driver.register_child("decoder", 2, initial_state={"name": "Ignored"})
+
+    encoders = c.get("/api/devices/ctrl1/children/encoder").json()["children"]
+    assert next(e for e in encoders if e["local_id"] == 8)["display_name"] == (
+        "Stage Camera"
+    )
+
+    decoders = c.get("/api/devices/ctrl1/children/decoder").json()["children"]
+    assert next(d for d in decoders if d["local_id"] == 2)["display_name"] == ""
+
+
+def test_a_patched_label_takes_over_the_display_name(child_client):
+    """Renaming a child in the IDE must move what every picker shows."""
+    c, _engine, driver, _cfg = child_client
+    driver.register_child("encoder", 6, initial_state={"name": "Device Name"})
+
+    before = c.get("/api/devices/ctrl1/children/encoder/6").json()
+    assert before["display_name"] == "Device Name"
+
+    resp = c.patch(
+        "/api/devices/ctrl1/children/encoder/6", json={"label": "Podium Feed"},
+    )
+    assert resp.status_code == 200
+
+    after = c.get("/api/devices/ctrl1/children/encoder/6").json()
+    assert after["display_name"] == "Podium Feed"
+    # The device's own name is untouched underneath it.
+    assert after["state"]["name"] == "Device Name"

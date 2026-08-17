@@ -18,6 +18,7 @@ from openavc.api.models import (
 from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
+from openavc.drivers.child_ids import child_display_name
 from openavc.ui.matrix_inference import propose_matrices
 from openavc.ui.matrix_model import resolve_matrix_config
 from openavc.utils.log_buffer import get_log_buffer
@@ -124,8 +125,14 @@ async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
                 {
                     "local_id": local_id,
                     "local_id_padded": driver.format_child_id(child_type, local_id),
-                    "label": _child_label(engine, device_id, child_type,
-                                          driver.format_child_id(child_type, local_id)),
+                    "label": _child_label(
+                        engine,
+                        device_id,
+                        child_type,
+                        driver.format_child_id(child_type, local_id),
+                        driver,
+                        local_id,
+                    ),
                 }
                 for local_id in driver.list_children(child_type)
             ]
@@ -152,13 +159,39 @@ async def get_matrix_proposals(device_id: str) -> dict[str, Any]:
     }
 
 
-def _child_label(engine: Any, device_id: str, child_type: str, padded: str) -> str:
-    """What the project calls one child, or "" to let the picker name it."""
+def _child_label(
+    engine: Any,
+    device_id: str,
+    child_type: str,
+    padded: str,
+    driver: Any = None,
+    local_id: Any = None,
+) -> str:
+    """What to call one child, or "" to let the picker name it.
+
+    The project label first, then the name the device reports under the type's
+    ``label_field`` — the shared precedence in ``drivers/child_ids``, which is
+    also what every param picker in the IDE renders.
+
+    Reading only the project label (which this did until 2026-08-16) is wrong
+    for exactly the rosters this picker exists to serve: a device-enumerated
+    one, where the names live on the device and nobody has typed them into the
+    project. An MXNet CBOX offered "Encoder 1 / Encoder 2" here while the param
+    picker beside it showed the real endpoint names off the same children.
+    """
+    stored = ""
     for device in engine.project.devices:
         if device.id == device_id:
             entry = device.child_entities.get(child_type, {}).get(padded)
-            return entry.label if entry else ""
-    return ""
+            stored = entry.label if entry else ""
+            break
+    if driver is None:
+        return stored
+    return child_display_name(
+        stored,
+        driver.get_child_state(child_type, local_id),
+        driver.get_child_entity_types().get(child_type),
+    )
 
 
 @router.post("/project/reload")

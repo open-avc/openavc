@@ -718,6 +718,11 @@ export interface ChildEntityEntry {
   local_id: number | string;
   local_id_padded: string;
   label: string;
+  // What to call this child: the project label, else the name the device
+  // reports under the type's label_field. Resolved on the server so every
+  // picker agrees; "" means neither source has a name and the caller supplies
+  // its own wording.
+  display_name: string;
   config: Record<string, unknown>;
   registered: boolean;
   state: Record<string, unknown>;

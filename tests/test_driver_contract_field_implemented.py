@@ -139,9 +139,12 @@ GENERATED_TYPES = "types.gen.ts"
 # that only an authoring or display surface consumes. Each entry says who does
 # own it, so a wrong one is visible rather than inherited.
 RUNTIME_OPT_OUT = {
-    "childEntityType.label_field":
-        "Child presentation: which state field names a child. "
-        "Read by the Builder (ChildEntityTypesEditor, validateDriver).",
+    # childEntityType.label_field was here until 2026-08-16, excused as
+    # presentation the Builder owns. That was true and it was the bug: because
+    # the runtime never resolved it, every picker had to, and the matrix picker
+    # didn't -- so a device-enumerated roster showed real names in one dropdown
+    # and "Encoder 1" in the next. The runtime reads it now
+    # (drivers/child_ids.child_display_name) and serves the answer to both.
     "childEntityType.summary_fields":
         "Child presentation: which fields show on a child's summary row. "
         "Read by the Builder (ChildEntityTypesEditor).",
