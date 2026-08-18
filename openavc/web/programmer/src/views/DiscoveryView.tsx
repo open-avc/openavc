@@ -27,7 +27,12 @@ import * as api from "../api/restClient";
 import type { DriverInfo, CommunityDriver } from "../api/types";
 import type { DeviceState, DiscoveryEvidence } from "../api/discoveryClient";
 import { showError } from "../store/toastStore";
-import { mergePortLabels, snmpCommunityField } from "./discoveryViewHelpers";
+import {
+  bannerDisplayText,
+  cleanBannerText,
+  mergePortLabels,
+  snmpCommunityField,
+} from "./discoveryViewHelpers";
 
 const HIDDEN_KEY = "openavc_discovery_hidden_ips";
 
@@ -928,6 +933,14 @@ function DeviceCard({
     ? device.protocols[0].replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : null;
 
+  // A banner is raw bytes off the wire, and the protocol chatter around it
+  // was never text (see the banner helpers). Keep the ports whose greeting
+  // still says something once that is stripped; the untouched capture stays
+  // available on hover.
+  const readableBanners = Object.entries(device.banners)
+    .map(([port, raw]) => ({ port, raw, text: bannerDisplayText(raw, 200) }))
+    .filter((b) => b.text.length > 0);
+
   return (
     <div
       style={{
@@ -1104,12 +1117,12 @@ function DeviceCard({
               : "None detected"}
           </div>
 
-          {Object.keys(device.banners).length > 0 && (
+          {readableBanners.length > 0 && (
             <div>
               <strong>Banners:</strong>
-              {Object.entries(device.banners).map(([port, banner]) => (
-                <div key={port} style={{ fontFamily: "monospace", marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-                  Port {port}: {banner.substring(0, 200)}
+              {readableBanners.map(({ port, raw, text }) => (
+                <div key={port} title={raw} style={{ fontFamily: "monospace", marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                  Port {port}: {text}
                 </div>
               ))}
             </div>
@@ -1743,7 +1756,7 @@ function describeEvidence(ev: DiscoveryEvidence): { headline: string; detail: st
       const response = data.response && typeof data.response === "object"
         ? (data.response as Record<string, unknown>) : {};
       const text = typeof response.text === "string" ? (response.text as string) : null;
-      const excerpt = text ? text.replace(/[\r\n]+/g, " ").trim().slice(0, 80) : null;
+      const excerpt = text ? cleanBannerText(text).text.slice(0, 80) || null : null;
       const portLabel = port !== null ? `on port ${port}` : null;
       // Spec §10 rows for active probes:
       //   "TCP probe on port <port> returned <response excerpt>"   (readable text)
