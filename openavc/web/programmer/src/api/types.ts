@@ -367,6 +367,8 @@ export interface UISettings {
   element_entry: string;
   element_stagger_ms: number;
   element_stagger_style?: string;
+  /** Absent means on: a panel says why a press failed unless told not to. */
+  show_error_messages?: boolean;
 }
 
 export interface MasterElement extends UIElement {

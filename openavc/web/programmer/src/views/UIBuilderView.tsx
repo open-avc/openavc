@@ -1860,6 +1860,22 @@ function UISettingsDialog({
             </div>
 
             <div style={fieldStyle}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={draft.show_error_messages !== false}
+                  onChange={(e) => patch({ show_error_messages: e.target.checked })}
+                />
+                Show a message when a control fails
+              </label>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                A press that does not reach its device puts the reason across the
+                panel for about five seconds. Turn this off in a space that shows
+                its own status.
+              </div>
+            </div>
+
+            <div style={fieldStyle}>
               <label style={labelStyle}>Page Transition</label>
               <select
                 value={draft.page_transition || "none"}

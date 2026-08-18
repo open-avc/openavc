@@ -214,7 +214,7 @@ window.onerror = (message) => {
 
 Do that in every control you write. A control that throws without it is a blank rectangle, and on a wall panel there is no console to check.
 
-The panel raises one failure on its own: if the file the element points at is not there, the box says so and names the file.
+The panel raises two failures on its own. If the file the element points at is not there, the box says so and names the file. And if a command your control sends does not reach its device, the panel puts the reason across the screen for a few seconds, the same as it does for a button somebody built in the UI Builder. You do not have to report that one yourself.
 
 ## Matching the panel's look
 

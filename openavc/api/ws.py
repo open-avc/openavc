@@ -254,6 +254,11 @@ async def _send_ws_error(
     rate limiting and malformed JSON — because inventing a message type there
     would be a lie a client can't distinguish from a real one.
 
+    A partly-failed interaction sends one too: the message itself was accepted
+    and the rest of the binding ran, but one action inside it did not reach its
+    device (see ``_run_ui_event``). ``source_type`` still names the interaction,
+    because that is what the person pressed.
+
     Note the two other ways this socket reports a failure, both deliberate:
     a result ack (``command.ack``/``state.set.ack``) carries ``success: false``
     plus the correlation fields a generic error frame has no room for (which
@@ -267,6 +272,44 @@ async def _send_ws_error(
 
 
 _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, bool, or null)"
+
+
+async def _run_ui_event(
+    ws: WebSocket,
+    msg_type: str,
+    engine: Any,
+    event_type: str,
+    element_id: str,
+    data: dict[str, Any] | None = None,
+) -> None:
+    """Run one panel interaction, and say so when any of it did not work.
+
+    A panel interaction fails in two ways and the person standing in front of
+    it needs both. The event itself can raise -- scripts, macros and drivers
+    all dispatch from here -- which is the error frame this door has always
+    sent. The quieter one is a single action inside the binding: a
+    ``device.command`` that never reached its device is caught where it happens
+    so the rest of the press still runs, and it used to end there, in the
+    server's log. Press Power on a projector that is not on the network and the
+    room gets nothing: no movement, no message, no way to tell a dead button
+    from a slow one.
+
+    Only the first failed action is reported. A frame carries one sentence and
+    the panel shows one message at a time, so a second frame would only replace
+    the first; the log keeps every one of them.
+    """
+    try:
+        dispatched = await engine.handle_ui_event(event_type, element_id, data)
+    except Exception as e:
+        # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
+        log.error(f"{msg_type} failed: {e}")
+        await _send_ws_error(ws, msg_type, friendly_error(e))
+        return
+    for action in dispatched or []:
+        error = action.get("error")
+        if error:
+            await _send_ws_error(ws, msg_type, str(error))
+            return
 
 
 # Message types that panel clients are allowed to send.
@@ -329,48 +372,28 @@ async def _handle_message(
         if not element_id:
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
-        try:
-            await engine.handle_ui_event("press", element_id)
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.press failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "press", element_id)
 
     elif msg_type == "ui.release":
         element_id = msg.get("element_id", "")
         if not element_id:
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
-        try:
-            await engine.handle_ui_event("release", element_id)
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.release failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "release", element_id)
 
     elif msg_type == "ui.hold":
         element_id = msg.get("element_id", "")
         if not element_id:
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
-        try:
-            await engine.handle_ui_event("hold", element_id)
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.hold failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "hold", element_id)
 
     elif msg_type == "ui.toggle_off":
         element_id = msg.get("element_id", "")
         if not element_id:
             await _send_ws_error(ws, msg_type, "Missing element_id")
             return
-        try:
-            await engine.handle_ui_event("toggle_off", element_id)
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.toggle_off failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "toggle_off", element_id)
 
     elif msg_type == "ui.change":
         element_id = msg.get("element_id", "")
@@ -381,12 +404,7 @@ async def _handle_message(
         if not is_flat_primitive(value):
             await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
-        try:
-            await engine.handle_ui_event("change", element_id, {"value": value})
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.change failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "change", element_id, {"value": value})
 
     elif msg_type == "ui.select":
         # List item selection — drives the list element's do.select action
@@ -399,12 +417,7 @@ async def _handle_message(
         if not is_flat_primitive(value):
             await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
-        try:
-            await engine.handle_ui_event("select", element_id, {"value": value})
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.select failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "select", element_id, {"value": value})
 
     elif msg_type == "ui.route":
         element_id = msg.get("element_id", "")
@@ -435,12 +448,7 @@ async def _handle_message(
         else:
             event_type = "route"
             data = {"input": input_idx, "output": output_idx}
-        try:
-            await engine.handle_ui_event(event_type, element_id, data)
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.route failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, event_type, element_id, data)
 
     elif msg_type == "ui.submit":
         element_id = msg.get("element_id", "")
@@ -451,12 +459,7 @@ async def _handle_message(
         if not is_flat_primitive(value):
             await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
-        try:
-            await engine.handle_ui_event("submit", element_id, {"value": value})
-        except Exception as e:
-            # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
-            log.error(f"ui.submit failed: {e}")
-            await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _run_ui_event(ws, msg_type, engine, "submit", element_id, {"value": value})
 
     elif msg_type == "ui.page":
         page_id = msg.get("page_id", "")

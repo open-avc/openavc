@@ -57,7 +57,17 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
 
     # General connection error (catch-all for ConnectionError subclasses)
     if isinstance(exc, ConnectionError):
-        return f"Connection error for{device_label}: {exc}"
+        msg = str(exc)
+        # Our own refusal is already a sentence somebody can read -- the device
+        # manager raises "Device 'x' is not connected" when a command is sent
+        # to a device that is not there. Wrapping that produced "Connection
+        # error for 'Ceiling Projector': Device 'projector' is not connected",
+        # which says the same thing twice and hands the reader an internal id
+        # they have never seen. It is the commonest failure a panel reports, so
+        # it is the sentence that has to be right.
+        if "not connected" in msg:
+            return f"{device} is not connected." if device else msg
+        return f"Connection error for{device_label}: {msg}"
 
     # OS-level network errors
     if isinstance(exc, OSError):

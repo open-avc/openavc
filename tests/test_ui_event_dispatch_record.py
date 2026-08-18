@@ -93,6 +93,67 @@ async def test_a_command_that_raised_is_not_reported_as_sent(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_failure_with_nothing_to_say_still_says_something(tmp_path) -> None:
+    """A bare timeout stringifies to nothing at all.
+
+    The record is the last trace of the failure -- the action list carries on
+    past it, so the exception is gone by the time anyone reads this -- and it
+    is what a panel puts in front of whoever pressed the button. Written down
+    as ``str(exc)`` this one is an empty string: a message with no text in it,
+    which is exactly the silence it is supposed to end.
+    """
+    engine = _engine(tmp_path, [{
+        "id": "btn_power", "type": "button",
+        "bindings": {"do": {"press": [
+            {"action": "device.command", "device": "acme_projector", "command": "power_on"},
+        ]}},
+    }])
+    engine.state.set("device.acme_projector.name", "Ceiling Projector", source="test")
+    engine.state.set("device.acme_projector.host", "10.0.0.9", source="test")
+
+    async def send(device_id, command, params):
+        raise TimeoutError
+
+    engine.devices.send_command = send
+
+    dispatched = await engine.handle_ui_event("press", "btn_power")
+
+    assert dispatched[0]["sent"] is False
+    message = dispatched[0]["error"]
+    assert message.strip()
+    # The device is named the way the room names it, not by its id, and the
+    # address is there because that is what somebody has to go and check.
+    assert "Ceiling Projector" in message
+    assert "10.0.0.9" in message
+
+
+@pytest.mark.asyncio
+async def test_the_commonest_failure_of_all_reads_as_one_sentence(tmp_path) -> None:
+    """Pressing a control for a device that is not there.
+
+    This is the sentence a panel puts in front of a person, so it is worth
+    pinning: the device is named the way the room names it, once, and the
+    reason is given once.
+    """
+    engine = _engine(tmp_path, [{
+        "id": "btn_power", "type": "button",
+        "bindings": {"do": {"press": [
+            {"action": "device.command", "device": "acme_projector", "command": "power_on"},
+        ]}},
+    }])
+    engine.state.set("device.acme_projector.name", "Ceiling Projector", source="test")
+
+    async def send(device_id, command, params):
+        raise ConnectionError(f"Device '{device_id}' is not connected")
+
+    engine.devices.send_command = send
+
+    dispatched = await engine.handle_ui_event("press", "btn_power")
+
+    assert dispatched[0]["error"] == "Ceiling Projector is not connected."
+
+
+@pytest.mark.asyncio
 async def test_an_object_shaped_binding_dispatches_and_is_recorded(tmp_path) -> None:
     """The shape the report called a silent failure. It runs, and now it shows.
 

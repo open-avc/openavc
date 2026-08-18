@@ -590,6 +590,12 @@ class UISettings(_ForwardCompatModel):
     element_entry: str = "none"
     element_stagger_ms: int = 30
     element_stagger_style: str = "fade-up"
+    # A failed press says why, on the glass, for about five seconds. On by
+    # default because the room that needs it most belongs to somebody who never
+    # thought about it: press Power on a projector that is not there and the
+    # alternative is a panel that does nothing and explains nothing. Off is for
+    # a room that draws its own status and would rather ours kept quiet.
+    show_error_messages: bool = True
 
 
 class MasterElement(UIElement):

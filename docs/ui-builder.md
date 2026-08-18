@@ -506,6 +506,24 @@ Click the gear icon in the UI Builder toolbar to open Panel Settings:
 - **Lock Code**: optional PIN to prevent unauthorized access on a deployed panel
 - **Idle Timeout**: seconds of inactivity before the panel returns to the idle page
 - **Idle Page**: which page to display when the idle timeout triggers
+- **Show a message when a control fails**: on unless you turn it off
+
+## When a control fails
+
+Press a button for a device that is not on the network and the panel says so:
+a band across the screen, for about five seconds, naming the device and what
+went wrong. It moves out of the way of the control that was just pressed, one
+message shows at a time however many times somebody presses, and a tap clears
+it early.
+
+It only appears when something failed. A control that works is silent, and the
+rest of a press still runs when one action in it fails, so a button that turns
+on a projector and dims the lights still dims the lights.
+
+Turn it off in Panel Settings for a space that shows its own status, using a
+label or an indicator bound to a device's connection state. Most spaces should
+leave it on: without it, a control that reaches nothing looks exactly like a
+control that worked.
 
 ## Themes
 

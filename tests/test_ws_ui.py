@@ -51,6 +51,20 @@ TEST_PROJECT = {
                         },
                     },
                     {
+                        "id": "btn_dead",
+                        "type": "button",
+                        "label": "Power",
+                        "grid_area": {"col": 10, "row": 1, "col_span": 3, "row_span": 2},
+                        "style": {},
+                        "bindings": {
+                            "press": {
+                                "action": "device.command",
+                                "device": "ghost_projector",
+                                "command": "power_on",
+                            }
+                        },
+                    },
+                    {
                         "id": "kp1",
                         "type": "keypad",
                         "label": "Keypad",
@@ -452,6 +466,48 @@ async def test_ws_press_missing_element_returns_error(engine_and_client):
 
         msg = websocket.receive_json()
         assert msg["type"] == "error"
+
+
+async def test_a_press_that_never_reached_its_device_comes_back_with_the_reason(
+    engine_and_client,
+):
+    """The failure the panel used to hear nothing about.
+
+    A device command inside a binding is caught where it happens, so the rest
+    of the press still runs -- and that is where it used to end, in the server
+    log. From the room it looked identical to a button with nothing on it.
+    """
+    _, client = engine_and_client
+    with client.websocket_connect("/ws?client=panel") as websocket:
+        websocket.receive_json()  # snapshot
+        websocket.receive_json()  # ui.definition
+
+        websocket.send_json({"type": "ui.press", "element_id": "btn_dead"})
+
+        msg = websocket.receive_json()
+        assert msg["type"] == "error"
+        # Named by the interaction somebody performed, not by the action that
+        # failed inside it.
+        assert msg["source_type"] == "ui.press"
+        assert "ghost_projector" in msg["message"]
+
+
+async def test_a_press_that_worked_says_nothing(engine_and_client):
+    """Silence is still the answer when the press did what it said.
+
+    Asserted by sending something with a known reply straight after: an error
+    frame for the press would have to arrive before it.
+    """
+    _, client = engine_and_client
+    with client.websocket_connect("/ws?client=panel") as websocket:
+        websocket.receive_json()  # snapshot
+        websocket.receive_json()  # ui.definition
+
+        websocket.send_json({"type": "ui.press", "element_id": "btn1"})
+        websocket.send_json({"type": "ui.page", "page_id": "confirm"})
+
+        msg = websocket.receive_json()
+        assert msg["type"] == "ui.navigate", msg
 
 
 async def test_ws_page_missing_id_returns_error(engine_and_client):

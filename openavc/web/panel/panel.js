@@ -231,6 +231,8 @@ class PanelApp {
         this.maxReconnectDelay = 30000; // matches the backoff cap used in onclose
         this.reconnectAttempts = 0;
         this._offline = false;           // true while the WS is disconnected
+        this._lastTouchedElementId = null; // control the next failure is about
+        this._errorMessageTimer = null;    // auto-dismiss for the failure band
         this._lockInitialized = false;   // lock screen shown once per session, not on every reconnect
         this._meetingStartTimes = {};    // element_id -> meeting start Date (survives re-render)
         this.themeElementDefaults = {};
@@ -508,6 +510,11 @@ class PanelApp {
     send(msg) {
         // Edit mode: no WS, bindings must not fire even if pointer events leak through
         if (this.editMode) return;
+        // Which control a failure coming back is about. The error frame carries
+        // the sentence and the interaction, not the element, and does not need
+        // to: one finger presses one thing at a time, and the only thing this
+        // is used for is keeping the message off the control just pressed.
+        if (msg && msg.element_id) this._lastTouchedElementId = msg.element_id;
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(msg));
         }
@@ -678,8 +685,89 @@ class PanelApp {
                 console.warn(msg.source_type
                     ? `[WS Error] ${msg.source_type}: ${msg.message}`
                     : `[WS Error] ${msg.message}`);
+                this.showFailureMessage(msg.message);
+                break;
+
+            case 'command.ack':
+            case 'state.set.ack':
+                // A control somebody wrote themselves sends its commands and
+                // its writes straight down this socket, and so does the lock on
+                // a matrix row, so those failures come back on an ack rather
+                // than as an error frame. Same sentence either way, and nobody
+                // standing in the room can tell which kind of control they just
+                // pressed.
+                if (msg.success === false) this.showFailureMessage(msg.error);
                 break;
         }
+    }
+
+    /**
+     * Say why the last thing somebody pressed did not work.
+     *
+     * The reason has always existed -- the server answers a failed interaction
+     * with a sentence written for a person -- and it used to go to a browser
+     * console, on a panel screwed to a wall, in kiosk mode, with no keyboard.
+     * Everything about how this draws is for that room rather than for a
+     * desktop: a band across the whole width instead of a corner card, text
+     * sized like the controls around it, and about five seconds to read it.
+     *
+     * One message at a time, replaced rather than stacked: somebody pressing a
+     * dead button four times has one problem, not four, and a wall of cards is
+     * how a panel stops being usable at the exact moment it is failing.
+     */
+    showFailureMessage(text) {
+        // One project-level switch, on by default. Off is for a room that draws
+        // its own status and would rather we kept quiet -- not a per-element
+        // setting, which would be authoring work for something that only ever
+        // happens when something is already wrong.
+        if (this.uiSettings && this.uiSettings.show_error_messages === false) return;
+        const message = String(text == null ? '' : text).trim();
+        if (!message) return;
+
+        let band = document.getElementById('panel-failure-message');
+        if (!band) {
+            band = document.createElement('div');
+            band.id = 'panel-failure-message';
+            // Announced rather than only drawn: a panel is the whole interface,
+            // so somebody using a screen reader on one has nowhere else to find
+            // out that the press did nothing.
+            band.setAttribute('role', 'alert');
+            band.addEventListener('click', () => this.dismissFailureMessage());
+            document.body.appendChild(band);
+        }
+        band.textContent = message;
+        band.classList.toggle('at-top', this._lastTouchedIsLow());
+        band.classList.add('visible');
+
+        clearTimeout(this._errorMessageTimer);
+        this._errorMessageTimer = setTimeout(() => this.dismissFailureMessage(), 5000);
+    }
+
+    dismissFailureMessage() {
+        clearTimeout(this._errorMessageTimer);
+        this._errorMessageTimer = null;
+        const band = document.getElementById('panel-failure-message');
+        if (band) band.classList.remove('visible');
+    }
+
+    /**
+     * Is the control that was just pressed in the bottom half of the screen?
+     *
+     * The band sits at the bottom, and moves to the top when the answer is yes.
+     * A message drawn over the button somebody still has a finger on is the one
+     * place it must not be: they cannot read it, and it looks like the button
+     * changed under them. Unknown control -- nothing pressed yet, or it has
+     * been re-rendered since -- keeps the default.
+     */
+    _lastTouchedIsLow() {
+        const entry = this._lastTouchedElementId
+            ? this.elementMap[this._lastTouchedElementId]
+            : null;
+        const el = entry && entry.el;
+        if (!el || !el.getBoundingClientRect) return false;
+        const box = el.getBoundingClientRect();
+        if (!box.height && !box.width) return false;
+        return (box.top + box.height / 2) > (window.innerHeight / 2);
     }
 
     _hideLoadingState() {
@@ -713,6 +801,10 @@ class PanelApp {
         const pages = this.uiDef?.pages || [];
         const targetPage = pages.find(p => p.id === pageId);
         if (!targetPage) return;
+
+        // The message names a press on the page being left, and the control it
+        // was avoiding is about to be gone.
+        this.dismissFailureMessage();
 
         const pageType = targetPage.page_type || 'page';
 
@@ -5101,6 +5193,11 @@ class PanelApp {
                     // send nothing at all while somebody stands in front of it.
                     break;
                 case 'openavc:action': {
+                    // A failure coming back from any of these is about the
+                    // control that asked, the same as a finger on a button --
+                    // none of these frames carries an element, so this is the
+                    // only place that knows which one it was.
+                    this._lastTouchedElementId = el.dataset.elementId;
                     // This bridge carries the panel's WS authority, so gate it
                     // against the grant the integrator set when they placed the
                     // element: a command reaches a device only if that device is

@@ -236,7 +236,11 @@ async def test_panel_can_send_ui_press():
     engine = _make_engine()
     with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "ui.press", "element_id": "btn1"}, "panel")
-    engine.handle_ui_event.assert_awaited_once_with("press", "btn1")
+    # The third argument is the event's data, which a press does not carry.
+    # Named here because every ui.* message now goes through one dispatcher
+    # that passes it either way, rather than eight branches each spelling out
+    # their own call.
+    engine.handle_ui_event.assert_awaited_once_with("press", "btn1", None)
 
 
 @pytest.mark.asyncio

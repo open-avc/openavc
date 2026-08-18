@@ -27,6 +27,7 @@ redrawn -- with nothing on the end of a wire.
 from __future__ import annotations
 
 import json
+import re as _re
 import time
 from typing import Any
 from urllib.request import urlopen
@@ -264,14 +265,201 @@ def test_loading_and_driving_the_panel_asks_for_nothing_that_is_not_there(
 
 
 # ---------------------------------------------------------------------------
+# A press that failed says why, on the glass
+# ---------------------------------------------------------------------------
+
+#: RFC 5737 documentation address. Routed nowhere by anyone, so the projector
+#: is reliably absent rather than absent-until-somebody-plugs-something-in.
+DEAD_HOST = "192.0.2.13"
+
+#: What the device is called in the room. The message has to use this rather
+#: than the device id -- it is the only one of the two names anybody standing
+#: at the panel has ever seen.
+DEAD_NAME = "Ceiling Projector"
+
+
+def _dead_device_project(*, show_error_messages: bool = True) -> dict[str, Any]:
+    """A room whose projector is not on the network, and two buttons for it.
+
+    Both buttons send the same command to the same absent device and then write
+    a variable. That second action is doing real work in these tests: it is
+    what proves the press ARRIVED when no message is expected, and it pins the
+    property that makes this failure quiet in the first place -- one dead
+    device does not stop the rest of a press.
+
+    Two buttons rather than one because where the message is drawn depends on
+    where the finger was: one is at the top of the page and one at the bottom.
+    """
+    settings: dict[str, Any] = {"theme": "dark-default"}
+    if not show_error_messages:
+        settings["show_error_messages"] = False
+
+    def _button(element_id: str) -> dict[str, Any]:
+        return {
+            "id": element_id,
+            "type": "button",
+            "label": "Power",
+            "parent": None,
+            "bindings": {"do": {"press": [
+                {"action": "device.command", "device": "projector",
+                 "command": "power_on"},
+                {"action": "state.set", "key": "var.last_press",
+                 "value": element_id},
+            ]}},
+        }
+
+    return {
+        "openavc_version": "0.11.0",
+        "devices": [{
+            "id": "projector",
+            "driver": "generic_tcp",
+            "name": DEAD_NAME,
+            "config": {},
+            "enabled": True,
+            "pending_settings": {},
+            "child_entities": {},
+        }],
+        "connections": {
+            "projector": {"host": DEAD_HOST, "port": 4352},
+        },
+        "variables": [
+            {"id": "last_press", "type": "string", "default": "none",
+             "label": "Last button pressed"},
+        ],
+        "ui": {
+            "settings": settings,
+            "pages": [{
+                "id": "main",
+                "name": "Main",
+                "page_type": "page",
+                "layouts": [{
+                    "id": "landscape",
+                    "orientation": "landscape",
+                    "primary": True,
+                    "inherits": None,
+                    "placements": {
+                        "btn_high": {"x": 4.0, "y": 6.0, "w": 30.0, "h": 14.0},
+                        "btn_low": {"x": 4.0, "y": 74.0, "w": 30.0, "h": 14.0},
+                    },
+                    "hidden": [],
+                }],
+                "elements": [_button("btn_high"), _button("btn_low")],
+                "master_elements": [],
+            }],
+            "master_elements": [],
+            "page_groups": [],
+        },
+    }
+
+
+@pytest.fixture
+def dead_device_panel(server_factory, page: Page):
+    """Factory: a panel whose projector is not there, message on or off."""
+    def _open(*, show_error_messages: bool = True) -> _ServedPanel:
+        handle = server_factory(project_overrides=_dead_device_project(
+            show_error_messages=show_error_messages,
+        ))
+        page.goto(f"{handle.base_url}/panel/", wait_until="domcontentloaded")
+        page.locator('[data-element-id="btn_high"]').wait_for(
+            state="visible", timeout=READY_TIMEOUT,
+        )
+        return _ServedPanel(page, handle.base_url, [])
+    return _open
+
+
+def test_a_press_that_never_reached_its_device_says_so_on_the_panel(
+    dead_device_panel,
+) -> None:
+    """The whole item, end to end: press, and read the reason off the glass.
+
+    Nothing here is stubbed. The command is refused by the device manager
+    because the projector is not connected, swallowed by the binding runtime so
+    the rest of the press still runs, reported to this socket alone, and drawn
+    by the panel. Every one of those four had to work.
+    """
+    panel = dead_device_panel()
+    band = panel.page.locator("#panel-failure-message")
+
+    expect(band).to_have_count(0)
+
+    panel.element("btn_high").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    # The whole sentence, because the sentence is the deliverable. The device
+    # is named the way the room names it: an id would be a message about our
+    # data model, handed to somebody holding a remote.
+    expect(band).to_have_text(
+        f"{DEAD_NAME} is not connected.", timeout=EXPECT_TIMEOUT,
+    )
+
+
+def test_the_message_never_covers_the_control_that_was_just_pressed(
+    dead_device_panel,
+) -> None:
+    """It sits at the bottom, and gets out of the way when that is the wrong end.
+
+    A message drawn over the button somebody still has a finger on cannot be
+    read, and looks like the button changed under them.
+    """
+    panel = dead_device_panel()
+    band = panel.page.locator("#panel-failure-message")
+
+    panel.element("btn_low").click()
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_class(_re.compile(r"\bat-top\b"), timeout=EXPECT_TIMEOUT)
+
+    panel.element("btn_high").click()
+    expect(band).not_to_have_class(_re.compile(r"\bat-top\b"), timeout=EXPECT_TIMEOUT)
+
+
+def test_pressing_a_dead_button_four_times_leaves_one_message(
+    dead_device_panel,
+) -> None:
+    """One problem, one message -- not a wall of them at the worst moment."""
+    panel = dead_device_panel()
+    band = panel.page.locator("#panel-failure-message")
+
+    for _ in range(4):
+        panel.element("btn_high").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_count(1)
+
+
+def test_a_room_that_turned_the_message_off_never_sees_one(
+    dead_device_panel,
+) -> None:
+    """The switch, proved against a press that definitely arrived.
+
+    The binding's second action writes a variable whatever the first one does,
+    so the server confirms the press landed and the command failed inside it.
+
+    Then it waits. "Nothing appeared" is an assertion that needs time to be
+    wrong in, and the state poll can beat the frame it is standing in for by a
+    few milliseconds -- which is not a bug in the panel but is enough to make
+    this test pass while ignoring the setting entirely. The band is up in well
+    under a tenth of a second in the test above, so a second and a half is
+    generous by more than an order of magnitude.
+    """
+    panel = dead_device_panel(show_error_messages=False)
+
+    panel.element("btn_high").click()
+
+    _eventually(lambda: panel.state("var.last_press") == "btn_high",
+                "the press never reached the instance, so nothing is proved")
+    panel.page.wait_for_timeout(1500)
+    expect(panel.page.locator("#panel-failure-message")).to_have_count(0)
+
+
+# ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
 
 def _eventually(predicate, message: str, *, timeout: float = 10.0) -> None:
     """Poll the server until it agrees, or fail saying what never happened.
 
-    The press is fire-and-forget over the WebSocket -- the panel gets no
-    receipt -- so there is nothing in the browser to await. Polling the
+    A press that works is fire-and-forget over the WebSocket -- only a failure
+    comes back -- so there is nothing in the browser to await. Polling the
     instance is the honest wait.
     """
     deadline = time.monotonic() + timeout

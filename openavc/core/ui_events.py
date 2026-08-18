@@ -131,12 +131,16 @@ class UIEventRuntime:
         Looks up the element's bindings and dispatches the appropriate action.
 
         Returns what it dispatched, one record per action, in the order they
-        ran. The panel ignores it -- a touch has nowhere to put a receipt. It
-        exists for ``simulate_ui_action``, which had no way to tell a button
-        that fired from a button that did nothing: a ``device.command`` writes
-        no state key directly (it goes out the wire and comes back on a poll or
-        a push), so watching the state store reported "success, no changes" for
-        a working control, and the caller reasonably believed it.
+        ran. It exists for ``simulate_ui_action``, which had no way to tell a
+        button that fired from a button that did nothing: a ``device.command``
+        writes no state key directly (it goes out the wire and comes back on a
+        poll or a push), so watching the state store reported "success, no
+        changes" for a working control, and the caller reasonably believed it.
+
+        The WebSocket door reads it too, for the one field a touch does have
+        somewhere to put: an ``error`` on a record is a failure this method
+        deliberately swallowed to keep the rest of the press running, and the
+        panel turns it into a message on the glass.
 
         ``dry_run`` walks the same resolution and returns the same records
         without any of the effects -- no command on the wire, no state write, no
@@ -318,7 +322,7 @@ class UIEventRuntime:
                 log.exception(f"Binding command failed: {device_id}.{command}")
                 record(
                     device=device_id, command=command, params=params,
-                    sent=False, error=str(exc),
+                    sent=False, error=self._command_error(device_id, exc),
                 )
 
         elif action == "state.set":
@@ -370,6 +374,29 @@ class UIEventRuntime:
                 if not dry_run:
                     await engine.events.emit(f"script.call.{func_name}", data)
                 record(function=func_name)
+
+    def _command_error(self, device_id: str, exc: Exception) -> str:
+        """Why the command did not go out, in words somebody can act on.
+
+        Translated here because here is the last place the exception exists.
+        The action list carries on past a failure on purpose -- one dead device
+        must not stop the rest of a press -- so what gets written down is all
+        anyone downstream will ever have, and ``str(exc)`` is not enough for
+        that: a bare ``TimeoutError`` stringifies to the empty string, and a
+        panel would put nothing at all on the glass.
+
+        Same translation, with the same device and host context, as the direct
+        ``command`` message on the WebSocket, so the same failure reads the
+        same way whichever door it came through. The import is deferred to keep
+        the module free of API imports at load time, matching how the project
+        loader reaches for its save-error twin.
+        """
+        from openavc.api.error_messages import friendly_error
+
+        state = self._engine.state
+        name = state.get(f"device.{device_id}.name") or device_id
+        host = state.get(f"device.{device_id}.host") or ""
+        return friendly_error(exc, device=str(name), host=str(host))
 
     @staticmethod
     def scale_value_forward(element: Any, raw_value: Any) -> Any:
