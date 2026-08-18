@@ -1,4 +1,4 @@
-"""E2E test fixtures for the Programmer IDE.
+"""E2E test fixtures for a served instance -- the Programmer IDE and the panel.
 
 Each test boots a real ``python -m openavc.main`` subprocess pointed at a
 temp project + temp data dir, listening on a free localhost port. The
@@ -118,8 +118,17 @@ def _build_project(
     initial_children: int,
     device_id: str = "ctrl1",
     device_name: str = "Test Controller",
+    overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    """The seed project every e2e server boots on.
+
+    ``overrides`` replaces whole top-level sections (``variables``, ``ui``,
+    ``macros``, ...) rather than merging into them, so a test that needs a
+    panel worth touching writes those sections outright instead of patching
+    this one field by field. The device and its driver stay put either way --
+    they are what makes the state keys real.
+    """
+    project: dict[str, Any] = {
         "openavc_version": "0.5.0",
         "project": {
             "id": "e2e_test_project",
@@ -157,6 +166,9 @@ def _build_project(
         },
         "scripts": [],
     }
+    if overrides:
+        project.update(overrides)
+    return project
 
 
 class _ServerHandle:
@@ -202,10 +214,15 @@ def server_factory(tmp_path: Path, _install_test_driver):
     handles: list[_ServerHandle] = []
     processes: list[subprocess.Popen] = []
 
-    def _make(*, initial_children: int = 0) -> _ServerHandle:
+    def _make(
+        *,
+        initial_children: int = 0,
+        project_overrides: dict[str, Any] | None = None,
+    ) -> _ServerHandle:
         gen = _start_server(
             tmp_path / f"srv-{uuid.uuid4().hex[:8]}",
             initial_children=initial_children,
+            project_overrides=project_overrides,
         )
         handle = next(gen)
         handles.append(handle)
@@ -223,7 +240,12 @@ def server_factory(tmp_path: Path, _install_test_driver):
             pass
 
 
-def _start_server(tmp_root: Path, *, initial_children: int):
+def _start_server(
+    tmp_root: Path,
+    *,
+    initial_children: int,
+    project_overrides: dict[str, Any] | None = None,
+):
     tmp_root.mkdir(parents=True, exist_ok=True)
     data_dir = tmp_root / "data"
     data_dir.mkdir(exist_ok=True)
@@ -239,7 +261,13 @@ def _start_server(tmp_root: Path, *, initial_children: int):
 
     project_path = tmp_root / "project.avc"
     project_path.write_text(
-        json.dumps(_build_project(initial_children=initial_children), indent=2),
+        json.dumps(
+            _build_project(
+                initial_children=initial_children,
+                overrides=project_overrides,
+            ),
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
