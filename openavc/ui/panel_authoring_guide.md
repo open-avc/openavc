@@ -92,8 +92,12 @@ by one row per `destinations` entry, of a cell that does not shrink below the
 finger rule, so its floor is a line rather than a point -- and the three
 `matrix_style` values are not the same line. A list matrix is one dropdown per
 destination, so its width does not move with the source count at all. A tiles
-matrix is one card per destination and no sources on the wall at all, laid out
-`ceil(destinations / rows)` across by `rows = floor(sqrt(destinations))` down.
+matrix is one card per destination and no sources on the wall at all, laid out to
+match the shape of the screen: `root = floor(sqrt(destinations))`, then
+`ceil(destinations / root)` across by `root` down on a **landscape** arrangement,
+and the transpose of that -- `root` across by `ceil(destinations / root)` down --
+on a **portrait** one. Eight destinations are four across and two down landscape,
+two across and four down portrait.
 
 | Type and `matrix_style` | Floor |
 |---|---|
@@ -124,6 +128,24 @@ Worked, for a matrix with a label:
 
 The tiles column ignores the source count in those rows, because a tile wall has
 no source axis: `4x4`, `8x8` and `16x16` are four, eight and sixteen destinations.
+
+Those are the floors on a **landscape** arrangement. `tiles` is the one style
+whose floor turns with the screen, because its grid does; `crosspoint` and `list`
+put one list on each axis and are the same rectangle either way round. On a
+**portrait** arrangement a tile wall wants:
+
+| Grid | tiles, portrait |
+|---|---|
+| 4x4 | 262 x 173 px |
+| 8x8 | 262 x 313 px |
+| 16x16 | 514 x 313 px |
+
+Which is the same area stood on its end, and it is a different rectangle from the
+landscape one -- a box that clears the floor above can be under this one. The
+arrangement you are placing into decides which applies. Everything else on this
+page is measured against a 1280 x 800 screen; a portrait arrangement is
+that screen turned, 800 x 1280, so a percentage of the width buys
+fewer pixels and a percentage of the height buys more.
 
 What this holds is every crosspoint (or every tile), drawn at the finger rule and
 visible without scrolling, plus enough room to read the destination names and the

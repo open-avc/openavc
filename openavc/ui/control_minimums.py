@@ -88,6 +88,29 @@ REM_BASE_PX = 14.0
 REFERENCE_WIDTH_PX = 1280
 REFERENCE_HEIGHT_PX = 800
 
+# The same screen, turned. A portrait layout is not a different panel -- it is
+# this glass on its side -- so the pixels are the landscape pair swapped rather
+# than a second measurement. The Builder's canvas already reasons this way
+# (`presetForOrientation`), and what does NOT swap is the density: rotating a
+# tablet does not change its DPI, so TOUCH_PX_PER_INCH stays as it is and the
+# finger rule means the same thing either way round.
+PORTRAIT_WIDTH_PX = REFERENCE_HEIGHT_PX
+PORTRAIT_HEIGHT_PX = REFERENCE_WIDTH_PX
+
+
+def reference_box(orientation: str = "landscape") -> tuple[int, int]:
+    """The screen a percentage is measured against, this way round.
+
+    Everything that turns a percentage into pixels asks here. It exists because
+    the review used to measure a portrait page against 1280x800 unconditionally
+    -- 60% too generous on width and correspondingly too strict on height, and
+    it failed toward ACCEPTING, so a control genuinely too narrow to touch came
+    back clean on every surface at once.
+    """
+    if str(orientation).lower() == "portrait":
+        return PORTRAIT_WIDTH_PX, PORTRAIT_HEIGHT_PX
+    return REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX
+
 
 @dataclass(frozen=True)
 class FixedInternal:
@@ -231,13 +254,29 @@ CONDITIONS = ("label", "presets", "lock_column", "mute_column")
 LAYOUTS = ("linear", "grid_columns", "grid_rows")
 
 
-def tile_grid_shape(count: int) -> tuple[int, int]:
+def tile_grid_shape(count: int, orientation: str = "landscape") -> tuple[int, int]:
     """How many columns and rows a wall of ``count`` tiles is drawn in.
 
-    Rows first, from the square root, so the wall comes out wider than it is
-    tall -- panels are landscape and a destination's name has to be readable
-    across a room. Eight tiles are four across and two down; sixteen are four
-    and four; seven are four and two with one gap.
+    From the square root, so the wall matches the shape of the screen it is on:
+    wider than it is tall in landscape, taller than it is wide in portrait.
+    Eight tiles are four across and two down on a landscape panel, and two
+    across and four down on a portrait one; sixteen are four and four either
+    way; seven are four and two with a gap, or two and four with a gap.
+
+    The rule reads as "wide" but has never been about width. It is about a
+    destination's name being readable across a room, and matching the box is
+    what achieves that -- on an 800px-wide portrait panel, eight tiles four
+    across is 200px a tile where two across is 400px, so keeping the landscape
+    shape there produces the exact outcome this rule exists to prevent.
+
+    The load-bearing property is unchanged: the shape is still a PURE FUNCTION,
+    of (count, orientation) rather than of (count), and still never of the box.
+    A wall that reflowed to whatever width it was given would have no single
+    smallest box, so no floor could be stated for it -- and the one-column
+    corner of that curve, the only rectangle publishable for one, tells an
+    author their eight tiles need 576px of height when they draw perfectly in
+    179. Orientation is knowable without measuring the box, which is what keeps
+    the floor from depending on the box it is judging.
 
     Mirrored in ``panel.js`` (which draws it) and in ``uiBuilderHelpers.ts``
     (which mirrors this file). All three have to agree or the floor is for a
@@ -245,8 +284,10 @@ def tile_grid_shape(count: int) -> tuple[int, int]:
     """
     if count <= 0:
         return 0, 0
-    rows = max(1, int(math.isqrt(count)))
-    return math.ceil(count / rows), rows
+    root = max(1, int(math.isqrt(count)))
+    if str(orientation).lower() == "portrait":
+        return root, math.ceil(count / root)
+    return math.ceil(count / root), root
 
 
 @dataclass(frozen=True)
@@ -561,7 +602,11 @@ def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
     return False
 
 
-def _count(repeated: RepeatedInternal, element: Mapping[str, Any]) -> int:
+def _count(
+    repeated: RepeatedInternal,
+    element: Mapping[str, Any],
+    orientation: str = "landscape",
+) -> int:
     """How many of this part the element draws along this axis.
 
     Two spellings, because two things say a count. A number says it outright.
@@ -572,7 +617,9 @@ def _count(repeated: RepeatedInternal, element: Mapping[str, Any]) -> int:
 
     Then the layout decides how that count lands on an axis. Usually one part
     per item; for a tile wall the one list fills both axes, so each axis asks
-    for its own half of ``tile_grid_shape``.
+    for its own half of ``tile_grid_shape`` -- which is why the orientation has
+    to reach this far down: the same eight destinations are four columns of two
+    on a landscape panel and two columns of four on a portrait one.
     """
     config = _config(element, repeated.count_in)
     value = config.get(repeated.count_key)
@@ -587,7 +634,7 @@ def _count(repeated: RepeatedInternal, element: Mapping[str, Any]) -> int:
             count = repeated.default_count
     if repeated.layout == "linear":
         return count
-    columns, rows = tile_grid_shape(count)
+    columns, rows = tile_grid_shape(count, orientation)
     return columns if repeated.layout == "grid_columns" else rows
 
 
@@ -603,11 +650,18 @@ def rule_for(element: Mapping[str, Any]) -> MinimumRule | None:
 def minimum_box(
     element: Mapping[str, Any],
     theme: Mapping[str, Any] | None = None,
+    orientation: str = "landscape",
 ) -> MinimumBox | None:
     """The smallest box this element can be drawn in, or None when unbounded.
 
     None means the type has no fixed internals at all -- a button, a label, an
     image. Those are limited by their text, which is not a minimum box.
+
+    One type answers this differently depending on which way the screen is
+    turned: a tile wall, whose grid follows the shape of the panel, so eight
+    destinations want a wide short box in landscape and a narrow tall one in
+    portrait. Every other floor is the same number either way round, which is
+    why the default is landscape rather than a required argument.
     """
     rule = rule_for(element)
     if rule is None:
@@ -625,7 +679,7 @@ def minimum_box(
         resolved: dict[str, dict[str, Any]] = {}
         for repeated in rule.repeated:
             size = _style_px(element, repeated.size_property) or repeated.size_px
-            span = _count(repeated, element) * (size + repeated.gap_px)
+            span = _count(repeated, element, orientation) * (size + repeated.gap_px)
             if repeated.axis == "width":
                 width += span
             else:
@@ -674,6 +728,7 @@ def minimum_percent(
     parent_width_px: float = REFERENCE_WIDTH_PX,
     parent_height_px: float = REFERENCE_HEIGHT_PX,
     theme: Mapping[str, Any] | None = None,
+    orientation: str = "landscape",
 ) -> tuple[float, float] | None:
     """The same floor as a percentage of the box it sits in.
 
@@ -681,7 +736,7 @@ def minimum_percent(
     a minimum in pixels only becomes actionable once it is divided by whatever
     the element's parent actually is.
     """
-    box = minimum_box(element, theme)
+    box = minimum_box(element, theme, orientation)
     if box is None:
         return None
     return (

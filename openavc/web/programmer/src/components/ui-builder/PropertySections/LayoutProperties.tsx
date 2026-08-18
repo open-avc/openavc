@@ -19,6 +19,9 @@ interface LayoutPropertiesProps {
   /** The box the percentages are OF, in reference pixels. An aspect lock is a
    *  pixel ratio, so it only means anything against the real parent. */
   parentPx: { width: number; height: number };
+  /** Which way round the arrangement being edited is: a tile wall's floor is a
+   *  different rectangle in portrait, and this panel is where the box is typed. */
+  orientation: string;
   /** The project's slider theme defaults -- the only theme values a control
    *  minimum moves with. */
   theme?: ElementDefaults;
@@ -44,6 +47,7 @@ export function LayoutProperties({
   placement,
   containers,
   parentPx,
+  orientation,
   theme,
   onChangePlacement,
   onChange,
@@ -79,8 +83,10 @@ export function LayoutProperties({
   // not shrink -- a status LED's dot is 20px whatever the box says. This is the
   // panel where the box gets typed, so it is where the floor belongs, stated in
   // the same percentages the fields above take.
-  const minimum = controlMinimumBox(element, theme);
-  const minimumPercent = minimum ? controlMinimumPercent(element, parentPx, theme) : null;
+  const minimum = controlMinimumBox(element, theme, orientation);
+  const minimumPercent = minimum
+    ? controlMinimumPercent(element, parentPx, theme, orientation)
+    : null;
   const widthPx = (placement.w / 100) * parentPx.width;
   const heightPx = (placement.h / 100) * parentPx.height;
   const starved =

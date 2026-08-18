@@ -36,7 +36,14 @@ from openavc.ui.page_review import (
     TOUCH_PX_PER_INCH,
     TOUCHABLE_TYPES,
 )
-from openavc.ui.control_minimums import REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX, RULES
+from openavc.ui.control_minimums import (
+    PORTRAIT_HEIGHT_PX,
+    PORTRAIT_WIDTH_PX,
+    REFERENCE_HEIGHT_PX,
+    REFERENCE_WIDTH_PX,
+    RULES,
+    reference_box,
+)
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
@@ -371,6 +378,44 @@ def test_the_finger_rule_matches_the_builders(builder_source: str) -> None:
     minimum = re.search(r"TOUCH_MIN_MM\s*=\s*([\d.]+)", builder_source)
     assert minimum, "could not find TOUCH_MIN_MM in the Builder helpers"
     assert float(minimum.group(1)) == TOUCH_MIN_MM
+
+
+def test_a_turned_panel_swaps_its_pixels_and_keeps_its_density(
+    builder_source: str,
+) -> None:
+    """Portrait is the same glass on its side, on both surfaces.
+
+    Two claims, and the second is the one worth a test. The pixels swap: a
+    portrait arrangement is 800x1280 because it is the landscape panel turned,
+    not a second measurement of a different product. The DENSITY does not:
+    rotating a tablet does not change its DPI, so the 9mm finger rule means the
+    same thing either way round and `pxPerInch` stays out of the swap. Keying
+    the density on orientation is the plausible-looking edit this exists to
+    stop -- it would quietly move the touch verdict on every portrait page.
+    """
+    assert (PORTRAIT_WIDTH_PX, PORTRAIT_HEIGHT_PX) == (
+        REFERENCE_HEIGHT_PX, REFERENCE_WIDTH_PX,
+    )
+    assert reference_box("portrait") == (PORTRAIT_WIDTH_PX, PORTRAIT_HEIGHT_PX)
+    assert reference_box("landscape") == (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX)
+    # Anything that is not portrait is landscape, including the empty string a
+    # layout with no orientation resolves to.
+    assert reference_box("") == (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX)
+
+    turned = re.search(
+        r'return orientation === "portrait"\s*'
+        r"\?\s*\{\s*width:\s*TOUCH_REFERENCE\.(\w+),\s*height:\s*TOUCH_REFERENCE\.(\w+)\s*\}\s*"
+        r":\s*\{\s*width:\s*TOUCH_REFERENCE\.(\w+),\s*height:\s*TOUCH_REFERENCE\.(\w+)\s*\}",
+        builder_source,
+    )
+    assert turned, "could not find referenceBox's swap in the Builder helpers"
+    assert turned.groups() == ("height", "width", "width", "height"), (
+        "the Builder's portrait box is not the landscape one turned"
+    )
+    assert "pxPerInch" not in turned.group(0), (
+        "the density must not be keyed on orientation -- a rotated panel has "
+        "the same DPI, and the finger rule is physical"
+    )
 
 
 def test_the_same_types_are_treated_as_touchable(builder_source: str) -> None:

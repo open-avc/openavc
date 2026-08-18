@@ -540,6 +540,67 @@ def test_a_tile_wall_at_its_floor_shows_every_tile(panel_page) -> None:
     )
 
 
+def test_a_turned_tile_wall_at_its_floor_shows_every_tile(panel_page) -> None:
+    """The same claim for the other shape, which is a different rectangle.
+
+    A tile wall's grid follows the screen, so eight destinations are four across
+    and two down landscape and two across and four down portrait -- and the floor
+    is 514x150 one way and 262x290 the other. The test above proves the landscape
+    pair, and cannot see the portrait one at all: it is a rectangle no assertion
+    reached until the wall started turning.
+
+    Eight rather than sixteen on purpose. Sixteen is four by four either way
+    round, so it would pass this test without the renderer ever transposing.
+    """
+    element = {"type": "matrix", "label": "Route", "matrix_style": "tiles",
+               **_grid(4, 8)}
+    box = minimum_box(element, None, "portrait")
+    assert box is not None
+    landscape = minimum_box(element)
+    assert landscape is not None
+    assert (box.width_px, box.height_px) != (landscape.width_px, landscape.height_px), (
+        "eight tiles must floor differently in the two orientations, or this "
+        "test is not measuring the transpose"
+    )
+    seen = panel_page.evaluate(
+        """([e, w, h]) => {
+            const app = window.__openavcPanel;
+            // What _renderPageElements sets from the arrangement it is drawing.
+            app._drawnOrientation = 'portrait';
+            const box = document.getElementById('box');
+            box.innerHTML = ''; box.style.width = w+'px'; box.style.height = h+'px';
+            const node = app.renderElement(e);
+            node.classList.add('panel-element');
+            node.style.position = 'absolute';
+            node.style.left = '0px'; node.style.top = '0px';
+            node.style.width = '100%'; node.style.height = '100%';
+            box.appendChild(node); void node.offsetWidth;
+            const s = node.querySelector('.matrix-scroll').getBoundingClientRect();
+            const inside = Array.from(node.querySelectorAll('.matrix-tile')).filter(t => {
+                const r = t.getBoundingClientRect();
+                return r.left >= s.left - 0.01 && r.right <= s.right + 0.01 &&
+                       r.top >= s.top - 0.01 && r.bottom <= s.bottom + 0.01;
+            });
+            // The count alone would pass on a wall that never turned, so the
+            // shape is measured too: how many distinct left edges there are.
+            const columns = new Set(inside.map(
+                t => Math.round(t.getBoundingClientRect().left))).size;
+            app._drawnOrientation = 'landscape';
+            return [inside.length, columns];
+        }""",
+        [{"id": "probe", **element}, box.width_px, box.height_px],
+    )
+    assert seen[0] == 8, (
+        f"an 8-destination tile wall at its own portrait floor {box.width_px:.0f}x"
+        f"{box.height_px:.0f} shows {seen[0]} of its 8 tiles"
+    )
+    assert seen[1] == 2, (
+        f"an 8-destination tile wall drawn portrait should be 2 tiles across, "
+        f"and is {seen[1]} -- the renderer is not transposing, so the floor "
+        f"{box.width_px:.0f}x{box.height_px:.0f} is for a shape it never draws"
+    )
+
+
 def test_a_matrix_at_its_floor_shows_every_crosspoint(panel_page) -> None:
     """The floor has to mean the whole grid, not a scrollable corner of it.
 

@@ -18,6 +18,7 @@ import {
   getPlacement,
   withPlacement,
   pageSnap,
+  referenceBox,
   referenceParentBox,
   containerChoices,
   displayStyleValue,
@@ -320,6 +321,7 @@ export function PropertiesPanel({
           placement={getPlacement(page, element.id, activeLayoutId)}
           containers={containerChoices(page, element.id)}
           parentPx={referenceParentBox(page, element.id, activeLayoutId)}
+          orientation={layoutOrientation(page, activeLayoutId)}
           theme={sliderThemeDefaults(project)}
           onChangePlacement={(placement) => {
             // Geometry lives in the page's layout, so a typed coordinate is a
@@ -530,11 +532,8 @@ function MasterElementProperties({
           containers={[]}
           // A master is a percentage of the viewport, so its parent IS the
           // reference screen — turned, when the arrangement is portrait.
-          parentPx={
-            masterOrientation === "portrait"
-              ? { width: 800, height: 1280 }
-              : { width: 1280, height: 800 }
-          }
+          parentPx={referenceBox(masterOrientation)}
+          orientation={masterOrientation}
           onChangePlacement={(placement) =>
             handleElementChange({
               placements: { ...masterElement.placements, [masterOrientation]: placement },

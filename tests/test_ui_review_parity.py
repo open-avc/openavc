@@ -65,6 +65,23 @@ def _landscape(placements, **kwargs) -> dict:
     }
 
 
+def _portrait(placements, **kwargs) -> dict:
+    return {
+        "id": "portrait", "orientation": "portrait", "primary": True,
+        "placements": placements, "hidden": [], **kwargs,
+    }
+
+
+# The same arithmetic turned: 1% of an 800px width is 8px, 1% of a 1280px
+# height is 12.8px. Exactly the swap that was missing.
+P_PX_W = 8.0
+P_PX_H = 12.8
+
+
+def _p_box(x, y, w_px, h_px) -> dict:
+    return {"x": x, "y": y, "w": w_px / P_PX_W, "h": h_px / P_PX_H}
+
+
 def _page(page_id, elements, layouts) -> dict:
     return {"id": page_id, "name": page_id.title(), "elements": elements, "layouts": layouts}
 
@@ -638,6 +655,75 @@ CASES["vocabulary"] = _project([
             "mtx_written_ok": _pct_box(0, 45, 30, 45),
             "mtx_lock_local": _pct_box(70, 0, 28, 40),
             "mtx_tiles_ok": _pct_box(35, 45, 30, 45),
+        })],
+    ),
+])
+
+
+# A portrait arrangement, measured against a portrait screen.
+#
+# This case is the only evidence the Q-087 fix works, and it has to be, because
+# the bug failed toward ACCEPTING: a portrait page was measured against 1280x800,
+# so a control too narrow to touch came back clean on every surface at once and
+# nothing already in this corpus was red. Nothing here would trip a single check
+# before the fix.
+#
+# Both halves are exercised: the reference box (a percentage resolves to fewer
+# pixels across a portrait screen and more down it) and the tile wall's shape
+# (eight destinations are 4x2 in landscape and 2x4 here, so the floor is a
+# different rectangle -- 514x150 against 262x290).
+CASES["portrait"] = _project([
+    _page(
+        "main",
+        [
+            # 5% of 800px is 40px, under the 9mm finger rule. The same 5% of a
+            # landscape 1280 is 64px and passes, which is exactly what shipped.
+            {"id": "p_narrow", "type": "button", "label": "Mute"},
+            # Comfortable on both axes here: the check has to stay capable of
+            # silence in portrait, not just of speech.
+            {"id": "p_btn_ok", "type": "button", "label": "Go"},
+            # A status LED whose 20px dot fits across a portrait width only
+            # because the width is stated as a bigger percentage of a smaller
+            # screen. Starved if the reference is not turned.
+            {"id": "p_led", "type": "status_led", "label": "Ready"},
+            # Eight destinations drawn 2 across and 4 down. 400x256px is over
+            # the landscape floor and under the portrait one.
+            {"id": "p_wall", "type": "matrix", "matrix_style": "tiles",
+             "matrix_config": {
+                 "sources": [
+                     {"value": 1, "label": "Cam"},
+                     {"value": 2, "label": "PC"},
+                 ],
+                 "destinations": [
+                     {"value": i, "label": f"Out {i}",
+                      "route_key": f"device.acme.output.{i}.input",
+                      "lock_key": f"var.p_wall_lock_{i}"}
+                     for i in range(1, 9)
+                 ],
+                 "show_lock": True, "show_mute": False,
+             }},
+            # The same wall, sized for the shape it is actually drawn in.
+            {"id": "p_wall_ok", "type": "matrix", "matrix_style": "tiles",
+             "matrix_config": {
+                 "sources": [
+                     {"value": 1, "label": "Cam"},
+                     {"value": 2, "label": "PC"},
+                 ],
+                 "destinations": [
+                     {"value": i, "label": f"Out {i}",
+                      "route_key": f"device.acme.output.{i}.input",
+                      "lock_key": f"var.p_wall_ok_lock_{i}"}
+                     for i in range(1, 9)
+                 ],
+                 "show_lock": True, "show_mute": False,
+             }},
+        ],
+        [_portrait({
+            "p_narrow": _pct_box(0, 0, 5, 10),
+            "p_btn_ok": _pct_box(60, 0, 30, 10),
+            "p_led": _p_box(0, 15, 60, 44),
+            "p_wall": _pct_box(0, 25, 50, 20),
+            "p_wall_ok": _pct_box(0, 50, 50, 30),
         })],
     ),
 ])
@@ -1465,8 +1551,47 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "nav_kid", "off_kid",                  # inside a container that answers for them
         "mode_b_lbl",                          # never on screen with the master it covers
         "hidden_ctl",                          # a custom page paints its masters on top
+        "p_btn_ok", "p_wall_ok",               # sized for the shape they are drawn in
+        "p_led",                               # 44px of height a portrait screen has
     ):
         assert quiet not in flagged, f"{quiet} should not have been flagged"
+
+
+def test_a_portrait_arrangement_is_measured_against_portrait_glass(verdicts) -> None:
+    """The two guards above cannot see this one go, so it says so itself.
+
+    Neither of them would notice the portrait case being deleted: it trips no
+    kind the rest of the corpus does not already trip, and an element that stops
+    being flagged only ever makes the silence list longer. That matters more
+    here than anywhere else in this file, because the defect this pins failed
+    toward ACCEPTING -- a portrait page measured against 1280x800 came back
+    clean on every surface at once, so there was nothing red to go green and
+    this case is the whole of the evidence.
+
+    Both halves are named. The reference box: 5% of an 800px width is 40px and
+    under the finger rule, where the same 5% of 1280 is 64px and passes. And the
+    tile wall's shape: eight destinations are 2x4 here rather than 4x2, so the
+    floor is 262x290 instead of 514x150 and a 400x256px box is under it -- the
+    same box that clears the landscape floor comfortably.
+    """
+    python_side, builder_side = verdicts["portrait"]
+    assert builder_side == python_side  # said again here so a drift names portrait
+
+    by_id = {f["element_id"]: f for f in python_side}
+    assert set(by_id) == {"p_narrow", "p_wall"}
+
+    assert by_id["p_narrow"]["kind"] == "small_touch_target"
+    assert by_id["p_narrow"]["message"] == (
+        "p_narrow (button) is about 40x128px, roughly 6.8x21.8mm on a 10-inch panel "
+        "-- under the 9mm comfortable touch minimum on width (53px)."
+    )
+
+    assert by_id["p_wall"]["kind"] == "too_small_for_contents"
+    assert by_id["p_wall"]["message"] == (
+        "p_wall (matrix) is 400x256px at the 800x1280 reference, too small for what "
+        "it draws: 256px tall, needs 290px (matrix-tile is 64px). Give it h at least "
+        "22.66% of the page."
+    )
 
 
 def test_a_zero_dimension_is_degenerate_not_uncomfortable(verdicts) -> None:
@@ -1532,8 +1657,15 @@ def test_a_buried_master_is_named_on_the_control_that_buried_it(verdicts) -> Non
     )
     # A master carries a box per orientation, so the portrait bar is a different
     # box in a different place -- and the arrangement it happens in is named.
+    #
+    # These pixels are measured against PORTRAIT glass, which is the Q-087 fix
+    # visible in an assertion that predates it: the same 30% x 8% overlap read
+    # 384x64px while every arrangement was measured against 1280x800, and reads
+    # 240x102px now that a portrait one is measured against 800x1280. The share
+    # is unchanged at 24% because that is a ratio of percentages and never
+    # depended on the reference at all.
     assert buried[1]["message"].endswith(
-        "port_ctl covers 384x64px of nav_bar, 24% of it in the 'portrait' arrangement."
+        "port_ctl covers 240x102px of nav_bar, 24% of it in the 'portrait' arrangement."
     )
     # Nesting folded down: the container's own box is a percentage of the page,
     # and it covers the bar outright.

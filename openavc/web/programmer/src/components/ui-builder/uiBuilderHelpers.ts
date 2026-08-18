@@ -2926,6 +2926,23 @@ export function isOutOfBounds(p: Placement): boolean {
  */
 export const TOUCH_REFERENCE = { width: 1280, height: 800, pxPerInch: 149 };
 
+/** The reference glass for an arrangement, the way round it is drawn.
+ *
+ *  A portrait arrangement is not a different panel, it is this one turned, so
+ *  the pixels are the landscape pair swapped rather than a second measurement
+ *  -- the same thing `presetForOrientation` does to the canvas. What does NOT
+ *  swap is `pxPerInch`: rotating a tablet does not change its density, so the
+ *  finger rule means the same thing either way round.
+ *
+ *  Mirrors `reference_box` in openavc/ui/control_minimums.py. It exists because
+ *  a portrait page used to be measured against 1280x800 unconditionally, which
+ *  was 60% too generous on width and wrong in the direction that ACCEPTS. */
+export function referenceBox(orientation: string): { width: number; height: number } {
+  return orientation === "portrait"
+    ? { width: TOUCH_REFERENCE.height, height: TOUCH_REFERENCE.width }
+    : { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height };
+}
+
 /** The comfortable finger minimum, and the actual rule.
  *
  *  It is in millimetres because that is the real question -- whether a thumb
@@ -3003,8 +3020,9 @@ export function referenceParentBox(
     chain.unshift(cursor);
     cursor = byId.get(cursor)?.parent ?? null;
   }
-  let width = TOUCH_REFERENCE.width;
-  let height = TOUCH_REFERENCE.height;
+  const ref = referenceBox(layoutOrientation(page, layoutId));
+  let width = ref.width;
+  let height = ref.height;
   for (const id of chain) {
     const box = placements[id];
     if (!box) continue;
@@ -3226,10 +3244,15 @@ function partIsPresent(when: string, el: UIElement): boolean {
  *  Mirrors `tile_grid_shape` in openavc/ui/control_minimums.py and
  *  `matrixTileGridShape` in panel.js. All three agree or the floor stated here
  *  is for a shape the panel does not draw. */
-export function matrixTileGridShape(count: number): [number, number] {
+export function matrixTileGridShape(
+  count: number,
+  orientation: string = "landscape",
+): [number, number] {
   if (count <= 0) return [0, 0];
-  const rows = Math.max(1, Math.floor(Math.sqrt(count)));
-  return [Math.ceil(count / rows), rows];
+  const root = Math.max(1, Math.floor(Math.sqrt(count)));
+  return orientation === "portrait"
+    ? [root, Math.ceil(count / root)]
+    : [Math.ceil(count / root), root];
 }
 
 /** The count a RepeatedInternal repeats over. Mirrors `_count` in Python. */
@@ -3239,6 +3262,7 @@ function repeatedCount(
   countKey: string,
   fallback: number,
   layout: string,
+  orientation: string = "landscape",
 ): number {
   // Two spellings, because two things say a count: a number, and a LIST of the
   // things being counted. A matrix says it the second way -- its sources and
@@ -3255,9 +3279,12 @@ function repeatedCount(
     count = Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
   }
   // Then the layout decides how that count lands on an axis: usually one part
-  // per item, but a tile wall's one list fills BOTH axes.
+  // per item, but a tile wall's one list fills BOTH axes -- which is why the
+  // orientation reaches this far down. The same eight destinations are four
+  // columns of two on a landscape panel and two columns of four on a portrait
+  // one.
   if (layout === "linear") return count;
-  const [columns, rows] = matrixTileGridShape(count);
+  const [columns, rows] = matrixTileGridShape(count, orientation);
   return layout === "grid_columns" ? columns : rows;
 }
 
@@ -3278,6 +3305,7 @@ function ruleFor(el: UIElement): ControlMinimumRule | undefined {
 export function controlMinimumBox(
   el: UIElement,
   theme?: ElementDefaults,
+  orientation: string = "landscape",
 ): ControlMinimumBox | null {
   const rule = ruleFor(el);
   if (!rule) return null;
@@ -3294,7 +3322,8 @@ export function controlMinimumBox(
   for (const r of rule.repeated) {
     const size = stylePx(el, r.sizeProperty) ?? r.sizePx;
     const span =
-      repeatedCount(el, r.countIn, r.countKey, r.defaultCount, r.layout) * (size + r.gapPx);
+      repeatedCount(el, r.countIn, r.countKey, r.defaultCount, r.layout, orientation) *
+      (size + r.gapPx);
     if (r.axis === "width") widthPx += span;
     else heightPx += span;
     const part = resolved.get(r.part) ?? { part: r.part, widthPx: null, heightPx: null };
@@ -3332,8 +3361,9 @@ export function controlMinimumPercent(
   el: UIElement,
   parentPx: { width: number; height: number },
   theme?: ElementDefaults,
+  orientation: string = "landscape",
 ): { w: number; h: number } | null {
-  const box = controlMinimumBox(el, theme);
+  const box = controlMinimumBox(el, theme, orientation);
   if (!box) return null;
   return {
     w: (box.widthPx / parentPx.width) * 100,
@@ -3379,12 +3409,14 @@ export interface Container {
   heightPx: number;
 }
 
-/** The root every chain ends at. It is the one box no remedy can grow. */
-const PAGE_CONTAINER: Container = {
-  label: "the page",
-  widthPx: TOUCH_REFERENCE.width,
-  heightPx: TOUCH_REFERENCE.height,
-};
+/** The root every chain ends at. It is the one box no remedy can grow.
+ *
+ *  A function rather than a constant because a portrait arrangement is drawn on
+ *  the same screen turned. Mirrors `page_container` in page_review.py. */
+function pageContainer(orientation: string = "landscape"): Container {
+  const ref = referenceBox(orientation);
+  return { label: "the page", widthPx: ref.width, heightPx: ref.height };
+}
 
 /** A starved axis whose floor is larger than the container itself. */
 interface BlockedAxis {
@@ -3434,10 +3466,11 @@ function grown(container: Container, axis: "width" | "height"): number {
 export function containerRemedy(
   ancestors: Container[],
   blocked: BlockedAxis[],
+  page: Container = pageContainer(),
 ): { holder: Container; parent: Container; needs: Record<string, number> } | null {
   // A zero box has no share to scale; that is its own finding.
   if (blocked.some((b) => b.has <= 0)) return null;
-  const chain = [...ancestors, PAGE_CONTAINER];
+  const chain = [...ancestors, page];
   for (let index = 0; index < chain.length - 1; index++) {
     const holder = chain[index];
     const parent = chain[index + 1];
@@ -3457,9 +3490,13 @@ export function containerRemedy(
 }
 
 /** The remedy for axes no percentage of the parent can reach. */
-function containerClause(ancestors: Container[], blocked: BlockedAxis[]): string {
+function containerClause(
+  ancestors: Container[],
+  blocked: BlockedAxis[],
+  pageRoot: Container = pageContainer(),
+): string {
   const axes = blocked.map((b) => b.axis);
-  const remedy = containerRemedy(ancestors, blocked);
+  const remedy = containerRemedy(ancestors, blocked, pageRoot);
   if (!remedy) {
     // Nothing in the ancestry has room to grow, so the page itself is the
     // binding constraint. Said as the ceiling rather than as a percentage,
@@ -3469,7 +3506,7 @@ function containerClause(ancestors: Container[], blocked: BlockedAxis[]): string
         const outer = ancestors.length
           ? grown(ancestors[ancestors.length - 1], axis)
           : has;
-        const page = grown(PAGE_CONTAINER, axis);
+        const page = grown(pageRoot, axis);
         const ceiling = outer > 0 ? (has * page) / outer : page;
         const word = axis === "width" ? "widest" : "tallest";
         return (
@@ -3527,15 +3564,16 @@ export function starvationFinding(
   parentName: string,
   theme?: ElementDefaults,
   ancestors: Container[] = [],
+  orientation: string = "landscape",
 ): ReviewFinding | null {
-  const box = controlMinimumBox(el, theme);
+  const box = controlMinimumBox(el, theme, orientation);
   if (!box) return null;
   const reasons = starvedReasons(box, boxPx.width, boxPx.height);
   if (!reasons.length) return null;
 
   const blocked = blockedAxes(box, boxPx, parentPx);
   const stuck = new Set(blocked.map((b) => b.axis));
-  const need = controlMinimumPercent(el, parentPx, theme);
+  const need = controlMinimumPercent(el, parentPx, theme, orientation);
   const fixes: string[] = [];
   if (need) {
     if (boxPx.width + 0.5 < box.widthPx && !stuck.has("width")) {
@@ -3545,14 +3583,15 @@ export function starvationFinding(
       fixes.push(`h at least ${pct(need.h)}%`);
     }
   }
+  const pageRoot = pageContainer(orientation);
   let fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
-  if (blocked.length) fix += containerClause(ancestors, blocked);
+  if (blocked.length) fix += containerClause(ancestors, blocked, pageRoot);
   return {
     elementId: el.id,
     kind: "too_small_for_contents",
     message:
       `${el.id} (${el.type}) is ${fixed(boxPx.width, 0)}x${fixed(boxPx.height, 0)}px at the ` +
-      `${TOUCH_REFERENCE.width}x${TOUCH_REFERENCE.height} reference, too small for what it ` +
+      `${fixed(pageRoot.widthPx, 0)}x${fixed(pageRoot.heightPx, 0)} reference, too small for what it ` +
       `draws: ${reasons.join("; ")}.${fix}`,
     key: `too_small_for_contents|${el.id}`,
   };
@@ -3590,8 +3629,9 @@ export function degenerateFinding(
   parentPx: { width: number; height: number },
   parentName: string,
   theme?: ElementDefaults,
+  orientation: string = "landscape",
 ): ReviewFinding | null {
-  if (controlMinimumBox(el, theme)) return null;
+  if (controlMinimumBox(el, theme, orientation)) return null;
   if (boxPx.width >= MINIMUM_VISIBLE_PX && boxPx.height >= MINIMUM_VISIBLE_PX) return null;
 
   const fixes: string[] = [];
@@ -3602,12 +3642,13 @@ export function degenerateFinding(
     fixes.push(`h at least ${pct((MINIMUM_VISIBLE_PX / parentPx.height) * 100)}%`);
   }
   const fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  const pageRoot = pageContainer(orientation);
   return {
     elementId: el.id,
     kind: "too_small_to_draw",
     message:
       `${el.id} (${el.type}) is ${fixed(boxPx.width, 0)}x${fixed(boxPx.height, 0)}px at the ` +
-      `${TOUCH_REFERENCE.width}x${TOUCH_REFERENCE.height} reference, which is not small, it is ` +
+      `${fixed(pageRoot.widthPx, 0)}x${fixed(pageRoot.heightPx, 0)} reference, which is not small, it is ` +
       `invisible. ${capitalized(article(el.type))} ${el.type} has no fixed floor -- what ` +
       `limits it is its content -- so ` +
       `nothing else here measures it.${fix}`,
@@ -3839,12 +3880,13 @@ const OVERLAP_NAMED = 3;
 export function overlapExtent(
   aBox: Placement,
   bBox: Placement,
+  reference: { width: number; height: number } = referenceBox("landscape"),
 ): { oxPx: number; oyPx: number; share: number } | null {
   const ox = Math.min(aBox.x + aBox.w, bBox.x + bBox.w) - Math.max(aBox.x, bBox.x);
   const oy = Math.min(aBox.y + aBox.h, bBox.y + bBox.h) - Math.max(aBox.y, bBox.y);
   if (ox <= 0 || oy <= 0) return null;
-  const oxPx = (ox / 100) * TOUCH_REFERENCE.width;
-  const oyPx = (oy / 100) * TOUCH_REFERENCE.height;
+  const oxPx = (ox / 100) * reference.width;
+  const oyPx = (oy / 100) * reference.height;
   if (oxPx < OVERLAP_MIN_PX || oyPx < OVERLAP_MIN_PX) return null;
   const smaller = Math.min(aBox.w * aBox.h, bBox.w * bBox.h);
   const share = smaller ? (100 * (ox * oy)) / smaller : 100;
@@ -4196,17 +4238,18 @@ export function buriedMasterFindings(
   inScope: (id: string) => boolean,
 ): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
+  const reference = referenceBox(orientation);
   for (const master of masters) {
     if (master.hidden || !masterDrawsOn(master.pages ?? "*", pageId)) continue;
     const mBox = masterBox(master, orientation);
     if (!mBox) continue;
-    const mWidthPx = (mBox.w / 100) * TOUCH_REFERENCE.width;
-    const mHeightPx = (mBox.h / 100) * TOUCH_REFERENCE.height;
+    const mWidthPx = (mBox.w / 100) * reference.width;
+    const mHeightPx = (mBox.h / 100) * reference.height;
     if (mWidthPx <= 0 || mHeightPx <= 0) continue;
     const covered = new Map<string, { oxPx: number; oyPx: number }>();
     for (const [elId, box] of boxes) {
       if (mutuallyExclusive(elements.get(elId) as UIElement, master)) continue;
-      const extent = overlapExtent(box, mBox);
+      const extent = overlapExtent(box, mBox, reference);
       if (extent) covered.set(elId, { oxPx: extent.oxPx, oyPx: extent.oyPx });
     }
     for (const elId of [...covered.keys()].sort()) {
@@ -4884,11 +4927,12 @@ export function matrixFindings(el: UIElement): ReviewFinding[] {
 function parentBoxPx(
   parentId: string | null,
   absolute: Record<string, Placement>,
+  reference: { width: number; height: number },
 ): { width: number; height: number } {
   const box = (parentId ? own(absolute, parentId) : undefined) ?? PAGE_BOX;
   return {
-    width: (box.w / 100) * TOUCH_REFERENCE.width,
-    height: (box.h / 100) * TOUCH_REFERENCE.height,
+    width: (box.w / 100) * reference.width,
+    height: (box.h / 100) * reference.height,
   };
 }
 
@@ -4995,6 +5039,9 @@ function layoutFindings(
   const hidden = resolveHidden(page, layoutId);
   const byId = new Map(page.elements.map((e) => [e.id, e]));
   const findings: ReviewFinding[] = [];
+  // Every percentage in this arrangement resolves against this, and it is the
+  // whole of what portrait changes: the same screen, turned.
+  const reference = referenceBox(ctx.orientation);
 
   const parentOf = (id: string): string | null => {
     const named = byId.get(id)?.parent;
@@ -5019,8 +5066,8 @@ function layoutFindings(
       if (!box) break;
       chain.push({
         label: `'${cursor}'`,
-        widthPx: (box.w / 100) * TOUCH_REFERENCE.width,
-        heightPx: (box.h / 100) * TOUCH_REFERENCE.height,
+        widthPx: (box.w / 100) * reference.width,
+        heightPx: (box.h / 100) * reference.height,
       });
       cursor = parentOf(cursor);
     }
@@ -5036,14 +5083,18 @@ function layoutFindings(
       if (ctx.isPrimary) findings.push(noBoxFinding(el, parentName(el.id)));
       continue;
     }
-    const parentPx = parentBoxPx(parentOf(el.id), absolute);
+    const parentPx = parentBoxPx(parentOf(el.id), absolute, reference);
     const boxPx = {
-      width: (box.w / 100) * TOUCH_REFERENCE.width,
-      height: (box.h / 100) * TOUCH_REFERENCE.height,
+      width: (box.w / 100) * reference.width,
+      height: (box.h / 100) * reference.height,
     };
     const candidates = [
-      starvationFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme, ancestorsOf(el.id)),
-      degenerateFinding(el, boxPx, parentPx, parentName(el.id), ctx.theme),
+      starvationFinding(
+        el, boxPx, parentPx, parentName(el.id), ctx.theme, ancestorsOf(el.id), ctx.orientation,
+      ),
+      degenerateFinding(
+        el, boxPx, parentPx, parentName(el.id), ctx.theme, ctx.orientation,
+      ),
       touchFinding(el, boxPx),
       styleFinding(el, boxPx),
     ];
@@ -5084,6 +5135,7 @@ function layoutFindings(
         const extent = overlapExtent(
           own(absolute, kids[i]) as Placement,
           own(absolute, kids[j]) as Placement,
+          reference,
         );
         if (extent) pairs.push({ aId: kids[i], bId: kids[j], ...extent });
       }
@@ -5142,22 +5194,18 @@ export function reviewMasterElement(
   if (!placements || typeof placements !== "object") return findings;
   const seen = new Set<string>();
   for (const [orientation, box] of Object.entries(placements)) {
+    // A master carries its own orientation-keyed boxes, so the key IS the way
+    // round this one is drawn -- the portrait box is measured against a portrait
+    // screen even on a project whose pages are all landscape.
+    const reference = referenceBox(orientation);
     const boxPx = {
-      width: ((box?.w ?? 100) / 100) * TOUCH_REFERENCE.width,
-      height: ((box?.h ?? 100) / 100) * TOUCH_REFERENCE.height,
+      width: ((box?.w ?? 100) / 100) * reference.width,
+      height: ((box?.h ?? 100) / 100) * reference.height,
     };
     if (!Number.isFinite(boxPx.width) || !Number.isFinite(boxPx.height)) continue;
     const candidates = [
-      starvationFinding(
-        master, boxPx,
-        { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height },
-        "the page", theme,
-      ),
-      degenerateFinding(
-        master, boxPx,
-        { width: TOUCH_REFERENCE.width, height: TOUCH_REFERENCE.height },
-        "the page", theme,
-      ),
+      starvationFinding(master, boxPx, reference, "the page", theme, [], orientation),
+      degenerateFinding(master, boxPx, reference, "the page", theme, orientation),
       touchFinding(master, boxPx),
       styleFinding(master, boxPx),
     ];

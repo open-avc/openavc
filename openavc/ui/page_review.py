@@ -57,6 +57,7 @@ from openavc.ui.control_minimums import (
     REM_BASE_PX,
     minimum_box,
     minimum_percent,
+    reference_box,
 )
 from openavc.ui.matrix_model import (
     MATRIX_CONFIG_KEYS,
@@ -328,8 +329,16 @@ class Container:
     height_px: float
 
 
-#: The root every chain ends at. It is the one box no remedy can grow.
-PAGE_CONTAINER = Container("the page", REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX)
+def page_container(orientation: str = "landscape") -> Container:
+    """The root every chain ends at. It is the one box no remedy can grow.
+
+    A function rather than a constant because a portrait arrangement is drawn
+    on the same screen turned, and measuring one against 1280x800 was the whole
+    of Q-087: 60% too generous on width, too strict on height, and wrong in the
+    direction that ACCEPTS -- so nothing was flagged anywhere.
+    """
+    width, height = reference_box(orientation)
+    return Container("the page", width, height)
 
 
 def _mapping(element: Any) -> Mapping[str, Any]:
@@ -368,10 +377,13 @@ def _joined(parts: list[str]) -> str:
     return ", ".join(parts[:-1]) + f" and {parts[-1]}"
 
 
-def _box_px(box: Mapping[str, float]) -> tuple[float, float]:
+def _box_px(
+    box: Mapping[str, float],
+    reference: tuple[float, float] = (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX),
+) -> tuple[float, float]:
     return (
-        box["w"] / 100 * REFERENCE_WIDTH_PX,
-        box["h"] / 100 * REFERENCE_HEIGHT_PX,
+        box["w"] / 100 * reference[0],
+        box["h"] / 100 * reference[1],
     )
 
 
@@ -401,7 +413,9 @@ def _grown(container: Container, axis: str) -> float:
 
 
 def container_remedy(
-    ancestors: tuple[Container, ...], blocked: list[tuple[str, float, float]],
+    ancestors: tuple[Container, ...],
+    blocked: list[tuple[str, float, float]],
+    page: Container | None = None,
 ) -> tuple[Container, Container, dict[str, float]] | None:
     """The nearest ancestor that can be grown until every starved axis fits.
 
@@ -417,7 +431,7 @@ def container_remedy(
     """
     if any(has <= 0 for _, _, has in blocked):
         return None  # a zero box has no share to scale; that is its own finding
-    chain = (*ancestors, PAGE_CONTAINER)
+    chain = (*ancestors, page if page is not None else page_container())
     for index, ancestor in enumerate(chain[:-1]):
         parent = chain[index + 1]
         needs: dict[str, float] = {}
@@ -432,11 +446,14 @@ def container_remedy(
 
 
 def _container_clause(
-    ancestors: tuple[Container, ...], blocked: list[tuple[str, float, float]],
+    ancestors: tuple[Container, ...],
+    blocked: list[tuple[str, float, float]],
+    page: Container | None = None,
 ) -> str:
     """The remedy for axes no percentage of the parent can reach."""
+    page = page if page is not None else page_container()
     axes = [axis for axis, _, _ in blocked]
-    remedy = container_remedy(ancestors, blocked)
+    remedy = container_remedy(ancestors, blocked, page)
     if remedy is None:
         # Nothing in the ancestry has room to grow, so the page itself is the
         # binding constraint. Said as the ceiling rather than as a percentage,
@@ -444,12 +461,12 @@ def _container_clause(
         limits = []
         for axis, wants, has in blocked:
             outer = _grown(ancestors[-1], axis) if ancestors else has
-            page = _grown(PAGE_CONTAINER, axis)
-            ceiling = has * page / outer if outer > 0 else page
+            page_px = _grown(page, axis)
+            ceiling = has * page_px / outer if outer > 0 else page_px
             word = "widest" if axis == "width" else "tallest"
             limits.append(
                 f" No placement fits: the {word} this can be drawn on a "
-                f"{page:.0f}px page is {ceiling:.0f}px, and it needs {wants:.0f}px."
+                f"{page_px:.0f}px page is {ceiling:.0f}px, and it needs {wants:.0f}px."
             )
         return "".join(limits)
 
@@ -481,6 +498,7 @@ def starvation_finding(
     parent_name: str,
     theme: Mapping[str, Any] | None = None,
     ancestors: tuple[Container, ...] = (),
+    orientation: str = "landscape",
 ) -> Finding | None:
     """A control smaller than the parts inside it that do not shrink.
 
@@ -495,7 +513,7 @@ def starvation_finding(
     ``ancestors`` is what turns the finding back into something actionable, by
     naming the box that has to grow instead.
     """
-    box = minimum_box(element, theme)
+    box = minimum_box(element, theme, orientation)
     if box is None:
         return None
     width_px, height_px = box_px
@@ -507,7 +525,7 @@ def starvation_finding(
     el_type = str(element.get("type", "?"))
     blocked = _blocked_axes(box, box_px, parent_px)
     stuck = {axis for axis, _, _ in blocked}
-    percent = minimum_percent(element, parent_px[0], parent_px[1], theme)
+    percent = minimum_percent(element, parent_px[0], parent_px[1], theme, orientation)
     fixes = []
     if percent:
         need_w, need_h = percent
@@ -515,13 +533,14 @@ def starvation_finding(
             fixes.append(f"w at least {_pct(need_w)}%")
         if height_px + 0.5 < box.height_px and "height" not in stuck:
             fixes.append(f"h at least {_pct(need_h)}%")
+    page = page_container(orientation)
     fix = f" Give it {' and '.join(fixes)} of {parent_name}." if fixes else ""
-    fix += _container_clause(ancestors, blocked) if blocked else ""
+    fix += _container_clause(ancestors, blocked, page) if blocked else ""
     return Finding(
         el_id,
         "too_small_for_contents",
         f"{el_id} ({el_type}) is {width_px:.0f}x{height_px:.0f}px at the "
-        f"{REFERENCE_WIDTH_PX}x{REFERENCE_HEIGHT_PX} reference, too small for what it "
+        f"{page.width_px:.0f}x{page.height_px:.0f} reference, too small for what it "
         f"draws: {'; '.join(reasons)}.{fix}",
     )
 
@@ -546,6 +565,7 @@ def degenerate_finding(
     parent_px: tuple[float, float],
     parent_name: str,
     theme: Mapping[str, Any] | None = None,
+    orientation: str = "landscape",
 ) -> Finding | None:
     """A box too small to draw anything, on a type with no floor to breach.
 
@@ -557,7 +577,7 @@ def degenerate_finding(
     Runs only where ``minimum_box`` has no opinion, so it never speaks over a
     measured floor and never becomes one.
     """
-    if minimum_box(element, theme) is not None:
+    if minimum_box(element, theme, orientation) is not None:
         return None
     width_px, height_px = box_px
     if width_px >= MINIMUM_VISIBLE_PX and height_px >= MINIMUM_VISIBLE_PX:
@@ -570,12 +590,13 @@ def degenerate_finding(
         fixes.append(f"w at least {_pct(MINIMUM_VISIBLE_PX / parent_px[0] * 100)}%")
     if height_px < MINIMUM_VISIBLE_PX and parent_px[1] > 0:
         fixes.append(f"h at least {_pct(MINIMUM_VISIBLE_PX / parent_px[1] * 100)}%")
+    page = page_container(orientation)
     fix = f" Give it {' and '.join(fixes)} of {parent_name}." if fixes else ""
     return Finding(
         el_id,
         "too_small_to_draw",
         f"{el_id} ({el_type}) is {width_px:.0f}x{height_px:.0f}px at the "
-        f"{REFERENCE_WIDTH_PX}x{REFERENCE_HEIGHT_PX} reference, which is not small, it is "
+        f"{page.width_px:.0f}x{page.height_px:.0f} reference, which is not small, it is "
         f"invisible. {_article(el_type).capitalize()} {el_type} has no fixed floor -- what limits it is its content -- so "
         f"nothing else here measures it.{fix}",
     )
@@ -765,7 +786,9 @@ def overhang_finding(
 
 
 def overlap_extent(
-    a_box: Mapping[str, float], b_box: Mapping[str, float],
+    a_box: Mapping[str, float],
+    b_box: Mapping[str, float],
+    reference: tuple[float, float] = (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX),
 ) -> tuple[float, float, float] | None:
     """How much two boxes share: pixels on each axis, and share of the smaller.
 
@@ -782,8 +805,8 @@ def overlap_extent(
     oy = min(a_box["y"] + a_box["h"], b_box["y"] + b_box["h"]) - max(a_box["y"], b_box["y"])
     if ox <= 0 or oy <= 0:
         return None
-    ox_px = ox / 100 * REFERENCE_WIDTH_PX
-    oy_px = oy / 100 * REFERENCE_HEIGHT_PX
+    ox_px = ox / 100 * reference[0]
+    oy_px = oy / 100 * reference[1]
     if ox_px < _OVERLAP_MIN_PX or oy_px < _OVERLAP_MIN_PX:
         return None
     smaller = min(a_box["w"] * a_box["h"], b_box["w"] * b_box["h"])
@@ -1117,6 +1140,7 @@ def buried_master_findings(
     it is the fix, and the child has done nothing wrong.
     """
     findings: list[Finding] = []
+    reference = reference_box(orientation)
     for master in masters:
         m = _mapping(master)
         if m.get("hidden") or not master_draws_on(m.get("pages", "*"), page_id):
@@ -1124,14 +1148,14 @@ def buried_master_findings(
         m_box = master_box(m, orientation)
         if m_box is None:
             continue
-        m_w_px, m_h_px = _box_px(m_box)
+        m_w_px, m_h_px = _box_px(m_box, reference)
         if m_w_px <= 0 or m_h_px <= 0:
             continue
         covered: dict[str, tuple[float, float]] = {}
         for el_id, box in boxes.items():
             if mutually_exclusive(dumps[el_id], m):
                 continue
-            extent = overlap_extent(box, m_box)
+            extent = overlap_extent(box, m_box, reference)
             if extent:
                 covered[el_id] = (extent[0], extent[1])
         m_id = str(m.get("id", "?"))
@@ -1869,6 +1893,9 @@ def _layout_findings(
     """Every geometry finding for one arrangement."""
     findings: list[Finding] = []
     elements = {el.id: el for el in page.elements}
+    # Every percentage in this arrangement resolves against this, and it is the
+    # whole of what portrait changes: the same screen, turned.
+    reference = reference_box(orientation)
 
     def parent_of(el_id: str) -> str | None:
         named = getattr(elements.get(el_id), "parent", None)
@@ -1877,7 +1904,7 @@ def _layout_findings(
     def parent_box_px(el_id: str) -> tuple[float, float]:
         parent_id = parent_of(el_id)
         box = (absolute.get(parent_id) if parent_id else PAGE_BOX) or PAGE_BOX
-        return _box_px(box)
+        return _box_px(box, reference)
 
     def parent_name(el_id: str) -> str:
         parent_id = parent_of(el_id)
@@ -1898,7 +1925,7 @@ def _layout_findings(
             box = absolute.get(cursor)
             if box is None:
                 break
-            chain.append(Container(f"'{cursor}'", *_box_px(box)))
+            chain.append(Container(f"'{cursor}'", *_box_px(box, reference)))
             cursor = parent_of(cursor)
         return tuple(chain)
 
@@ -1912,14 +1939,15 @@ def _layout_findings(
             if is_primary:
                 findings.append(no_box_finding(dump, parent_name(el_id)))
             continue
-        box_px = _box_px(box)
+        box_px = _box_px(box, reference)
         candidates = [
             starvation_finding(
                 dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
-                ancestors_of(el_id),
+                ancestors_of(el_id), orientation,
             ),
             degenerate_finding(
                 dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
+                orientation,
             ),
             touch_finding(dump, box_px),
             style_finding(dump, box_px),
@@ -1954,7 +1982,7 @@ def _layout_findings(
                     continue
                 if mutually_exclusive(dumps[a_id], dumps[b_id]):
                     continue
-                extent = overlap_extent(absolute[a_id], absolute[b_id])
+                extent = overlap_extent(absolute[a_id], absolute[b_id], reference)
                 if extent:
                     pairs.append((a_id, b_id, *extent))
         findings.extend(overlap_findings(
@@ -2020,20 +2048,24 @@ def review_master_element(
         return findings
     seen: set[tuple] = set()
     for orientation, raw in placements.items():
+        # A master carries its own orientation-keyed boxes, so the key IS the
+        # way round this one is drawn -- the portrait box is measured against a
+        # portrait screen even on a project whose pages are all landscape.
+        reference = reference_box(orientation)
         box = _mapping(raw)
         try:
             box_px = (
-                float(box.get("w") or 100.0) / 100 * REFERENCE_WIDTH_PX,
-                float(box.get("h") or 100.0) / 100 * REFERENCE_HEIGHT_PX,
+                float(box.get("w") or 100.0) / 100 * reference[0],
+                float(box.get("h") or 100.0) / 100 * reference[1],
             )
         except (TypeError, ValueError):
             continue
         for finding in (
             starvation_finding(
-                dump, box_px, (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX), "the page", theme,
+                dump, box_px, reference, "the page", theme, (), orientation,
             ),
             degenerate_finding(
-                dump, box_px, (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX), "the page", theme,
+                dump, box_px, reference, "the page", theme, orientation,
             ),
             touch_finding(dump, box_px),
             style_finding(dump, box_px),

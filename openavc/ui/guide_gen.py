@@ -40,6 +40,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from openavc.ui.control_minimums import (
+    PORTRAIT_HEIGHT_PX,
+    PORTRAIT_WIDTH_PX,
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     REM_BASE_PX,
@@ -96,8 +98,8 @@ def _pct_pair(element: dict) -> str:
     return f"{_pct(pair[0])}% x {_pct(pair[1])}%"
 
 
-def _box(element: dict) -> str:
-    box = minimum_box(element)
+def _box(element: dict, orientation: str = "landscape") -> str:
+    box = minimum_box(element, None, orientation)
     assert box is not None
     return f"{_px(box.width_px)} x {_px(box.height_px)}"
 
@@ -221,8 +223,12 @@ by one row per `destinations` entry, of a cell that does not shrink below the
 finger rule, so its floor is a line rather than a point -- and the three
 `matrix_style` values are not the same line. A list matrix is one dropdown per
 destination, so its width does not move with the source count at all. A tiles
-matrix is one card per destination and no sources on the wall at all, laid out
-`ceil(destinations / rows)` across by `rows = floor(sqrt(destinations))` down.
+matrix is one card per destination and no sources on the wall at all, laid out to
+match the shape of the screen: `root = floor(sqrt(destinations))`, then
+`ceil(destinations / root)` across by `root` down on a **landscape** arrangement,
+and the transpose of that -- `root` across by `ceil(destinations / root)` down --
+on a **portrait** one. Eight destinations are four across and two down landscape,
+two across and four down portrait.
 
 | Type and `matrix_style` | Floor |
 |---|---|
@@ -246,6 +252,22 @@ Worked, for a matrix with a label:
 
 The tiles column ignores the source count in those rows, because a tile wall has
 no source axis: `4x4`, `8x8` and `16x16` are four, eight and sixteen destinations.
+
+Those are the floors on a **landscape** arrangement. `tiles` is the one style
+whose floor turns with the screen, because its grid does; `crosspoint` and `list`
+put one list on each axis and are the same rectangle either way round. On a
+**portrait** arrangement a tile wall wants:
+
+| Grid | tiles, portrait |
+|---|---|
+%(tiles_portrait)s
+
+Which is the same area stood on its end, and it is a different rectangle from the
+landscape one -- a box that clears the floor above can be under this one. The
+arrangement you are placing into decides which applies. Everything else on this
+page is measured against a %(ref_w)s x %(ref_h)s screen; a portrait arrangement is
+that screen turned, %(port_w)s x %(port_h)s, so a percentage of the width buys
+fewer pixels and a percentage of the height buys more.
 
 What this holds is every crosspoint (or every tile), drawn at the finger rule and
 visible without scrolling, plus enough room to read the destination names and the
@@ -705,6 +727,30 @@ def _counted_example_rows(counted) -> str:
     return "\n".join(rows)
 
 
+def _tiles_portrait_rows(counted) -> str:
+    """The tiles floors again, on a screen turned.
+
+    Only this style: `tile_grid_shape` is what turns, and the other two put one
+    list on each axis, so publishing three columns twice would be six numbers of
+    which four never move. An unnecessary number in this artifact is not free --
+    the cloud AI reads it to decide whether a layout fits.
+    """
+    tiles = [v for v in counted if v[0].endswith("(tiles)")]
+    rows = []
+    for n in (4, 8, 16):
+        boxes = []
+        for _label, element, _rule in tiles:
+            grid = dict(element)
+            grid["label"] = "Routing"
+            grid["matrix_config"] = {
+                "sources": [{"value": i} for i in range(1, n + 1)],
+                "destinations": [{"value": i} for i in range(1, n + 1)],
+            }
+            boxes.append(f"{_box(grid, 'portrait')} px")
+        rows.append(f"| {n}x{n} | {' | '.join(boxes)} |")
+    return "\n".join(rows)
+
+
 def _counted_section() -> str:
     counted = [
         variant
@@ -729,6 +775,11 @@ def _counted_section() -> str:
         "cell": _px(cell),
         "rem": _px(REM_BASE_PX),
         "notes": notes,
+        "tiles_portrait": _tiles_portrait_rows(counted),
+        "ref_w": REFERENCE_WIDTH_PX,
+        "ref_h": REFERENCE_HEIGHT_PX,
+        "port_w": PORTRAIT_WIDTH_PX,
+        "port_h": PORTRAIT_HEIGHT_PX,
     }
 
 

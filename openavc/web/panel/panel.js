@@ -131,23 +131,33 @@ const MATRIX_TILE_MIN_H_PX = 64;
 /**
  * How many columns and rows a wall of `count` tiles is drawn in.
  *
- * Rows first, from the square root, so the wall comes out wider than it is
- * tall: panels are landscape and a destination's name has to be legible across
- * a room. Eight tiles are four across and two down; sixteen are four and four.
+ * From the square root, so the wall matches the shape of the screen it is on:
+ * wider than it is tall in landscape, taller than it is wide in portrait. Eight
+ * tiles are four across and two down on a landscape panel and two across and
+ * four down on a portrait one; sixteen are four and four either way.
  *
- * The shape is a function of the COUNT and not of the box, which is the part
- * worth knowing. A wall that reflowed to whatever width it was given would have
- * no single smallest box, so openavc/ui/control_minimums.py could not state a
- * floor for it -- and the one-column corner of that curve, which is the only
- * rectangle you could publish, tells an author their eight tiles need 576px of
- * height when they draw perfectly in 179. Mirrored there as tile_grid_shape and
- * in uiBuilderHelpers.ts; all three agree or the floor is for a shape nothing
+ * The rule reads as "wide" but has never been about width. It is about a
+ * destination's name being legible across a room, and matching the box is what
+ * achieves that: on an 800px-wide portrait panel, four across is 200px a tile
+ * where two across is 400px.
+ *
+ * The shape is a function of the COUNT and the ORIENTATION, and not of the box,
+ * which is the part worth knowing. A wall that reflowed to whatever width it
+ * was given would have no single smallest box, so openavc/ui/control_minimums.py
+ * could not state a floor for it -- and the one-column corner of that curve,
+ * which is the only rectangle you could publish, tells an author their eight
+ * tiles need 576px of height when they draw perfectly in 179. Orientation is
+ * knowable without measuring the box, which is what keeps the floor from
+ * depending on the box it is judging. Mirrored there as tile_grid_shape and in
+ * uiBuilderHelpers.ts; all three agree or the floor is for a shape nothing
  * renders.
  */
-function matrixTileGridShape(count) {
+function matrixTileGridShape(count, orientation) {
     if (count <= 0) return [0, 0];
-    const rows = Math.max(1, Math.floor(Math.sqrt(count)));
-    return [Math.ceil(count / rows), rows];
+    const root = Math.max(1, Math.floor(Math.sqrt(count)));
+    return orientation === 'portrait'
+        ? [root, Math.ceil(count / root)]
+        : [Math.ceil(count / root), root];
 }
 
 // Overlay and sidebar boxes, as percentages of the viewport. These are the
@@ -186,6 +196,10 @@ class PanelApp {
         this.uiDef = null;
         this.uiSettings = {};
         this.currentPage = params.get('page') || 'main';
+        // The way round the arrangement currently being drawn is. Set per
+        // render; seeded here so a renderer reached before any page is drawn
+        // still has an answer rather than `undefined`.
+        this._drawnOrientation = 'landscape';
         this.locked = false;
         this.snapshotReceived = false;
         this.idleTimer = null;
@@ -965,6 +979,24 @@ class PanelApp {
     }
 
     /**
+     * Which of a master's orientation-keyed boxes _masterPlacement resolved to.
+     *
+     * The same fallback chain, returning the KEY instead of the box. A tile
+     * wall inside a master has to be drawn the shape that key was reviewed
+     * against -- review_master_element measures each key against its own
+     * screen, so answering "landscape" here for a box picked from `portrait`
+     * would publish a floor for a wall nobody draws.
+     */
+    _masterOrientation(master) {
+        const placements = master?.placements || {};
+        const viewport = this._viewportOrientation();
+        if (placements[viewport]) return viewport;
+        if (placements.landscape) return 'landscape';
+        if (placements.portrait) return 'portrait';
+        return Object.keys(placements)[0] || 'landscape';
+    }
+
+    /**
      * The ratio an element holds under a stretch, or null to stretch freely.
      *
      * Deliberately no per-type default here. A renderer that locked, say,
@@ -1333,6 +1365,12 @@ class PanelApp {
      */
     _renderPageElements(page, surface, opts = {}) {
         const layout = this._selectLayout(page);
+        // Which way round the arrangement being drawn is. A tile wall's grid
+        // follows it (matrixTileGridShape), and it is the LAYOUT's orientation
+        // rather than the viewport's on purpose: a page with no portrait
+        // arrangement falls back to its landscape one, and the review measured
+        // that arrangement as landscape. The two have to agree.
+        this._drawnOrientation = layout.orientation || 'landscape';
         const elements = Array.isArray(page.elements) ? page.elements : [];
 
         // Group by parent. A parent id that names nothing on this page is
@@ -1552,6 +1590,7 @@ class PanelApp {
             const mPages = mEl.pages;
             const showOnPage = mPages === '*' || (Array.isArray(mPages) && mPages.includes(page.id));
             if (!showOnPage || mEl.hidden) continue;
+            this._drawnOrientation = this._masterOrientation(mEl);
             const el = this.renderElement(mEl);
             if (!el) continue;
             el.dataset.elementType = mEl.type;
@@ -3031,7 +3070,8 @@ class PanelApp {
             // nothing, where they cost a crosspoint grid sixteen columns.
             const wall = document.createElement('div');
             wall.className = 'matrix-tiles';
-            const [tileCols, tileRows] = matrixTileGridShape(outputCount);
+            const [tileCols, tileRows] = matrixTileGridShape(
+                outputCount, this._drawnOrientation);
             if (tileCols > 0) {
                 // minmax(floor, 1fr): a tile never draws below the floor the
                 // review states, and takes the whole box when there is more.
