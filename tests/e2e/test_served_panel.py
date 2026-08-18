@@ -7,10 +7,15 @@ What it cannot ask is whether the panel a real instance serves ever reaches
 that instance -- because in those files nothing is served and nothing is
 reached.
 
-That gap has already shipped a defect: a request built as
-``/api/api/ui/resolve-matrix`` went out for weeks with the suite green, and was
-found by looking at a screenshot. A stubbed ``fetch`` answers a wrong URL
-exactly as happily as a right one.
+The cost of that gap is on record. While the matrix work was being built, the
+Programmer's Builder canvas asked for ``/api/api/ui/resolve-matrix`` -- its
+request helper already carries the prefix -- so the call 404'd, the resolve
+quietly fell back, and every generator-form matrix drew as an empty box. The
+full suite stayed green and it was found by taking a screenshot. That one was
+the Builder rather than the panel, and it was caught before it was committed,
+so nothing shipped with it; what it showed is that a stubbed ``fetch`` answers
+a wrong URL exactly as happily as a right one, and the panel is stubbed the
+same way with nobody looking at its screenshots.
 
 So these tests boot the real server, load ``/panel/`` from it, click with a
 real mouse, and then ask the SERVER what changed. No device is involved: the
@@ -245,10 +250,10 @@ def test_loading_and_driving_the_panel_asks_for_nothing_that_is_not_there(
 ) -> None:
     """No 4xx/5xx from the instance, start to finish.
 
-    This is the assertion the stubbed harness cannot make and the one that
-    would have caught ``/api/api/ui/resolve-matrix``: a URL the panel builds
-    wrong is answered by a stub exactly as readily as a right one, and only a
-    real server says 404.
+    This is the assertion the stubbed harness cannot make. The Builder's
+    doubled-prefix 404 was the same shape one door along, and nothing on the
+    panel's side would notice its own version of it: a stub answers a wrong
+    URL exactly as readily as a right one, and only a real server says 404.
     """
     served_panel.element("btn_laptop").click()
     served_panel.crosspoint(2, DEST).click()
