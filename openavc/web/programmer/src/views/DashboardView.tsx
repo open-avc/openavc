@@ -740,7 +740,7 @@ export function DashboardView() {
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
                 {[
                   { step: "1", label: "Add a device", desc: "Connect to a projector, display, switcher, or audio processor.", view: "devices" as const },
-                  { step: "2", label: "Create a macro", desc: "Build a sequence of commands — power on, switch inputs, set levels.", view: "macros" as const },
+                  { step: "2", label: "Create a macro", desc: "Build a sequence of commands: power on, switch inputs, set levels.", view: "macros" as const },
                   { step: "3", label: "Build your panel", desc: "Design a touch panel UI with buttons, sliders, and status indicators.", view: "ui-builder" as const },
                 ].map((item) => (
                   <div
