@@ -59,7 +59,7 @@ export function ActivitySubTab() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <HelpBanner storageKey="openavc-help-activity">
         Every time a device property or variable changes, it appears here.
-        The system is fully reactive — you never need to poll or check in a loop.
+        The system is fully reactive, so you never need to poll or check in a loop.
         Macros, UI bindings, and scripts all respond to these changes automatically.
       </HelpBanner>
 

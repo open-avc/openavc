@@ -321,14 +321,14 @@ export function ScriptView() {
           message: `Script '${selectedId}' reload failed: ${result.error}${preserved}`,
         });
       } else {
-        showSuccess(`Script reloaded — ${result.handlers ?? 0} handler(s)`);
+        showSuccess(`Script reloaded, ${result.handlers ?? 0} handler(s)`);
         useLogStore.getState().addLogEntry({
           timestamp: Date.now() / 1000,
           level: "INFO",
           source: "openavc.programmer",
           device: "",
           category: "script",
-          message: `Script '${selectedId}' reloaded — ${result.handlers ?? 0} handler(s) registered`,
+          message: `Script '${selectedId}' reloaded, ${result.handlers ?? 0} handler(s) registered`,
         });
       }
     } catch (e) {
@@ -359,7 +359,7 @@ export function ScriptView() {
         const res = await api.savePythonDriverSource(selectedId, source, true);
         if (res.status === "error") {
           showError(
-            `Not saved — ${res.error}. The file on disk is unchanged and still loads.`
+            `Not saved. ${res.error}. The file on disk is unchanged and still loads.`
           );
           if (res.line) {
             setDriverReloadErrors([
@@ -406,7 +406,7 @@ export function ScriptView() {
         setDriverReloadErrors([]);
         const devCount = result.devices_reconnected?.length ?? 0;
         showSuccess(devCount > 0
-          ? `Driver reloaded — ${devCount} device(s) reconnected`
+          ? `Driver reloaded, ${devCount} device(s) reconnected`
           : "Driver reloaded");
         useLogStore.getState().addLogEntry({
           timestamp: Date.now() / 1000,
@@ -415,8 +415,8 @@ export function ScriptView() {
           device: "",
           category: "driver",
           message: devCount > 0
-            ? `Driver '${result.driver_id}' reloaded — ${devCount} device(s) reconnected: ${result.devices_reconnected!.join(", ")}`
-            : `Driver '${result.driver_id}' reloaded — no devices affected`,
+            ? `Driver '${result.driver_id}' reloaded, ${devCount} device(s) reconnected: ${result.devices_reconnected!.join(", ")}`
+            : `Driver '${result.driver_id}' reloaded, no devices affected`,
         });
       }
       // Refresh driver list
@@ -497,7 +497,7 @@ export function ScriptView() {
           : await api.uploadDriver(file);
         const drivers = await loadPythonDrivers();
         const activated = result.activated_devices ?? [];
-        const extra = activated.length > 0 ? ` — connected ${activated.length} waiting device(s)` : "";
+        const extra = activated.length > 0 ? `, connected ${activated.length} waiting device(s)` : "";
         showSuccess(`Imported driver "${result.driver_id}"${extra}`);
         // A YAML driver (e.g. an .avcdriver inside a bundle) lives in the
         // Driver Builder, not this tree — only open it here when it actually
@@ -955,8 +955,8 @@ export function ScriptView() {
                 <strong>Python Drivers</strong> let you build custom device drivers
                 for complex protocols that need code beyond what the YAML Driver Builder supports.
                 <br /><br />
-                <strong>Custom Controls</strong> are pages you write yourself — HTML, CSS
-                and JavaScript — that run inside one element's box on a panel. Place one
+                <strong>Custom Controls</strong> are pages you write yourself (HTML, CSS
+                and JavaScript) that run inside one element's box on a panel. Place one
                 from the UI Builder's palette.
               </div>
             </div>

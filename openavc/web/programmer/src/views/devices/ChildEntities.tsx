@@ -241,7 +241,7 @@ export function ChildEntities({
           {refreshError instanceof ApiError && refreshError.status === 501
             ? "This driver doesn't support re-discovering its children from the device."
             : refreshError instanceof ApiError && refreshError.status === 503
-            ? "Device is not connected — cannot refresh."
+            ? "Device is not connected. Cannot refresh."
             : `Refresh failed: ${parseApiError(refreshError)}`}
         </div>
       )}
@@ -346,7 +346,7 @@ function emptyRosterMessage(
       <>
         No {noun} yet. This driver builds them from{" "}
         <strong>{schemaField?.label || field}</strong> in this device&rsquo;s
-        settings — set it and save.
+        settings. Set it and save.
       </>
     );
   }
@@ -360,7 +360,7 @@ function emptyRosterMessage(
   }
   return (
     <>
-      No {noun} registered yet. The device has not reported any — click{" "}
+      No {noun} registered yet. The device has not reported any. Click{" "}
       <em>Refresh from Device</em> to ask it again.
     </>
   );
@@ -541,7 +541,7 @@ function ChildSearchResults({
       ))}
       {results.length > SHOWN && (
         <div style={{ ...mutedStyle, border: "none" }}>
-          Showing first {SHOWN} of {results.length} matches — refine the filter to narrow.
+          Showing first {SHOWN} of {results.length} matches. Refine the filter to narrow.
         </div>
       )}
     </div>

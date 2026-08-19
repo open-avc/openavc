@@ -394,13 +394,13 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
             )}
             {certifiedBase && panelUrl && (
               <div style={{ color: "var(--color-success, var(--accent))", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
-                Trusted address — opens with no browser warnings.
+                Trusted address: opens with no browser warnings.
               </div>
             )}
             {shortPanelUrl && (
               <>
                 <div style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 2 }}>
-                  Or type this short address — it forwards to the one above:
+                  Or type this short address, which forwards to the one above:
                 </div>
                 <div style={{
                   display: "flex",

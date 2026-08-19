@@ -175,9 +175,9 @@ export function CloudSettingsView() {
               : status?.connected
                 ? "Connected"
                 : status?.stop_reason === "version_mismatch"
-                  ? "Stopped — needs update"
+                  ? "Stopped: needs update"
                   : status?.stop_reason === "auth_failed"
-                    ? "Stopped — needs pairing"
+                    ? "Stopped: needs pairing"
                     : "Disconnected"}
           </div>
 
@@ -290,7 +290,7 @@ export function CloudSettingsView() {
             </div>
             <p style={{ ...helpTextStyle, marginTop: 0 }}>
               Your cloud pairing can now issue this system a real, browser-trusted HTTPS
-              certificate — no more security warnings for anyone on this network, nothing to
+              certificate, with no more security warnings for anyone on this network, nothing to
               install on devices, and it renews automatically.
             </p>
             <button

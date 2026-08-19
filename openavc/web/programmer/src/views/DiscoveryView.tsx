@@ -273,7 +273,7 @@ export function DiscoveryPanel() {
           // No current adapter has the pinned address — say so here, because
           // the pin otherwise looks like a live scan target.
           else {
-            setAdapterLabel(`${ip} (adapter not found on this machine — fix in Settings > Network)`);
+            setAdapterLabel(`${ip} (adapter not found on this machine, fix in Settings > Network)`);
             setPinStale(true);
             setAdapterSubnets(r.adapters.map((a) => a.subnet).filter(Boolean));
           }
@@ -754,7 +754,7 @@ export function DiscoveryPanel() {
           <div>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>
               {status === "partial"
-                ? "Scan did not cover everything — results are incomplete"
+                ? "Scan did not cover everything, so results are incomplete"
                 : "Scan ran with problems on this system"}
             </div>
             {warnings.map((w, i) => (
@@ -833,7 +833,7 @@ export function DiscoveryPanel() {
           Results from {scanCompletedAt.toLocaleTimeString()} ({Object.keys(devices).length} device{Object.keys(devices).length !== 1 ? "s" : ""})
           {status === "partial" && (
             <span style={{ color: "var(--color-warning)" }}>
-              {" "}— incomplete scan, see above
+              {" "}(incomplete scan, see above)
             </span>
           )}
         </div>

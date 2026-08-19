@@ -364,7 +364,7 @@ export function IrDbSearch({
                   ) : (
                     <span
                       style={{ fontSize: 11, color: "var(--text-muted)" }}
-                      title="This protocol can't be rendered yet — learn the code from the physical remote instead."
+                      title="This protocol can't be rendered yet. Learn the code from the physical remote instead."
                     >
                       unsupported
                     </span>

@@ -145,7 +145,7 @@ export function MacroView() {
                   : "Select a macro to edit"}
               </div>
               <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 400, lineHeight: 1.5 }}>
-                Macros are reusable sequences of actions — power on devices,
+                Macros are reusable sequences of actions: power on devices,
                 switch inputs, set variables, and more. They can be triggered
                 from the UI, from scripts, or from other macros.
               </div>

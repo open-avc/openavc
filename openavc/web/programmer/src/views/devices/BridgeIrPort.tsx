@@ -111,7 +111,7 @@ export function BridgeIrPort({
       {bound.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
           Creates an IR device bound to this port. Build its code set (learn, paste
-          Pronto, or type a sendir string) on its device page — each code becomes
+          Pronto, or type a sendir string) on its device page. Each code becomes
           a command you can put on a panel button or call from a macro.
         </div>
       )}

@@ -492,7 +492,7 @@ export function InlineProtocolEditor({
       </div>
 
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0, marginBottom: "var(--space-md)" }}>
-        Define this device's commands and how its replies map to state — no driver
+        Define this device's commands and how its replies map to state, with no driver
         file needed. {isHttp
           ? "Commands are HTTP requests (method, path, body)."
           : "The line ending below is added to every command, so you don't type it on each row."}
@@ -666,7 +666,7 @@ export function InlineProtocolEditor({
 
         {commandRows.some((r) => r.poll) && (
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-sm)" }}>
-            Polled commands send on the device's <strong>Poll Interval</strong> — set it
+            Polled commands send on the device's <strong>Poll Interval</strong>. Set it
             when you add or edit the device (next to the connection settings). If it's 0,
             polling is off.
           </div>

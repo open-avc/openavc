@@ -500,7 +500,7 @@ export function DeviceDetail({
         >
           <Pause size={14} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>
-            Paused for driver testing — auto-reconnect is suspended until the
+            Paused for driver testing. Auto-reconnect is suspended until the
             test session resumes it (or it times out).
           </span>
           <button
@@ -1425,7 +1425,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                           borderRadius: "var(--border-radius)",
                           background: "var(--accent-dim)",
                         }}
-                        title={`Pending: ${String(pendingSettings[key])} — will be applied when device connects`}
+                        title={`Pending: ${String(pendingSettings[key])}, will be applied when device connects`}
                       >
                         pending
                       </span>
@@ -1824,13 +1824,13 @@ function OfflineBanner({
             ? reason === "auth_failed"
               // Retrying a rejected login would only trip the device's
               // brute-force lockout, so the server holds off on purpose.
-              ? "Not retrying — repeated logins can lock this PC out of the device. Fix the credentials in Edit Device, then press Reconnect."
+              ? "Not retrying: repeated logins can lock this PC out of the device. Fix the credentials in Edit Device, then press Reconnect."
               : PERMANENT_OFFLINE_REASONS.has(reason ?? "")
                 // Stopped early on purpose, not out of attempts — the detail
                 // line above already names what to change. Saying "gave up"
                 // here would read as "we tried everything", sending the
                 // integrator hunting a network problem that isn't there.
-                ? "Not retrying — this won't clear on its own. Fix the cause above, then press Reconnect."
+                ? "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect."
                 // Only a fault someone has to clear reaches `failed` now, and
                 // both branches above name one. A network fault never lands
                 // here: it retries for as long as the device is in the project.

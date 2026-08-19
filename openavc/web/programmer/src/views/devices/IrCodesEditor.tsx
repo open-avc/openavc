@@ -271,8 +271,8 @@ export function IrCodesEditor({
       setSaved(false);
       setSaveError(
         incompleteKeys.size === 1
-          ? "One code still needs a captured signal — learn it, paste a code, or remove the row."
-          : `${incompleteKeys.size} codes still need a captured signal — learn them, paste a code, or remove the rows.`,
+          ? "One code still needs a captured signal: learn it, paste a code, or remove the row."
+          : `${incompleteKeys.size} codes still need a captured signal: learn them, paste a code, or remove the rows.`,
       );
       return;
     }

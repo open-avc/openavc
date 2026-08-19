@@ -14,16 +14,16 @@ const REDACTED = "***";
 /** Friendly text for the typed error codes a failed certificate issuance
  *  reports through tls-status. Unknown codes fall back to the raw code. */
 const CLOUD_CERT_ERROR_LABELS: Record<string, string> = {
-  rate_limited: "Too many certificate requests today — an automatic retry is scheduled.",
-  acme_failed: "The certificate authority could not complete issuance — an automatic retry is scheduled.",
-  dns_failed: "Certificate validation failed at the DNS step — an automatic retry is scheduled.",
+  rate_limited: "Too many certificate requests today. An automatic retry is scheduled.",
+  acme_failed: "The certificate authority could not complete issuance. An automatic retry is scheduled.",
+  dns_failed: "Certificate validation failed at the DNS step. An automatic retry is scheduled.",
   not_available: "The cloud service does not offer trusted certificates for this system.",
   busy: "A certificate request is already in progress.",
-  timeout: "No response from the cloud — an automatic retry is scheduled.",
+  timeout: "No response from the cloud. An automatic retry is scheduled.",
   install_failed: "The issued certificate could not be installed on this system.",
   invalid_csr: "The cloud rejected the certificate request.",
   invalid_enrollment: "The cloud sent an unexpected enrollment response.",
-  internal: "The cloud hit an internal error during issuance — an automatic retry is scheduled.",
+  internal: "The cloud hit an internal error during issuance. An automatic retry is scheduled.",
 };
 
 const cardStyle: React.CSSProperties = {
@@ -317,9 +317,9 @@ function detectOs(): CaInstallOs {
 
 function warningLabel(w: string): string {
   switch (w) {
-    case "expired": return "Certificate is expired — generate a new one";
+    case "expired": return "Certificate is expired. Generate a new one";
     case "expiring-soon": return "Certificate expires in under 30 days";
-    case "hostname-mismatch": return "Certificate does not cover this server's current hostname/IP — regenerate after IP change";
+    case "hostname-mismatch": return "Certificate does not cover this server's current hostname/IP. Regenerate after IP change";
     default: return w;
   }
 }
@@ -518,7 +518,7 @@ export function SystemSettingsView() {
         setConfig(fresh);
         loadTlsStatus();
         showSuccess(
-          "HTTPS enabled. Restart to finish — the trusted certificate installs automatically after the restart."
+          "HTTPS enabled. Restart to finish; the trusted certificate installs automatically after the restart."
         );
         setShowRestartPrompt(true);
         return;
@@ -595,7 +595,7 @@ export function SystemSettingsView() {
       showSuccess(
         "Certificate uploaded. Save and restart to apply." +
           (result.warnings.includes("is-ca-cert")
-            ? " Warning: this looks like a CA cert, not a server cert — browsers may not trust it."
+            ? " Warning: this looks like a CA cert, not a server cert. Browsers may not trust it."
             : ""),
       );
     } catch (e) {
@@ -803,7 +803,7 @@ export function SystemSettingsView() {
                 <option value="">Auto (use default route)</option>
                 {adapters.map((a) => (
                   <option key={a.ip} value={a.ip}>
-                    {a.name} — {a.ip} ({a.subnet})
+                    {a.name}: {a.ip} ({a.subnet})
                   </option>
                 ))}
                 {/* A stored pin whose adapter is gone matches no option above;
@@ -811,7 +811,7 @@ export function SystemSettingsView() {
                     while the stale pin stays live and breaks scans/connects. */}
                 {net.control_interface && !adapters.some((a) => a.ip === net.control_interface) && (
                   <option value={net.control_interface}>
-                    {net.control_interface} (not connected — pick a current adapter or Auto)
+                    {net.control_interface} (not connected, pick a current adapter or Auto)
                   </option>
                 )}
               </select>
@@ -942,7 +942,7 @@ export function SystemSettingsView() {
                     }}>
                       <Smartphone size={16} style={{ color: "rgb(76, 175, 80)", flexShrink: 0, marginTop: 2 }} />
                       <span>
-                        The OpenAVC Panel app (Android v0.1.0-rc6 or newer) trusts this server automatically — no
+                        The OpenAVC Panel app (Android v0.1.0-rc6 or newer) trusts this server automatically, with no
                         certificate install needed. The instructions below are for web browsers and the iOS panel app.
                       </span>
                     </div>
@@ -1380,7 +1380,7 @@ export function SystemSettingsView() {
             {!cloudCert.enabled ? (
               <>
                 <div style={subCardDescription}>
-                  Serve a real, browser-trusted HTTPS certificate for this system — no security
+                  Serve a real, browser-trusted HTTPS certificate for this system, with no security
                   warnings for anyone on this network, and nothing to install on devices. Included
                   with your cloud pairing; the certificate issues and renews automatically.
                 </div>
@@ -1441,7 +1441,7 @@ export function SystemSettingsView() {
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                         Manual fallback if a device can't resolve the certified address (no internet,
                         or the router blocks it): <code>{certifiedFallbackUrl}</code> (shows the usual
-                        browser warning — <code>localhost</code> and bare-IP addresses always use the
+                        browser warning. <code>localhost</code> and bare-IP addresses always use the
                         self-signed certificate; only the certified address gets the trusted one).
                       </div>
                     )}
@@ -1449,7 +1449,7 @@ export function SystemSettingsView() {
                       <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                         Expires {new Date(cloudCert.expires_at).toLocaleDateString()}
                         {cloudCert.renews_at && (
-                          <> — renews automatically around {new Date(cloudCert.renews_at).toLocaleDateString()}</>
+                          <>, renews automatically around {new Date(cloudCert.renews_at).toLocaleDateString()}</>
                         )}
                         .
                       </div>
@@ -1481,7 +1481,7 @@ export function SystemSettingsView() {
                   </div>
                 ) : !cloudCert.available ? (
                   <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)" }}>
-                    Waiting for the cloud connection — the certificate installs automatically once
+                    Waiting for the cloud connection. The certificate installs automatically once
                     this system is connected.
                   </div>
                 ) : (
@@ -1583,7 +1583,7 @@ export function SystemSettingsView() {
         <div style={cardStyle}>
           <h4 style={subCardTitle}>API key (for integrations)</h4>
           <div style={subCardDescription}>
-            For external systems — control scripts, middleware, or other software that connects to the OpenAVC REST API or WebSocket. Not needed unless you are building a custom integration.
+            For external systems: control scripts, middleware, or other software that connects to the OpenAVC REST API or WebSocket. Not needed unless you are building a custom integration.
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>API key</label>
@@ -1750,7 +1750,7 @@ export function SystemSettingsView() {
         message={
           <>
             Your network or security changes need a server restart to take effect.
-            The Programmer will reconnect automatically once the server is back —
+            The Programmer will reconnect automatically once the server is back,
             usually about ten seconds.
             <br /><br />
             You can also keep working and restart later from the banner at the top of this page.

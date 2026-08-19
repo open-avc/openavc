@@ -89,7 +89,7 @@ export function BridgeIrTools({
           style={{ ...btn, opacity: connected ? 1 : 0.5 }}
           onClick={() => setOpen(true)}
           disabled={!connected}
-          title={connected ? "Learn or fire a code to test this emitter — nothing is saved" : "The bridge is offline"}
+          title={connected ? "Learn or fire a code to test this emitter; nothing is saved" : "The bridge is offline"}
         >
           <Radio size={14} /> Test this port
         </button>
@@ -113,7 +113,7 @@ export function BridgeIrTools({
         </button>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
-        A diagnostic to check the emitter — learn or fire a code without saving it.
+        A diagnostic to check the emitter: learn or fire a code without saving it.
         To build a reusable code set, add an IR device on this port.
       </div>
       <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: 6 }}>

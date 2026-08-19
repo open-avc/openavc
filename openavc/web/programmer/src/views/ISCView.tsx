@@ -279,7 +279,7 @@ export function ISCView() {
                 <br /><br />
                 ISC allows multiple OpenAVC instances to share state, forward events,
                 and send commands to each other. Use it for multi-room systems where
-                rooms need to coordinate — like a "turn off all projectors" button
+                rooms need to coordinate, like a "turn off all projectors" button
                 or a lobby sensor triggering a hallway display.
               </div>
             )}
@@ -438,7 +438,7 @@ export function ISCView() {
             </h3>
             <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: 1.5 }}>
               Device commands a peer is allowed to run on this instance. Patterns
-              match <code style={codeStyle}>device_id.command</code> — for example{" "}
+              match <code style={codeStyle}>device_id.command</code>. For example,{" "}
               <code style={codeStyle}>projector1.*</code> allows every projector1
               command, <code style={codeStyle}>*.power_off</code> allows power_off
               on any device, and <code style={codeStyle}>*</code> allows all.

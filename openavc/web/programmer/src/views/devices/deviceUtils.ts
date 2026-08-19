@@ -149,14 +149,14 @@ export function validateSettingValue(
   if (fieldType === "integer" || fieldType === "number" || fieldType === "float") {
     const trimmed = raw.trim();
     if (trimmed === "") {
-      return { ok: false, error: "Enter a number — the setting was not saved." };
+      return { ok: false, error: "Enter a number. The setting was not saved." };
     }
     const n = Number(trimmed);
     if (!Number.isFinite(n)) {
-      return { ok: false, error: `"${raw}" is not a number — the setting was not saved.` };
+      return { ok: false, error: `"${raw}" is not a number. The setting was not saved.` };
     }
     if (fieldType === "integer" && !Number.isInteger(n)) {
-      return { ok: false, error: "Enter a whole number — the setting was not saved." };
+      return { ok: false, error: "Enter a whole number. The setting was not saved." };
     }
     if (def?.min !== undefined && n < def.min) {
       return { ok: false, error: `Must be at least ${def.min}.` };

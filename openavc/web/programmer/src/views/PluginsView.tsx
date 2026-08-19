@@ -804,7 +804,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
               {info.sandbox_permissions.includes("allow-same-origin") && (
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                   This plugin's touch panel UI runs with full page access
-                  (allow-same-origin) — a trust grant that comes with
+                  (allow-same-origin), a trust grant that comes with
                   installing the plugin.
                 </div>
               )}

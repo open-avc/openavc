@@ -1668,7 +1668,7 @@ export function UIBuilderView() {
         >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0, fontSize: 14 }}>
-                Project Validation {validationIssues.length === 0 ? "— No Issues" : `— ${validationIssues.length} issue${validationIssues.length === 1 ? "" : "s"}`}
+                Project Validation {validationIssues.length === 0 ? "(No Issues)" : `(${validationIssues.length} issue${validationIssues.length === 1 ? "" : "s"})`}
               </h3>
               <button onClick={() => setValidationIssues(null)} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}>&times;</button>
             </div>

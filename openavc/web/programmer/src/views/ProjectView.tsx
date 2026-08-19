@@ -595,7 +595,7 @@ export function ProjectView() {
             lineHeight: 1.5,
           }}
         >
-          Click a project to open it. Opening a project replaces the running one — a backup is created automatically.
+          Click a project to open it. Opening a project replaces the running one, and a backup is created automatically.
         </p>
       </div>
 

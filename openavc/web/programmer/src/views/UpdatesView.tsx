@@ -193,7 +193,7 @@ export function UpdatesView() {
       startVersionRef.current = "";
       showError(
         "The server restarted but the version did not change (still v" + currentVersion +
-        "). The update may not have applied — check Update History.",
+        "). The update may not have applied. Check Update History.",
       );
       api.getUpdateStatus().then(setStatus).catch(() => {});
       api.getUpdateHistory().then(setHistory).catch(() => {});
@@ -550,8 +550,8 @@ export function UpdatesView() {
             {watchdogTripped && updateStatus !== "error" ? (
               <div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-                  This is taking longer than expected. The server may still be coming back up —
-                  if this dialog doesn't close within a few minutes, check the server logs.
+                  This is taking longer than expected. The server may still be coming back up.
+                  If this dialog doesn't close within a few minutes, check the server logs.
                   It's safe to close this dialog; any update in progress continues on the server.
                 </div>
                 <button

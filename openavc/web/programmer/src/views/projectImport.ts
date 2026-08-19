@@ -40,7 +40,7 @@ export async function importParsedProject(
     deps.onError(
       deps.isConflict(e)
         ? "Another session changed the project. Reload, then import again."
-        : "Could not import this file — it isn't a valid OpenAVC project.",
+        : "Could not import this file. It isn't a valid OpenAVC project.",
     );
     return false;
   }

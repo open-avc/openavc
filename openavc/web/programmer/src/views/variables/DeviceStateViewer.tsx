@@ -128,7 +128,7 @@ export function DeviceStatesSubTab() {
       {/* Left: device list */}
       <div style={{ width: 280, flexShrink: 0, borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
         <HelpBanner storageKey="openavc-help-device-states">
-          Device states are live values reported by your hardware — power status,
+          Device states are live values reported by your hardware: power status,
           input selection, volume levels, etc. These update automatically. You can
           bind UI elements directly to these values, use them in macro triggers,
           or reference them in scripts. Use the copy button to grab a state key.

@@ -143,7 +143,7 @@ function ConfigFieldInputs({
                   padding: "var(--space-sm)",
                 }}
               >
-                Set this up on the device page after adding — it opens a table
+                Set this up on the device page after adding. It opens a table
                 editor.
               </div>
             ) : kind === "textarea" ? (

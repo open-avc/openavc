@@ -98,7 +98,7 @@ function scanStepsForVarUsages(
     if (step.action === "state.set" && typeof step.value === "string" && step.value.startsWith("$var.")) {
       addUsage(step.value.slice(5), {
         type: "macro", icon: Zap, label: macroName,
-        detail: "Set Variable step — dynamic source",
+        detail: "Set Variable step: dynamic source",
         nav: macroNav,
       });
     }
@@ -123,7 +123,7 @@ function scanStepsForVarUsages(
         if (typeof val === "string" && val.startsWith("$var.")) {
           addUsage(val.slice(5), {
             type: "macro", icon: Zap, label: macroName,
-            detail: `${step.command ?? step.action ?? "?"} param — dynamic value`,
+            detail: `${step.command ?? step.action ?? "?"} param: dynamic value`,
             nav: macroNav,
           });
         }
@@ -152,7 +152,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
     addUsage(monitor.key.slice(4), {
       type: "monitor", icon: Activity,
       label: monitor.label || monitor.key,
-      detail: "Monitored — shown on the Dashboard and in the cloud",
+      detail: "Monitored: shown on the Dashboard and in the cloud",
     });
   }
 
@@ -163,7 +163,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
       if (trigger.state_key?.startsWith("var.")) {
         addUsage(trigger.state_key.slice(4), {
           type: "macro", icon: Zap, label: macro.name,
-          detail: `Trigger "${trigger.id}" — state change on this variable`,
+          detail: `Trigger "${trigger.id}": state change on this variable`,
           nav: macroNav,
         });
       }
@@ -171,7 +171,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
         if (cond.key?.startsWith("var.")) {
           addUsage(cond.key.slice(4), {
             type: "macro", icon: Zap, label: macro.name,
-            detail: `Trigger "${trigger.id}" — guard condition`,
+            detail: `Trigger "${trigger.id}": guard condition`,
             nav: macroNav,
           });
         }
@@ -201,7 +201,7 @@ export function buildUsageMap(project: ProjectConfig, scriptRefs: ScriptReferenc
     const usageLabel = ref.usage_type === "subscribe" ? "@on_state_change" : ref.usage_type === "write" ? "state.set" : "state.get";
     const entry: VariableUsage = {
       type: "script", icon: FileCode, label: ref.script_name,
-      detail: `line ${ref.line} — ${usageLabel}`,
+      detail: `line ${ref.line}: ${usageLabel}`,
       nav: { view: "scripts", focus: { type: "script", id: ref.script_id, detail: `line:${ref.line}` } },
     };
     if (hasGlobChars(ref.key)) {
@@ -234,7 +234,7 @@ function scanStepsForAllKeyUsages(
     if (step.action === "state.set" && typeof step.value === "string" && step.value.startsWith("$")) {
       addUsage(step.value.slice(1), {
         type: "macro", icon: Zap, label: macroName,
-        detail: "Set Variable step — dynamic source",
+        detail: "Set Variable step: dynamic source",
         nav: macroNav,
       });
     }
@@ -257,7 +257,7 @@ function scanStepsForAllKeyUsages(
         if (typeof val === "string" && val.startsWith("$")) {
           addUsage(val.slice(1), {
             type: "macro", icon: Zap, label: macroName,
-            detail: `${step.command ?? step.action ?? "?"} param — dynamic value`,
+            detail: `${step.command ?? step.action ?? "?"} param: dynamic value`,
             nav: macroNav,
           });
         }
@@ -288,7 +288,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
       if (trigger.state_key) {
         addUsage(trigger.state_key, {
           type: "macro", icon: Zap, label: macro.name,
-          detail: `Trigger "${trigger.id}" — state change`,
+          detail: `Trigger "${trigger.id}": state change`,
           nav: macroNav,
         });
       }
@@ -296,7 +296,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
         if (cond.key) {
           addUsage(cond.key, {
             type: "macro", icon: Zap, label: macro.name,
-            detail: `Trigger "${trigger.id}" — guard condition`,
+            detail: `Trigger "${trigger.id}": guard condition`,
             nav: macroNav,
           });
         }
@@ -324,7 +324,7 @@ export function buildStateUsageMap(project: ProjectConfig, scriptRefs: ScriptRef
     const scriptNav = { view: "scripts" as ViewId, focus: { type: "script", id: ref.script_id, detail: `line:${ref.line}` } };
     const entry: VariableUsage = {
       type: "script", icon: FileCode, label: ref.script_name,
-      detail: `line ${ref.line} — ${usageLabel}`,
+      detail: `line ${ref.line}: ${usageLabel}`,
       nav: scriptNav,
     };
     if (hasGlobChars(ref.key)) {

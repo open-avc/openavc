@@ -421,7 +421,7 @@ export function VariablesSubTab() {
       {/* Left: variable list */}
       <div style={{ width: 280, flexShrink: 0, borderRight: "1px solid var(--border-color)", display: "flex", flexDirection: "column" }}>
         <HelpBanner storageKey="openavc-help-variables">
-          Variables are values you create for your program logic — things like room mode,
+          Variables are values you create for your program logic, like room mode,
           system status, or custom flags. They&apos;re separate from device properties, which
           are reported by hardware automatically. You can bind variables to device properties,
           or use them independently in macros, scripts, and UI elements.
@@ -907,7 +907,7 @@ export function VariablesSubTab() {
                 </div>
                 {renameTarget.usages.slice(0, 8).map((u, i) => (
                   <div key={i} style={{ color: "var(--text-secondary)", fontSize: 11, padding: "1px 0" }}>
-                    {u.label} — {u.detail}
+                    {u.label}: {u.detail}
                   </div>
                 ))}
                 {renameTarget.usages.length > 8 && (
@@ -1026,7 +1026,7 @@ function SourceBindingEditor({
 
       {!isBound && (
         <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
-          You control this value — set it from macros, scripts, or UI actions.
+          You control this value: set it from macros, scripts, or UI actions.
         </div>
       )}
 
