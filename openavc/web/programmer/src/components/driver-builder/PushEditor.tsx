@@ -166,7 +166,7 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
         it where; HTTP Listener accepts the device&apos;s own HTTP POSTs
         (webhooks) on a callback URL OpenAVC assigns. Every frame or event
         that arrives feeds the driver&apos;s
-        response rules — so state updates land instantly, without waiting for
+        response rules, so state updates land instantly, without waiting for
         the next poll. Values can reference config fields, which lets one
         driver match devices whose notification target is configurable.
       </p>
@@ -219,7 +219,7 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
                 : type === "tcp_listener"
                   ? "OpenAVC listens on a local TCP port; a registration command tells the device where to connect, and the device pushes framed notifications to that port."
                   : type === "http_listener"
-                    ? "OpenAVC accepts the device's HTTP POSTs on a callback URL it assigns per device. Nothing to configure here — the registration command tells the device where to post."
+                    ? "OpenAVC accepts the device's HTTP POSTs on a callback URL it assigns per device. Nothing to configure here. The registration command tells the device where to post."
                     : "The device sends state-change frames to a multicast group address OpenAVC joins."}
             </div>
           </div>
@@ -228,7 +228,7 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
             <div style={helpStyle}>
               The callback URL is built at connect time from the server
               address the device can reach and the device&apos;s ID. Send it
-              to the device in an On Connect registration command — the token{" "}
+              to the device in an On Connect registration command. The token{" "}
               <code>{"{push_callback_url}"}</code> substitutes into command
               bodies, paths, and headers. Bodies the device posts back feed
               the response rules whole, exactly like a poll response.
@@ -373,7 +373,7 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
                     ))}
                   </select>
                   <div style={helpStyle}>
-                    Command that tells the device where to dial back — use{" "}
+                    Command that tells the device where to dial back. Use{" "}
                     <code>{"{listener_port}"}</code> in its path or send
                     string. Runs when the listener opens, and again on every
                     reconnect.

@@ -294,7 +294,7 @@ function AdvancedSimBlockSummary({
         <span style={{ fontFamily: "var(--font-mono)" }}>
           {names.join(", ")}
         </span>
-        . {description} Edit via the YAML view — advanced simulator behavior.
+        . {description} Edit via the YAML view for advanced simulator behavior.
       </div>
     </div>
   );
@@ -338,7 +338,7 @@ function ErrorModesEditor({
       <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         Define error scenarios that can be injected during simulation to test
         error handling. A mode can affect the wire (stop or corrupt responses)
-        and/or change state values when injected — use State Change Only for
+        and/or change state values when injected. Use State Change Only for
         device-reported conditions like lamp warnings. To test connection
         drops, use the Network Conditions controls in the Simulator UI.
       </p>

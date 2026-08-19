@@ -66,7 +66,7 @@ export function AuthEditor({ draft, onUpdate }: AuthEditorProps) {
         Cisco gear, legacy serial-over-IP gateways). The runtime watches the
         incoming bytes for the configured prompts and types credentials in
         before any other traffic flows. Most modern AV gear authenticates a
-        different way — leave disabled unless your device shows a banner.
+        different way. Leave disabled unless your device shows a banner.
       </p>
 
       <label
@@ -135,7 +135,7 @@ export function AuthEditor({ draft, onUpdate }: AuthEditorProps) {
                 style={{ width: "100%", fontFamily: "var(--font-mono)" }}
               />
               <div style={helpStyle}>
-                Optional. Substring that signals login succeeded — the runtime
+                Optional. Substring that signals login succeeded; the runtime
                 stops watching once it appears.
               </div>
             </div>

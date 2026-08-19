@@ -400,7 +400,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           sent: null,
           received: [],
           state_changes: {},
-          error: "Could not pause production device — try Connect anyway.",
+          error: "Could not pause production device. Try Connect anyway.",
           timestamp: Date.now(),
         },
         ...prev,
@@ -535,8 +535,8 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           marginBottom: "var(--space-md)",
         }}
       >
-        Send a command to a live device through the real driver runtime —
-        auth and connect-sequence run first, parameters resolve the same way
+        Send a command to a live device through the real driver runtime.
+        Auth and connect-sequence run first, parameters resolve the same way
         they will in production.
       </p>
 
@@ -665,7 +665,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               {cmd.label || name} ({name})
             </option>
           ))}
-          <option value={RAW_COMMAND}>— Raw probe (no auth, no on_connect) —</option>
+          <option value={RAW_COMMAND}>Raw probe (no auth, no on_connect)</option>
         </select>
       </div>
 
@@ -735,13 +735,13 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           <div style={helpStyle}>
             {isSerial ? (
               <>
-                Bypasses the driver — sent as-is to {port || "the serial port"}.
+                Bypasses the driver, sent as-is to {port || "the serial port"}.
                 Useful for one-off probes; for real testing pick a defined
                 command above.
               </>
             ) : (
               <>
-                Bypasses the driver — sent as-is to {host || "the device"} on
+                Bypasses the driver, sent as-is to {host || "the device"} on
                 port {port || defaultPort}. Useful for one-off probes; for real
                 testing pick a defined command above.
               </>
@@ -790,7 +790,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               before sending.
             </>
           ) : selectedCommand === RAW_COMMAND ? (
-            <span>Raw mode — auth and on_connect are skipped.</span>
+            <span>Raw mode: auth and on_connect are skipped.</span>
           ) : (
             <span>Direct connect, no auth or connect sequence configured.</span>
           )}

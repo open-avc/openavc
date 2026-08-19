@@ -129,7 +129,7 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
         can set a Matrix up from the device rather than typing its ports in by
         hand. Optional: without it the platform reads the same driver and works
         it out, which is right for an ordinary switcher. Declare it when that
-        would get it wrong — a routing command that needs a fixed extra
+        would get it wrong: a routing command that needs a fixed extra
         parameter (a signal or stream selector), a device that routes itself
         and has no output ports to list, or a property that reads like routing
         and is not one. Declaring it replaces the guess: these become the
@@ -191,7 +191,7 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
                   ))}
                 </select>
                 <div style={helpStyle}>
-                  The ports routed TO, in your own words — outputs, decoders,
+                  The ports routed TO, in your own words: outputs, decoders,
                   zones, or the input channels of a mixer. Leave it as this
                   device when the device shows one thing at a time and has no
                   output ports of its own.
@@ -228,7 +228,7 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
                   }
                   style={{ width: "100%" }}
                 >
-                  <option value="">None — each plane names its own</option>
+                  <option value="">None (each plane names its own)</option>
                   {commandNames.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -383,8 +383,8 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
                         ))}
                       </select>
                       <div style={helpStyle}>
-                        The property a crosspoint lights from. Required —
-                        without it a Matrix can switch and can never show what
+                        The property a crosspoint lights from. Required.
+                        Without it a Matrix can switch and can never show what
                         is on.
                       </div>
                     </div>
@@ -547,7 +547,7 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
                         </div>
                         <div style={helpStyle}>
                           Fixed values sent on every route on this plane, on
-                          top of the source and destination — a decoder whose
+                          top of the source and destination, like a decoder whose
                           one command carries <code>signal: VIDEO</code>. This
                           is what a plane's name alone cannot supply, and a
                           required parameter left out is a command the device

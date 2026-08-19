@@ -615,7 +615,7 @@ function DriverCard({
               <span
                 title={
                   replacementName
-                    ? `Deprecated — use ${replacementName} instead`
+                    ? `Deprecated: use ${replacementName} instead`
                     : "Deprecated"
                 }
                 style={{

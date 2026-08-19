@@ -305,7 +305,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                             })
                           }
                         />
-                        Send raw — skip the driver&apos;s command framing for this
+                        Send raw: skip the driver&apos;s command framing for this
                         command
                       </label>
                     )}
@@ -345,8 +345,8 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                       }}
                     >
                       Normally a command to a disconnected device is refused.
-                      Tick this only when the command needs no live connection
-                      — a Wake-on-LAN power on, which sends a magic packet
+                      Tick this only when the command needs no live connection,
+                      like a Wake-on-LAN power on, which sends a magic packet
                       rather than talking over the dead control link. A Quick
                       Action button for it also stays available while the
                       device is offline.
@@ -598,7 +598,7 @@ function CommandSemanticsEditor({
         </select>
         <div style={helpStyle}>
           For status queries: the device answers this command by reporting
-          this variable, and the simulator replies with its value — so Live
+          this variable, and the simulator replies with its value, so Live
           Test and simulation answer the query correctly.
         </div>
       </div>
@@ -697,7 +697,7 @@ function CommandSemanticsEditor({
           </button>
         )}
         <div style={helpStyle}>
-          State variables this command sets on the device — to a parameter's
+          State variables this command sets on the device, to a parameter's
           value or a literal. The auto-generated simulator applies these when
           the command fires, so Live Test and simulation show the effect.
           {childType !== null && (
@@ -770,7 +770,7 @@ function HttpCommandFields({
       </div>
       <div style={helpStyle}>
         Path is appended to the device's base URL. Use{" "}
-        <code>{"{param_name}"}</code> for placeholders — both command params
+        <code>{"{param_name}"}</code> for placeholders; both command params
         and device config keys (like <code>{"{host}"}</code>,{" "}
         <code>{"{app_key}"}</code>) are substituted.
       </div>
@@ -983,7 +983,7 @@ export function ParamEditor({
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
       return {
         ok: false,
-        reason: "Use letters, digits, and underscores only — must start with a letter or underscore.",
+        reason: "Use letters, digits, and underscores only. Must start with a letter or underscore.",
       };
     }
     const next: typeof params = {};
@@ -1362,7 +1362,7 @@ function ParamRow({
               value={def.unit ?? ""}
               onChange={(e) => onUpdate({ unit: e.target.value || undefined })}
               placeholder="%, ms, dB"
-              title="Shown beside the input when the command is run. Display only — it is never sent to the device."
+              title="Shown beside the input when the command is run. Display only. It is never sent to the device."
               data-testid={`param-unit-${name}`}
               style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
             />
@@ -1394,7 +1394,7 @@ function ParamRow({
                 onUpdate({ pattern: e.target.value || undefined })
               }
               placeholder="Regex the whole value must match, e.g. \d{1,3}(\.\d{1,3}){3}"
-              title="Shape check for a value that can't be listed — an IP, a hostname, a fixed-length ID. The command is refused when the value doesn't match."
+              title="Shape check for a value that can't be listed: an IP, a hostname, a fixed-length ID. The command is refused when the value doesn't match."
               data-testid={`param-pattern-${name}`}
               style={{
                 width: "100%",
@@ -1719,7 +1719,7 @@ function ParamOptionsEditor({
               fontFamily: "var(--font-mono)",
             }}
           >
-            <option value="">Nothing — use the type above</option>
+            <option value="">Nothing (use the type above)</option>
             {cascadeSiblings.map((sName) => (
               <option key={sName} value={sName}>
                 {sName}
@@ -1733,8 +1733,8 @@ function ParamOptionsEditor({
               )}
           </select>
           <div style={hintStyle}>
-            This box takes its type from whichever control that parameter picked
-            — a number spinner for a level, Yes/No for a mute.
+            This box takes its type from whichever control that parameter picked:
+            a number spinner for a level, Yes/No for a mute.
           </div>
         </div>
       )}

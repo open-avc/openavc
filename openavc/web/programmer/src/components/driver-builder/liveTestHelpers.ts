@@ -21,10 +21,10 @@ export function commandShapeMismatch(
   if (route === expected) return null;
   const tn = (transport || "tcp").toUpperCase();
   if (route === "osc") {
-    return `This command has OSC fields (address/args) but the driver transport is ${tn} — the runtime refuses to send it. Remove the OSC fields in Behavior → Commands, or set the transport to OSC.`;
+    return `This command has OSC fields (address/args) but the driver transport is ${tn}. The runtime refuses to send it. Remove the OSC fields in Behavior → Commands, or set the transport to OSC.`;
   }
   if (route === "http") {
-    return `This command has HTTP fields (method/path) but the driver transport is ${tn} — the runtime refuses to send it. Remove the HTTP fields in Behavior → Commands, or set the transport to HTTP.`;
+    return `This command has HTTP fields (method/path) but the driver transport is ${tn}. The runtime refuses to send it. Remove the HTTP fields in Behavior → Commands, or set the transport to HTTP.`;
   }
   return expected === "osc"
     ? "This command has no OSC address, so it can't be sent on the OSC transport. Set the address in Behavior → Commands."

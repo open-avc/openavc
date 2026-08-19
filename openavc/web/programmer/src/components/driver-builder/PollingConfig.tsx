@@ -120,7 +120,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
           {childTypeNames.length > 0 && (
             <>
               {" "}A <b>per-child</b> query is sent once for each registered
-              child — <code>{"{child_id}"}</code> inserts its ID.
+              child, where <code>{"{child_id}"}</code> inserts its ID.
             </>
           )}
         </div>
@@ -204,7 +204,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                       ),
                     )
                   }
-                  title="Only run this query while a config field is on — e.g. poll meters behind an 'Enable Meters' checkbox"
+                  title="Only run this query while a config field is on, for example poll meters behind an 'Enable Meters' checkbox"
                   style={{ width: 150, fontSize: "var(--font-size-sm)" }}
                 >
                   <option value="">Always</option>
@@ -241,7 +241,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                         ),
                       )
                     }
-                    title="Which state variable the device's reply reports — lets the simulator answer this query without guessing from command names"
+                    title="Which state variable the device's reply reports, which lets the simulator answer this query without guessing from command names"
                     style={{ width: 150, fontSize: "var(--font-size-sm)" }}
                   >
                     <option value="">Reports (auto)</option>

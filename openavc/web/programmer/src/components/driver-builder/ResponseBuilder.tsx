@@ -166,7 +166,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
         }}
       >
         Define rules that turn device responses into state variable values. A
-        text rule matches with a regex — use parentheses to capture the parts
+        text rule matches with a regex. Use parentheses to capture the parts
         you want. A JSON body rule parses the whole reply as JSON and reads
         fields from it (common for HTTP devices).
       </p>
@@ -285,7 +285,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                       )
                     }
                     placeholder="status.power"
-                    title="The JSON field to read — dot-separated keys and list indices (status.power, data.0)"
+                    title="The JSON field to read: dot-separated keys and list indices (status.power, data.0)"
                     style={{
                       width: 150,
                       fontFamily: "var(--font-mono)",
@@ -709,7 +709,7 @@ function RequireInput({
           if (e.key === "Enter") commit();
         }}
         placeholder="serialNumber, status"
-        title="Apply this rule only to bodies carrying every named JSON key (comma-separated; dot paths allowed). Leave blank to apply to any JSON body — scope it when different endpoints reuse a field name."
+        title="Apply this rule only to bodies carrying every named JSON key (comma-separated; dot paths allowed). Leave blank to apply to any JSON body. Scope it when different endpoints reuse a field name."
         style={{
           flex: 1,
           fontFamily: "var(--font-mono)",
@@ -846,8 +846,8 @@ function ChildSetEditor({
                 placeholder={isOsc ? "seg:1 or literal" : "$1 or a number"}
                 title={
                   isOsc
-                    ? "Which address segment holds the child ID (seg:1 = the second /-separated part, 0-based) — or a literal ID when the address is specific to one child"
-                    : "Which capture group holds the child ID ($1, $2, ...) — or a literal ID when the pattern is specific to one child"
+                    ? "Which address segment holds the child ID (seg:1 = the second /-separated part, 0-based), or a literal ID when the address is specific to one child"
+                    : "Which capture group holds the child ID ($1, $2, ...), or a literal ID when the pattern is specific to one child"
                 }
                 style={{
                   width: 110,

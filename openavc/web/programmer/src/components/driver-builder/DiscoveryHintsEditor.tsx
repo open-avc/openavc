@@ -175,7 +175,7 @@ export function DiscoveryHintsEditor({
             marginBottom: "var(--space-md)",
           }}
         >
-          Requires platform {cfg.requires} — stamped by the driver catalog,
+          Requires platform {cfg.requires}, stamped by the driver catalog,
           not hand-edited.
         </div>
       )}
@@ -202,7 +202,7 @@ function FingerprintsSection({
     <div style={SECTION}>
       <div style={H2}>Fingerprints</div>
       <div style={INTRO}>
-        A fingerprint identifies the device on its own — one match is
+        A fingerprint identifies the device on its own: one match is
         enough for the platform to claim the device for this driver.
         Add any combination below.
       </div>
@@ -369,8 +369,8 @@ function SsdpList({
       </button>
       <div style={HELP}>
         Add a model / manufacturer filter when several devices share one
-        device-type URN (common for a vendor&apos;s whole product family) —
-        the filter matches the device&apos;s UPnP description exactly,
+        device-type URN (common for a vendor&apos;s whole product family).
+        The filter matches the device&apos;s UPnP description exactly,
         case-insensitive.
       </div>
     </div>
@@ -617,7 +617,7 @@ function ProbeBlock({
           )}
         </div>
         <div style={HELP}>
-          Pick exactly one matcher — substring, regex, or hex prefix.
+          Pick exactly one matcher: substring, regex, or hex prefix.
           {kind === "udp" && " UDP probes need a matcher."}
           {kind === "tcp" &&
             sendMode !== "none" &&
@@ -664,7 +664,7 @@ function ProbeBlock({
             )}
             <div style={{ ...HELP, marginTop: 0 }}>
               Turn TLS on for a device that only answers over HTTPS. With it
-              on you can also match the name on the device's own certificate —
+              on you can also match the name on the device's own certificate,
               a regex against the certificate subject, which identifies gear
               that says nothing useful on the wire. A probe with only a
               certificate subject and no send/expect matches on the
@@ -689,7 +689,7 @@ function ProbeBlock({
           />
         </div>
         <div style={{ ...HELP, marginTop: 0 }}>
-          Static manufacturer string the response confirms — feeds the
+          Static manufacturer string the response confirms. It feeds the
           manufacturer-alias hint path so peer vendor drivers can claim
           the device.
         </div>
@@ -823,7 +823,7 @@ function HintsSection({
         <code>4352</code> for PJLink, <code>17567</code> for Lightware
         LW3). Common web/SSH and admin-UI ports (
         <code>{[...DISALLOWED_OPEN_PORTS].sort((a, b) => a - b).join(", ")}</code>)
-        are rejected — they would match nearly every host on the LAN.
+        are rejected. They would match nearly every host on the LAN.
       </div>
 
       <label style={LABEL}>Manufacturer aliases</label>
@@ -868,7 +868,7 @@ function AdvancedSection() {
       <label style={LABEL}>Cross-vendor fingerprints</label>
       <div style={INTRO}>
         Toggle <strong>cross-vendor</strong> on a fingerprint when the
-        same wire signal is emitted by more than one vendor's devices —
+        same wire signal is emitted by more than one vendor's devices:
         PJLink projectors from any manufacturer, Crestron family
         devices on CIP, ONVIF-compliant cameras. The matcher treats
         this driver as a fallback: if a peer driver claims the same

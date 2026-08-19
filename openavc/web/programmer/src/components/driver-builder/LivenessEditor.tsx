@@ -64,7 +64,7 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
         }}
       >
         Sends a cheap probe on an interval and reconnects after consecutive
-        unanswered probes — for devices and transports that go quiet without
+        unanswered probes, for devices and transports that go quiet without
         closing the connection. UDP and OSC queries are fire-and-forget (a
         dead host answers nothing and nothing errors), and a push-style TCP
         device that vanishes without closing the socket looks connected
@@ -127,7 +127,7 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
               />
               <div style={helpStyle}>
                 Optional regex a reply must match. Leave blank to count any
-                inbound frame as a reply — right for chatty devices.
+                inbound frame as a reply, which is right for chatty devices.
               </div>
             </div>
           </div>

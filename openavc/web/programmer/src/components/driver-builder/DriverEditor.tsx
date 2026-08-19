@@ -382,7 +382,7 @@ export function DriverEditor({
         >
           <Lock size={14} style={{ color: "var(--text-muted)" }} />
           <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", flex: 1 }}>
-            Built-in driver — read only. Customize a copy to edit.
+            Built-in driver: read only. Customize a copy to edit.
           </span>
           <button
             onClick={onDuplicate}
@@ -431,7 +431,7 @@ export function DriverEditor({
           >
             This driver's file has {commentLines} comment{" "}
             {commentLines === 1 ? "line" : "lines"}. Saving here rewrites the
-            file from the fields above and does not keep them — edit the
+            file from the fields above and does not keep them. Edit the
             .avcdriver directly if the comments matter.
           </span>
         </div>
@@ -565,7 +565,7 @@ export function DriverEditor({
                 This driver uses the no-code device-page protocol editor
                 (built-in generic drivers only). Commands, responses, and
                 state variables authored on the device page merge into it at
-                runtime — community drivers ship theirs in the driver file
+                runtime. Community drivers ship theirs in the driver file
                 instead.
               </div>
             )}
@@ -620,7 +620,7 @@ export function DriverEditor({
                 >
                   Lowercase letters, digits, and underscores only.
                   {devicesUsingDriver.length > 0
-                    ? ` In use by ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project — renaming will orphan them.`
+                    ? ` In use by ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project. Renaming will orphan them.`
                     : ""}
                 </div>
               )}
@@ -740,7 +740,7 @@ export function DriverEditor({
                 A device controlled by an infrared remote through an IR
                 bridge. Codes are authored on the device page (learn, paste
                 Pronto hex, type a sendir string, or search a code database)
-                and sent through an IR bridge port — each code becomes a
+                and sent through an IR bridge port. Each code becomes a
                 device command. A community IR driver ships its code-set in
                 default config. Use the Bridge transport with this.
               </div>
@@ -757,7 +757,7 @@ export function DriverEditor({
             <IssueList issues={issuesFor(effectiveIssues, "connection")} />
             <CollapsibleSection
               title="Transport"
-              subtitle="How the driver talks to the device — TCP, serial, UDP, OSC, HTTP."
+              subtitle="How the driver talks to the device: TCP, serial, UDP, OSC, HTTP."
               meta={draft.transport || "not set"}
               helpHref={DOCS.transport}
             >
@@ -766,7 +766,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Bridge Ports"
-              subtitle="Optional — declares this device as a bridge others connect through (a serial-to-Ethernet or IR bridge) and the typed ports it advertises."
+              subtitle="Optional. Declares this device as a bridge others connect through (a serial-to-Ethernet or IR bridge) and the typed ports it advertises."
               meta={bridgeEnabled ? countMeta(bridgePortCount, "port") : "disabled"}
               defaultOpen={bridgeEnabled}
               helpHref={DOCS.bridge}
@@ -777,7 +777,7 @@ export function DriverEditor({
             {isByteStream && (
               <CollapsibleSection
                 title="Command Framing"
-                subtitle="Optional — a constant prefix and suffix that wrap every command, so a fixed packet header and line terminator are set once instead of on each command."
+                subtitle="Optional. A constant prefix and suffix that wrap every command, so a fixed packet header and line terminator are set once instead of on each command."
                 meta={framingEnabled ? "enabled" : "none"}
                 defaultOpen={framingEnabled}
                 helpHref={DOCS.commands}
@@ -788,7 +788,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Authentication"
-              subtitle="Optional login handshake — for devices that present a login: / password: prompt after connect."
+              subtitle="Optional login handshake, for devices that present a login: / password: prompt after connect."
               meta={authEnabled ? "enabled" : "disabled"}
               defaultOpen={authEnabled}
               helpHref={DOCS.auth}
@@ -798,7 +798,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Push Notifications"
-              subtitle="Optional — device-initiated updates on a separate multicast channel. Frames feed the same response rules as the control connection."
+              subtitle="Optional. Device-initiated updates on a separate multicast channel. Frames feed the same response rules as the control connection."
               meta={pushEnabled ? "enabled" : "disabled"}
               defaultOpen={pushEnabled}
               helpHref={DOCS.push}
@@ -808,7 +808,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Connection Watchdog"
-              subtitle="Optional — probes the device on an interval and reconnects after consecutive misses, for links that die without closing the connection."
+              subtitle="Optional. Probes the device on an interval and reconnects after consecutive misses, for links that die without closing the connection."
               meta={livenessEnabled ? "enabled" : "disabled"}
               defaultOpen={livenessEnabled}
               helpHref={DOCS.liveness}
@@ -818,7 +818,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Connect Sequence"
-              subtitle="Commands sent automatically on every connect — verbose-mode toggles, GET ALL requests, push subscriptions."
+              subtitle="Commands sent automatically on every connect: verbose-mode toggles, GET ALL requests, push subscriptions."
               meta={countMeta(onConnectCount, "command")}
               defaultOpen={onConnectCount > 0}
               helpHref={DOCS.onConnect}
@@ -828,7 +828,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Frame Parser"
-              subtitle="Advanced — only for binary protocols framed by length prefix or fixed length. Most drivers leave this off."
+              subtitle="Advanced. Only for binary protocols framed by length prefix or fixed length. Most drivers leave this off."
               meta={frameParserEnabled ? "enabled" : "disabled"}
               defaultOpen={frameParserEnabled}
               helpHref={DOCS.frameParser}
@@ -839,7 +839,7 @@ export function DriverEditor({
             {isByteStream && (
               <CollapsibleSection
                 title="Send Frame"
-                subtitle="Advanced — wraps every command in a binary packet header whose data-length is computed per message (e.g. eISCP). The send twin of Frame Parser. Most drivers leave this off."
+                subtitle="Advanced. Wraps every command in a binary packet header whose data-length is computed per message (e.g. eISCP). The send twin of Frame Parser. Most drivers leave this off."
                 meta={sendFrameEnabled ? "enabled" : "disabled"}
                 defaultOpen={sendFrameEnabled}
                 helpHref={DOCS.frameParser}
@@ -869,7 +869,7 @@ export function DriverEditor({
             <IssueList issues={issuesFor(effectiveIssues, "behavior")} />
             <CollapsibleSection
               title="State Variables"
-              subtitle="Read-only values the driver reports — power, input, mute, volume. Use these in command parameters and panel bindings."
+              subtitle="Read-only values the driver reports: power, input, mute, volume. Use these in command parameters and panel bindings."
               meta={countMeta(stateCount, "variable")}
               helpHref={DOCS.stateVariables}
             >
@@ -878,7 +878,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Child Entity Types"
-              subtitle="Sub-units this device manages — encoders, decoders, zones, presets. Each declared type gets a per-instance row in the device's Child Entities tab."
+              subtitle="Sub-units this device manages: encoders, decoders, zones, presets. Each declared type gets a per-instance row in the device's Child Entities tab."
               meta={countMeta(childTypeCount, "type")}
               defaultOpen={childTypeCount > 0}
               helpHref={DOCS.childEntityTypes}
@@ -888,7 +888,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Routing"
-              subtitle="Optional — where this driver's routing lives, so a Matrix control can be set up from the device. Leave it off for anything that does not switch."
+              subtitle="Optional. Where this driver's routing lives, so a Matrix control can be set up from the device. Leave it off for anything that does not switch."
               meta={routingPlaneCount ? countMeta(routingPlaneCount, "plane") : "not declared"}
               defaultOpen={routingPlaneCount > 0}
               helpHref={DOCS.routing}
@@ -898,7 +898,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Commands"
-              subtitle="Actions the driver can perform — power on, switch input, set volume. Reference state variables and config fields with {placeholders}."
+              subtitle="Actions the driver can perform: power on, switch input, set volume. Reference state variables and config fields with {placeholders}."
               meta={countMeta(commandCount, "command")}
               helpHref={DOCS.commands}
             >
@@ -907,7 +907,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Actions"
-              subtitle="Commands promoted to one-click buttons at the top of the device view — plus an Open Web UI link for devices with a browser interface."
+              subtitle="Commands promoted to one-click buttons at the top of the device view, plus an Open Web UI link for devices with a browser interface."
               meta={
                 actionCount > 0
                   ? `${countMeta(actionCount, "action")}${webUiEnabled ? " + web UI" : ""}`
@@ -923,7 +923,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Responses"
-              subtitle="Patterns matched against incoming data — capture groups update state variables."
+              subtitle="Patterns matched against incoming data. Capture groups update state variables."
               meta={countMeta(responseCount, "pattern")}
               helpHref={DOCS.responses}
             >
@@ -942,7 +942,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Device Settings"
-              subtitle="Writable values stored on the device hardware — labels, IDs, lock codes. Pending writes queue while offline."
+              subtitle="Writable values stored on the device hardware: labels, IDs, lock codes. Pending writes queue while offline."
               meta={countMeta(settingCount, "setting")}
               defaultOpen={settingCount > 0}
               helpHref={DOCS.deviceSettings}
@@ -1093,7 +1093,7 @@ function HelpFieldsSection({
       >
         Markdown shown to integrators in the Add Device dialog. Overview is a
         short pitch (what does this device do, who's it for). Setup is the
-        step-by-step the user follows to get it talking — IP setup, pairing,
+        step-by-step the user follows to get it talking: IP setup, pairing,
         physical button presses, anything device-specific. Connection
         troubleshooting appears on the device's offline banner when it can't
         connect.
@@ -1104,7 +1104,7 @@ function HelpFieldsSection({
         <textarea
           value={help.overview ?? ""}
           onChange={(e) => update({ overview: e.target.value })}
-          placeholder="Short pitch — what this device is, where AV integrators use it."
+          placeholder="Short pitch: what this device is, where AV integrators use it."
           rows={4}
           style={{
             width: "100%",
@@ -1159,7 +1159,7 @@ function HelpFieldsSection({
           }}
         >
           Optional short hint shown on the device&apos;s offline banner when
-          it can&apos;t connect — e.g. a remote-access setting that must be
+          it can&apos;t connect, for example a remote-access setting that must be
           enabled on the device first.
         </div>
       </div>
@@ -1321,7 +1321,7 @@ function PublishingSection({
           Simulated
         </label>
         <div
-          title="Server-controlled — set by the community catalog after testing"
+          title="Server-controlled: set by the community catalog after testing"
           style={{
             display: "flex",
             alignItems: "center",
@@ -1343,7 +1343,7 @@ function PublishingSection({
       <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         <strong>Simulated:</strong> set when this driver has a simulator
         section so users can test without hardware. <strong>Verified:</strong>{" "}
-        read-only — the community catalog flips this once a driver is
+        read-only. The community catalog flips this once a driver is
         validated against real hardware.
       </div>
     </div>
@@ -1389,7 +1389,7 @@ function CommandFramingEditor({
       <p style={{ ...helpStyle, marginTop: 0, marginBottom: "var(--space-md)" }}>
         Both are optional and off by default. When set, every command this
         driver sends goes on the wire as{" "}
-        <code>prefix + command + suffix</code> — so a command whose string is{" "}
+        <code>prefix + command + suffix</code>, so a command whose string is{" "}
         <code>PWR01</code>, with prefix <code>!1</code> and suffix{" "}
         <code>\r</code>, is sent as <code>!1PWR01\r</code>. Author your command
         strings bare and let the frame wrap them. Use <code>\r</code>,{" "}
@@ -1400,20 +1400,20 @@ function CommandFramingEditor({
         "command_prefix",
         "Command Prefix",
         "e.g. !1",
-        <>Prepended to every command — a fixed packet header the protocol shares.</>,
+        <>Prepended to every command: a fixed packet header the protocol shares.</>,
       )}
       {field(
         "command_suffix",
         "Command Suffix",
         "e.g. \\r",
         <>
-          Appended to every command — its line terminator. Set this instead of
+          Appended to every command: its line terminator. Set this instead of
           typing <code>\r</code> on each command string.
         </>,
       )}
       <p style={{ ...helpStyle, marginTop: 0 }}>
         A single command can opt out of the frame with its <strong>Send raw</strong>{" "}
-        toggle (in the Commands section) — for the odd command that already
+        toggle (in the Commands section), for the odd command that already
         carries its own framing.
       </p>
     </div>

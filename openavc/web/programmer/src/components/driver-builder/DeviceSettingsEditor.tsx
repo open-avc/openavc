@@ -407,7 +407,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                       }}
                     >
                       <AlertTriangle size={12} />
-                      This write has fields from a different transport — they'll be
+                      This write has fields from a different transport. They'll be
                       cleared when you edit it.
                     </div>
                   )}
@@ -439,7 +439,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                           }}
                         >
                           <AlertTriangle size={12} />
-                          This write sends no value — add an argument referencing
+                          This write sends no value. Add an argument referencing
                           {" {value}"} (or{" "}
                           <button
                             type="button"

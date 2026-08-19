@@ -406,7 +406,7 @@ export function validateDriver(
       section: "general",
       field: "description",
       message:
-        "Description is empty. Required for community drivers — describe the device family in one sentence.",
+        "Description is empty. Required for community drivers. Describe the device family in one sentence.",
     });
   }
   if (!draft.version?.trim()) {
@@ -431,7 +431,7 @@ export function validateDriver(
       section: "general",
       field: "help.overview",
       message:
-        "Help overview is empty. Integrators see this in the Add Device dialog — explain what the device is.",
+        "Help overview is empty. Integrators see this in the Add Device dialog. Explain what the device is.",
     });
   }
 
@@ -505,7 +505,7 @@ export function validateDriver(
         severity: "warning",
         section: "connection",
         field: `config_schema.${fieldName}`,
-        message: `Config field "${fieldName}" default is ${typeof configDefault} but the field type is boolean — re-enter the default in the Config editor so it saves as true/false.`,
+        message: `Config field "${fieldName}" default is ${typeof configDefault} but the field type is boolean. Re-enter the default in the Config editor so it saves as true/false.`,
       });
     } else if (
       (declaredType === "integer" || declaredType === "number" || declaredType === "float") &&
@@ -515,7 +515,7 @@ export function validateDriver(
         severity: "warning",
         section: "connection",
         field: `config_schema.${fieldName}`,
-        message: `Config field "${fieldName}" default is ${typeof configDefault} but the field type is ${declaredType} — re-enter the default in the Config editor so it saves as a number.`,
+        message: `Config field "${fieldName}" default is ${typeof configDefault} but the field type is ${declaredType}. Re-enter the default in the Config editor so it saves as a number.`,
       });
     }
   }
@@ -560,7 +560,7 @@ export function validateDriver(
         severity: "warning",
         section: "behavior",
         command: cmdName,
-        message: `Command "${cmdName}" has ${stray.join(", ")} which the ${route.toUpperCase()} sender ignores — usually leftovers from a transport switch. Remove them to keep the driver clean.`,
+        message: `Command "${cmdName}" has ${stray.join(", ")} which the ${route.toUpperCase()} sender ignores, usually leftovers from a transport switch. Remove them to keep the driver clean.`,
       });
     }
   }
@@ -575,7 +575,7 @@ export function validateDriver(
       issues.push({
         severity: "warning",
         section: "behavior",
-        message: `Device setting "${settingName}" write has ${stray.join(", ")} which the ${route.toUpperCase()} sender ignores — usually leftovers from a transport switch. Remove them to keep the driver clean.`,
+        message: `Device setting "${settingName}" write has ${stray.join(", ")} which the ${route.toUpperCase()} sender ignores, usually leftovers from a transport switch. Remove them to keep the driver clean.`,
       });
     }
   }
@@ -593,7 +593,7 @@ export function validateDriver(
           severity: "warning",
           section: "connection",
           field: "bridge",
-          message: `Bridge port "${id}" duplicates another port's id — the runtime keeps only the last declaration.`,
+          message: `Bridge port "${id}" duplicates another port's id. The runtime keeps only the last declaration.`,
         });
       }
       seenIds.add(id);
@@ -620,7 +620,7 @@ export function validateDriver(
           severity: "warning",
           section: "connection",
           field: `config_derived.${name}`,
-          message: `Computed field "${name}" has the same name as a config field — the computed value silently replaces the configured one when the device connects. Rename one of them.`,
+          message: `Computed field "${name}" has the same name as a config field. The computed value silently replaces the configured one when the device connects. Rename one of them.`,
         });
       }
       if (typeof template !== "string") continue;
@@ -637,7 +637,7 @@ export function validateDriver(
           severity: "warning",
           section: "connection",
           field: `config_derived.${name}`,
-          message: `Computed field "${name}" references {${token}}, but no config field or computed field of that name exists — the computed value would always be empty.`,
+          message: `Computed field "${name}" references {${token}}, but no config field or computed field of that name exists, so the computed value would always be empty.`,
         });
       }
     }
@@ -651,7 +651,7 @@ export function validateDriver(
       section: "general",
       field: "ir_codes",
       message:
-        "An IR code-set device emits through an IR bridge port and has no address of its own — set the transport to Bridge so it's added from a bridge's IR port.",
+        "An IR code-set device emits through an IR bridge port and has no address of its own. Set the transport to Bridge so it's added from a bridge's IR port.",
     });
   }
 
@@ -676,7 +676,7 @@ export function validateDriver(
         severity: "warning",
         section,
         field,
-        message: `${where} references {${token}}, but only {host}, {port}, and declared config fields are substituted — the placeholder would be left in the opened URL.`,
+        message: `${where} references {${token}}, but only {host}, {port}, and declared config fields are substituted, so the placeholder would be left in the opened URL.`,
       });
     }
   };
@@ -724,7 +724,7 @@ export function validateDriverSafely(
         message:
           "This driver file has a value in a form the editor cannot read, so " +
           "it could not be fully checked. It is usually a field that needs " +
-          "quotes in the YAML — a version, date or author written as a bare " +
+          "quotes in the YAML. A version, date or author written as a bare " +
           `number is the common one. (${detail})`,
       },
     ];

@@ -122,7 +122,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
         }}
       >
         Actions promote a command to a one-click button at the top of the
-        device view — power on, reboot, recall a preset — instead of leaving it
+        device view (power on, reboot, recall a preset) instead of leaving it
         buried in the Send Command list. A link action opens a URL (usually the
         device&apos;s own web interface) in a new tab.
       </p>
@@ -147,7 +147,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
         </select>
         <div style={helpStyle}>
           Auto-detect adds the button when the device serves a web page (it
-          answers on port 80, 443, or 8080 — or, for HTTP devices, from its
+          answers on port 80, 443, or 8080; for HTTP devices, from its
           connection settings). Choose <strong>Always show</strong> to force it
           on, <strong>Never show</strong> to suppress it. Requires OpenAVC 0.24.0
           or newer.
@@ -184,7 +184,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
           }}
         >
           <div style={{ ...labelStyle, marginBottom: "var(--space-sm)" }}>
-            Quick actions (legacy) — shown as buttons; new drivers should
+            Quick actions (legacy): shown as buttons; new drivers should
             declare actions
           </div>
           <div
@@ -223,7 +223,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
           <div style={helpStyle}>
             Rewrites each id as an explicit action (ids already declared as
             actions are skipped) and removes the legacy list. Behavior is
-            unchanged — explicit actions just unlock labels, icons,
+            unchanged. Explicit actions just unlock labels, icons,
             confirmation, and visibility rules.
           </div>
         </div>
@@ -453,7 +453,7 @@ function ActionCard({
                 style={{ width: "100%", fontFamily: "var(--font-mono)" }}
               />
               <div style={helpStyle}>
-                Lucide icon name in kebab-case — power, rotate-cw,
+                Lucide icon name in kebab-case: power, rotate-cw,
                 external-link.
               </div>
             </div>
@@ -493,7 +493,7 @@ function ActionCard({
                 style={{ width: "100%", fontFamily: "var(--font-mono)" }}
               />
               <div style={helpStyle}>
-                Opens in a new tab, client-side — nothing is sent to the
+                Opens in a new tab, client-side. Nothing is sent to the
                 device. <code>{"{host}"}</code>, <code>{"{port}"}</code>, and
                 any <code>{"{config_field}"}</code> are substituted from the
                 device&apos;s connection settings. Blank opens{" "}

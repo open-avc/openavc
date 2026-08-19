@@ -68,7 +68,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
         return (
           <>
             OSC addresses sent on connect. A bare address registers for state
-            pushes — Behringer X32 uses <code>/xremote</code> here. Add typed{" "}
+            pushes. Behringer X32 uses <code>/xremote</code> here. Add typed{" "}
             <strong>arguments</strong> when the bring-up message needs to set a
             value rather than just subscribe.
           </>
@@ -77,7 +77,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
         return (
           <>
             For HTTP drivers, items are typically command names already
-            defined under Commands — they run immediately after connect to
+            defined under Commands. They run immediately after connect to
             seed initial state. Cisco RoomOS does this with{" "}
             <code>query_audio</code>, <code>query_standby</code>, etc.
           </>
@@ -120,7 +120,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
             marginBottom: "var(--space-sm)",
           }}
         >
-          No connect commands. Most drivers don't need any — leave empty.
+          No connect commands. Most drivers don't need any. Leave empty.
         </div>
       )}
 
@@ -207,7 +207,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                     buildQueryEntry(send, childKey, e.target.value, args, queryFor),
                   )
                   }
-                  title="Only send this step while a config field is on — e.g. arm a level-meter subscription behind an 'Enable Meters' checkbox"
+                  title="Only send this step while a config field is on, for example arm a level-meter subscription behind an 'Enable Meters' checkbox"
                   style={{ width: 150, fontSize: "var(--font-size-sm)" }}
                 >
                   <option value="">Always</option>

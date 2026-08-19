@@ -128,7 +128,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             : draft.transport === "osc"
             ? "Choose OSC for devices controlled via Open Sound Control (mixing consoles, show control, lighting, media servers). Commands use OSC address paths and typed arguments."
             : draft.transport === "bridge"
-            ? "For a device with no address of its own that emits through a live bridge instance (e.g. an IR device on an emitter port). It opens no socket — commands route via the bridge, and the device is online whenever its bridge is."
+            ? "For a device with no address of its own that emits through a live bridge instance (e.g. an IR device on an emitter port). It opens no socket. Commands route via the bridge, and the device is online whenever its bridge is."
             : "Choose TCP for network devices, UDP for datagram protocols, Serial for RS-232/RS-485, HTTP for REST APIs, or OSC for Open Sound Control. Bridge is for devices that only exist behind another device (IR devices on an emitter port)."}
         </div>
       </div>
@@ -144,9 +144,9 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           onChange={(e) => onUpdate({ delimiter: e.target.value })}
           style={{ width: "100%" }}
         >
-          <option value={"\r\n"}>CR+LF (\r\n) — most common</option>
-          <option value={"\r"}>CR only (\r) — Extron, PJLink</option>
-          <option value={"\n"}>LF only (\n) — Biamp, QSC</option>
+          <option value={"\r\n"}>CR+LF (\r\n): most common</option>
+          <option value={"\r"}>CR only (\r): Extron, PJLink</option>
+          <option value={"\n"}>LF only (\n): Biamp, QSC</option>
           {!["\r\n", "\r", "\n"].includes(delimiter) && (
             <option value={delimiter}>Custom: {displayDelimiter(delimiter)}</option>
           )}
@@ -274,7 +274,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
                       },
                     })
                   }
-                  placeholder="leave blank — users enter per device"
+                  placeholder="leave blank, users enter per device"
                   style={{ flex: 1, fontFamily: "var(--font-mono)" }}
                 />
                 {secretToggle}
@@ -338,7 +338,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
                         },
                       })
                     }
-                    placeholder="leave blank — users enter per device"
+                    placeholder="leave blank, users enter per device"
                     style={{ flex: 1, fontFamily: "var(--font-mono)" }}
                   />
                   {secretToggle}
@@ -571,7 +571,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             }}
           >
             Most modern AV gear uses 8/N/1. Older RS-232 protocols may need
-            7/E/1 — check the device manual.
+            7/E/1. Check the device manual.
           </div>
         </>
       )}

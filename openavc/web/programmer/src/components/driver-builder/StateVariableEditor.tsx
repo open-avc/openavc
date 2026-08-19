@@ -99,7 +99,7 @@ export function StateVariableEditor({
           <span style={labelStyle}>Label</span>
           <span style={labelStyle}>Help Text</span>
           <span style={labelStyle}>Type</span>
-          <span style={labelStyle} title="Mark variables a control would bind to — the UI Builder's value picker lists them first. Unmarked variables stay available.">Control</span>
+          <span style={labelStyle} title="Mark variables a control would bind to: the UI Builder's value picker lists them first. Unmarked variables stay available.">Control</span>
           <span />
         </div>
       )}
@@ -164,7 +164,7 @@ export function StateVariableEditor({
                 onChange={(e) =>
                   updateVariable(name, "control", e.target.checked || undefined)
                 }
-                title="Mark as a control variable — the UI Builder's value picker lists it first"
+                title="Mark as a control variable: the UI Builder's value picker lists it first"
                 style={{ justifySelf: "center" }}
               />
               <button
@@ -247,7 +247,7 @@ export function StateVariableEditor({
                   style={{ fontSize: "var(--font-size-sm)" }}
                 />
                 <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  Numeric bounds and unit — used by panel sliders, the UI
+                  Numeric bounds and unit, used by panel sliders, the UI
                   Builder&apos;s range matching, and the simulator UI.
                 </div>
               </div>

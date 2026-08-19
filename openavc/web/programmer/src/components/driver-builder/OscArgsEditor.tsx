@@ -47,7 +47,7 @@ export function OscArgsEditor({
             marginBottom: "var(--space-xs)",
           }}
         >
-          No arguments — message will be sent as a query (address only).
+          No arguments: message will be sent as a query (address only).
         </div>
       )}
       {args.map((arg, i) => {
@@ -105,7 +105,7 @@ export function OscArgsEditor({
                   marginTop: 2,
                 }}
               >
-                Argument {i + 1} {problem} — the command fails to send until
+                Argument {i + 1} {problem}. The command fails to send until
                 this is fixed.
               </div>
             )}
@@ -130,7 +130,7 @@ export function OscArgsEditor({
         }}
       >
         Values support {"{param_name}"} substitution from the command&apos;s
-        parameters and device config, with optional format specs — e.g.{" "}
+        parameters and device config, with optional format specs, for example{" "}
         <code>{"{level}"}</code> or <code>{"{level:.2f}"}</code>.
       </div>
     </div>

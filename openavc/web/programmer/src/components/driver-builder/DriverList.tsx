@@ -161,7 +161,7 @@ export function DriverList({
                 onClick={handleRowClick}
                 title={
                   isBuiltin
-                    ? "Built-in driver — click to view (read-only). Use the Copy button to make an editable version."
+                    ? "Built-in driver: click to view (read-only). Use the Copy button to make an editable version."
                     : def.name
                 }
                 style={{
@@ -225,8 +225,8 @@ export function DriverList({
                   }}
                   title={
                     isBuiltin
-                      ? "Customize a copy — clones to your driver library"
-                      : "Duplicate driver — create an editable copy"
+                      ? "Customize a copy: clones to your driver library"
+                      : "Duplicate driver: create an editable copy"
                   }
                   style={{
                     padding: "2px",

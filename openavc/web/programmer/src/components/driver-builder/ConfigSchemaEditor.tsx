@@ -520,7 +520,7 @@ function ComputedFieldsEditor({
         }}
       >
         Optional values computed from other config fields when the device
-        connects — each is a template like{" "}
+        connects. Each is a template like{" "}
         <code>{"/workspace/{workspace_id}"}</code>. If a referenced field is
         empty or missing, the computed value is <code>&quot;&quot;</code>, so
         an optional prefixed segment simply disappears. Use a computed field

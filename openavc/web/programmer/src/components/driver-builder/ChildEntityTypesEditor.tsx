@@ -99,7 +99,7 @@ export function ChildEntityTypesEditor({
           marginBottom: "var(--space-md)",
         }}
       >
-        Sub-units this driver manages — encoders, decoders, zones, presets,
+        Sub-units this driver manages: encoders, decoders, zones, presets,
         anything the device addresses by ID. Each child type gets its own row
         in the Child Entities tab on a device and its own per-instance state
         keys ({"device.<id>.<type>.<local_id>.<prop>"}). Leave this empty for
@@ -117,7 +117,7 @@ export function ChildEntityTypesEditor({
         }}
       >
         To create children at runtime, give each type an <b>Instances</b> rule
-        below — a fixed count, or a config field the installer fills in. The
+        below: a fixed count, or a config field the installer fills in. The
         driver registers them on connect; response rules route per-child
         values with <code>child_set</code>, and polling can send one query per
         child with <code>each child</code>. A type without an Instances rule
@@ -454,7 +454,7 @@ function IdFormatSection({
       </div>
       <div style={helpStyle}>
         Integer IDs live in <code>[min, max]</code>; pad width zero-pads the
-        local id when rendered in state keys — e.g. pad_width 3 renders
+        local id when rendered in state keys. For example, pad_width 3 renders
         encoder 5 as <code>005</code>. String IDs are device-native names
         (letters, digits, <code>_</code>, <code>-</code>), take their roster
         from an ID-list config field, and are capped at max length (128 by
@@ -717,18 +717,18 @@ function InstancesSection({
         ) : source === "count_from" ? (
           <>
             Reads an integer from the named config field and registers IDs
-            1..N — lets one driver cover different frame sizes.
+            1..N, which lets one driver cover different frame sizes.
           </>
         ) : source === "ids" ? (
           <>
-            Registers exactly these IDs — for rosters the protocol fixes
+            Registers exactly these IDs, for rosters the protocol fixes
             (e.g. main buses <code>st, m</code>) that no config field should
             have to carry.
           </>
         ) : (
           <>
             Reads a comma-separated list from the named config field (e.g.{" "}
-            <code>1,2,4</code>) — for sparse or installer-chosen IDs.
+            <code>1,2,4</code>), for sparse or installer-chosen IDs.
           </>
         )}{" "}
         {source === "count_from" && inst?.count_from_state && (
@@ -829,8 +829,8 @@ function StateVarsSection({
         }}
       >
         Each registered child gets one state key per field. The platform also
-        injects a boolean <code>online</code> and a string <code>label</code>
-        — you don't need to declare those.
+        injects a boolean <code>online</code> and a string <code>label</code>.
+        You don't need to declare those.
       </div>
 
       {varNames.length > 0 && (
@@ -847,7 +847,7 @@ function StateVarsSection({
           <span style={{ ...labelStyle, fontSize: "11px" }}>Label</span>
           <span style={{ ...labelStyle, fontSize: "11px" }}>Help</span>
           <span style={{ ...labelStyle, fontSize: "11px" }}>Type</span>
-          <span style={{ ...labelStyle, fontSize: "11px" }} title="Mark fields a control would bind to — value and command pickers list them first. Unmarked fields stay available.">Control</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }} title="Mark fields a control would bind to: value and command pickers list them first. Unmarked fields stay available.">Control</span>
           <span />
         </div>
       )}
@@ -910,7 +910,7 @@ function StateVarsSection({
                 onChange={(e) =>
                   updateVar(name, "control", e.target.checked || undefined)
                 }
-                title="Mark as a control field — value and command pickers list it first"
+                title="Mark as a control field: value and command pickers list it first"
                 style={{ justifySelf: "center" }}
               />
               <button
