@@ -121,7 +121,7 @@ export function BrightnessEditor({
               onChange={(e) => setIdleDim({ ...idleDim, after_seconds: Number(e.target.value) })}
               style={numInputStyle}
             />
-            seconds without input — any press, turn, or tap wakes it.
+            seconds without input. Any press, turn, or tap wakes it.
           </span>
         )}
       </label>

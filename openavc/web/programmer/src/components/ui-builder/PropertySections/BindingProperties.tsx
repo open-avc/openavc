@@ -26,15 +26,15 @@ interface BindingPropertiesProps {
 // $output (matrix route), $output / $mute (mute route). Plain press/release/hold
 // carry no value, so they offer no token.
 const VALUE_TOKEN = [
-  { key: "value", label: "value — the value the user just touched (slider position, select choice, etc.)" },
+  { key: "value", label: "value: the value the user just touched (slider position, select choice, etc.)" },
 ];
 const ROUTE_TOKENS = [
-  { key: "input", label: "input — the routed input number" },
-  { key: "output", label: "output — the routed output number" },
+  { key: "input", label: "input: the routed input number" },
+  { key: "output", label: "output: the routed output number" },
 ];
 const MUTE_TOKENS = [
-  { key: "output", label: "output — the muted output number" },
-  { key: "mute", label: "mute — true when muting, false when unmuting" },
+  { key: "output", label: "output: the muted output number" },
+  { key: "mute", label: "mute: true when muting, false when unmuting" },
 ];
 const EVENT_TOKENS_BY_INTERACTION: Record<string, { key: string; label: string }[]> = {
   change: VALUE_TOKEN,
@@ -424,7 +424,7 @@ function ValueSourceEditor({
         ) : valueMapDriven ? (
           <div style={hintStyle}>
             A device value is read-only here. Choose what each option sends in the
-            <strong> On change</strong> card below — each option can run its own command.
+            <strong> On change</strong> card below, where each option can run its own command.
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

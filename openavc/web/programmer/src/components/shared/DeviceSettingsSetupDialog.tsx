@@ -260,7 +260,7 @@ export function DeviceSettingsSetupDialog({
                 >
                   {result.success
                     ? result.pending
-                      ? "Queued — will be applied when device connects"
+                      ? "Queued: will be applied when device connects"
                       : "Saved"
                     : result.error}
                 </div>

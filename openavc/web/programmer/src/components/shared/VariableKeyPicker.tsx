@@ -101,12 +101,12 @@ const NO_EVENT_CONTEXT: { key: string; label: string }[] = [];
  *  available fields depend on the trigger type (event vs state-change); the
  *  picker shows the full set and the group note explains the constraint. */
 const TRIGGER_CONTEXT_KEYS: { key: string; label: string }[] = [
-  { key: "trigger.event", label: "event — the event name (event triggers)" },
-  { key: "trigger.data", label: "data — received/parsed payload (event triggers)" },
-  { key: "trigger.raw", label: "raw — raw bytes payload (event triggers)" },
-  { key: "trigger.new_value", label: "new_value — the new value (state-change triggers)" },
-  { key: "trigger.old_value", label: "old_value — the previous value (state-change triggers)" },
-  { key: "trigger.key", label: "key — the state key that changed (state-change triggers)" },
+  { key: "trigger.event", label: "event: the event name (event triggers)" },
+  { key: "trigger.data", label: "data: received/parsed payload (event triggers)" },
+  { key: "trigger.raw", label: "raw: raw bytes payload (event triggers)" },
+  { key: "trigger.new_value", label: "new_value: the new value (state-change triggers)" },
+  { key: "trigger.old_value", label: "old_value: the previous value (state-change triggers)" },
+  { key: "trigger.key", label: "key: the state key that changed (state-change triggers)" },
 ];
 
 interface KeyEntry {

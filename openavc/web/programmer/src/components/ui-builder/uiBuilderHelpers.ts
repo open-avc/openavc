@@ -5349,7 +5349,7 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
         actionsCommandDevice(slotActions(doMap, d.interaction)),
       );
       if (!hasCommand) {
-        issues.push({ severity: "warning", message: `This control shows a device value but has no command to change it — add a command so touching it reaches the device`, location: `${loc} > value`, pageId, elementId: el.id });
+        issues.push({ severity: "warning", message: `This control shows a device value but has no command to change it. Add a command so touching it reaches the device`, location: `${loc} > value`, pageId, elementId: el.id });
       }
     }
 

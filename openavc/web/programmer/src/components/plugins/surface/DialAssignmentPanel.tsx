@@ -259,7 +259,7 @@ export function DialAssignmentPanel({
           </div>
         )}
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-          Turning while the dial is held uses this instead — a smaller step
+          Turning while the dial is held uses this instead, a smaller step
           for fine trim. A push that turned never fires the press actions.
         </div>
       </div>

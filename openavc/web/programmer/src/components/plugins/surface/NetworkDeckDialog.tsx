@@ -178,7 +178,7 @@ export function NetworkDeckDialog({
         {found !== null && found.length === 0 && (
           <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
             {browseAvailable
-              ? "No decks answered. Automatic discovery only sees decks on this network segment — add one by address below."
+              ? "No decks answered. Automatic discovery only sees decks on this network segment. Add one by address below."
               : "Automatic discovery isn't available from this server (it doesn't cross Docker bridge networks, NAT, or VLANs). Add the deck by its address."}
           </div>
         )}
@@ -271,7 +271,7 @@ export function NetworkDeckDialog({
               color: testResult.success ? "var(--color-success)" : "var(--color-error)",
             }}
           >
-            {testResult.success ? "Reachable — ready to add." : `Not reachable: ${testResult.error}`}
+            {testResult.success ? "Reachable, ready to add." : `Not reachable: ${testResult.error}`}
           </div>
         )}
         <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>

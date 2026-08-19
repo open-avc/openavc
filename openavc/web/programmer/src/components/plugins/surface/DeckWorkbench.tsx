@@ -564,7 +564,7 @@ export function DeckWorkbench({
           ],
         };
         onViewChange(nextView);
-        showInfo("Added locked page keys — move or remove them anytime.");
+        showInfo("Added locked page keys. Move or remove them anytime.");
       }
     }
     setDraftPage(true);
@@ -1030,11 +1030,11 @@ export function DeckWorkbench({
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {isOwn ? (
                   <>
-                    Editing <strong style={{ color: "var(--text-secondary)" }}>{ownerName}'s own layout</strong> — other decks aren't affected.
+                    Editing <strong style={{ color: "var(--text-secondary)" }}>{ownerName}'s own layout</strong>. Other decks aren't affected.
                   </>
                 ) : (
                   <>
-                    Editing the <strong style={{ color: "var(--text-secondary)" }}>shared layout</strong> — shown on every deck without its own.
+                    Editing the <strong style={{ color: "var(--text-secondary)" }}>shared layout</strong>, shown on every deck without its own.
                   </>
                 )}
               </span>
@@ -1043,7 +1043,7 @@ export function DeckWorkbench({
 
           {draftPage && editorPage >= pageCount && (
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-              New page — it's created (and reachable from the deck) as soon as
+              New page. It's created (and reachable from the deck) as soon as
               you put something on it.
             </div>
           )}
@@ -1091,7 +1091,7 @@ export function DeckWorkbench({
             >
               {deckDisplayName} is not connected.
               <br />
-              Reconnect it to edit — its layout is kept. Layout tools are in
+              Reconnect it to edit; its layout is kept. Layout tools are in
               the panel on the right.
             </div>
           )}

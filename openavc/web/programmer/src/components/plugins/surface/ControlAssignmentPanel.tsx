@@ -82,14 +82,14 @@ export function ControlAssignmentPanel({
       ? `Key ${controlIndex + 1}`
       : `Button ${controlIndex + 1}`;
   const title = locked
-    ? `${keyNoun} — every page`
+    ? `${keyNoun} (every page)`
     : pageName
-      ? `${keyNoun} — ${pageName}`
+      ? `${keyNoun} (${pageName})`
       : keyNoun;
 
   const whatItShows = !visualDeck ? (
     <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-      This model has no display — the label only names the switch in the
+      This model has no display. The label only names the switch in the
       editor, and there is nothing for colors or feedback to change.
     </div>
   ) : (
@@ -121,7 +121,7 @@ export function ControlAssignmentPanel({
       </div>
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
         {colorOnly
-          ? "This key has no display — it glows with this color. Feedback colors override it when active; labels and icons don't apply."
+          ? "This key has no display. It glows with this color. Feedback colors override it when active; labels and icons don't apply."
           : "Feedback colors override these when active."}
       </div>
       {!colorOnly && (

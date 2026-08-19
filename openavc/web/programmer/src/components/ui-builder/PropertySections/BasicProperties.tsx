@@ -948,7 +948,7 @@ export function BasicProperties({
           )}
           {element.matrix_config?.audio_follow_video && (
             <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px", fontStyle: "italic" }}>
-              Only enable this if your matrix needs a separate audio route command. Many switchers route audio together with video automatically — leave this off for those.
+              Only enable this if your matrix needs a separate audio route command. Many switchers route audio together with video automatically, so leave this off for those.
             </div>
           )}
           <FieldRow label="Show Lock">
@@ -1866,7 +1866,7 @@ function ValueBehaviorFields({
         </FieldRow>
       )}
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
-        "On release only" sends one command when you let go — use it for devices that can't keep up with a stream of commands. Shown decimals affect the readout, not the value sent (a driver formats that).
+        "On release only" sends one command when you let go. Use it for devices that can't keep up with a stream of commands. Shown decimals affect the readout, not the value sent (a driver formats that).
       </div>
     </>
   );

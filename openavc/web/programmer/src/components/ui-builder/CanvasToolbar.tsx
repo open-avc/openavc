@@ -469,7 +469,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           // all mutations, so it stays shut there.
           if (!previewMode) setTabMenu({ x: e.clientX, y: e.clientY, pageId: page.id });
         }}
-        title={`${page.name}${isRegularPage(page) ? "" : ` (${page.page_type})`} — ${
+        title={`${page.name}${isRegularPage(page) ? "" : ` (${page.page_type})`}: ${
           isCustomPage(page)
             ? "shows a page you wrote"
             : `${page.elements.length} element${page.elements.length !== 1 ? "s" : ""}`
@@ -1087,7 +1087,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                 }}
                 title={
                   undoStack.length > 0
-                    ? `Undo ${undoStack[undoStack.length - 1].description} (Ctrl+Z) — ${undoStack.length} step${undoStack.length > 1 ? "s" : ""}`
+                    ? `Undo ${undoStack[undoStack.length - 1].description} (Ctrl+Z), ${undoStack.length} step${undoStack.length > 1 ? "s" : ""}`
                     : "Undo (Ctrl+Z)"
                 }
               >
@@ -1104,7 +1104,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                 }}
                 title={
                   redoStack.length > 0
-                    ? `Redo ${redoStack[redoStack.length - 1].description} (Ctrl+Y) — ${redoStack.length} step${redoStack.length > 1 ? "s" : ""}`
+                    ? `Redo ${redoStack[redoStack.length - 1].description} (Ctrl+Y), ${redoStack.length} step${redoStack.length > 1 ? "s" : ""}`
                     : "Redo (Ctrl+Y)"
                 }
               >

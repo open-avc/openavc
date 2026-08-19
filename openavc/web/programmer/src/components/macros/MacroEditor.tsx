@@ -596,7 +596,7 @@ export function MacroEditor({
             <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
             <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
               Overlap:
-              <span title="What happens when this macro is fired again while it's still running — from any source (trigger, script, button, REST, AI, or another macro). Allow: run concurrently (default). Skip: ignore the new run while one is in progress. Queue: wait for the running one to finish, then run. A trigger can still add its own overlap rule; the stricter of the two applies.">
+              <span title="What happens when this macro is fired again while it's still running, from any source (trigger, script, button, REST, AI, or another macro). Allow: run concurrently (default). Skip: ignore the new run while one is in progress. Queue: wait for the running one to finish, then run. A trigger can still add its own overlap rule; the stricter of the two applies.">
                 <HelpCircle size={11} style={{ opacity: 0.5 }} />
               </span>
               <select
@@ -793,7 +793,7 @@ export function MacroEditor({
               This macro has no steps yet
             </div>
             <div style={{ fontSize: "var(--font-size-sm)" }}>
-              A macro is a sequence of actions that run in order — like powering
+              A macro is a sequence of actions that run in order, like powering
               on devices, switching inputs, and setting room variables.
               Click <strong>Add Step</strong> below to build your sequence.
             </div>

@@ -127,7 +127,7 @@ function MacroConfig({
       >
         <option value="">Select macro...</option>
         {project.macros.length === 0 && (
-          <option disabled>No macros yet — create one in the Macros view</option>
+          <option disabled>No macros yet: create one in the Macros view</option>
         )}
         {project.macros.map((m) => (
           <option key={m.id} value={m.id}>
@@ -201,7 +201,7 @@ function DeviceCommandConfig({
             const connected = useConnectionStore.getState().liveState[`device.${d.id}.connected`];
             return (
               <option key={d.id} value={d.id}>
-                {connected ? "\u25CF " : "\u25CB "}{d.name} — {d.driver}
+                {connected ? "\u25CF " : "\u25CB "}{d.name} ({d.driver})
               </option>
             );
           })}
@@ -536,8 +536,8 @@ function NavigateConfig({
           <option value="$dismiss">Close this overlay</option>
         </optgroup>
         <optgroup label="Special">
-          <option value="$back">$back — previous page (or close overlay if one is open)</option>
-          <option value="$dismiss">$dismiss — close topmost overlay only</option>
+          <option value="$back">$back: previous page (or close overlay if one is open)</option>
+          <option value="$dismiss">$dismiss: close topmost overlay only</option>
         </optgroup>
       </select>
     </div>
@@ -586,7 +586,7 @@ function ScriptCallConfig({
             <optgroup key={scriptId} label={scriptId}>
               {fns.map((fn) => (
                 <option key={`${fn.script}.${fn.function}`} value={fn.function}>
-                  {fn.function}{fn.doc ? ` — ${fn.doc}` : ""}
+                  {fn.function}{fn.doc ? `: ${fn.doc}` : ""}
                 </option>
               ))}
             </optgroup>

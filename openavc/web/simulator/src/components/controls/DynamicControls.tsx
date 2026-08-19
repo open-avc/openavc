@@ -47,7 +47,7 @@ export function DynamicControls({ controls, state, onStateChange }: Props) {
             // author sees the failure instead of a blank card.
             const badType = (ctrl as ControlDef).type;
             console.warn(
-              `[simulator] Unknown control type "${badType}" — nothing to render. ` +
+              `[simulator] Unknown control type "${badType}". Nothing to render. ` +
                 "Check the driver's simulator.controls (run `python -m openavc.simulator.validate` to catch this).",
             );
             return (

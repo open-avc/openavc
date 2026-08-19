@@ -231,7 +231,7 @@ function PaletteItem({
         background: "transparent",
         userSelect: "none",
       }}
-      title={info.description ? `${info.label} — ${info.description}\nClick to add, or drag to place` : `Click to add ${info.label}, or drag to place`}
+      title={info.description ? `${info.label}: ${info.description}\nClick to add, or drag to place` : `Click to add ${info.label}, or drag to place`}
       onClick={() => { if (!disabled && onAdd) onAdd(info.type); }}
       onMouseEnter={(e) => {
         if (!disabled) {

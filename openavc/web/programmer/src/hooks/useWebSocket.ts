@@ -50,7 +50,7 @@ export function useWebSocket() {
         // stale pages/settings/master_elements that no longer match.
         useUIBuilderStore.getState().clearUndoHistory();
         if (wasDirty) {
-          showSuccess("Project reloaded from server — local changes may need to be re-applied");
+          showSuccess("Project reloaded from server. Local changes may need to be re-applied");
         }
       }).catch(console.error);
     };
@@ -150,9 +150,9 @@ export function useWebSocket() {
         const serverRevision = (msg as any).revision;
         if (store.dirty) {
           if (serverRevision != null && store.revision != null && serverRevision !== store.revision) {
-            showInfo("Project modified by another session — save may trigger a conflict. Consider reloading.");
+            showInfo("Project modified by another session. Save may trigger a conflict. Consider reloading.");
           } else {
-            showInfo("Project modified externally — your unsaved changes may conflict");
+            showInfo("Project modified externally. Your unsaved changes may conflict");
           }
         } else {
           debouncedProjectReload();

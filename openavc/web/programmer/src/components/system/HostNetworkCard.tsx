@@ -143,7 +143,7 @@ function IfaceEditor({
         // Saved to the device's boot configuration; it is now restarting.
         // Skip the status refresh — the server is going down with it.
         showSuccess(
-          `${iface.device}: settings saved — the device is restarting to apply them.`
+          `${iface.device}: settings saved. The device is restarting to apply them.`
         );
         return;
       }
@@ -163,7 +163,7 @@ function IfaceEditor({
       showError(
         method === "manual"
           ? `No response from the server. If the address changed, reconnect at ${newProgrammerUrl(address)}`
-          : "No response from the server. The address may have changed — find the device at its new address (or openavc.local)."
+          : "No response from the server. The address may have changed. Find the device at its new address (or openavc.local)."
       );
     } finally {
       setBusy(false);
@@ -502,7 +502,7 @@ export function HostNetworkCard() {
       const result = await api.setHostHostname(hostname.trim());
       if (result.success) {
         showSuccess(
-          `Hostname changed — this device is now ${hostname.trim()}.local`
+          `Hostname changed. This device is now ${hostname.trim()}.local`
         );
         load();
       } else {

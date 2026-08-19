@@ -195,7 +195,7 @@ export function StylesheetEditor({
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
               {classNames.length === 0
                 ? "No classes defined yet. A rule like .brand-button { } adds one, and it becomes selectable on any element."
-                : `Classes in this stylesheet (${classNames.length}) — pick these on an element under Properties > Style > Custom classes:`}
+                : `Classes in this stylesheet (${classNames.length}). Pick these on an element under Properties > Style > Custom classes:`}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {classNames.map((name) => (
@@ -241,7 +241,7 @@ export function StylesheetEditor({
               background: "var(--bg-base)",
             }}
           >
-            Live preview —{" "}
+            Live preview:{" "}
             {project.ui.pages.find((p) => p.id === previewPageId)?.name || previewPageId || "no page"}
           </div>
           <div style={{ flex: 1, position: "relative", minHeight: 0 }}>

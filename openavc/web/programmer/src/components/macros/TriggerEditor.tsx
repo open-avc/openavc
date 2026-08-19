@@ -365,7 +365,7 @@ function ScheduleEditor({
       {/* Validation + Preview */}
       {cron && !isValidCron(cron) && (
         <div style={{ fontSize: 12, color: "var(--color-error, #f44336)", fontWeight: 500 }}>
-          Invalid cron expression — must have 5 fields (minute hour day month weekday)
+          Invalid cron expression: must have 5 fields (minute hour day month weekday)
         </div>
       )}
       {cron && isValidCron(cron) && (
@@ -843,7 +843,7 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
         color: allPass ? "#10b981" : "#ef4444",
         marginBottom: conditions.length > 1 ? 4 : 0,
       }}>
-        Evaluated now: {allPass ? "ALL TRUE — trigger would fire" : "FALSE — trigger would not fire"}
+        Evaluated now: {allPass ? "ALL TRUE, trigger would fire" : "FALSE, trigger would not fire"}
       </div>
       {conditions.map((cond, i) => {
         const actual = currentState[cond.key];

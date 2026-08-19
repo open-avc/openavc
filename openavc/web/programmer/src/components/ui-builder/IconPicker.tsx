@@ -270,7 +270,7 @@ function IconBrowserModal({
                 fontSize: 11,
               }}
             >
-              Showing 300 of {filteredIcons.length} — refine your search
+              Showing 300 of {filteredIcons.length}. Refine your search
             </div>
           )}
         </div>

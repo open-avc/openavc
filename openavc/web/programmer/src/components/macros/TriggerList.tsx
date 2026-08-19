@@ -194,7 +194,7 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
             lineHeight: 1.5,
           }}
         >
-          No triggers — this macro can only run manually or from a UI button.
+          No triggers. This macro can only run manually or from a UI button.
           <br />
           Add a trigger to automate it with schedules, state changes, or events.
           <br /><br />

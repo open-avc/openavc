@@ -543,7 +543,7 @@ function StateSetEditor({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <HelpText>
-        Set a shared variable that the whole system can see — UI elements update, scripts
+        Set a shared variable that the whole system can see: UI elements update, scripts
         can react, other macros can read it.
       </HelpText>
 
@@ -690,7 +690,7 @@ function TypedValueInput({
 
 const COMMON_EVENTS = [
   { value: "", label: "Type a custom event name..." },
-  { value: "custom.", label: "custom.* — Custom application events" },
+  { value: "custom.", label: "custom.*: Custom application events" },
   { value: "system.room_occupied", label: "Room occupied" },
   { value: "system.room_vacant", label: "Room vacant" },
   { value: "system.panic", label: "System panic/emergency" },
@@ -773,7 +773,7 @@ function EventEmitEditor({
           + Add field
         </button>
         <div style={hintStyle}>
-          Optional data sent with the event. Listeners read it as the event payload — scripts
+          Optional data sent with the event. Listeners read it as the event payload: scripts
           via the <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>payload</code> argument,
           triggered macros via <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>$trigger.&lt;field&gt;</code>.
         </div>
@@ -1001,7 +1001,7 @@ function UINavigateEditor({
       <HelpText>
         Send every connected panel to a specific page or overlay. For switching modes within the
         same page, prefer <strong>Set Variable</strong> plus <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>visible_when</code>{" "}
-        element bindings — that pattern survives panel reconnects and doesn't push every panel to a new page.
+        element bindings. That pattern survives panel reconnects and doesn't push every panel to a new page.
       </HelpText>
       <div style={rowStyle}>
         <label style={labelStyle}>Page</label>
@@ -1030,8 +1030,8 @@ function UINavigateEditor({
             </optgroup>
           )}
           <optgroup label="Special">
-            <option value="$back">$back — previous page (or close overlay if one is open)</option>
-            <option value="$dismiss">$dismiss — close topmost overlay only</option>
+            <option value="$back">$back: previous page (or close overlay if one is open)</option>
+            <option value="$dismiss">$dismiss: close topmost overlay only</option>
           </optgroup>
         </select>
       </div>
@@ -1473,7 +1473,7 @@ function PluginActionEditor({
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <HelpText>
         <strong style={{ color: "var(--text-secondary)" }}>{action.plugin_name}</strong>
-        {action.description ? <> — {action.description}</> : null}
+        {action.description ? <>: {action.description}</> : null}
       </HelpText>
       {action.params.length === 0 && (
         <div style={hintStyle}>This action takes no parameters.</div>
@@ -1585,7 +1585,7 @@ function PluginParamField({
             style={inputStyle}
           >
             <option value="">
-              {options.length === 0 ? "(no options available — try ↻ refresh)" : "Select..."}
+              {options.length === 0 ? "(no options available, try ↻ refresh)" : "Select..."}
             </option>
             {options.map((opt) => (
               <option key={String(opt.value)} value={String(opt.value)}>

@@ -122,7 +122,7 @@ export function BezelCanvas({
           {hasInfoScreen && (
             <button
               onClick={() => onSelect({ kind: "screen" })}
-              title="Info screen — click to set what it shows"
+              title="Info screen: click to set what it shows"
               style={{
                 flex: 1,
                 height: Math.max(34, Math.round((gridWidth * 0.55 * 58) / 248)),
@@ -192,7 +192,7 @@ export function BezelCanvas({
           }}
           onMouseEnter={() => setStripHover(true)}
           onMouseLeave={() => setStripHover(false)}
-          title="Touch strip — click to edit, Shift+click to tap it"
+          title="Touch strip: click to edit, Shift+click to tap it"
           style={{
             width: gridWidth,
             height: Math.round(gridWidth / 8),
@@ -278,7 +278,7 @@ export function BezelCanvas({
                     }
                     onSelect({ kind: "dial", index: i });
                   }}
-                  title={`Dial ${i + 1}${dial?.label ? ` — ${dial.label}` : ""} · click to edit, Shift+click to press`}
+                  title={`Dial ${i + 1}${dial?.label ? `: ${dial.label}` : ""} · click to edit, Shift+click to press`}
                   style={{
                     width: 40,
                     height: 40,
@@ -386,7 +386,7 @@ function KeyCell({
           }
           onSelect();
         }}
-        title={`Key ${index + 1}${assignment?.label ? ` — ${assignment.label}` : ""} · click to edit${onPress ? ", Shift+click to press" : ""}`}
+        title={`Key ${index + 1}${assignment?.label ? `: ${assignment.label}` : ""} · click to edit${onPress ? ", Shift+click to press" : ""}`}
         style={{
           width: "100%",
           height: "100%",
@@ -442,7 +442,7 @@ function KeyCell({
       </button>
       {locked && (
         <span
-          title="Locked — same on every page"
+          title="Locked: same on every page"
           style={{
             position: "absolute",
             top: 3,

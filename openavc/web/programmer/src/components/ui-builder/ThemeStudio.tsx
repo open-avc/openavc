@@ -266,10 +266,10 @@ function ColorPickerCell({ value, onChange, fallback }: ColorPickerCellProps) {
   const isClear = !raw || raw === "transparent" || (parsed != null && parsed.a === 0);
   const seed = parsed ? rgbToHex6(parsed) : fallbackParsed ? rgbToHex6(fallbackParsed) : "#888888";
   const title = !raw
-    ? "Inherits the theme default — pick or type a color to set one"
+    ? "Inherits the theme default: pick or type a color to set one"
     : raw === "transparent"
-      ? "Transparent — pick or type a color to change"
-      : `${raw} — pick or type a color to change`;
+      ? "Transparent: pick or type a color to change"
+      : `${raw}: pick or type a color to change`;
   return (
     <label
       title={title}
@@ -1290,8 +1290,8 @@ export function ThemeStudio({
                   }}
                 >
                   {isGallery
-                    ? "Live preview — element gallery (one of every type)"
-                    : `Live preview — ${(project.ui.pages.find((p) => p.id === previewView)?.name) || previewView}`}
+                    ? "Live preview: element gallery (one of every type)"
+                    : `Live preview: ${(project.ui.pages.find((p) => p.id === previewView)?.name) || previewView}`}
                 </div>
                 <div style={{ flex: 1, position: "relative" }}>
                   <PanelPreviewFrame
@@ -1919,7 +1919,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
           />
           {roundnessPreset === null && (
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-              Custom ({borderRadius}px) — adjust in the Theme section below
+              Custom ({borderRadius}px), adjust in the Theme section below
             </div>
           )}
         </div>
@@ -1928,7 +1928,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
         <div>
           <div style={labelStyle}>Surface Style{surfaceModified && modifiedPill}</div>
           <div style={hintStyle}>
-            How elements sit on the page — flat, with depth shadows, or with outlines
+            How elements sit on the page: flat, with depth shadows, or with outlines
           </div>
           <SegmentedControl
             ariaLabel="Surface style"

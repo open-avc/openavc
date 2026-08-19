@@ -236,7 +236,7 @@ export function ParamInput({
         const chosen = findChildByValue(children, sv);
         comboOptions = childSchemaOptions(chosen?.schema);
         if (children !== undefined && !chosen) {
-          comboHint = `No "${sv}" found — type the control name.`;
+          comboHint = `No "${sv}" found. Type the control name.`;
         }
       }
     }
@@ -353,7 +353,7 @@ export function ParamInput({
           <div
             style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}
           >
-            No registered {ownChildType} entries on this device yet — see the
+            No registered {ownChildType} entries on this device yet. See the
             Child Entities tab.
           </div>
         )}

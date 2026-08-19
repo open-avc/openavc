@@ -133,7 +133,7 @@ function localStateChip(d: PresentDisplay): { text: string; warn: boolean } | nu
     case "waiting_for_signin":
       return { text: "Waiting for Windows sign-in", warn: true };
     case "error":
-      return { text: "Window error — see System Log", warn: true };
+      return { text: "Window error: see System Log", warn: true };
     case "unsupported":
       return { text: "Not supported on this server", warn: true };
     case "starting":
@@ -146,9 +146,9 @@ function localStateChip(d: PresentDisplay): { text: string; warn: boolean } | nu
 }
 
 function outputOptionLabel(o: presentApi.HostOutput, currentDisplayId: string | null): string {
-  let label = `${o.name} — ${o.width}x${o.height}`;
+  let label = `${o.name}: ${o.width}x${o.height}`;
   if (o.primary) label += " (primary)";
-  if (o.in_use_by && o.in_use_by !== currentDisplayId) label += ` — in use by ${o.in_use_by}`;
+  if (o.in_use_by && o.in_use_by !== currentDisplayId) label += `, in use by ${o.in_use_by}`;
   return label;
 }
 
@@ -236,8 +236,8 @@ function DisplayForm({
         </Field>
         <Field label="Type">
           <select style={{ ...inputStyle, cursor: "pointer" }} value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="browser">Browser — a device opens the display link in a browser</option>
-            <option value="stream">Stream — a hardware decoder pulls an RTSP/SRT address</option>
+            <option value="browser">Browser: a device opens the display link in a browser</option>
+            <option value="stream">Stream: a hardware decoder pulls an RTSP/SRT address</option>
           </select>
         </Field>
         {kind === "stream" && (!display || display.kind !== "stream") && (
@@ -280,7 +280,7 @@ function DisplayForm({
         )}
         {kind === "browser" && selectedOutput?.primary && (
           <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: 1.5 }}>
-            That is this server&apos;s primary screen — usually the console or
+            That is this server&apos;s primary screen, usually the console or
             panel display. Present will cover it whenever this display is on.
           </p>
         )}
@@ -586,7 +586,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
         ) : displays.length === 0 ? (
           <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
             No displays yet. Add one, then open its display link in a browser
-            on the device driving that screen — or add a stream display and
+            on the device driving that screen, or add a stream display and
             point a hardware decoder at its address.
           </div>
         ) : (
@@ -716,9 +716,9 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                       }}
                     >
                       {d.encoder_state === "starting"
-                        ? "Encoder starting — the stream appears in a few seconds…"
+                        ? "Encoder starting. The stream appears in a few seconds…"
                         : d.encoder_state === "error"
-                          ? "Encoder error — check the System Log."
+                          ? "Encoder error: check the System Log."
                           : "Encoder stopped."}
                     </span>
                   )}
@@ -731,12 +731,12 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
 
       <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
         A browser display has a link to open, full screen, in a browser on
-        the device driving that screen — or, when this server has a video
+        the device driving that screen. Or, when this server has a video
         output at the display, pick that output in the display&apos;s
         settings and the server opens the window itself. A stream display
         instead shows RTSP and SRT addresses for a hardware decoder to pull.
         Both carry a secret (the link&apos;s key, the address&apos;s stream
-        key) — treat them like passwords; the key button issues new ones.
+        key). Treat them like passwords; the key button issues new ones.
         Source picks what a display shows: Auto follows the active
         presenter; pinning a presenter holds their screen there. If the
         connect address above isn&apos;t reachable from guests&apos; laptops
@@ -770,7 +770,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
           title={rekeying.kind === "stream" ? "Regenerate stream key" : "Regenerate display link"}
           message={
             rekeying.kind === "stream"
-              ? `Create new stream addresses for "${rekeying.label}"? The current RTSP and SRT addresses stop working immediately — every decoder pulling them must be given the new address.`
+              ? `Create new stream addresses for "${rekeying.label}"? The current RTSP and SRT addresses stop working immediately, and every decoder pulling them must be given the new address.`
               : `Create a new display link for "${rekeying.label}"? Every copy of the current link stops working immediately, including the device that is using it right now.`
           }
           confirmLabel="Regenerate"

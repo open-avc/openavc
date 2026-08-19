@@ -360,7 +360,7 @@ export function DeviceValuePicker({
             const connected = useConnectionStore.getState().liveState[`device.${d.id}.connected`];
             return (
               <option key={d.id} value={d.id}>
-                {connected ? "● " : "○ "}{d.name} — {d.driver}
+                {connected ? "● " : "○ "}{d.name} ({d.driver})
               </option>
             );
           })}

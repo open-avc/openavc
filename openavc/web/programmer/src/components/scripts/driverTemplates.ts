@@ -1096,7 +1096,7 @@ ${minimalConfigBlock(info.transport)}
     transport: "osc",
     generateCode: (info) => {
       const cls = classNameFrom(info.id);
-      return `"""${pyText(info.name)} driver for OpenAVC — OSC over UDP."""
+      return `"""${pyText(info.name)} driver for OpenAVC. OSC over UDP."""
 
 from __future__ import annotations
 

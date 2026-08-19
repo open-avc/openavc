@@ -75,7 +75,7 @@ export function TouchscreenZonesEditor({
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {anyDialConfigured
-            ? "The strip is showing one readout per dial (label, icon, live value, meter) — each readout is edited on its dial, so click a knob in the picture to change one. Take over the strip with custom zones when you want your own layout — meters, status panels, wider faders."
+            ? "The strip is showing one readout per dial (label, icon, live value, meter). Each readout is edited on its dial, so click a knob in the picture to change one. Take over the strip with custom zones when you want your own layout: meters, status panels, wider faders."
             : dialCount > 0
               ? "Nothing is set up yet, so the strip shows a clock. Click a knob in the picture to configure a dial and its readout takes over this strip, or build your own layout with custom zones."
               : "Add zones to put live values, meters, and touch actions on the strip."}
@@ -94,7 +94,7 @@ export function TouchscreenZonesEditor({
               }}
               title="Copy the current per-dial readouts into editable zones"
             >
-              Customize zones — start from the current ones
+              Customize zones: start from the current ones
             </button>
           )}
           <button
@@ -163,7 +163,7 @@ export function TouchscreenZonesEditor({
                 }}
               >
                 <span style={{ fontWeight: 500 }}>
-                  Zone {i + 1}{zone.label ? ` — ${zone.label}` : ""}
+                  Zone {i + 1}{zone.label ? `: ${zone.label}` : ""}
                 </span>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   {zone.value_source || "no value"}
@@ -335,7 +335,7 @@ export function TouchscreenZonesEditor({
                     />
                   </div>
                   <div>
-                    <label style={panelHintStyle}>Long-press actions (optional — falls back to tap)</label>
+                    <label style={panelHintStyle}>Long-press actions (optional, falls back to tap)</label>
                     <ActionListEditor
                       actions={zone.long_touch ?? []}
                       onChange={(long_touch) =>

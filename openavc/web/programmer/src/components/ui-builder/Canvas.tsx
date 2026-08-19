@@ -124,7 +124,7 @@ export function Canvas({
     const iframe = iframeRef.current;
     const p = projectRef.current;
     if (!iframe?.contentWindow || !p) return;
-    console.log("[canvas] iframe loaded — posting editor-init");
+    console.log("[canvas] iframe loaded, posting editor-init");
     // Resolved, not raw: the canvas IS the panel, and the panel reads a matrix
     // as two finished lists rather than expanding a generator itself (D6).
     void resolveProjectMatrices(p).then((resolved) =>

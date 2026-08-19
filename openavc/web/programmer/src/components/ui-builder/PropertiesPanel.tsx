@@ -975,7 +975,7 @@ function PageProperties({
           />
         </FieldRow>
         <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", padding: "0 0 0 76px" }}>
-          A ruler, not a container. Changing it — or switching it off — moves nothing
+          A ruler, not a container. Changing it, or switching it off, moves nothing
           that is already placed. Hold Alt while dragging to ignore it for one move.
         </div>
       </div>

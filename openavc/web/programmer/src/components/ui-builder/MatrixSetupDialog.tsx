@@ -363,7 +363,7 @@ export function MatrixSetupDialog({
             {routingDevices.length === 0 && <option value="">No devices in this project</option>}
             {routingDevices.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.name} — {d.driver}
+                {d.name} ({d.driver})
               </option>
             ))}
           </select>

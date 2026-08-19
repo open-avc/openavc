@@ -419,7 +419,7 @@ function _generateStepLines(
           `${indent}# Navigate panels to '${_pyComment(step.page ?? "")}'`
         );
         lines.push(
-          `${indent}# (no script API for ui.navigate yet — call from a macro step instead)`
+          `${indent}# (no script API for ui.navigate yet, call from a macro step instead)`
         );
         break;
       case "conditional": {
@@ -479,7 +479,7 @@ function _generateStepLines(
           // provides the call.
           const params = step.params ? JSON.stringify(step.params) : "{}";
           lines.push(
-            `${indent}# Plugin action '${_pyComment(step.action)}' — call the plugin's script API directly`
+            `${indent}# Plugin action '${_pyComment(step.action)}', call the plugin's script API directly`
           );
           lines.push(`${indent}# Params: ${_pyComment(params)}`);
         } else {
@@ -498,13 +498,13 @@ export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]
       if (step.action === "group.command") {
         const group = groups?.find((g) => g.id === step.group);
         if (!group) {
-          warnings.push(`Group command references unknown group "${step.group}" — device list will be empty in the generated script.`);
+          warnings.push(`Group command references unknown group "${step.group}". The device list will be empty in the generated script.`);
         } else {
           warnings.push(`Group command "${step.group}" → "${step.command}" is converted to a loop over ${group.device_ids.length} device(s). If the group membership changes later, update the script manually.`);
         }
       }
       if (step.action === "wait_until" && step.timeout == null) {
-        warnings.push(`"Wait Until" step with no timeout — the script will poll forever until the condition is met. Make sure something will eventually satisfy it.`);
+        warnings.push(`"Wait Until" step with no timeout. The script will poll forever until the condition is met. Make sure something will eventually satisfy it.`);
       }
       if (step.then_steps) checkSteps(step.then_steps);
       if (step.else_steps) checkSteps(step.else_steps);
@@ -514,7 +514,7 @@ export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]
 
   const triggers = macro.triggers ?? [];
   if (triggers.some((t) => t.type === "schedule" && t.enabled)) {
-    warnings.push("Schedule triggers are converted to event listeners. The schedule cron job still runs on the macro engine — disable the macro's schedule triggers after switching to the script.");
+    warnings.push("Schedule triggers are converted to event listeners. The schedule cron job still runs on the macro engine, so disable the macro's schedule triggers after switching to the script.");
   }
 
   return warnings;

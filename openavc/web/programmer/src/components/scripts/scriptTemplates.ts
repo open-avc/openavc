@@ -8,7 +8,7 @@ export const SCRIPT_TEMPLATES: ScriptTemplate[] = [
   {
     name: "Button Handler",
     description: "Respond to a UI button press",
-    code: `"""Button handler — respond to UI button presses."""
+    code: `"""Button handler: respond to UI button presses."""
 from openavc import on_event, devices, state, log
 
 
@@ -21,7 +21,7 @@ async def handle_button(event, payload):
   {
     name: "State Change Handler",
     description: "React when a state value changes",
-    code: `"""State change handler — react to variable changes."""
+    code: `"""State change handler: react to variable changes."""
 from openavc import on_state_change, state, log
 
 
@@ -33,7 +33,7 @@ def handle_state(key, old_value, new_value):
   {
     name: "Device Control",
     description: "Send commands to devices on an event",
-    code: `"""Device control — send commands to a device."""
+    code: `"""Device control: send commands to a device."""
 from openavc import on_event, devices, state, log
 
 
@@ -47,7 +47,7 @@ async def control_device(event, payload):
   {
     name: "Periodic Timer",
     description: "Run code on a repeating interval",
-    code: `"""Periodic timer — check status every 60 seconds."""
+    code: `"""Periodic timer: check status every 60 seconds."""
 from openavc import on_event, every, state, log
 
 
@@ -63,7 +63,7 @@ def check_status():
   {
     name: "System On/Off",
     description: "Power on/off all room equipment",
-    code: `"""System On/Off — control all room equipment."""
+    code: `"""System On/Off: control all room equipment."""
 from openavc import on_event, devices, state, log
 import asyncio
 
@@ -92,7 +92,7 @@ async def system_off(event, payload):
   {
     name: "Scheduled Task",
     description: "Run code on a repeating schedule",
-    code: `"""Scheduled task — runs on a cron schedule via a trigger.
+    code: `"""Scheduled task: runs on a cron schedule via a trigger.
 Create a Schedule trigger on a macro, or use the every() timer here."""
 from openavc import on_event, every, cancel_timer, state, devices, log
 
@@ -117,7 +117,7 @@ def scheduled_check():
   {
     name: "Device Monitor",
     description: "Watch device connections and react to status changes",
-    code: `"""Device monitor — react to device connect/disconnect events."""
+    code: `"""Device monitor: react to device connect/disconnect events."""
 from openavc import on_event, state, log
 
 
@@ -145,7 +145,7 @@ async def on_error(event, payload):
   {
     name: "Custom Event Handler",
     description: "Listen for and respond to custom events",
-    code: `"""Custom event handler — create your own event-driven logic."""
+    code: `"""Custom event handler: create your own event-driven logic."""
 from openavc import on_event, events, state, log
 
 
@@ -170,7 +170,7 @@ async def on_mode_change(event, payload):
   {
     name: "Variable Watcher",
     description: "Monitor variable changes and enforce rules",
-    code: `"""Variable watcher — monitor changes and enforce rules."""
+    code: `"""Variable watcher: monitor changes and enforce rules."""
 from openavc import on_state_change, state, log
 
 
@@ -188,7 +188,7 @@ def watch_volume(key, old_value, new_value):
 @on_state_change("var.room_active")
 def watch_room(key, old_value, new_value):
     if old_value and not new_value:
-        log.info("Room deactivated — resetting variables")
+        log.info("Room deactivated, resetting variables")
         state.set("var.current_source", "None")
         state.set("var.volume", 30)
 `,

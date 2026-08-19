@@ -243,10 +243,10 @@ export function ButtonBindingEditor({
           onChange={(e) => handleModeChange(e.target.value)}
           style={inputStyle}
         >
-          <option value="tap">Tap — fires once on press</option>
-          <option value="toggle">Toggle — on/off based on current state</option>
-          <option value="hold_repeat">Hold Repeat — fires repeatedly while held</option>
-          <option value="tap_hold">Tap / Long Press — different actions by press duration</option>
+          <option value="tap">Tap: fires once on press</option>
+          <option value="toggle">Toggle: on/off based on current state</option>
+          <option value="hold_repeat">Hold Repeat: fires repeatedly while held</option>
+          <option value="tap_hold">Tap / Long Press: different actions by press duration</option>
         </select>
 
         {/* Mode-specific settings */}

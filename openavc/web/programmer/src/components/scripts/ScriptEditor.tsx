@@ -294,7 +294,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
                     label: `ui.${el.id}.${prop}`,
                     kind: monaco.languages.CompletionItemKind.Variable,
                     insertText: `ui.${el.id}.${prop}`,
-                    detail: `${el.label || el.type} — ${prop}`,
+                    detail: `${el.label || el.type}: ${prop}`,
                     range,
                   });
                 }
@@ -327,7 +327,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
                     label: `ui.press.${el.id}`,
                     kind: monaco.languages.CompletionItemKind.Event,
                     insertText: `ui.press.${el.id}`,
-                    detail: `Button press — ${el.label || el.type}`,
+                    detail: `Button press: ${el.label || el.type}`,
                     range,
                   });
                 }
@@ -336,7 +336,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
                     label: `ui.change.${el.id}`,
                     kind: monaco.languages.CompletionItemKind.Event,
                     insertText: `ui.change.${el.id}`,
-                    detail: `Value change — ${el.label || el.type}`,
+                    detail: `Value change: ${el.label || el.type}`,
                     range,
                   });
                 }
@@ -468,28 +468,28 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
               label: "config",
               kind: monaco.languages.CompletionItemKind.Property,
               insertText: "config",
-              detail: "dict — device configuration from project",
+              detail: "dict: device configuration from project",
               range,
             },
             {
               label: "device_id",
               kind: monaco.languages.CompletionItemKind.Property,
               insertText: "device_id",
-              detail: "str — unique device identifier",
+              detail: "str: unique device identifier",
               range,
             },
             {
               label: "events",
               kind: monaco.languages.CompletionItemKind.Property,
               insertText: "events",
-              detail: "EventBus — emit and listen for events",
+              detail: "EventBus: emit and listen for events",
               range,
             },
             {
               label: "connected",
               kind: monaco.languages.CompletionItemKind.Property,
               insertText: "connected",
-              detail: "bool — True if transport is connected",
+              detail: "bool: True if transport is connected",
               range,
             },
           );
@@ -528,7 +528,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
               label: "connected",
               kind: monaco.languages.CompletionItemKind.Property,
               insertText: "connected",
-              detail: "bool — transport connection state",
+              detail: "bool: transport connection state",
               range,
             },
           );

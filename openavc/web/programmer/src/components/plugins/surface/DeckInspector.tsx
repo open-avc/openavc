@@ -222,7 +222,7 @@ export function DeckInspector({
       {/* Actions on the unit */}
       {onIdentify && (
         <button onClick={onIdentify} style={deckActionBtnStyle} title="Flash this deck's keys so you can tell which one it is">
-          Identify — flash this deck
+          Identify: flash this deck
         </button>
       )}
 
@@ -266,7 +266,7 @@ export function DeckInspector({
               <button
                 onClick={() => setMoveTarget(moveTargets[0].serial)}
                 style={deckActionBtnStyle}
-                title="Re-key this layout (and the deck's name) onto another deck — e.g. a replacement unit"
+                title="Re-key this layout (and the deck's name) onto another deck, for example a replacement unit"
               >
                 Move this layout to another deck...
               </button>
@@ -287,7 +287,7 @@ export function DeckInspector({
                 >
                   {moveTargets.map((t) => (
                     <option key={t.serial} value={t.serial}>
-                      {t.label} ({t.serial}){t.hasOwn ? " — replaces its own layout" : ""}
+                      {t.label} ({t.serial}){t.hasOwn ? ", replaces its own layout" : ""}
                     </option>
                   ))}
                 </select>

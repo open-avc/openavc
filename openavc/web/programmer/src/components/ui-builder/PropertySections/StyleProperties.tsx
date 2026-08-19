@@ -815,7 +815,7 @@ export function StyleProperties({
         <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>ms</span>
       </StyleRow>
 
-      <StyleRow label="Content Overflow" tooltip="What happens when content is larger than the element — hide it, show scrollbars, or let it overflow">
+      <StyleRow label="Content Overflow" tooltip="What happens when content is larger than the element: hide it, show scrollbars, or let it overflow">
         <select
           value={String(style.overflow || "")}
           onChange={(e) => handleStyleChange("overflow", e.target.value)}
@@ -889,7 +889,7 @@ function CustomClassField({
 
       {invalid.length > 0 && (
         <div style={{ fontSize: 10, color: "#f59e0b" }}>
-          The panel will ignore {invalid.map((n) => `"${n}"`).join(", ")} — a class name
+          The panel will ignore {invalid.map((n) => `"${n}"`).join(", ")}. A class name
           cannot start with a digit or contain spaces or punctuation.
         </div>
       )}
