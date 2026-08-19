@@ -141,6 +141,10 @@ jobs:
           npm ci
           npm run build
 
+      - name: Test Simulator UI
+        working-directory: openavc/web/simulator
+        run: npm run test
+
   wheel-smoke:
     name: Wheel smoke (built wheel serves the UI)
     runs-on: ubuntu-latest

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DeviceInfo } from "../store/api";
 import { setDeviceState, toggleError } from "../store/api";
+import { createThrottledWriter } from "../store/stateWriter";
 import { ProjectorPanel } from "./devices/ProjectorPanel";
 import { DisplayPanel } from "./devices/DisplayPanel";
 import { SwitcherPanel } from "./devices/SwitcherPanel";
@@ -40,8 +41,22 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
   const [errorsOpen, setErrorsOpen] = useState(false);
   const errors = Object.entries(device.available_errors);
 
+  // Every control on this card writes through one throttle, so a gesture is a
+  // few requests rather than one per pixel. The rejection is swallowed here
+  // rather than at each call site: a failed write is already reported by the
+  // value not changing, and an uncaught promise from a control is noise.
+  const writer = useMemo(
+    () =>
+      createThrottledWriter((key, value) => {
+        setDeviceState(device.device_id, key, value).catch(() => {});
+      }),
+    [device.device_id],
+  );
+  // Send whatever the last gesture left queued before this card goes away.
+  useEffect(() => () => writer.flush(), [writer]);
+
   const handleStateChange = (key: string, value: unknown) => {
-    setDeviceState(device.device_id, key, value);
+    writer.write(key, value);
   };
 
   const handleErrorToggle = (mode: string, active: boolean) => {

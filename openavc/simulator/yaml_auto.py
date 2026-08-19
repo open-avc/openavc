@@ -1881,6 +1881,27 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 "label": type_label,
                 "entries": entries,
                 "props": list(cvars.keys()),
+                # The declared shape of each property, so the UI can draw a
+                # mute as a switch instead of a box you type "true" into. The
+                # driver has always said `type: boolean`; only the name of the
+                # property was being sent, so every one of an amplifier's 240
+                # child values arrived untyped and rendered as raw text.
+                # `props` stays as it is -- it is the key list the device panel
+                # uses to tell child state from device state.
+                "prop_defs": {
+                    name: {
+                        k: v for k, v in {
+                            "type": (cdef or {}).get("type", "string"),
+                            "label": (cdef or {}).get("label"),
+                            "min": (cdef or {}).get("min"),
+                            "max": (cdef or {}).get("max"),
+                            "step": (cdef or {}).get("step"),
+                            "unit": (cdef or {}).get("unit"),
+                            "values": (cdef or {}).get("values"),
+                        }.items() if v is not None
+                    }
+                    for name, cdef in cvars.items()
+                },
             }
         info["children"] = children
         return info
@@ -2548,6 +2569,45 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         return result
 
     @staticmethod
+    def _slider_step(v_min: float, v_max: float, declared, integral: bool):
+        """The step for an auto-generated slider, when the driver names none.
+
+        A declared step is the author's call and is returned untouched. What is
+        left is the step WE invent, and inventing 0.1 for every number was
+        wrong in a way that only shows up on a real driver: an amplifier
+        reporting AC line voltage over 0-300 V got 3000 stops, and its power
+        draw over 0-5000 W got 50,000. A range input fires a change per pixel
+        of travel, so those became a control that could not be placed and a
+        flood of writes on the way.
+
+        So pick the finest step off a 1/2/5 ladder that keeps the slider under
+        MAX_STOPS. 0-300 V lands on 1 V, 0-5000 W on 10 W, -80-0 dBFS on 0.5 dB
+        -- each the resolution a person would have chosen. Integers never go
+        below 1. Exactness is not lost: the readout beside the slider is
+        typeable, which is where an exact 440 Hz comes from.
+        """
+        if isinstance(declared, (int, float)) and not isinstance(declared, bool):
+            return declared
+        span = float(v_max) - float(v_min)
+        if span <= 0:
+            return 1 if integral else 0.1
+        MAX_STOPS = 500
+        ladder = [1, 2, 5]
+        exp = -2 if not integral else 0
+        while exp <= 9:
+            for mult in ladder:
+                step = mult * (10 ** exp)
+                if step < 1 and integral:
+                    continue
+                if span / step <= MAX_STOPS:
+                    # Keep integer ranges on integer steps, and trim binary
+                    # float dust (3 * 0.1 is not 0.3) so the value that reaches
+                    # the UI is the one written here.
+                    return int(step) if integral or step >= 1 else round(step, 10)
+            exp += 1
+        return int(span) or 1
+
+    @staticmethod
     def _build_info(driver_def: dict) -> dict:
         """Build SIMULATOR_INFO from driver definition."""
         state_vars = driver_def.get("state_variables", {})
@@ -2564,9 +2624,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 v_max = var_def.get("max")
                 if v_min is not None and v_max is not None:
                     ctl = {"type": "slider", "key": key, "label": label,
-                           "min": v_min, "max": v_max}
-                    if var_def.get("step") is not None:
-                        ctl["step"] = var_def["step"]
+                           "min": v_min, "max": v_max,
+                           "step": YAMLAutoSimulator._slider_step(
+                               v_min, v_max, var_def.get("step"), integral=True)}
                     if var_def.get("unit"):
                         ctl["unit"] = var_def["unit"]
                     controls.append(ctl)
@@ -2578,7 +2638,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 if v_min is not None and v_max is not None:
                     ctl = {"type": "slider", "key": key, "label": label,
                            "min": v_min, "max": v_max,
-                           "step": var_def.get("step", 0.1)}
+                           "step": YAMLAutoSimulator._slider_step(
+                               v_min, v_max, var_def.get("step"), integral=False)}
                     if var_def.get("unit"):
                         ctl["unit"] = var_def["unit"]
                     controls.append(ctl)

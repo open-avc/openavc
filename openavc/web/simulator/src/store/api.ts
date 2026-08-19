@@ -140,6 +140,20 @@ export interface ChildTypeInfo {
   label: string;
   entries: { id: string; label: string }[];
   props: string[];
+  /** What each property IS, as the driver declared it, so the panel can draw a
+   *  mute as a switch and a level as a fader. Absent on a simulator built
+   *  before this was sent; the panel falls back to a text field. */
+  prop_defs?: Record<string, ChildPropDef>;
+}
+
+export interface ChildPropDef {
+  type: string;
+  label?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  values?: string[];
 }
 
 export interface LogEntry {

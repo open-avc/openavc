@@ -282,6 +282,7 @@ async def lifespan(app: FastAPI):
             pass
     if app.state.engine_ready:
         await engine.stop()
+    await simulator_proxy.aclose_client()
     log.info("OpenAVC stopped")
 
 
