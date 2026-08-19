@@ -365,16 +365,19 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
 #: These floors are text-driven -- a control's height is its label's line box
 #: plus fixed furniture -- so the true answer moves with the font stack, and the
 #: font stack moves with the machine. The same specimens measured in Chromium in
-#: three places give three answers: taking the fader, 100px on the Windows dev
-#: box where the table was recorded, 99 on the GitHub ubuntu runner, 102 in the
-#: Playwright container. A test demanding the floor be exact to the pixel is
-#: therefore asserting which machine ran it, and it duly failed CI on seven
-#: controls at once the first time it was ever allowed to execute there.
+#: three places give three answers: the fader is 100px tall on the Windows dev
+#: box, 99 on the GitHub ubuntu runner and 102 in the Playwright container. A
+#: test demanding the floor be exact to the pixel is therefore asserting which
+#: machine ran it, and it duly failed CI on seven controls at once the first
+#: time it was ever allowed to execute there.
 #:
 #: Four is the widest disagreement actually measured across those three, not a
 #: round number: the matrix's width spans 274..278 and the fader's height 99..102.
-#: The check still does its real job, which is catching a floor inflated far
-#: enough to make the Builder and the AI reject layouts that would render fine.
+#: Each floor is recorded at the TOP of its range (control_minimums, "When two
+#: machines disagree"), so what this tolerates is one-directional -- a machine
+#: that needs LESS than the recorded number, never one that needs more. The
+#: check still does its real job, which is catching a floor inflated far enough
+#: to make the Builder and the AI reject layouts that would render fine.
 TIGHTNESS_SLACK_PX = 4
 
 

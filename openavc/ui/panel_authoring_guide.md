@@ -48,11 +48,11 @@ the container instead when the element sits in one.
 
 | Type | Smallest box | Of a full page | What does not shrink |
 |---|---|---|---|
-| fader | 72 x 100 px | 5.62% x 12.5% | fader-handle 44 x 44, fader-scale 28 wide |
-| level_meter | 13 x 80 px | 1.02% x 10% | meter-segment 2 tall |
-| keypad | 86 x 221 px | 6.72% x 27.62% | keypad-key 36 tall (font-driven) |
-| select | 44 x 51 px | 3.44% x 6.38% | native control 30 tall (font-driven) |
-| text_input | 44 x 51 px | 3.44% x 6.38% | native control 30 tall (font-driven) |
+| fader | 72 x 102 px | 5.62% x 12.75% | fader-handle 44 x 44, fader-scale 28 wide |
+| level_meter | 13 x 81 px | 1.02% x 10.12% | meter-segment 2 tall |
+| keypad | 86 x 222 px | 6.72% x 27.75% | keypad-key 36 tall (font-driven) |
+| select | 44 x 52 px | 3.44% x 6.5% | native control 30 tall (font-driven) |
+| text_input | 44 x 52 px | 3.44% x 6.5% | native control 30 tall (font-driven) |
 
 ## A status LED's floor changes when it draws a caption
 
@@ -82,8 +82,8 @@ authored value by 14 before working one out.
 
 | Type | Floor | Authored by | Default | Of a full page at the default |
 |---|---|---|---|---|
-| slider | 24 + thumb_size wide, 37 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 81 px | 5.31% x 10.12% |
-| list | 28 wide, 33 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 77 px | 2.19% x 9.62% |
+| slider | 24 + thumb_size wide, 38 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 82 px | 5.31% x 10.25% |
+| list | 28 wide, 34 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 78 px | 2.19% x 9.75% |
 
 ## The matrix, whose floor is a function of the grid you asked for
 

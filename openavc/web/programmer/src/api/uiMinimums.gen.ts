@@ -134,7 +134,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "fader": {
     "baseWidthPx": 72,
-    "baseHeightPx": 100,
+    "baseHeightPx": 102,
     "internals": [
       {
         "part": "fader-handle",
@@ -162,7 +162,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "slider": {
     "baseWidthPx": 24,
-    "baseHeightPx": 37,
+    "baseHeightPx": 38,
     "internals": [],
     "scalesWith": {
       "part": "slider thumb",
@@ -183,7 +183,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "list": {
     "baseWidthPx": 28,
-    "baseHeightPx": 33,
+    "baseHeightPx": 34,
     "internals": [],
     "scalesWith": {
       "part": "list-item",
@@ -419,7 +419,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "level_meter": {
     "baseWidthPx": 13,
-    "baseHeightPx": 80,
+    "baseHeightPx": 81,
     "internals": [
       {
         "part": "meter-segment",
@@ -440,7 +440,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "keypad": {
     "baseWidthPx": 86,
-    "baseHeightPx": 221,
+    "baseHeightPx": 222,
     "internals": [
       {
         "part": "keypad-key",
@@ -461,7 +461,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "select": {
     "baseWidthPx": 44,
-    "baseHeightPx": 51,
+    "baseHeightPx": 52,
     "internals": [
       {
         "part": "native control",
@@ -482,7 +482,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "text_input": {
     "baseWidthPx": 44,
-    "baseHeightPx": 51,
+    "baseHeightPx": 52,
     "internals": [
       {
         "part": "native control",

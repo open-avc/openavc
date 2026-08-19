@@ -93,9 +93,19 @@ def test_the_reference_screen_survives_generation(harness_results: dict) -> None
 
 
 def test_a_constant_row_carries_its_internals(harness_results: dict) -> None:
+    """Read from the rules rather than typed again here.
+
+    These floors move whenever a machine measures one higher (see
+    control_minimums, "When two machines disagree"), and the literals that
+    used to be here went stale the first time that happened. What the
+    byte-compare in test_ui_minimums_generated.py cannot say is whether
+    TypeScript can still READ the row, which is what this asks.
+    """
+    from openavc.ui.control_minimums import RULES
+
     row = _value(harness_results, "fader_row")
-    assert row["baseWidthPx"] == 72
-    assert row["baseHeightPx"] == 100
+    assert row["baseWidthPx"] == RULES["fader"].base_width_px
+    assert row["baseHeightPx"] == RULES["fader"].base_height_px
     parts = {i["part"] for i in row["internals"]}
     assert parts == {"fader-handle", "fader-scale"}
 

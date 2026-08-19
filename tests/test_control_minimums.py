@@ -16,6 +16,7 @@ import pytest
 from openavc.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
+    RULES,
     TYPES_WITH_MINIMUMS,
     minimum_box,
     minimum_percent,
@@ -68,17 +69,26 @@ def test_a_bound_value_is_not_a_caption() -> None:
 
 @pytest.mark.parametrize("thumb_px", [44.0, 66.0, 88.0])
 def test_the_slider_floor_tracks_its_thumb(thumb_px: float) -> None:
-    """Measured linear with slope exactly 1 on both axes."""
+    """Measured linear with slope exactly 1 on both axes.
+
+    The base is read from the rule rather than typed again: the SLOPE is what
+    this pins, and the base moves whenever a machine measures the control
+    higher (control_minimums, "When two machines disagree").
+    """
+    base = RULES["slider"]
     box = minimum_box({"type": "slider", "thumb_size": thumb_px / 14.0})
-    assert box.width_px == 24 + thumb_px
-    assert box.height_px == 37 + thumb_px
+    assert box.width_px == base.base_width_px + thumb_px
+    assert box.height_px == base.base_height_px + thumb_px
 
 
 @pytest.mark.parametrize("row_px", [44.0, 66.0, 88.0])
 def test_the_list_floor_tracks_its_row_height_but_not_its_width(row_px: float) -> None:
+    base = RULES["list"]
     box = minimum_box({"type": "list", "item_height": row_px / 14.0})
-    assert box.height_px == 33 + row_px
-    assert box.width_px == 28, "row height does not change how wide a list must be"
+    assert box.height_px == base.base_height_px + row_px
+    assert box.width_px == base.base_width_px, (
+        "row height does not change how wide a list must be"
+    )
 
 
 def test_a_theme_default_applies_when_the_element_says_nothing() -> None:

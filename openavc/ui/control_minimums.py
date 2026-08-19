@@ -41,6 +41,14 @@ and it says which control and by how much; being two pixels short draws a broken
 control on the device it was short for and says nothing at all. So where they
 disagree the larger wins.
 
+Seven of the floors below are consequently a pixel or two above what this
+machine measures, and are marked where they sit: ``fader``, ``slider``,
+``list``, ``level_meter``, ``keypad``, ``select`` and ``text_input`` are the
+Playwright container's numbers rather than the ones a dev box or the CI runner
+reports. Re-measuring one of those locally and tightening it to what came back
+is how they go short again -- the machine that needs the extra pixel is not the
+one you are on, and it will not be the one that notices.
+
 What stops "largest" from sliding into "add ten and stop thinking" is
 ``TIGHTNESS_SLACK_PX`` in the e2e test: it tolerates the disagreement that has
 actually been measured between machines and fails on anything wider. That is
@@ -510,26 +518,26 @@ RULES: dict[str, MinimumRule] = {
              "sliver of text, so a labelled LED needs 29 before any of the "
              "caption is legible; how much more is content, not a minimum.",
     ),
-    "fader": MinimumRule(72, 100, (_HANDLE, _SCALE)),
-    "slider": MinimumRule(
-        24, 37,
+    "fader": MinimumRule(72, 102, (_HANDLE, _SCALE)),  # +2 (container)
+    "slider": MinimumRule(  # +1 (container)
+        24, 38,
         scales_with=ScalingInternal(
             "slider thumb", "thumb_size", 44.0, 1.0, 1.0,
             "panel.js:1696 / --thumb-size (a ::-webkit-slider-thumb pseudo-element)",
             from_theme=True,
         ),
     ),
-    "list": MinimumRule(
-        28, 33,
+    "list": MinimumRule(  # +1 (container)
+        28, 34,
         scales_with=ScalingInternal(
             "list-item", "item_height", 44.0, 0.0, 1.0, "panel.js:2099 item_height",
         ),
         note="Row height does not change how wide a list has to be.",
     ),
     "matrix": _MATRIX_CROSSPOINT,
-    "level_meter": MinimumRule(13, 80, (_SEGMENT,)),
-    "keypad": MinimumRule(
-        86, 221, (_KEY,),
+    "level_meter": MinimumRule(13, 81, (_SEGMENT,)),  # +1 (container)
+    "keypad": MinimumRule(  # +1 tall (container)
+        86, 222, (_KEY,),
         note="86 wide rather than the 84 first recorded. The enter key's glyph "
              "is wider than a digit, so the grid's three equal columns stop "
              "being equal -- that column takes the room it needs and the two "
@@ -540,8 +548,8 @@ RULES: dict[str, MinimumRule] = {
              "floor below 84 on any machine, because that is where three equal "
              "columns reach 20px.",
     ),
-    "select": MinimumRule(44, 51, (_CONTROL,)),
-    "text_input": MinimumRule(44, 51, (_CONTROL,)),
+    "select": MinimumRule(44, 52, (_CONTROL,)),  # +1 (container)
+    "text_input": MinimumRule(44, 52, (_CONTROL,)),  # +1 (container)
 }
 
 
