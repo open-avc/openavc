@@ -18,7 +18,8 @@ from openavc import (
 )
 
 # --- Source Routing ---
-# UI buttons emit custom.select_source with a payload. This script
+# Pressing a source button fires ui.press.<element id>, which every panel
+# interaction emits whether or not the button also runs a command. This script
 # handles the routing logic: set the matrix switcher, update state.
 
 SOURCE_ROUTES = {
@@ -27,9 +28,17 @@ SOURCE_ROUTES = {
     "bluray":   {"input": 3, "output": 1},
 }
 
-@on_event("custom.select_source")
+SOURCE_BUTTONS = {
+    "btn_laptop":   "laptop",
+    "btn_wireless": "wireless",
+    "btn_bluray":   "bluray",
+}
+
+@on_event("ui.press.btn_laptop")
+@on_event("ui.press.btn_wireless")
+@on_event("ui.press.btn_bluray")
 async def handle_source_select(event):
-    source = event.get("source", "")
+    source = SOURCE_BUTTONS.get(event.get("element_id", ""), "")
     route = SOURCE_ROUTES.get(source)
     if not route:
         log.warning(f"Unknown source: {source}")
@@ -58,7 +67,7 @@ async def volume_changed(event):
 
 # --- Mic Mute Toggle ---
 
-@on_event("custom.toggle_mic_mute")
+@on_event("ui.press.btn_mic_mute")
 async def toggle_mic_mute(event):
     current = state.get("var.mic_mute", True)
     new_mute = not current
@@ -119,7 +128,9 @@ async def _auto_shutdown():
 # --- Presentation Mode Presets ---
 # When the user selects a mode from the dropdown, adjust DSP and routing.
 
-@on_event("custom.mode_change")
+# The dropdown writes var.mode itself (show.value with write_back), so the
+# mode is already in state by the time this runs.
+@on_event("ui.change.sel_mode")
 async def mode_changed(event):
     mode = state.get("var.mode", "standard")
     log.info(f"Switching to mode: {mode}")

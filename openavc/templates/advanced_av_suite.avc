@@ -294,17 +294,6 @@
                                         "bg_color": "#424242"
                                     }
                                 }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "event.emit",
-                                        "event": "custom.select_source",
-                                        "payload": {
-                                            "source": "laptop"
-                                        }
-                                    }
-                                ]
                             }
                         },
                         "parent": null
@@ -327,17 +316,6 @@
                                         "bg_color": "#424242"
                                     }
                                 }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "event.emit",
-                                        "event": "custom.select_source",
-                                        "payload": {
-                                            "source": "wireless"
-                                        }
-                                    }
-                                ]
                             }
                         },
                         "parent": null
@@ -360,17 +338,6 @@
                                         "bg_color": "#424242"
                                     }
                                 }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "event.emit",
-                                        "event": "custom.select_source",
-                                        "payload": {
-                                            "source": "bluray"
-                                        }
-                                    }
-                                ]
                             }
                         },
                         "parent": null
@@ -413,14 +380,6 @@
                                         "label": "Mic Live"
                                     }
                                 }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "event.emit",
-                                        "event": "custom.toggle_mic_mute"
-                                    }
-                                ]
                             }
                         },
                         "parent": null
@@ -517,14 +476,6 @@
                                     "key": "var.mode",
                                     "write_back": true
                                 }
-                            },
-                            "do": {
-                                "change": [
-                                    {
-                                        "action": "event.emit",
-                                        "event": "custom.mode_change"
-                                    }
-                                ]
                             }
                         },
                         "parent": null
