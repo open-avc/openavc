@@ -244,6 +244,30 @@ element type, from the page tree rather than from the renderer.
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
 
+## What a `do` action can be called
+
+`do.<interaction>` holds an action list, and the runtime dispatches exactly
+these. Anything else reaches no branch at all: the panel sends the interaction,
+the runtime walks the list, and **nothing happens** -- which from the room is
+indistinguishable from a dead device.
+
+- `device.command`
+- `macro`
+- `script.call`
+- `state.set`
+- `ui.navigate`
+- `value_map`
+
+`device.command`, `macro`, `state.set` and `ui.navigate` name a macro step as well, so the two vocabularies read like one.
+These steps are **not** binding actions, and are silent when written here:
+`conditional`, `delay`, `event.emit`, `group.command`, `help.request` and `wait_until`.
+To reach one of those, put it in a macro and call that macro with
+`{"action": "macro", "macro": "<id>"}`.
+
+The same list applies wherever an action can be nested: a toggle's `off_action`,
+a `tap_hold`'s `hold_action`, each entry of a `value_map`'s `map`, and a matrix
+destination's own `route` override.
+
 ## What each type reads off the element
 
 Every property below is settable on every element type -- the file format

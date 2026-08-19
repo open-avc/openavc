@@ -27,6 +27,24 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 
+#: Every action name a ``do.<interaction>`` binding can carry.
+#:
+#: This IS the chain in ``execute_action``, written down -- ``tests/
+#: test_ui_events_actions.py`` re-derives it from that chain and fails if the
+#: two part company. It is a set rather than a comment because two other things
+#: need it: ``ui.page_review`` warns on an action outside it before a panel is
+#: ever written, and the ``else`` at the end of the chain says it out loud for
+#: the panels nobody reviewed.
+#:
+#: A name outside this set reaches no branch at all. The panel sends the
+#: interaction, the runtime walks the list, and nothing happens -- which is
+#: indistinguishable, from the room, from a dead device.
+DISPATCHED_ACTIONS = frozenset({
+    "device.command", "macro", "script.call", "state.set", "ui.navigate",
+    "value_map",
+})
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Log an exception from a fire-and-forget task instead of swallowing it."""
     if task.cancelled():
@@ -120,6 +138,18 @@ class UIEventRuntime:
 
     def __init__(self, engine: Engine):
         self._engine = engine
+        #: (element id, action) pairs already reported -- see _warn_undispatched.
+        self._warned_actions: set[tuple[str, str]] = set()
+
+    def forget_undispatched_actions(self) -> None:
+        """Report a bad action again after the project is replaced.
+
+        The dedupe below exists to keep one bad binding out of every log line,
+        not to say it once for the life of the process. Somebody who reloads a
+        project is trying to fix something, and a second silence reads as
+        having fixed it.
+        """
+        self._warned_actions.clear()
 
     async def handle(
         self, event_type: str, element_id: str, data: dict[str, Any] | None = None,
@@ -374,6 +404,42 @@ class UIEventRuntime:
                 if not dry_run:
                     await engine.events.emit(f"script.call.{func_name}", data)
                 record(function=func_name)
+
+        else:
+            # Everything above is a name this runtime knows. Anything else used
+            # to fall off the end of the chain in silence -- a retired spelling,
+            # a typo, or a macro step name written where a binding action goes.
+            self._warn_undispatched(action, element)
+
+    def _warn_undispatched(self, action: str, element: Any) -> None:
+        """Say, once, that a binding names something nothing runs.
+
+        The write door (``ui.page_review``) catches these when the AI or the
+        Builder authors one. This catches the other population: a hand-edited
+        ``.avc``, and a project written against a different version. Neither
+        passes a door, and from the room both look like a broken device.
+
+        Deduped per (element, action) rather than per press, because a bad
+        action on a slider fires on every tick of a drag and a real signal
+        buried in log spam is not a signal. Not deduped per action alone: the
+        same typo on two elements is two things to go and fix.
+        """
+        el_id = str(getattr(element, "id", "") or "?")
+        if (el_id, action) in self._warned_actions:
+            return
+        self._warned_actions.add((el_id, action))
+        usable = ", ".join(sorted(DISPATCHED_ACTIONS))
+        if not action:
+            log.warning(
+                f"UI element '{el_id}' has a binding entry with no action, so "
+                f"nothing runs when it fires. Valid actions: {usable}"
+            )
+        else:
+            log.warning(
+                f"UI element '{el_id}' has the binding action '{action}', which "
+                f"nothing dispatches, so nothing runs when it fires. Valid "
+                f"actions: {usable}"
+            )
 
     def _command_error(self, device_id: str, exc: Exception) -> str:
         """Why the command did not go out, in words somebody can act on.

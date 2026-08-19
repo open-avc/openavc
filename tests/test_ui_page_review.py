@@ -384,6 +384,118 @@ def test_a_button_carrying_the_same_look_binding_is_left_alone():
     assert _of_kind(findings, "binding_not_rendered") == []
 
 
+def test_a_do_action_the_runtime_never_dispatches_is_named():
+    """The defect that raised this check: `navigate` for `ui.navigate`.
+
+    The element draws, the press arrives, the runtime walks the list and
+    reaches no branch. Nothing rejected it and -- before the chain grew its own
+    warning -- nothing logged it, so from the room it is a dead button.
+    """
+    page = _page(
+        [UIElement(id="go", type="button", label="AV", bindings={
+            "do": {"press": [{"action": "navigate", "page": "av"}]},
+        })],
+        {"go": {"x": 0, "y": 0, "w": 20, "h": 10}},
+    )
+    findings, _ = review_page(page)
+    dead = _of_kind(findings, "binding_not_dispatched")
+    assert len(dead) == 1
+    assert "do.press action 'navigate'" in dead[0].message
+    assert "ui.navigate" in dead[0].message, "the valid set is the fix"
+
+
+def test_a_macro_step_written_as_a_binding_action_is_told_which_it_is():
+    """Four names are both, so `delay` is a reasonable guess and still silent.
+
+    Saying "no such action" would be false and would send somebody looking for
+    a typo. It is a real thing, in the wrong vocabulary, and the way to reach
+    it is a macro.
+    """
+    page = _page(
+        [UIElement(id="dim", type="button", label="Dim", bindings={
+            "do": {"press": [{"action": "delay", "seconds": 2}]},
+        })],
+        {"dim": {"x": 0, "y": 0, "w": 20, "h": 10}},
+    )
+    findings, _ = review_page(page)
+    dead = _of_kind(findings, "binding_not_dispatched")
+    assert len(dead) == 1
+    assert "is a macro step and not a binding action" in dead[0].message
+    assert "call that one with action 'macro'" in dead[0].message
+
+
+def test_the_walk_reaches_a_toggle_off_half_and_a_value_map_entry():
+    """Both are dispatched through the same chain, so both go silent the same.
+
+    An off_action is the half of a toggle that turns the room OFF, and a
+    value_map entry is a whole source selection. Neither is a lesser case for
+    being nested, and the path in the message is what says where to go.
+    """
+    page = _page(
+        [
+            UIElement(id="pwr", type="button", label="Power", bindings={
+                "do": {"press": [{
+                    "action": "macro", "macro": "on", "mode": "toggle",
+                    "toggle_key": "device.acme_widget.power",
+                    "off_action": {"action": "power.off"},
+                }]},
+            }),
+            UIElement(id="src", type="select", options=[{"label": "PC", "value": "pc"}],
+                      bindings={"do": {"change": [{
+                          "action": "value_map",
+                          "map": {"pc": {"action": "device.route"}},
+                      }]}}),
+        ],
+        {"pwr": {"x": 0, "y": 0, "w": 20, "h": 10},
+         "src": {"x": 0, "y": 20, "w": 20, "h": 12}},
+    )
+    findings, _ = review_page(page)
+    paths = sorted(f.message.split(" action '")[0].split(") has ")[-1]
+                   for f in _of_kind(findings, "binding_not_dispatched"))
+    assert paths == ["do.change.map.pc", "do.press.off_action"]
+
+
+def test_a_matrix_row_that_overrides_do_route_is_walked_too():
+    """A do binding living somewhere else, and hand-authored more often.
+
+    One matrix covers a frame's eight outputs plus a "Stream" destination that
+    starts an encoder instead -- that override runs INSTEAD of the element's
+    do.route for that row, through the same chain.
+    """
+    page = _page(
+        [UIElement(id="mtx", type="matrix", matrix_config={
+            "sources": [{"value": 1, "label": "PC"}],
+            "destinations": [
+                {"value": 1, "label": "Main LCD",
+                 "route_key": "device.acme_widget.output.1.input",
+                 "route": [{"action": "route.set"}]},
+            ],
+        })],
+        {"mtx": {"x": 0, "y": 0, "w": 45, "h": 45}},
+    )
+    findings, _ = review_page(page)
+    dead = _of_kind(findings, "binding_not_dispatched")
+    assert len(dead) == 1
+    assert "do.route for 'Main LCD'" in dead[0].message
+
+
+def test_actions_the_runtime_really_dispatches_are_left_alone():
+    page = _page(
+        [UIElement(id="go", type="button", label="AV", bindings={
+            "do": {"press": [
+                {"action": "ui.navigate", "page": "av"},
+                {"action": "state.set", "key": "var.mode", "value": "av"},
+                {"action": "device.command", "device": "acme_widget", "command": "on"},
+                {"action": "macro", "macro": "start"},
+                {"action": "script.call", "function": "log_it"},
+            ]},
+        })],
+        {"go": {"x": 0, "y": 0, "w": 20, "h": 10}},
+    )
+    findings, _ = review_page(page)
+    assert _of_kind(findings, "binding_not_dispatched") == []
+
+
 def test_a_status_led_takes_colour_from_look_but_not_text():
     """Honored for one thing and not the other, which no schema can express."""
     page = _page(

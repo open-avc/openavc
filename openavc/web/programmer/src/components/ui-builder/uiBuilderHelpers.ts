@@ -11,8 +11,10 @@ import {
   type ControlScalingInternal,
 } from "../../api/uiMinimums.gen";
 import {
+  DISPATCHED_ACTIONS,
   HONORED_PROPERTIES,
   HONORED_SHOW_SLOTS,
+  MACRO_ONLY_ACTIONS,
   MATRIX_CONFIG_KEYS,
   MATRIX_PANEL_WRITABLE_PREFIXES,
   NAVIGATION_SENTINELS,
@@ -3079,6 +3081,7 @@ export interface ReviewFinding {
     | "no_placement"
     | "binding_not_rendered"
     | "binding_without_key"
+    | "binding_not_dispatched"
     | "property_not_rendered"
     | "nothing_to_draw"
     | "unknown_element_type"
@@ -4544,6 +4547,123 @@ const UNBOUND_CONSEQUENCE: Record<string, string> = {
   look: "Its appearance stays on whatever an unmatched state gives it.",
   items: "The list comes up empty.",
 };
+// --- What a `do` action can be called --------------------------------------
+//
+// Mirrors do_action_findings in openavc/ui/page_review.py. The other half of the
+// same silence: `bindingFindings` above answers whether this type's renderer
+// READS a show slot, this answers whether the runtime DISPATCHES a do action.
+// Both closed sets are generated from the modules that own them, so the sixth
+// action name and the eleventh macro step arrive here without anyone typing
+// them.
+
+const NESTED_ACTION_FIELDS = ["off_action", "hold_action"] as const;
+
+type ActionEntry = [string, Record<string, unknown>];
+
+/** One action and everything nested inside it, each with its own path. */
+function walkAction(path: string, action: unknown): ActionEntry[] {
+  if (!action || typeof action !== "object" || Array.isArray(action)) return [];
+  const def = action as Record<string, unknown>;
+  const found: ActionEntry[] = [[path, def]];
+  for (const field of NESTED_ACTION_FIELDS) {
+    found.push(...walkAction(`${path}.${field}`, def[field]));
+  }
+  if (def.action === "value_map") {
+    const mapped = def.map;
+    if (mapped && typeof mapped === "object" && !Array.isArray(mapped)) {
+      // Sorted, because this side hoists integer-like keys to the front of an
+      // object whatever the order they were written in, and the Python side
+      // walks them as authored. See the comment on the Python twin.
+      const entries = mapped as Record<string, unknown>;
+      for (const value of Object.keys(entries).sort()) {
+        found.push(...walkAction(`${path}.map.${value}`, entries[value]));
+      }
+    }
+  }
+  return found;
+}
+
+/** Every action dict under `do`, with the path a reader can go and edit. */
+function actionEntries(do_: Record<string, unknown>): ActionEntry[] {
+  const found: ActionEntry[] = [];
+  for (const [interaction, binding] of Object.entries(do_)) {
+    const entries = Array.isArray(binding) ? binding : [binding];
+    for (const entry of entries) {
+      found.push(...walkAction(`do.${interaction}`, entry));
+    }
+  }
+  return found;
+}
+
+/** The same walk over a matrix row that overrides the element's do.route. */
+function destinationRouteEntries(el: UIElement): ActionEntry[] {
+  if (el.type !== "matrix") return [];
+  const config = (el as unknown as Record<string, unknown>).matrix_config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) return [];
+  const found: ActionEntry[] = [];
+  for (const entry of resolveMatrixAxis(config, "destinations")) {
+    if (!Array.isArray(entry.route)) continue;
+    const named = entry.label !== undefined ? entry.label : entry.value;
+    for (const action of entry.route) {
+      found.push(...walkAction(`do.route for '${named}'`, action));
+    }
+  }
+  return found;
+}
+
+/**
+ * Actions the runtime has no branch for, so the interaction does nothing.
+ *
+ * The chain in `ui_events.execute_action` ends with the six names it knows;
+ * anything else reaches no branch. Nothing rejected it on the way in and --
+ * until this shipped alongside the runtime's own warning -- nothing logged it
+ * either, so a control authored with a retired spelling drew perfectly, took
+ * the press, and did nothing at all.
+ */
+export function doActionFindings(el: UIElement): ReviewFinding[] {
+  const bindings = (el.bindings ?? {}) as Record<string, unknown>;
+  const do_ = bindings.do;
+  const entries: ActionEntry[] =
+    do_ && typeof do_ === "object" && !Array.isArray(do_)
+      ? actionEntries(do_ as Record<string, unknown>)
+      : [];
+  entries.push(...destinationRouteEntries(el));
+  if (!entries.length) return [];
+
+  const usable = [...DISPATCHED_ACTIONS].sort().join(", ");
+  const macroOnly = new Set(MACRO_ONLY_ACTIONS);
+  const dispatched = new Set(DISPATCHED_ACTIONS);
+  const findings: ReviewFinding[] = [];
+  for (const [path, def] of entries) {
+    const raw = def.action;
+    const action = typeof raw === "string" ? raw : "";
+    if (dispatched.has(action)) continue;
+    let message: string;
+    if (!action) {
+      message =
+        `${el.id} (${el.type}) has a ${path} entry with no action, so nothing ` +
+        `runs when it fires. A binding action is one of: ${usable}.`;
+    } else if (macroOnly.has(action)) {
+      message =
+        `${el.id} (${el.type}) has ${path} action '${action}', which is a macro ` +
+        `step and not a binding action, so nothing runs when it fires. Put it ` +
+        `in a macro and call that one with action 'macro'. A binding action is ` +
+        `one of: ${usable}.`;
+    } else {
+      message =
+        `${el.id} (${el.type}) has ${path} action '${action}', which nothing ` +
+        `dispatches, so nothing runs when it fires. A binding action is one ` +
+        `of: ${usable}.`;
+    }
+    findings.push({
+      elementId: el.id,
+      kind: "binding_not_dispatched",
+      message,
+      key: `binding_not_dispatched|${el.id}|${path}|${action}`,
+    });
+  }
+  return findings;
+}
 
 // --- What a matrix is, once the shorthand is expanded ---------------------
 //
@@ -5074,6 +5194,7 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
     const typeFinding = elementTypeFinding(el);
     if (typeFinding) findings.push(typeFinding);
     findings.push(...bindingFindings(el));
+    findings.push(...doActionFindings(el));
     findings.push(...propertyFindings(el));
     findings.push(...contentFindings(el));
     findings.push(...matrixFindings(el));
@@ -5273,6 +5394,7 @@ export function reviewMasterElement(
   const findings = [
     ...(typeFinding ? [typeFinding] : []),
     ...bindingFindings(master),
+    ...doActionFindings(master),
     ...propertyFindings(master),
     ...contentFindings(master),
     ...matrixFindings(master),

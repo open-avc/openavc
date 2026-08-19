@@ -28,11 +28,13 @@ from openavc.ui.matrix_model import PANEL_WRITABLE_PREFIXES
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
+    MACRO_ONLY_ACTIONS,
     MATRIX_CONFIG_KEYS,
     STATE_ICON_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
 )
+from openavc.core.ui_events import DISPATCHED_ACTIONS
 
 ARTIFACT = "openavc/web/programmer/src/api/uiBindingReach.gen.ts"
 
@@ -128,6 +130,25 @@ export const MATRIX_PANEL_WRITABLE_PREFIXES: string[] = %(panel_prefixes)s;
  * button -- which makes the dialog single-use.
  */
 export const NAVIGATION_SENTINELS = new Set(%(sentinels)s);
+
+/**
+ * Every action name a `do.<interaction>` binding can carry.
+ *
+ * The chain in openavc/core/ui_events.py dispatches exactly these; a name outside
+ * the set reaches no branch, so the panel sends the interaction and nothing
+ * runs at all. Which is why it is generated rather than typed here: a fifth
+ * copy of a closed set is how `navigate` outlived `ui.navigate`.
+ */
+export const DISPATCHED_ACTIONS: string[] = %(actions)s;
+
+/**
+ * Macro steps that are NOT binding actions.
+ *
+ * Four names are both, so the two vocabularies read like one and these are the
+ * natural wrong guess. Worth naming separately because "that is a macro step,
+ * put it in a macro" is a fix and "no such action" is not.
+ */
+export const MACRO_ONLY_ACTIONS: string[] = %(macro_only)s;
 """
 
 
@@ -150,6 +171,8 @@ def render() -> str:
         "matrix_keys": json.dumps(sorted(MATRIX_CONFIG_KEYS), ensure_ascii=False),
         "panel_prefixes": json.dumps(list(PANEL_WRITABLE_PREFIXES), ensure_ascii=False),
         "sentinels": json.dumps(sorted(NAVIGATION_SENTINELS), ensure_ascii=False),
+        "actions": json.dumps(sorted(DISPATCHED_ACTIONS), ensure_ascii=False),
+        "macro_only": json.dumps(sorted(MACRO_ONLY_ACTIONS), ensure_ascii=False),
     }
 
 

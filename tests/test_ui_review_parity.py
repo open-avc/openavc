@@ -461,6 +461,79 @@ CASES["binding_reach"] = _project([
     ),
 ])
 
+# The other half of the binding vocabulary: the ACTION a do binding names.
+#
+# `navigate` is not invented for this corpus -- it is the spelling the AI prompt
+# taught for a page move, which the runtime has never dispatched, and finding it
+# by eye is what raised the section this check closes. The rest are the shapes
+# it can hide in: nested inside a toggle's off half, routed to by a value_map,
+# and overriding one row of a matrix.
+CASES["do_actions"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "nav_wrong", "type": "button", "label": "Main",
+             "bindings": {"do": {"press": [{"action": "navigate", "page": "main"}]}}},
+            # The half of a toggle that turns the room OFF, written as a macro
+            # step. Nested, so it also proves the walk goes inside an action
+            # rather than stopping at the list.
+            {"id": "toggle_off_step", "type": "button", "label": "Power",
+             "bindings": {"do": {"press": [
+                 {"action": "macro", "macro": "power_on", "mode": "toggle",
+                  "toggle_key": "device.acme.power",
+                  "off_action": {"action": "delay", "seconds": 2}}]}}},
+            # An entry that names no action at all -- as silent as a wrong one,
+            # and the shape a half-finished hand edit leaves behind.
+            {"id": "no_action", "type": "button", "label": "Mute",
+             "bindings": {"do": {"press": [{"device": "acme", "command": "mute"}]}}},
+            # A value_map keyed by integer-like strings, in descending order on
+            # purpose: JavaScript hoists those to the front of an object however
+            # they were written, so an unsorted walk reports these two findings
+            # in a different order on each side and the parity above goes red.
+            {"id": "src_map", "type": "select",
+             "options": [{"label": "PC", "value": "1"},
+                         {"label": "Laptop", "value": "2"}],
+             "bindings": {"do": {"change": {"action": "value_map", "map": {
+                 "2": {"action": "device.route", "device": "acme",
+                       "command": "route"},
+                 "1": {"action": "help.request"},
+             }}}}},
+            # One row of a matrix overriding do.route with something nothing
+            # runs. The other row is correct, and both are in the same element.
+            {"id": "mtx_rows", "type": "matrix", "matrix_config": {
+                "sources": [{"value": 1, "label": "PC"},
+                            {"value": 2, "label": "Laptop"}],
+                "destinations": [
+                    {"value": 1, "label": "Main LCD",
+                     "route_key": "device.acme.output.1.input",
+                     "route": [{"action": "route.set", "output": 1}]},
+                    {"value": 2, "label": "Stream",
+                     "route_key": "device.acme.output.2.input",
+                     "route": [{"action": "macro", "macro": "start_stream"}]},
+                ],
+            }},
+            # Clean, and each one is a name the chain really does dispatch.
+            {"id": "nav_ok", "type": "button", "label": "Audio",
+             "bindings": {"do": {"press": [{"action": "ui.navigate",
+                                            "page": "main"}]}}},
+            {"id": "map_ok", "type": "select",
+             "options": [{"label": "PC", "value": "pc"}],
+             "bindings": {"do": {"change": [{"action": "value_map", "map": {
+                 "pc": {"action": "device.command", "device": "acme",
+                        "command": "route"}}}]}}},
+        ],
+        [_landscape({
+            "nav_wrong": _pct_box(0, 0, 20, 12),
+            "toggle_off_step": _pct_box(25, 0, 20, 12),
+            "no_action": _pct_box(50, 0, 20, 12),
+            "src_map": _pct_box(75, 0, 20, 12),
+            "mtx_rows": _pct_box(0, 20, 45, 45),
+            "nav_ok": _pct_box(50, 20, 20, 12),
+            "map_ok": _pct_box(75, 20, 20, 12),
+        })],
+    ),
+])
+
 # The element-level vocabulary checks: properties the renderer never reads, and
 # the matrix's config, which is the one property with no schema at any layer.
 #
@@ -1538,6 +1611,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "no_placement",
         "binding_not_rendered",
         "binding_without_key",
+        "binding_not_dispatched",
         "property_not_rendered",
         "nothing_to_draw",
         "unknown_element_type",
@@ -1577,6 +1651,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "graze",                               # overlaps by a thousandth of a percent
         "left_kid", "right_kid",               # different containers
         "list_ok", "visible_only",             # bindings the renderer reads
+        "nav_ok", "map_ok",                    # actions the runtime dispatches
         "plugin_ok",                           # a real type both authoring surfaces omit
         "btn_with_state_labels",               # a button DOES draw state text
         "tab_audio", "tab_video",              # a tab strip: same key, different values

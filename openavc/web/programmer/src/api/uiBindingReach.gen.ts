@@ -284,3 +284,22 @@ export const MATRIX_PANEL_WRITABLE_PREFIXES: string[] = ["var.", "plugin."];
  * button -- which makes the dialog single-use.
  */
 export const NAVIGATION_SENTINELS = new Set(["$back", "$dismiss"]);
+
+/**
+ * Every action name a `do.<interaction>` binding can carry.
+ *
+ * The chain in openavc/core/ui_events.py dispatches exactly these; a name outside
+ * the set reaches no branch, so the panel sends the interaction and nothing
+ * runs at all. Which is why it is generated rather than typed here: a fifth
+ * copy of a closed set is how `navigate` outlived `ui.navigate`.
+ */
+export const DISPATCHED_ACTIONS: string[] = ["device.command", "macro", "script.call", "state.set", "ui.navigate", "value_map"];
+
+/**
+ * Macro steps that are NOT binding actions.
+ *
+ * Four names are both, so the two vocabularies read like one and these are the
+ * natural wrong guess. Worth naming separately because "that is a macro step,
+ * put it in a macro" is a fix and "no such action" is not.
+ */
+export const MACRO_ONLY_ACTIONS: string[] = ["conditional", "delay", "event.emit", "group.command", "help.request", "wait_until"];

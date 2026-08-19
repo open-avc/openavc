@@ -49,8 +49,11 @@ from openavc.ui.control_minimums import (
     minimum_box,
     minimum_percent,
 )
+from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
+from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.page_review import (
     HONORED_PROPERTIES,
+    MACRO_ONLY_ACTIONS,
     buried_master_findings,
     custom_page_findings,
     HONORED_SHOW_SLOTS,
@@ -355,6 +358,28 @@ element type, from the page tree rather than from the renderer.
 (`states[].label`) is drawn by %(state_label_types)s and by nothing else, so a
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
+"""
+
+DO_ACTIONS = """\
+
+## What a `do` action can be called
+
+`do.<interaction>` holds an action list, and the runtime dispatches exactly
+these. Anything else reaches no branch at all: the panel sends the interaction,
+the runtime walks the list, and **nothing happens** -- which from the room is
+indistinguishable from a dead device.
+
+%(actions)s
+
+%(shared)s name a macro step as well, so the two vocabularies read like one.
+These steps are **not** binding actions, and are silent when written here:
+%(macro_only)s.
+To reach one of those, put it in a macro and call that macro with
+`{"action": "macro", "macro": "<id>"}`.
+
+The same list applies wherever an action can be nested: a toggle's `off_action`,
+a `tap_hold`'s `hold_action`, each entry of a `value_map`'s `map`, and a matrix
+destination's own `route` override.
 """
 
 PROPERTIES_INTRO = """\
@@ -991,6 +1016,11 @@ def render() -> str:
         BINDINGS_INTRO,
         _binding_rows(),
         BINDINGS_TAIL % {"state_label_types": _and_list(sorted(STATE_LABEL_TYPES))},
+        DO_ACTIONS % {
+            "actions": "\n".join(f"- `{name}`" for name in sorted(DISPATCHED_ACTIONS)),
+            "shared": _and_list(sorted(DISPATCHED_ACTIONS & BUILTIN_STEP_ACTIONS)),
+            "macro_only": _and_list(sorted(MACRO_ONLY_ACTIONS)),
+        },
         PROPERTIES_INTRO,
         _property_rows(),
         PROPERTIES_TAIL % {

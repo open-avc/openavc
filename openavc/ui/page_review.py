@@ -51,6 +51,8 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
+from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.control_minimums import (
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
@@ -1730,6 +1732,157 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     return findings
 
 
+# --- What a `do` action can be called --------------------------------------
+#
+# The other half of the same silence. `binding_findings` above answers whether
+# this element type's renderer READS a show slot; this answers whether the
+# runtime DISPATCHES a do action, which is a closed set of six living in
+# core/ui_events.py (DISPATCHED_ACTIONS) rather than a per-type question.
+#
+# The second set is what makes the message worth reading. Four names --
+# device.command, macro, state.set, ui.navigate -- are both a binding action and
+# a macro step, so the two vocabularies look like one and the six that are macro
+# steps ONLY (delay, conditional, wait_until, event.emit, group.command,
+# help.request) are the natural wrong guess. Telling somebody `delay` does not
+# exist would be false; telling them it is a macro step and how to reach one is
+# the fix.
+
+#: Macro steps that are not binding actions. Derived from the two closed sets so
+#: a new step or a new action moves it without anyone remembering to.
+MACRO_ONLY_ACTIONS = frozenset(BUILTIN_STEP_ACTIONS) - DISPATCHED_ACTIONS
+
+#: Fields inside an action that hold another action. Both are on the FIRST
+#: press action by convention (project format: `mode`), and both are dispatched
+#: through the same chain, so a broken one is exactly as silent.
+_NESTED_ACTION_FIELDS = ("off_action", "hold_action")
+
+
+def _walk_action(path: str, action: Any) -> list[tuple[str, Mapping[str, Any]]]:
+    """One action and everything nested inside it, each with its own path."""
+    if not isinstance(action, Mapping):
+        return []
+    found = [(path, action)]
+    for field in _NESTED_ACTION_FIELDS:
+        found.extend(_walk_action(f"{path}.{field}", action.get(field)))
+    if action.get("action") == "value_map":
+        mapped = action.get("map")
+        if isinstance(mapped, Mapping):
+            # Sorted, not in authored order: the Builder's mirror reads the same
+            # object out of JSON, and JavaScript hoists integer-like keys to the
+            # front of an object regardless of how they were written. A select
+            # mapping "1" and "2" to two commands would otherwise report its two
+            # findings in a different order on each side, and the parity suite
+            # compares them in order.
+            for value in sorted(mapped, key=str):
+                found.extend(_walk_action(f"{path}.map.{value}", mapped[value]))
+    return found
+
+
+def _action_entries(
+    do: Mapping[str, Any],
+) -> list[tuple[str, Mapping[str, Any]]]:
+    """Every action dict under ``do``, with the path a reader can go and edit.
+
+    Walks what the runtime walks: an interaction's list (or the single dict it
+    accepts as a one-element list), the off_action / hold_action a press mode
+    hangs off its first action, and the per-option actions a ``value_map``
+    routes to. A nested one is not a lesser case -- an off_action is the half of
+    a toggle that turns the room OFF.
+    """
+    found: list[tuple[str, Mapping[str, Any]]] = []
+
+    def walk(path: str, action: Any) -> None:
+        found.extend(_walk_action(path, action))
+
+    for interaction, binding in do.items():
+        entries = binding if isinstance(binding, list) else [binding]
+        for entry in entries:
+            walk(f"do.{interaction}", entry)
+    return found
+
+
+def _destination_route_entries(
+    element: Mapping[str, Any],
+) -> list[tuple[str, Mapping[str, Any]]]:
+    """The same walk over a matrix row that overrides the element's do.route.
+
+    A destination can carry its own action list, and the runtime runs it
+    INSTEAD of ``do.route`` for that row (``ui_events._destination_route``) --
+    which is how one matrix covers a frame's eight outputs plus a "Stream"
+    destination that starts an encoder. It is a do binding living somewhere
+    else, so it goes silent in exactly the same way, and it is hand-authored
+    more often than the element's own default is.
+    """
+    if str(element.get("type", "")) != "matrix":
+        return []
+    config = element.get("matrix_config")
+    if not isinstance(config, Mapping):
+        return []
+    found: list[tuple[str, Mapping[str, Any]]] = []
+    for entry in resolve_axis(config, "destinations"):
+        route = entry.get("route")
+        if not isinstance(route, list):
+            continue
+        named = entry.get("label", entry.get("value"))
+        for action in route:
+            found.extend(
+                _walk_action(f"do.route for '{named}'", action)
+            )
+    return found
+
+
+def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """Actions the runtime has no branch for, so the interaction does nothing.
+
+    The chain in ``ui_events.execute_action`` ends with the six names it knows;
+    anything else reaches no branch. Nothing rejected it on the way in and --
+    until this shipped alongside the runtime's own warning -- nothing logged it
+    either, so a control authored with a retired spelling drew perfectly, took
+    the press, and did nothing at all.
+    """
+    bindings = element.get("bindings")
+    do = bindings.get("do") if isinstance(bindings, Mapping) else None
+    entries = _action_entries(do) if isinstance(do, Mapping) else []
+    entries += _destination_route_entries(element)
+    if not entries:
+        return []
+
+    el_id = str(element.get("id", "?"))
+    el_type = str(element.get("type", ""))
+    usable = ", ".join(sorted(DISPATCHED_ACTIONS))
+    findings: list[Finding] = []
+    for path, action_def in entries:
+        action = action_def.get("action")
+        action = action if isinstance(action, str) else ""
+        if action in DISPATCHED_ACTIONS:
+            continue
+        if not action:
+            message = (
+                f"{el_id} ({el_type}) has a {path} entry with no action, so nothing "
+                f"runs when it fires. A binding action is one of: {usable}."
+            )
+        elif action in MACRO_ONLY_ACTIONS:
+            message = (
+                f"{el_id} ({el_type}) has {path} action '{action}', which is a macro "
+                f"step and not a binding action, so nothing runs when it fires. Put it "
+                f"in a macro and call that one with action 'macro'. A binding action is "
+                f"one of: {usable}."
+            )
+        else:
+            message = (
+                f"{el_id} ({el_type}) has {path} action '{action}', which nothing "
+                f"dispatches, so nothing runs when it fires. A binding action is one "
+                f"of: {usable}."
+            )
+        findings.append(Finding(
+            el_id,
+            "binding_not_dispatched",
+            message,
+            key=("binding_not_dispatched", el_id, path, action),
+        ))
+    return findings
+
+
 # --- Range findings and the one auto-fill ----------------------------------
 
 
@@ -1918,6 +2071,7 @@ def review_page(
         if type_finding:
             findings.append(type_finding)
         findings.extend(binding_findings(dump))
+        findings.extend(do_action_findings(dump))
         findings.extend(property_findings(dump))
         findings.extend(content_findings(dump))
         findings.extend(matrix_findings(dump))
@@ -2128,6 +2282,7 @@ def review_master_element(
     findings = (
         ([type_finding] if type_finding else [])
         + binding_findings(dump)
+        + do_action_findings(dump)
         + property_findings(dump)
         + content_findings(dump)
         + matrix_findings(dump)
