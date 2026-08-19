@@ -244,6 +244,12 @@ element type, from the page tree rather than from the renderer.
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
 
+Per-state **icon** (`states[].icon`, or `style_active.icon` in the binary form)
+is narrower still: `button` and `camera_preset` and nothing else. A state's appearance is
+applied as style, and an icon is content -- it appears only where the evaluator
+goes on to rebuild the icon+text layout. A `label` draws its own top-level
+`icon`; it just cannot change it per state.
+
 ## What a `do` action can be called
 
 `do.<interaction>` holds an action list, and the runtime dispatches exactly

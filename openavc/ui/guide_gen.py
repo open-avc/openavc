@@ -60,6 +60,7 @@ from openavc.ui.page_review import (
     INERT_WITHOUT,
     MATRIX_CONFIG_KEYS,
     RENDERED_TYPES,
+    STATE_ICON_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
     TOUCH_MIN_MM,
@@ -358,6 +359,12 @@ element type, from the page tree rather than from the renderer.
 (`states[].label`) is drawn by %(state_label_types)s and by nothing else, so a
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
+
+Per-state **icon** (`states[].icon`, or `style_active.icon` in the binary form)
+is narrower still: %(state_icon_types)s and nothing else. A state's appearance is
+applied as style, and an icon is content -- it appears only where the evaluator
+goes on to rebuild the icon+text layout. A `label` draws its own top-level
+`icon`; it just cannot change it per state.
 """
 
 DO_ACTIONS = """\
@@ -1015,7 +1022,10 @@ def render() -> str:
         },
         BINDINGS_INTRO,
         _binding_rows(),
-        BINDINGS_TAIL % {"state_label_types": _and_list(sorted(STATE_LABEL_TYPES))},
+        BINDINGS_TAIL % {
+            "state_label_types": _and_list(sorted(STATE_LABEL_TYPES)),
+            "state_icon_types": _and_list(sorted(STATE_ICON_TYPES)),
+        },
         DO_ACTIONS % {
             "actions": "\n".join(f"- `{name}`" for name in sorted(DISPATCHED_ACTIONS)),
             "shared": _and_list(sorted(DISPATCHED_ACTIONS & BUILTIN_STEP_ACTIONS)),

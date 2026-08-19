@@ -260,8 +260,8 @@ The **Appearance** card changes an element's look based on a state value. This i
 
 - **Source**: pick a category (Variables, Devices, Plugins, System) then the specific state key.
 - **Condition**: when the state key equals a value, the element is "active." For boolean keys you get an ON/OFF toggle; for string keys you get a dropdown of known values.
-- **Active appearance**: background color, text color, icon, icon color, and optional label text when the condition is true.
-- **Inactive appearance**: background color, text color, icon, icon color, and optional label text when the condition is false.
+- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons and camera presets also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there.
+- **Inactive appearance**: the same, for when the condition is false.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
 **Conditional labels** let the element's text change based on state. For example, a power button can show "ON" with a green background when the projector is on, and "OFF" with a dark background when it is off.
@@ -270,7 +270,7 @@ The **Appearance** card changes an element's look based on a state value. This i
 
 Example: on the source-select buttons, set Appearance so that when `var.current_source` equals `"laptop"`, the Laptop button shows as highlighted and all others show as dimmed.
 
-**Multi-state appearance:** for devices with more than two states (e.g., projector power: on/off/warming/cooling), use a multi-state map instead of a simple active/inactive condition. Define a state map where each value gets its own color, icon, icon color, and label. Add a row per state value, pick colors, and the element updates per state. This eliminates the need for scripts to handle transitional states like warming and cooling.
+**Multi-state appearance:** for devices with more than two states (e.g., projector power: on/off/warming/cooling), use a multi-state map instead of a simple active/inactive condition. Define a state map where each value gets its own color and label (and, on a button or camera preset, its own icon). Add a row per state value, pick colors, and the element updates per state. This eliminates the need for scripts to handle transitional states like warming and cooling.
 
 **Status LED color map:** for a Status LED, the Appearance card maps state values directly to indicator colors:
 
