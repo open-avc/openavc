@@ -409,6 +409,15 @@ class UIEventRuntime:
             # Everything above is a name this runtime knows. Anything else used
             # to fall off the end of the chain in silence -- a retired spelling,
             # a typo, or a macro step name written where a binding action goes.
+            #
+            # Recorded as well as logged, because `dispatched` is what
+            # simulate_ui_action shows the AI when it verifies its own write,
+            # and an empty list is what a control with NO binding returns --
+            # the exact ambiguity that tool was built to remove. No `error`
+            # field on purpose: the WS door turns one of those into a message
+            # on the panel, and a room full of people cannot act on the name of
+            # an action.
+            record(ran=False)
             self._warn_undispatched(action, element)
 
     def _warn_undispatched(self, action: str, element: Any) -> None:

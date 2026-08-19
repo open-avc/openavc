@@ -177,6 +177,65 @@
                     "command": "power_off"
                 }
             ]
+        },
+        {
+            "id": "select_laptop",
+            "name": "Select Laptop",
+            "steps": [
+                {
+                    "action": "event.emit",
+                    "event": "custom.select_source",
+                    "payload": {
+                        "source": "laptop"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "select_wireless",
+            "name": "Select Wireless",
+            "steps": [
+                {
+                    "action": "event.emit",
+                    "event": "custom.select_source",
+                    "payload": {
+                        "source": "wireless"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "select_bluray",
+            "name": "Select Blu-ray",
+            "steps": [
+                {
+                    "action": "event.emit",
+                    "event": "custom.select_source",
+                    "payload": {
+                        "source": "bluray"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "toggle_mic_mute",
+            "name": "Toggle Mic Mute",
+            "steps": [
+                {
+                    "action": "event.emit",
+                    "event": "custom.toggle_mic_mute"
+                }
+            ]
+        },
+        {
+            "id": "apply_mode",
+            "name": "Apply Mode",
+            "steps": [
+                {
+                    "action": "event.emit",
+                    "event": "custom.mode_change"
+                }
+            ]
         }
     ],
     "ui": {
@@ -294,6 +353,14 @@
                                         "bg_color": "#424242"
                                     }
                                 }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_laptop"
+                                    }
+                                ]
                             }
                         },
                         "parent": null
@@ -316,6 +383,14 @@
                                         "bg_color": "#424242"
                                     }
                                 }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_wireless"
+                                    }
+                                ]
                             }
                         },
                         "parent": null
@@ -338,6 +413,14 @@
                                         "bg_color": "#424242"
                                     }
                                 }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "select_bluray"
+                                    }
+                                ]
                             }
                         },
                         "parent": null
@@ -380,6 +463,14 @@
                                         "label": "Mic Live"
                                     }
                                 }
+                            },
+                            "do": {
+                                "press": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "toggle_mic_mute"
+                                    }
+                                ]
                             }
                         },
                         "parent": null
@@ -476,6 +567,14 @@
                                     "key": "var.mode",
                                     "write_back": true
                                 }
+                            },
+                            "do": {
+                                "change": [
+                                    {
+                                        "action": "macro",
+                                        "macro": "apply_mode"
+                                    }
+                                ]
                             }
                         },
                         "parent": null

@@ -158,6 +158,25 @@ async def test_a_reload_makes_it_say_so_again(tmp_path, caplog) -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_press_reports_that_it_ran_nothing(tmp_path) -> None:
+    """An empty record list is what a control with NO binding returns.
+
+    `simulate_ui_action` is how the cloud AI checks its own write, and that
+    ambiguity is the thing it was built to remove -- so an action that reached
+    no branch has to come back saying so, rather than looking like a button
+    nobody wired.
+    """
+    engine = _engine(tmp_path, [_button("btn_nav", {"action": "navigate", "page": "av"})])
+
+    dispatched = await engine.handle_ui_event("press", "btn_nav")
+
+    assert dispatched == [{"action": "navigate", "ran": False}]
+    # No `error`: the WebSocket door turns one of those into a message on the
+    # glass, and the name of an action is not something a room can act on.
+    assert "error" not in dispatched[0]
+
+
+@pytest.mark.asyncio
 async def test_an_action_the_chain_knows_says_nothing(tmp_path, caplog) -> None:
     engine = _engine(tmp_path, [_button("btn_ok", {"action": "ui.navigate", "page": "av"})])
 

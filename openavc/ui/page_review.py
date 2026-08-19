@@ -15,8 +15,8 @@ survives it, two controls on top of each other, one drawn over a master element
 that the panel draws underneath it, one hanging out of its container, one with
 no box at all, one too small for a finger, a ``style`` measurement bigger than
 the element carrying it (those are rem), a range wider than the device it
-drives, a ``type`` the panel has no renderer for, and a binding the panel does
-not read for that element type.
+drives, a ``type`` the panel has no renderer for, a binding the panel does not
+read for that element type, and a ``do`` action the runtime has no branch for.
 
 What a binding POINTS AT -- a macro, a page, a device, a command -- is the
 neighbouring question, and ``page_references`` answers it. It is separate

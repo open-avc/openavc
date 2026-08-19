@@ -18,9 +18,10 @@ from openavc import (
 )
 
 # --- Source Routing ---
-# Pressing a source button fires ui.press.<element id>, which every panel
-# interaction emits whether or not the button also runs a command. This script
-# handles the routing logic: set the matrix switcher, update state.
+# Each source button runs a one-step macro that emits custom.select_source with
+# the source in its payload. A macro is what carries an event: `event.emit` is a
+# macro step, and a button binding can only run the six actions the panel
+# dispatches -- of which `macro` is one. This script does the routing.
 
 SOURCE_ROUTES = {
     "laptop":   {"input": 1, "output": 1},
@@ -28,17 +29,9 @@ SOURCE_ROUTES = {
     "bluray":   {"input": 3, "output": 1},
 }
 
-SOURCE_BUTTONS = {
-    "btn_laptop":   "laptop",
-    "btn_wireless": "wireless",
-    "btn_bluray":   "bluray",
-}
-
-@on_event("ui.press.btn_laptop")
-@on_event("ui.press.btn_wireless")
-@on_event("ui.press.btn_bluray")
+@on_event("custom.select_source")
 async def handle_source_select(event):
-    source = SOURCE_BUTTONS.get(event.get("element_id", ""), "")
+    source = event.get("source", "")
     route = SOURCE_ROUTES.get(source)
     if not route:
         log.warning(f"Unknown source: {source}")
@@ -67,7 +60,7 @@ async def volume_changed(event):
 
 # --- Mic Mute Toggle ---
 
-@on_event("ui.press.btn_mic_mute")
+@on_event("custom.toggle_mic_mute")
 async def toggle_mic_mute(event):
     current = state.get("var.mic_mute", True)
     new_mute = not current
@@ -128,9 +121,11 @@ async def _auto_shutdown():
 # --- Presentation Mode Presets ---
 # When the user selects a mode from the dropdown, adjust DSP and routing.
 
-# The dropdown writes var.mode itself (show.value with write_back), so the
-# mode is already in state by the time this runs.
-@on_event("ui.change.sel_mode")
+# Reached through the dropdown's do.change macro rather than the raw
+# ui.change event, and that is load-bearing: the raw event is emitted BEFORE
+# the two-way write_back stores the new value, so a handler on it would read
+# var.mode as whatever was selected last time.
+@on_event("custom.mode_change")
 async def mode_changed(event):
     mode = state.get("var.mode", "standard")
     log.info(f"Switching to mode: {mode}")
