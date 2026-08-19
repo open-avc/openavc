@@ -678,60 +678,33 @@ export function DriverDetailPanel({
         </Section>
       )}
 
-      {/* Child entities — a driver's per-channel / per-output surface. Half the
-          catalog puts its real control surface here rather than on the device. */}
-      {Object.keys(childTypes).length > 0 && (
-        <Section title="Per-Channel Values">
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
-            {Object.entries(childTypes).map(([ctype, def]) => {
-              const t = def as ChildEntityTypeSchema;
-              const vars = t.state_variables || {};
-              return (
-                <div key={ctype}>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: "var(--font-size-sm)",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {t.label_plural || t.label || ctype}
-                  </div>
-                  {t.dynamic ? (
-                    // A dynamic type's controls are read off the hardware at
-                    // connect time, so the driver declares none to list here.
-                    <div
-                      style={{
-                        fontSize: "var(--font-size-sm)",
-                        color: "var(--text-muted)",
-                        paddingLeft: "var(--space-md)",
-                      }}
-                    >
-                      Read from the device when it connects.
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                        paddingLeft: "var(--space-md)",
-                      }}
-                    >
-                      {Object.entries(vars).map(([key, sv]) => {
-                        const s = sv as ChildEntityStateVarDef;
-                        return (
-                          <VarRow key={key} label={s.label || key} type={s.type || "string"} />
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Section>
-      )}
+      {/* One section per child roster, titled with whatever the driver calls
+          it — Encoders, Decoders, Outlets, Zones, Video Walls, Dry Contacts.
+          There are 43 different plural labels across the catalog and only two
+          of them are "Channels", so there is no umbrella heading that would be
+          true of all of them. */}
+      {Object.entries(childTypes).map(([ctype, def]) => {
+        const t = def as ChildEntityTypeSchema;
+        const vars = t.state_variables || {};
+        return (
+          <Section key={ctype} title={t.label_plural || t.label || ctype}>
+            {t.dynamic ? (
+              // A dynamic type's controls are read off the hardware at connect
+              // time, so the driver declares none to list here.
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                Read from the device when it connects.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {Object.entries(vars).map(([key, sv]) => {
+                  const s = sv as ChildEntityStateVarDef;
+                  return <VarRow key={key} label={s.label || key} type={s.type || "string"} />;
+                })}
+              </div>
+            )}
+          </Section>
+        );
+      })}
 
     </div>
   );

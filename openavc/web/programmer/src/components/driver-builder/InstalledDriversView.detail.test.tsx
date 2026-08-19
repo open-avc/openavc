@@ -105,6 +105,49 @@ describe("Driver detail: the surface a driver actually declares", () => {
     expect(screen.queryByText("Online")).toBeNull();
   });
 
+  it("titles each roster with what the driver calls it, not a fixed word", () => {
+    // Across the catalog there are 43 different plural labels and only two of
+    // them are "Channels" — an AVoIP matrix has Encoders and Decoders, a PDU
+    // has Outlets. A hardcoded heading would be wrong for nearly every driver.
+    renderPanel({
+      ...DRIVER,
+      child_entity_types: {
+        encoder: {
+          label: "Encoder",
+          label_plural: "Encoders",
+          id_format: { type: "integer", min: 1, max: 64 },
+          state_variables: { stream: { type: "string", label: "Stream URL" } },
+        },
+        decoder: {
+          label: "Decoder",
+          label_plural: "Decoders",
+          id_format: { type: "integer", min: 1, max: 64 },
+          state_variables: { source: { type: "string", label: "Routed Source" } },
+        },
+      },
+    });
+
+    expect(screen.getByText("Encoders")).toBeTruthy();
+    expect(screen.getByText("Decoders")).toBeTruthy();
+    expect(screen.getByText("Stream URL")).toBeTruthy();
+    expect(screen.getByText("Routed Source")).toBeTruthy();
+    expect(screen.queryByText(/Channel/)).toBeNull();
+  });
+
+  it("falls back to the type key when a roster declares no label", () => {
+    renderPanel({
+      ...DRIVER,
+      child_entity_types: {
+        zone: {
+          id_format: { type: "integer", min: 1, max: 4 },
+          state_variables: { level: { type: "number", label: "Level" } },
+        },
+      },
+    });
+
+    expect(screen.getByText("zone")).toBeTruthy();
+  });
+
   it("omits the new sections entirely for a driver that declares neither", () => {
     renderPanel({
       ...DRIVER,
@@ -113,7 +156,7 @@ describe("Driver detail: the surface a driver actually declares", () => {
     });
 
     expect(screen.queryByText("Device Settings")).toBeNull();
-    expect(screen.queryByText("Per-Channel Values")).toBeNull();
+    expect(screen.queryByText("Channels")).toBeNull();
     expect(screen.getByText("Firmware Version")).toBeTruthy();
   });
 });
