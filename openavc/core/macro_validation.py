@@ -14,6 +14,13 @@ Enforcement is deliberately not symmetric, and that is a policy choice, not
 drift: a generator (the AI tools) is told immediately when it emits something
 the runtime can't run, while the IDE's project save stays shape-only because a
 half-built macro is a normal intermediate state for someone editing one.
+
+What the IDE gets instead is ``macro_issues`` -- the same rules, the same
+traversal, returned as placed records rather than one refusal string, so the
+editor can mark the step that is incomplete and the macro list can mark the
+macro without anything being blocked or rejected. That is the third option:
+a macro that saves cleanly and then does nothing is the failure this closes,
+and it is invisible precisely because nobody reopens a macro that saved.
 """
 
 from __future__ import annotations
@@ -204,6 +211,72 @@ def validate_trigger(trigger: dict, path: str) -> list[str]:
     return errors
 
 
+def macro_issues(
+    steps: Any, triggers: Any, *, extra_actions: Collection[str] = ()
+) -> list[dict[str, Any]]:
+    """Everything wrong with a macro, placed where an editor can draw it.
+
+    The same rules and the same traversal ``validate_macro`` runs -- it is
+    written over this one, so the two cannot come to different conclusions --
+    returned as records instead of one joined refusal:
+
+    ``scope``   which list the problem is in, ``"step"`` or ``"trigger"``.
+    ``index``   its position in that list. A problem inside a conditional's
+                branch is reported against the branch's own top-level step,
+                because that is the row somebody has to open to fix it.
+    ``path``    the full location the message was written against
+                (``steps[2].then_steps[0]``), for the sentence itself.
+    ``message`` the sentence, without the path it was prefixed with.
+
+    Nothing here is a warning and nothing is a refusal: every record means the
+    step or trigger as written cannot do what it says. Deliberately NOT
+    included are ``validate_macro``'s soft reference checks (a device or macro
+    id that no longer resolves) -- those are logged there rather than raised
+    for a reason that still holds, that a macro may legitimately be authored
+    before the device it drives exists.
+    """
+    issues: list[dict[str, Any]] = []
+
+    if isinstance(steps, list):
+        for i, step in enumerate(steps):
+            if isinstance(step, dict):
+                raw = validate_macro_step(
+                    step, f"steps[{i}]", extra_actions=extra_actions
+                )
+            else:
+                raw = [f"steps[{i}]: expected an object, got {type(step).__name__}"]
+            issues.extend(_place("step", i, raw))
+
+    if isinstance(triggers, list):
+        for i, trigger in enumerate(triggers):
+            if isinstance(trigger, dict):
+                raw = validate_trigger(trigger, f"triggers[{i}]")
+            else:
+                raw = [f"triggers[{i}]: expected an object, got {type(trigger).__name__}"]
+            issues.extend(_place("trigger", i, raw))
+
+    return issues
+
+
+def _place(scope: str, index: int, raw_errors: list[str]) -> list[dict[str, Any]]:
+    """Split ``"path: message"`` back into its two halves.
+
+    The rules above write the path into the front of every message, so the
+    split belongs in this module rather than at a caller: both halves of the
+    format live here. A path never contains ``": "``, so the first one is the
+    boundary even for a message that goes on to say ``Use: ...``.
+    """
+    placed: list[dict[str, Any]] = []
+    for raw in raw_errors:
+        path, sep, message = raw.partition(": ")
+        if not sep:
+            path, message = "", raw
+        placed.append(
+            {"scope": scope, "index": index, "path": path, "message": message}
+        )
+    return placed
+
+
 def validate_macro(
     steps: list,
     triggers: list,
@@ -217,24 +290,14 @@ def validate_macro(
     are logged as warnings, not errors — a macro may legitimately be authored
     before the device it drives). ``extra_actions`` see validate_macro_step.
     """
-    errors: list[str] = []
+    # One traversal, shared with the editor's lint door: what refuses a
+    # generated macro and what marks a hand-built one are the same findings,
+    # rendered two ways.
+    errors: list[str] = [
+        f"{issue['path']}: {issue['message']}" if issue["path"] else issue["message"]
+        for issue in macro_issues(steps, triggers, extra_actions=extra_actions)
+    ]
     warnings: list[str] = []
-
-    if isinstance(steps, list):
-        for i, step in enumerate(steps):
-            if isinstance(step, dict):
-                errors.extend(validate_macro_step(
-                    step, f"steps[{i}]", extra_actions=extra_actions
-                ))
-            else:
-                errors.append(f"steps[{i}]: expected an object, got {type(step).__name__}")
-
-    if isinstance(triggers, list):
-        for i, trigger in enumerate(triggers):
-            if isinstance(trigger, dict):
-                errors.extend(validate_trigger(trigger, f"triggers[{i}]"))
-            else:
-                errors.append(f"triggers[{i}]: expected an object, got {type(trigger).__name__}")
 
     # Soft reference checks
     if project and not errors:

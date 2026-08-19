@@ -53,6 +53,41 @@ export async function testTrigger(
   return request(`/triggers/${triggerId}/test`, { method: "POST" });
 }
 
+/** One problem the platform found with a macro, placed where the editor draws it.
+ *
+ *  `scope` is the list it belongs to and `index` its row in that list, so a
+ *  problem inside a conditional's branch marks the conditional -- the row
+ *  somebody has to open. `path` is the full location for the sentence itself. */
+export interface MacroIssue {
+  scope: "step" | "trigger";
+  index: number;
+  path: string;
+  message: string;
+}
+
+/**
+ * Ask the platform what is incomplete about these macros, without saving them.
+ *
+ * The rules have exactly one implementation and it is the platform's: the same
+ * ones the cloud AI's macro tools apply, so a macro built by hand reads the
+ * same as the same macro written by the AI. A copy of them in TypeScript is
+ * what this deliberately is not -- it could not see the macro actions a plugin
+ * registered at runtime, and would mark every one of those steps wrong.
+ *
+ * Every macro in one call, because the macro LIST marks its rows too and a
+ * project's worth of macros must not be a project's worth of requests. Nothing
+ * here blocks a save; a half-built step is what editing looks like.
+ */
+export async function validateMacros(
+  macros: { id: string; steps: unknown[]; triggers?: unknown[] }[],
+): Promise<Record<string, { issues: MacroIssue[] }>> {
+  const result = await request<{ macros: Record<string, { issues: MacroIssue[] }> }>(
+    "/macros/validate",
+    { method: "POST", body: JSON.stringify({ macros }) },
+  );
+  return result.macros;
+}
+
 // --- Scripts ---
 
 export async function getScriptSource(

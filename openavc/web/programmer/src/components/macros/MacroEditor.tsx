@@ -61,6 +61,7 @@ import {
   pluginActionSummary,
 } from "./pluginMacroActions";
 import { CopyButton } from "../shared/CopyButton";
+import { issuesAt, issueLabel, issueSummary, type MacroIssue } from "./macroLint";
 import * as api from "../../api/restClient";
 
 interface SortableStepItemProps {
@@ -72,6 +73,8 @@ interface SortableStepItemProps {
   isExpanded: boolean;
   isActive: boolean;
   stepError: StepError | undefined;
+  /** What this step will not do as built, from the platform's own rules. */
+  lintIssues: MacroIssue[];
   conditionalResult: ConditionalResult | undefined;
   groupResult: GroupCommandResult | undefined;
   devices: { id: string; name: string }[];
@@ -95,6 +98,7 @@ function SortableStepItem({
   isExpanded,
   isActive,
   stepError,
+  lintIssues,
   conditionalResult,
   groupResult,
   devices,
@@ -257,6 +261,15 @@ function SortableStepItem({
             <Trash2 size={14} />
           </button>
         </div>
+        {/* Incomplete as built -- amber, and nothing about it blocks a save */}
+        {lintIssues.length > 0 && (
+          <span
+            title={lintIssues.map((i) => `${issueLabel(i)}: ${i.message}`).join("\n")}
+            style={{ display: "flex", flexShrink: 0, color: "#f59e0b" }}
+          >
+            <AlertTriangle size={14} />
+          </span>
+        )}
         {/* Step result indicators */}
         {stepError && (
           <span title={stepError.error} style={{ display: "flex", flexShrink: 0 }}>
@@ -297,6 +310,31 @@ function SortableStepItem({
         >
           <AlertTriangle size={12} style={{ flexShrink: 0 }} />
           {stepError.error}
+        </div>
+      )}
+
+      {/* What this step is missing, beside the fields it is about. Only while
+          the step is open: collapsed, the header's mark and the summary at the
+          top of the editor already say it, and saying it three times is noise. */}
+      {isExpanded && lintIssues.length > 0 && (
+        <div
+          style={{
+            padding: "var(--space-xs) var(--space-md)",
+            fontSize: 12,
+            color: "#f59e0b",
+            background: "rgba(245,158,11,0.08)",
+            borderTop: "1px solid rgba(245,158,11,0.2)",
+          }}
+        >
+          {lintIssues.map((issue, n) => (
+            <div key={n} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+              <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+              <span>
+                {issue.path.includes(".") ? `${issueLabel(issue)}: ` : ""}
+                {issue.message}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -357,6 +395,8 @@ function SortableStepItem({
 
 interface MacroEditorProps {
   macro: MacroConfig;
+  /** What this macro will not do as built (POST /api/macros/validate). */
+  issues?: MacroIssue[];
   allMacros: MacroConfig[];
   devices: { id: string; name: string }[];
   onUpdate: (updated: MacroConfig) => void;
@@ -365,6 +405,7 @@ interface MacroEditorProps {
 
 export function MacroEditor({
   macro,
+  issues,
   allMacros,
   devices,
   onUpdate,
@@ -734,6 +775,36 @@ export function MacroEditor({
         </div>
       )}
 
+      {/* What will not run as built. Amber and never a blocker: half-built is
+          what editing looks like, and the save path stays shape-only. */}
+      {(issues?.length ?? 0) > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            padding: "var(--space-sm) var(--space-md)",
+            background: "rgba(245,158,11,0.08)",
+            borderBottom: "1px solid rgba(245,158,11,0.3)",
+            fontSize: 12,
+            color: "var(--text-secondary)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", color: "#f59e0b", fontWeight: 600 }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+            {issueSummary(issues!)} won't run as built
+          </div>
+          {issues!.map((issue, n) => (
+            <div key={n} style={{ paddingLeft: 22 }}>
+              <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                {issueLabel(issue)}
+              </strong>
+              : {issue.message}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Dependency tree (8.6) */}
       {(callers.length > 0 || callees.length > 0) && (
         <div
@@ -774,6 +845,7 @@ export function MacroEditor({
         {/* Triggers section */}
         <TriggerList
           triggers={macro.triggers ?? []}
+          issues={issues}
           devices={devices as any}
           allMacros={allMacros}
           onUpdate={(triggers: TriggerConfig[]) => onUpdate({ ...macro, triggers })}
@@ -813,6 +885,7 @@ export function MacroEditor({
                     isExpanded={expandedStep === i}
                     isActive={isRunning && macroProgress.activeStepPath.length > 0 && macroProgress.activeStepPath[0] === i}
                     stepError={stepErrors.find((e) => e.stepIndex === i)}
+                    lintIssues={issuesAt(issues, "step", i)}
                     conditionalResult={step.action === "conditional" ? conditionalResults.find((r) => r.stepIndex === i) : undefined}
                     groupResult={step.action === "group.command" ? groupResults.find((g) => g.stepIndex === i) : undefined}
                     devices={devices}

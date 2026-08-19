@@ -1,17 +1,21 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import type { MacroConfig } from "../../api/types";
 import { CopyButton } from "../shared/CopyButton";
+import { issueLabel, issueSummary, type MacroIssuesById } from "./macroLint";
 
 interface MacroListProps {
   macros: MacroConfig[];
+  /** What will not run, by macro id. The mark belongs here and not only in
+   *  the open editor: a macro that saved cleanly is one nobody reopens. */
+  issues?: MacroIssuesById;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAdd: () => void;
   onDelete: (id: string) => void;
 }
 
-export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: MacroListProps) {
+export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelete }: MacroListProps) {
   const [search, setSearch] = useState("");
   const filtered = macros.filter(m => !search || m.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -152,6 +156,24 @@ export function MacroList({ macros, selectedId, onSelect, onAdd, onDelete }: Mac
                 >
                   {m.steps.length} step{m.steps.length !== 1 ? "s" : ""}
                 </div>
+                {(issues?.[m.id]?.length ?? 0) > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      marginTop: 2,
+                      fontSize: 11,
+                      color: "#f59e0b",
+                    }}
+                    title={issues![m.id]
+                      .map((i) => `${issueLabel(i)}: ${i.message}`)
+                      .join("\n")}
+                  >
+                    <AlertTriangle size={11} style={{ flexShrink: 0 }} />
+                    {issueSummary(issues![m.id])} won't run
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
                   <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {m.id}

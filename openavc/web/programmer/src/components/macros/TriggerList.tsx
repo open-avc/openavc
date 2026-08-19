@@ -3,21 +3,26 @@
  * Placed above the steps section in MacroEditor.
  */
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play, AlertTriangle } from "lucide-react";
 import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
 import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
+import { issuesAt, issueLabel, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
 import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
 
 interface TriggerListProps {
   triggers: TriggerConfig[];
+  /** The whole macro's issues; this list reads the trigger half. A cron with
+   *  the wrong field count or an operator name nothing knows is exactly as
+   *  silent as a half-built step. */
+  issues?: MacroIssue[];
   devices: DeviceConfig[];
   allMacros: MacroConfig[];
   onUpdate: (triggers: TriggerConfig[]) => void;
 }
 
-export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerListProps) {
+export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: TriggerListProps) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [pendingTriggers, setPendingTriggers] = useState<Record<string, { reason: string; waitSeconds?: number; queuePosition?: number }>>({});
@@ -208,6 +213,7 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
             const typeInfo = getTriggerType(trigger.type);
             const isFired = trigger.id in recentlyFired;
             const pending = pendingTriggers[trigger.id];
+            const lintIssues = issuesAt(issues, "trigger", i);
 
             return (
               <div
@@ -302,6 +308,15 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
                       )}
                     </span>
                   )}
+                  {/* Will not fire as built */}
+                  {lintIssues.length > 0 && (
+                    <span
+                      title={lintIssues.map((x) => `${issueLabel(x)}: ${x.message}`).join("\n")}
+                      style={{ display: "flex", flexShrink: 0, color: "#f59e0b" }}
+                    >
+                      <AlertTriangle size={14} />
+                    </span>
+                  )}
                   {/* Conditions indicator */}
                   {(trigger.conditions?.length ?? 0) > 0 && (
                     <span
@@ -346,6 +361,31 @@ export function TriggerList({ triggers, devices, allMacros, onUpdate }: TriggerL
                     </button>
                   </div>
                 </div>
+
+                {/* What this trigger is missing, beside the fields it is about.
+                    Only while it is open -- collapsed, the header's mark and the
+                    editor's summary line already say it. */}
+                {expandedIdx === i && lintIssues.length > 0 && (
+                  <div
+                    style={{
+                      padding: "var(--space-xs) var(--space-md)",
+                      fontSize: 12,
+                      color: "#f59e0b",
+                      background: "rgba(245,158,11,0.08)",
+                      borderTop: "1px solid rgba(245,158,11,0.2)",
+                    }}
+                  >
+                    {lintIssues.map((x, n) => (
+                      <div key={n} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                        <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+                        <span>
+                          {x.path.includes(".") ? `${issueLabel(x)}: ` : ""}
+                          {x.message}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Expanded editor */}
                 {expandedIdx === i && (

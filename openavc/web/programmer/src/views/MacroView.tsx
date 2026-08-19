@@ -5,6 +5,7 @@ import { MacroEditor } from "../components/macros/MacroEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
 import { macroToScript, generateId, getConversionWarnings } from "../components/macros/macroHelpers";
+import { useMacroLint } from "../components/macros/macroLint";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
@@ -27,6 +28,11 @@ export function MacroView() {
   const macros = useProjectStore((s) => s.project?.macros) ?? [];
   const devices = useProjectStore((s) => s.project?.devices) ?? [];
   const selectedMacro = macros.find((m) => m.id === selectedId) ?? null;
+
+  // What the platform says will not run. Marked on the LIST as well as inside
+  // the open editor: a macro that saves cleanly and then does nothing is
+  // invisible precisely because nobody reopens it.
+  const macroIssues = useMacroLint(macros);
 
   const handleAdd = useCallback(() => {
     if (!useProjectStore.getState().project) return;
@@ -110,6 +116,7 @@ export function MacroView() {
         <div style={{ width: 280, flexShrink: 0 }}>
           <MacroList
             macros={macros}
+            issues={macroIssues}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onAdd={handleAdd}
@@ -120,6 +127,7 @@ export function MacroView() {
           {selectedMacro ? (
             <MacroEditor
               macro={selectedMacro}
+              issues={macroIssues[selectedMacro.id]}
               allMacros={macros}
               devices={devices.map((d) => ({ id: d.id, name: d.name }))}
               onUpdate={handleUpdate}

@@ -2,10 +2,11 @@
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import api_error as _api_error
+from openavc.core.macro_validation import macro_issues
 
 router = APIRouter()
 
@@ -47,6 +48,56 @@ async def cancel_macro(macro_id: str) -> dict[str, Any]:
     if cancelled:
         return {"status": "cancelled", "macro_id": macro_id}
     return {"status": "not_running", "macro_id": macro_id}
+
+
+@router.post("/macros/validate")
+async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
+    """What is incomplete about these macros, without saving anything.
+
+    The question the macro editor asks after an edit: which steps will not do
+    what they say? A `delay` with no seconds, a `device.command` with no
+    command chosen, an operator name the runtime does not know -- all of them
+    save cleanly today, report "Saved", and then do nothing in the room. The
+    sting is that a clean save is the reason nobody ever opens that macro
+    again, so the search goes to the projector, the cable and the network.
+
+    The rules are the platform's own, at the same door the cloud AI's macro
+    tools use, so a macro built by hand and the same macro written by the AI
+    get the same reading. Nothing here blocks and nothing 422s: a half-built
+    step is a normal state for somebody mid-edit, which is exactly why the
+    project save stays shape-only (`core/macro_validation` records that
+    policy). This endpoint is the third option -- show it, refuse nothing.
+
+    Takes the macros posted rather than reading the saved project, because the
+    editor holds unsaved edits and the mark has to describe what is on screen.
+    Many at once rather than one per call: the macro LIST marks its rows too,
+    and a project's worth of macros must not be a project's worth of requests.
+
+    Plugin-registered actions come from the running engine, which is the other
+    reason this cannot be a copy of the rules in the browser: only the engine
+    knows which plugin actions are loaded, and a lint that flags a working
+    step is worse than no lint at all.
+    """
+    engine = _get_engine()
+    extra_actions = (
+        engine.macros.plugin_action_types() if getattr(engine, "macros", None) else frozenset()
+    )
+
+    if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
+        raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
+
+    results: dict[str, Any] = {}
+    for entry in body["macros"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
+            raise _api_error(400, "Every macro needs a non-empty 'id'")
+        results[entry["id"]] = {
+            "issues": macro_issues(
+                entry.get("steps") or [],
+                entry.get("triggers") or [],
+                extra_actions=extra_actions,
+            )
+        }
+    return {"macros": results}
 
 
 # --- Triggers ---

@@ -233,6 +233,14 @@ The **Set Variable** step picks its target from the Variable Picker (a searchabl
 
 The macro detail panel shows a dependency tree listing which macros call this macro and which macros this macro calls (via "Run Macro" steps). If you create a circular dependency (macro A calls B, B calls A), the IDE warns you at save time.
 
+## Steps That Won't Run
+
+A step is not finished until every field it needs is filled in. A **Delay** with no number of seconds, a **Device Command** with no command chosen, or a schedule trigger with no time set will save without complaint and then do nothing when the macro runs.
+
+The IDE marks those for you. An amber note at the top of the macro lists what is unfinished, the step or trigger itself carries a warning icon, and the **macro list marks the macro**, so you can see there is something to fix without opening it.
+
+Nothing is blocked. A half-finished step is normal while you are building, so the macro still saves either way, and each mark clears as soon as you fill the missing field in.
+
 ## Testing Macros
 
 Click **Test** to execute the macro immediately. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution.
