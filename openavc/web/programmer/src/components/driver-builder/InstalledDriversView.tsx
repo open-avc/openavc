@@ -5,7 +5,13 @@ import { useProjectStore } from "../../store/projectStore";
 import { useNavigationStore } from "../../store/navigationStore";
 import { parseApiError } from "../../api/errors";
 import { InlineError } from "../shared/InlineError";
-import type { DriverInfo, InstalledDriver } from "../../api/types";
+import type {
+  ChildEntityStateVarDef,
+  ChildEntityTypeSchema,
+  DeviceSettingDef,
+  DriverInfo,
+  InstalledDriver,
+} from "../../api/types";
 
 const GENERIC_IDS = new Set(["generic_tcp", "generic_serial", "generic_http"]);
 
@@ -334,7 +340,7 @@ export function InstalledDriversView({
 }
 
 
-function DriverDetailPanel({
+export function DriverDetailPanel({
   driver,
   installed,
   isPython,
@@ -375,6 +381,8 @@ function DriverDetailPanel({
   const configSchema = driver.config_schema || {};
   const commands = driver.commands || {};
   const stateVars = driver.state_variables || {};
+  const deviceSettings = driver.device_settings || {};
+  const childTypes = driver.child_entity_types || {};
   const inUse = devicesUsingDriver.length > 0;
 
   return (
@@ -647,11 +655,77 @@ function DriverDetailPanel({
             {Object.entries(stateVars).map(([key, sv]) => {
               const s = sv as Record<string, unknown>;
               return (
-                <div key={key} style={{ fontSize: "var(--font-size-sm)" }}>
-                  <span style={{ fontWeight: 500 }}>{(s.label as string) || key}</span>
-                  <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
-                    ({(s.type as string) || "string"})
-                  </span>
+                <VarRow
+                  key={key}
+                  label={(s.label as string) || key}
+                  type={(s.type as string) || "string"}
+                />
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Device Settings — values written to and polled from the hardware */}
+      {Object.keys(deviceSettings).length > 0 && (
+        <Section title="Device Settings">
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {Object.entries(deviceSettings).map(([key, def]) => {
+              const s = def as DeviceSettingDef;
+              return <VarRow key={key} label={s.label || key} type={s.type || "string"} />;
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* Child entities — a driver's per-channel / per-output surface. Half the
+          catalog puts its real control surface here rather than on the device. */}
+      {Object.keys(childTypes).length > 0 && (
+        <Section title="Per-Channel Values">
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)" }}>
+            {Object.entries(childTypes).map(([ctype, def]) => {
+              const t = def as ChildEntityTypeSchema;
+              const vars = t.state_variables || {};
+              return (
+                <div key={ctype}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "var(--font-size-sm)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {t.label_plural || t.label || ctype}
+                  </div>
+                  {t.dynamic ? (
+                    // A dynamic type's controls are read off the hardware at
+                    // connect time, so the driver declares none to list here.
+                    <div
+                      style={{
+                        fontSize: "var(--font-size-sm)",
+                        color: "var(--text-muted)",
+                        paddingLeft: "var(--space-md)",
+                      }}
+                    >
+                      Read from the device when it connects.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                        paddingLeft: "var(--space-md)",
+                      }}
+                    >
+                      {Object.entries(vars).map(([key, sv]) => {
+                        const s = sv as ChildEntityStateVarDef;
+                        return (
+                          <VarRow key={key} label={s.label || key} type={s.type || "string"} />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -659,6 +733,18 @@ function DriverDetailPanel({
         </Section>
       )}
 
+    </div>
+  );
+}
+
+
+function VarRow({ label, type }: { label: string; type: string }) {
+  return (
+    <div style={{ fontSize: "var(--font-size-sm)" }}>
+      <span style={{ fontWeight: 500 }}>{label}</span>
+      <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
+        ({type})
+      </span>
     </div>
   );
 }

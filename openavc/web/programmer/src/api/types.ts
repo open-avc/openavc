@@ -576,6 +576,13 @@ export interface DriverInfo {
   default_config?: Record<string, unknown>;
   state_variables?: Record<string, unknown>;
   device_settings?: Record<string, DeviceSettingDef>;
+  /** The per-child rosters this driver declares (channels, outputs, zones).
+   *  For half the catalog this is where the real control surface lives, so the
+   *  driver list ships it and the driver detail panel shows it — a switcher's
+   *  per-output state exists before any device does. Same shape the runtime
+   *  children endpoint returns; the counts are only known once a device
+   *  connects. */
+  child_entity_types?: Record<string, ChildEntityTypeSchema>;
   help?: { overview?: string; setup?: string };
 }
 
