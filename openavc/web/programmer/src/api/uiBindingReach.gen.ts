@@ -72,6 +72,15 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
  */
 export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label"];
 
+/**
+ * Types whose `look` binding renders a per-state ICON -- a smaller set again.
+ *
+ * A state's appearance is applied as style, and an icon is content: something
+ * has to rebuild the icon+text layout for it to appear, and only the button's
+ * evaluator does. A label draws its own `icon` and ignores one named by a state.
+ */
+export const STATE_ICON_TYPES: string[] = ["button", "camera_preset"];
+
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;
 

@@ -74,8 +74,16 @@ export function DeviceDetail({
     [updateWithUndo],
   );
 
+  // The id this page is showing, as of the last render. A fetch that resolves
+  // after the user has moved to another device would otherwise draw that
+  // device's commands, settings and driver info under this one's name.
+  const shownDeviceId = useRef(deviceId);
+  shownDeviceId.current = deviceId;
   const refetchDeviceInfo = useCallback(() => {
-    api.getDevice(deviceId).then(setDeviceInfo).catch(console.error);
+    const forDevice = deviceId;
+    api.getDevice(deviceId)
+      .then((info) => { if (shownDeviceId.current === forDevice) setDeviceInfo(info); })
+      .catch(console.error);
   }, [deviceId]);
 
   // Refetch on mount and whenever the connection flips: a role-adaptive

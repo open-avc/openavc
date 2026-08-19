@@ -158,6 +158,20 @@ RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
 #: takes only colour from that state.
 STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label"})
 
+#: Types whose ``look`` binding renders a per-state ICON, which is a smaller set
+#: than the one above.
+#:
+#: A state's appearance is merged into the element's style and applied, and an
+#: icon is not a style property -- it is content, and something has to rebuild
+#: the icon+text layout for it to appear. Only the button's evaluator does
+#: (``evaluateFeedback`` calls ``renderElementContent``); the label's
+#: (``evaluateLabelLook``) deliberately does colour and words and nothing else.
+#:
+#: So a label draws its OWN ``icon`` -- ``renderLabel`` builds that at render
+#: time -- and ignores one named by a state. That difference is invisible from
+#: the project file, which is why it is written down here.
+STATE_ICON_TYPES = frozenset({"button", "camera_preset"})
+
 
 # --- What the panel reads off the element itself, per type -----------------
 #
@@ -255,6 +269,16 @@ STRUCTURAL_PROPERTIES = frozenset({
 
 #: The slots worth naming in a message, in the order a reader expects them.
 _SLOTS = ("value", "look", "items")
+
+#: What an author sees when a slot is bound to nothing, per slot. Said out loud
+#: because "the binding is inert" describes the code and not the screen, and the
+#: screen is where this gets noticed -- a label that went blank mid-edit reads as
+#: a control that vanished, not as a binding waiting for a key.
+_UNBOUND_CONSEQUENCE = {
+    "value": "The control shows what an unset value looks like: blank text, or the low end of a range.",
+    "look": "Its appearance stays on whatever an unmatched state gives it.",
+    "items": "The list comes up empty.",
+}
 
 # --- Ranges ----------------------------------------------------------------
 #
@@ -1360,6 +1384,25 @@ INERT_WITHOUT: dict[str, tuple[str, str | None, str]] = {
 }
 
 
+def _look_icon_states(look: Mapping[str, Any]) -> list[str]:
+    """Which states of a ``show.look`` name an icon, in both spellings.
+
+    The multi-state form carries one appearance per state; the binary form
+    carries two, ``style_active`` and ``style_inactive``. Both are offered by
+    the same editor, so both reach the file.
+    """
+    states = look.get("states")
+    if isinstance(states, Mapping):
+        return sorted(
+            str(name) for name, spec in states.items()
+            if isinstance(spec, Mapping) and spec.get("icon")
+        )
+    return [
+        half for half, field in (("active", "style_active"), ("inactive", "style_inactive"))
+        if isinstance(look.get(field), Mapping) and look[field].get("icon")
+    ]
+
+
 def look_supplies_text(look: Any) -> bool:
     """Whether a ``show.look`` puts TEXT on screen, rather than only colour.
 
@@ -1638,6 +1681,52 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
                 f"element bound to the same key.",
                 key=("binding_not_rendered", el_id, "look.states.label"),
             ))
+
+    # ...and the same one step further in: a look can be honored for its colour
+    # AND its text while a per-state icon is still dropped, because an icon is
+    # content rather than style and only the button's evaluator rebuilds it.
+    if "look" in honored and el_type not in STATE_ICON_TYPES and isinstance(look, Mapping):
+        iconed = _look_icon_states(look)
+        if iconed:
+            took = "colour and text" if el_type in STATE_LABEL_TYPES else "colour"
+            remedy = (
+                "Set the element's own icon -- it draws that one, it just cannot "
+                "change it per state."
+                if "icon" in HONORED_PROPERTIES.get(el_type, frozenset())
+                else "Use a button, which does draw one."
+            )
+            findings.append(Finding(
+                el_id,
+                "binding_not_rendered",
+                f"{el_id} ({el_type}): show.look sets an icon for {', '.join(iconed)}, "
+                f"but a {el_type} takes only {took} from show.look, so that icon never "
+                f"appears. {remedy}",
+                key=("binding_not_rendered", el_id, "look.icon"),
+            ))
+
+    # A binding the renderer DOES read, that names nothing to read. It is the
+    # half-finished state every one of these passes through -- the editor writes
+    # the binding when the source is chosen and the key a moment later -- and
+    # left that way it is worse than no binding at all, because every other
+    # check here treats a present binding as a supplied one and goes quiet.
+    for slot in _SLOTS:
+        binding = show.get(slot)
+        if slot not in honored or not isinstance(binding, Mapping):
+            continue
+        if slot == "value" and binding.get("source") == "macro_progress":
+            continue  # its text comes from the macro, not from a state key
+        field = "key_pattern" if slot == "items" else "key"
+        if str(binding.get(field) or "").strip():
+            continue
+        named = "key pattern" if slot == "items" else "state key"
+        findings.append(Finding(
+            el_id,
+            "binding_without_key",
+            f"{el_id} ({el_type}): show.{slot} has no {named}, so it reads nothing and "
+            f"never updates. {_UNBOUND_CONSEQUENCE[slot]} Pick the {named} it should "
+            f"read, or remove the binding.",
+            key=("binding_without_key", el_id, slot),
+        ))
     return findings
 
 

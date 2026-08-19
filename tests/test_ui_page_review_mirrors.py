@@ -30,6 +30,7 @@ from openavc.ui.page_review import (
     HONORED_SHOW_SLOTS,
     MATRIX_CONFIG_KEYS,
     MINIMUM_VISIBLE_PX,
+    STATE_ICON_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
     TOUCH_MIN_MM,
@@ -148,6 +149,39 @@ def test_only_the_state_text_types_can_draw_a_state_label(
         if "_setLabelText" in panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
     )
     assert derived == STATE_LABEL_TYPES
+
+
+def test_only_the_state_icon_types_can_draw_a_state_icon(
+    panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+) -> None:
+    """Narrower again than the text one, and for a structural reason.
+
+    A state's appearance is merged into the element's style and applied, and an
+    icon is not style -- it is content. It appears only where the evaluator
+    goes on to rebuild the icon+text layout, which is ``renderElementContent``.
+    The button's evaluator does; the label's does colour and words and stops,
+    so an icon picked per state on a label is written to the project and never
+    drawn.
+
+    Derived the same way as the text table, by what the evaluator behind each
+    look binding actually calls, so adding a third evaluator does not quietly
+    leave this table wrong.
+    """
+    look_binding_type = {}
+    for el_type, fn_name in renderer_by_type.items():
+        for block in _PUSH_BLOCK.findall(panel_method_bodies[fn_name]):
+            if "bindings.show.look" not in block:
+                continue
+            if (m := re.search(r"type:\s*'([\w_]+)'", block)) is not None:
+                look_binding_type[el_type] = m.group(1)
+    assert look_binding_type, "no renderer registers a show.look binding"
+
+    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
+    derived = frozenset(
+        el_type for el_type, bind_type in look_binding_type.items()
+        if "renderElementContent" in panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
+    )
+    assert derived == STATE_ICON_TYPES
 
 
 # --- The property table ----------------------------------------------------

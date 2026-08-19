@@ -17,6 +17,7 @@ import {
   MATRIX_PANEL_WRITABLE_PREFIXES,
   NAVIGATION_SENTINELS,
   REVIEWED_SHOW_SLOTS,
+  STATE_ICON_TYPES,
   STATE_LABEL_TYPES,
   STRUCTURAL_PROPERTIES,
 } from "../../api/uiBindingReach.gen";
@@ -3077,6 +3078,7 @@ export interface ReviewFinding {
     | "overlap"
     | "no_placement"
     | "binding_not_rendered"
+    | "binding_without_key"
     | "property_not_rendered"
     | "nothing_to_draw"
     | "unknown_element_type"
@@ -4455,8 +4457,93 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
       });
     }
   }
+
+  // ...and the same one step further in: a look can be honored for its colour
+  // AND its text while a per-state icon is still dropped, because an icon is
+  // content rather than style and only the button's evaluator rebuilds it.
+  if (honored.includes("look") && !STATE_ICON_TYPES.includes(el.type) &&
+      look && typeof look === "object" && !Array.isArray(look)) {
+    const iconed = lookIconStates(look);
+    if (iconed.length) {
+      const took = STATE_LABEL_TYPES.includes(el.type) ? "colour and text" : "colour";
+      const remedy = (own(HONORED_PROPERTIES, el.type) ?? []).includes("icon")
+        ? "Set the element's own icon -- it draws that one, it just cannot " +
+          "change it per state."
+        : "Use a button, which does draw one.";
+      findings.push({
+        elementId: el.id,
+        kind: "binding_not_rendered",
+        message:
+          `${el.id} (${el.type}): show.look sets an icon for ${iconed.join(", ")}, ` +
+          `but a ${el.type} takes only ${took} from show.look, so that icon never ` +
+          `appears. ${remedy}`,
+        key: `binding_not_rendered|${el.id}|look.icon`,
+      });
+    }
+  }
+
+  // A binding the renderer DOES read, that names nothing to read. It is the
+  // half-finished state every one of these passes through -- the editor writes
+  // the binding when the source is chosen and the key a moment later -- and
+  // left that way it is worse than no binding at all, because every other
+  // check here treats a present binding as a supplied one and goes quiet.
+  for (const slot of REVIEWED_SHOW_SLOTS) {
+    const binding = show[slot] as Record<string, unknown> | undefined;
+    if (!honored.includes(slot) || !binding || typeof binding !== "object" ||
+        Array.isArray(binding)) continue;
+    if (slot === "value" && binding.source === "macro_progress") continue;
+    const field = slot === "items" ? "key_pattern" : "key";
+    if (String(binding[field] ?? "").trim()) continue;
+    const named = slot === "items" ? "key pattern" : "state key";
+    findings.push({
+      elementId: el.id,
+      kind: "binding_without_key",
+      message:
+        `${el.id} (${el.type}): show.${slot} has no ${named}, so it reads nothing and ` +
+        `never updates. ${UNBOUND_CONSEQUENCE[slot]} Pick the ${named} it should ` +
+        `read, or remove the binding.`,
+      key: `binding_without_key|${el.id}|${slot}`,
+    });
+  }
   return findings;
 }
+
+/**
+ * Which states of a `show.look` name an icon, in both spellings.
+ *
+ * The multi-state form carries one appearance per state; the binary form
+ * carries two, `style_active` and `style_inactive`. Both are offered by the
+ * same editor, so both reach the file. Mirrors _look_icon_states in
+ * page_review.py.
+ */
+function lookIconStates(look: Record<string, unknown>): string[] {
+  const states = look.states;
+  if (states && typeof states === "object" && !Array.isArray(states)) {
+    return Object.entries(states as Record<string, unknown>)
+      .filter(([, spec]) =>
+        spec && typeof spec === "object" && !Array.isArray(spec) &&
+        (spec as Record<string, unknown>).icon)
+      .map(([name]) => name)
+      .sort();
+  }
+  return ([["active", "style_active"], ["inactive", "style_inactive"]] as const)
+    .filter(([, field]) => {
+      const half = look[field];
+      return half && typeof half === "object" && !Array.isArray(half) &&
+        (half as Record<string, unknown>).icon;
+    })
+    .map(([half]) => half);
+}
+
+/**
+ * What an author sees when a slot is bound to nothing, per slot. Mirrors
+ * _UNBOUND_CONSEQUENCE in page_review.py.
+ */
+const UNBOUND_CONSEQUENCE: Record<string, string> = {
+  value: "The control shows what an unset value looks like: blank text, or the low end of a range.",
+  look: "Its appearance stays on whatever an unmatched state gives it.",
+  items: "The list comes up empty.",
+};
 
 // --- What a matrix is, once the shorthand is expanded ---------------------
 //

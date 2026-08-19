@@ -13,6 +13,7 @@ import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { DeviceValuePicker } from "../BindingEditor/DeviceValuePicker";
 import { ConditionGroupEditor, type ConditionGroup } from "../../shared/ConditionGroupEditor";
 import { useConnectionStore } from "../../../store/connectionStore";
+import { STATE_ICON_TYPES, STATE_LABEL_TYPES } from "../../../api/uiBindingReach.gen";
 
 interface BindingPropertiesProps {
   element: UIElement;
@@ -107,6 +108,13 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
       const deviceId = key.split(".")[1];
       if (!deviceIds.has(deviceId)) return { kind: "broken", text: `Device "${deviceId}" not found` };
     }
+    // Bound to nothing. Worth saying here rather than only in Validate,
+    // because this is the half-second a binding spends between "state" being
+    // chosen and a key being picked -- and a control left in it goes blank on
+    // the canvas with nothing on screen to explain why.
+    if (binding && !key?.trim() && binding.source !== "macro_progress") {
+      return { kind: "incomplete", text: "No state key" };
+    }
     return null;
   };
 
@@ -194,12 +202,20 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
       );
     } else {
       body = (
+        // Keyed by element so nothing inside it -- a half-typed state key, the
+        // category last picked -- outlives the element it was chosen for. The
+        // two gates come from the panel's own tables rather than a type name:
+        // per-state TEXT is drawn by three types and a per-state ICON by two,
+        // and spelling either as `=== "button"` is what hid the label field
+        // from a label while offering it an icon nothing draws.
         <FeedbackBindingEditor
+          key={element.id}
           value={lookBinding}
           onChange={(v) => setShowKey("look", v)}
           onClear={() => setShowKey("look", null)}
           showImageField={element.type === "button"}
-          showConditionalLabel={element.type === "button"}
+          showConditionalLabel={STATE_LABEL_TYPES.includes(element.type)}
+          showIconField={STATE_ICON_TYPES.includes(element.type)}
         />
       );
     }
@@ -512,9 +528,14 @@ function Card({ title, help, status, children }: { title: string; help?: string;
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "6px 10px", background: "var(--bg-surface)" }}>
         <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>{title}</span>
         {status && (
-          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: status.kind === "broken" ? "var(--color-error)" : "var(--color-warning)" }}>
+          // The chip is one word; the reason it carries (which device is
+          // missing, what is not filled in) was being dropped on the floor.
+          <span
+            title={status.text}
+            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: status.kind === "broken" ? "var(--color-error)" : "var(--color-warning)" }}
+          >
             <AlertTriangle size={12} />
-            {status.kind === "broken" ? "Broken" : "Incomplete"}
+            {status.kind === "broken" ? "Broken" : status.text || "Incomplete"}
           </span>
         )}
       </div>

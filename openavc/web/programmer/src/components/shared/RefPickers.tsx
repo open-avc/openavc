@@ -77,9 +77,13 @@ export function CommandRefPicker({
       setCommands([]);
       return;
     }
+    // A late answer for the device picked a moment ago would fill this
+    // dropdown with that device's commands beside the new device's name.
+    let stale = false;
     api.getDevice(deviceId)
-      .then((info) => setCommands(Object.keys(info?.commands ?? {})))
-      .catch(() => setCommands([]));
+      .then((info) => { if (!stale) setCommands(Object.keys(info?.commands ?? {})); })
+      .catch(() => { if (!stale) setCommands([]); });
+    return () => { stale = true; };
   }, [deviceId]);
 
   return (

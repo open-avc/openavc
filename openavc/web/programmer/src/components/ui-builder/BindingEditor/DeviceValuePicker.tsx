@@ -207,7 +207,15 @@ export function DeviceValuePicker({
       setDeviceInfo(null);
       return;
     }
-    api.getDevice(selectedDevice).then(setDeviceInfo).catch(() => setDeviceInfo(null));
+    // Guarded like the child-entity fetch below it and like ActionPicker's:
+    // switch devices while an earlier getDevice() is in flight and the late
+    // answer would repaint this picker with the previous device's properties,
+    // ranges and units, under the new device's name.
+    let stale = false;
+    api.getDevice(selectedDevice)
+      .then((info) => { if (!stale) setDeviceInfo(info); })
+      .catch(() => { if (!stale) setDeviceInfo(null); });
+    return () => { stale = true; };
   }, [selectedDevice]);
 
   // Child entities (registered children + per-type schemas) — drivers whose

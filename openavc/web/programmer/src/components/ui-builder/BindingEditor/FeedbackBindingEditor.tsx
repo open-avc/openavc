@@ -20,10 +20,20 @@ interface FeedbackBindingEditorProps {
   value: Record<string, unknown> | null;
   onChange: (value: Record<string, unknown>) => void;
   onClear: () => void;
-  /** Show conditional label fields (for Stream Deck / physical buttons) */
+  /** Show per-state label fields -- the types whose look renders TEXT. */
   showConditionalLabel?: boolean;
   /** Show per-state image picker (for image-capable buttons) */
   showImageField?: boolean;
+  /**
+   * Show per-state icon pickers.
+   *
+   * Off by default, and gated separately from the label above, because the two
+   * are honored by different sets of types: a state's appearance is applied as
+   * style, and an icon is content -- only the evaluator that rebuilds the
+   * icon+text layout draws one. Offering it where nothing rebuilds it writes a
+   * picked icon into the project that never appears on the panel.
+   */
+  showIconField?: boolean;
 }
 
 export function FeedbackBindingEditor({
@@ -32,6 +42,7 @@ export function FeedbackBindingEditor({
   onClear,
   showConditionalLabel = false,
   showImageField = false,
+  showIconField = false,
 }: FeedbackBindingEditorProps) {
   const projectVariables = useProjectStore((s) => s.project?.variables);
   const projectDevices = useProjectStore((s) => s.project?.devices);
@@ -483,6 +494,7 @@ export function FeedbackBindingEditor({
                     style={{ ...inputStyle, flex: 1 }}
                   />
                 </div>
+                {showIconField && (
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                   <span style={{ ...colorLabelStyle, width: 56 }}>Icon</span>
                   <IconPicker
@@ -496,6 +508,7 @@ export function FeedbackBindingEditor({
                     />
                   )}
                 </div>
+                )}
                 {showImageField && (
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                     <span style={{ ...colorLabelStyle, width: 56 }}>Image</span>
@@ -651,6 +664,7 @@ export function FeedbackBindingEditor({
                 />
               </div>
             )}
+            {showIconField && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={{ ...colorLabelStyle, width: 56 }}>Icon</span>
               <IconPicker
@@ -664,6 +678,7 @@ export function FeedbackBindingEditor({
                 />
               )}
             </div>
+            )}
             {showImageField && (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <span style={{ ...colorLabelStyle, width: 56 }}>Image</span>
@@ -718,6 +733,7 @@ export function FeedbackBindingEditor({
                 />
               </div>
             )}
+            {showIconField && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={{ ...colorLabelStyle, width: 56 }}>Icon</span>
               <IconPicker
@@ -731,6 +747,7 @@ export function FeedbackBindingEditor({
                 />
               )}
             </div>
+            )}
             {showImageField && (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <span style={{ ...colorLabelStyle, width: 56 }}>Image</span>

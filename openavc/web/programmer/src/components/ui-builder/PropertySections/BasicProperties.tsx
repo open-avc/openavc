@@ -6,7 +6,7 @@ import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { getAssetUrl } from "../../../api/systemClient";
 import { pxToRem, remToPx, resolveMatrixAxis } from "../uiBuilderHelpers";
-import { MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
+import { HONORED_PROPERTIES, MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { parseStateOptionList } from "../../shared/paramOptions";
@@ -21,6 +21,18 @@ import { numOrUndefined, intOrUndefined } from "./numericField";
 import { usePluginStore } from "../../../store/pluginStore";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { showInfo } from "../../../store/toastStore";
+
+/**
+ * Whether this element type's renderer draws `label`, per the panel's own
+ * table. An unknown type (a plugin element the table has never seen) keeps the
+ * field: silence there means "not recorded", not "not drawn".
+ */
+function drawsLabel(type: string): boolean {
+  const honored = Object.prototype.hasOwnProperty.call(HONORED_PROPERTIES, type)
+    ? HONORED_PROPERTIES[type]
+    : null;
+  return honored ? honored.includes("label") : type !== "label";
+}
 
 interface MatrixPreset {
   name: string;
@@ -73,8 +85,14 @@ export function BasicProperties({
         />
       </FieldRow>
 
-      {/* Label (for most elements except label itself) */}
-      {element.type !== "label" && (
+      {/* Label -- for the types whose renderer draws one.
+          Not "everything except a label": a clock, a custom control and a
+          plugin element never draw it either, and offering the field there is
+          how a project ends up carrying a caption nobody can see. The page
+          review already warns about the result ("sets 'label', which a custom
+          does not render"), so the Builder was creating the very thing it then
+          complained about. */}
+      {drawsLabel(element.type) && (
           <>
             <FieldRow label="Label">
               {element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap" ? (

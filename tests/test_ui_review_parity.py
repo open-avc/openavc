@@ -416,8 +416,16 @@ CASES["binding_reach"] = _project([
              "bindings": {"show": {"value": {"key": "device.acme.code"},
                                    "items": {"key": "device.acme.list"}}}},
             {"id": "list_ok", "type": "list",
-             "bindings": {"show": {"items": {"key": "device.acme.inputs"},
+             "bindings": {"show": {"items": {"key_pattern": "device.acme.input_*_name"},
                                    "value": {"key": "device.acme.selected"}}}},
+            # The same binding spelled the way a value binding is spelled. The
+            # items evaluator reads `key_pattern` and nothing else, so this one
+            # resolves to the static items and the state list never appears --
+            # which is how it sat in this corpus, named "ok", until the check
+            # for a slot that names nothing to read went in.
+            {"id": "list_key_spelling", "type": "list", "label": "Sources",
+             "items": [{"label": "Laptop", "value": "1"}],
+             "bindings": {"show": {"items": {"key": "device.acme.inputs"}}}},
             {"id": "visible_only", "type": "image", "src": "assets://bg.png",
              "bindings": {"show": {"visible_when": {"key": "var.admin", "equals": True}}}},
             # A type the panel cannot draw. It answers about the TYPE and says
@@ -445,6 +453,7 @@ CASES["binding_reach"] = _project([
             "btn_with_state_labels": _pct_box(0, 20, 20, 10),
             "pad_with_everything": _pct_box(25, 20, 20, 40),
             "list_ok": _pct_box(50, 20, 20, 40),
+            "list_key_spelling": _pct_box(28, 20, 20, 40),
             "visible_only": _pct_box(75, 20, 20, 20),
             "unknown_kind": _pct_box(75, 45, 20, 20),
             "plugin_ok": _pct_box(0, 70, 20, 20),
@@ -481,6 +490,35 @@ CASES["vocabulary"] = _project([
              "bindings": {"show": {"look": {
                  "key": "device.acme.online", "condition": {"equals": "true"},
                  "label_active": "Online", "label_inactive": "Offline"}}}},
+            # A look carrying a per-state ICON. The words and the colour are
+            # drawn, the icon is not: only the button's evaluator rebuilds the
+            # icon layout, and the label's does colour and text and stops.
+            {"id": "lbl_look_icon", "type": "label",
+             "bindings": {"show": {"look": {
+                 "key": "var.room_state", "default_state": "standby",
+                 "states": {"standby": {"label": "Standby", "icon": "moon"},
+                            "active": {"label": "In Use", "icon": "users"}}}}}},
+            # ...and the binary spelling of the same mistake, on a type that
+            # takes only colour from a look, so the sentence differs twice over.
+            {"id": "led_look_icon", "type": "status_led", "label": "Mic",
+             "bindings": {"show": {"look": {
+                 "key": "device.acme.online", "condition": {"equals": "true"},
+                 "style_active": {"bg_color": "#0f0", "icon": "check"},
+                 "style_inactive": {"bg_color": "#f00"}}}}},
+            # A binding the renderer reads, that names nothing to read. The
+            # half-finished state the Text editor passes through, and the one
+            # every other check treats as supplied and stays quiet about.
+            {"id": "lbl_keyless", "type": "label", "text": "Room Ready",
+             "bindings": {"show": {"value": {"source": "state", "key": ""}}}},
+            # The same hole one slot over: a list whose items pattern is blank.
+            {"id": "list_keyless", "type": "list", "label": "Sources",
+             "items": [{"label": "Laptop", "value": "1"}],
+             "bindings": {"show": {"items": {"source": "state", "key_pattern": ""}}}},
+            # ...but a macro-progress label names no state key ON PURPOSE.
+            {"id": "lbl_macro", "type": "label",
+             "bindings": {"show": {"value": {
+                 "source": "macro_progress", "macro": "start_meeting",
+                 "idle_text": "Ready"}}}},
             # ...but a look carrying only COLOUR still leaves nothing to draw.
             {"id": "lbl_look_colour_only", "type": "label",
              "bindings": {"show": {"look": {
@@ -539,6 +577,14 @@ CASES["vocabulary"] = _project([
             "lbl_bound": _pct_box(70, 0, 20, 8),
             "lbl_look_states": _pct_box(68, 25, 20, 8),
             "lbl_look_binary": _pct_box(68, 35, 20, 8),
+            # The bottom-right band, which nothing else on this page uses --
+            # these cases are about what a binding says, and an incidental
+            # overlap finding on top of that just makes the diff harder to read.
+            "lbl_keyless": _pct_box(66, 68, 20, 8),
+            "lbl_macro": _pct_box(66, 78, 20, 8),
+            "list_keyless": _pct_box(66, 88, 20, 10),
+            "lbl_look_icon": _pct_box(88, 68, 11, 8),
+            "led_look_icon": _pct_box(88, 78, 6, 8),
             "lbl_look_colour_only": _pct_box(68, 45, 20, 8),
             "img_srcless": _pct_box(70, 10, 12, 12),
             "nav_nowhere": _pct_box(85, 10, 12, 12),
@@ -1491,6 +1537,7 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "overlap",
         "no_placement",
         "binding_not_rendered",
+        "binding_without_key",
         "property_not_rendered",
         "nothing_to_draw",
         "unknown_element_type",
@@ -1544,6 +1591,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "mtx_tiles_ok",                        # a tile wall whose locks are real variables
         "lbl_bound",                           # show.value supplies the text
         "lbl_look_states", "lbl_look_binary",  # ...and so does show.look's state text
+        "lbl_macro",                           # a macro-progress label needs no state key
         "custom_ok",                           # a custom control that names its page
         "clean",                               # a custom page with nothing left on it
         "kept_btn", "kept_lbl", "orphan_btn",  # controls a custom page answers FOR

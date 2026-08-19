@@ -215,11 +215,16 @@ function DeviceCommandEditor({
       return;
     }
     setLoadingDevice(true);
+    // Out-of-order guard: pick one device and then another before the first
+    // answer lands, and the step would offer the first device's commands and
+    // param schema for a command it is about to send to the second.
+    let stale = false;
     api
       .getDevice(step.device)
-      .then(setDeviceInfo)
-      .catch(() => setDeviceInfo(null))
-      .finally(() => setLoadingDevice(false));
+      .then((info) => { if (!stale) setDeviceInfo(info); })
+      .catch(() => { if (!stale) setDeviceInfo(null); })
+      .finally(() => { if (!stale) setLoadingDevice(false); });
+    return () => { stale = true; };
   }, [step.device]);
 
   const commands = (deviceInfo?.commands ?? {}) as Record<string, any>;

@@ -29,6 +29,7 @@ from openavc.ui.page_review import (
     HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
     MATRIX_CONFIG_KEYS,
+    STATE_ICON_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
 )
@@ -65,6 +66,15 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
  * never appears anywhere.
  */
 export const STATE_LABEL_TYPES: string[] = %(state_labels)s;
+
+/**
+ * Types whose `look` binding renders a per-state ICON -- a smaller set again.
+ *
+ * A state's appearance is applied as style, and an icon is content: something
+ * has to rebuild the icon+text layout for it to appear, and only the button's
+ * evaluator does. A label draws its own `icon` and ignores one named by a state.
+ */
+export const STATE_ICON_TYPES: string[] = %(state_icons)s;
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;
@@ -130,6 +140,7 @@ def render() -> str:
     return BANNER + TYPES % {
         "honored": honored,
         "state_labels": json.dumps(sorted(STATE_LABEL_TYPES), ensure_ascii=False),
+        "state_icons": json.dumps(sorted(STATE_ICON_TYPES), ensure_ascii=False),
         "properties": json.dumps(
             {name: sorted(props) for name, props in HONORED_PROPERTIES.items()},
             indent=2,
