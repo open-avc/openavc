@@ -367,6 +367,7 @@ export function ProjectView() {
     color: "var(--text-secondary)",
     marginBottom: "var(--space-xs)",
     textTransform: "uppercase",
+    fontWeight: "var(--font-weight-semibold)",
     letterSpacing: "var(--tracking-wide)",
   };
 

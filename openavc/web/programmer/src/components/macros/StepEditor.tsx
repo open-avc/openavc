@@ -1275,6 +1275,7 @@ function InlineStepCard({
           padding: "var(--space-2xs) var(--space-xs)",
           borderRadius: "var(--border-radius)",
           textTransform: "uppercase",
+          letterSpacing: "var(--tracking-wide)",
           flexShrink: 0,
         }}>
           {typeInfo?.label ?? step.action}
@@ -1424,6 +1425,7 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
                 fontSize: "var(--font-size-2xs)",
                 color: "var(--text-muted)",
                 textTransform: "uppercase",
+                fontWeight: "var(--font-weight-semibold)",
                 letterSpacing: "var(--tracking-wide)",
                 borderTop: "1px solid var(--border-color)",
                 marginTop: "var(--space-xs)",

@@ -1079,7 +1079,7 @@ function CommunityDriverDetail({
         {/* Protocols */}
         {driver.protocols && driver.protocols.length > 0 && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
               Protocols
             </div>
             <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
@@ -1105,7 +1105,7 @@ function CommunityDriverDetail({
         {/* Ports */}
         {driver.ports && driver.ports.length > 0 && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
               Default Ports
             </div>
             <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
@@ -1117,7 +1117,7 @@ function CommunityDriverDetail({
         {/* Help overview (when driver carries help.overview) */}
         {driver.help?.overview && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
               Overview
             </div>
             <div style={{ fontSize: "var(--font-size-sm)", lineHeight: "var(--line-base)", color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
@@ -1129,7 +1129,7 @@ function CommunityDriverDetail({
         {/* Compatible models */}
         {driver.compatible_models && driver.compatible_models.length > 0 && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
               Compatible Devices
             </div>
             {driver.compatible_models.map((cm, idx) => (

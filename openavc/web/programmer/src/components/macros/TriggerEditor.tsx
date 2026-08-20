@@ -64,7 +64,7 @@ export function TriggerEditor({ trigger, onChange }: TriggerEditorProps) {
             gap: "var(--space-xs)",
             cursor: "pointer",
             fontSize: "var(--font-size-sm)",
-            color: "var(--text-muted)",
+            color: "var(--text-secondary)",
             textTransform: "uppercase",
             letterSpacing: "var(--tracking-wide)",
             fontWeight: "var(--font-weight-semibold)",
@@ -686,7 +686,7 @@ function ConditionsEditor({
       <div
         style={{
           fontSize: "var(--font-size-sm)",
-          color: "var(--text-muted)",
+          color: "var(--text-secondary)",
           textTransform: "uppercase",
           letterSpacing: "var(--tracking-wide)",
           fontWeight: "var(--font-weight-semibold)",

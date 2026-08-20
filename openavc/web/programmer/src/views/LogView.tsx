@@ -434,7 +434,7 @@ const thStyle: React.CSSProperties = {
   textAlign: "left",
   fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: "var(--font-size-sm)",
   textTransform: "uppercase",
   letterSpacing: "var(--tracking-wide)",
 };

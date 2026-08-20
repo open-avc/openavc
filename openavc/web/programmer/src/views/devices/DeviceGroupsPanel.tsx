@@ -184,7 +184,7 @@ export function DeviceGroupsPanel() {
               </div>
             </div>
 
-            <h3 style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)", marginBottom: "var(--space-sm)" }}>
+            <h3 style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)", marginBottom: "var(--space-sm)" }}>
               Devices ({selectedGroup.device_ids.length})
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>

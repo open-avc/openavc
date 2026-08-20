@@ -217,6 +217,7 @@ export function ConfigTableEditor({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
+            fontWeight: "var(--font-weight-semibold)",
             letterSpacing: "var(--tracking-wide)",
           }}
         >

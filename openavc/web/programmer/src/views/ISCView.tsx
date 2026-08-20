@@ -571,6 +571,7 @@ const statLabel: React.CSSProperties = {
   fontSize: "var(--font-size-2xs)",
   color: "var(--text-muted)",
   textTransform: "uppercase",
+  fontWeight: "var(--font-weight-semibold)",
   letterSpacing: "var(--tracking-wide)",
   marginBottom: "var(--space-2xs)",
 };

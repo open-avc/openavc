@@ -191,13 +191,14 @@ function SortableStepItem({
         />
         <span
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: "var(--font-size-2xs)",
             fontWeight: "var(--font-weight-semibold)",
             color: "#fff",
             background: labelBg,
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             textTransform: "uppercase",
+            letterSpacing: "var(--tracking-wide)",
             flexShrink: 0,
           }}
         >
@@ -1047,6 +1048,7 @@ export function MacroEditor({
                     fontSize: "var(--font-size-2xs)",
                     color: "var(--text-muted)",
                     textTransform: "uppercase",
+                    fontWeight: "var(--font-weight-semibold)",
                     letterSpacing: "var(--tracking-wide)",
                     borderTop: "1px solid var(--border-color)",
                     marginTop: "var(--space-xs)",

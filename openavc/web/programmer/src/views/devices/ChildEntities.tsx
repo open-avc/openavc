@@ -514,6 +514,7 @@ function ChildSearchResults({
               style={{
                 fontSize: "var(--font-size-2xs)",
                 textTransform: "uppercase",
+                fontWeight: "var(--font-weight-semibold)",
                 letterSpacing: "var(--tracking-wide)",
                 color: "var(--text-muted)",
                 background: "var(--bg-hover)",
@@ -1156,7 +1157,7 @@ const headerRowStyle: React.CSSProperties = {
 };
 
 const headerCellStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: "var(--font-size-sm)",
   fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",

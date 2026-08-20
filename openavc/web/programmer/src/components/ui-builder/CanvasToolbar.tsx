@@ -649,6 +649,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                             fontSize: "var(--font-size-2xs)",
                             fontWeight: "var(--font-weight-semibold)",
                             textTransform: "uppercase",
+                            letterSpacing: "var(--tracking-wide)",
                             background: "var(--bg-base)",
                             border: "1px solid var(--accent)",
                             borderRadius: "var(--border-radius)",
@@ -1343,7 +1344,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           {pageGroups.length > 0 && (
             <>
               <div style={{ borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0" }} />
-              <div style={{ padding: "var(--space-2xs) var(--space-md)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+              <div style={{ padding: "var(--space-2xs) var(--space-md)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
                 Group
               </div>
               <button

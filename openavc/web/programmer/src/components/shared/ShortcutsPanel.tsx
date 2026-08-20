@@ -84,8 +84,8 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
         {SHORTCUT_GROUPS.map((group) => (
           <div key={group.title} style={{ marginBottom: "var(--space-lg)" }}>
             <div style={{
-              fontSize: "var(--font-size-xs)",
-              color: "var(--text-muted)",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
               textTransform: "uppercase",
               letterSpacing: "var(--tracking-wide)",
               fontWeight: "var(--font-weight-semibold)",

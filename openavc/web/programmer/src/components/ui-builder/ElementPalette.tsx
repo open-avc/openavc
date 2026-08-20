@@ -136,9 +136,10 @@ export function ElementPalette({
           <div key={cat.key}>
             <div
               style={{
-                fontSize: "var(--font-size-xs)",
-                color: "var(--text-muted)",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-secondary)",
                 textTransform: "uppercase",
+                fontWeight: "var(--font-weight-semibold)",
                 letterSpacing: "var(--tracking-wide)",
                 marginBottom: "var(--space-xs)",
               }}
@@ -164,9 +165,10 @@ export function ElementPalette({
         <div>
           <div
             style={{
-              fontSize: "var(--font-size-xs)",
-              color: "var(--text-muted)",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
               textTransform: "uppercase",
+              fontWeight: "var(--font-weight-semibold)",
               letterSpacing: "var(--tracking-wide)",
               marginBottom: "var(--space-xs)",
             }}

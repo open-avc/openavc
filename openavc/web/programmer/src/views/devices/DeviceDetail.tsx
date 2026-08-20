@@ -627,7 +627,7 @@ export function DeviceDetail({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "var(--font-size-sm)" }}>
                       {p.label || p.id}
-                      <span style={{ marginLeft: "var(--space-sm)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)", textTransform: "uppercase" }}>
+                      <span style={{ marginLeft: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
                         {p.kind}
                       </span>
                     </span>
@@ -1777,7 +1777,7 @@ const devLogThStyle: React.CSSProperties = {
   textAlign: "left",
   fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: "var(--font-size-sm)",
   textTransform: "uppercase",
   letterSpacing: "var(--tracking-wide)",
 };

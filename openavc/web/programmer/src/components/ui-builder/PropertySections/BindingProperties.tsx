@@ -506,7 +506,7 @@ function Bucket({ label, hint, children }: { label: string; hint: string; childr
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <div>
-        <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--accent)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--accent)" }}>
           {label}
         </div>
         <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{hint}</div>

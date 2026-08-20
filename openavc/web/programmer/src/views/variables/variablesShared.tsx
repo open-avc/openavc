@@ -481,9 +481,10 @@ export const iconBtn: React.CSSProperties = {
 
 export const detailLabel: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-xs)",
-  color: "var(--text-muted)",
+  fontSize: "var(--font-size-sm)",
+  color: "var(--text-secondary)",
   textTransform: "uppercase",
+  fontWeight: "var(--font-weight-semibold)",
   letterSpacing: "var(--tracking-wide)",
   marginBottom: "var(--space-xs)",
 };

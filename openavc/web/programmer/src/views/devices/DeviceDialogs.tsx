@@ -698,9 +698,10 @@ function DriverSearchSelect({
               <div
                 style={{
                   padding: "var(--space-xs) var(--space-md)",
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "var(--font-size-2xs)",
                   color: "var(--text-muted)",
                   textTransform: "uppercase",
+                  fontWeight: "var(--font-weight-semibold)",
                   letterSpacing: "var(--tracking-wide)",
                   background: "var(--bg-surface)",
                   position: "sticky",
@@ -1045,6 +1046,7 @@ export function AddDeviceDialog({
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-sm)",
                 textTransform: "uppercase",
+                fontWeight: "var(--font-weight-semibold)",
                 letterSpacing: "var(--tracking-wide)",
               }}
             >
@@ -1338,6 +1340,7 @@ export function EditDeviceDialog({
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-sm)",
                 textTransform: "uppercase",
+                fontWeight: "var(--font-weight-semibold)",
                 letterSpacing: "var(--tracking-wide)",
               }}
             >

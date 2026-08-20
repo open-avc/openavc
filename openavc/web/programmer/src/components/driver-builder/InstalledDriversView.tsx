@@ -733,7 +733,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
           fontWeight: "var(--font-weight-semibold)",
           textTransform: "uppercase",
           letterSpacing: "var(--tracking-wide)",
-          color: "var(--text-muted)",
+          color: "var(--text-secondary)",
         }}
       >
         {title}

@@ -1284,6 +1284,7 @@ export function ThemeStudio({
                     fontSize: "var(--font-size-2xs)",
                     color: "var(--text-muted)",
                     textTransform: "uppercase",
+                    fontWeight: "var(--font-weight-semibold)",
                     letterSpacing: "var(--tracking-wide)",
                     borderBottom: "1px solid var(--border-color)",
                     background: "var(--bg-base)",
@@ -1651,6 +1652,7 @@ function ThemePickerColumn({
           fontSize: "var(--font-size-2xs)",
           color: "var(--text-muted)",
           textTransform: "uppercase",
+          fontWeight: "var(--font-weight-semibold)",
           letterSpacing: "var(--tracking-wide)",
           borderBottom: "1px solid var(--border-color)",
         }}
@@ -1666,6 +1668,7 @@ function ThemePickerColumn({
                 color: "var(--text-muted)",
                 fontWeight: "var(--font-weight-semibold)",
                 textTransform: "uppercase",
+                letterSpacing: "var(--tracking-wide)",
                 padding: "var(--space-xs)",
               }}
             >
@@ -1682,6 +1685,7 @@ function ThemePickerColumn({
                 color: "var(--text-muted)",
                 fontWeight: "var(--font-weight-semibold)",
                 textTransform: "uppercase",
+                letterSpacing: "var(--tracking-wide)",
                 padding: "var(--space-sm) var(--space-xs) var(--space-xs)",
               }}
             >
@@ -1860,7 +1864,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
           fontWeight: "var(--font-weight-semibold)",
           textTransform: "uppercase",
           letterSpacing: "var(--tracking-wide)",
-          color: "var(--text-secondary)",
+          color: "var(--text-muted)",
           padding: "var(--space-sm) var(--space-md)",
           borderBottom: "1px solid var(--border-color)",
         }}
@@ -2068,7 +2072,7 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
     fontWeight: "var(--font-weight-semibold)",
     textTransform: "uppercase",
     letterSpacing: "var(--tracking-wide)",
-    color: "var(--text-secondary)",
+    color: "var(--text-muted)",
     padding: "var(--space-sm) var(--space-md)",
     borderBottom: "1px solid var(--border-color)",
     display: "flex",
@@ -2387,7 +2391,7 @@ function EditorColumn({
     fontWeight: "var(--font-weight-semibold)",
     textTransform: "uppercase",
     letterSpacing: "var(--tracking-wide)",
-    color: "var(--text-secondary)",
+    color: "var(--text-muted)",
     padding: "var(--space-sm) var(--space-md)",
     borderBottom: "1px solid var(--border-color)",
   };

@@ -364,8 +364,9 @@ export function DeviceView() {
                   display: "flex", alignItems: "center", gap: "var(--space-xs)", width: "100%",
                   padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-surface)",
                   border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)",
-                  color: "var(--text-secondary)", fontSize: "var(--font-size-xs)", cursor: "pointer",
-                  textTransform: "uppercase", letterSpacing: "var(--tracking-wide)",
+                  color: "var(--text-secondary)", fontSize: "var(--font-size-2xs)", cursor: "pointer",
+                  textTransform: "uppercase",
+                  fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)",
                 }}
               >
                 {showTopology ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -577,8 +578,8 @@ export function DeviceView() {
                 {hasGroups && (
                   <div
                     style={{
-                      fontSize: "var(--font-size-xs)",
-                      color: "var(--text-muted)",
+                      fontSize: "var(--font-size-sm)",
+                      color: "var(--text-secondary)",
                       textTransform: "uppercase",
                       letterSpacing: "var(--tracking-wide)",
                       padding: "var(--space-sm) var(--space-md)",

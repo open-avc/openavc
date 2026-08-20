@@ -99,7 +99,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
         <div
           style={{
             fontSize: "var(--font-size-sm)",
-            color: "var(--text-muted)",
+            color: "var(--text-secondary)",
             textTransform: "uppercase",
             letterSpacing: "var(--tracking-wide)",
             fontWeight: "var(--font-weight-semibold)",
@@ -256,13 +256,14 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   />
                   <span
                     style={{
-                      fontSize: "var(--font-size-xs)",
+                      fontSize: "var(--font-size-2xs)",
                       fontWeight: "var(--font-weight-semibold)",
                       color: "#fff",
                       background: typeInfo?.color ?? "#666",
                       padding: "var(--space-2xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       textTransform: "uppercase",
+                      letterSpacing: "var(--tracking-wide)",
                       flexShrink: 0,
                     }}
                   >
