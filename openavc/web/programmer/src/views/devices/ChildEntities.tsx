@@ -219,7 +219,7 @@ export function ChildEntities({
                   data-testid={`child-type-down-${t}`}
                   style={{
                     marginLeft: "var(--space-xs)",
-                    color: isActive ? "var(--text-on-accent)" : "var(--error, #e5534b)",
+                    color: isActive ? "var(--text-on-accent)" : "var(--color-error)",
                     fontWeight: 600,
                   }}
                 >
@@ -1091,8 +1091,8 @@ function PresenceDot({ state }: { state: Record<string, unknown> }) {
         // Hollow, not just recoloured: a ring reads as "not right" even where
         // the colour does not land (a projector-lit room, a colour-blind
         // reader), which is exactly the room this gets read in.
-        background: ok ? "var(--success, #4caf50)" : "transparent",
-        border: ok ? "none" : "2px solid var(--error, #e5534b)",
+        background: ok ? "var(--color-success)" : "transparent",
+        border: ok ? "none" : "2px solid var(--color-error)",
         boxSizing: "border-box",
       }}
     />
