@@ -1534,7 +1534,7 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
             color: tab === "protocol" ? "#fff" : "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
-            fontWeight: tab === "protocol" ? 600 : 400,
+            fontWeight: tab === "protocol" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
             border: "none",
             cursor: "pointer",
           }}
@@ -1549,7 +1549,7 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
             color: tab === "state" ? "#fff" : "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
-            fontWeight: tab === "state" ? 600 : 400,
+            fontWeight: tab === "state" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
             border: "none",
             cursor: "pointer",
           }}
@@ -1638,7 +1638,7 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
               <span
                 style={{
                   color: LEVEL_COLORS[e.level] ?? "var(--text-primary)",
-                  fontWeight: e.level === "ERROR" ? 600 : 400,
+                  fontWeight: e.level === "ERROR" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                   fontSize: "var(--font-size-xs)",
                   flexShrink: 0,
                   width: 40,

@@ -179,8 +179,9 @@ export function ChildEntities({
       <div
         style={{
           display: "flex",
-          gap: "var(--space-xs)",
+          gap: "var(--space-xl)",
           marginBottom: "var(--space-md)",
+          borderBottom: "1px solid var(--border-color)",
           flexWrap: "wrap",
         }}
         role="tablist"
@@ -199,13 +200,15 @@ export function ChildEntities({
               aria-selected={isActive}
               data-testid={`child-type-tab-${t}`}
               style={{
-                padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: isActive ? "var(--accent-bg)" : "var(--bg-hover)",
-                color: isActive ? "var(--text-on-accent)" : "var(--text-secondary)",
+                padding: "var(--space-xs) var(--space-2xs)",
+                background: "none",
+                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: isActive ? 600 : 400,
+                fontWeight: "var(--font-weight-medium)",
                 border: "none",
+                // The mark sits on the edge of the bar rather than filling a
+                // pill, so the accent stays reserved for the primary action.
+                boxShadow: isActive ? "inset 0 -2px 0 var(--accent)" : "none",
                 cursor: "pointer",
               }}
             >

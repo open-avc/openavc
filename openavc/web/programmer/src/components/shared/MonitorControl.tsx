@@ -134,12 +134,12 @@ export function MonitorControl({
             display: "flex",
             alignItems: "center",
             gap: "var(--space-sm)",
-            padding: compact ? "2px 8px" : "var(--space-sm) var(--space-md)",
+            padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: on ? "rgba(138,180,147,0.15)" : "var(--bg-surface)",
             border: "1px solid " + (on ? "rgba(138,180,147,0.3)" : "var(--border-color)"),
             color: on ? "var(--accent)" : "var(--text-secondary)",
-            fontSize: compact ? 11 : "var(--font-size-sm)",
+            fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",
             cursor: "pointer",
             whiteSpace: "nowrap",
           }}
@@ -155,11 +155,11 @@ export function MonitorControl({
               display: "flex",
               alignItems: "center",
               gap: "var(--space-xs)",
-              padding: compact ? "2px 6px" : "var(--space-sm)",
+              padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-sm)",
               background: "transparent",
               border: "none",
               color: "var(--text-muted)",
-              fontSize: compact ? 11 : "var(--font-size-sm)",
+              fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",
               cursor: "pointer",
             }}
           >

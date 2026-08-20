@@ -557,7 +557,7 @@ export function VariablesSubTab() {
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                      <code style={{ ...codeStyle, color: "var(--accent)", fontWeight: selectedId === v.id ? 600 : 400 }}>
+                      <code style={{ ...codeStyle, color: "var(--accent)", fontWeight: selectedId === v.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)" }}>
                         var.{v.id}
                       </code>
                       <CopyButton value={`var.${v.id}`} title="Copy variable key" />

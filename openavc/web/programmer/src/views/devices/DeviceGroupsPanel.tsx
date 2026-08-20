@@ -147,7 +147,7 @@ export function DeviceGroupsPanel() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                     <Layers size={14} style={{ color: "var(--accent)" }} />
-                    <span style={{ fontWeight: selectedGroupId === g.id ? 600 : 400, color: "var(--text-primary)" }}>{g.name}</span>
+                    <span style={{ fontWeight: selectedGroupId === g.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)", color: "var(--text-primary)" }}>{g.name}</span>
                   </div>
                   <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                     {g.device_ids.length} device{g.device_ids.length !== 1 ? "s" : ""}
@@ -206,7 +206,7 @@ export function DeviceGroupsPanel() {
                       checked={isMember}
                       onChange={() => toggleDevice(selectedGroup.id, dev.id)}
                     />
-                    <span style={{ fontWeight: isMember ? 500 : 400, color: "var(--text-primary)" }}>{dev.name}</span>
+                    <span style={{ fontWeight: isMember ? "var(--font-weight-medium)" : "var(--font-weight-normal)", color: "var(--text-primary)" }}>{dev.name}</span>
                     <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>({dev.id})</span>
                   </label>
                 );

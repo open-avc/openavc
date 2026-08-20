@@ -758,7 +758,7 @@ export function DiscoveryPanel() {
                 : "Scan ran with problems on this system"}
             </div>
             {warnings.map((w, i) => (
-              <div key={i} style={{ marginBottom: i < warnings.length - 1 ? 2 : 0 }}>
+              <div key={i} style={{ marginBottom: i < warnings.length - 1 ? "var(--space-2xs)" : 0 }}>
                 {w}
               </div>
             ))}

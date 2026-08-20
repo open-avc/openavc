@@ -479,7 +479,7 @@ export function DriverEditor({
                   activeTab === tab.id
                     ? "var(--text-primary)"
                     : "var(--text-muted)",
-                fontWeight: activeTab === tab.id ? 600 : 400,
+                fontWeight: activeTab === tab.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                 whiteSpace: "nowrap",
               }}
             >

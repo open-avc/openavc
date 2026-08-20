@@ -235,7 +235,7 @@ function ScheduleEditor({
                 color: activeDays.has(DAY_VALUES[i]) ? "#fff" : "var(--text-secondary)",
                 fontSize: "var(--font-size-xs)",
                 cursor: "pointer",
-                fontWeight: activeDays.has(DAY_VALUES[i]) ? 600 : 400,
+                fontWeight: activeDays.has(DAY_VALUES[i]) ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
               }}
             >
               {day}
@@ -841,7 +841,7 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
       <div style={{
         fontWeight: "var(--font-weight-semibold)",
         color: allPass ? "#10b981" : "#ef4444",
-        marginBottom: conditions.length > 1 ? 4 : 0,
+        marginBottom: conditions.length > 1 ? "var(--space-xs)" : 0,
       }}>
         Evaluated now: {allPass ? "ALL TRUE, trigger would fire" : "FALSE, trigger would not fire"}
       </div>

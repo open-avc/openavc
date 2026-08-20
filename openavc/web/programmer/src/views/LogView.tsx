@@ -16,7 +16,7 @@ export function LogView() {
     <ViewContainer
       title="Log"
       actions={
-        <div style={{ display: "flex", gap: "var(--space-sm)" }} role="tablist">
+        <div style={{ display: "flex", gap: "var(--space-xl)", alignItems: "stretch", alignSelf: "stretch" }} role="tablist">
           <TabButton
             label="System Log"
             active={activeTab === "log"}
@@ -50,13 +50,15 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       style={{
-        padding: "var(--space-xs) var(--space-md)",
-        borderRadius: "var(--border-radius)",
-        background: active ? "var(--accent-bg)" : "var(--bg-hover)",
-        color: active ? "#fff" : "var(--text-primary)",
+        padding: "0 var(--space-2xs)",
+        background: "none",
+        color: active ? "var(--text-primary)" : "var(--text-secondary)",
         fontSize: "var(--font-size-sm)",
-        fontWeight: active ? 600 : 400,
+        fontWeight: "var(--font-weight-medium)",
         border: "none",
+        // The mark sits on the edge of the bar rather than filling a pill, so
+        // the accent stays reserved for the primary action.
+        boxShadow: active ? "inset 0 -2px 0 var(--accent)" : "none",
         cursor: "pointer",
       }}
     >
@@ -247,7 +249,7 @@ function SystemLogTab() {
                   <td style={tdStyle}>
                     <span style={{
                       color: LEVEL_COLORS[e.level] ?? "var(--text-primary)",
-                      fontWeight: e.level === "ERROR" ? 600 : 400,
+                      fontWeight: e.level === "ERROR" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                     }}>
                       {e.level}
                     </span>

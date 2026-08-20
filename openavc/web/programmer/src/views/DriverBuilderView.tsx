@@ -260,7 +260,7 @@ function ViewTabButton({
         background: active ? "var(--accent-bg)" : "var(--bg-hover)",
         color: active ? "#fff" : "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
-        fontWeight: active ? 600 : 400,
+        fontWeight: active ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
         border: "none",
         cursor: "pointer",
       }}

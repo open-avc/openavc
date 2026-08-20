@@ -51,9 +51,9 @@ function IssueRow({ issue, compact }: { issue: ValidationIssue; compact: boolean
         display: "flex",
         alignItems: "flex-start",
         gap: "var(--space-sm)",
-        padding: compact ? "2px 6px" : "var(--space-xs) var(--space-sm)",
+        padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-xs) var(--space-sm)",
         borderRadius: "var(--border-radius)",
-        fontSize: compact ? 11 : "var(--font-size-sm)",
+        fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",
         ...tone,
       }}
     >

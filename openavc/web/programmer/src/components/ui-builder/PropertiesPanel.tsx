@@ -1263,7 +1263,7 @@ function ThemeSection({
               <div
                 style={{
                   fontSize: "var(--font-size-2xs)",
-                  fontWeight: isSelected ? 600 : 400,
+                  fontWeight: isSelected ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                   color: "var(--text-primary)",
                 }}
               >

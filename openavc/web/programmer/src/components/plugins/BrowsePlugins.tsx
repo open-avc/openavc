@@ -179,7 +179,7 @@ export function BrowsePlugins() {
                 background: category === cat ? "var(--accent-bg)" : "var(--bg-hover)",
                 color: category === cat ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-xs)",
-                fontWeight: category === cat ? 600 : 400,
+                fontWeight: category === cat ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                 transition: "all var(--transition-fast)",
               }}
             >

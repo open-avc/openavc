@@ -96,7 +96,7 @@ export function PageTabsRow({
               background: isActive ? "var(--accent-dim)" : "var(--bg-surface)",
               color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
               fontSize: "var(--font-size-sm)",
-              fontWeight: isActive ? 600 : 400,
+              fontWeight: isActive ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
               fontStyle: isDraft ? "italic" : "normal",
               opacity: isDraft && !isActive ? 0.6 : 1,
               cursor: "pointer",

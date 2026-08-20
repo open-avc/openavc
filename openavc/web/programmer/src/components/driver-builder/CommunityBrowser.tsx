@@ -414,7 +414,7 @@ export function CommunityBrowser() {
                 color: activeCategory === cat ? "#fff" : "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
                 cursor: "pointer",
-                fontWeight: activeCategory === cat ? 600 : 400,
+                fontWeight: activeCategory === cat ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
               }}
             >
               {cat}

@@ -50,8 +50,8 @@ export function InlineColorPicker({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || ""}
         style={{
-          width: inputPx, padding: size === "md" ? "4px 6px" : "3px 4px",
-          fontSize: size === "md" ? "var(--font-size-sm)" : 11,
+          width: inputPx, padding: size === "md" ? "var(--space-xs) var(--space-sm)" : "var(--space-xs)",
+          fontSize: size === "md" ? "var(--font-size-sm)" : "var(--font-size-xs)",
           borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)",
         }}
       />

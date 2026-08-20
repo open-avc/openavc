@@ -188,7 +188,7 @@ function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { time
       <span
         style={{
           color: LEVEL_COLORS[entry.level] ?? "var(--text-primary)",
-          fontWeight: entry.level === "ERROR" ? 600 : 400,
+          fontWeight: entry.level === "ERROR" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
           flexShrink: 0,
           minWidth: 50,
         }}

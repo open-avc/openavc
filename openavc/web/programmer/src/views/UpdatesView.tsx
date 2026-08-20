@@ -525,7 +525,7 @@ export function UpdatesView() {
                     {isActive && !isFailed && <Loader size={16} style={{ color: "var(--accent)", flexShrink: 0, animation: "spin 1s linear infinite" }} />}
                     {isFailed && <XCircle size={16} style={{ color: "var(--color-error)", flexShrink: 0 }} />}
                     {isPending && <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid var(--border-color)", flexShrink: 0 }} />}
-                    <span style={{ color: isFailed ? "var(--color-error)" : isPending ? "var(--text-muted)" : "var(--text-primary)", fontWeight: isActive ? 500 : 400 }}>
+                    <span style={{ color: isFailed ? "var(--color-error)" : isPending ? "var(--text-muted)" : "var(--text-primary)", fontWeight: isActive ? "var(--font-weight-medium)" : "var(--font-weight-normal)" }}>
                       {step.label}
                       {isActive && step.id === "download" && updateProgress > 0 && (" (" + updateProgress + "%)")}
                     </span>

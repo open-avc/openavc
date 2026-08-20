@@ -1026,7 +1026,7 @@ function StyleRow({
           style={{
             fontSize: "var(--font-size-xs)",
             color: isOverridden ? "var(--text-primary)" : "var(--text-muted)",
-            fontWeight: isOverridden ? 500 : 400,
+            fontWeight: isOverridden ? "var(--font-weight-medium)" : "var(--font-weight-normal)",
           }}
         >
           {label}

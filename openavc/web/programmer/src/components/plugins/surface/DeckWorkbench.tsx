@@ -1236,7 +1236,7 @@ function DeckCards({
               textAlign: "left",
             }}
           >
-            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", fontWeight: isActive ? 600 : 400 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", fontWeight: isActive ? "var(--font-weight-semibold)" : "var(--font-weight-normal)" }}>
               <span
                 style={{
                   width: 7,

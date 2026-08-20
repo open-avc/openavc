@@ -31,8 +31,8 @@ export function VariablesView() {
             style={{
               ...subTabBtnStyle,
               borderBottom: subTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
-              color: subTab === tab.key ? "var(--accent)" : "var(--text-secondary)",
-              fontWeight: subTab === tab.key ? 600 : 400,
+              color: subTab === tab.key ? "var(--text-primary)" : "var(--text-secondary)",
+              fontWeight: "var(--font-weight-medium)",
             }}
           >
             {tab.label}

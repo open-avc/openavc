@@ -139,7 +139,7 @@ export function ConditionGroupEditor({
                   border: "1px solid var(--border-color)",
                   background: mode === m ? "var(--accent-dim)" : "transparent",
                   color: mode === m ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: mode === m ? 600 : 400,
+                  fontWeight: mode === m ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                 }}
               >
                 {m === "all" ? "AND" : "OR"}

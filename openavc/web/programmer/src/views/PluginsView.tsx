@@ -883,7 +883,7 @@ export function PluginsView() {
                 fontSize: "var(--font-size-sm)",
                 background: tab === "installed" ? "var(--accent-bg)" : "transparent",
                 color: tab === "installed" ? "var(--text-on-accent)" : "var(--text-secondary)",
-                fontWeight: tab === "installed" ? 600 : 400,
+                fontWeight: tab === "installed" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
               }}
             >
               Installed
@@ -895,7 +895,7 @@ export function PluginsView() {
                 fontSize: "var(--font-size-sm)",
                 background: tab === "browse" ? "var(--accent-bg)" : "transparent",
                 color: tab === "browse" ? "var(--text-on-accent)" : "var(--text-secondary)",
-                fontWeight: tab === "browse" ? 600 : 400,
+                fontWeight: tab === "browse" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
               }}
             >
               Browse

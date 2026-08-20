@@ -1563,7 +1563,7 @@ function ThemePickerColumn({
           <div
             style={{
               fontSize: "var(--font-size-sm)",
-              fontWeight: isSelected ? 700 : 600,
+              fontWeight: isSelected ? "var(--font-weight-semibold)" : "var(--font-weight-semibold)",
               color: "var(--text-primary)",
               display: "flex",
               alignItems: "center",
@@ -1774,7 +1774,7 @@ function SegmentedControl({
             style={{
               padding: "var(--space-xs) var(--space-lg)",
               fontSize: "var(--font-size-xs)",
-              fontWeight: selected ? 600 : 400,
+              fontWeight: selected ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
               background: selected ? "var(--accent-bg)" : "var(--bg-hover)",
               color: selected ? "#fff" : "var(--text-secondary)",
               border: "none",
@@ -2652,7 +2652,7 @@ function EditorColumn({
                         width: 130,
                         fontSize: "var(--font-size-xs)",
                         color: isModified ? "var(--accent)" : "var(--text-secondary)",
-                        fontWeight: isModified ? 600 : 400,
+                        fontWeight: isModified ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                       }}
                       title={tok.hint}
                     >
@@ -2806,8 +2806,8 @@ function EditorColumn({
                                 width: 130,
                                 fontSize: "var(--font-size-2xs)",
                                 color: isModified ? "var(--accent)" : "var(--text-muted)",
-                                fontWeight: isModified ? 600 : 400,
-                                paddingTop: isBoxShadow ? 4 : 0,
+                                fontWeight: isModified ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                                paddingTop: isBoxShadow ? "var(--space-xs)" : 0,
                               }}
                             >
                               {control.label}

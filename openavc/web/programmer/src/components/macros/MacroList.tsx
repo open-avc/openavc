@@ -143,7 +143,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                   style={{
                     fontSize: "var(--font-size-sm)",
                     color: "var(--text-primary)",
-                    fontWeight: selectedId === m.id ? 600 : 400,
+                    fontWeight: selectedId === m.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
                   }}
                 >
                   {m.name}
