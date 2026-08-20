@@ -433,8 +433,8 @@ export function UpdatesView() {
                         borderRadius: "var(--border-radius)",
                         textTransform: "uppercase",
                         letterSpacing: "var(--tracking-wide)",
-                        background: "rgba(59,130,246,0.15)",
-                        color: "#3b82f6",
+                        background: "var(--color-info-bg)",
+                        color: "var(--color-info)",
                       }}>
                         rollback
                       </span>

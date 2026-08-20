@@ -174,7 +174,7 @@ export function BrowsePlugins() {
               key={cat}
               onClick={() => setCategory(cat)}
               style={{
-                padding: "2px var(--space-sm)",
+                padding: "var(--space-2xs) var(--space-sm)",
                 borderRadius: "var(--radius-lg)",
                 background: category === cat ? "var(--accent-bg)" : "var(--bg-hover)",
                 color: category === cat ? "var(--text-on-accent)" : "var(--text-secondary)",
@@ -319,7 +319,7 @@ function PluginCard({
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
         <span
           style={{
-            padding: "1px var(--space-xs)",
+            padding: "var(--space-2xs) var(--space-xs)",
             borderRadius: "var(--border-radius)",
             background: "var(--bg-hover)",
             fontSize: "var(--font-size-2xs)",
@@ -331,7 +331,7 @@ function PluginCard({
         {plugin.platforms && !plugin.platforms.includes("all") && (
           <span
             style={{
-              padding: "1px var(--space-xs)",
+              padding: "var(--space-2xs) var(--space-xs)",
               borderRadius: "var(--border-radius)",
               background: "var(--bg-hover)",
               fontSize: "var(--font-size-2xs)",

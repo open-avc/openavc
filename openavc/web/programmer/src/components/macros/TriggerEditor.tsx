@@ -780,7 +780,7 @@ function ConditionsEditor({
           display: "flex",
           alignItems: "center",
           gap: "var(--space-xs)",
-          padding: "2px var(--space-sm)",
+          padding: "var(--space-2xs) var(--space-sm)",
           borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)",
           background: "transparent",

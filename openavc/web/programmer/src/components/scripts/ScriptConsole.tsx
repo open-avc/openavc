@@ -71,7 +71,7 @@ export function ScriptConsole({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "4px var(--space-md)",
+          padding: "var(--space-xs) var(--space-md)",
           borderBottom: "1px solid var(--border-color)",
           flexShrink: 0,
         }}

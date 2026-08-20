@@ -761,7 +761,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   <span
                     key={cap}
                     style={{
-                      padding: "2px var(--space-sm)",
+                      padding: "var(--space-2xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       background: "var(--bg-hover)",
                       fontSize: "var(--font-size-xs)",
@@ -784,7 +784,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   <span
                     key={perm}
                     style={{
-                      padding: "2px var(--space-sm)",
+                      padding: "var(--space-2xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       background:
                         perm === "allow-same-origin"
@@ -820,7 +820,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   <span
                     key={p}
                     style={{
-                      padding: "2px var(--space-sm)",
+                      padding: "var(--space-2xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       background: "var(--bg-hover)",
                       fontSize: "var(--font-size-xs)",

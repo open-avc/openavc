@@ -1120,7 +1120,7 @@ function WireIdMapRows({
     onChange(Object.keys(next).length > 0 ? next : undefined);
   };
   return (
-    <div style={{ margin: "2px 0 var(--space-xs) 0" }}>
+    <div style={{ margin: "var(--space-2xs) 0 var(--space-xs) 0" }}>
       <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
         Wire ID → Child ID
       </div>

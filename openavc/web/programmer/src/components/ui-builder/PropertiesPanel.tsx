@@ -285,7 +285,7 @@ export function PropertiesPanel({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "var(--space-xs) var(--space-xs)",
+          padding: "var(--space-xs)",
         }}
       >
         <span style={{

@@ -301,7 +301,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           label="Start Device Simulation"
           panelStyle={{
             background: "var(--bg-surface)", border: "1px solid var(--border-color)",
-            borderRadius: 8, padding: "24px 28px", maxWidth: 420, width: "90%",
+            borderRadius: "var(--radius-lg)", padding: "var(--space-xl) var(--space-2xl)", maxWidth: 420, width: "90%",
             boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           }}
         >

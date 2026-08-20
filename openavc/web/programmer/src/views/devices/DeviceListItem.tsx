@@ -14,7 +14,7 @@ function faultColor(
 ): string {
   if (orphaned) return "var(--color-warning)";
   if (!enabled) return "var(--text-muted)";
-  if (paused) return "var(--color-warning)";
+  if (paused) return "var(--color-info)";
   if (!connected) return "var(--color-error)";
   return "transparent";
 }

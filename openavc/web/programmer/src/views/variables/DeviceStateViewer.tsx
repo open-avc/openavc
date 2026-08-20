@@ -145,7 +145,7 @@ export function DeviceStatesSubTab() {
             Array.from(deviceGroups.entries()).map(([group, groupDevices]) => (
               <div key={group}>
                 {deviceGroups.size > 1 && (
-                  <div style={{ padding: "var(--space-sm) var(--space-md) 2px", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+                  <div style={{ padding: "var(--space-sm) var(--space-md) var(--space-2xs)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
                     {group}
                   </div>
                 )}
@@ -205,7 +205,7 @@ export function DeviceStatesSubTab() {
             ) : (
               <>
               {/* Column header */}
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "0 var(--space-md) 4px", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "0 var(--space-md) var(--space-xs)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
                 <div style={{ flex: 1 }}>Property</div>
                 <div style={{ width: 16, flexShrink: 0, textAlign: "center" }} title="Used in macros, UI, or scripts" />
                 <div style={{ flexShrink: 0, minWidth: 80, textAlign: "right" }}>Live Value</div>

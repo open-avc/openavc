@@ -1347,7 +1347,7 @@ function DriverAddRow({
         {isCommunity && (
           <span style={{
             fontSize: "var(--font-size-xs)", padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
-            background: "rgba(59,130,246,0.15)", color: "#3b82f6",
+            background: "var(--color-info-bg)", color: "var(--color-info)",
           }}>
             Community
           </span>

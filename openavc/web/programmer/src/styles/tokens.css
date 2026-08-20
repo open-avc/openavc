@@ -45,13 +45,17 @@
   --color-success: #4fa46b;
   --color-warning: #e0a340;
   --color-error: #e5544c;
-  --color-info: #8ab493;
+  /* Info is a BLUE, not the sage. Sage means selection and the primary
+     action; an informational callout that borrows it is claiming to be the
+     thing you just picked. This is also the colour a paused device takes, so
+     it has to be tellable from the amber an absent one gets. */
+  --color-info: #6aa3d6;
 
   /* Status backgrounds */
   --color-success-bg: rgba(79, 164, 107, 0.13);
   --color-warning-bg: rgba(224, 163, 64, 0.13);
   --color-error-bg: rgba(229, 84, 76, 0.13);
-  --color-info-bg: rgba(138, 180, 147, 0.13);
+  --color-info-bg: rgba(106, 163, 214, 0.13);
 
   /* Borders. One hairline, and corners tight enough to read as panels
      rather than cards. */
@@ -141,12 +145,12 @@
   --color-success: #2f7d4f;
   --color-warning: #9a6300;
   --color-error: #c0392f;
-  --color-info: #3d654b;
+  --color-info: #2b6ca3;
 
   --color-success-bg: rgba(47, 125, 79, 0.10);
   --color-warning-bg: rgba(154, 99, 0, 0.10);
   --color-error-bg: rgba(192, 57, 47, 0.10);
-  --color-info-bg: rgba(61, 101, 75, 0.10);
+  --color-info-bg: rgba(43, 108, 163, 0.10);
 
   --border-color: #e2e2de;
 

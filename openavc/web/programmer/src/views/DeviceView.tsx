@@ -487,13 +487,13 @@ export function DeviceView() {
               </span>
               <button
                 onClick={() => setSelectedIds(new Set(filteredDevices.map((d) => d.id)))}
-                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
               >
                 All
               </button>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
               >
                 None
               </button>
@@ -502,7 +502,7 @@ export function DeviceView() {
                   const ls = useConnectionStore.getState().liveState;
                   setSelectedIds(new Set(filteredDevices.filter((d) => ls[`device.${d.id}.connected`]).map((d) => d.id)));
                 }}
-                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--color-success-bg)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--color-success-bg)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
               >
                 Online
               </button>
@@ -510,7 +510,7 @@ export function DeviceView() {
               <button
                 onClick={handleBulkDelete}
                 style={{
-                  padding: "2px var(--space-sm)",
+                  padding: "var(--space-2xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--color-error-bg)",
                   color: "var(--color-error)",
@@ -522,7 +522,7 @@ export function DeviceView() {
               <button
                 onClick={() => handleBulkToggle(true)}
                 style={{
-                  padding: "2px var(--space-sm)",
+                  padding: "var(--space-2xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--color-success-bg)",
                   color: "var(--color-success)",
@@ -534,7 +534,7 @@ export function DeviceView() {
               <button
                 onClick={() => handleBulkToggle(false)}
                 style={{
-                  padding: "2px var(--space-sm)",
+                  padding: "var(--space-2xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                   color: "var(--text-secondary)",
@@ -549,7 +549,7 @@ export function DeviceView() {
                   setBulkMode(false);
                 }}
                 style={{
-                  padding: "2px var(--space-sm)",
+                  padding: "var(--space-2xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                   fontSize: "var(--font-size-sm)",

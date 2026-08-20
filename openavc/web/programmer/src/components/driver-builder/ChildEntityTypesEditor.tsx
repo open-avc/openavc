@@ -1157,7 +1157,7 @@ function PresentationSection({
                   alignItems: "center",
                   gap: "var(--space-xs)",
                   fontSize: "var(--font-size-sm)",
-                  padding: "2px var(--space-xs)",
+                  padding: "var(--space-2xs) var(--space-xs)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                 }}

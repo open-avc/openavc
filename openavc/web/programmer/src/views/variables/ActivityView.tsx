@@ -117,7 +117,7 @@ export function ActivitySubTab() {
                 display: "flex",
                 alignItems: "center",
                 gap: "var(--space-sm)",
-                padding: "4px var(--space-md)",
+                padding: "var(--space-xs) var(--space-md)",
                 fontSize: "var(--font-size-sm)",
                 borderBottom: "1px solid var(--border-color)",
               }}

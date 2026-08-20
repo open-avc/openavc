@@ -117,7 +117,7 @@ export function SuggestionChips({
           key={i}
           onClick={() => onSelect(s)}
           style={{
-            padding: "2px var(--space-sm)",
+            padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--radius-lg)",
             border: "1px solid var(--border-color)",
             background: "var(--bg-surface)",

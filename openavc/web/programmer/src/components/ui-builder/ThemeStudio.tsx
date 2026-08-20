@@ -1118,7 +1118,7 @@ export function ThemeStudio({
         maxWidth: 1800,
         background: "var(--bg-base)",
         border: "1px solid var(--border-color)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-lg)",
         display: "flex",
         flexDirection: "column",
         boxShadow: "0 24px 64px rgba(0,0,0,0.5)",

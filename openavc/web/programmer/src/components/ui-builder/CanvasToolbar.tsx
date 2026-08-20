@@ -579,7 +579,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           display: "flex",
           alignItems: "center",
           gap: "var(--space-sm)",
-          padding: "2px var(--space-md) 0",
+          padding: "var(--space-2xs) var(--space-md) 0",
           minHeight: 30,
         }}
       >
@@ -774,7 +774,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           display: "flex",
           alignItems: "center",
           gap: "var(--space-sm)",
-          padding: "2px var(--space-md) 4px",
+          padding: "var(--space-2xs) var(--space-md) var(--space-xs)",
           minHeight: 32,
           // No overflow clipping here: the snap popover hangs below this row,
           // and hiding overflow cut it to an invisible sliver. The row itself

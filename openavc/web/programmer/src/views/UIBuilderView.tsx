@@ -1262,7 +1262,7 @@ export function UIBuilderView() {
                     display: "flex",
                     alignItems: "center",
                     gap: "var(--space-xs)",
-                    padding: "3px var(--space-md)",
+                    padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
@@ -1280,7 +1280,7 @@ export function UIBuilderView() {
                     display: "flex",
                     alignItems: "center",
                     gap: "var(--space-xs)",
-                    padding: "3px var(--space-md)",
+                    padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
@@ -1298,7 +1298,7 @@ export function UIBuilderView() {
                     display: "flex",
                     alignItems: "center",
                     gap: "var(--space-xs)",
-                    padding: "3px var(--space-md)",
+                    padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
@@ -1660,10 +1660,10 @@ export function UIBuilderView() {
           label="Validation Results"
           overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
           panelStyle={{
-            borderRadius: 8,
+            borderRadius: "var(--radius-lg)",
             border: "1px solid var(--border-color)",
-            padding: 20, minWidth: 400, maxWidth: 600, maxHeight: "70vh",
-            display: "flex", flexDirection: "column", gap: 12,
+            padding: "var(--space-xl)", minWidth: 400, maxWidth: 600, maxHeight: "70vh",
+            display: "flex", flexDirection: "column", gap: "var(--space-md)",
           }}
         >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
