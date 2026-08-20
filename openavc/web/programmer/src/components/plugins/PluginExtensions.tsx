@@ -75,6 +75,7 @@ export function StateTableRenderer({
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
+            lineHeight: "var(--line-relaxed)",
           }}
         >
           No state data
@@ -185,7 +186,7 @@ export function PluginLogRenderer({ pluginId }: { pluginId: string }) {
       }}
     >
       {recent.length === 0 ? (
-        <div style={{ color: "var(--text-muted)", padding: "var(--space-md)", textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", padding: "var(--space-md)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
           No log entries for this plugin
         </div>
       ) : (

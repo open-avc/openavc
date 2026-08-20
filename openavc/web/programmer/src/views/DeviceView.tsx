@@ -456,7 +456,7 @@ export function DeviceView() {
                   style={{
                     padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)", cursor: "pointer",
                     background: statusFilter === f.key ? "var(--accent-bg)" : "var(--bg-hover)",
-                    color: statusFilter === f.key ? "#fff" : "var(--text-secondary)",
+                    color: statusFilter === f.key ? "var(--text-on-accent)" : "var(--text-secondary)",
                     border: "none",
                   }}
                 >

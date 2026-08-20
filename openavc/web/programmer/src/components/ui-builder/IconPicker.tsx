@@ -253,9 +253,10 @@ function IconBrowserModal({
             <div
               style={{
                 textAlign: "center",
+                lineHeight: "var(--line-relaxed)",
                 padding: "var(--space-xl)",
                 color: "var(--text-muted)",
-                fontSize: "var(--font-size-base)",
+                fontSize: "var(--font-size-sm)",
               }}
             >
               No icons match "{search}"
@@ -265,9 +266,10 @@ function IconBrowserModal({
             <div
               style={{
                 textAlign: "center",
+                lineHeight: "var(--line-relaxed)",
                 padding: "var(--space-sm)",
                 color: "var(--text-muted)",
-                fontSize: "var(--font-size-xs)",
+                fontSize: "var(--font-size-sm)",
               }}
             >
               Showing 300 of {filteredIcons.length}. Refine your search

@@ -153,6 +153,7 @@ export const dropdownEmptyHintStyle: CSSProperties = {
   color: "var(--text-muted)",
   fontStyle: "italic",
   textAlign: "center",
+  lineHeight: "var(--line-relaxed)",
 };
 
 const triggerStyle: CSSProperties = {

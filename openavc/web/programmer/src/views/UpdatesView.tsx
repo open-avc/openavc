@@ -46,7 +46,7 @@ const btnStyle: React.CSSProperties = {
 const primaryBtn: React.CSSProperties = {
   ...btnStyle,
   background: "var(--accent-bg)",
-  color: "#fff",
+  color: "var(--text-on-accent)",
   border: "1px solid var(--accent)",
 };
 
@@ -562,7 +562,7 @@ export function UpdatesView() {
                 </button>
               </div>
             ) : (
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", textAlign: "center" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
                 Do not close this window or power off the system.
               </div>
             )}

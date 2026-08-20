@@ -611,7 +611,7 @@ const addBtnStyle: React.CSSProperties = {
   padding: "var(--space-2xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "#fff",
+  color: "var(--text-on-accent)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
@@ -630,7 +630,7 @@ const createBtnStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "#fff",
+  color: "var(--text-on-accent)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
@@ -650,7 +650,7 @@ const emptyStyle: React.CSSProperties = {
   textAlign: "center",
   color: "var(--text-muted)",
   fontSize: "var(--font-size-sm)",
-  lineHeight: "var(--line-base)",
+  lineHeight: "var(--line-relaxed)",
 };
 
 function itemNameStyle(error: string | null | undefined, active: boolean, selected: boolean): React.CSSProperties {

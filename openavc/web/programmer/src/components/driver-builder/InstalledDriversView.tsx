@@ -176,7 +176,7 @@ export function InstalledDriversView({
                 textAlign: "center",
                 color: "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
-                lineHeight: "var(--line-base)",
+                lineHeight: "var(--line-relaxed)",
               }}
             >
               {searchQuery ? (
@@ -278,9 +278,10 @@ export function InstalledDriversView({
           style={{
             padding: "var(--space-sm)",
             borderTop: "1px solid var(--border-color)",
-            fontSize: "var(--font-size-xs)",
+            fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             textAlign: "center",
+            lineHeight: "var(--line-relaxed)",
           }}
         >
           {filteredDrivers.length} driver{filteredDrivers.length !== 1 ? "s" : ""}
@@ -324,6 +325,8 @@ export function InstalledDriversView({
           <div
             style={{
               textAlign: "center",
+              fontSize: "var(--font-size-sm)",
+              lineHeight: "var(--line-relaxed)",
               padding: "var(--space-xl)",
               color: "var(--text-muted)",
             }}

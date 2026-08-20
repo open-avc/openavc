@@ -485,11 +485,11 @@ export function ProjectView() {
           }}
         >
           {libraryLoading ? (
-            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center" }}>
+            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
               Loading...
             </div>
           ) : library.length === 0 ? (
-            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center" }}>
+            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
               No saved projects yet. Use <strong>Save As</strong> to add the current project,
               or <strong>Import</strong> a .avc file.
             </div>
@@ -685,11 +685,11 @@ export function ProjectView() {
           overflow: "hidden",
         }}>
           {backupsLoading ? (
-            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center" }}>
+            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
               Loading...
             </div>
           ) : backups.length === 0 ? (
-            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center" }}>
+            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
               No backups yet. Backups are created automatically before important operations, or click Create Backup.
             </div>
           ) : (

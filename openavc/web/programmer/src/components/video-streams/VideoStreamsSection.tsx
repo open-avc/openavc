@@ -56,7 +56,7 @@ const primaryBtn: CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "#fff",
+  color: "var(--text-on-accent)",
   border: "none",
   cursor: "pointer",
   fontSize: "var(--font-size-sm)",
@@ -333,7 +333,7 @@ function PreviewDialog({ stream, onClose }: { stream: Stream; onClose: () => voi
       >
         {state === "loading" && <span style={{ color: "var(--text-muted)" }}>Capturing a frame...</span>}
         {state === "error" && (
-          <span style={{ color: "var(--text-muted)", padding: "var(--space-lg)", textAlign: "center" }}>
+          <span style={{ color: "var(--text-muted)", padding: "var(--space-lg)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
             Could not capture a frame. The source may be offline, or the URL or credentials may be wrong.
           </span>
         )}

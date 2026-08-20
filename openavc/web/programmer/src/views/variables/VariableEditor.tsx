@@ -853,7 +853,7 @@ export function VariablesSubTab() {
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
             <div style={{ fontSize: "var(--font-size-base)" }}>
               {variables.length === 0 ? "Create your first variable" : "Select a variable to see details"}
             </div>

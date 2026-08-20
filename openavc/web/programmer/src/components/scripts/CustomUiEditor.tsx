@@ -47,6 +47,8 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
           gap: "var(--space-sm)",
           padding: "var(--space-xl)",
           textAlign: "center",
+          fontSize: "var(--font-size-sm)",
+          lineHeight: "var(--line-relaxed)",
           color: "var(--text-muted)",
         }}
       >

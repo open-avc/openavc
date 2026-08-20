@@ -266,7 +266,7 @@ const createBtnStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "#fff",
+  color: "var(--text-on-accent)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",

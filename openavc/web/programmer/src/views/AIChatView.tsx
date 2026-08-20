@@ -177,7 +177,7 @@ export function AIChatView() {
                 padding: "var(--space-xs) var(--space-md)",
                 borderRadius: "var(--border-radius)",
                 background: "var(--accent-bg)",
-                color: "#fff",
+                color: "var(--text-on-accent)",
                 fontSize: "var(--font-size-sm)",
                 textDecoration: "none",
               }}
@@ -261,7 +261,7 @@ export function AIChatView() {
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--accent-bg)",
-                  color: "#fff",
+                  color: "var(--text-on-accent)",
                   fontSize: "var(--font-size-sm)",
                   border: "none",
                   cursor: "pointer",
@@ -371,6 +371,7 @@ export function AIChatView() {
                     fontSize: "var(--font-size-sm)",
                     padding: "var(--space-md)",
                     textAlign: "center",
+                    lineHeight: "var(--line-relaxed)",
                   }}
                 >
                   No conversations yet

@@ -883,7 +883,7 @@ export function PluginsView() {
                 fontSize: "var(--font-size-sm)",
                 background: tab === "installed" ? "var(--accent-bg)" : "transparent",
                 color: tab === "installed" ? "var(--text-on-accent)" : "var(--text-secondary)",
-                fontWeight: tab === "installed" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                fontWeight: "var(--font-weight-medium)",
               }}
             >
               Installed
@@ -895,7 +895,7 @@ export function PluginsView() {
                 fontSize: "var(--font-size-sm)",
                 background: tab === "browse" ? "var(--accent-bg)" : "transparent",
                 color: tab === "browse" ? "var(--text-on-accent)" : "var(--text-secondary)",
-                fontWeight: tab === "browse" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                fontWeight: "var(--font-weight-medium)",
               }}
             >
               Browse
@@ -967,7 +967,7 @@ export function PluginsView() {
           {/* Plugin List */}
           <div style={{ flex: 1, overflow: "auto", padding: "var(--space-sm)" }}>
             {loading && plugins.length === 0 && (
-              <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+              <div style={{ padding: "var(--space-lg)", textAlign: "center", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
                 Loading...
               </div>
             )}

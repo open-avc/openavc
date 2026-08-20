@@ -333,7 +333,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 await startSimulation();
               }} style={{
                 padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-base)",
-                background: "var(--accent-bg)", color: "#fff",
+                background: "var(--accent-bg)", color: "var(--text-on-accent)",
               }}>Start Simulation</button>
             </div>
         </Modal>

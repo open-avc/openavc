@@ -454,7 +454,7 @@ export function FeedbackBindingEditor({
                     style={{
                       padding: "var(--space-2xs) var(--space-sm)", fontSize: "var(--font-size-2xs)", borderRadius: "var(--border-radius)", cursor: "pointer",
                       background: isDefault ? "var(--accent-bg)" : "var(--bg-hover)",
-                      color: isDefault ? "#fff" : "var(--text-muted)",
+                      color: isDefault ? "var(--text-on-accent)" : "var(--text-muted)",
                       border: "none",
                     }}
                   >
@@ -587,7 +587,7 @@ export function FeedbackBindingEditor({
                   style={{
                     flex: 1, padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)",
                     fontSize: "var(--font-size-sm)", cursor: "pointer",
-                    fontWeight: String(condition.equals) === v ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                    fontWeight: "var(--font-weight-medium)",
                     background: String(condition.equals) === v ? "var(--accent-bg)" : "var(--bg-hover)",
                     color: String(condition.equals) === v ? "var(--text-on-accent, #fff)" : "var(--text-secondary)",
                     border: "1px solid " + (String(condition.equals) === v ? "var(--accent)" : "var(--border-color)"),

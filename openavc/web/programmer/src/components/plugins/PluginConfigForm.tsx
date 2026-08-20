@@ -318,7 +318,7 @@ function SchemaFieldMappingList({
               <tr>
                 <td
                   colSpan={columns.length + 1}
-                  style={{ padding: "var(--space-md)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}
+                  style={{ padding: "var(--space-md)", textAlign: "center", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}
                 >
                   No items. Click + to add one.
                 </td>

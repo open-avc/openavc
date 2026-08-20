@@ -1381,6 +1381,7 @@ function ErrorState({
           fontSize: "var(--font-size-sm)",
           color: "var(--text-muted)",
           textAlign: "center",
+          lineHeight: "var(--line-relaxed)",
           maxWidth: 400,
         }}
       >
@@ -1399,7 +1400,7 @@ function ErrorState({
           padding: "var(--space-sm) var(--space-lg)",
           borderRadius: "var(--border-radius)",
           background: "var(--accent-bg)",
-          color: "#fff",
+          color: "var(--text-on-accent)",
           border: "none",
           cursor: "pointer",
           fontSize: "var(--font-size-sm)",

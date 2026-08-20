@@ -1159,11 +1159,11 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             style={{
               padding: "var(--space-2xs) var(--space-sm)",
               fontSize: "var(--font-size-xs)",
-              fontWeight: "var(--font-weight-semibold)",
+              fontWeight: "var(--font-weight-medium)",
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
               background: dirty || error ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty || error ? "#fff" : "var(--text-muted)",
+              color: dirty || error ? "var(--text-on-accent)" : "var(--text-muted)",
               cursor: dirty || error ? "pointer" : "default",
               opacity: dirty || error ? 1 : 0.5,
             }}
@@ -1245,7 +1245,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: previewMode ? "var(--color-success)" : "var(--accent-bg)",
-            color: "#fff",
+            color: "var(--text-on-accent)",
             fontSize: "var(--font-size-sm)",
             fontWeight: "var(--font-weight-medium)",
             flexShrink: 0,

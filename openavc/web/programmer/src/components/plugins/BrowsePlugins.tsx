@@ -179,7 +179,7 @@ export function BrowsePlugins() {
                 background: category === cat ? "var(--accent-bg)" : "var(--bg-hover)",
                 color: category === cat ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-xs)",
-                fontWeight: category === cat ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                fontWeight: "var(--font-weight-medium)",
                 transition: "all var(--transition-fast)",
               }}
             >
@@ -203,6 +203,7 @@ export function BrowsePlugins() {
             style={{
               padding: "var(--space-lg)",
               textAlign: "center",
+              lineHeight: "var(--line-relaxed)",
               color: "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
             }}
@@ -214,7 +215,7 @@ export function BrowsePlugins() {
         )}
 
         {!communityLoading && !communityError && filtered.length === 0 && (
-          <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+          <div style={{ padding: "var(--space-lg)", textAlign: "center", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
             {communityPlugins.length === 0
               ? "No community plugins available yet."
               : "No matching plugins."}

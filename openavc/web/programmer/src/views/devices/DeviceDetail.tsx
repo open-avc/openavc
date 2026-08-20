@@ -1532,9 +1532,9 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "protocol" ? "#fff" : "var(--text-secondary)",
+            color: tab === "protocol" ? "var(--text-on-accent)" : "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
-            fontWeight: tab === "protocol" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+            fontWeight: "var(--font-weight-medium)",
             border: "none",
             cursor: "pointer",
           }}
@@ -1547,9 +1547,9 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "state" ? "#fff" : "var(--text-secondary)",
+            color: tab === "state" ? "var(--text-on-accent)" : "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
-            fontWeight: tab === "state" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+            fontWeight: "var(--font-weight-medium)",
             border: "none",
             cursor: "pointer",
           }}
@@ -1613,6 +1613,7 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
+            lineHeight: "var(--line-relaxed)",
             fontFamily: "var(--font-family)",
           }}
         >
@@ -1734,6 +1735,7 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
+            lineHeight: "var(--line-relaxed)",
             fontFamily: "var(--font-family)",
           }}
         >

@@ -104,9 +104,9 @@ export function ActivitySubTab() {
       {/* Entries */}
       <div style={{ flex: 1, overflow: "auto" }}>
         {loading ? (
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>Loading...</div>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)" }}>Loading...</div>
         ) : filteredEntries.length === 0 ? (
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", fontStyle: "italic" }}>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", fontStyle: "italic" }}>
             No state changes recorded yet. Start the system to see activity.
           </div>
         ) : (

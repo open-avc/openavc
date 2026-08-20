@@ -177,14 +177,14 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
   return (
     <Dialog title="Scan to connect" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-md)" }}>
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
           Scan with a phone or tablet camera to open this OpenAVC system.
         </div>
         <div
           style={{ width: 260, height: 260, background: "#fff", padding: "var(--space-sm)", borderRadius: "var(--border-radius)" }}
           dangerouslySetInnerHTML={{ __html: pairSvg }}
         />
-        <code style={{ fontSize: "var(--font-size-sm)", fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center" }}>
+        <code style={{ fontSize: "var(--font-size-sm)", fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
           {pairUrl}
         </code>
         <div style={{
@@ -221,7 +221,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
               gap: "var(--space-xs)",
               padding: "var(--space-sm) var(--space-lg)",
               background: "var(--accent-bg)",
-              color: "#fff",
+              color: "var(--text-on-accent)",
               border: "none",
               borderRadius: "var(--border-radius)",
               cursor: "pointer",
@@ -249,7 +249,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
             Close
           </button>
         </div>
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", textAlign: "center", maxWidth: 300 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", lineHeight: "var(--line-relaxed)", maxWidth: 300 }}>
           Printing produces a full-page sign whose QR opens the room panel directly.
         </div>
       </div>
@@ -754,7 +754,7 @@ export function DashboardView() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                   >
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", flexShrink: 0 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "var(--text-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
                       {item.step}
                     </div>
                     <div style={{ flex: 1 }}>
@@ -815,11 +815,14 @@ export function DashboardView() {
                         ...cardStyle,
                         padding: "var(--space-sm) var(--space-md)",
                         opacity: isEnabled ? 1 : 0.5,
-                        borderColor: !isEnabled ? "var(--border-color)" : isConnected ? "rgba(76,175,80,0.3)" : "rgba(239,68,68,0.3)",
+                        // Colour marks what needs attention. A wall of cards
+                        // outlined in green makes the one red card no louder
+                        // than the rest of them.
+                        borderColor: isEnabled && !isConnected ? "var(--color-error)" : "var(--border-color)",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                        <DeviceStatusDot connected={isConnected} />
+                        {isEnabled && !isConnected && <DeviceStatusDot connected={false} />}
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {String(dev.name)}
@@ -922,7 +925,7 @@ export function DashboardView() {
             <h3 style={sectionTitle}>Recent Activity</h3>
             <div style={{ ...cardStyle, padding: 0, overflow: "hidden", maxHeight: 400, overflowY: "auto" }}>
               {recentActivity.length === 0 ? (
-                <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)" }}>
+                <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)", fontSize: "var(--font-size-sm)" }}>
                   No activity yet. Events will appear here as the system runs.
                 </div>
               ) : (

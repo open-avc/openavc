@@ -844,6 +844,8 @@ export function DiscoveryPanel() {
         <div
           style={{
             textAlign: "center",
+            fontSize: "var(--font-size-sm)",
+            lineHeight: "var(--line-relaxed)",
             padding: "var(--space-xl)",
             color: "var(--text-muted)",
           }}
@@ -872,7 +874,7 @@ export function DiscoveryPanel() {
             />
           ))}
           {deviceList.length === 0 && status !== "running" && (
-            <div style={{ textAlign: "center", padding: "var(--space-lg)", color: "var(--text-muted)" }}>
+            <div style={{ textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", padding: "var(--space-lg)", color: "var(--text-muted)" }}>
               No devices match the current filters.
             </div>
           )}

@@ -9,9 +9,9 @@ interface DeviceStatusDotProps {
 
 export function DeviceStatusDot({ connected, orphaned, paused, size = 10 }: DeviceStatusDotProps) {
   const color = orphaned
-    ? "var(--color-warning, #f59e0b)"
+    ? "var(--color-warning)"
     : paused
-      ? "var(--color-info, #6aa3d6)"
+      ? "var(--color-info)"
       : connected
         ? "var(--color-success)"
         : "var(--color-error)";

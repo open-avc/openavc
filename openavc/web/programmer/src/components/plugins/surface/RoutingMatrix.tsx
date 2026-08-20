@@ -248,6 +248,8 @@ export function RoutingMatrix({
         <div style={{
           padding: "var(--space-xl)",
           textAlign: "center",
+          fontSize: "var(--font-size-sm)",
+          lineHeight: "var(--line-relaxed)",
           color: "var(--text-muted)",
         }}>
           <div style={{ fontSize: "var(--font-size-base)", fontWeight: "var(--font-weight-medium)", marginBottom: "var(--space-sm)" }}>
@@ -265,7 +267,7 @@ export function RoutingMatrix({
       {hasData && (
         <div style={{ overflow: "auto" }}>
           {layout.columns_label && (
-            <div style={{ textAlign: "center", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+            <div style={{ textAlign: "center", lineHeight: "var(--line-relaxed)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
               {layout.columns_label}
             </div>
           )}

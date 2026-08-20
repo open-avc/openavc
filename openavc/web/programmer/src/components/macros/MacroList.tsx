@@ -57,7 +57,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
-            color: "#fff",
+            color: "var(--text-on-accent)",
             fontSize: "var(--font-size-sm)",
             border: "none",
             cursor: "pointer",
@@ -93,7 +93,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
               textAlign: "center",
               color: "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
-              lineHeight: "var(--line-base)",
+              lineHeight: "var(--line-relaxed)",
             }}
           >
             {macros.length === 0 ? (

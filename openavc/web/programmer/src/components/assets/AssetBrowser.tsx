@@ -208,7 +208,7 @@ export function AssetBrowser({
                   borderRadius: 999,
                   fontSize: "var(--font-size-sm)",
                   background: active ? "var(--accent-bg)" : "var(--bg-base)",
-                  color: active ? "#fff" : "var(--text-secondary)",
+                  color: active ? "var(--text-on-accent)" : "var(--text-secondary)",
                   border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
                   cursor: "pointer",
                   textTransform: "capitalize",
@@ -305,7 +305,7 @@ export function AssetBrowser({
         }}
       >
         {loading ? (
-          <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-base)", padding: "var(--space-lg)", textAlign: "center" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", padding: "var(--space-lg)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
             Loading...
           </div>
         ) : visibleAssets.length === 0 ? (
@@ -471,7 +471,7 @@ function AudioPreview({ name }: { name: string }) {
 function EmptyState({ filter, hasSearch }: { filter: AssetFilter; hasSearch: boolean }) {
   if (hasSearch) {
     return (
-      <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-base)", padding: "var(--space-2xl)", textAlign: "center" }}>
+      <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", padding: "var(--space-2xl)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
         No matching assets.
       </div>
     );
@@ -482,7 +482,7 @@ function EmptyState({ filter, hasSearch }: { filter: AssetFilter; hasSearch: boo
     filter === "image" ? "No images uploaded yet." :
     "No assets uploaded yet.";
   return (
-    <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-base)", padding: "var(--space-2xl)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-sm)" }}>
+    <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", padding: "var(--space-2xl)", textAlign: "center", lineHeight: "var(--line-relaxed)", display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-sm)" }}>
       <Icon size={32} style={{ opacity: 0.5 }} />
       <div>{label}</div>
     </div>

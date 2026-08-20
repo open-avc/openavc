@@ -1698,9 +1698,10 @@ function ThemePickerColumn({
           <div
             style={{
               padding: "var(--space-sm)",
-              fontSize: "var(--font-size-xs)",
+              fontSize: "var(--font-size-sm)",
               color: "var(--text-muted)",
               textAlign: "center",
+              lineHeight: "var(--line-relaxed)",
               fontStyle: "italic",
             }}
           >
@@ -1774,9 +1775,9 @@ function SegmentedControl({
             style={{
               padding: "var(--space-xs) var(--space-lg)",
               fontSize: "var(--font-size-xs)",
-              fontWeight: selected ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+              fontWeight: "var(--font-weight-medium)",
               background: selected ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: selected ? "#fff" : "var(--text-secondary)",
+              color: selected ? "var(--text-on-accent)" : "var(--text-secondary)",
               border: "none",
               borderRight: i < options.length - 1 ? "1px solid var(--border-color)" : "none",
               cursor: "pointer",
@@ -2424,12 +2425,12 @@ function EditorColumn({
               gap: "var(--space-xs)",
               padding: "var(--space-sm) var(--space-md)",
               background: "var(--accent-bg)",
-              color: "#fff",
+              color: "var(--text-on-accent)",
               border: "none",
               borderRadius: "var(--border-radius)",
               cursor: busy || !isDirty ? "not-allowed" : "pointer",
               fontSize: "var(--font-size-sm)",
-              fontWeight: "var(--font-weight-semibold)",
+              fontWeight: "var(--font-weight-medium)",
               opacity: busy || !isDirty ? 0.55 : 1,
             }}
           >
@@ -2464,7 +2465,7 @@ function EditorColumn({
             gap: "var(--space-xs)",
             padding: "var(--space-sm) var(--space-md)",
             background: isCustom ? "var(--bg-hover)" : "var(--accent-bg)",
-            color: isCustom ? "var(--text-primary)" : "#fff",
+            color: isCustom ? "var(--text-primary)" : "var(--text-on-accent)",
             border: isCustom ? "1px solid var(--border-color)" : "none",
             borderRadius: "var(--border-radius)",
             cursor: busy ? "not-allowed" : "pointer",

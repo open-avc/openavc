@@ -121,7 +121,7 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
 
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", textAlign: "center", marginTop: "var(--space-sm)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)", marginTop: "var(--space-sm)" }}>
           Press <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)", background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Ctrl+/</kbd> or <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)", background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Escape</kbd> to close
         </div>
     </Modal>

@@ -815,7 +815,7 @@ export function InlineProtocolEditor({
                   </div>
                 )}
 
-                <div style={{ width: 16, textAlign: "center", color: "var(--text-muted)", paddingBottom: "var(--space-sm)" }}>
+                <div style={{ width: 16, textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", paddingBottom: "var(--space-sm)" }}>
                   →
                 </div>
                 <div style={{ flex: "1 1 120px" }}>

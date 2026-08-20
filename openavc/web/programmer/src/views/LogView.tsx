@@ -224,7 +224,7 @@ function SystemLogTab() {
         }}
       >
         {filtered.length === 0 ? (
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)" }}>
             No log entries yet. System activity will appear here.
           </div>
         ) : (
@@ -397,7 +397,7 @@ function StateChangeTab() {
         }}
       >
         {filtered.length === 0 ? (
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)" }}>
             No state changes recorded yet. Interact with the system to see live updates.
           </div>
         ) : (

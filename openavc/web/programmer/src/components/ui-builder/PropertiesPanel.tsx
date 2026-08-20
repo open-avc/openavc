@@ -255,6 +255,7 @@ export function PropertiesPanel({
               fontSize: "var(--font-size-sm)",
               padding: "var(--space-lg)",
               textAlign: "center",
+              lineHeight: "var(--line-relaxed)",
             }}
           >
             Select an element to edit its properties

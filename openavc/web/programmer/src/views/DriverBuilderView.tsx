@@ -258,9 +258,9 @@ function ViewTabButton({
         padding: "var(--space-xs) var(--space-md)",
         borderRadius: "var(--border-radius)",
         background: active ? "var(--accent-bg)" : "var(--bg-hover)",
-        color: active ? "#fff" : "var(--text-primary)",
+        color: active ? "var(--text-on-accent)" : "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
-        fontWeight: active ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+        fontWeight: "var(--font-weight-medium)",
         border: "none",
         cursor: "pointer",
       }}
@@ -369,6 +369,7 @@ commands:
         <div
           style={{
             textAlign: "center",
+            lineHeight: "var(--line-relaxed)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             marginBottom: "var(--space-md)",

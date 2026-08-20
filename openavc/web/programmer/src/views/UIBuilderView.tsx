@@ -1984,8 +1984,8 @@ function UISettingsDialog({
               border: "none",
               cursor: dirty ? "pointer" : "default",
               opacity: dirty ? 1 : 0.5,
-              color: dirty ? "#fff" : "var(--text-muted)",
-              fontWeight: "var(--font-weight-semibold)",
+              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+              fontWeight: "var(--font-weight-medium)",
             }}
           >
             Save

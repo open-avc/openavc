@@ -219,7 +219,7 @@ export function DeviceGroupsPanel() {
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", textAlign: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
             <Layers size={32} style={{ opacity: 0.3 }} />
             <div style={{ fontSize: "var(--font-size-base)" }}>
               {groups.length === 0 ? "Create your first device group" : "Select a group to manage its devices"}

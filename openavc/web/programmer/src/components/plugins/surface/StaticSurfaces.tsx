@@ -244,7 +244,7 @@ function FaderControl({
           }}
         />
       </div>
-      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textAlign: "center" }}>
+      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
         {assignment?.label ?? label}
       </div>
     </div>

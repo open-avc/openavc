@@ -60,7 +60,7 @@ export function PromptCards({ onSelect }: { onSelect: (prompt: string) => void }
         gap: "var(--space-lg)",
       }}
     >
-      <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", maxWidth: 400 }}>
+      <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", lineHeight: "var(--line-relaxed)", maxWidth: 400 }}>
         Describe what you want to build or what's not working.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", justifyContent: "center", maxWidth: 500 }}>

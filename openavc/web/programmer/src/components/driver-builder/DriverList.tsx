@@ -137,6 +137,7 @@ export function DriverList({
               fontSize: "var(--font-size-sm)",
               padding: "var(--space-md)",
               textAlign: "center",
+              lineHeight: "var(--line-relaxed)",
             }}
           >
             No custom drivers yet.

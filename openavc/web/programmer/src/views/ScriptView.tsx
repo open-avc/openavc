@@ -782,7 +782,7 @@ export function ScriptView() {
                 style={{
                   ...actionBtnStyle,
                   background: "var(--accent-bg)",
-                  color: "#fff",
+                  color: "var(--text-on-accent)",
                 }}
               >
                 <RefreshCw size={14} />
@@ -796,7 +796,7 @@ export function ScriptView() {
                 style={{
                   ...actionBtnStyle,
                   background: "var(--accent-bg)",
-                  color: "#fff",
+                  color: "var(--text-on-accent)",
                 }}
               >
                 <Play size={14} />
@@ -941,6 +941,8 @@ export function ScriptView() {
                 gap: "var(--space-sm)",
                 padding: "var(--space-xl)",
                 textAlign: "center",
+                fontSize: "var(--font-size-sm)",
+                lineHeight: "var(--line-relaxed)",
               }}
             >
               <div style={{ fontSize: "var(--font-size-base)" }}>

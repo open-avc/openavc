@@ -315,7 +315,7 @@ export function DeviceStatesSubTab() {
             )}
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
             <Cpu size={32} style={{ opacity: 0.3 }} />
             <div style={{ fontSize: "var(--font-size-base)" }}>Select a device</div>
             <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 360, lineHeight: "var(--line-base)" }}>

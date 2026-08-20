@@ -858,6 +858,7 @@ export function MacroEditor({
             style={{
               padding: "var(--space-xl)",
               textAlign: "center",
+              fontSize: "var(--font-size-sm)",
               color: "var(--text-muted)",
               lineHeight: "var(--line-relaxed)",
             }}
