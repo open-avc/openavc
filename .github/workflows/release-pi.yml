@@ -88,6 +88,13 @@ jobs:
       - name: Stage update-helper.sh
         run: cp installer/update-helper.sh installer/pi-image/stage-openavc/01-install-openavc/files/update-helper.sh
 
+      # The privileged action helper, from installer/ like everything else here.
+      # It used to be written inline by the pi-gen stage script, which froze it
+      # at image-build time; the release tarball carries the same file now so an
+      # in-app update can refresh an already-flashed appliance.
+      - name: Stage privileged helper
+        run: cp installer/openavc-privileged-helper.sh installer/pi-image/stage-openavc/01-install-openavc/files/openavc-privileged-helper.sh
+
       - name: Stage firewall-sync.sh
         run: cp installer/firewall-sync.sh installer/pi-image/stage-openavc/01-install-openavc/files/firewall-sync.sh
 

@@ -17,6 +17,14 @@ install -m 644 "$FILES_DIR/openavc-panel.service" \
 install -m 755 "$FILES_DIR/update-helper.sh" \
     "${ROOTFS_DIR}/opt/openavc/update-helper.sh"
 
+# Privileged action helper (root-owned, outside the server-writable tree — see
+# 02-configure, which installs the systemd units that drive it). Kept as a real
+# file rather than written inline so the same copy ships in the release tarball
+# and an in-app update can refresh it.
+mkdir -p "${ROOTFS_DIR}/usr/local/sbin"
+install -m 755 "$FILES_DIR/openavc-privileged-helper.sh" \
+    "${ROOTFS_DIR}/usr/local/sbin/openavc-privileged-helper.sh"
+
 # Copy firewall sync helper (referenced by ExecStartPre in openavc.service;
 # no-op on stock Pi OS, keeps ports open if the integrator enables ufw)
 install -m 755 "$FILES_DIR/firewall-sync.sh" \

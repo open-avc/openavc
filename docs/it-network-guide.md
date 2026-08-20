@@ -100,7 +100,9 @@ OpenAVC separates two surfaces with different access rules:
 
 **Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m openavc.main` from source) binds to `127.0.0.1` (localhost only). To force localhost-only on a packaged deployment, set `OPENAVC_BIND=127.0.0.1` (e.g. `sudo systemctl edit openavc` on Linux, or the `network.bind_address` field in `system.json`).
 
-**Credentials.** The admin password set during first-run setup is stored in `system.json` on the host. It can be changed later in **Settings > Security**. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`) or an `OPENAVC_API_KEY` for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen.
+**Credentials.** The admin password set during first-run setup is stored in `system.json` on the host, as a salted scrypt hash rather than the password itself, in a file readable only by the account the service runs as. It can be changed later in **Settings > Security**. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`) or an `OPENAVC_API_KEY` for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen. A password written into `system.json` by hand is converted to a hash the next time the service starts.
+
+**If the admin password is lost.** It cannot be read back out of `system.json`. With filesystem access to the host, set `auth.programmer_password` to `""` in `system.json` and restart OpenAVC: the instance returns to the unclaimed state and the next visit to the Programmer offers the "create admin password" screen again. Projects, devices and settings are untouched. On a Raspberry Pi appliance the `openavc` operating-system login keeps its current password until a new admin password is set, at which point the two are back in step.
 
 ### Raspberry Pi appliance: login and SSH
 

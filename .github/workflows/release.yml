@@ -340,6 +340,7 @@ jobs:
             installer/seed/ \
             installer/openavc.service \
             installer/update-helper.sh \
+            installer/openavc-privileged-helper.sh \
             installer/trusted-keys/ \
             requirements.txt \
             pyproject.toml \
@@ -405,6 +406,7 @@ jobs:
             installer/seed/ \
             installer/openavc.service \
             installer/update-helper.sh \
+            installer/openavc-privileged-helper.sh \
             installer/trusted-keys/ \
             requirements.txt \
             pyproject.toml \

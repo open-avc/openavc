@@ -71,6 +71,7 @@ installer/pi-image/output/
 installer/pi-image/stage-openavc/01-install-openavc/files/openavc.tar.gz
 installer/pi-image/stage-openavc/01-install-openavc/files/openavc.service
 installer/pi-image/stage-openavc/01-install-openavc/files/update-helper.sh
+installer/pi-image/stage-openavc/01-install-openavc/files/openavc-privileged-helper.sh
 installer/pi-image/stage-openavc/01-install-openavc/files/project.avc
 
 # Runtime user data

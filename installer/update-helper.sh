@@ -521,9 +521,40 @@ sync_unit() {
     fi
 }
 
+# Keep the privileged action helper in sync with the one shipped in the release.
+#
+# It lives in /usr/local/sbin (root-only, outside the server-writable tree) and
+# is installed by the Pi appliance image — so before this, the only way a change
+# to it reached a running appliance was a reflash. That mattered the moment the
+# admin password stopped being stored in cleartext: the old copy reads
+# auth.programmer_password out of system.json to run chpasswd, which now yields
+# a hash, and it would set the OS account password to that literal string.
+#
+# Refreshes only when the destination already exists. Its presence is what says
+# "this is an appliance with the privileged path unit"; a generic Linux box
+# never had one and does not get one from an update. Same idempotent
+# compare-then-copy shape as sync_unit, minus the restart — the helper is
+# oneshot, so the next request picks up the new file with nothing to reload.
+sync_privileged_helper() {
+    local src="$APP_DIR/installer/openavc-privileged-helper.sh"
+    local dst="/usr/local/sbin/openavc-privileged-helper.sh"
+    [ -f "$src" ] || return 0
+    [ -f "$dst" ] || return 0
+    cmp -s "$src" "$dst" && return 0
+
+    echo "$LOG_TAG: privileged helper changed — refreshing $dst"
+    if ! cp "$src" "$dst" 2>/dev/null; then
+        echo "$LOG_TAG: failed to write $dst (appliance keeps the previous helper)"
+        return 0
+    fi
+    chown root:root "$dst" 2>/dev/null || true
+    chmod 755 "$dst" 2>/dev/null || true
+}
+
 # Main — process instructions if present, sync the unit, then always exit 0.
 # handle_update may exec the freshly-installed helper; in that case sync_unit
-# runs from the re-exec'd process instead (UPDATE_FILE already consumed).
+# and sync_privileged_helper run from the re-exec'd process instead
+# (UPDATE_FILE already consumed).
 # A queued rollback wins over any (possibly stale) update instruction: running
 # handle_update first would do a full extract + venv sync only for the rollback
 # to immediately revert it. If a rollback is pending, drop the update instruction
@@ -535,4 +566,5 @@ elif [ -f "$UPDATE_FILE" ]; then
     handle_update
 fi
 sync_unit
+sync_privileged_helper
 exit 0

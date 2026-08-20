@@ -182,6 +182,17 @@ class Engine:
         sys_config = get_system_config()
         sys_config.ensure_file()
 
+        # Convert an admin password stored as typed (an install predating the
+        # hashing, or a hand-provisioned system.json) into a digest. Before the
+        # plugin and script engines below on purpose: those run in-process as
+        # the service user, so until this has happened, installing a community
+        # plugin means handing it the admin password — and on an appliance that
+        # is the OS login too. No-op once converted.
+        try:
+            sys_config.migrate_admin_password()
+        except Exception:  # never block startup on the conversion
+            log.exception("Could not convert the stored admin password to a hash")
+
         # One-shot migration of plugin_repo/driver_repo from the pre-data_dir
         # layout (APP_DIR/{plugin,driver}_repo). Runs before driver and plugin
         # loading so the moved content is picked up on the same startup. No-op

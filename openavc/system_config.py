@@ -636,6 +636,52 @@ class SystemConfig:
 
         self._loaded = True
 
+    def migrate_admin_password(self) -> bool:
+        """Rewrite a cleartext ``auth.programmer_password`` in system.json as a
+        digest, and save. Returns True when something was converted.
+
+        Anything in the file that is not already a digest is a password someone
+        typed: this is what an install predating the hashing carries, and it is
+        also how an operator provisions a box by hand. Both convert on the next
+        server start, and both keep working until then, because
+        ``verify_password`` compares a non-digest literally.
+
+        Touches the persisted layer only, so an ``OPENAVC_PROGRAMMER_PASSWORD``
+        supplied by the environment is left alone — it is a plaintext by
+        design and is deliberately never written to the file.
+
+        Called from ``Engine.start`` rather than from ``load()``, even though
+        load is the one place that reads the file. Two reasons, both about who
+        else loads: the simulator subprocess and ``openavc.drivers.check``
+        import this module and would silently rewrite an operator's config on a
+        validation run, and the import closure they are held to
+        (``tests/test_compiled_protocol_purity.py``) has no business containing
+        a password hasher. The server is what runs plugins and scripts, so the
+        server is where the conversion has to happen — and it happens before
+        either is loaded.
+        """
+        from openavc.utils.password_hash import hash_password, looks_hashed
+
+        auth = self._file_data.get("auth")
+        if not isinstance(auth, dict):
+            return False
+        stored = auth.get("programmer_password", "")
+        if not isinstance(stored, str) or not stored or looks_hashed(stored):
+            return False
+        hashed = hash_password(stored)
+        auth["programmer_password"] = hashed
+        # Keep the runtime view in step. An env override still wins where it is
+        # set: load() layered it onto _data, and this only rewrites the key
+        # when the FILE holds a plaintext.
+        runtime_auth = self._data.get("auth")
+        if isinstance(runtime_auth, dict) and not os.environ.get(
+            "OPENAVC_PROGRAMMER_PASSWORD"
+        ):
+            runtime_auth["programmer_password"] = hashed
+        self.save()
+        log.info("Converted the stored admin password in %s to a hash", self._file_path)
+        return True
+
     def save(self) -> None:
         """Write the persisted config layer (defaults + file + UI changes,
         minus env overrides) to system.json.
@@ -653,6 +699,15 @@ class SystemConfig:
         crash or power loss mid-write can't leave a truncated system.json,
         which the layered-config loader would silently fall back to defaults
         for — losing the operator's settings.
+
+        The result is mode 0600, and that is intended rather than incidental:
+        ``mkstemp`` creates at 0600 and ``os.replace`` carries the temp file's
+        mode onto the destination, so a file left world-readable by an older
+        release or a hand edit is tightened on the next save. The admin
+        password is a digest now, but ``isc.auth_key`` and ``cloud.system_key``
+        are shared secrets this instance has to be able to present, so they are
+        stored as they are used and the mode is what protects them.
+        ``tests/test_system_config_secrets.py`` pins it.
         """
         fd = None
         tmp_path = None

@@ -101,7 +101,9 @@ async def get_system_config_endpoint() -> dict[str, Any]:
     from openavc.system_config import get_system_config
     cfg = get_system_config()
     data = cfg.to_dict()
-    # Redact sensitive values
+    # Redact sensitive values. The password is a digest now and still redacted:
+    # a digest is offline-crackable, and handing one to every authenticated
+    # caller of this endpoint would put it somewhere system.json's 0600 isn't.
     if data.get("auth", {}).get("programmer_password"):
         data["auth"]["programmer_password"] = "***"
     if data.get("auth", {}).get("api_key"):
@@ -151,6 +153,16 @@ async def update_system_config(request: Request) -> dict[str, Any]:
                 ),
             )
 
+    # The admin password never goes through the generic loop below: it is
+    # stored as a digest, so the typed value has exactly two destinations —
+    # the hash, and the one-shot OS-sync request. Taken out here so no future
+    # edit to the loop can persist it as typed. `None` means the caller did not
+    # send the field at all, which is different from sending "" to clear it.
+    new_password: str | None = None
+    if isinstance(body.get("auth"), dict) and "programmer_password" in body["auth"]:
+        raw = body["auth"].pop("programmer_password")
+        new_password = "" if raw is None else str(raw)
+
     updated_sections = []
     for section_name, section_data in body.items():
         if not isinstance(section_data, dict):
@@ -163,14 +175,20 @@ async def update_system_config(request: Request) -> dict[str, Any]:
                 cfg.set(section_name, key, value)
         updated_sections.append(section_name)
 
+    if new_password is not None:
+        from openavc.api.auth import store_admin_password
+        store_admin_password(new_password)
+        if "auth" not in updated_sections:
+            updated_sections.append("auth")
+
     cfg.save()
 
     # If the admin password changed, re-sync the OS login on a Pi appliance
     # (no-op everywhere else). C10.
-    if isinstance(body.get("auth"), dict) and "programmer_password" in body["auth"]:
+    if new_password is not None:
         try:
             from openavc import host_control
-            host_control.sync_os_password()
+            host_control.sync_os_password(new_password)
         except Exception:  # noqa: BLE001 — OS sync must never fail the save
             from openavc.utils.logger import get_logger
             get_logger(__name__).warning("OS password sync after change failed", exc_info=True)

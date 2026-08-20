@@ -2,16 +2,25 @@
 (``openavc/host_control.py``) and its wiring into claim / password-change /
 SSH-toggle / reboot.
 
-The privileged helper itself is a root-owned shell script installed only on the
-Pi appliance image; these tests cover the unprivileged server half — that it
-writes the right request files, gates on helper availability, never puts the
-password in a request, and that claim/password-change/SSH/reboot route through
-it. The helper's own drain/parse logic is covered by a bash smoke test.
+The privileged helper itself is a root-owned shell script; these tests cover
+the unprivileged server half — that it writes the right request files, gates on
+helper availability, hands the password over exactly once, and that
+claim/password-change/SSH/reboot route through it. The script's own drain and
+parse logic is exercised for real in `test_privileged_helper_script.py`.
+
+The password moved INTO the request when the stored one became a digest
+(`openavc/utils/password_hash.py`): the helper used to read
+`auth.programmer_password` out of system.json, which is precisely what stopped
+that value from being hashable. So the old assertion that a request carries no
+secret is gone on purpose — what replaces it is that the request is 0600, is
+swept if nothing drains it, and is never sent to a helper too old to read it.
 """
 
 import asyncio
 import base64
 import json
+import stat
+import sys
 
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
@@ -22,15 +31,24 @@ from openavc.api import auth
 from openavc.api.routes import host as host_routes
 from openavc.api.routes import system as system_routes
 from openavc.system_config import get_system_config
+from openavc.utils.password_hash import verify_password
 
 
 @pytest.fixture
 def spool(tmp_path, monkeypatch):
-    """Point the helper spool at a tmp dir and pretend the helper is installed."""
+    """Point the helper spool at a tmp dir and pretend the helper is installed.
+
+    Stands up a stub script carrying the real protocol marker rather than
+    stubbing `helper_takes_password`, so the version gate is exercised the way
+    it runs — reading a file off disk.
+    """
     req = tmp_path / "priv-requests"
     res = tmp_path / "priv-results"
+    script = tmp_path / "openavc-privileged-helper.sh"
+    script.write_text(f"#!/bin/bash\n# {hc._PASSWORD_PROTOCOL_MARKER}\nexit 0\n")
     monkeypatch.setattr(hc, "_request_dir", lambda: req)
     monkeypatch.setattr(hc, "_result_dir", lambda: res)
+    monkeypatch.setattr(hc, "_HELPER_SCRIPT", script)
     monkeypatch.setattr(hc, "helper_available", lambda: True)
     return req, res
 
@@ -62,25 +80,96 @@ def test_helper_available_reflects_path_unit(tmp_path, monkeypatch):
 
 def test_sync_os_password_writes_request_when_available(spool):
     req_dir, _ = spool
-    assert hc.sync_os_password() is True
+    assert hc.sync_os_password("topsecretpw123") is True
     reqs = _requests(req_dir)
     assert len(reqs) == 1
     assert reqs[0]["action"] == "set_password"
 
 
-def test_sync_os_password_carries_no_secret(spool):
-    """The password is read by the root helper from system.json — it must never
-    appear in the request file the unprivileged server writes."""
+def test_sync_os_password_carries_the_password(spool):
+    """The inverted handoff: the helper is handed the plaintext instead of
+    reading the stored value, which is a digest now."""
     req_dir, _ = spool
-    get_system_config().set("auth", "programmer_password", "topsecretpw123")
-    hc.sync_os_password()
-    raw = "".join(f.read_text() for f in req_dir.glob("*.json"))
-    assert "topsecretpw123" not in raw
+    hc.sync_os_password("topsecretpw123")
+    assert _requests(req_dir)[0]["password"] == "topsecretpw123"
+
+
+def test_an_empty_password_is_carried_too(spool):
+    """An empty password re-locks the OS account, so the helper still has to be
+    told — it just isn't told a password."""
+    req_dir, _ = spool
+    assert hc.sync_os_password("") is True
+    assert _requests(req_dir)[0]["password"] == ""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_the_request_file_is_readable_only_by_its_owner(spool):
+    """It holds the admin password for the moment before the helper drains it,
+    and on an appliance that is the OS login as well."""
+    req_dir, _ = spool
+    hc.sync_os_password("topsecretpw123")
+    written = list(req_dir.glob("*.json"))
+    assert len(written) == 1
+    assert stat.S_IMODE(written[0].stat().st_mode) == 0o600
+
+
+def test_an_old_helper_is_not_sent_a_password(spool, tmp_path, monkeypatch):
+    """An appliance flashed before the protocol change keeps its old script
+    until an update refreshes it. That copy reads the stored value — a digest —
+    and would chpasswd the OS account to the literal digest. Refusing leaves
+    the account on the password it already had, which is the recoverable end."""
+    req_dir, _ = spool
+    old = tmp_path / "old-helper.sh"
+    old.write_text("#!/bin/bash\n# reads the password from system.json\nexit 0\n")
+    monkeypatch.setattr(hc, "_HELPER_SCRIPT", old)
+
+    assert hc.helper_takes_password() is False
+    assert hc.sync_os_password("topsecretpw123") is False
+    assert _requests(req_dir) == []
+
+
+def test_a_missing_helper_script_is_treated_as_old(spool, tmp_path, monkeypatch):
+    monkeypatch.setattr(hc, "_HELPER_SCRIPT", tmp_path / "not-installed.sh")
+    assert hc.helper_takes_password() is False
+    assert hc.sync_os_password("topsecretpw123") is False
+
+
+def test_the_shipped_helper_declares_the_protocol():
+    """The marker is a contract between two files in two languages. If the
+    script is reworded, every appliance silently stops syncing its OS password
+    — so read the constant from the module and look for it in the script."""
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "installer" / "openavc-privileged-helper.sh"
+    assert script.is_file(), f"{script} is missing — this test points at the wrong file"
+    assert hc._PASSWORD_PROTOCOL_MARKER in script.read_text(encoding="utf-8")
+
+
+def test_a_request_nothing_drained_is_swept(spool, monkeypatch):
+    """A helper that is installed but not running would otherwise leave the
+    plaintext sitting in the spool indefinitely."""
+    req_dir, _ = spool
+    hc.sync_os_password("topsecretpw123")
+    stranded = list(req_dir.glob("*.json"))[0]
+
+    monkeypatch.setattr(hc, "_RESULT_STALE_SECONDS", -1.0)
+    hc.request_reboot()
+
+    assert not stranded.exists()
+    assert [r["action"] for r in _requests(req_dir)] == ["reboot"]
+
+
+def test_a_fresh_request_is_not_swept(spool):
+    """The sweep is about abandonment, not about the previous request."""
+    req_dir, _ = spool
+    hc.sync_os_password("topsecretpw123")
+    hc.request_reboot()
+    assert sorted(r["action"] for r in _requests(req_dir)) == ["reboot", "set_password"]
 
 
 def test_sync_os_password_noop_when_unavailable(tmp_path, monkeypatch):
     monkeypatch.setattr(hc, "helper_available", lambda: False)
-    assert hc.sync_os_password() is False
+    assert hc.sync_os_password("topsecretpw123") is False
 
 
 # --- set_ssh -----------------------------------------------------------------
@@ -154,7 +243,9 @@ def test_claim_still_sets_password_even_if_sync_raises(spool, monkeypatch):
     get_system_config().set("auth", "programmer_password", "")
     get_system_config().set("auth", "api_key", "")
     auth.claim_instance("commission123")
-    assert get_system_config().get("auth", "programmer_password") == "commission123"
+    assert verify_password(
+        "commission123", get_system_config().get("auth", "programmer_password")
+    )
 
 
 # --- authenticated password-change path re-syncs -----------------------------
@@ -190,6 +281,67 @@ def test_password_change_patch_resyncs_os_password(spool):
     )
     assert r.status_code == 200
     assert [x["action"] for x in _requests(req_dir)] == ["set_password"]
+
+
+def test_password_change_patch_stores_a_digest(spool):
+    """The other write door. It sets config keys through one generic loop, so
+    the password is deliberately lifted out of that loop — nothing else would
+    stop a plaintext going straight to disk."""
+    cfg = get_system_config()
+    cfg.set("auth", "programmer_username", "")
+    cfg.set("auth", "programmer_password", "adminpass123")
+    cfg.set("auth", "allow_anonymous", False)
+
+    client = TestClient(_protected_app())
+    r = client.patch(
+        "/api/system/config",
+        json={"auth": {"programmer_password": "rotatedpass123"}},
+        headers=_basic("admin", "adminpass123"),
+    )
+    assert r.status_code == 200
+
+    stored = cfg.get("auth", "programmer_password")
+    assert verify_password("rotatedpass123", stored)
+    assert "rotatedpass123" not in stored
+    assert "rotatedpass123" not in cfg.file_path.read_text()
+
+
+def test_password_change_patch_hands_the_helper_the_plaintext(spool):
+    """The one moment the typed password legitimately exists — it has to reach
+    the OS sync from here, because nothing can read it back afterwards."""
+    req_dir, _ = spool
+    cfg = get_system_config()
+    cfg.set("auth", "programmer_username", "")
+    cfg.set("auth", "programmer_password", "adminpass123")
+    cfg.set("auth", "allow_anonymous", False)
+
+    client = TestClient(_protected_app())
+    client.patch(
+        "/api/system/config",
+        json={"auth": {"programmer_password": "rotatedpass123"}},
+        headers=_basic("admin", "adminpass123"),
+    )
+    assert _requests(req_dir)[0]["password"] == "rotatedpass123"
+
+
+def test_clearing_the_password_through_the_patch_unclaims(spool):
+    """An empty password is not hashed — "no credential" is a state the auth
+    module reads by truthiness, and it re-locks the OS account too."""
+    req_dir, _ = spool
+    cfg = get_system_config()
+    cfg.set("auth", "programmer_username", "")
+    cfg.set("auth", "programmer_password", "adminpass123")
+    cfg.set("auth", "allow_anonymous", False)
+
+    client = TestClient(_protected_app())
+    r = client.patch(
+        "/api/system/config",
+        json={"auth": {"programmer_password": ""}},
+        headers=_basic("admin", "adminpass123"),
+    )
+    assert r.status_code == 200
+    assert cfg.get("auth", "programmer_password") == ""
+    assert _requests(req_dir)[0]["password"] == ""
 
 
 def test_non_password_config_change_does_not_sync(spool):

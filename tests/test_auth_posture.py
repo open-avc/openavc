@@ -4,7 +4,7 @@ Covers:
 - anonymous_access_allowed() resolution (explicit flag + "auto" dev detection)
 - auth_state() tri-state (ok / setup / required)
 - programmer_auth_satisfied honoring the no-credential posture
-- claim_instance() first-run claim (persist, reject re-claim, reject weak)
+- claim_instance() first-run claim (persist hashed, reject re-claim, reject weak)
 - require_claimed_auth on code endpoints (always needs a credential)
 - /api/auth/required tri-state + /api/auth/setup claim endpoint
 """
@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from openavc.api import auth
 from openavc.system_config import get_system_config
+from openavc.utils.password_hash import looks_hashed, verify_password
 
 
 @pytest.fixture(autouse=True)
@@ -100,8 +101,18 @@ def test_claim_sets_and_persists_password():
     _set_auth(programmer_password="", api_key="", allow_anonymous=False)
     auth.claim_instance("strongpass123")
     cfg = get_system_config()
-    assert cfg.get("auth", "programmer_password") == "strongpass123"
+    stored = cfg.get("auth", "programmer_password")
+    assert looks_hashed(stored) and verify_password("strongpass123", stored)
     assert auth.is_claimed() is True
+
+
+def test_claim_does_not_persist_the_password_as_typed():
+    """The point of hashing it: a claimed instance's config file yields no
+    working credential to anything that can read it — a plugin, a script, a
+    diagnostic copy, a lifted SD card."""
+    _set_auth(programmer_password="", api_key="", allow_anonymous=False)
+    auth.claim_instance("strongpass123")
+    assert "strongpass123" not in get_system_config().file_path.read_text()
 
 
 def test_claim_rejects_when_already_claimed():
@@ -216,7 +227,7 @@ def test_auth_setup_stores_and_enforces_username():
 
     cfg = get_system_config()
     assert cfg.get("auth", "programmer_username") == "aaron"
-    assert cfg.get("auth", "programmer_password") == "freshadmin123"
+    assert verify_password("freshadmin123", cfg.get("auth", "programmer_password"))
 
     # The stored username is now enforced: right pair passes, wrong user fails.
     assert auth._check_credentials("aaron", "freshadmin123") is True

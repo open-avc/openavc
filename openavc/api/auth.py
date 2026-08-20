@@ -17,6 +17,10 @@ frictionless dev (see `anonymous_access_allowed`). Code-writing endpoints
   admin surface openly, "false" requires setup. Unset = auto (dev-only open).
 - OPENAVC_PANEL_LOCK_CODE — reserved for future panel lock screen
 
+The password is stored as a `hashlib.scrypt` digest, never as typed — see
+`openavc/utils/password_hash.py`. Nothing reads it back; every consumer here
+either checks presence or verifies a supplied value against it.
+
 Browser sessions don't hold the password: the Programmer SPA exchanges it for
 a short-lived session token (POST /api/auth/session) and sends
 `Authorization: Bearer <token>` / the `auth.bearer.<token>` WebSocket
@@ -38,6 +42,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from openavc.system_config import get_system_config
 from openavc.utils.logger import get_logger
+from openavc.utils.password_hash import hash_password, verify_password
 from openavc.utils.request_origin import (
     cloud_session_secret,
     is_local_console_request,
@@ -53,6 +58,9 @@ def _get_username() -> str:
 
 
 def _get_password() -> str:
+    """The stored credential: normally a digest, a plaintext when it came from
+    `OPENAVC_PROGRAMMER_PASSWORD`. Only `_check_password` cares which — every
+    other caller reads it for presence or hashes it into a fingerprint."""
     return get_system_config().get("auth", "programmer_password", "")
 
 
@@ -61,8 +69,8 @@ def _get_api_key() -> str:
 
 
 def _check_password(provided: str) -> bool:
-    """Timing-safe comparison against the configured programmer password."""
-    return secrets.compare_digest(provided, _get_password())
+    """Timing-safe check against the configured programmer password."""
+    return verify_password(provided, _get_password())
 
 
 def _check_username(provided: str) -> bool:
@@ -104,6 +112,11 @@ def credential_fingerprint() -> str:
     Session tokens record this at mint time and are validated against the
     live value, so changing the password (or username) through ANY code path
     invalidates every outstanding session without per-callsite wiring.
+
+    Fingerprints the *stored* form, so a fresh digest of the same password —
+    a re-save, or the one-time conversion of a legacy plaintext at startup —
+    ends outstanding sessions too. That is the right way round: it errs toward
+    signing people back in, never toward honouring a token past a change.
     """
     raw = f"{_get_username()}\x00{_get_password()}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
@@ -191,6 +204,17 @@ def auth_state() -> str:
     return "ok" if anonymous_access_allowed() else "setup"
 
 
+def store_admin_password(password: str) -> None:
+    """Write the admin password to the config in its stored form (in memory —
+    the caller saves).
+
+    The only place the credential is written, so no door can persist a
+    plaintext by setting the key itself. An empty password clears it, which is
+    how an instance goes back to unclaimed.
+    """
+    get_system_config().set("auth", "programmer_password", hash_password(password))
+
+
 def claim_instance(password: str, username: str = "") -> None:
     """Set the initial admin credential on an unclaimed instance, and persist it.
 
@@ -205,13 +229,15 @@ def claim_instance(password: str, username: str = "") -> None:
     cfg = get_system_config()
     if username and username.strip():
         cfg.set("auth", "programmer_username", username.strip())
-    cfg.set("auth", "programmer_password", password)
+    store_admin_password(password)
     cfg.save()
     # On a Pi appliance, this same password is the OS login — sync it to the
     # 'openavc' account via the root helper (no-op everywhere else). C10.
+    # Handed the plaintext, which is why the call is here and not inside
+    # store_admin_password: this is the last point that has it.
     try:
         from openavc import host_control
-        host_control.sync_os_password()
+        host_control.sync_os_password(password)
     except Exception:  # noqa: BLE001 — OS sync must never break the claim
         log.warning("OS password sync after claim failed", exc_info=True)
 

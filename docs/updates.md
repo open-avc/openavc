@@ -68,6 +68,17 @@ If the server crashes immediately after an update (fails to start twice in a row
 
 From the Updates view, scroll to the **Rollback** section and click **Rollback to vX.Y.Z**. This restores the previous application code and restarts the server. Your projects, drivers, and configuration are preserved as they are — manual rollback does not rewind your project data.
 
+### Rolling back to a version older than v0.29.0
+
+v0.29.0 changed how the admin password is stored, from the password itself to a hash of it. Rolling back to v0.28.0 or earlier works normally, but that older version cannot read the new form, so the Programmer sign-in will reject the password. Everything else, including the room panel, is unaffected.
+
+Two ways to get back in, both needing access to the host's files:
+
+1. Restore the previous `system.json` from the backup taken just before the update. It is in the `backups` folder inside the data directory, named `pre-update-v0.28.0-<date>.zip`, with `system.json` at the top of the archive. This brings back the password you were using.
+2. Or set `auth.programmer_password` to `""` in `system.json` and restart. The system returns to unclaimed and the next visit to the Programmer offers the "create admin password" screen. Projects, devices and settings are untouched.
+
+This applies only when crossing back over v0.29.0. Rollbacks between v0.29.0 and later versions are not affected.
+
 ## Update Channels
 
 OpenAVC supports two update channels:

@@ -124,6 +124,7 @@ echo "Archive created: $ARCHIVE_SIZE"
 # syncs against (server's sync_unit compares the active unit to the generic
 # installer/openavc.service shipped in the release tarball).
 cp "$REPO_ROOT/installer/update-helper.sh" "$STAGE_DIR/01-install-openavc/files/update-helper.sh"
+cp "$REPO_ROOT/installer/openavc-privileged-helper.sh" "$STAGE_DIR/01-install-openavc/files/openavc-privileged-helper.sh"
 cp "$REPO_ROOT/installer/firewall-sync.sh" "$STAGE_DIR/01-install-openavc/files/firewall-sync.sh"
 cp "$REPO_ROOT/installer/openavc.service" "$STAGE_DIR/01-install-openavc/files/openavc.service"
 
