@@ -1205,9 +1205,9 @@ export function UIBuilderView() {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-md)",
-              padding: "var(--space-sm) var(--space-lg)",
-              background: "var(--color-error-bg)",
+              gap: 12,
+              padding: "6px 16px",
+              background: "rgba(244,67,54,0.15)",
               color: "var(--color-error)",
               fontSize: "var(--font-size-sm)",
               borderBottom: "1px solid var(--color-error)",
@@ -1218,10 +1218,10 @@ export function UIBuilderView() {
             <button
               onClick={() => save()}
               style={{
-                padding: "var(--space-2xs) var(--space-md)",
-                fontSize: "var(--font-size-xs)",
-                fontWeight: "var(--font-weight-semibold)",
-                borderRadius: "var(--border-radius)",
+                padding: "2px 10px",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 3,
                 border: "1px solid var(--color-error)",
                 background: "transparent",
                 color: "var(--color-error)",
@@ -1233,9 +1233,9 @@ export function UIBuilderView() {
             <button
               onClick={() => useProjectStore.setState({ error: null })}
               style={{
-                padding: "var(--space-2xs) var(--space-md)",
-                fontSize: "var(--font-size-xs)",
-                borderRadius: "var(--border-radius)",
+                padding: "2px 10px",
+                fontSize: 11,
+                borderRadius: 3,
                 border: "1px solid var(--border-color)",
                 background: "transparent",
                 color: "var(--text-secondary)",
@@ -1262,7 +1262,7 @@ export function UIBuilderView() {
                     display: "flex",
                     alignItems: "center",
                     gap: "var(--space-xs)",
-                    padding: "var(--space-xs) var(--space-md)",
+                    padding: "3px var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
@@ -1280,7 +1280,7 @@ export function UIBuilderView() {
                     display: "flex",
                     alignItems: "center",
                     gap: "var(--space-xs)",
-                    padding: "var(--space-xs) var(--space-md)",
+                    padding: "3px var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
@@ -1298,7 +1298,7 @@ export function UIBuilderView() {
                     display: "flex",
                     alignItems: "center",
                     gap: "var(--space-xs)",
-                    padding: "var(--space-xs) var(--space-md)",
+                    padding: "3px var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
@@ -1321,7 +1321,7 @@ export function UIBuilderView() {
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
-                    fontWeight: "var(--font-weight-semibold)",
+                    fontWeight: 700,
                     border: "none",
                     cursor: "pointer",
                     color: "var(--text-secondary)",
@@ -1356,7 +1356,7 @@ export function UIBuilderView() {
                         key={tab}
                         onClick={() => setLeftTab(tab)}
                         style={{
-                          flex: 1, padding: "var(--space-sm) 0", fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-medium)",
+                          flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 500,
                           background: "transparent", border: "none", cursor: "pointer",
                           color: leftTab === tab ? "var(--accent)" : "var(--text-muted)",
                           borderBottom: leftTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
@@ -1660,30 +1660,30 @@ export function UIBuilderView() {
           label="Validation Results"
           overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
           panelStyle={{
-            borderRadius: "var(--radius-lg)",
+            borderRadius: 8,
             border: "1px solid var(--border-color)",
-            padding: "var(--space-xl)", minWidth: 400, maxWidth: 600, maxHeight: "70vh",
-            display: "flex", flexDirection: "column", gap: "var(--space-md)",
+            padding: 20, minWidth: 400, maxWidth: 600, maxHeight: "70vh",
+            display: "flex", flexDirection: "column", gap: 12,
           }}
         >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, fontSize: "var(--font-size-lg)" }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>
                 Project Validation {validationIssues.length === 0 ? "(No Issues)" : `(${validationIssues.length} issue${validationIssues.length === 1 ? "" : "s"})`}
               </h3>
-              <button onClick={() => setValidationIssues(null)} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "var(--font-size-lg)" }}>&times;</button>
+              <button onClick={() => setValidationIssues(null)} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}>&times;</button>
             </div>
             {validationIssues.length === 0 ? (
-              <div style={{ color: "var(--color-success)", fontSize: "var(--font-size-base)", padding: "var(--space-md) 0" }}>
+              <div style={{ color: "var(--color-success)", fontSize: 13, padding: "12px 0" }}>
                 All bindings, pages, devices, and macros are valid.
               </div>
             ) : (
-              <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+              <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
                 {validationIssues.map((issue, i) => (
                   <div
                     key={i}
                     style={{
-                      display: "flex", gap: "var(--space-sm)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)",
-                      background: issue.severity === "error" ? "var(--color-error-bg)" : "var(--color-warning-bg)",
+                      display: "flex", gap: 8, padding: "6px 8px", borderRadius: 4, fontSize: 12,
+                      background: issue.severity === "error" ? "rgba(244,67,54,0.08)" : "rgba(255,152,0,0.08)",
                       border: `1px solid ${issue.severity === "error" ? "rgba(244,67,54,0.2)" : "rgba(255,152,0,0.2)"}`,
                       cursor: issue.pageId ? "pointer" : "default",
                     }}
@@ -1695,12 +1695,12 @@ export function UIBuilderView() {
                       }
                     }}
                   >
-                    <span style={{ color: issue.severity === "error" ? "var(--color-error)" : "var(--color-warning)", fontWeight: "var(--font-weight-semibold)", flexShrink: 0 }}>
+                    <span style={{ color: issue.severity === "error" ? "var(--color-error)" : "#ff9800", fontWeight: 600, flexShrink: 0 }}>
                       {issue.severity === "error" ? "ERR" : "WARN"}
                     </span>
                     <div>
-                      <div style={{ fontWeight: "var(--font-weight-medium)" }}>{issue.message}</div>
-                      <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>{issue.location}</div>
+                      <div style={{ fontWeight: 500 }}>{issue.message}</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{issue.location}</div>
                     </div>
                   </div>
                 ))}
@@ -1825,7 +1825,7 @@ function UISettingsDialog({
                 placeholder="Leave empty for no lock"
                 style={inputStyle}
               />
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 4-6 digit PIN to lock the touch panel. Leave empty to disable.
               </div>
             </div>
@@ -1841,7 +1841,7 @@ function UISettingsDialog({
                 }}
                 style={inputStyle}
               />
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 Return to idle page after this many seconds of inactivity. 0 = disabled.
               </div>
             </div>
@@ -1860,7 +1860,7 @@ function UISettingsDialog({
             </div>
 
             <div style={fieldStyle}>
-              <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={draft.show_error_messages !== false}
@@ -1868,7 +1868,7 @@ function UISettingsDialog({
                 />
                 Show a message when a control fails
               </label>
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 A press that does not reach its device puts the reason across the
                 panel for about five seconds. Turn this off in a space that shows
                 its own status.
@@ -1893,7 +1893,7 @@ function UISettingsDialog({
             {draft.page_transition && draft.page_transition !== "none" && (
               <div style={fieldStyle}>
                 <label style={labelStyle}>Transition Duration</label>
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <NumericInput
                     integer
                     min={50}
@@ -1905,7 +1905,7 @@ function UISettingsDialog({
                     }}
                     style={{ ...inputStyle, width: 80 }}
                   />
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>ms</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms</span>
                 </div>
               </div>
             )}
@@ -1936,7 +1936,7 @@ function UISettingsDialog({
                   <option value="fade-up">Fade Up</option>
                   <option value="scale">Scale</option>
                 </select>
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                   How each element animates in as the stagger sweeps across the page.
                 </div>
               </div>
@@ -1944,7 +1944,7 @@ function UISettingsDialog({
             {draft.element_entry === "stagger" && (
               <div style={fieldStyle}>
                 <label style={labelStyle}>Stagger Delay</label>
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <NumericInput
                     integer
                     min={10}
@@ -1956,7 +1956,7 @@ function UISettingsDialog({
                     }}
                     style={{ ...inputStyle, width: 80 }}
                   />
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>ms per element</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms per element</span>
                 </div>
               </div>
             )}
@@ -1984,8 +1984,8 @@ function UISettingsDialog({
               border: "none",
               cursor: dirty ? "pointer" : "default",
               opacity: dirty ? 1 : 0.5,
-              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
-              fontWeight: "var(--font-weight-medium)",
+              color: dirty ? "#fff" : "var(--text-muted)",
+              fontWeight: 600,
             }}
           >
             Save
@@ -2039,7 +2039,7 @@ function PaletteDragGhost({
         opacity: 0.85,
         pointerEvents: "none",
         filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.5))",
-        borderRadius: "var(--radius-lg)",
+        borderRadius: 8,
         outline: "2px solid var(--accent)",
         outlineOffset: -1,
         background: "var(--bg-elevated)",
@@ -2048,7 +2048,7 @@ function PaletteDragGhost({
         justifyContent: "center",
         color: "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
-        fontWeight: "var(--font-weight-medium)",
+        fontWeight: 500,
         textTransform: "capitalize",
       }}
     >

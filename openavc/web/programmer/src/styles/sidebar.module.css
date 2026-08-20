@@ -1,18 +1,18 @@
 .sidebar {
   width: var(--sidebar-width);
   height: 100%;
-  background: var(--bg-rail);
-  border-right: 1px solid var(--border-chrome);
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: var(--space-md);
+  padding-top: var(--space-sm);
   flex-shrink: 0;
 }
 
 .logo {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   margin-bottom: var(--space-lg);
   display: flex;
   align-items: center;
@@ -20,18 +20,16 @@
   color: var(--accent);
 }
 
-/* 32px square holding an 18px icon: a 32px pitch, so the icon edges sit 14px
-   apart. The old 40px button on a 44px pitch spent 572px of a 800px window on
-   thirteen icons and read as a phone tab bar rather than a tool rail. */
 .navItem {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--border-radius);
   color: var(--text-muted);
   transition: all var(--transition-fast);
+  margin-bottom: var(--space-xs);
   position: relative;
 }
 
@@ -40,11 +38,9 @@
   color: var(--text-primary);
 }
 
-/* Nothing is filled. A sage plate spends the accent on you-are-here, which is
-   the one thing on the screen the user already knows; brightening the stroke
-   says it just as clearly and leaves the sage for the primary action. */
 .navItem.active {
-  color: var(--text-primary);
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
 .tooltip {
@@ -73,8 +69,8 @@
 }
 
 .connectionStatus {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;

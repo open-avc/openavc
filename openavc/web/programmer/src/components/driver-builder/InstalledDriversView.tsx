@@ -20,7 +20,7 @@ const headerBtnStyle: React.CSSProperties = {
   alignItems: "center",
   gap: "var(--space-xs)",
   padding: "var(--space-xs) var(--space-md)",
-  borderRadius: "var(--border-radius)",
+  borderRadius: "var(--border-radius, var(--radius))",
   background: "var(--bg-hover)",
   fontSize: "var(--font-size-sm)",
   cursor: "pointer",
@@ -162,7 +162,7 @@ export function InstalledDriversView({
               placeholder="Search drivers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: "100%", paddingLeft: "var(--space-2xl)", fontSize: "var(--font-size-sm)" }}
+              style={{ width: "100%", paddingLeft: 28, fontSize: "var(--font-size-sm)" }}
             />
           </div>
         </div>
@@ -176,7 +176,7 @@ export function InstalledDriversView({
                 textAlign: "center",
                 color: "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
-                lineHeight: "var(--line-relaxed)",
+                lineHeight: 1.5,
               }}
             >
               {searchQuery ? (
@@ -192,9 +192,9 @@ export function InstalledDriversView({
                         style={{
                           marginTop: "var(--space-sm)",
                           padding: "var(--space-xs) var(--space-md)",
-                          borderRadius: "var(--border-radius)",
+                          borderRadius: "var(--border-radius, var(--radius))",
                           background: "var(--accent-bg)",
-                          color: "var(--text-on-accent-bg)",
+                          color: "var(--text-on-accent)",
                           fontSize: "var(--font-size-sm)",
                           cursor: "pointer",
                         }}
@@ -219,15 +219,15 @@ export function InstalledDriversView({
                     cursor: "pointer",
                     borderBottom: "1px solid var(--border-color)",
                     background:
-                      selectedId === d.id ? "var(--accent-dim)" : "transparent",
+                      selectedId === d.id ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
                   }}
                 >
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "var(--space-sm)",
-                      fontWeight: "var(--font-weight-medium)",
+                      gap: 6,
+                      fontWeight: 500,
                       fontSize: "var(--font-size-sm)",
                     }}
                   >
@@ -245,13 +245,13 @@ export function InstalledDriversView({
                       <span
                         title="Python driver"
                         style={{
-                          fontSize: "var(--font-size-2xs)",
-                          padding: "var(--space-2xs) var(--space-xs)",
-                          borderRadius: "var(--border-radius)",
+                          fontSize: 10,
+                          padding: "1px 5px",
+                          borderRadius: 3,
                           background: "var(--bg-hover)",
                           color: "var(--text-muted)",
                           fontFamily: "var(--font-mono)",
-                          fontWeight: "var(--font-weight-semibold)",
+                          fontWeight: 600,
                           flexShrink: 0,
                         }}
                       >
@@ -263,7 +263,7 @@ export function InstalledDriversView({
                     style={{
                       fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
-                      marginTop: "var(--space-2xs)",
+                      marginTop: 2,
                     }}
                   >
                     {d.manufacturer} &middot; {d.category || "Other"}
@@ -278,10 +278,9 @@ export function InstalledDriversView({
           style={{
             padding: "var(--space-sm)",
             borderTop: "1px solid var(--border-color)",
-            fontSize: "var(--font-size-sm)",
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             textAlign: "center",
-            lineHeight: "var(--line-relaxed)",
           }}
         >
           {filteredDrivers.length} driver{filteredDrivers.length !== 1 ? "s" : ""}
@@ -325,8 +324,6 @@ export function InstalledDriversView({
           <div
             style={{
               textAlign: "center",
-              fontSize: "var(--font-size-sm)",
-              lineHeight: "var(--line-relaxed)",
               padding: "var(--space-xl)",
               color: "var(--text-muted)",
             }}
@@ -436,7 +433,7 @@ export function DriverDetailPanel({
           {canUninstall && (
             confirmUninstall ? (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>
+                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error, var(--danger))" }}>
                   Uninstall this driver?
                 </span>
                 <button
@@ -444,9 +441,9 @@ export function DriverDetailPanel({
                   disabled={uninstalling}
                   style={{
                     padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--color-error)",
-                    color: "var(--text-on-accent)",
+                    borderRadius: "var(--border-radius, var(--radius))",
+                    background: "var(--color-error, var(--danger))",
+                    color: "#fff",
                     fontSize: "var(--font-size-sm)",
                     opacity: uninstalling ? 0.6 : 1,
                   }}
@@ -458,7 +455,7 @@ export function DriverDetailPanel({
                   disabled={uninstalling}
                   style={{
                     padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
+                    borderRadius: "var(--border-radius, var(--radius))",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
                   }}
@@ -480,9 +477,9 @@ export function DriverDetailPanel({
                   alignItems: "center",
                   gap: "var(--space-xs)",
                   padding: "var(--space-xs) var(--space-md)",
-                  borderRadius: "var(--border-radius)",
+                  borderRadius: "var(--border-radius, var(--radius))",
                   background: "var(--bg-hover)",
-                  color: inUse ? "var(--text-muted)" : "var(--color-error)",
+                  color: inUse ? "var(--text-muted)" : "var(--color-error, var(--danger))",
                   fontSize: "var(--font-size-sm)",
                   cursor: inUse ? "not-allowed" : "pointer",
                   opacity: inUse ? 0.6 : 1,
@@ -507,7 +504,7 @@ export function DriverDetailPanel({
           {driver.version && <span>&middot; v{driver.version}</span>}
           {driver.author && <span>&middot; {driver.author}</span>}
           {installed?.filename && (
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
               &middot; {installed.filename}
             </span>
           )}
@@ -517,10 +514,10 @@ export function DriverDetailPanel({
             <span
               style={{
                 fontSize: "var(--font-size-xs)",
-                padding: "var(--space-2xs) var(--space-sm)",
-                borderRadius: "var(--border-radius)",
+                padding: "2px 8px",
+                borderRadius: "var(--radius)",
                 background: CATEGORY_COLORS[driver.category] || "#95a5a6",
-                color: "var(--text-on-accent)",
+                color: "#fff",
               }}
             >
               {driver.category}
@@ -539,14 +536,14 @@ export function DriverDetailPanel({
             style={{
               marginTop: "var(--space-sm)",
               padding: "var(--space-sm) var(--space-md)",
-              background: "var(--color-error-bg)",
-              borderRadius: "var(--border-radius)",
-              fontSize: "var(--font-size-sm)",
+              background: "rgba(244,67,54,0.08)",
+              borderRadius: "var(--radius)",
+              fontSize: 12,
               color: "var(--text-secondary)",
             }}
           >
             <strong>In use:</strong> {devicesUsingDriver.length} device(s) reference this driver:
-            <ul style={{ margin: "var(--space-xs) 0 0 var(--space-lg)", padding: 0 }}>
+            <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
               {devicesUsingDriver.slice(0, 5).map((name, i) => (
                 <li key={i}>{name}</li>
               ))}
@@ -554,7 +551,7 @@ export function DriverDetailPanel({
                 <li>...and {devicesUsingDriver.length - 5} more</li>
               )}
             </ul>
-            <div style={{ marginTop: "var(--space-xs)" }}>
+            <div style={{ marginTop: 4 }}>
               Remove or reassign these devices before uninstalling.
             </div>
           </div>
@@ -564,7 +561,7 @@ export function DriverDetailPanel({
       {/* Overview */}
       {(help?.overview || driver.description) && (
         <Section title="Overview">
-          <p style={{ margin: 0, lineHeight: "var(--line-relaxed)" }}>
+          <p style={{ margin: 0, lineHeight: 1.6 }}>
             {help?.overview || driver.description}
           </p>
         </Section>
@@ -578,7 +575,7 @@ export function DriverDetailPanel({
               margin: 0,
               whiteSpace: "pre-wrap",
               fontFamily: "inherit",
-              lineHeight: "var(--line-relaxed)",
+              lineHeight: 1.6,
               color: "var(--text-muted)",
             }}
           >
@@ -599,10 +596,10 @@ export function DriverDetailPanel({
           >
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Property</th>
-                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Type</th>
-                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Default</th>
-                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Required</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Property</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Type</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Default</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Required</th>
               </tr>
             </thead>
             <tbody>
@@ -610,16 +607,16 @@ export function DriverDetailPanel({
                 const s = schema as Record<string, unknown>;
                 return (
                   <tr key={key} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                    <td style={{ padding: "var(--space-xs) var(--space-sm)", fontWeight: "var(--font-weight-medium)" }}>
+                    <td style={{ padding: "4px 8px", fontWeight: 500 }}>
                       {(s.label as string) || key}
                     </td>
-                    <td style={{ padding: "var(--space-xs) var(--space-sm)", color: "var(--text-muted)" }}>
+                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
                       {(s.type as string) || "string"}
                     </td>
-                    <td style={{ padding: "var(--space-xs) var(--space-sm)", color: "var(--text-muted)" }}>
+                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
                       {s.default !== undefined ? String(s.default) : "\u2014"}
                     </td>
-                    <td style={{ padding: "var(--space-xs) var(--space-sm)", color: "var(--text-muted)" }}>
+                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
                       {s.required ? "Yes" : "No"}
                     </td>
                   </tr>
@@ -633,12 +630,12 @@ export function DriverDetailPanel({
       {/* Commands */}
       {Object.keys(commands).length > 0 && (
         <Section title="Commands">
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {Object.entries(commands).map(([key, cmd]) => {
               const c = cmd as Record<string, unknown>;
               return (
                 <div key={key} style={{ fontSize: "var(--font-size-sm)" }}>
-                  <span style={{ fontWeight: "var(--font-weight-medium)" }}>{(c.label as string) || key}</span>
+                  <span style={{ fontWeight: 500 }}>{(c.label as string) || key}</span>
                   {typeof c.help === "string" && (
                     <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
                       {c.help}
@@ -654,7 +651,7 @@ export function DriverDetailPanel({
       {/* State Variables */}
       {Object.keys(stateVars).length > 0 && (
         <Section title="State Variables">
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {Object.entries(stateVars).map(([key, sv]) => {
               const s = sv as Record<string, unknown>;
               return (
@@ -672,7 +669,7 @@ export function DriverDetailPanel({
       {/* Device Settings — values written to and polled from the hardware */}
       {Object.keys(deviceSettings).length > 0 && (
         <Section title="Device Settings">
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {Object.entries(deviceSettings).map(([key, def]) => {
               const s = def as DeviceSettingDef;
               return <VarRow key={key} label={s.label || key} type={s.type || "string"} />;
@@ -698,7 +695,7 @@ export function DriverDetailPanel({
                 Read from the device when it connects.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {Object.entries(vars).map(([key, sv]) => {
                   const s = sv as ChildEntityStateVarDef;
                   return <VarRow key={key} label={s.label || key} type={s.type || "string"} />;
@@ -717,7 +714,7 @@ export function DriverDetailPanel({
 function VarRow({ label, type }: { label: string; type: string }) {
   return (
     <div style={{ fontSize: "var(--font-size-sm)" }}>
-      <span style={{ fontWeight: "var(--font-weight-medium)" }}>{label}</span>
+      <span style={{ fontWeight: 500 }}>{label}</span>
       <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
         ({type})
       </span>
@@ -733,10 +730,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         style={{
           margin: "0 0 var(--space-sm) 0",
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-semibold)",
+          fontWeight: 600,
           textTransform: "uppercase",
-          letterSpacing: "var(--tracking-wide)",
-          color: "var(--text-secondary)",
+          letterSpacing: "0.05em",
+          color: "var(--text-muted)",
         }}
       >
         {title}

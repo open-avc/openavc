@@ -319,7 +319,7 @@ export function DriverEditor({
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
             background: yamlPaneOpen ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: yamlPaneOpen ? "var(--text-on-accent-bg)" : "var(--text-primary)",
+            color: yamlPaneOpen ? "var(--text-on-accent)" : "var(--text-primary)",
             fontSize: "var(--font-size-sm)",
           }}
         >
@@ -355,7 +355,7 @@ export function DriverEditor({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
               opacity: saving ? 0.6 : 1,
             }}
           >
@@ -394,7 +394,7 @@ export function DriverEditor({
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent-bg)",
+              color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
               opacity: saving ? 0.6 : 1,
             }}
@@ -454,7 +454,7 @@ export function DriverEditor({
             errorCount > 0
               ? "var(--color-error)"
               : warningCount > 0
-                ? "var(--color-warning)"
+                ? "var(--color-warning, #d97706)"
                 : null;
           return (
             <button
@@ -468,7 +468,7 @@ export function DriverEditor({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "var(--space-sm)",
+                gap: 6,
                 padding: "var(--space-sm) var(--space-lg)",
                 fontSize: "var(--font-size-sm)",
                 borderBottom:
@@ -479,7 +479,7 @@ export function DriverEditor({
                   activeTab === tab.id
                     ? "var(--text-primary)"
                     : "var(--text-muted)",
-                fontWeight: activeTab === tab.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                fontWeight: activeTab === tab.id ? 600 : 400,
                 whiteSpace: "nowrap",
               }}
             >
@@ -586,7 +586,7 @@ export function DriverEditor({
               {isNew ? (
                 <div
                   style={{
-                    fontSize: "var(--font-size-xs)",
+                    fontSize: "11px",
                     color: "var(--text-muted)",
                     marginTop: "var(--space-xs)",
                   }}
@@ -596,12 +596,12 @@ export function DriverEditor({
               ) : idChanged ? (
                 <div
                   style={{
-                    fontSize: "var(--font-size-xs)",
+                    fontSize: "11px",
                     marginTop: "var(--space-xs)",
                     padding: "var(--space-xs) var(--space-sm)",
                     borderRadius: "var(--border-radius)",
-                    background: "var(--color-warning-bg)",
-                    color: "var(--color-warning)",
+                    background: "rgba(255, 152, 0, 0.15)",
+                    color: "var(--color-warning, #d97706)",
                     border: "1px solid rgba(255, 152, 0, 0.4)",
                   }}
                 >
@@ -613,7 +613,7 @@ export function DriverEditor({
               ) : (
                 <div
                   style={{
-                    fontSize: "var(--font-size-xs)",
+                    fontSize: "11px",
                     color: "var(--text-muted)",
                     marginTop: "var(--space-xs)",
                   }}
@@ -732,7 +732,7 @@ export function DriverEditor({
               </label>
               <div
                 style={{
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "11px",
                   color: "var(--text-muted)",
                   marginTop: "var(--space-xs)",
                 }}
@@ -999,7 +999,7 @@ export function DriverEditor({
               <FileCode size={14} />
               <span style={{ flex: 1 }}>
                 Live YAML preview
-                <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
+                <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
                   (read-only)
                 </span>
               </span>
@@ -1009,11 +1009,11 @@ export function DriverEditor({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-xs)",
-                  padding: "var(--space-2xs) var(--space-sm)",
+                  gap: 4,
+                  padding: "2px 8px",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "11px",
                 }}
               >
                 {yamlCopied ? <Check size={12} /> : <Copy size={12} />}
@@ -1028,7 +1028,7 @@ export function DriverEditor({
                 overflow: "auto",
                 fontFamily: "var(--font-mono)",
                 fontSize: "var(--font-size-sm)",
-                lineHeight: "var(--line-base)",
+                lineHeight: 1.5,
                 color: "var(--text-primary)",
                 whiteSpace: "pre",
               }}
@@ -1039,7 +1039,7 @@ export function DriverEditor({
               style={{
                 padding: "var(--space-xs) var(--space-md)",
                 borderTop: "1px solid var(--border-color)",
-                fontSize: "var(--font-size-xs)",
+                fontSize: "11px",
                 color: "var(--text-muted)",
                 flexShrink: 0,
               }}
@@ -1081,7 +1081,7 @@ function HelpFieldsSection({
 
   return (
     <div style={{ marginTop: "var(--space-xl)" }}>
-      <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-xs)" }}>
+      <h3 style={{ fontSize: "var(--font-size-md)", marginBottom: "var(--space-xs)" }}>
         Help &amp; Setup
       </h3>
       <p
@@ -1153,7 +1153,7 @@ function HelpFieldsSection({
         />
         <div
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: "11px",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
@@ -1193,7 +1193,7 @@ function PublishingSection({
 
   return (
     <div style={{ marginTop: "var(--space-xl)" }}>
-      <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-xs)" }}>
+      <h3 style={{ fontSize: "var(--font-size-md)", marginBottom: "var(--space-xs)" }}>
         Publishing
       </h3>
       <p
@@ -1225,7 +1225,7 @@ function PublishingSection({
             placeholder="e.g. 0.9.0"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
             Blocks install on older OpenAVC versions that lack required
             features. Leave blank if the driver works on every supported
             version.
@@ -1241,7 +1241,7 @@ function PublishingSection({
             placeholder="https://github.com/..."
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
             Optional. Reference implementation or protocol docs.
           </div>
         </div>
@@ -1263,7 +1263,7 @@ function PublishingSection({
             placeholder="e.g. sis, telnet"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
             Protocol identifiers for catalog filtering. Comma-separated.
           </div>
         </div>
@@ -1275,7 +1275,7 @@ function PublishingSection({
             placeholder="e.g. matrix, 4k, hdmi"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
             Free-form discovery tags. Comma-separated.
           </div>
         </div>
@@ -1297,7 +1297,7 @@ function PublishingSection({
             placeholder="e.g. 23, 80"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
             Network ports this driver speaks on. Used by the discovery
             engine. Comma-separated.
           </div>
@@ -1306,9 +1306,9 @@ function PublishingSection({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-sm)",
+            gap: 6,
             fontSize: "var(--font-size-sm)",
-            paddingBottom: "var(--space-sm)",
+            paddingBottom: 6,
           }}
         >
           <input
@@ -1325,9 +1325,9 @@ function PublishingSection({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-sm)",
+            gap: 6,
             fontSize: "var(--font-size-sm)",
-            paddingBottom: "var(--space-sm)",
+            paddingBottom: 6,
             color: draft.verified ? "var(--accent)" : "var(--text-muted)",
           }}
         >
@@ -1340,7 +1340,7 @@ function PublishingSection({
           Verified
         </div>
       </div>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         <strong>Simulated:</strong> set when this driver has a simulator
         section so users can test without hardware. <strong>Verified:</strong>{" "}
         read-only. The community catalog flips this once a driver is
@@ -1358,7 +1358,7 @@ function CommandFramingEditor({
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }) {
   const helpStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
     marginTop: "var(--space-xs)",
   };
@@ -1431,8 +1431,8 @@ function LearnMore({ href, label }: { href: string; label: string }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "var(--space-xs)",
-        fontSize: "var(--font-size-xs)",
+        gap: 4,
+        fontSize: "11px",
         color: "var(--text-muted)",
         textDecoration: "none",
         marginBottom: "var(--space-md)",

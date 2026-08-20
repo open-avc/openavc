@@ -111,7 +111,7 @@ export function LayoutProperties({
         <NumberField label="Height (%)" value={placement.h} min={0.1} onChange={(v) => handleChange("h", v)} />
       </div>
 
-      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
         Percentages of {element.parent ? "the container" : "the page"}. The same panel on a
         bigger screen of the same shape is the same panel, just bigger.
       </div>
@@ -130,7 +130,7 @@ export function LayoutProperties({
             </option>
           ))}
         </select>
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
           A container carries its contents when it moves, and one visibility rule on it
           shows or hides everything inside. Moving one in or out keeps it exactly where
           it is on screen. You can also drag it there in the Outline.
@@ -147,11 +147,11 @@ export function LayoutProperties({
               disabled={!!hidden.inheritedFrom}
               onChange={(e) => hidden.onChange(!e.target.checked)}
             />
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
               {hidden.value ? "Hidden" : "Shown"} in {hidden.layoutLabel}
             </span>
           </div>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
             {hidden.inheritedFrom
               ? `Hidden by the ${hidden.inheritedFrom} layout, which this one follows. Show it there to bring it back everywhere.`
               : "Leave a control out of one arrangement without deleting it. Every other layout still shows it."}
@@ -186,9 +186,9 @@ export function LayoutProperties({
             }}
             style={{ ...selectStyle, width: 90 }}
           />
-          <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>width ÷ height</span>
+          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>width ÷ height</span>
         </div>
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
           Holds the shape when a screen stretches. A locked element shrinks to fit and
           stays centred, so a round indicator stays round.
         </div>
@@ -237,24 +237,24 @@ function round2(v: number): number {
 }
 
 const warningBoxStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
-  padding: "var(--space-sm)",
-  borderRadius: "var(--border-radius)",
-  background: "var(--color-warning-bg)",
+  fontSize: 11,
+  padding: "6px 8px",
+  borderRadius: 4,
+  background: "rgba(255,152,0,0.12)",
   border: "1px solid rgba(255,152,0,0.4)",
   color: "var(--text-primary)",
 };
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 
 const selectStyle: React.CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 6px",
   fontSize: "var(--font-size-sm)",
 };
 
@@ -281,7 +281,7 @@ function NumberField({
         onCommit={(v) => {
           if (v !== undefined) onChange(v);
         }}
-        style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       />
     </div>
   );

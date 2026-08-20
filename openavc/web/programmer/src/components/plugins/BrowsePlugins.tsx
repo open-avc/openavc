@@ -174,12 +174,12 @@ export function BrowsePlugins() {
               key={cat}
               onClick={() => setCategory(cat)}
               style={{
-                padding: "var(--space-2xs) var(--space-sm)",
-                borderRadius: "var(--radius-lg)",
+                padding: "2px var(--space-sm)",
+                borderRadius: 12,
                 background: category === cat ? "var(--accent-bg)" : "var(--bg-hover)",
-                color: category === cat ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
-                fontSize: "var(--font-size-xs)",
-                fontWeight: "var(--font-weight-medium)",
+                color: category === cat ? "var(--text-on-accent)" : "var(--text-secondary)",
+                fontSize: 11,
+                fontWeight: category === cat ? 600 : 400,
                 transition: "all var(--transition-fast)",
               }}
             >
@@ -203,19 +203,18 @@ export function BrowsePlugins() {
             style={{
               padding: "var(--space-lg)",
               textAlign: "center",
-              lineHeight: "var(--line-relaxed)",
               color: "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
             }}
           >
             <AlertTriangle size={24} style={{ color: "var(--color-warning)", marginBottom: "var(--space-sm)" }} />
             <div>Could not load community plugins.</div>
-            <div style={{ fontSize: "var(--font-size-xs)", marginTop: "var(--space-xs)" }}>{communityError}</div>
+            <div style={{ fontSize: 11, marginTop: "var(--space-xs)" }}>{communityError}</div>
           </div>
         )}
 
         {!communityLoading && !communityError && filtered.length === 0 && (
-          <div style={{ padding: "var(--space-lg)", textAlign: "center", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+          <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
             {communityPlugins.length === 0
               ? "No community plugins available yet."
               : "No matching plugins."}
@@ -253,7 +252,7 @@ export function BrowsePlugins() {
         style={{
           padding: "var(--space-sm) var(--space-md)",
           borderTop: "1px solid var(--border-color)",
-          fontSize: "var(--font-size-xs)",
+          fontSize: 11,
           color: "var(--text-muted)",
         }}
       >
@@ -304,12 +303,12 @@ function PluginCard({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-            <span style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-base)" }}>{plugin.name}</span>
+            <span style={{ fontWeight: 600, fontSize: "var(--font-size-base)" }}>{plugin.name}</span>
             {plugin.verified && (
               <span title="Verified"><Shield size={12} style={{ color: "var(--accent)", flexShrink: 0 }} /></span>
             )}
           </div>
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
             by {plugin.author} &middot; v{plugin.version}
           </div>
         </div>
@@ -319,10 +318,10 @@ function PluginCard({
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
         <span
           style={{
-            padding: "var(--space-2xs) var(--space-xs)",
-            borderRadius: "var(--border-radius)",
+            padding: "1px var(--space-xs)",
+            borderRadius: 4,
             background: "var(--bg-hover)",
-            fontSize: "var(--font-size-2xs)",
+            fontSize: 10,
             color: "var(--text-muted)",
           }}
         >
@@ -331,10 +330,10 @@ function PluginCard({
         {plugin.platforms && !plugin.platforms.includes("all") && (
           <span
             style={{
-              padding: "var(--space-2xs) var(--space-xs)",
-              borderRadius: "var(--border-radius)",
+              padding: "1px var(--space-xs)",
+              borderRadius: 4,
               background: "var(--bg-hover)",
-              fontSize: "var(--font-size-2xs)",
+              fontSize: 10,
               color: "var(--text-muted)",
             }}
           >
@@ -348,7 +347,7 @@ function PluginCard({
         style={{
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
-          lineHeight: "var(--line-tight)",
+          lineHeight: 1.4,
           overflow: "hidden",
           display: "-webkit-box",
           WebkitLineClamp: 2,
@@ -360,7 +359,7 @@ function PluginCard({
 
       {/* Error (transient install error) */}
       {error && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", padding: "var(--space-xs)", background: "var(--color-error-bg)", borderRadius: "var(--border-radius)" }}>
+        <div style={{ fontSize: 11, color: "var(--color-error)", padding: "var(--space-xs)", background: "rgba(244, 67, 54, 0.1)", borderRadius: 4 }}>
           {error}
         </div>
       )}
@@ -368,8 +367,8 @@ function PluginCard({
       {/* Persistent load-failed diagnostic (A60). Survives across refreshes
           because it's read from the .install-error sidecar on the server. */}
       {!error && loadFailed && loadError && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", padding: "var(--space-xs)", background: "var(--color-error-bg)", borderRadius: "var(--border-radius)" }}>
-          <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-2xs)" }}>Plugin failed to load</div>
+        <div style={{ fontSize: 11, color: "var(--color-error)", padding: "var(--space-xs)", background: "rgba(244, 67, 54, 0.1)", borderRadius: 4 }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>Plugin failed to load</div>
           <div style={{ wordBreak: "break-word" }}>{loadError}</div>
         </div>
       )}
@@ -389,9 +388,9 @@ function PluginCard({
                   borderRadius: "var(--border-radius)",
                   background: "var(--accent-bg)",
                   border: "none",
-                  color: "var(--text-on-accent-bg)",
+                  color: "var(--text-on-accent)",
                   fontSize: "var(--font-size-sm)",
-                  fontWeight: "var(--font-weight-medium)",
+                  fontWeight: 500,
                   cursor: "pointer",
                 }}
               >
@@ -450,7 +449,7 @@ function PluginCard({
                 background: "transparent",
                 border: "1px solid var(--border-color)",
                 color: "var(--text-muted)",
-                fontSize: "var(--font-size-xs)",
+                fontSize: 11,
                 cursor: "pointer",
               }}
               title="Uninstall"
@@ -471,9 +470,9 @@ function PluginCard({
               padding: "var(--space-sm)",
               borderRadius: "var(--border-radius)",
               background: installing ? "var(--bg-hover)" : "var(--accent-bg)",
-              color: installing ? "var(--text-muted)" : "var(--text-on-accent-bg)",
+              color: installing ? "var(--text-muted)" : "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
-              fontWeight: "var(--font-weight-medium)",
+              fontWeight: 500,
               cursor: installing ? "default" : "pointer",
               opacity: installing ? 0.7 : 1,
             }}

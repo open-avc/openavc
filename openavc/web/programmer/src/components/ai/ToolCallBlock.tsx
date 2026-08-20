@@ -31,8 +31,8 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
     status === "running"
       ? "var(--text-secondary)"
       : status === "error"
-        ? "var(--color-error)"
-        : "var(--color-success)";
+        ? "var(--status-error, #f44336)"
+        : "var(--status-success, #4caf50)";
 
   return (
     <div
@@ -66,9 +66,9 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
           {statusIcon}
         </span>
         <Wrench size={12} />
-        <span style={{ fontWeight: "var(--font-weight-medium)" }}>{toolCall.name}</span>
+        <span style={{ fontWeight: 500 }}>{toolCall.name}</span>
         {summary && (
-          <span style={{ color: "var(--text-muted)", fontWeight: "var(--font-weight-normal)" }}>
+          <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
             {" "}
             {summary}
           </span>
@@ -78,7 +78,7 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
             style={{
               marginLeft: "auto",
               color: "var(--text-muted)",
-              fontSize: "var(--font-size-2xs)",
+              fontSize: 10,
               flexShrink: 0,
             }}
           >
@@ -92,7 +92,7 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
             padding: "var(--space-sm)",
             borderTop: "1px solid var(--border-color)",
             margin: 0,
-            fontSize: "var(--font-size-xs)",
+            fontSize: 11,
             color: "var(--text-muted)",
             overflow: "auto",
             maxHeight: 200,

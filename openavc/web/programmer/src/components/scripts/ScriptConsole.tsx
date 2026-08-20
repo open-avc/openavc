@@ -71,7 +71,7 @@ export function ScriptConsole({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "var(--space-xs) var(--space-md)",
+          padding: "4px var(--space-md)",
           borderBottom: "1px solid var(--border-color)",
           flexShrink: 0,
         }}
@@ -81,8 +81,8 @@ export function ScriptConsole({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "var(--tracking-wide)",
-            fontWeight: "var(--font-weight-semibold)",
+            letterSpacing: "0.5px",
+            fontWeight: 600,
           }}
         >
           Console
@@ -108,7 +108,7 @@ export function ScriptConsole({
           flex: 1,
           overflow: "auto",
           fontFamily: "var(--font-mono)",
-          fontSize: "var(--font-size-sm)",
+          fontSize: 12,
           padding: "var(--space-xs)",
           background: "var(--bg-primary)",
         }}
@@ -178,8 +178,8 @@ function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { time
       style={{
         display: "flex",
         gap: "var(--space-sm)",
-        padding: "var(--space-2xs) 0",
-        lineHeight: "var(--line-tight)",
+        padding: "1px 0",
+        lineHeight: 1.4,
       }}
     >
       <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>
@@ -188,7 +188,7 @@ function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { time
       <span
         style={{
           color: LEVEL_COLORS[entry.level] ?? "var(--text-primary)",
-          fontWeight: entry.level === "ERROR" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+          fontWeight: entry.level === "ERROR" ? 600 : 400,
           flexShrink: 0,
           minWidth: 50,
         }}
@@ -213,7 +213,7 @@ function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { time
 
 const toolBtnStyle: React.CSSProperties = {
   display: "flex",
-  padding: "var(--space-xs)",
+  padding: 4,
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

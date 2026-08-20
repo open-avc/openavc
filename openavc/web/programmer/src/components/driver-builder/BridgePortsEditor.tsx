@@ -15,7 +15,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: "11px",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
 };
@@ -202,7 +202,7 @@ export function BridgePortsEditor({ draft, onUpdate }: BridgePortsEditorProps) {
               <button
                 onClick={() => removePort(i)}
                 title="Remove this port"
-                style={{ padding: "var(--space-sm) var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "6px 2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>

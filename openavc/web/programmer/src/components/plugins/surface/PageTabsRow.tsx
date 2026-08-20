@@ -73,7 +73,7 @@ export function PageTabsRow({
               }}
               style={{
                 width: 110,
-                padding: "var(--space-xs) var(--space-sm)",
+                padding: "3px 8px",
                 borderRadius: "var(--border-radius)",
                 border: "1px solid var(--accent)",
                 background: "var(--bg-surface)",
@@ -90,13 +90,13 @@ export function PageTabsRow({
             onDoubleClick={isActive ? startRename : undefined}
             title={isActive ? "Double-click to rename this page" : undefined}
             style={{
-              padding: "var(--space-xs) var(--space-md)",
+              padding: "3px 12px",
               borderRadius: "var(--border-radius)",
               border: isActive ? "1px solid var(--accent)" : "1px solid var(--border-color)",
               background: isActive ? "var(--accent-dim)" : "var(--bg-surface)",
               color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
               fontSize: "var(--font-size-sm)",
-              fontWeight: isActive ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+              fontWeight: isActive ? 600 : 400,
               fontStyle: isDraft ? "italic" : "normal",
               opacity: isDraft && !isActive ? 0.6 : 1,
               cursor: "pointer",
@@ -114,7 +114,7 @@ export function PageTabsRow({
         onClick={onAdd}
         title="Add a page"
         style={{
-          padding: "var(--space-xs) var(--space-md)",
+          padding: "3px 10px",
           borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)",
           background: "transparent",
@@ -136,7 +136,7 @@ export function PageTabsRow({
           style={{
             display: "flex",
             alignItems: "center",
-            padding: "var(--space-xs) var(--space-sm)",
+            padding: "4px 6px",
             borderRadius: "var(--border-radius)",
             background: "var(--bg-hover)",
             color: "var(--text-secondary)",
@@ -152,7 +152,7 @@ export function PageTabsRow({
               top: "100%",
               left: 0,
               zIndex: 50,
-              marginTop: "var(--space-xs)",
+              marginTop: 4,
               minWidth: 210,
               background: "var(--bg-surface)",
               border: "1px solid var(--border-color)",
@@ -185,7 +185,7 @@ export function PageTabsRow({
                 Clear this page...
               </button>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "var(--space-sm) var(--space-md)", fontSize: "var(--font-size-sm)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "var(--space-sm) var(--space-md)", fontSize: 12 }}>
                 <span style={{ color: "var(--color-error)" }}>Remove every key?</span>
                 <button
                   onClick={() => {
@@ -216,7 +216,7 @@ export function PageTabsRow({
                 Delete page
               </button>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "var(--space-sm) var(--space-md)", fontSize: "var(--font-size-sm)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "var(--space-sm) var(--space-md)", fontSize: 12 }}>
                 <span style={{ color: "var(--color-error)" }}>Delete this page?</span>
                 <button
                   onClick={() => {

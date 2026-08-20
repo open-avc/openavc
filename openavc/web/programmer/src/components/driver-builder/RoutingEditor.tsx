@@ -16,7 +16,7 @@ const labelStyle: React.CSSProperties = {
   marginBottom: "var(--space-xs)",
 };
 const helpStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: "11px",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
 };
@@ -159,7 +159,7 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
             <div
               style={{
                 fontSize: "var(--font-size-sm)",
-                fontWeight: "var(--font-weight-semibold)",
+                fontWeight: 600,
                 marginBottom: "var(--space-sm)",
               }}
             >
@@ -252,7 +252,7 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
                 marginBottom: "var(--space-sm)",
               }}
             >
-              <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
                 Routing planes
               </div>
               <button

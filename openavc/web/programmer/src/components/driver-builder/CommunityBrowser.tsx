@@ -404,17 +404,17 @@ export function CommunityBrowser() {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               style={{
-                padding: "var(--space-2xs) var(--space-md)",
-                borderRadius: "var(--radius-lg)",
+                padding: "2px 10px",
+                borderRadius: "12px",
                 border: "1px solid",
                 borderColor:
                   activeCategory === cat ? "var(--accent)" : "var(--border-color)",
                 background:
                   activeCategory === cat ? "var(--accent)" : "transparent",
-                color: activeCategory === cat ? "var(--text-on-accent-bg)" : "var(--text-muted)",
-                fontSize: "var(--font-size-sm)",
+                color: activeCategory === cat ? "#fff" : "var(--text-muted)",
+                fontSize: "12px",
                 cursor: "pointer",
-                fontWeight: activeCategory === cat ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                fontWeight: activeCategory === cat ? 600 : 400,
               }}
             >
               {cat}
@@ -484,7 +484,7 @@ export function CommunityBrowser() {
           style={{
             padding: "var(--space-sm) var(--space-lg)",
             borderTop: "1px solid var(--border-color)",
-            fontSize: "var(--font-size-sm)",
+            fontSize: "12px",
             color: "var(--text-muted)",
             flexShrink: 0,
           }}
@@ -567,7 +567,7 @@ function DriverCard({
       onClick={() => onSelect(driver)}
       style={{
         background: hovered ? "#3d3d3d" : "#2d2d2d",
-        borderRadius: "var(--border-radius)",
+        borderRadius: "4px",
         padding: "var(--space-md)",
         display: "flex",
         flexDirection: "column",
@@ -591,7 +591,7 @@ function DriverCard({
             <span
               title={card.isViaCard ? `${card.brand} (provided by ${driver.name})` : driver.name}
               style={{
-                fontWeight: "var(--font-weight-semibold)",
+                fontWeight: 600,
                 fontSize: "var(--font-size-sm)",
                 color: "#ccc",
                 overflow: "hidden",
@@ -620,15 +620,15 @@ function DriverCard({
                 }
                 style={{
                   marginLeft: "var(--space-xs)",
-                  padding: "0 var(--space-sm)",
-                  borderRadius: "var(--border-radius)",
-                  fontSize: "var(--font-size-2xs)",
-                  fontWeight: "var(--font-weight-semibold)",
-                  background: "var(--color-error-bg)",
+                  padding: "0 6px",
+                  borderRadius: "3px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  background: "rgba(239, 68, 68, 0.15)",
                   color: "var(--color-error)",
                   border: "1px solid rgba(239, 68, 68, 0.4)",
                   textTransform: "uppercase",
-                  letterSpacing: "var(--tracking-wide)",
+                  letterSpacing: "0.05em",
                   flexShrink: 0,
                 }}
               >
@@ -644,9 +644,9 @@ function DriverCard({
             <div
               title={`${card.brand} is covered by ${driver.name}, a generic / multi-brand driver. If a dedicated ${card.brand} driver becomes available, it will appear above this card.`}
               style={{
-                fontSize: "var(--font-size-sm)",
-                color: "var(--text-muted)",
-                marginTop: "var(--space-2xs)",
+                fontSize: "12px",
+                color: "#888",
+                marginTop: "2px",
                 fontStyle: "italic",
               }}
             >
@@ -655,9 +655,9 @@ function DriverCard({
           ) : (
             <div
               style={{
-                fontSize: "var(--font-size-sm)",
-                color: "var(--text-muted)",
-                marginTop: "var(--space-2xs)",
+                fontSize: "12px",
+                color: "#888",
+                marginTop: "2px",
               }}
             >
               {driver.manufacturer} · by {driver.author}
@@ -670,10 +670,10 @@ function DriverCard({
       <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
         <span
           style={{
-            padding: "var(--space-2xs) var(--space-sm)",
-            borderRadius: "var(--border-radius)",
-            fontSize: "var(--font-size-xs)",
-            fontWeight: "var(--font-weight-medium)",
+            padding: "1px 8px",
+            borderRadius: "3px",
+            fontSize: "11px",
+            fontWeight: 500,
             background: `${catColor}22`,
             color: catColor,
             border: `1px solid ${catColor}44`,
@@ -683,10 +683,10 @@ function DriverCard({
         </span>
         <span
           style={{
-            padding: "var(--space-2xs) var(--space-sm)",
-            borderRadius: "var(--border-radius)",
-            fontSize: "var(--font-size-xs)",
-            fontWeight: "var(--font-weight-medium)",
+            padding: "1px 8px",
+            borderRadius: "3px",
+            fontSize: "11px",
+            fontWeight: 500,
             background: `${transportColor}22`,
             color: transportColor,
             border: `1px solid ${transportColor}44`,
@@ -696,10 +696,10 @@ function DriverCard({
         </span>
         <span
           style={{
-            padding: "var(--space-2xs) var(--space-sm)",
-            borderRadius: "var(--border-radius)",
-            fontSize: "var(--font-size-xs)",
-            color: "var(--text-muted)",
+            padding: "1px 8px",
+            borderRadius: "3px",
+            fontSize: "11px",
+            color: "#888",
             background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.1)",
           }}
@@ -720,12 +720,12 @@ function DriverCard({
               }}
               title={`Search for "${tag}"`}
               style={{
-                padding: "var(--space-2xs) var(--space-sm)",
-                borderRadius: "var(--border-radius)",
-                fontSize: "var(--font-size-2xs)",
-                fontWeight: "var(--font-weight-medium)",
+                padding: "1px 6px",
+                borderRadius: "3px",
+                fontSize: "10px",
+                fontWeight: 500,
                 background: "rgba(96,165,250,0.10)",
-                color: "var(--color-info)",
+                color: "#60a5fa",
                 border: "1px solid rgba(96,165,250,0.25)",
                 cursor: "pointer",
               }}
@@ -739,9 +739,9 @@ function DriverCard({
       {/* Description */}
       <div
         style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-muted)",
-          lineHeight: "var(--line-base)",
+          fontSize: "12px",
+          color: "#888",
+          lineHeight: 1.5,
           overflow: "hidden",
           display: "-webkit-box",
           WebkitLineClamp: 2,
@@ -753,7 +753,7 @@ function DriverCard({
       </div>
 
       {compatibleModelCount > 0 && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+        <div style={{ fontSize: "11px", color: "#888" }}>
           Compatible with {compatibleModelCount}{" "}
           {compatibleModelCount === 1 ? "model" : "models"}
         </div>
@@ -763,11 +763,11 @@ function DriverCard({
       {installError && (
         <div
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: "11px",
             color: "var(--color-error)",
-            background: "var(--color-error-bg)",
+            background: "rgba(239,68,68,0.1)",
             padding: "var(--space-xs) var(--space-sm)",
-            borderRadius: "var(--border-radius)",
+            borderRadius: "3px",
           }}
         >
           Install failed: {installError.replace(/^Error:\s*/i, "").slice(0, 100)}
@@ -782,7 +782,7 @@ function DriverCard({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
+              gap: "4px",
               fontSize: "var(--font-size-sm)",
               color: "var(--text-muted)",
             }}
@@ -798,15 +798,15 @@ function DriverCard({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
+                gap: "4px",
                 padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
+                borderRadius: "4px",
                 fontSize: "var(--font-size-sm)",
-                background: "var(--accent-bg)",
-                color: "var(--text-on-accent-bg)",
+                background: "#007acc",
+                color: "#fff",
                 border: "none",
                 cursor: "pointer",
-                fontWeight: "var(--font-weight-medium)",
+                fontWeight: 500,
               }}
             >
               <ArrowUpCircle size={14} />
@@ -817,13 +817,13 @@ function DriverCard({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
+                gap: "4px",
                 padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
+                borderRadius: "4px",
                 fontSize: "var(--font-size-sm)",
                 color: "var(--text-muted)",
                 background: "var(--bg-hover)",
-                fontWeight: "var(--font-weight-medium)",
+                fontWeight: 500,
               }}
             >
               <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
@@ -834,13 +834,13 @@ function DriverCard({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
+                gap: "4px",
                 padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
+                borderRadius: "4px",
                 fontSize: "var(--font-size-sm)",
                 color: "var(--color-success)",
-                background: "var(--color-success-bg)",
-                fontWeight: "var(--font-weight-medium)",
+                background: "rgba(76,175,80,0.12)",
+                fontWeight: 500,
               }}
             >
               <CheckCircle size={14} />
@@ -859,15 +859,15 @@ function DriverCard({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
+              gap: "4px",
               padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
+              borderRadius: "4px",
               fontSize: "var(--font-size-sm)",
-              background: installing || requiresPlatform ? "var(--bg-hover)" : "var(--accent-bg)",
-              color: installing || requiresPlatform ? "var(--text-muted)" : "var(--text-on-accent-bg)",
+              background: installing || requiresPlatform ? "var(--bg-hover)" : "#007acc",
+              color: installing || requiresPlatform ? "var(--text-muted)" : "#fff",
               border: "none",
               cursor: installing || requiresPlatform ? "default" : "pointer",
-              fontWeight: "var(--font-weight-medium)",
+              fontWeight: 500,
             }}
           >
             {installing ? (
@@ -933,8 +933,8 @@ function CommunityDriverDetail({
       onClose={onClose}
       label="Community Driver Details"
       panelStyle={{
-        background: "var(--bg-surface)",
-        borderRadius: "var(--radius-lg)",
+        background: "var(--bg-surface, #2d2d2d)",
+        borderRadius: "8px",
         border: "1px solid var(--border-color)",
         width: "min(560px, 90vw)",
         maxHeight: "80vh",
@@ -948,9 +948,9 @@ function CommunityDriverDetail({
             style={{
               marginBottom: "var(--space-md)",
               padding: "var(--space-sm) var(--space-md)",
-              background: "var(--color-error-bg)",
+              background: "rgba(239, 68, 68, 0.1)",
               border: "1px solid rgba(239, 68, 68, 0.3)",
-              borderRadius: "var(--border-radius)",
+              borderRadius: "var(--radius)",
               color: "var(--color-error)",
               fontSize: "var(--font-size-sm)",
             }}
@@ -974,7 +974,7 @@ function CommunityDriverDetail({
                 <span title="Simulator available"><PlayCircle size={16} style={{ color: "var(--accent)" }} /></span>
               )}
             </div>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: 4 }}>
               {driver.manufacturer} &middot; by {driver.author}
             </div>
           </div>
@@ -985,7 +985,7 @@ function CommunityDriverDetail({
               border: "none",
               color: "var(--text-muted)",
               cursor: "pointer",
-              padding: "var(--space-xs)",
+              padding: 4,
             }}
           >
             <X size={18} />
@@ -996,10 +996,10 @@ function CommunityDriverDetail({
         <div style={{ display: "flex", gap: "var(--space-xs)", marginTop: "var(--space-md)", flexWrap: "wrap" }}>
           <span
             style={{
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              fontSize: "var(--font-size-xs)",
-              fontWeight: "var(--font-weight-medium)",
+              padding: "2px 8px",
+              borderRadius: "3px",
+              fontSize: "11px",
+              fontWeight: 500,
               background: `${catColor}22`,
               color: catColor,
               border: `1px solid ${catColor}44`,
@@ -1009,10 +1009,10 @@ function CommunityDriverDetail({
           </span>
           <span
             style={{
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              fontSize: "var(--font-size-xs)",
-              fontWeight: "var(--font-weight-medium)",
+              padding: "2px 8px",
+              borderRadius: "3px",
+              fontSize: "11px",
+              fontWeight: 500,
               background: `${transportColor}22`,
               color: transportColor,
               border: `1px solid ${transportColor}44`,
@@ -1022,10 +1022,10 @@ function CommunityDriverDetail({
           </span>
           <span
             style={{
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              fontSize: "var(--font-size-xs)",
-              color: "var(--text-muted)",
+              padding: "2px 8px",
+              borderRadius: "3px",
+              fontSize: "11px",
+              color: "#888",
               background: "rgba(255,255,255,0.05)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
@@ -1034,10 +1034,10 @@ function CommunityDriverDetail({
           </span>
           <span
             style={{
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              fontSize: "var(--font-size-xs)",
-              color: "var(--text-muted)",
+              padding: "2px 8px",
+              borderRadius: "3px",
+              fontSize: "11px",
+              color: "#888",
               background: "rgba(255,255,255,0.05)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
@@ -1055,12 +1055,12 @@ function CommunityDriverDetail({
                 onClick={() => onTagClick(tag)}
                 title={`Search for "${tag}"`}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
-                  borderRadius: "var(--border-radius)",
-                  fontSize: "var(--font-size-xs)",
-                  fontWeight: "var(--font-weight-medium)",
+                  padding: "2px 8px",
+                  borderRadius: "3px",
+                  fontSize: "11px",
+                  fontWeight: 500,
                   background: "rgba(96,165,250,0.10)",
-                  color: "var(--color-info)",
+                  color: "#60a5fa",
                   border: "1px solid rgba(96,165,250,0.25)",
                   cursor: "pointer",
                 }}
@@ -1072,14 +1072,14 @@ function CommunityDriverDetail({
         )}
 
         {/* Full description */}
-        <div style={{ marginTop: "var(--space-lg)", lineHeight: "var(--line-relaxed)", fontSize: "var(--font-size-sm)" }}>
+        <div style={{ marginTop: "var(--space-lg)", lineHeight: 1.6, fontSize: "var(--font-size-sm)" }}>
           {driver.description}
         </div>
 
         {/* Protocols */}
         {driver.protocols && driver.protocols.length > 0 && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Protocols
             </div>
             <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
@@ -1087,12 +1087,12 @@ function CommunityDriverDetail({
                 <span
                   key={p}
                   style={{
-                    padding: "var(--space-2xs) var(--space-sm)",
-                    borderRadius: "var(--border-radius)",
-                    fontSize: "var(--font-size-xs)",
-                    background: "var(--color-info-bg)",
-                    color: "var(--color-info)",
-                    border: "1px solid var(--color-info)",
+                    padding: "2px 8px",
+                    borderRadius: "3px",
+                    fontSize: "11px",
+                    background: "rgba(59,130,246,0.15)",
+                    color: "#60a5fa",
+                    border: "1px solid rgba(59,130,246,0.3)",
                   }}
                 >
                   {p}
@@ -1105,7 +1105,7 @@ function CommunityDriverDetail({
         {/* Ports */}
         {driver.ports && driver.ports.length > 0 && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Default Ports
             </div>
             <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
@@ -1117,10 +1117,10 @@ function CommunityDriverDetail({
         {/* Help overview (when driver carries help.overview) */}
         {driver.help?.overview && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Overview
             </div>
-            <div style={{ fontSize: "var(--font-size-sm)", lineHeight: "var(--line-base)", color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.5, color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
               {driver.help.overview}
             </div>
           </div>
@@ -1129,7 +1129,7 @@ function CommunityDriverDetail({
         {/* Compatible models */}
         {driver.compatible_models && driver.compatible_models.length > 0 && (
           <div style={{ marginTop: "var(--space-md)" }}>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Compatible Devices
             </div>
             {driver.compatible_models.map((cm, idx) => (
@@ -1139,20 +1139,20 @@ function CommunityDriverDetail({
                   marginTop: idx === 0 ? 0 : "var(--space-sm)",
                   padding: "var(--space-sm) var(--space-md)",
                   background: "rgba(255,255,255,0.03)",
-                  borderRadius: "var(--border-radius)",
+                  borderRadius: "var(--radius)",
                   border: "1px solid var(--border-color)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-xs)" }}>
-                  <span style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", color: "#ccc" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: 4 }}>
+                  <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "#ccc" }}>
                     {cm.manufacturer}
                   </span>
                   <span
                     style={{
-                      padding: "var(--space-2xs) var(--space-sm)",
-                      borderRadius: "var(--border-radius)",
-                      fontSize: "var(--font-size-2xs)",
-                      fontWeight: "var(--font-weight-medium)",
+                      padding: "1px 6px",
+                      borderRadius: "3px",
+                      fontSize: "10px",
+                      fontWeight: 500,
                       background: `${confidenceColor(cm.confidence)}22`,
                       color: confidenceColor(cm.confidence),
                       border: `1px solid ${confidenceColor(cm.confidence)}44`,
@@ -1161,11 +1161,11 @@ function CommunityDriverDetail({
                     {confidenceLabel(cm.confidence)}
                   </span>
                 </div>
-                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-base)" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.5 }}>
                   {cm.models.join(", ")}
                 </div>
                 {cm.notes && (
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)", fontStyle: "italic" }}>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
                     {cm.notes}
                   </div>
                 )}
@@ -1180,7 +1180,7 @@ function CommunityDriverDetail({
             marginTop: "var(--space-lg)",
             padding: "var(--space-sm) var(--space-md)",
             background: "rgba(255,255,255,0.03)",
-            borderRadius: "var(--border-radius)",
+            borderRadius: "var(--radius)",
             border: "1px solid var(--border-color)",
             fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
@@ -1195,11 +1195,11 @@ function CommunityDriverDetail({
           <div
             style={{
               marginTop: "var(--space-sm)",
-              fontSize: "var(--font-size-xs)",
+              fontSize: "11px",
               color: "var(--color-error)",
-              background: "var(--color-error-bg)",
+              background: "rgba(239,68,68,0.1)",
               padding: "var(--space-xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
+              borderRadius: "3px",
             }}
           >
             Install failed: {installError.replace(/^Error:\s*/i, "").slice(0, 200)}
@@ -1215,7 +1215,7 @@ function CommunityDriverDetail({
               color: "var(--text-muted)",
               background: "var(--bg-hover)",
               padding: "var(--space-sm) var(--space-md)",
-              borderRadius: "var(--border-radius)",
+              borderRadius: "4px",
               display: "flex",
               alignItems: "center",
               gap: "var(--space-sm)",
@@ -1234,15 +1234,15 @@ function CommunityDriverDetail({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-xs)",
+                  gap: "4px",
                   padding: "var(--space-sm) var(--space-lg)",
-                  borderRadius: "var(--border-radius)",
+                  borderRadius: "4px",
                   fontSize: "var(--font-size-sm)",
-                  background: "var(--accent-bg)",
-                  color: "var(--text-on-accent-bg)",
+                  background: "#007acc",
+                  color: "#fff",
                   border: "none",
                   cursor: "pointer",
-                  fontWeight: "var(--font-weight-medium)",
+                  fontWeight: 500,
                 }}
               >
                 <ArrowUpCircle size={14} />
@@ -1253,13 +1253,13 @@ function CommunityDriverDetail({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-xs)",
+                  gap: "4px",
                   padding: "var(--space-sm) var(--space-lg)",
-                  borderRadius: "var(--border-radius)",
+                  borderRadius: "4px",
                   fontSize: "var(--font-size-sm)",
                   color: "var(--text-muted)",
                   background: "var(--bg-hover)",
-                  fontWeight: "var(--font-weight-medium)",
+                  fontWeight: 500,
                 }}
               >
                 <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
@@ -1270,13 +1270,13 @@ function CommunityDriverDetail({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-xs)",
+                  gap: "4px",
                   padding: "var(--space-sm) var(--space-lg)",
-                  borderRadius: "var(--border-radius)",
+                  borderRadius: "4px",
                   fontSize: "var(--font-size-sm)",
                   color: "var(--color-success)",
-                  background: "var(--color-success-bg)",
-                  fontWeight: "var(--font-weight-medium)",
+                  background: "rgba(76,175,80,0.12)",
+                  fontWeight: 500,
                 }}
               >
                 <CheckCircle size={14} />
@@ -1295,15 +1295,15 @@ function CommunityDriverDetail({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
+                gap: "4px",
                 padding: "var(--space-sm) var(--space-lg)",
-                borderRadius: "var(--border-radius)",
+                borderRadius: "4px",
                 fontSize: "var(--font-size-sm)",
-                background: installing || requiresPlatform ? "var(--bg-hover)" : "var(--accent-bg)",
-                color: installing || requiresPlatform ? "var(--text-muted)" : "var(--text-on-accent-bg)",
+                background: installing || requiresPlatform ? "var(--bg-hover)" : "#007acc",
+                color: installing || requiresPlatform ? "var(--text-muted)" : "#fff",
                 border: "none",
                 cursor: installing || requiresPlatform ? "default" : "pointer",
-                fontWeight: "var(--font-weight-medium)",
+                fontWeight: 500,
               }}
             >
               {installing ? (
@@ -1381,13 +1381,12 @@ function ErrorState({
           fontSize: "var(--font-size-sm)",
           color: "var(--text-muted)",
           textAlign: "center",
-          lineHeight: "var(--line-relaxed)",
           maxWidth: 400,
         }}
       >
         Failed to load community drivers.
         <br />
-        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "12px", color: "#888" }}>
           {error.replace(/^Error:\s*/i, "").slice(0, 200)}
         </span>
       </div>
@@ -1400,7 +1399,7 @@ function ErrorState({
           padding: "var(--space-sm) var(--space-lg)",
           borderRadius: "var(--border-radius)",
           background: "var(--accent-bg)",
-          color: "var(--text-on-accent-bg)",
+          color: "#fff",
           border: "none",
           cursor: "pointer",
           fontSize: "var(--font-size-sm)",
@@ -1443,7 +1442,7 @@ function EmptyFilterState({
           : "No community drivers available yet."}
       </span>
       {hasDrivers && (
-        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "12px", color: "#888" }}>
           Try a different search term or category.
         </span>
       )}

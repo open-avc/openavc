@@ -364,7 +364,7 @@ export function DeviceValuePicker({
         <select
           value={selectedDevice}
           onChange={(e) => setDeviceOverride(e.target.value)}
-          style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select device...</option>
           {project.devices.map((d) => {
@@ -391,8 +391,8 @@ export function DeviceValuePicker({
             onPick={(suffix) => onKeyChange(`device.${selectedDevice}.${suffix}`)}
           />
           {boundDef?.help && (
-            <div style={{ ...helpBoxStyle, marginTop: "var(--space-xs)" }}>
-              <Info size={13} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--accent)" }} />
+            <div style={{ ...helpBoxStyle, marginTop: 4 }}>
+              <Info size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />
               {boundDef.help}
             </div>
           )}
@@ -472,9 +472,9 @@ function PropertyDropdown({
             {groups.filter((g) => g.items.length > 0).map((g) => (
               <div key={g.id}>
                 <div style={dropdownGroupHeaderStyle}>
-                  <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{g.label}</span>
+                  <span style={{ fontWeight: 600 }}>{g.label}</span>
                   {g.desc && (
-                    <span style={{ fontWeight: "var(--font-weight-normal)", fontStyle: "italic", marginLeft: "var(--space-sm)" }}>{g.desc}</span>
+                    <span style={{ fontWeight: 400, fontStyle: "italic", marginLeft: 6 }}>{g.desc}</span>
                   )}
                 </div>
                 {g.items.map((entry) => {
@@ -499,14 +499,14 @@ function PropertyDropdown({
                       }
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 12, color: "var(--text-primary)" }}>
                             {entry.label}
                           </span>
                           {entry.def?.type && <span style={dropdownTypeBadgeStyle}>{entry.def.type}</span>}
                         </div>
                         {entry.label !== entry.suffix && (
-                          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                             {entry.suffix}
                           </div>
                         )}
@@ -514,7 +514,7 @@ function PropertyDropdown({
                       {live !== undefined && (
                         <span
                           style={{
-                            fontSize: "var(--font-size-xs)",
+                            fontSize: 11,
                             color: "var(--text-muted)",
                             flexShrink: 0,
                             maxWidth: 110,
@@ -634,8 +634,8 @@ function RangeMatchPrompt({
 
   return (
     <div style={helpBoxStyle}>
-      <Info size={13} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--accent)" }} />
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+      <Info size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <span>
           This value has a defined range of {target.min} to {target.max}
           {target.unit ? ` ${target.unit}` : ""}. Match this {element.type.replace(/_/g, " ")} to it?
@@ -646,7 +646,7 @@ function RangeMatchPrompt({
             value the device refuses.
           </span>
         )}
-        <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+        <div style={{ display: "flex", gap: 6 }}>
           <button type="button" onClick={() => applyDriverRange(target, onElementPatch)} style={applyBtnStyle}>
             Match range
           </button>
@@ -699,7 +699,7 @@ export function MatchDriverRangeRow({
   if (!target || !target.differs) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {overreach.length > 0 && (
         <div style={overreachStyle}>
           This control commands the device, and {overreach.join(" and ")}. That end of
@@ -721,10 +721,10 @@ export function MatchDriverRangeRow({
 
 /** A range that reaches past the device, which the match button then fixes. */
 const overreachStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
-  padding: "var(--space-xs) var(--space-sm)",
-  borderRadius: "var(--border-radius)",
-  background: "var(--color-warning-bg)",
+  fontSize: 11,
+  padding: "4px 6px",
+  borderRadius: 4,
+  background: "rgba(255,152,0,0.12)",
   border: "1px solid rgba(255,152,0,0.4)",
   color: "var(--text-primary)",
 };
@@ -733,44 +733,44 @@ const overreachStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 
 /** The shared dropdown row, plus the one thing this list wants that the
  *  state-key list does not: a gap between the label block and the live value. */
-const rowStyle: React.CSSProperties = { ...dropdownRowStyle, gap: "var(--space-sm)" };
+const rowStyle: React.CSSProperties = { ...dropdownRowStyle, gap: 6 };
 
 const helpBoxStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
-  gap: "var(--space-sm)",
-  padding: "var(--space-sm)",
-  borderRadius: "var(--border-radius)",
-  background: "var(--accent-dim)",
+  gap: 6,
+  padding: "6px 8px",
+  borderRadius: 4,
+  background: "rgba(138,180,147,0.08)",
   border: "1px solid rgba(138,180,147,0.15)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   color: "var(--text-secondary)",
-  lineHeight: "var(--line-tight)",
+  lineHeight: 1.4,
 };
 
 const applyBtnStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-md)",
+  padding: "3px 10px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
-  fontSize: "var(--font-size-xs)",
+  color: "#fff",
+  fontSize: 11,
   border: "none",
   cursor: "pointer",
 };
 
 const dismissBtnStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-md)",
+  padding: "3px 10px",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   border: "1px solid var(--border-color)",
   cursor: "pointer",
 };
@@ -780,11 +780,11 @@ const matchRowBtnStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 8px",
   borderRadius: "var(--border-radius)",
   border: "1px dashed var(--accent)",
-  background: "var(--accent-dim)",
+  background: "rgba(138,180,147,0.08)",
   color: "var(--accent)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   cursor: "pointer",
 };

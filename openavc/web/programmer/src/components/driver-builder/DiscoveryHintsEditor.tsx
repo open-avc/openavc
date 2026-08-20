@@ -21,8 +21,8 @@ const SECTION: React.CSSProperties = {
   borderBottom: "1px solid var(--border-color)",
 };
 const H2: React.CSSProperties = {
-  fontSize: "var(--font-size-base)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontSize: "var(--font-size-md)",
+  fontWeight: 700,
   marginBottom: "var(--space-xs)",
 };
 const INTRO: React.CSSProperties = {
@@ -33,13 +33,13 @@ const INTRO: React.CSSProperties = {
 const LABEL: React.CSSProperties = {
   display: "block",
   fontSize: "var(--font-size-sm)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontWeight: 600,
   color: "var(--text-secondary)",
   marginTop: "var(--space-md)",
   marginBottom: "var(--space-xs)",
 };
 const HELP: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
 };
@@ -52,7 +52,7 @@ const ROW: React.CSSProperties = {
 const CARD: React.CSSProperties = {
   padding: "var(--space-sm)",
   border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
+  borderRadius: "var(--radius)",
   marginBottom: "var(--space-sm)",
   display: "flex",
   flexDirection: "column",
@@ -632,8 +632,8 @@ function ProbeBlock({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "var(--space-xs)",
-                  fontSize: "var(--font-size-xs)",
+                  gap: 4,
+                  fontSize: 11,
                   color: "var(--text-muted)",
                 }}
               >
@@ -898,9 +898,9 @@ function HelpSection() {
       </div>
       <pre
         style={{
-          background: "var(--bg-surface)",
+          background: "var(--bg-secondary)",
           border: "1px solid var(--border-color)",
-          borderRadius: "var(--border-radius)",
+          borderRadius: "var(--radius)",
           padding: "var(--space-sm)",
           fontSize: "var(--font-size-sm)",
           marginBottom: "var(--space-md)",
@@ -944,8 +944,8 @@ function CrossVendorToggle({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "var(--space-xs)",
-        fontSize: "var(--font-size-xs)",
+        gap: 4,
+        fontSize: 11,
         color: "var(--text-muted)",
       }}
     >
@@ -964,7 +964,7 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+      style={{ padding: 2, color: "var(--text-muted)" }}
       title="Remove"
     >
       <Trash2 size={14} />
@@ -1088,11 +1088,11 @@ function PortList({
               placeholder="2202"
               style={{
                 ...MONO,
-                borderColor: err ? "var(--color-error)" : undefined,
+                borderColor: err ? "var(--danger)" : undefined,
               }}
             />
             {err && (
-              <span style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)" }}>
+              <span style={{ color: "var(--danger)", fontSize: 11 }}>
                 {err}
               </span>
             )}
@@ -1134,7 +1134,7 @@ function TxtFilterEditor({
   }
   const txtMonoSm: React.CSSProperties = {
     fontFamily: "var(--font-mono)",
-    fontSize: "var(--font-size-xs)",
+    fontSize: 11,
   };
   return (
     <div style={{ marginLeft: "var(--space-md)" }}>
@@ -1172,7 +1172,7 @@ function TxtFilterEditor({
       <button
         type="button"
         onClick={() => onChange({ ...(txt ?? {}), "": "" })}
-        style={{ ...ADD, fontSize: "var(--font-size-xs)" }}
+        style={{ ...ADD, fontSize: 11 }}
       >
         <Plus size={10} /> TXT pair
       </button>

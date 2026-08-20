@@ -308,11 +308,11 @@ export function ButtonBindingEditor({
                         key={String(v)}
                         onClick={() => updatePress({ toggle_value: v })}
                         style={{
-                          flex: 1, padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+                          flex: 1, padding: "5px 10px", borderRadius: "var(--border-radius)",
                           fontSize: "var(--font-size-sm)", cursor: "pointer",
-                          fontWeight: "var(--font-weight-medium)",
+                          fontWeight: String(toggleValue) === String(v) ? 600 : 400,
                           background: String(toggleValue) === String(v) ? "var(--accent-bg)" : "var(--bg-hover)",
-                          color: String(toggleValue) === String(v) ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
+                          color: String(toggleValue) === String(v) ? "var(--text-on-accent, #fff)" : "var(--text-secondary)",
                           border: "1px solid " + (String(toggleValue) === String(v) ? "var(--accent)" : "var(--border-color)"),
                         }}
                       >
@@ -360,14 +360,14 @@ export function ButtonBindingEditor({
             {toggleKey && toggleIsActive !== null && (
               <div style={{
                 display: "flex", alignItems: "center", gap: "var(--space-sm)",
-                padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
-                background: "var(--bg-hover)", fontSize: "var(--font-size-xs)",
+                padding: "4px 8px", borderRadius: "var(--border-radius)",
+                background: "var(--bg-hover)", fontSize: 11,
               }}>
                 <span style={{ color: "var(--text-muted)" }}>Current:</span>
-                <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{String(toggleLiveValue)}</span>
+                <span style={{ fontWeight: 600 }}>{String(toggleLiveValue)}</span>
                 <span style={{
-                  marginLeft: "auto", fontWeight: "var(--font-weight-medium)",
-                  color: toggleIsActive ? "var(--color-success)" : "var(--text-muted)",
+                  marginLeft: "auto", fontWeight: 500,
+                  color: toggleIsActive ? "var(--color-success, #4caf50)" : "var(--text-muted)",
                 }}>
                   {toggleIsActive ? "ON" : "OFF"}
                 </span>
@@ -375,11 +375,11 @@ export function ButtonBindingEditor({
             )}
             {!toggleKey && (
               <div style={{
-                fontSize: "var(--font-size-xs)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-                background: "var(--color-warning-bg)", color: "var(--color-warning)",
-                display: "flex", alignItems: "center", gap: "var(--space-sm)",
+                fontSize: 11, padding: "6px 8px", borderRadius: "var(--border-radius)",
+                background: "var(--color-warning-bg, #fff3e0)", color: "var(--color-warning, #e65100)",
+                display: "flex", alignItems: "center", gap: 6,
               }}>
-                <span style={{ fontSize: "var(--font-size-lg)" }}>&#9888;</span>
+                <span style={{ fontSize: 14 }}>&#9888;</span>
                 <span>Toggle requires a state key. Without one, this button will act as a regular tap button.</span>
               </div>
             )}
@@ -406,13 +406,13 @@ export function ButtonBindingEditor({
               onClick={() => setExpandedSlot(isExpanded ? null : section.id)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                width: "100%", padding: "var(--space-sm) var(--space-md)", fontSize: "var(--font-size-sm)",
+                width: "100%", padding: "6px 10px", fontSize: "var(--font-size-sm)",
                 background: "var(--bg-surface)", textAlign: "left", cursor: "pointer",
               }}
             >
-              <span style={{ fontWeight: "var(--font-weight-medium)" }}>{section.label}</span>
+              <span style={{ fontWeight: 500 }}>{section.label}</span>
               <span style={{
-                fontSize: "var(--font-size-xs)", maxWidth: 160, overflow: "hidden",
+                fontSize: 11, maxWidth: 160, overflow: "hidden",
                 textOverflow: "ellipsis", whiteSpace: "nowrap",
                 color: isConfigured ? "var(--accent)" : "var(--text-muted)",
               }}>
@@ -423,7 +423,7 @@ export function ButtonBindingEditor({
             {isExpanded && (
               <div style={{
                 padding: "var(--space-sm)",
-                background: "var(--bg-base)",
+                background: "var(--bg-base, var(--bg-primary))",
                 borderTop: "1px solid var(--border-color)",
               }}>
                 {section.type === "feedback" ? (
@@ -449,7 +449,7 @@ export function ButtonBindingEditor({
                         <button
                           onClick={() => setActionValue(section.id, null)}
                           style={{
-                            padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
+                            padding: "4px 8px", borderRadius: "var(--border-radius)",
                             fontSize: "var(--font-size-sm)", color: "var(--color-error)",
                             background: "transparent", border: "1px solid var(--border-color)",
                             cursor: "pointer",
@@ -517,7 +517,7 @@ export function ButtonBindingEditor({
 }
 
 const sectionLabelStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)",
+  fontSize: 12, fontWeight: 600,
   color: "var(--text-secondary)",
   marginBottom: "var(--space-xs)", display: "block",
 };
@@ -533,5 +533,5 @@ const inputStyle: React.CSSProperties = {
 };
 
 const hintStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
+  fontSize: 11, color: "var(--text-muted)",
 };

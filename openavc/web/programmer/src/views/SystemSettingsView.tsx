@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
+import { Save, AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { headerPrimaryButton } from "../components/layout/headerActions";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
@@ -39,14 +38,14 @@ const sectionTitle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
-  fontWeight: "var(--font-weight-semibold)",
+  letterSpacing: "0.5px",
+  fontWeight: 600,
   marginBottom: "var(--space-md)",
 };
 
 const subCardTitle: React.CSSProperties = {
-  fontSize: "var(--font-size-base)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontSize: "var(--font-size-md)",
+  fontWeight: 600,
   color: "var(--text-primary)",
   margin: 0,
   marginBottom: "var(--space-xs)",
@@ -56,7 +55,7 @@ const subCardDescription: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   marginBottom: "var(--space-lg)",
-  lineHeight: "var(--line-base)",
+  lineHeight: 1.5,
 };
 
 const fieldRow: React.CSSProperties = {
@@ -73,7 +72,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const helpText: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   color: "var(--text-muted)",
   gridColumn: "2",
   marginTop: -4,
@@ -83,7 +82,7 @@ const helpText: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "var(--space-sm) var(--space-md)",
-  background: "var(--bg-base)",
+  background: "var(--bg-input, var(--bg-elevated))",
   border: "1px solid var(--border-color)",
   borderRadius: "var(--border-radius)",
   color: "var(--text-primary)",
@@ -108,7 +107,7 @@ const toggleStyle: React.CSSProperties = {
   position: "relative",
   width: 40,
   height: 22,
-  borderRadius: "var(--radius-lg)",
+  borderRadius: 11,
   cursor: "pointer",
   transition: "background var(--transition-fast)",
   border: "none",
@@ -122,11 +121,11 @@ const btnStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
-  fontWeight: "var(--font-weight-medium)",
+  fontWeight: 500,
   cursor: "pointer",
   transition: "all var(--transition-fast)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "var(--text-on-accent)",
   border: "1px solid var(--accent-bg)",
 };
 
@@ -135,7 +134,7 @@ const warningBox: React.CSSProperties = {
   alignItems: "flex-start",
   gap: "var(--space-sm)",
   padding: "var(--space-md)",
-  background: "var(--color-warning-bg)",
+  background: "rgba(255, 152, 0, 0.08)",
   border: "1px solid rgba(255, 152, 0, 0.3)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
@@ -149,7 +148,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       type="button"
       style={{
         ...toggleStyle,
-        background: checked ? "var(--accent-bg)" : "var(--bg-hover)",
+        background: checked ? "var(--accent-bg)" : "var(--bg-hover, #555)",
       }}
       onClick={() => onChange(!checked)}
     >
@@ -203,7 +202,7 @@ function PasswordField({
             border: "none",
             color: "var(--text-muted)",
             cursor: "pointer",
-            padding: "var(--space-xs)",
+            padding: 4,
           }}
         >
           {visible ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -229,10 +228,10 @@ function ExpiryBadge({ days }: { days: number }) {
   return (
     <span style={{
       display: "inline-block",
-      padding: "var(--space-2xs) var(--space-sm)",
-      borderRadius: "var(--border-radius)",
-      fontSize: "var(--font-size-xs)",
-      fontWeight: "var(--font-weight-semibold)",
+      padding: "2px 8px",
+      borderRadius: 4,
+      fontSize: 11,
+      fontWeight: 600,
       background: bg,
       color,
     }}>
@@ -683,11 +682,12 @@ export function SystemSettingsView() {
       title="System Settings"
       actions={
         <button
-          style={{ ...headerPrimaryButton, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
+          style={{ ...btnStyle, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
           onClick={handleSave}
           disabled={!hasDirty || saving || saveBlocked}
           title={saveBlocked ? "Fix the validation errors below before saving" : undefined}
         >
+          <Save size={14} />
           <span>{saving ? "Saving..." : "Save"}</span>
         </button>
       }
@@ -698,7 +698,7 @@ export function SystemSettingsView() {
             - !hasDirty: settings saved; offer to restart in-app. */}
         {restartNeeded && (
           <div style={warningBox}>
-            <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+            <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap", flex: 1 }}>
               <span style={{ flex: 1 }}>
                 {hasDirty
@@ -710,8 +710,8 @@ export function SystemSettingsView() {
                   onClick={() => setShowRestartDialog(true)}
                   style={{
                     ...btnStyle,
-                    background: "var(--color-warning)",
-                    color: "var(--text-on-accent)",
+                    background: "rgb(255, 152, 0)",
+                    color: "#fff",
                     border: "none",
                   }}
                 >
@@ -726,7 +726,7 @@ export function SystemSettingsView() {
         {/* Security warning */}
         {noAuth && publicBind && (
           <div style={warningBox}>
-            <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+            <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer login</strong> below to require credentials.</span>
           </div>
         )}
@@ -779,7 +779,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Short URLs (port 80 redirect)</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Lets people type addresses without a port: <code>http://&lt;server&gt;/panel</code> forwards
                 to the real port automatically. Needs port 80 free on this machine. On Linux the
                 OpenAVC service also needs permission to bind it (fresh installs have this; see
@@ -850,7 +850,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Enable HTTPS</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Encrypt traffic between this server and panels / browsers. Off by default.
               </div>
             </div>
@@ -871,7 +871,7 @@ export function SystemSettingsView() {
 
           {switchingOff && (
             <div style={warningBox}>
-              <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
               <span>
                 You're disabling HTTPS while connected over <code>https://</code>. After restart, this page will be at{" "}
                 <code>http://&lt;server&gt;:{net.http_port}/programmer</code>. Update any bookmarks pointing to{" "}
@@ -881,7 +881,7 @@ export function SystemSettingsView() {
           )}
           {switchingOn && (
             <div style={warningBox}>
-              <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
               <span>
                 You're enabling HTTPS while connected over <code>http://</code>. After restart, this page will be at{" "}
                 <code>https://&lt;server&gt;:{tls?.port ?? 8443}/programmer</code>. Your browser will show a warning
@@ -934,13 +934,13 @@ export function SystemSettingsView() {
                       gap: "var(--space-sm)",
                       padding: "var(--space-md)",
                       marginBottom: "var(--space-md)",
-                      background: "var(--color-success-bg)",
+                      background: "rgba(76, 175, 80, 0.08)",
                       border: "1px solid rgba(76, 175, 80, 0.3)",
                       borderRadius: "var(--border-radius)",
                       fontSize: "var(--font-size-sm)",
                       color: "var(--text-primary)",
                     }}>
-                      <Smartphone size={16} style={{ color: "var(--color-success)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+                      <Smartphone size={16} style={{ color: "rgb(76, 175, 80)", flexShrink: 0, marginTop: 2 }} />
                       <span>
                         The OpenAVC Panel app (Android v0.1.0-rc6 or newer) trusts this server automatically, with no
                         certificate install needed. The instructions below are for web browsers and the iOS panel app.
@@ -960,18 +960,18 @@ export function SystemSettingsView() {
                       borderRadius: "var(--border-radius)",
                     }}>
                       <div style={{ ...subCardTitle, marginBottom: "var(--space-xs)" }}>Verify fingerprint</div>
-                      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
                         When you install this certificate on a device, the device will show this same SHA-256
                         fingerprint. They should match exactly.
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
                         <code style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: "var(--font-size-sm)",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: 12,
                           padding: "var(--space-xs) var(--space-sm)",
                           background: "var(--bg-surface)",
                           border: "1px solid var(--border-color)",
-                          borderRadius: "var(--border-radius)",
+                          borderRadius: 4,
                           wordBreak: "break-all",
                           flex: 1,
                           minWidth: 240,
@@ -1080,7 +1080,7 @@ export function SystemSettingsView() {
                             border: "1px solid var(--border-color)",
                             borderRadius: "var(--border-radius)",
                             fontSize: "var(--font-size-sm)",
-                            lineHeight: "var(--line-relaxed)",
+                            lineHeight: 1.6,
                             color: "var(--text-primary)",
                           }}>
                             {CA_INSTALL_STEPS[installOs].map((step, i) => (
@@ -1107,12 +1107,12 @@ export function SystemSettingsView() {
                       border: "1px solid var(--border-color)",
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-xs)" }}>
-                        <FileCheck2 size={16} style={{ color: "var(--color-success)" }} />
+                        <FileCheck2 size={16} style={{ color: "rgb(76, 175, 80)" }} />
                         <strong style={{ fontSize: "var(--font-size-sm)" }}>
                           {uploadResult ? "Certificate uploaded" : "Active certificate"}
                         </strong>
                       </div>
-                      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                         <div>
                           Valid until <strong>
                             {new Date((uploadResult?.expires_at) ?? (tlsStatus?.cert?.expires_at ?? "")).toLocaleDateString()}
@@ -1126,8 +1126,8 @@ export function SystemSettingsView() {
                         </div>
                         <div><strong>Valid for:</strong> {(uploadResult?.sans ?? tlsStatus?.cert?.sans ?? []).join(", ") || "—"}</div>
                         {uploadResult?.warnings.includes("is-ca-cert") && (
-                          <div style={{ marginTop: "var(--space-xs)", color: "var(--color-warning)" }}>
-                            <AlertTriangle size={12} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
+                          <div style={{ marginTop: "var(--space-xs)", color: "rgb(255, 152, 0)" }}>
+                            <AlertTriangle size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
                             This looks like a CA certificate, not a server certificate. Most browsers won't trust it.
                           </div>
                         )}
@@ -1169,7 +1169,7 @@ export function SystemSettingsView() {
                             style={{ fontSize: "var(--font-size-sm)" }}
                           />
                           {pickedCert && (
-                            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                               Selected: <code>{pickedCert.name}</code> ({Math.ceil(pickedCert.size / 100) / 10} KB)
                             </div>
                           )}
@@ -1186,7 +1186,7 @@ export function SystemSettingsView() {
                             style={{ fontSize: "var(--font-size-sm)" }}
                           />
                           {pickedKey && (
-                            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                               Selected: <code>{pickedKey.name}</code> ({Math.ceil(pickedKey.size / 100) / 10} KB)
                             </div>
                           )}
@@ -1225,7 +1225,7 @@ export function SystemSettingsView() {
                             cursor: "pointer",
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: "var(--space-xs)",
+                            gap: 4,
                             padding: 0,
                             fontSize: "var(--font-size-sm)",
                           }}
@@ -1240,14 +1240,14 @@ export function SystemSettingsView() {
                               value={pasteCert}
                               onChange={(e) => setPasteCert(e.target.value)}
                               rows={6}
-                              style={{ ...inputStyle, fontFamily: "monospace", fontSize: "var(--font-size-sm)", resize: "vertical" }}
+                              style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12, resize: "vertical" }}
                             />
                             <textarea
                               placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
                               value={pasteKey}
                               onChange={(e) => setPasteKey(e.target.value)}
                               rows={6}
-                              style={{ ...inputStyle, fontFamily: "monospace", fontSize: "var(--font-size-sm)", resize: "vertical" }}
+                              style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12, resize: "vertical" }}
                             />
                             <button
                               type="button"
@@ -1269,7 +1269,7 @@ export function SystemSettingsView() {
                   )}
 
                   {tlsProvidedBlank && !uploadResult && (
-                    <div style={{ ...helpText, color: "var(--color-error)", marginTop: "var(--space-sm)" }}>
+                    <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
                       Upload a certificate before saving.
                     </div>
                   )}
@@ -1285,13 +1285,13 @@ export function SystemSettingsView() {
                   max={65535}
                   style={{
                     ...inputStyle,
-                    borderColor: tlsPortError ? "var(--color-error)" : (inputStyle.borderColor as string),
+                    borderColor: tlsPortError ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
                   }}
                   value={tls.port}
                   onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
                 />
                 {tlsPortError && (
-                  <span style={{ ...helpText, color: "var(--color-error)" }}>
+                  <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                     {tlsPortError}
                   </span>
                 )}
@@ -1300,7 +1300,7 @@ export function SystemSettingsView() {
               <div style={toggleRow}>
                 <div>
                   <div style={{ fontSize: "var(--font-size-sm)" }}>Redirect HTTP to HTTPS</div>
-                  <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     Old links to <code>http://&lt;server&gt;:{net.http_port}</code> redirect automatically. Turn off only
                     if a reverse proxy in front of OpenAVC handles HTTP.
                   </div>
@@ -1318,8 +1318,8 @@ export function SystemSettingsView() {
                   padding: "var(--space-md)",
                   background: "var(--bg-elevated)",
                   borderRadius: "var(--border-radius)",
-                  fontSize: "var(--font-size-sm)",
-                  lineHeight: "var(--line-relaxed)",
+                  fontSize: 12,
+                  lineHeight: 1.6,
                 }}>
                   <div style={{ ...sectionTitle, marginBottom: "var(--space-sm)" }}>Current certificate</div>
                   <div><strong>Subject:</strong> <code>{tlsStatus.cert.subject}</code></div>
@@ -1329,16 +1329,16 @@ export function SystemSettingsView() {
                   </div>
                   <div><strong>Valid for:</strong> {tlsStatus.cert.sans.join(", ")}</div>
                   {tlsStatus.cert.warnings.length > 0 && (
-                    <div style={{ marginTop: "var(--space-sm)", color: "var(--color-warning)" }}>
-                      <Lock size={12} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
+                    <div style={{ marginTop: "var(--space-sm)", color: "rgb(255, 152, 0)" }}>
+                      <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
                       {tlsStatus.cert.warnings.map((w) => warningLabel(w)).join("; ")}
                     </div>
                   )}
                 </div>
               )}
               {tlsStatus?.enabled && tlsStatus.error && (
-                <div style={{ ...helpText, color: "var(--color-error)", marginTop: "var(--space-sm)" }}>
-                  <Lock size={12} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
+                <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
+                  <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
                   {tlsStatus.error}
                 </div>
               )}
@@ -1372,7 +1372,7 @@ export function SystemSettingsView() {
             <h4 style={subCardTitle}>
               <ShieldCheck
                 size={16}
-                style={{ verticalAlign: "text-bottom", marginRight: "var(--space-sm)", color: "var(--color-success)" }}
+                style={{ verticalAlign: "text-bottom", marginRight: 6, color: "rgb(76, 175, 80)" }}
               />
               Trusted certificate
             </h4>
@@ -1385,7 +1385,7 @@ export function SystemSettingsView() {
                   with your cloud pairing; the certificate issues and renews automatically.
                 </div>
                 {!config?.tls?.enabled && (
-                  <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-md)" }}>
                     HTTPS is currently off. This turns it on (one restart), then the certificate
                     installs automatically.
                   </div>
@@ -1419,8 +1419,8 @@ export function SystemSettingsView() {
                     served as soon as the HTTPS listener is running.
                   </div>
                 ) : cloudCert.active ? (
-                  <div style={{ fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", marginBottom: "var(--space-md)" }}>
-                    <div style={{ color: "var(--color-success)", marginBottom: "var(--space-xs)" }}>
+                  <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.7, marginBottom: "var(--space-md)" }}>
+                    <div style={{ color: "rgb(76, 175, 80)", marginBottom: "var(--space-xs)" }}>
                       Serving a trusted certificate for <code>*.{cloudCert.hostname_suffix}</code>
                     </div>
                     {certifiedUrl && (
@@ -1431,14 +1431,14 @@ export function SystemSettingsView() {
                           type="button"
                           title="Copy certified address"
                           onClick={() => { copyToClipboard(certifiedUrl).then((ok) => { if (ok) showSuccess("Copied."); }); }}
-                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: "var(--space-2xs)", display: "inline-flex" }}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 2, display: "inline-flex" }}
                         >
                           <Copy size={12} />
                         </button>
                       </div>
                     )}
                     {certifiedFallbackUrl && (
-                      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                         Manual fallback if a device can't resolve the certified address (no internet,
                         or the router blocks it): <code>{certifiedFallbackUrl}</code> (shows the usual
                         browser warning. <code>localhost</code> and bare-IP addresses always use the
@@ -1446,7 +1446,7 @@ export function SystemSettingsView() {
                       </div>
                     )}
                     {cloudCert.expires_at && (
-                      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                         Expires {new Date(cloudCert.expires_at).toLocaleDateString()}
                         {cloudCert.renews_at && (
                           <>, renews automatically around {new Date(cloudCert.renews_at).toLocaleDateString()}</>
@@ -1458,7 +1458,7 @@ export function SystemSettingsView() {
                 ) : cloudCert.last_error ? (
                   <div style={{ marginBottom: "var(--space-md)" }}>
                     <div style={warningBox}>
-                      <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+                      <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
                       <span>
                         {CLOUD_CERT_ERROR_LABELS[cloudCert.last_error] ?? `Issuance failed (${cloudCert.last_error}).`}
                         {cloudCert.last_error_detail && (
@@ -1515,7 +1515,7 @@ export function SystemSettingsView() {
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
           marginBottom: "var(--space-md)",
-          lineHeight: "var(--line-base)",
+          lineHeight: 1.5,
         }}>
           Access controls are optional. When the server is only accessible locally (bind address <code>127.0.0.1</code>), no credentials are needed.
           When the server is accessible on the network (<code>0.0.0.0</code>), set at least one of the options below to prevent unauthorized access.
@@ -1565,7 +1565,7 @@ export function SystemSettingsView() {
             <div style={toggleRow}>
               <div>
                 <div style={{ fontSize: "var(--font-size-sm)" }}>Enable SSH</div>
-                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                   {sshBusy
                     ? "Applying..."
                     : ssh.enabled === null
@@ -1618,7 +1618,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>File logging</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Write logs to disk in the data directory.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Write logs to disk in the data directory.</div>
             </div>
             <Toggle checked={log.file_enabled} onChange={(v) => update("logging", "file_enabled", v)} />
           </div>
@@ -1648,7 +1648,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Check for updates</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Periodically check GitHub for new releases.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Periodically check GitHub for new releases.</div>
             </div>
             <Toggle checked={upd.check_enabled} onChange={(v) => update("updates", "check_enabled", v)} />
           </div>
@@ -1677,14 +1677,14 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Auto-backup before update</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Automatically back up projects before applying updates.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Automatically back up projects before applying updates.</div>
             </div>
             <Toggle checked={upd.auto_backup_before_update} onChange={(v) => update("updates", "auto_backup_before_update", v)} />
           </div>
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Notify only</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Show update notifications without applying automatically.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Show update notifications without applying automatically.</div>
             </div>
             <Toggle checked={upd.notify_only} onChange={(v) => update("updates", "notify_only", v)} />
           </div>
@@ -1697,7 +1697,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Kiosk mode</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen).</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen).</div>
             </div>
             <Toggle checked={kiosk.enabled} onChange={(v) => update("kiosk", "enabled", v)} />
           </div>
@@ -1713,7 +1713,7 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Show cursor</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Show the mouse cursor on the kiosk display. Disable for touch-only panels.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Show the mouse cursor on the kiosk display. Disable for touch-only panels.</div>
             </div>
             <Toggle checked={kiosk.cursor_visible} onChange={(v) => update("kiosk", "cursor_visible", v)} />
           </div>

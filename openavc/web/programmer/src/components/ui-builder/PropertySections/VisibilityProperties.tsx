@@ -21,7 +21,7 @@ export function VisibilityProperties({ element, onChange }: VisibilityProperties
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-      <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", cursor: "pointer" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
         <input
           type="checkbox"
           checked={hasCondition}
@@ -31,7 +31,7 @@ export function VisibilityProperties({ element, onChange }: VisibilityProperties
       </label>
 
       {hasCondition && (
-        <div style={{ marginLeft: "var(--space-xl)" }}>
+        <div style={{ marginLeft: 20 }}>
           <ConditionGroupEditor
             value={visibleWhen}
             onChange={setGroup}

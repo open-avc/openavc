@@ -34,17 +34,16 @@ async function syncProjectStore() {
 
 const labelStyle: CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
+  fontSize: 11,
+  color: "var(--text-muted)",
   textTransform: "uppercase",
-  fontWeight: "var(--font-weight-semibold)",
-  letterSpacing: "var(--tracking-wide)",
-  marginBottom: "var(--space-xs)",
+  letterSpacing: "0.5px",
+  marginBottom: 4,
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "5px 8px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -53,17 +52,17 @@ const inputStyle: CSSProperties = {
 };
 
 const primaryBtn: CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   border: "none",
   cursor: "pointer",
   fontSize: "var(--font-size-sm)",
 };
 
 const secondaryBtn: CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -74,7 +73,7 @@ const secondaryBtn: CSSProperties = {
 
 const iconBtnStyle: CSSProperties = {
   display: "flex",
-  padding: "var(--space-sm)",
+  padding: 6,
   borderRadius: "var(--border-radius)",
   background: "transparent",
   border: "none",
@@ -242,7 +241,7 @@ function DisplayForm({
           </select>
         </Field>
         {kind === "stream" && (!display || display.kind !== "stream") && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-base)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
             A stream display runs a continuous encoder on this server and
             publishes RTSP and SRT addresses for a decoder to pull. Expect
             about a second of latency; use a browser display where latency
@@ -275,25 +274,25 @@ function DisplayForm({
           </Field>
         )}
         {kind === "browser" && hostOutputs && !hostOutputs.supported && hostOutputs.reason && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-base)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
             This display can&apos;t be shown from this server: {hostOutputs.reason}
           </p>
         )}
         {kind === "browser" && selectedOutput?.primary && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning)", lineHeight: "var(--line-base)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: 1.5 }}>
             That is this server&apos;s primary screen, usually the console or
             panel display. Present will cover it whenever this display is on.
           </p>
         )}
         {kind === "browser" && selectedMissing && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning)", lineHeight: "var(--line-base)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: 1.5 }}>
             The configured output isn&apos;t connected right now. The window
             opens automatically when it returns, or pick a connected output
             above.
           </p>
         )}
         {display && effectiveId !== display.id && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)" }}>
             Changing the display ID changes its display link
             {display.kind === "stream" ? " and its stream addresses" : ""}. Any
             device already using the old one will need the new one.
@@ -474,14 +473,14 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
   return (
     <div style={{ marginBottom: "var(--space-lg)", maxWidth: 640 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-md)" }}>
-        <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", margin: 0 }}>
+        <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--text-secondary)", margin: 0 }}>
           Displays
         </h3>
         <div style={{ display: "flex", gap: "var(--space-sm)" }}>
           <button
             onClick={() => refresh()}
             title="Refresh"
-            style={{ display: "flex", padding: "var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
+            style={{ display: "flex", padding: 6, borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
           >
             <RefreshCw size={15} />
           </button>
@@ -510,7 +509,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-lg)" }}>
-          <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 4 }}>
             Guests connect at{" "}
             <strong
               style={{
@@ -543,7 +542,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
             </strong>
           </span>
         </div>
-        <div style={{ color: presenting.length ? "var(--color-success)" : "var(--text-muted)" }}>
+        <div style={{ color: presenting.length ? "var(--color-success, #2e7d32)" : "var(--text-muted)" }}>
           {presenting.length
             ? `Presenting: ${presenting.map((p) => p.label || p.name).join(", ")}`
             : "No one is presenting"}
@@ -559,13 +558,13 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
             padding: "var(--space-sm) var(--space-md)",
             marginBottom: "var(--space-sm)",
             borderRadius: "var(--border-radius)",
-            border: "1px solid var(--color-warning)",
+            border: "1px solid var(--color-warning, #b26a00)",
             color: "var(--text-secondary)",
             fontSize: "var(--font-size-sm)",
-            lineHeight: "var(--line-base)",
+            lineHeight: 1.5,
           }}
         >
-          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--color-warning)" }} />
+          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: 2, color: "var(--color-warning, #b26a00)" }} />
           <span>
             Guests can&apos;t share their screen yet: browsers only allow screen
             capture over HTTPS, and HTTPS is off on this system. Enable it in
@@ -602,7 +601,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>{d.label}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.id}</span>
                     {d.kind !== "stream" && <CopyButton value={displayUrl(d)} title="Copy display link" />}
                   </div>
@@ -610,12 +609,12 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                 <span
                   title={d.showing ? `Showing ${d.showing}` : "Showing the connect card"}
                   style={{
-                    fontSize: "var(--font-size-2xs)",
-                    fontWeight: "var(--font-weight-semibold)",
+                    fontSize: 10,
+                    fontWeight: 600,
                     textTransform: "uppercase",
-                    letterSpacing: "var(--tracking-wide)",
+                    letterSpacing: "0.5px",
                     flexShrink: 0,
-                    color: d.output_state === "live" ? "var(--color-success)" : "var(--text-muted)",
+                    color: d.output_state === "live" ? "var(--color-success, #2e7d32)" : "var(--text-muted)",
                   }}
                 >
                   {d.output_state === "live" ? `Live: ${d.showing}` : "Idle"}
@@ -627,13 +626,13 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                     <span
                       title="This display's fullscreen window on this server"
                       style={{
-                        fontSize: "var(--font-size-2xs)",
-                        fontWeight: "var(--font-weight-semibold)",
+                        fontSize: 10,
+                        fontWeight: 600,
                         flexShrink: 0,
-                        padding: "var(--space-2xs) var(--space-sm)",
+                        padding: "2px 8px",
                         borderRadius: 999,
-                        border: `1px solid ${chip.warn ? "var(--color-warning)" : "var(--border-color)"}`,
-                        color: chip.warn ? "var(--color-warning)" : "var(--text-muted)",
+                        border: `1px solid ${chip.warn ? "var(--color-warning, #b26a00)" : "var(--border-color)"}`,
+                        color: chip.warn ? "var(--color-warning, #b26a00)" : "var(--text-muted)",
                       }}
                     >
                       {chip.text}
@@ -672,17 +671,17 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                 </button>
               </div>
               {d.kind === "stream" && (
-                <div style={{ marginTop: "var(--space-sm)", display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
                   {[
                     ["RTSP", rtspUrl(d), "Copy RTSP address"],
                     ["SRT", srtUrl(d), "Copy SRT address"],
                   ].map(([proto, url, copyTitle]) => (
-                    <div key={proto} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
+                    <div key={proto} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                       <span
                         style={{
-                          fontSize: "var(--font-size-2xs)",
-                          fontWeight: "var(--font-weight-semibold)",
-                          letterSpacing: "var(--tracking-wide)",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: "0.5px",
                           color: "var(--text-muted)",
                           width: 32,
                           flexShrink: 0,
@@ -692,7 +691,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                       </span>
                       <span
                         style={{
-                          fontSize: "var(--font-size-xs)",
+                          fontSize: 11,
                           fontFamily: "var(--font-mono)",
                           color: "var(--text-secondary)",
                           overflow: "hidden",
@@ -709,11 +708,11 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                   {d.encoder_state && !["idle", "live"].includes(d.encoder_state) && (
                     <span
                       style={{
-                        fontSize: "var(--font-size-xs)",
+                        fontSize: 11,
                         color:
                           d.encoder_state === "starting"
                             ? "var(--text-muted)"
-                            : "var(--color-warning)",
+                            : "var(--color-warning, #b26a00)",
                       }}
                     >
                       {d.encoder_state === "starting"
@@ -730,7 +729,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
         )}
       </div>
 
-      <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-base)" }}>
+      <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
         A browser display has a link to open, full screen, in a browser on
         the device driving that screen. Or, when this server has a video
         output at the display, pick that output in the display&apos;s

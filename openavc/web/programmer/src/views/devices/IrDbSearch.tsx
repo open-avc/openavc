@@ -20,7 +20,7 @@ import type { IrDbDevice, IrDbFunction } from "../../api/deviceClient";
 const iconBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "var(--space-xs)",
+  gap: 4,
   padding: "var(--space-xs) var(--space-sm)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -179,7 +179,7 @@ export function IrDbSearch({
       style={{
         background: "var(--bg-surface)",
         borderRadius: "var(--border-radius)",
-        border: "1px solid var(--accent)",
+        border: "1px solid var(--color-accent, #3182ce)",
         padding: "var(--space-md)",
         marginBottom: "var(--space-md)",
       }}
@@ -192,7 +192,7 @@ export function IrDbSearch({
           marginBottom: "var(--space-sm)",
         }}
       >
-        <strong style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-sm)" }}>
+        <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <Search size={15} /> Search IR code database
         </strong>
         <button style={iconBtn} onClick={onClose}>
@@ -205,7 +205,7 @@ export function IrDbSearch({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "var(--space-sm)",
+          gap: 6,
           flexWrap: "wrap",
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
@@ -232,11 +232,11 @@ export function IrDbSearch({
       {loadErr && (
         <div
           style={{
-            color: "var(--color-error)",
+            color: "var(--color-danger)",
             fontSize: "var(--font-size-sm)",
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-xs)",
+            gap: 4,
             marginBottom: "var(--space-sm)",
           }}
         >
@@ -309,7 +309,7 @@ export function IrDbSearch({
       {/* Phase 3: functions */}
       {device && (
         <>
-          <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", marginBottom: "var(--space-xs)" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 4 }}>
             Add a code, then test it against the device. If a code set doesn't
             work, go back and try another for this brand.
           </div>
@@ -331,7 +331,7 @@ export function IrDbSearch({
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "var(--font-size-sm)" }}>{titleCase(fn.name)}</div>
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                       {fn.supported && fn.pronto
                         ? prontoPreview(fn.pronto)
                         : fn.error || `${fn.protocol} not supported`}
@@ -356,14 +356,14 @@ export function IrDbSearch({
                         {added[key] ? "Added" : "Add"}
                       </button>
                       {testStatus[key] && (
-                        <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", minWidth: 30 }}>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 30 }}>
                           {testStatus[key] === "sending" ? "…" : testStatus[key] === "sent" ? "sent" : testStatus[key]}
                         </span>
                       )}
                     </>
                   ) : (
                     <span
-                      style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}
+                      style={{ fontSize: 11, color: "var(--text-muted)" }}
                       title="This protocol can't be rendered yet. Learn the code from the physical remote instead."
                     >
                       unsupported
@@ -383,7 +383,7 @@ export function IrDbSearch({
 
       {/* Attribution (required by the database license) */}
       {notice && (
-        <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+        <div style={{ marginTop: "var(--space-sm)", fontSize: 11, color: "var(--text-muted)" }}>
           {notice.replace(/https:\/\/\S+$/, "")}
           <a href={homepage} target="_blank" rel="noreferrer" style={{ color: "var(--text-secondary)" }}>
             {homepage}

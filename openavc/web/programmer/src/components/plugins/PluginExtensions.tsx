@@ -60,7 +60,7 @@ export function StateTableRenderer({
         <h4
           style={{
             fontSize: "var(--font-size-sm)",
-            fontWeight: "var(--font-weight-semibold)",
+            fontWeight: 600,
             color: "var(--text-secondary)",
             marginBottom: "var(--space-sm)",
           }}
@@ -75,7 +75,6 @@ export function StateTableRenderer({
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
-            lineHeight: "var(--line-relaxed)",
           }}
         >
           No state data
@@ -96,7 +95,7 @@ export function StateTableRenderer({
                   padding: "var(--space-xs) var(--space-sm)",
                   borderBottom: "1px solid var(--border-color)",
                   color: "var(--text-muted)",
-                  fontWeight: "var(--font-weight-medium)",
+                  fontWeight: 500,
                 }}
               >
                 Key
@@ -107,7 +106,7 @@ export function StateTableRenderer({
                   padding: "var(--space-xs) var(--space-sm)",
                   borderBottom: "1px solid var(--border-color)",
                   color: "var(--text-muted)",
-                  fontWeight: "var(--font-weight-medium)",
+                  fontWeight: 500,
                 }}
               >
                 Value
@@ -175,8 +174,8 @@ export function PluginLogRenderer({ pluginId }: { pluginId: string }) {
     <div
       style={{
         fontFamily: "var(--font-mono)",
-        fontSize: "var(--font-size-xs)",
-        lineHeight: "var(--line-relaxed)",
+        fontSize: 11,
+        lineHeight: 1.6,
         maxHeight: 300,
         overflow: "auto",
         padding: "var(--space-sm)",
@@ -186,7 +185,7 @@ export function PluginLogRenderer({ pluginId }: { pluginId: string }) {
       }}
     >
       {recent.length === 0 ? (
-        <div style={{ color: "var(--text-muted)", padding: "var(--space-md)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+        <div style={{ color: "var(--text-muted)", padding: "var(--space-md)", textAlign: "center" }}>
           No log entries for this plugin
         </div>
       ) : (
@@ -243,7 +242,7 @@ export function StatusCardSlot() {
               alignItems: "center",
               gap: "var(--space-sm)",
               marginBottom: "var(--space-sm)",
-              fontWeight: "var(--font-weight-semibold)",
+              fontWeight: 600,
               fontSize: "var(--font-size-sm)",
             }}
           >
@@ -252,7 +251,7 @@ export function StatusCardSlot() {
           </div>
           <div
             style={{
-              fontSize: "var(--font-size-xs)",
+              fontSize: 11,
               color: "var(--text-muted)",
               marginBottom: "var(--space-sm)",
             }}
@@ -339,7 +338,7 @@ export function DevicePanelSlot({
             <h3
               style={{
                 fontSize: "var(--font-size-sm)",
-                fontWeight: "var(--font-weight-semibold)",
+                fontWeight: 600,
                 marginBottom: "var(--space-sm)",
                 display: "flex",
                 alignItems: "center",
@@ -349,9 +348,9 @@ export function DevicePanelSlot({
               {panel.label}
               <span
                 style={{
-                  fontSize: "var(--font-size-2xs)",
+                  fontSize: 10,
                   color: "var(--text-muted)",
-                  fontWeight: "var(--font-weight-normal)",
+                  fontWeight: 400,
                 }}
               >
                 via {panel.plugin_name}

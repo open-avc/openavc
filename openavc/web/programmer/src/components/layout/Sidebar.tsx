@@ -217,12 +217,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             title="Unsaved changes"
             style={{
               position: "absolute",
-              top: 4,
-              right: 4,
+              top: 6,
+              right: 6,
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: "var(--color-warning)",
+              background: "#f59e0b",
             }}
           />
         )}
@@ -235,12 +235,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           aria-label={item.label}
           aria-current={activeView === item.id ? "page" : undefined}
         >
-          <item.icon size={18} />
+          <item.icon size={20} />
           <span className={styles.tooltip}>{item.label}</span>
         </button>
       ))}
       {pluginViews.length > 0 && (
-        <div style={{ width: "100%", borderTop: "1px solid var(--border-chrome)", margin: "var(--space-xs) 0", display: "flex", flexDirection: "column", alignItems: "center" }} />
+        <div style={{ width: "100%", borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0", display: "flex", flexDirection: "column", alignItems: "center" }} />
       )}
       {pluginViews.map((view) => {
         const viewId: ViewId = `plugin-view:${view.plugin_id}.${view.id}`;
@@ -252,7 +252,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             aria-label={view.label}
             aria-current={activeView === viewId ? "page" : undefined}
           >
-            <Plug size={18} />
+            <Plug size={16} />
             <span className={styles.tooltip}>{view.label}</span>
           </button>
         );
@@ -283,16 +283,14 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         }}
         aria-label={simulationActive ? "Stop Simulation" : simBusy ? "Starting..." : "Simulate Devices"}
         style={{
-          // Nothing in the rail is filled, this included: an active simulator
-          // is said by the icon's colour, not by a plate that then outshouts
-          // the screen you are actually on.
-          color: simulationActive ? "var(--color-success)" : undefined,
+          background: simulationActive ? "rgba(34, 197, 94, 0.15)" : undefined,
+          color: simulationActive ? "#22c55e" : undefined,
           opacity: simBusy ? 0.6 : 1,
           marginBottom: "var(--space-xs)",
         }}
       >
-        {simBusy ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> :
-         simulationActive ? <StopCircle size={18} /> : <PlayCircle size={18} />}
+        {simBusy ? <Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /> :
+         simulationActive ? <StopCircle size={20} /> : <PlayCircle size={20} />}
         <span className={styles.tooltip}>
           {simulationActive ? "Stop Simulation" : simBusy ? "Starting Simulation..." : "Simulate Devices"}
         </span>
@@ -303,29 +301,29 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           label="Start Device Simulation"
           panelStyle={{
             background: "var(--bg-surface)", border: "1px solid var(--border-color)",
-            borderRadius: "var(--radius-lg)", padding: "var(--space-xl) var(--space-2xl)", maxWidth: 420, width: "90%",
+            borderRadius: 8, padding: "24px 28px", maxWidth: 420, width: "90%",
             boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           }}
         >
-            <h3 style={{ margin: "0 0 var(--space-md)", fontSize: "var(--font-size-lg)" }}>Start Device Simulation</h3>
-            <p style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)", margin: "0 0 var(--space-sm)" }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Start Device Simulation</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 8px" }}>
               This will redirect all device connections to simulated virtual devices on your local machine.
             </p>
-            <ul style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)", margin: "0 0 var(--space-lg)", paddingLeft: "var(--space-lg)" }}>
+            <ul style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.8, margin: "0 0 16px", paddingLeft: 18 }}>
               <li>Devices will disconnect from real hardware</li>
               <li>Only drivers with simulation support will respond</li>
               <li>IP addresses and ports from your project are assumed correct</li>
               <li>Stop simulation to reconnect to real devices</li>
             </ul>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-lg)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
               <input type="checkbox" id="sim-dismiss" style={{ accentColor: "var(--accent)" }} />
-              <label htmlFor="sim-dismiss" style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+              <label htmlFor="sim-dismiss" style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Don't show this again
               </label>
             </div>
-            <div style={{ display: "flex", gap: "var(--space-sm)", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowSimConfirm(false)} style={{
-                padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-base)",
+                padding: "6px 16px", borderRadius: 4, fontSize: 13,
                 background: "var(--bg-hover)", color: "var(--text-secondary)",
               }}>Cancel</button>
               <button onClick={async () => {
@@ -334,8 +332,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 setShowSimConfirm(false);
                 await startSimulation();
               }} style={{
-                padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-base)",
-                background: "var(--accent-bg)", color: "var(--text-on-accent-bg)",
+                padding: "6px 16px", borderRadius: 4, fontSize: 13,
+                background: "var(--accent-bg)", color: "#fff",
               }}>Start Simulation</button>
             </div>
         </Modal>
@@ -345,11 +343,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         onClick={() => onViewChange("updates")}
         aria-label={updateAvailable ? "Update available: v" + updateAvailable : "Updates"}
         style={{
-          color: updateAvailable ? "var(--color-info)" : undefined,
+          background: updateAvailable && activeView !== "updates" ? "rgba(33, 150, 243, 0.1)" : undefined,
+          color: updateAvailable ? "var(--accent)" : undefined,
           marginBottom: "var(--space-sm)",
         }}
       >
-        <ArrowUpCircle size={18} />
+        <ArrowUpCircle size={20} />
         <span className={styles.tooltip}>{updateAvailable ? "Update available: v" + updateAvailable : "Updates"}</span>
       </button>
       {hasSession() && (
@@ -363,14 +362,14 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           aria-label="Sign out"
           style={{ marginBottom: "var(--space-xs)" }}
         >
-          <LogOut size={18} />
+          <LogOut size={20} />
           <span className={styles.tooltip}>Sign out</span>
         </button>
       )}
       <div className={styles.connectionStatus} role="status" aria-label={connected ? "Server connected" : "Server disconnected"}>
         <div
           className={styles.statusDot}
-          style={{ background: connected ? "var(--color-success)" : "var(--color-error)" }}
+          style={{ background: connected ? "var(--success, #4caf50)" : "var(--error, #f44336)" }}
           aria-hidden="true"
         />
         <span className={styles.tooltip}>

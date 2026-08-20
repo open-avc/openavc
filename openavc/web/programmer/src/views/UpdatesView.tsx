@@ -26,8 +26,8 @@ const sectionTitle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
-  fontWeight: "var(--font-weight-semibold)",
+  letterSpacing: "0.5px",
+  fontWeight: 600,
   marginBottom: "var(--space-md)",
 };
 
@@ -38,7 +38,7 @@ const btnStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
-  fontWeight: "var(--font-weight-medium)",
+  fontWeight: 500,
   cursor: "pointer",
   transition: "all var(--transition-fast)",
 };
@@ -46,7 +46,7 @@ const btnStyle: React.CSSProperties = {
 const primaryBtn: React.CSSProperties = {
   ...btnStyle,
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   border: "1px solid var(--accent)",
 };
 
@@ -301,16 +301,16 @@ export function UpdatesView() {
         <div style={{ ...cardStyle, marginBottom: "var(--space-xl)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-sm) var(--space-xl)", fontSize: "var(--font-size-sm)" }}>
             <span style={{ color: "var(--text-secondary)" }}>Current version</span>
-            <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{"v" + currentVersion}</span>
+            <span style={{ fontWeight: 600 }}>{"v" + currentVersion}</span>
 
             {hasUpdate && <>
               <span style={{ color: "var(--text-secondary)" }}>Available</span>
-              <span style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--accent)" }}>{"v" + updateAvailable}</span>
+              <span style={{ fontWeight: 600, color: "var(--accent)" }}>{"v" + updateAvailable}</span>
             </>}
 
             {hasStaged && <>
               <span style={{ color: "var(--text-secondary)" }}>Staged from cloud</span>
-              <span style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--accent)" }}>{"v" + stagedVersion}</span>
+              <span style={{ fontWeight: 600, color: "var(--accent)" }}>{"v" + stagedVersion}</span>
             </>}
 
             <span style={{ color: "var(--text-secondary)" }}>Channel</span>
@@ -326,8 +326,8 @@ export function UpdatesView() {
           <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <CloudDownload size={20} style={{ color: "var(--accent)", flexShrink: 0 }} />
             <div>
-              <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>{"Update to v" + stagedVersion + " staged from the cloud"}</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+              <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>{"Update to v" + stagedVersion + " staged from the cloud"}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                 It's ready to install whenever you are. Installing restarts the server.
               </div>
             </div>
@@ -339,8 +339,8 @@ export function UpdatesView() {
           <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <CheckCircle size={20} style={{ color: "var(--color-success)", flexShrink: 0 }} />
             <div>
-              <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>You're up to date</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{"Running OpenAVC v" + currentVersion}</div>
+              <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>You're up to date</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{"Running OpenAVC v" + currentVersion}</div>
             </div>
           </div>
         )}
@@ -350,8 +350,8 @@ export function UpdatesView() {
           <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "rgba(239,68,68,0.3)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <XCircle size={20} style={{ color: "var(--color-error)", flexShrink: 0 }} />
             <div>
-              <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>Update error</div>
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{updateError}</div>
+              <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>Update error</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{updateError}</div>
             </div>
           </div>
         )}
@@ -360,7 +360,7 @@ export function UpdatesView() {
         {hasUpdate && changelog && (
           <div style={{ marginBottom: "var(--space-xl)" }}>
             <h3 style={sectionTitle}>Changelog</h3>
-            <div style={{ ...cardStyle, fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", whiteSpace: "pre-wrap" }}>
+            <div style={{ ...cardStyle, fontSize: "var(--font-size-sm)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
               {changelog}
             </div>
           </div>
@@ -422,36 +422,36 @@ export function UpdatesView() {
                     ) : (
                       <XCircle size={14} style={{ color: "var(--color-error)", flexShrink: 0 }} />
                     )}
-                    <span style={{ fontWeight: "var(--font-weight-medium)" }}>
+                    <span style={{ fontWeight: 500 }}>
                       {display.label}
                     </span>
                     {display.isRollback && (
                       <span style={{
-                        fontSize: "var(--font-size-2xs)",
-                        fontWeight: "var(--font-weight-semibold)",
-                        padding: "var(--space-2xs) var(--space-sm)",
-                        borderRadius: "var(--border-radius)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "1px 6px",
+                        borderRadius: 3,
                         textTransform: "uppercase",
-                        letterSpacing: "var(--tracking-wide)",
-                        background: "var(--color-info-bg)",
-                        color: "var(--color-info)",
+                        letterSpacing: "0.5px",
+                        background: "rgba(59,130,246,0.15)",
+                        color: "#3b82f6",
                       }}>
                         rollback
                       </span>
                     )}
-                    <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", marginLeft: "auto" }}>
+                    <span style={{ color: "var(--text-muted)", fontSize: 12, marginLeft: "auto" }}>
                       {new Date(entry.timestamp).toLocaleDateString()}
                     </span>
                     <span style={{
-                      fontSize: "var(--font-size-2xs)",
-                      fontWeight: "var(--font-weight-semibold)",
-                      padding: "var(--space-2xs) var(--space-sm)",
-                      borderRadius: "var(--border-radius)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 6px",
+                      borderRadius: 3,
                       textTransform: "uppercase",
-                      letterSpacing: "var(--tracking-wide)",
+                      letterSpacing: "0.5px",
                       background: entry.status === "success" || entry.status === "applied"
-                        ? "var(--color-success-bg)"
-                        : "var(--color-error-bg)",
+                        ? "rgba(76,175,80,0.15)"
+                        : "rgba(239,68,68,0.15)",
                       color: entry.status === "success" || entry.status === "applied"
                         ? "var(--color-success)"
                         : "var(--color-error)",
@@ -474,7 +474,7 @@ export function UpdatesView() {
                 <div style={{ fontSize: "var(--font-size-sm)" }}>
                   {"Previous version: v" + (status.rollback_version || "unknown")}
                 </div>
-                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                   Reverts the application code. Your projects and configuration are preserved.
                 </div>
               </div>
@@ -505,7 +505,7 @@ export function UpdatesView() {
             boxShadow: "var(--shadow-md)",
           }}
         >
-            <div style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-lg)" }}>
+            <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, marginBottom: "var(--space-lg)" }}>
               {installTarget ? "Installing OpenAVC v" + installTarget : "Updating OpenAVC"}
             </div>
 
@@ -525,7 +525,7 @@ export function UpdatesView() {
                     {isActive && !isFailed && <Loader size={16} style={{ color: "var(--accent)", flexShrink: 0, animation: "spin 1s linear infinite" }} />}
                     {isFailed && <XCircle size={16} style={{ color: "var(--color-error)", flexShrink: 0 }} />}
                     {isPending && <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid var(--border-color)", flexShrink: 0 }} />}
-                    <span style={{ color: isFailed ? "var(--color-error)" : isPending ? "var(--text-muted)" : "var(--text-primary)", fontWeight: isActive ? "var(--font-weight-medium)" : "var(--font-weight-normal)" }}>
+                    <span style={{ color: isFailed ? "var(--color-error)" : isPending ? "var(--text-muted)" : "var(--text-primary)", fontWeight: isActive ? 500 : 400 }}>
                       {step.label}
                       {isActive && step.id === "download" && updateProgress > 0 && (" (" + updateProgress + "%)")}
                     </span>
@@ -536,20 +536,20 @@ export function UpdatesView() {
 
             {/* Progress bar */}
             {updateStatus === "downloading" && (
-              <div style={{ height: 4, background: "var(--bg-hover)", borderRadius: "var(--radius-sm)", overflow: "hidden", marginBottom: "var(--space-lg)" }}>
+              <div style={{ height: 4, background: "var(--bg-hover)", borderRadius: 2, overflow: "hidden", marginBottom: "var(--space-lg)" }}>
                 <div style={{
                   height: "100%",
                   width: updateProgress + "%",
                   background: "var(--accent-bg)",
                   transition: "width 0.3s ease",
-                  borderRadius: "var(--radius-sm)",
+                  borderRadius: 2,
                 }} />
               </div>
             )}
 
             {watchdogTripped && updateStatus !== "error" ? (
               <div>
-                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
                   This is taking longer than expected. The server may still be coming back up.
                   If this dialog doesn't close within a few minutes, check the server logs.
                   It's safe to close this dialog; any update in progress continues on the server.
@@ -562,7 +562,7 @@ export function UpdatesView() {
                 </button>
               </div>
             ) : (
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
                 Do not close this window or power off the system.
               </div>
             )}

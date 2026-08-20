@@ -34,17 +34,16 @@ const HWACCEL_OPTS: [string, string][] = [
 
 const labelStyle: CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
+  fontSize: 11,
+  color: "var(--text-muted)",
   textTransform: "uppercase",
-  fontWeight: "var(--font-weight-semibold)",
-  letterSpacing: "var(--tracking-wide)",
-  marginBottom: "var(--space-xs)",
+  letterSpacing: "0.5px",
+  marginBottom: 4,
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "5px 8px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -53,17 +52,17 @@ const inputStyle: CSSProperties = {
 };
 
 const primaryBtn: CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   border: "none",
   cursor: "pointer",
   fontSize: "var(--font-size-sm)",
 };
 
 const secondaryBtn: CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -74,7 +73,7 @@ const secondaryBtn: CSSProperties = {
 
 const iconBtnStyle: CSSProperties = {
   display: "flex",
-  padding: "var(--space-sm)",
+  padding: 6,
   borderRadius: "var(--border-radius)",
   background: "transparent",
   border: "none",
@@ -111,9 +110,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function ProbeReadout({ result }: { result: ProbeResult }) {
-  let color = "var(--color-success)";
-  if (!result.success) color = "var(--color-error)";
-  else if (result.transcode_recommended) color = "var(--color-warning)";
+  let color = "var(--color-success, #2e7d32)";
+  if (!result.success) color = "var(--color-error, #c0392b)";
+  else if (result.transcode_recommended) color = "var(--color-warning, #b26a00)";
 
   const dims = result.width && result.height ? `${result.width}x${result.height}` : null;
   const summary = result.success
@@ -133,7 +132,7 @@ function ProbeReadout({ result }: { result: ProbeResult }) {
         fontSize: "var(--font-size-sm)",
       }}
     >
-      {summary && <div style={{ color, fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-2xs)" }}>{summary}</div>}
+      {summary && <div style={{ color, fontWeight: 600, marginBottom: 2 }}>{summary}</div>}
       <div style={{ color: result.success ? "var(--text-secondary)" : color }}>{result.advice || result.message}</div>
     </div>
   );
@@ -333,7 +332,7 @@ function PreviewDialog({ stream, onClose }: { stream: Stream; onClose: () => voi
       >
         {state === "loading" && <span style={{ color: "var(--text-muted)" }}>Capturing a frame...</span>}
         {state === "error" && (
-          <span style={{ color: "var(--text-muted)", padding: "var(--space-lg)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+          <span style={{ color: "var(--text-muted)", padding: "var(--space-lg)", textAlign: "center" }}>
             Could not capture a frame. The source may be offline, or the URL or credentials may be wrong.
           </span>
         )}
@@ -395,7 +394,7 @@ export function VideoStreamsSection() {
           <button
             onClick={refresh}
             title="Refresh"
-            style={{ display: "flex", padding: "var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
+            style={{ display: "flex", padding: 6, borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
           >
             <RefreshCw size={15} />
           </button>
@@ -429,17 +428,17 @@ export function VideoStreamsSection() {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>{s.name}</div>
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.stream_id}
                 </div>
               </div>
               <span
                 style={{
-                  fontSize: "var(--font-size-2xs)",
-                  fontWeight: "var(--font-weight-semibold)",
+                  fontSize: 10,
+                  fontWeight: 600,
                   textTransform: "uppercase",
-                  letterSpacing: "var(--tracking-wide)",
-                  color: s.status === "streaming" ? "var(--color-success)" : "var(--text-muted)",
+                  letterSpacing: "0.5px",
+                  color: s.status === "streaming" ? "var(--color-success, #2e7d32)" : "var(--text-muted)",
                 }}
               >
                 {s.status === "streaming" ? "Live" : "Idle"}
@@ -458,7 +457,7 @@ export function VideoStreamsSection() {
         )}
       </div>
 
-      <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-base)" }}>
+      <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
         Video streams play on panels through the Video Stream element in the UI Builder. Use Test to check that a source
         is reachable and whether it needs transcoding before you save it.
       </p>

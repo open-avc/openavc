@@ -177,7 +177,7 @@ export function AIChatView() {
                 padding: "var(--space-xs) var(--space-md)",
                 borderRadius: "var(--border-radius)",
                 background: "var(--accent-bg)",
-                color: "var(--text-on-accent-bg)",
+                color: "#fff",
                 fontSize: "var(--font-size-sm)",
                 textDecoration: "none",
               }}
@@ -223,8 +223,8 @@ export function AIChatView() {
               gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--color-error)",
-              color: "var(--text-on-accent)",
+              background: "#e53e3e",
+              color: "#fff",
               fontSize: "var(--font-size-sm)",
               border: "none",
               cursor: "pointer",
@@ -261,7 +261,7 @@ export function AIChatView() {
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--accent-bg)",
-                  color: "var(--text-on-accent-bg)",
+                  color: "#fff",
                   fontSize: "var(--font-size-sm)",
                   border: "none",
                   cursor: "pointer",
@@ -308,11 +308,11 @@ export function AIChatView() {
                   placeholder="Search..."
                   style={{
                     width: "100%",
-                    padding: "var(--space-xs) var(--space-sm) var(--space-xs) var(--space-xl)",
+                    padding: "4px 8px 4px 24px",
                     fontSize: "var(--font-size-xs)",
                     borderRadius: "var(--border-radius)",
                     border: "1px solid var(--border-color)",
-                    background: "var(--bg-surface)",
+                    background: "var(--bg-secondary)",
                     color: "var(--text-primary)",
                     outline: "none",
                     boxSizing: "border-box",
@@ -355,7 +355,7 @@ export function AIChatView() {
                       border: "none",
                       cursor: "pointer",
                       color: "var(--text-muted)",
-                      padding: "var(--space-2xs)",
+                      padding: 2,
                       flexShrink: 0,
                     }}
                     title="Delete conversation"
@@ -371,7 +371,6 @@ export function AIChatView() {
                     fontSize: "var(--font-size-sm)",
                     padding: "var(--space-md)",
                     textAlign: "center",
-                    lineHeight: "var(--line-relaxed)",
                   }}
                 >
                   No conversations yet
@@ -489,7 +488,7 @@ export function AIChatView() {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  fontWeight: "var(--font-weight-semibold)",
+                  fontWeight: 600,
                 }}
               >
                 Dismiss
@@ -523,8 +522,8 @@ export function AIChatView() {
                   margin: "var(--space-sm)",
                   marginLeft: 0,
                   borderRadius: "var(--border-radius)",
-                  background: "var(--color-error)",
-                  color: "var(--text-on-accent)",
+                  background: "#e53e3e",
+                  color: "#fff",
                   border: "none",
                   cursor: "pointer",
                   flexShrink: 0,

@@ -42,8 +42,8 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "var(--tracking-wide)",
-            fontWeight: "var(--font-weight-semibold)",
+            letterSpacing: "0.5px",
+            fontWeight: 600,
           }}
         >
           Macros ({macros.length})
@@ -53,11 +53,11 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-xs)",
-            padding: "var(--space-2xs) var(--space-sm)",
+            gap: 4,
+            padding: "2px 8px",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
-            color: "var(--text-on-accent-bg)",
+            color: "#fff",
             fontSize: "var(--font-size-sm)",
             border: "none",
             cursor: "pointer",
@@ -93,7 +93,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
               textAlign: "center",
               color: "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
-              lineHeight: "var(--line-relaxed)",
+              lineHeight: 1.5,
             }}
           >
             {macros.length === 0 ? (
@@ -143,14 +143,14 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                   style={{
                     fontSize: "var(--font-size-sm)",
                     color: "var(--text-primary)",
-                    fontWeight: selectedId === m.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                    fontWeight: selectedId === m.id ? 600 : 400,
                   }}
                 >
                   {m.name}
                 </div>
                 <div
                   style={{
-                    fontSize: "var(--font-size-xs)",
+                    fontSize: 11,
                     color: "var(--text-muted)",
                   }}
                 >
@@ -161,10 +161,10 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "var(--space-xs)",
-                      marginTop: "var(--space-2xs)",
-                      fontSize: "var(--font-size-xs)",
-                      color: "var(--color-warning)",
+                      gap: 4,
+                      marginTop: 2,
+                      fontSize: 11,
+                      color: "#f59e0b",
                     }}
                     title={issues![m.id]
                       .map((i) => `${issueLabel(i)}: ${i.message}`)
@@ -174,8 +174,8 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                     {issueSummary(issues![m.id])} won't run
                   </div>
                 )}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", marginTop: "var(--space-2xs)" }}>
-                  <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
+                  <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {m.id}
                   </code>
                   <CopyButton value={m.id} size={10} title="Copy macro ID" />
@@ -188,7 +188,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                 }}
                 style={{
                   display: "flex",
-                  padding: "var(--space-xs)",
+                  padding: 4,
                   borderRadius: "var(--border-radius)",
                   background: "transparent",
                   color: "var(--text-muted)",

@@ -102,7 +102,7 @@ export function SetupActionWizard({
     padding: "var(--space-sm) var(--space-lg)",
     borderRadius: "var(--border-radius)",
     background: variant === "primary" ? "var(--accent-bg)" : "var(--bg-hover)",
-    color: variant === "primary" ? "var(--text-on-accent-bg)" : "var(--text-primary)",
+    color: variant === "primary" ? "var(--text-on-accent)" : "var(--text-primary)",
     display: "flex",
     alignItems: "center",
     gap: "var(--space-xs)",
@@ -144,7 +144,7 @@ export function SetupActionWizard({
               disabled={blocked}
               style={{
                 ...btnStyle(blocked ? "muted" : "primary"),
-                color: blocked ? "var(--text-muted)" : "var(--text-on-accent-bg)",
+                color: blocked ? "var(--text-muted)" : "var(--text-on-accent)",
               }}
             >
               Start
@@ -222,14 +222,14 @@ function StepLog({
               alignItems: "center",
               gap: "var(--space-xs)",
               fontSize: "var(--font-size-sm)",
-              padding: "var(--space-2xs) 0",
+              padding: "2px 0",
               color: s.status === "error" ? "var(--color-error)" : "var(--text-primary)",
             }}
           >
             <span style={{ flexShrink: 0, width: 16, display: "flex" }}>{icon}</span>
             <span style={{ flex: 1 }}>{s.step}</span>
             {s.pct != null && (
-              <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>{s.pct}%</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{s.pct}%</span>
             )}
           </div>
         );

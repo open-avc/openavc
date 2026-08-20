@@ -118,7 +118,7 @@ export function ConditionGroupEditor({
           )}
         </div>
       ))}
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button
           onClick={() => update([...conditions, { key: "", operator: "truthy" }])}
           style={addBtnStyle}
@@ -126,20 +126,20 @@ export function ConditionGroupEditor({
           + Add condition
         </button>
         {conditions.length > 1 && (
-          <div style={{ display: "flex", gap: "var(--space-2xs)", fontSize: "var(--font-size-xs)" }}>
+          <div style={{ display: "flex", gap: 2, fontSize: 11 }}>
             {(["all", "any"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => update(conditions, m)}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
-                  borderRadius: "var(--border-radius)",
-                  fontSize: "var(--font-size-xs)",
+                  padding: "2px 8px",
+                  borderRadius: 3,
+                  fontSize: 11,
                   cursor: "pointer",
                   border: "1px solid var(--border-color)",
                   background: mode === m ? "var(--accent-dim)" : "transparent",
                   color: mode === m ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: mode === m ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                  fontWeight: mode === m ? 600 : 400,
                 }}
               >
                 {m === "all" ? "AND" : "OR"}
@@ -149,7 +149,7 @@ export function ConditionGroupEditor({
         )}
       </div>
       {conditions.length > 1 && (anyHint || allHint) && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontStyle: "italic" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
           {mode === "any" ? anyHint : allHint}
         </div>
       )}
@@ -158,9 +158,9 @@ export function ConditionGroupEditor({
 }
 
 const removeBtnStyle: React.CSSProperties = {
-  padding: "var(--space-2xs) var(--space-sm)",
+  padding: "2px 6px",
   borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--color-error)",
   background: "transparent",
   border: "1px solid var(--border-color)",
@@ -169,11 +169,11 @@ const removeBtnStyle: React.CSSProperties = {
 };
 
 const addBtnStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-md)",
+  padding: "3px 10px",
   borderRadius: "var(--border-radius)",
   border: "1px dashed var(--border-color)",
   background: "transparent",
   color: "var(--text-muted)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   cursor: "pointer",
 };

@@ -258,9 +258,9 @@ function ViewTabButton({
         padding: "var(--space-xs) var(--space-md)",
         borderRadius: "var(--border-radius)",
         background: active ? "var(--accent-bg)" : "var(--bg-hover)",
-        color: active ? "var(--text-on-accent-bg)" : "var(--text-primary)",
+        color: active ? "#fff" : "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
-        fontWeight: "var(--font-weight-medium)",
+        fontWeight: active ? 600 : 400,
         border: "none",
         cursor: "pointer",
       }}
@@ -334,7 +334,7 @@ commands:
         {error && (
           <div
             style={{
-              background: "var(--color-error-bg)",
+              background: "rgba(244,67,54,0.15)",
               color: "var(--color-error)",
               padding: "var(--space-sm) var(--space-md)",
               borderRadius: "var(--border-radius)",
@@ -369,7 +369,6 @@ commands:
         <div
           style={{
             textAlign: "center",
-            lineHeight: "var(--line-relaxed)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             marginBottom: "var(--space-md)",
@@ -419,7 +418,7 @@ commands:
                 ? "var(--accent)"
                 : "var(--bg-hover)",
               color: pasteText.trim()
-                ? "var(--text-on-accent-bg)"
+                ? "var(--text-on-accent)"
                 : "var(--text-muted)",
             }}
           >
@@ -460,7 +459,7 @@ function EmptyState() {
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
-            lineHeight: "var(--line-base)",
+            lineHeight: 1.5,
           }}
         >
           Select a driver from the list to edit it, or use "Create New Driver"

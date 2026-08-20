@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import {
+  Save,
   Download,
   Upload,
+  Plus,
+  FilePlus,
   Trash2,
   Copy,
   FolderOpen,
   MoreHorizontal,
 } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { headerButton, headerPrimaryButton } from "../components/layout/headerActions";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Dialog } from "../components/shared/Dialog";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
@@ -353,6 +355,11 @@ export function ProjectView() {
     cursor: "pointer",
   };
 
+  const accentBtnStyle: React.CSSProperties = {
+    ...btnStyle,
+    background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
+    color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+  };
 
   const labelStyle: React.CSSProperties = {
     display: "block",
@@ -360,8 +367,7 @@ export function ProjectView() {
     color: "var(--text-secondary)",
     marginBottom: "var(--space-xs)",
     textTransform: "uppercase",
-    fontWeight: "var(--font-weight-semibold)",
-    letterSpacing: "var(--tracking-wide)",
+    letterSpacing: "0.5px",
   };
 
   const inputStyle: React.CSSProperties = { width: "100%", maxWidth: 480 };
@@ -383,28 +389,24 @@ export function ProjectView() {
       title="Program"
       actions={
         <>
-          <button onClick={() => setShowBlank(true)} style={headerButton}>
-            New
+          <button onClick={() => setShowBlank(true)} style={btnStyle}>
+            <FilePlus size={14} /> New
           </button>
-          <button onClick={handleImportCurrent} style={headerButton}>
-            Import
+          <button onClick={handleImportCurrent} style={btnStyle}>
+            <Upload size={14} /> Import
           </button>
-          <button onClick={handleExportCurrent} style={headerButton}>
-            Export
+          <button onClick={handleExportCurrent} style={btnStyle}>
+            <Download size={14} /> Export
           </button>
-          <button onClick={openSaveAs} style={headerButton}>
-            Save As
+          <button onClick={openSaveAs} style={btnStyle}>
+            <Plus size={14} /> Save As
           </button>
           <button
             onClick={() => save()}
             disabled={!dirty || saving}
-            style={{
-              ...(dirty ? headerPrimaryButton : headerButton),
-              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
-              opacity: saving ? 0.6 : 1,
-            }}
+            style={{ ...accentBtnStyle, opacity: saving ? 0.6 : 1 }}
           >
-            {saving ? "Saving..." : "Save"}
+            <Save size={14} /> {saving ? "Saving..." : "Save"}
           </button>
         </>
       }
@@ -482,11 +484,11 @@ export function ProjectView() {
           }}
         >
           {libraryLoading ? (
-            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center" }}>
               Loading...
             </div>
           ) : library.length === 0 ? (
-            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <div style={{ padding: "var(--space-xl)", color: "var(--text-muted)", textAlign: "center" }}>
               No saved projects yet. Use <strong>Save As</strong> to add the current project,
               or <strong>Import</strong> a .avc file.
             </div>
@@ -508,24 +510,24 @@ export function ProjectView() {
                 onClick={() => openOpenDialog(lib)}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: "var(--font-weight-medium)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {lib.name}
                   </div>
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                  <div style={{ fontSize: "var(--font-size-xs, 11px)", color: "var(--text-muted)", marginTop: 2 }}>
                     {lib.device_count} device{lib.device_count !== 1 ? "s" : ""} · {lib.page_count} page
                     {lib.page_count !== 1 ? "s" : ""} · {lib.macro_count} macro
                     {lib.macro_count !== 1 ? "s" : ""}
                     {lib.script_count > 0 && ` · ${lib.script_count} script${lib.script_count !== 1 ? "s" : ""}`}
                   </div>
                   {lib.required_drivers && lib.required_drivers.length > 0 && (
-                    <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap", marginTop: "var(--space-xs)" }}>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
                       {lib.required_drivers.map((d: string) => (
                         <span
                           key={d}
                           style={{
-                            fontSize: "var(--font-size-2xs)",
-                            padding: "var(--space-2xs) var(--space-sm)",
-                            borderRadius: "var(--border-radius)",
+                            fontSize: 10,
+                            padding: "1px 6px",
+                            borderRadius: 3,
                             background: "var(--bg-hover)",
                             color: "var(--text-muted)",
                           }}
@@ -590,7 +592,7 @@ export function ProjectView() {
             marginTop: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
-            lineHeight: "var(--line-base)",
+            lineHeight: 1.5,
           }}
         >
           Click a project to open it. Opening a project replaces the running one, and a backup is created automatically.
@@ -617,7 +619,7 @@ export function ProjectView() {
             display: "flex",
             flexDirection: "column",
             height: 480,
-            paddingTop: "var(--space-md)",
+            paddingTop: 12,
           }}
         >
           <AssetBrowser
@@ -632,7 +634,7 @@ export function ProjectView() {
             marginTop: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
-            lineHeight: "var(--line-base)",
+            lineHeight: 1.5,
           }}
         >
           Images and audio used by panels, macros, and plugins. Drop files to upload, or click an audio file's player to preview it.
@@ -666,7 +668,7 @@ export function ProjectView() {
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent-bg)",
+              color: "var(--accent-text)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
               opacity: creatingBackup ? 0.6 : 1,
@@ -682,11 +684,11 @@ export function ProjectView() {
           overflow: "hidden",
         }}>
           {backupsLoading ? (
-            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center" }}>
               Loading...
             </div>
           ) : backups.length === 0 ? (
-            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center" }}>
               No backups yet. Backups are created automatically before important operations, or click Create Backup.
             </div>
           ) : (
@@ -702,10 +704,10 @@ export function ProjectView() {
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
+                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
                     {b.reason}
                   </div>
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                     {b.timestamp ? new Date(b.timestamp).toLocaleString() : "Unknown"} · {Math.round(b.size / 1024)} KB{b.format === "legacy" ? " · Legacy" : ""}
                   </div>
                 </div>
@@ -730,7 +732,7 @@ export function ProjectView() {
           marginTop: "var(--space-md)",
           fontSize: "var(--font-size-sm)",
           color: "var(--text-muted)",
-          lineHeight: "var(--line-base)",
+          lineHeight: 1.5,
         }}>
           Backups are created automatically before project replacement, AI changes, and cloud updates. Restoring replaces the current project and reloads.
         </p>
@@ -748,7 +750,7 @@ export function ProjectView() {
           <textarea style={{ ...dialogInputStyle, minHeight: 60, resize: "vertical" }} value={saveAsDesc} onChange={(e) => setSaveAsDesc(e.target.value)} placeholder="Optional" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowSaveAs(false)} style={btnStyle}>Cancel</button>
-            <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
+            <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
               {busy ? "Saving..." : "Save"}
             </button>
           </div>
@@ -766,7 +768,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={blankId} onChange={(e) => setBlankId(e.target.value)} placeholder="Auto-generated from name" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowBlank(false)} style={btnStyle}>Cancel</button>
-            <button onClick={handleBlank} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !blankName.trim()}>
+            <button onClick={handleBlank} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !blankName.trim()}>
               {busy ? "Creating..." : "Create"}
             </button>
           </div>
@@ -784,7 +786,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={openId} onChange={(e) => setOpenId(e.target.value)} placeholder="Auto-generated from name" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowOpen(null)} style={btnStyle}>Cancel</button>
-            <button onClick={handleOpen} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !openName.trim()}>
+            <button onClick={handleOpen} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !openName.trim()}>
               {busy ? "Opening..." : "Open"}
             </button>
           </div>
@@ -799,7 +801,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={dupName} onChange={(e) => setDupName(e.target.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowDuplicate(null)} style={btnStyle}>Cancel</button>
-            <button onClick={handleDuplicate} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !dupId.trim() || !dupName.trim()}>
+            <button onClick={handleDuplicate} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !dupId.trim() || !dupName.trim()}>
               {busy ? "Duplicating..." : "Duplicate"}
             </button>
           </div>

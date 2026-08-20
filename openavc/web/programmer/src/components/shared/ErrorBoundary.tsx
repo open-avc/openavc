@@ -26,36 +26,36 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div
           style={{
-            padding: "var(--space-2xl)",
-            color: "var(--text-primary)",
-            fontFamily: "var(--font-family)",
-            fontSize: "var(--font-size-lg)",
+            padding: 32,
+            color: "var(--text-primary, #f44336)",
+            fontFamily: "var(--font-sans, sans-serif)",
+            fontSize: 14,
           }}
         >
-          <h2 style={{ marginBottom: "var(--space-sm)" }}>Something went wrong</h2>
-          <p style={{ opacity: 0.7, marginBottom: "var(--space-lg)" }}>
+          <h2 style={{ marginBottom: 8 }}>Something went wrong</h2>
+          <p style={{ opacity: 0.7, marginBottom: 16 }}>
             An unexpected error occurred. Try refreshing the page or clicking the button below.
           </p>
-          <details style={{ marginBottom: "var(--space-lg)", fontSize: "var(--font-size-sm)", opacity: 0.6 }}>
+          <details style={{ marginBottom: 16, fontSize: 12, opacity: 0.6 }}>
             <summary style={{ cursor: "pointer" }}>Technical details</summary>
-            <pre style={{ whiteSpace: "pre-wrap", marginTop: "var(--space-sm)", fontFamily: "monospace", fontSize: "var(--font-size-xs)" }}>
+            <pre style={{ whiteSpace: "pre-wrap", marginTop: 8, fontFamily: "monospace", fontSize: 11 }}>
               {this.state.error.message}
             </pre>
             {this.state.componentStack && (
-              <pre style={{ whiteSpace: "pre-wrap", opacity: 0.5, marginTop: "var(--space-xs)", fontSize: "var(--font-size-2xs)" }}>
+              <pre style={{ whiteSpace: "pre-wrap", opacity: 0.5, marginTop: 4, fontSize: 10 }}>
                 {this.state.componentStack}
               </pre>
             )}
           </details>
-          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => this.setState({ error: null, componentStack: null })}
               style={{
-                padding: "var(--space-sm) var(--space-lg)",
+                padding: "8px 16px",
                 background: "#333",
-                color: "var(--text-on-accent)",
+                color: "#fff",
                 border: "none",
-                borderRadius: "var(--border-radius)",
+                borderRadius: 4,
                 cursor: "pointer",
               }}
             >
@@ -64,11 +64,11 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={() => window.location.reload()}
               style={{
-                padding: "var(--space-sm) var(--space-lg)",
+                padding: "8px 16px",
                 background: "transparent",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--border-radius)",
+                color: "var(--text-primary, #fff)",
+                border: "1px solid var(--border-color, #555)",
+                borderRadius: 4,
                 cursor: "pointer",
               }}
             >

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { Plus, CheckSquare, Radar, ChevronRight, ChevronDown } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { headerButton, headerPrimaryButton } from "../components/layout/headerActions";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
@@ -18,21 +17,6 @@ import { findDeviceReferences } from "./devices/deviceUtils";
 import { computeStatusCounts } from "./deviceViewHelpers";
 
 type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
-
-/** The header's secondary buttons: a transparent ground and one hairline.
- *
- * They used to be filled and to carry icons, which put three competing weights
- * in the top-right corner and left the primary action no way to be the loudest
- * thing there. Nothing here is filled, so the one sage button is. */
-/** A micro-label naming what a block is. Uppercase, tracked open, and quiet
- *  enough that it reads as a caption rather than as content. */
-const eyebrow: React.CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
-  fontWeight: "var(--font-weight-medium)",
-  letterSpacing: "var(--tracking-wider)",
-  textTransform: "uppercase",
-  color: "var(--text-muted)",
-};
 
 export function DeviceView() {
   const devices = useProjectStore((s) => s.project?.devices);
@@ -209,7 +193,7 @@ export function DeviceView() {
       <>
         <div>Delete {selectedIds.size} device(s)? This cannot be undone.</div>
         {allRefs.length > 0 && (
-          <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-secondary)" }}>
             Warning: These devices are referenced in {allRefs.length} place(s) (macros, triggers, UI bindings).
           </div>
         )}
@@ -265,7 +249,7 @@ export function DeviceView() {
   return (
     <ViewContainer
       title={
-        <div style={{ display: "flex", gap: "var(--space-xl)", alignItems: "stretch", alignSelf: "stretch" }} role="tablist">
+        <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }} role="tablist">
           {([
             { id: "devices" as const, label: "Devices" },
             { id: "groups" as const, label: "Groups" },
@@ -278,21 +262,13 @@ export function DeviceView() {
               aria-selected={subTab === tab.id}
               onClick={() => setSubTab(tab.id)}
               style={{
-                // Full height of the bar, text centred inside it: that is what
-                // puts the mark ON the bar's own bottom edge instead of
-                // floating it 13px above the header's hairline.
-                display: "flex",
-                alignItems: "center",
-                alignSelf: "stretch",
-                padding: "0 var(--space-2xs)",
-                background: "none",
-                color: subTab === tab.id ? "var(--text-primary)" : "var(--text-secondary)",
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                background: subTab === tab.id ? "var(--accent-bg)" : "var(--bg-hover)",
+                color: subTab === tab.id ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: "var(--font-weight-medium)",
+                fontWeight: subTab === tab.id ? 600 : 400,
                 border: "none",
-                // The mark sits on the edge of the bar rather than filling a
-                // pill, so the accent stays reserved for the primary action.
-                boxShadow: subTab === tab.id ? "inset 0 -2px 0 var(--accent)" : "none",
                 cursor: "pointer",
               }}
             >
@@ -309,29 +285,49 @@ export function DeviceView() {
               setBulkMode((v) => !v);
               if (bulkMode) setSelectedIds(new Set());
             }}
-            aria-pressed={bulkMode}
             style={{
-              ...headerButton,
-              // On is a stroke, not a plate. The sage stays spent on the one
-              // primary action in this corner.
-              borderColor: bulkMode ? "var(--accent)" : "var(--border-color)",
-              color: bulkMode ? "var(--accent)" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: bulkMode ? "var(--accent-dim)" : "var(--bg-hover)",
+              fontSize: "var(--font-size-sm)",
             }}
           >
-            Select
+            <CheckSquare size={14} /> Select
           </button>
           <button
             onClick={() => setSubTab("discovery")}
-            style={headerButton}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--bg-elevated)",
+              color: "var(--text-primary)",
+              fontSize: "var(--font-size-sm)",
+              border: "1px solid var(--border-color)",
+            }}
             title="Discover devices on the network"
           >
-            Scan Network
+            <Radar size={14} /> Scan Network
           </button>
           <button
             onClick={() => setShowAddDialog(true)}
-            style={headerPrimaryButton}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--accent-bg)",
+              color: "var(--text-on-accent)",
+              fontSize: "var(--font-size-sm)",
+            }}
           >
-            Add Device
+            <Plus size={14} /> Add Device
           </button>
         </div>
         ) : undefined
@@ -350,7 +346,8 @@ export function DeviceView() {
           style={{
             width: 280,
             flexShrink: 0,
-            borderRight: "1px solid var(--border-chrome)",
+            borderRight: "1px solid var(--border-color)",
+            paddingRight: "var(--space-lg)",
             overflow: "auto",
           }}
         >
@@ -358,16 +355,15 @@ export function DeviceView() {
               Only shown when the project has bridge devices. Names are
               clickable to jump to that device's detail. */}
           {bridges.length > 0 && (
-            <div style={{ margin: "0 var(--space-md) var(--space-sm)" }}>
+            <div style={{ marginBottom: "var(--space-sm)" }}>
               <button
                 onClick={() => setShowTopology((v) => !v)}
                 style={{
-                  display: "flex", alignItems: "center", gap: "var(--space-xs)", width: "100%",
+                  display: "flex", alignItems: "center", gap: 4, width: "100%",
                   padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-surface)",
                   border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)",
-                  color: "var(--text-secondary)", fontSize: "var(--font-size-2xs)", cursor: "pointer",
-                  textTransform: "uppercase",
-                  fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)",
+                  color: "var(--text-secondary)", fontSize: 11, cursor: "pointer",
+                  textTransform: "uppercase", letterSpacing: "0.5px",
                 }}
               >
                 {showTopology ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -378,7 +374,7 @@ export function DeviceView() {
                   style={{
                     marginTop: "var(--space-xs)", padding: "var(--space-sm)",
                     border: "1px solid var(--border-color)",
-                    borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
+                    borderRadius: "var(--border-radius)", fontSize: 11,
                   }}
                 >
                   {bridges.map(({ dev, ports }) => (
@@ -387,19 +383,19 @@ export function DeviceView() {
                         onClick={() => setSelectedId(dev.id)}
                         style={{
                           background: "none", border: "none", padding: 0, cursor: "pointer",
-                          color: "var(--text-primary)", fontWeight: "var(--font-weight-semibold)", textAlign: "left",
+                          color: "var(--text-primary)", fontWeight: 600, textAlign: "left",
                         }}
                       >
                         {dev.name || dev.id}
                       </button>
                       {ports.map(({ port, bound }) => (
-                        <div key={port.id} style={{ marginLeft: "var(--space-md)", marginTop: "var(--space-2xs)", color: "var(--text-secondary)" }}>
+                        <div key={port.id} style={{ marginLeft: 10, marginTop: 2, color: "var(--text-secondary)" }}>
                           {port.label || port.id}
                           {bound.length === 0 ? (
-                            <div style={{ marginLeft: "var(--space-md)", color: "var(--text-muted)" }}>&mdash; unbound</div>
+                            <div style={{ marginLeft: 10, color: "var(--text-muted)" }}>&mdash; unbound</div>
                           ) : (
                             bound.map((b) => (
-                              <div key={b.id} style={{ marginLeft: "var(--space-md)" }}>
+                              <div key={b.id} style={{ marginLeft: 10 }}>
                                 <button
                                   onClick={() => setSelectedId(b.id)}
                                   style={{
@@ -422,72 +418,46 @@ export function DeviceView() {
           )}
 
           {/* Search input */}
-          <div style={{ padding: "var(--space-md) var(--space-md) 0" }}>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search devices..."
-              style={{
-                width: "100%",
-                height: 28,
-                padding: "0 var(--space-sm)",
-                fontSize: "var(--font-size-sm)",
-                borderRadius: "var(--border-radius)",
-                border: "1px solid var(--border-color)",
-                background: "transparent",
-                color: "var(--text-primary)",
-              }}
-            />
-          </div>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search devices..."
+            style={{
+              width: "100%",
+              marginBottom: "var(--space-sm)",
+              padding: "var(--space-xs) var(--space-sm)",
+              fontSize: "var(--font-size-sm)",
+              borderRadius: "var(--border-radius)",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+            }}
+          />
 
-          {/* How many devices there are, and the filters over them.
-              No chip is filled. A row of plates makes four equal-weight
-              buttons out of what is really one label and three numbers, so the
-              label is plain text, the selected one carries a hairline mark, and
-              the only colour in the row is the COUNT of whatever needs doing --
-              red for offline, amber for orphaned, nothing at all for healthy. */}
+          {/* Device count summary + filter chips */}
           {deviceConfigs.length > 0 && (
             <div style={{
-              display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", alignItems: "center",
-              padding: "var(--space-md) var(--space-md) var(--space-sm)",
-              fontSize: "var(--font-size-xs)",
+              display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center",
+              marginBottom: "var(--space-sm)", fontSize: 11, color: "var(--text-muted)",
             }}>
-              <span style={eyebrow}>
-                {statusCounts.total} device{statusCounts.total !== 1 ? "s" : ""}
-              </span>
-              <div style={{ flexGrow: 1 }} />
+              <span>{statusCounts.total} device{statusCounts.total !== 1 ? "s" : ""}:</span>
               {([
-                { key: "all" as const, label: "All", count: statusCounts.total, tone: null },
-                { key: "online" as const, label: "Online", count: statusCounts.online, tone: null },
-                { key: "offline" as const, label: "Offline", count: statusCounts.offline, tone: "var(--color-error)" },
-                { key: "orphaned" as const, label: "Orphaned", count: statusCounts.orphaned, tone: "var(--color-warning)" },
+                { key: "all" as const, label: "All", count: statusCounts.total },
+                { key: "online" as const, label: "Online", count: statusCounts.online },
+                { key: "offline" as const, label: "Offline", count: statusCounts.offline },
+                { key: "orphaned" as const, label: "Orphaned", count: statusCounts.orphaned },
               ] as const).filter((f) => f.key === "all" || f.count > 0).map((f) => (
                 <button
                   key={f.key}
                   onClick={() => setStatusFilter(f.key)}
-                  aria-pressed={statusFilter === f.key}
                   style={{
-                    padding: 0,
-                    paddingBottom: 1,
-                    background: "none",
+                    padding: "1px 6px", borderRadius: 3, fontSize: 11, cursor: "pointer",
+                    background: statusFilter === f.key ? "var(--accent-bg)" : "var(--bg-hover)",
+                    color: statusFilter === f.key ? "#fff" : "var(--text-secondary)",
                     border: "none",
-                    fontSize: "var(--font-size-xs)",
-                    cursor: "pointer",
-                    color: statusFilter === f.key ? "var(--text-primary)" : "var(--text-secondary)",
-                    boxShadow: statusFilter === f.key ? "inset 0 -1px 0 var(--accent)" : "none",
                   }}
                 >
-                  {f.label}
-                  {f.key !== "all" && (
-                    <>
-                      {" "}
-                      <span style={{
-                        fontFamily: "var(--font-mono)",
-                        fontVariantNumeric: "tabular-nums",
-                        color: f.tone ?? "inherit",
-                      }}>{f.count}</span>
-                    </>
-                  )}
+                  {f.label} {f.key !== "all" ? f.count : ""}
                 </button>
               ))}
             </div>
@@ -514,13 +484,13 @@ export function DeviceView() {
               </span>
               <button
                 onClick={() => setSelectedIds(new Set(filteredDevices.map((d) => d.id)))}
-                style={{ padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
               >
                 All
               </button>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                style={{ padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", fontSize: "var(--font-size-sm)" }}
               >
                 None
               </button>
@@ -529,7 +499,7 @@ export function DeviceView() {
                   const ls = useConnectionStore.getState().liveState;
                   setSelectedIds(new Set(filteredDevices.filter((d) => ls[`device.${d.id}.connected`]).map((d) => d.id)));
                 }}
-                style={{ padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--color-success-bg)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "rgba(76,175,80,0.15)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
               >
                 Online
               </button>
@@ -537,7 +507,7 @@ export function DeviceView() {
               <button
                 onClick={handleBulkDelete}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
+                  padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--color-error-bg)",
                   color: "var(--color-error)",
@@ -549,9 +519,9 @@ export function DeviceView() {
               <button
                 onClick={() => handleBulkToggle(true)}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
+                  padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
-                  background: "var(--color-success-bg)",
+                  background: "rgba(76,175,80,0.15)",
                   color: "var(--color-success)",
                   fontSize: "var(--font-size-sm)",
                 }}
@@ -561,7 +531,7 @@ export function DeviceView() {
               <button
                 onClick={() => handleBulkToggle(false)}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
+                  padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                   color: "var(--text-secondary)",
@@ -576,7 +546,7 @@ export function DeviceView() {
                   setBulkMode(false);
                 }}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
+                  padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                   fontSize: "var(--font-size-sm)",
@@ -588,34 +558,30 @@ export function DeviceView() {
           )}
 
           {deviceConfigs.length === 0 ? (
-            <p style={{ margin: "0 var(--space-md)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
               No devices configured. Click &quot;Add Device&quot; to get started.
               <br />
-              <a href="https://docs.openavc.com/devices-and-drivers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)" }}>
+              <a href="https://docs.openavc.com/devices-and-drivers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: 12 }}>
                 Learn about devices and drivers
               </a>
             </p>
           ) : filteredDevices.length === 0 ? (
-            <p style={{ margin: "0 var(--space-md)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
               No devices match your search.
             </p>
           ) : (
-            // One rule closes the filter row and opens the list. Below it every
-            // divider is quieter, so the rows read as rhythm rather than as a
-            // table with a heading.
-            <div style={{ borderTop: "1px solid var(--border-chrome)" }}>
-            {sortedGroups.map((group) => (
+            sortedGroups.map((group) => (
               <div key={group || "__ungrouped"}>
                 {hasGroups && (
                   <div
                     style={{
-                      fontSize: "var(--font-size-sm)",
-                      color: "var(--text-secondary)",
+                      fontSize: 11,
+                      color: "var(--text-muted)",
                       textTransform: "uppercase",
-                      letterSpacing: "var(--tracking-wide)",
+                      letterSpacing: "0.5px",
                       padding: "var(--space-sm) var(--space-md)",
                       marginTop: "var(--space-sm)",
-                      fontWeight: "var(--font-weight-semibold)",
+                      fontWeight: 600,
                     }}
                   >
                     {group || "Ungrouped"}
@@ -626,12 +592,7 @@ export function DeviceView() {
                   return (
                   <div
                     key={dev.id}
-                    // relative, so the bulk checkbox can sit OVER the row's
-                    // gutter instead of in front of it. In flow it pushed every
-                    // row 17px right whether or not it was visible, which put
-                    // the fault bar 25px from the column edge and cost a column
-                    // of them the one thing that makes them scannable.
-                    style={{ display: "flex", alignItems: "center", position: "relative" }}
+                    style={{ display: "flex", alignItems: "center" }}
                     onMouseEnter={(e) => {
                       const cb = e.currentTarget.querySelector<HTMLElement>("[data-bulk-cb]");
                       if (cb) cb.style.opacity = "1";
@@ -647,13 +608,7 @@ export function DeviceView() {
                       checked={isChecked}
                       onChange={() => toggleSelection(dev.id)}
                       style={{
-                        position: "absolute",
-                        left: 1,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        zIndex: 1,
-                        margin: 0,
-                        flexShrink: 0,
+                        marginRight: "var(--space-xs)", flexShrink: 0,
                         opacity: isChecked ? 1 : 0,
                         transition: "opacity 0.15s",
                         cursor: "pointer",
@@ -678,8 +633,7 @@ export function DeviceView() {
                   );
                 })}
               </div>
-            ))}
-            </div>
+            ))
           )}
         </div>
 
@@ -705,16 +659,10 @@ export function DeviceView() {
                 alignItems: "center",
                 justifyContent: "center",
                 height: "100%",
+                color: "var(--text-muted)",
               }}
             >
-              {/* The eyebrow names the state before the sentence explains it,
-                  so an empty pane reads as a place rather than as a blank. */}
-              <div style={{ textAlign: "center" }}>
-                <div style={{ ...eyebrow, marginBottom: 7 }}>No selection</div>
-                <div style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)" }}>
-                  Select a device to view details
-                </div>
-              </div>
+              Select a device to view details
             </div>
           )}
         </div>

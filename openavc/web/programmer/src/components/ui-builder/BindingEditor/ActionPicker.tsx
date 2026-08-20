@@ -64,7 +64,7 @@ export function ActionPicker({ value, project, onChange, forChangeBinding, allow
         <select
           value={actionType}
           onChange={(e) => handleActionTypeChange(e.target.value)}
-          style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select action...</option>
           {actionTypes.map((t) => (
@@ -123,7 +123,7 @@ function MacroConfig({
         onChange={(e) =>
           onChange({ action: "macro", macro: e.target.value })
         }
-        style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       >
         <option value="">Select macro...</option>
         {project.macros.length === 0 && (
@@ -194,7 +194,7 @@ function DeviceCommandConfig({
               params: {},
             })
           }
-          style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select device...</option>
           {project.devices.map((d) => {
@@ -209,12 +209,12 @@ function DeviceCommandConfig({
         {/* Device info tooltip */}
         {selectedDevice && deviceInfo && (
           <div style={{
-            display: "flex", alignItems: "center", gap: "var(--space-sm)",
-            fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)", paddingLeft: "var(--space-2xs)",
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: 11, color: "var(--text-muted)", marginTop: 3, paddingLeft: 2,
           }}>
             <span style={{
               width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-              background: deviceInfo.connected ? "var(--color-success)" : "var(--color-error)",
+              background: deviceInfo.connected ? "#10b981" : "#ef4444",
             }} />
             <span>{deviceInfo.connected ? "Connected" : "Offline"}</span>
             <span style={{ color: "var(--border-color)" }}>|</span>
@@ -241,7 +241,7 @@ function DeviceCommandConfig({
                 params: {},
               })
             }
-            style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+            style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
           >
             <option value="">Select command...</option>
             {commandNames.map((cmd) => (
@@ -256,12 +256,12 @@ function DeviceCommandConfig({
             const cmdHelp = cmdDef?.help as string | undefined;
             return cmdHelp ? (
               <div style={{
-                display: "flex", alignItems: "flex-start", gap: "var(--space-sm)",
-                marginTop: "var(--space-xs)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-                background: "var(--accent-dim)", border: "1px solid rgba(138,180,147,0.15)",
-                fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", lineHeight: "var(--line-tight)",
+                display: "flex", alignItems: "flex-start", gap: 6,
+                marginTop: 4, padding: "6px 8px", borderRadius: 4,
+                background: "rgba(138,180,147,0.08)", border: "1px solid rgba(138,180,147,0.15)",
+                fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4,
               }}>
-                <Info size={13} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--accent)" }} />
+                <Info size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />
                 {cmdHelp}
               </div>
             ) : null;
@@ -278,29 +278,29 @@ function DeviceCommandConfig({
             const paramRequired = paramDef.required as boolean | undefined;
             const paramDefault = paramDef.default;
             return (
-              <div key={param} style={{ marginBottom: "var(--space-sm)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-2xs)" }}>
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", fontWeight: "var(--font-weight-medium)" }}>
+              <div key={param} style={{ marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 500 }}>
                     {param}
                   </span>
                   {paramType && (
                     <span style={{
-                      fontSize: "var(--font-size-2xs)", padding: "0 var(--space-xs)", borderRadius: "var(--border-radius)",
+                      fontSize: 10, padding: "0 4px", borderRadius: 3,
                       background: "var(--bg-hover)", color: "var(--text-muted)",
                     }}>
                       {paramType}
                     </span>
                   )}
                   {paramRequired && (
-                    <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-error)" }}>required</span>
+                    <span style={{ fontSize: 10, color: "#ef4444" }}>required</span>
                   )}
                   {paramDefault !== undefined && (
-                    <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
                       default: {String(paramDefault)}
                     </span>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
                   <ParamInput
                     def={paramDef as Partial<DriverParamDef>}
                     value={String(currentParams[param] ?? "")}
@@ -367,7 +367,7 @@ function StateSetConfig({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-sm)",
+            gap: 6,
             fontSize: "var(--font-size-sm)",
             cursor: "pointer",
           }}
@@ -399,7 +399,7 @@ function StateSetConfig({
         return (
           <div>
             <label style={labelStyle}>Value</label>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               {isDynamic ? (
                 <VariableKeyPicker
                   value={String(value?.value).slice(1)}
@@ -422,7 +422,7 @@ function StateSetConfig({
                     onChange({ action: "state.set", key: value?.key, value: parsed });
                   }}
                   placeholder="Value..."
-                  style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+                  style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
                 />
               )}
               <button
@@ -442,12 +442,12 @@ function StateSetConfig({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  padding: "var(--space-xs) var(--space-sm)",
+                  padding: "3px 6px",
                   borderRadius: "var(--border-radius)",
                   border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
-                  background: isDynamic ? "var(--accent-dim)" : "transparent",
+                  background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
                   color: isDynamic ? "var(--accent)" : "var(--text-muted)",
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: 11,
                   cursor: "pointer",
                   flexShrink: 0,
                   fontFamily: "var(--font-mono)",
@@ -485,7 +485,7 @@ function NavigateConfig({
         <select
           value={String(value?.page || "")}
           onChange={(e) => onChange({ action: navigateAction, page: e.target.value })}
-          style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select...</option>
           {navigateOptions.map((o) => (
@@ -511,7 +511,7 @@ function NavigateConfig({
         onChange={(e) =>
           onChange({ action: navigateAction, page: e.target.value })
         }
-        style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       >
         <option value="">Select page...</option>
         {regularPages.length > 0 && (
@@ -579,7 +579,7 @@ function ScriptCallConfig({
           onChange={(e) =>
             onChange({ action: "script.call", function: e.target.value })
           }
-          style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Select function...</option>
           {[...grouped.entries()].map(([scriptId, fns]) => (
@@ -605,7 +605,7 @@ function ScriptCallConfig({
           onChange({ action: "script.call", function: e.target.value })
         }
         placeholder="my_function"
-        style={{ width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
       />
     </div>
   );
@@ -613,7 +613,7 @@ function ScriptCallConfig({
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };

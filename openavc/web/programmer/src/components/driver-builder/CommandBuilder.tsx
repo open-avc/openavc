@@ -156,7 +156,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
               <span
                 style={{
                   color: "var(--text-muted)",
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "11px",
                 }}
               >
                 {cmd.label}
@@ -166,7 +166,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   e.stopPropagation();
                   removeCommand(name);
                 }}
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -219,7 +219,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   />
                   <div
                     style={{
-                      fontSize: "var(--font-size-xs)",
+                      fontSize: "11px",
                       color: "var(--text-muted)",
                       marginTop: "var(--space-xs)",
                     }}
@@ -241,7 +241,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                     />
                     <div
                       style={{
-                        fontSize: "var(--font-size-xs)",
+                        fontSize: "11px",
                         color: "var(--text-muted)",
                         marginTop: "var(--space-xs)",
                       }}
@@ -273,7 +273,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                     />
                     <div
                       style={{
-                        fontSize: "var(--font-size-xs)",
+                        fontSize: "11px",
                         color: "var(--text-muted)",
                         marginTop: "var(--space-xs)",
                       }}
@@ -290,7 +290,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "var(--space-sm)",
+                          gap: 6,
                           fontSize: "var(--font-size-sm)",
                           color: "var(--text-secondary)",
                           marginTop: "var(--space-sm)",
@@ -319,7 +319,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
-                    gap: "var(--space-sm)",
+                    gap: 6,
                     fontSize: "var(--font-size-sm)",
                     color: "var(--text-secondary)",
                     marginBottom: "var(--space-md)",
@@ -333,13 +333,13 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                         available_offline: e.target.checked || undefined,
                       })
                     }
-                    style={{ marginTop: "var(--space-xs)" }}
+                    style={{ marginTop: 3 }}
                   />
                   <span>
                     Runs while the device is offline
                     <div
                       style={{
-                        fontSize: "var(--font-size-xs)",
+                        fontSize: "11px",
                         color: "var(--text-muted)",
                         marginTop: "var(--space-xs)",
                       }}
@@ -577,7 +577,7 @@ function CommandSemanticsEditor({
     marginBottom: "var(--space-xs)",
   };
   const helpStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
     marginTop: "var(--space-xs)",
   };
@@ -677,7 +677,7 @@ function CommandSemanticsEditor({
               )}
               <button
                 onClick={() => removeRow(i)}
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -729,7 +729,7 @@ function HttpCommandFields({
     marginBottom: "var(--space-xs)",
   };
   const helpStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
     marginTop: "var(--space-xs)",
   };
@@ -918,7 +918,7 @@ export function KeyValueList({
           />
           <button
             onClick={() => removeRow(i)}
-            style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+            style={{ padding: "2px", color: "var(--text-muted)" }}
           >
             <Trash2 size={14} />
           </button>
@@ -1091,9 +1091,9 @@ function ParamRow({
 
   const labelStyle: React.CSSProperties = {
     display: "block",
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
-    marginBottom: "var(--space-2xs)",
+    marginBottom: 2,
   };
   const isNumeric = def.type === "integer" || def.type === "number";
   const isEnum = def.type === "enum";
@@ -1142,9 +1142,9 @@ function ParamRow({
           {renameError && (
             <div
               style={{
-                fontSize: "var(--font-size-xs)",
+                fontSize: 11,
                 color: "var(--color-error)",
-                marginTop: "var(--space-2xs)",
+                marginTop: 2,
               }}
             >
               {renameError}
@@ -1204,10 +1204,10 @@ function ParamRow({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-xs)",
+            gap: 4,
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
-            paddingBottom: "var(--space-sm)",
+            paddingBottom: 6,
           }}
         >
           <input
@@ -1222,7 +1222,7 @@ function ParamRow({
         <button
           onClick={onRemove}
           style={{
-            padding: "var(--space-xs)",
+            padding: "4px",
             color: "var(--text-muted)",
             alignSelf: "center",
           }}
@@ -1407,10 +1407,10 @@ function ParamRow({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
+              gap: 4,
               fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
-              paddingBottom: "var(--space-sm)",
+              paddingBottom: 6,
               whiteSpace: "nowrap",
             }}
             title="On by default: surrounding spaces are stripped before the value goes on the wire. Turn off for raw payloads where edge whitespace is part of the protocol."
@@ -1429,10 +1429,10 @@ function ParamRow({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
+              gap: 4,
               fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
-              paddingBottom: "var(--space-sm)",
+              paddingBottom: 6,
               whiteSpace: "nowrap",
             }}
             title="Mask the input when the command is run, for a password, PIN or key. Presentation only: the value still goes to the device as typed."
@@ -1466,11 +1466,11 @@ function ParamRow({
           {childTypes.length === 0 ? (
             <div
               style={{
-                fontSize: "var(--font-size-xs)",
-                color: "var(--color-warning)",
+                fontSize: "11px",
+                color: "var(--color-warning, #d97706)",
                 padding: "var(--space-xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
-                background: "var(--color-warning-bg)",
+                background: "rgba(255, 152, 0, 0.12)",
                 border: "1px solid rgba(255, 152, 0, 0.35)",
               }}
             >
@@ -1499,9 +1499,9 @@ function ParamRow({
           )}
           <div
             style={{
-              fontSize: "var(--font-size-xs)",
+              fontSize: "11px",
               color: "var(--text-muted)",
-              marginTop: "var(--space-2xs)",
+              marginTop: 2,
             }}
           >
             The runtime command picker shows a dropdown of registered{" "}
@@ -1557,14 +1557,14 @@ function ParamOptionsEditor({
 }) {
   const labelStyle: React.CSSProperties = {
     display: "block",
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
-    marginBottom: "var(--space-2xs)",
+    marginBottom: 2,
   };
   const hintStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
-    marginTop: "var(--space-2xs)",
+    marginTop: 2,
   };
 
   // A cascade reads the controls of a child, so it can only point at a
@@ -1653,11 +1653,11 @@ function ParamOptionsEditor({
           {childIdSiblings.length === 0 ? (
             <div
               style={{
-                fontSize: "var(--font-size-xs)",
-                color: "var(--color-warning)",
+                fontSize: "11px",
+                color: "var(--color-warning, #d97706)",
                 padding: "var(--space-xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
-                background: "var(--color-warning-bg)",
+                background: "rgba(255, 152, 0, 0.12)",
                 border: "1px solid rgba(255, 152, 0, 0.35)",
               }}
             >
@@ -1762,9 +1762,9 @@ function ParamWireMapEditor({
         onClick={() => onChange({ "": "" })}
         title="Translate the picked value to a different value on the wire (e.g. child ID 1 sends channel 0)"
         style={{
-          fontSize: "var(--font-size-xs)",
+          fontSize: "11px",
           color: "var(--accent)",
-          padding: "var(--space-2xs) 0",
+          padding: "2px 0",
           display: "block",
           marginTop: "var(--space-xs)",
         }}
@@ -1782,7 +1782,7 @@ function ParamWireMapEditor({
   };
   return (
     <div style={{ marginTop: "var(--space-sm)" }}>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
         Wire value map (value → what is sent)
       </div>
       {rows.map(([from, to], ri) => (
@@ -1792,7 +1792,7 @@ function ParamWireMapEditor({
             display: "flex",
             gap: "var(--space-xs)",
             alignItems: "center",
-            marginBottom: "var(--space-2xs)",
+            marginBottom: 2,
           }}
         >
           <input
@@ -1814,7 +1814,7 @@ function ParamWireMapEditor({
               fontSize: "var(--font-size-sm)",
             }}
           />
-          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>→</span>
+          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
           <input
             value={String(to)}
             onChange={(e) =>
@@ -1831,7 +1831,7 @@ function ParamWireMapEditor({
           />
           <button
             onClick={() => rebuild((next) => delete next[from])}
-            style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+            style={{ padding: 1, color: "var(--text-muted)" }}
           >
             <Trash2 size={10} />
           </button>
@@ -1843,7 +1843,7 @@ function ParamWireMapEditor({
             if (!("" in next)) next[""] = "";
           })
         }
-        style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", padding: "var(--space-2xs) 0" }}
+        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
       >
         + Add
       </button>

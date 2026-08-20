@@ -61,9 +61,9 @@ export function PromptDialog({
           padding: "var(--space-sm) var(--space-md)",
           borderRadius: "var(--border-radius)",
           border: "1px solid var(--border-color)",
-          background: "var(--bg-base)",
+          background: "var(--bg-input)",
           color: "var(--text-primary)",
-          fontSize: "var(--font-size-base)",
+          fontSize: "var(--font-size-md)",
           marginBottom: "var(--space-xl)",
           boxSizing: "border-box",
         }}
@@ -85,7 +85,7 @@ export function PromptDialog({
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
-            color: "var(--text-on-accent-bg)",
+            color: "var(--text-on-accent)",
             opacity: value.trim() ? 1 : 0.5,
           }}
           disabled={!value.trim()}

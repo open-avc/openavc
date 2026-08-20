@@ -132,7 +132,7 @@ export function PanelPreviewFrame({
             transform: `scale(${scale})`,
             transformOrigin: "center center",
             flexShrink: 0,
-            borderRadius: "var(--radius-lg)",
+            borderRadius: 8,
             overflow: "hidden",
             boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
           }}
@@ -153,7 +153,7 @@ export function PanelPreviewFrame({
           />
         </div>
       ) : (
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-base)" }}>No page to preview.</div>
+        <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No page to preview.</div>
       )}
     </div>
   );

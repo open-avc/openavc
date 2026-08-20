@@ -41,7 +41,7 @@ export function AppearanceEditor({
           onChange={(c) => setField("text_color", c || undefined)}
         />
       </div>
-      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
         Keys without their own colors use these.
         {inherits && " Blank values fall back to the shared layout's colors."}
       </div>

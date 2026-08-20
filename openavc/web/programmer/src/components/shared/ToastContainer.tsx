@@ -26,7 +26,7 @@ export default function ToastContainer() {
         zIndex: LAYER.toast,
         display: "flex",
         flexDirection: "column",
-        gap: "var(--space-sm)",
+        gap: 8,
         maxWidth: 420,
       }}
     >
@@ -38,13 +38,13 @@ export default function ToastContainer() {
             background: "#2a2a2a",
             borderLeft: `4px solid ${severityColors[t.severity]}`,
             color: "#eee",
-            padding: "var(--space-md) var(--space-lg)",
-            borderRadius: "var(--radius-lg)",
-            fontSize: "var(--font-size-base)",
+            padding: "10px 14px",
+            borderRadius: 6,
+            fontSize: 13,
             boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
             display: "flex",
             alignItems: "flex-start",
-            gap: "var(--space-sm)",
+            gap: 8,
             animation: "toast-in 0.2s ease-out",
           }}
         >
@@ -56,7 +56,7 @@ export default function ToastContainer() {
               border: "none",
               color: "#999",
               cursor: "pointer",
-              fontSize: "var(--font-size-lg)",
+              fontSize: 16,
               lineHeight: 1,
               padding: 0,
               flexShrink: 0,

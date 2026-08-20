@@ -348,7 +348,7 @@ export function VariableKeyPicker({
         <>
           {displayText}
           {liveValue !== undefined && (
-            <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
+            <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>
               = {String(liveValue)}
             </span>
           )}
@@ -362,7 +362,7 @@ export function VariableKeyPicker({
       footer={({ close }) =>
         showCreate ? (
           <div style={createFormStyle}>
-            <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", color: "var(--accent)" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>
               Create New Variable
             </div>
             <div style={{ display: "flex", gap: "var(--space-sm)" }}>
@@ -443,8 +443,8 @@ export function VariableKeyPicker({
             {Array.from(groups.entries()).map(([groupId, group]) => (
               <div key={groupId}>
                 <div style={dropdownGroupHeaderStyle}>
-                  <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{group.label}</span>
-                  <span style={{ fontWeight: "var(--font-weight-normal)", fontStyle: "italic", marginLeft: "var(--space-sm)" }}>
+                  <span style={{ fontWeight: 600 }}>{group.label}</span>
+                  <span style={{ fontWeight: 400, fontStyle: "italic", marginLeft: 6 }}>
                     {group.desc}
                   </span>
                 </div>
@@ -475,14 +475,14 @@ export function VariableKeyPicker({
                     {/* Source indicator dot */}
                     <span style={{
                       width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                      background: sourceColor, marginRight: "var(--space-xs)",
+                      background: sourceColor, marginRight: 4,
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <span
                           style={{
                             fontFamily: "var(--font-mono)",
-                            fontSize: "var(--font-size-sm)",
+                            fontSize: 12,
                             color: "var(--text-primary)",
                           }}
                         >
@@ -498,7 +498,7 @@ export function VariableKeyPicker({
                       {entry.group !== "variables" && (
                         <div
                           style={{
-                            fontSize: "var(--font-size-2xs)",
+                            fontSize: 10,
                             color: "var(--text-muted)",
                             fontFamily: "var(--font-mono)",
                           }}
@@ -509,7 +509,7 @@ export function VariableKeyPicker({
                       {entry.description && (
                         <div
                           style={{
-                            fontSize: "var(--font-size-2xs)",
+                            fontSize: 10,
                             color: "var(--text-muted)",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -523,7 +523,7 @@ export function VariableKeyPicker({
                     </div>
                     {entryLive !== undefined && (
                       <span style={{
-                        fontSize: "var(--font-size-xs)", color: "var(--text-muted)", flexShrink: 0, marginRight: "var(--space-xs)",
+                        fontSize: 11, color: "var(--text-muted)", flexShrink: 0, marginRight: 4,
                         maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         fontFamily: "var(--font-mono)",
                       }}
@@ -543,7 +543,7 @@ export function VariableKeyPicker({
             {!showCreate && (
               <div
                 onClick={() => setShowCreate(true)}
-                style={{ ...dropdownRowStyle, color: "var(--accent)", gap: "var(--space-xs)", borderTop: "1px solid var(--border-color)" }}
+                style={{ ...dropdownRowStyle, color: "var(--accent)", gap: 4, borderTop: "1px solid var(--border-color)" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
@@ -570,14 +570,14 @@ const createFormStyle: React.CSSProperties = {
 
 const miniLabel: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 6px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -586,17 +586,17 @@ const fieldStyle: React.CSSProperties = {
 };
 
 const btnPrimary: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-lg)",
+  padding: "4px 14px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
 };
 
 const btnSecondary: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-lg)",
+  padding: "4px 14px",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",

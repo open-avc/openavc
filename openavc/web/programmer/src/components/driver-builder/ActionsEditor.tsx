@@ -34,7 +34,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: "11px",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
 };
@@ -199,7 +199,7 @@ export function ActionsEditor({ draft, onUpdate }: ActionsEditorProps) {
               <span
                 key={`${id}-${i}`}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
+                  padding: "2px 8px",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                   fontFamily: "var(--font-mono)",
@@ -360,7 +360,7 @@ function ActionCard({
         >
           {action.id || "(no id)"}
         </span>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
+        <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
           {isLink ? "link" : action.label || labelFallback}
         </span>
         <button
@@ -368,7 +368,7 @@ function ActionCard({
             e.stopPropagation();
             onRemove();
           }}
-          style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+          style={{ padding: "2px", color: "var(--text-muted)" }}
           title="Remove action"
         >
           <Trash2 size={14} />
@@ -538,10 +538,10 @@ function ActionCard({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-sm)",
+                  gap: 6,
                   fontSize: "var(--font-size-sm)",
                   color: "var(--text-secondary)",
-                  marginTop: "var(--space-xl)",
+                  marginTop: 22,
                 }}
               >
                 <input
@@ -595,9 +595,9 @@ function ActionCard({
                       })
                     }
                     style={{
-                      fontSize: "var(--font-size-xs)",
+                      fontSize: "11px",
                       color: "var(--accent)",
-                      padding: "var(--space-2xs) 0",
+                      padding: "2px 0",
                     }}
                   >
                     + Override input fields
@@ -614,9 +614,9 @@ function ActionCard({
                   <button
                     onClick={() => onUpdate({ params: undefined })}
                     style={{
-                      fontSize: "var(--font-size-xs)",
+                      fontSize: "11px",
                       color: "var(--accent)",
-                      padding: "var(--space-2xs) 0",
+                      padding: "2px 0",
                     }}
                   >
                     Remove override (use the command&apos;s inputs)
@@ -791,7 +791,7 @@ function VisibleWhenEditor({
                     onClick={() =>
                       writeConditions(conditions.filter((_, j) => j !== i))
                     }
-                    style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                    style={{ padding: "2px", color: "var(--text-muted)" }}
                     title="Remove condition"
                   >
                     <Trash2 size={14} />

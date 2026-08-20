@@ -94,14 +94,14 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 const cellLabel: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 const iconBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "var(--space-xs)",
+  gap: 4,
   padding: "var(--space-xs) var(--space-sm)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -442,16 +442,16 @@ export function IrCodesEditor({
           marginBottom: "var(--space-sm)",
         }}
       >
-        <h3 style={{ margin: 0, fontSize: "var(--font-size-base)" }}>IR Codes</h3>
+        <h3 style={{ margin: 0, fontSize: "var(--font-size-md)" }}>IR Codes</h3>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
           {saveError && (
             <span
               style={{
-                color: "var(--color-error)",
+                color: "var(--color-danger)",
                 fontSize: "var(--font-size-sm)",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
+                gap: 4,
               }}
             >
               <AlertCircle size={14} /> {saveError}
@@ -460,11 +460,11 @@ export function IrCodesEditor({
           {saved && !dirty && (
             <span
               style={{
-                color: "var(--color-success)",
+                color: "var(--color-success, #38a169)",
                 fontSize: "var(--font-size-sm)",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
+                gap: 4,
               }}
             >
               <Check size={14} /> Saved
@@ -493,7 +493,7 @@ export function IrCodesEditor({
         <div
           style={{
             ...card,
-            borderColor: "var(--color-warning)",
+            borderColor: "var(--color-warning, #d69e2e)",
             display: "flex",
             alignItems: "center",
             gap: "var(--space-sm)",
@@ -553,7 +553,7 @@ export function IrCodesEditor({
 
       {/* Learn panel */}
       {learnOpen && (
-        <div style={{ ...card, borderColor: "var(--accent)" }}>
+        <div style={{ ...card, borderColor: "var(--color-accent, #3182ce)" }}>
           <div
             style={{
               display: "flex",
@@ -562,7 +562,7 @@ export function IrCodesEditor({
               marginBottom: "var(--space-sm)",
             }}
           >
-            <strong style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-sm)" }}>
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <Radio size={15} />
               {learnMode === "one_off" ? "Learn one code" : "Learn from remote"}
             </strong>
@@ -577,7 +577,7 @@ export function IrCodesEditor({
           </div>
           <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
             {learnErr ? (
-              <span style={{ color: "var(--color-error)", display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
+              <span style={{ color: "var(--color-danger)", display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <AlertCircle size={14} /> {learnErr}
               </span>
             ) : (
@@ -592,7 +592,7 @@ export function IrCodesEditor({
                   key={cap.key}
                   style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}
                 >
-                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", flex: "0 0 auto" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", flex: "0 0 auto" }}>
                     {prontoPreview(cap.pronto)}
                   </span>
                   <input
@@ -616,7 +616,7 @@ export function IrCodesEditor({
                     <Plus size={14} /> Add
                   </button>
                   {testStatus[cap.key] && (
-                    <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       {testStatus[cap.key] === "sending"
                         ? "…"
                         : testStatus[cap.key] === "sent"
@@ -643,7 +643,7 @@ export function IrCodesEditor({
               key={r.key}
               style={
                 incompleteKeys.has(r.key)
-                  ? { ...card, border: "1px solid var(--color-warning)" }
+                  ? { ...card, border: "1px solid var(--color-warning, #d69e2e)" }
                   : card
               }
             >
@@ -680,11 +680,11 @@ export function IrCodesEditor({
                         onChange={(e) => setEditText(e.target.value)}
                       />
                       {editErr && (
-                        <div style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)", marginTop: "var(--space-2xs)" }}>
+                        <div style={{ color: "var(--color-danger)", fontSize: 11, marginTop: 2 }}>
                           {editErr}
                         </div>
                       )}
-                      <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
+                      <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: 4 }}>
                         <button style={iconBtn} onClick={applyEdit} disabled={editBusy}>
                           <Check size={14} /> {editBusy ? "Importing…" : "Apply"}
                         </button>
@@ -697,9 +697,9 @@ export function IrCodesEditor({
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                       <code
                         style={{
-                          fontSize: "var(--font-size-xs)",
+                          fontSize: 11,
                           color: incompleteKeys.has(r.key)
-                            ? "var(--color-warning)"
+                            ? "var(--color-warning, #d69e2e)"
                             : "var(--text-muted)",
                           flex: 1,
                           wordBreak: "break-all",
@@ -723,8 +723,8 @@ export function IrCodesEditor({
                     </div>
                   )}
                 </div>
-                <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: "var(--space-xs)", paddingTop: "var(--space-lg)" }}>
-                  <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+                <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 4, paddingTop: 16 }}>
+                  <div style={{ display: "flex", gap: 4 }}>
                     <button
                       style={{ ...iconBtn, opacity: canBridge && connected && r.pronto ? 1 : 0.5 }}
                       onClick={() => testCode(r.key, r.pronto, r.repeat)}
@@ -737,7 +737,7 @@ export function IrCodesEditor({
                       <Trash2 size={14} />
                     </button>
                   </div>
-                  <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+                  <div style={{ display: "flex", gap: 4 }}>
                     <button
                       style={{ ...iconBtn, opacity: idx === 0 ? 0.4 : 1 }}
                       onClick={() => moveRow(r.key, -1)}
@@ -755,7 +755,7 @@ export function IrCodesEditor({
                       <ArrowDown size={14} />
                     </button>
                     {testStatus[r.key] && (
-                      <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", alignSelf: "center" }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "center" }}>
                         {testStatus[r.key] === "sending"
                           ? "…"
                           : testStatus[r.key] === "sent"

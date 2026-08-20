@@ -25,7 +25,7 @@ export function FrameParserEditor({ draft, onUpdate }: FrameParserEditorProps) {
     marginBottom: "var(--space-xs)",
   };
   const helpStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-xs)",
+    fontSize: "11px",
     color: "var(--text-muted)",
     marginTop: "var(--space-xs)",
   };

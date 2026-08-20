@@ -179,9 +179,8 @@ export function ChildEntities({
       <div
         style={{
           display: "flex",
-          gap: "var(--space-xl)",
+          gap: "var(--space-xs)",
           marginBottom: "var(--space-md)",
-          borderBottom: "1px solid var(--border-color)",
           flexWrap: "wrap",
         }}
         role="tablist"
@@ -200,15 +199,13 @@ export function ChildEntities({
               aria-selected={isActive}
               data-testid={`child-type-tab-${t}`}
               style={{
-                padding: "var(--space-xs) var(--space-2xs)",
-                background: "none",
-                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                padding: "var(--space-xs) var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                background: isActive ? "var(--accent-bg)" : "var(--bg-hover)",
+                color: isActive ? "var(--text-on-accent)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: "var(--font-weight-medium)",
+                fontWeight: isActive ? 600 : 400,
                 border: "none",
-                // The mark sits on the edge of the bar rather than filling a
-                // pill, so the accent stays reserved for the primary action.
-                boxShadow: isActive ? "inset 0 -2px 0 var(--accent)" : "none",
                 cursor: "pointer",
               }}
             >
@@ -224,7 +221,7 @@ export function ChildEntities({
                   style={{
                     marginLeft: "var(--space-xs)",
                     color: isActive ? "var(--text-on-accent)" : "var(--color-error)",
-                    fontWeight: "var(--font-weight-semibold)",
+                    fontWeight: 600,
                   }}
                 >
                   · {downByType[t]} down
@@ -515,14 +512,13 @@ function ChildSearchResults({
           >
             <span
               style={{
-                fontSize: "var(--font-size-2xs)",
+                fontSize: 10,
                 textTransform: "uppercase",
-                fontWeight: "var(--font-weight-semibold)",
-                letterSpacing: "var(--tracking-wide)",
+                letterSpacing: "0.5px",
                 color: "var(--text-muted)",
                 background: "var(--bg-hover)",
                 borderRadius: "var(--border-radius)",
-                padding: "var(--space-2xs) var(--space-sm)",
+                padding: "1px 6px",
               }}
             >
               {typeLabel}
@@ -536,7 +532,7 @@ function ChildSearchResults({
             >
               {entry.local_id_padded}
             </span>
-            <span style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
+            <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
               {entry.label || entry.display_name || "(no label)"}
             </span>
           </div>
@@ -553,7 +549,7 @@ function ChildSearchResults({
                   <tr key={k} style={{ borderBottom: "1px solid var(--border-color)" }}>
                     <td
                       style={{
-                        padding: "var(--space-2xs) var(--space-sm)",
+                        padding: "2px 8px",
                         width: "30%",
                         fontFamily: "var(--font-mono)",
                         color: "var(--text-secondary)",
@@ -561,7 +557,7 @@ function ChildSearchResults({
                     >
                       {k}
                     </td>
-                    <td style={{ padding: "var(--space-2xs) var(--space-sm)", fontFamily: "var(--font-mono)" }}>
+                    <td style={{ padding: "2px 8px", fontFamily: "var(--font-mono)" }}>
                       {v}
                     </td>
                   </tr>
@@ -934,7 +930,7 @@ function ChildEntityList({
                         style={{
                           width: "100%",
                           fontSize: "var(--font-size-sm)",
-                          padding: "var(--space-2xs) var(--space-sm)",
+                          padding: "2px 6px",
                         }}
                       />
                     ) : (
@@ -949,7 +945,7 @@ function ChildEntityList({
                         style={{
                           width: "100%",
                           textAlign: "left",
-                          padding: "var(--space-2xs) var(--space-sm)",
+                          padding: "2px 6px",
                           background: "transparent",
                           border: "none",
                           cursor: "pointer",
@@ -1035,7 +1031,7 @@ function ChildEntityList({
                             >
                               <td
                                 style={{
-                                  padding: "var(--space-2xs) var(--space-sm)",
+                                  padding: "2px 8px",
                                   width: "30%",
                                   fontFamily: "var(--font-mono)",
                                   color: "var(--text-secondary)",
@@ -1045,7 +1041,7 @@ function ChildEntityList({
                               </td>
                               <td
                                 style={{
-                                  padding: "var(--space-2xs) var(--space-sm)",
+                                  padding: "2px 8px",
                                   fontFamily: "var(--font-mono)",
                                 }}
                               >
@@ -1076,9 +1072,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
           textTransform: "uppercase",
-          letterSpacing: "var(--tracking-wide)",
+          letterSpacing: "0.5px",
           marginBottom: "var(--space-md)",
-          fontWeight: "var(--font-weight-semibold)",
+          fontWeight: 600,
         }}
       >
         {title}
@@ -1160,9 +1156,9 @@ const headerRowStyle: React.CSSProperties = {
 };
 
 const headerCellStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontSize: 11,
+  fontWeight: 600,
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
+  letterSpacing: "0.5px",
 };

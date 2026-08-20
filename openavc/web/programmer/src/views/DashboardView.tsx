@@ -37,7 +37,7 @@ function CopyButton({ text }: { text: string }) {
         border: "none",
         color: copied ? "var(--color-success)" : "var(--text-muted)",
         cursor: "pointer",
-        padding: "var(--space-xs)",
+        padding: 4,
         flexShrink: 0,
       }}
     >
@@ -78,7 +78,7 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 22mm 18mm;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: var(--text-primary);
+    color: var(--ink);
   }
   .accent { position: absolute; width: 105mm; height: 105mm; opacity: 0.22; pointer-events: none; }
   .accent svg { width: 100%; height: 100%; display: block; }
@@ -87,14 +87,14 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
   .content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
   .brand { height: 8mm; width: auto; opacity: 0.75; margin-bottom: 13mm; }
   .headline { font-size: 30pt; font-weight: 700; line-height: 1.22; margin: 0; letter-spacing: -0.01em; }
-  .headline .room { color: var(--accent-bg); }
+  .headline .room { color: var(--sage-deep); }
   .qr-wrap { margin: 12mm 0 8mm; padding: 6mm; background: #fff; border: 1px solid #e6ece8; border-radius: 4mm; }
   .qr { width: 92mm; height: 92mm; }
   .qr svg { width: 100%; height: 100%; display: block; }
-  .steps { font-size: 13pt; color: var(--text-muted); line-height: 1.7; margin: 0; }
-  .steps b { color: var(--text-primary); font-weight: 600; }
+  .steps { font-size: 13pt; color: var(--muted); line-height: 1.7; margin: 0; }
+  .steps b { color: var(--ink); font-weight: 600; }
   .url { margin-top: 6mm; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-         font-size: 12pt; color: var(--accent-bg); word-break: break-all; }
+         font-size: 12pt; color: var(--sage-deep); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -177,14 +177,14 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
   return (
     <Dialog title="Scan to connect" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-md)" }}>
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center" }}>
           Scan with a phone or tablet camera to open this OpenAVC system.
         </div>
         <div
           style={{ width: 260, height: 260, background: "#fff", padding: "var(--space-sm)", borderRadius: "var(--border-radius)" }}
           dangerouslySetInnerHTML={{ __html: pairSvg }}
         />
-        <code style={{ fontSize: "var(--font-size-sm)", fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
+        <code style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center" }}>
           {pairUrl}
         </code>
         <div style={{
@@ -221,12 +221,12 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
               gap: "var(--space-xs)",
               padding: "var(--space-sm) var(--space-lg)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent-bg)",
+              color: "#fff",
               border: "none",
               borderRadius: "var(--border-radius)",
               cursor: "pointer",
               fontSize: "var(--font-size-sm)",
-              fontWeight: "var(--font-weight-medium)",
+              fontWeight: 500,
             }}
           >
             <Printer size={14} />
@@ -243,13 +243,13 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
               borderRadius: "var(--border-radius)",
               cursor: "pointer",
               fontSize: "var(--font-size-sm)",
-              fontWeight: "var(--font-weight-medium)",
+              fontWeight: 500,
             }}
           >
             Close
           </button>
         </div>
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", lineHeight: "var(--line-relaxed)", maxWidth: 300 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 11, textAlign: "center", maxWidth: 300 }}>
           Printing produces a full-page sign whose QR opens the room panel directly.
         </div>
       </div>
@@ -335,8 +335,8 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "var(--tracking-wide)",
-    fontWeight: "var(--font-weight-semibold)",
+    letterSpacing: "0.5px",
+    fontWeight: 600,
     marginBottom: "var(--space-md)",
   };
 
@@ -372,12 +372,12 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 display: "flex",
                 alignItems: "center",
                 gap: "var(--space-xs)",
-                background: "var(--bg-elevated)",
+                background: "var(--bg-elevated, var(--bg-hover))",
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
                 marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-xs)" : 0,
               }}>
-                <code style={{ flex: 1, fontSize: "var(--font-size-base)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                   {panelUrl}
                 </code>
                 <CopyButton text={panelUrl} />
@@ -386,32 +386,32 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Open in new tab"
-                  style={{ color: "var(--text-muted)", padding: "var(--space-xs)", flexShrink: 0 }}
+                  style={{ color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
                 >
                   <ExternalLink size={14} />
                 </a>
               </div>
             )}
             {certifiedBase && panelUrl && (
-              <div style={{ color: "var(--color-success)", fontSize: "var(--font-size-xs)", marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
+              <div style={{ color: "var(--color-success, var(--accent))", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
                 Trusted address: opens with no browser warnings.
               </div>
             )}
             {shortPanelUrl && (
               <>
-                <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", marginBottom: "var(--space-2xs)" }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 2 }}>
                   Or type this short address, which forwards to the one above:
                 </div>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "var(--space-xs)",
-                  background: "var(--bg-elevated)",
+                  background: "var(--bg-elevated, var(--bg-hover))",
                   borderRadius: "var(--border-radius)",
                   padding: "var(--space-sm) var(--space-md)",
                   marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
                 }}>
-                  <code style={{ flex: 1, fontSize: "var(--font-size-base)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                  <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                     {shortPanelUrl}
                   </code>
                   <CopyButton text={shortPanelUrl} />
@@ -423,11 +423,11 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 display: "flex",
                 alignItems: "center",
                 gap: "var(--space-xs)",
-                background: "var(--bg-elevated)",
+                background: "var(--bg-elevated, var(--bg-hover))",
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
               }}>
-                <code style={{ flex: 1, fontSize: "var(--font-size-base)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                   {hostnameUrl}
                 </code>
                 <CopyButton text={hostnameUrl} />
@@ -480,7 +480,7 @@ function MonitorRow({ monitor, value, first }: {
   first: boolean;
 }) {
   const status = monitorStatus(monitor, value);
-  const tone = status === ABNORMAL ? "var(--color-error)"
+  const tone = status === ABNORMAL ? "var(--status-error, #ef4444)"
     : status === NORMAL ? "var(--accent)"
     : value === undefined || value === null ? "var(--text-muted)"
     : "var(--text-primary)";
@@ -497,10 +497,10 @@ function MonitorRow({ monitor, value, first }: {
       }}
     >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
           {monitorLabel(monitor)}
         </div>
-        <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+        <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
           {monitor.key}
         </code>
       </div>
@@ -510,11 +510,11 @@ function MonitorRow({ monitor, value, first }: {
         )}
         <div style={{
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-semibold)",
+          fontWeight: 600,
           fontFamily: "var(--font-mono)",
           color: tone,
           background: "var(--bg-hover)",
-          padding: "var(--space-2xs) var(--space-sm)",
+          padding: "2px 8px",
           borderRadius: "var(--border-radius)",
         }}>
           {monitorReading(monitor, value)}
@@ -629,15 +629,15 @@ export function DashboardView() {
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "var(--tracking-wide)",
-    fontWeight: "var(--font-weight-semibold)",
+    letterSpacing: "0.5px",
+    fontWeight: 600,
     marginBottom: "var(--space-md)",
   };
 
   return (
     <ViewContainer title="Dashboard">
       {fetchError && (
-        <div style={{ background: "var(--color-error-bg)", color: "var(--color-error)", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
+        <div style={{ background: "var(--status-error-bg, #3a1a1a)", color: "var(--status-error, #ff6b6b)", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-md)", fontSize: "var(--font-sm)" }}>
           {fetchError}
         </div>
       )}
@@ -647,7 +647,7 @@ export function DashboardView() {
           {/* Top bar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-lg)" }}>
             <div>
-              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)" }}>{String(projectName)}</div>
+              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600 }}>{String(projectName)}</div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
                 {"OpenAVC v" + String(systemStatus?.version ?? "")}
               </div>
@@ -667,21 +667,21 @@ export function DashboardView() {
                 <Cpu size={14} style={{ color: "var(--accent)" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Devices</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(connectedCount) + "/" + String(enabledCount)}</div>
+              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(connectedCount) + "/" + String(enabledCount)}</div>
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
-                <Zap size={14} style={{ color: "var(--color-warning)" }} />
+                <Zap size={14} style={{ color: "#f59e0b" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Triggers</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(triggerCount)}</div>
+              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(triggerCount)}</div>
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
                 <FileCode size={14} style={{ color: "#8b5cf6" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Scripts</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(scriptCount)}</div>
+              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(scriptCount)}</div>
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
@@ -690,7 +690,7 @@ export function DashboardView() {
               </div>
               <div
                 title={cloudStopDetail || undefined}
-                style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)", color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}
+                style={{ fontSize: "var(--font-size-xl)", fontWeight: 700, color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}
               >
                 {!isCloudEnabled ? "—" : isCloudConnected ? "Online" : cloudOfflineLabel}
               </div>
@@ -720,10 +720,10 @@ export function DashboardView() {
             >
               <ArrowUpCircle size={20} style={{ color: "var(--accent)", flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>
+                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
                   {"OpenAVC v" + String(liveState["system.update_available"]) + " available"}
                 </div>
-                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                   View changelog and install
                 </div>
               </div>
@@ -734,7 +734,7 @@ export function DashboardView() {
           {/* Getting Started — shown when project is empty */}
           {devices.length === 0 && macros.length === 0 && (
             <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", background: "var(--color-info-bg)" }}>
-              <div style={{ fontSize: "var(--font-size-base)", fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-md)" }}>
+              <div style={{ fontSize: "var(--font-size-md)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
                 Getting Started
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -754,18 +754,18 @@ export function DashboardView() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                   >
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "var(--text-on-accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                       {item.step}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>{item.label}</div>
-                      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{item.desc}</div>
+                      <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>{item.label}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{item.desc}</div>
                     </div>
                     <ArrowRight size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+              <div style={{ marginTop: "var(--space-md)", fontSize: 12, color: "var(--text-muted)" }}>
                 New to OpenAVC?{" "}
                 <a href="https://docs.openavc.com/getting-started" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
                   Read the Getting Started guide
@@ -786,10 +786,10 @@ export function DashboardView() {
             }}>
               <AlertTriangle size={18} style={{ color: "var(--color-error)", flexShrink: 0 }} />
               <div>
-                <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>
+                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
                   {String(disconnectedCount) + " device" + (disconnectedCount !== 1 ? "s" : "") + " disconnected"}
                 </div>
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                   {devices.filter(d => d.enabled !== false && liveState[`device.${d.id}.connected`] !== true).map(d => String(d.name)).join(", ")}
                 </div>
               </div>
@@ -815,19 +815,16 @@ export function DashboardView() {
                         ...cardStyle,
                         padding: "var(--space-sm) var(--space-md)",
                         opacity: isEnabled ? 1 : 0.5,
-                        // Colour marks what needs attention. A wall of cards
-                        // outlined in green makes the one red card no louder
-                        // than the rest of them.
-                        borderColor: isEnabled && !isConnected ? "var(--color-error)" : "var(--border-color)",
+                        borderColor: !isEnabled ? "var(--border-color)" : isConnected ? "rgba(76,175,80,0.3)" : "rgba(239,68,68,0.3)",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                        {isEnabled && !isConnected && <DeviceStatusDot connected={false} />}
+                        <DeviceStatusDot connected={isConnected} />
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {String(dev.name)}
                           </div>
-                          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {String(dev.driver)}{!isEnabled ? " (disabled)" : ""}
                           </div>
                         </div>
@@ -857,21 +854,21 @@ export function DashboardView() {
                     }}
                   >
                     <span style={{
-                      fontSize: "var(--font-size-2xs)",
-                      fontWeight: "var(--font-weight-semibold)",
+                      fontSize: 10,
+                      fontWeight: 600,
                       color: "var(--text-muted)",
                       background: "var(--bg-hover)",
-                      padding: "var(--space-2xs) var(--space-sm)",
-                      borderRadius: "var(--border-radius)",
+                      padding: "1px 6px",
+                      borderRadius: 3,
                       textTransform: "uppercase" as const,
-                      letterSpacing: "var(--tracking-wide)",
+                      letterSpacing: "0.5px",
                       flexShrink: 0,
                     }}>
                       {t.triggerType === "schedule" ? "cron" : t.triggerType === "state_change" ? "state" : t.triggerType}
                     </span>
-                    <span style={{ fontWeight: "var(--font-weight-medium)" }}>{t.macroName}</span>
+                    <span style={{ fontWeight: 500 }}>{t.macroName}</span>
                     {t.detail && (
-                      <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                      <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                         {t.detail}
                       </code>
                     )}
@@ -913,7 +910,7 @@ export function DashboardView() {
                   <DeviceStatusDot connected={true} size={8} />
                   <span>ISC Enabled</span>
                 </div>
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                   {String(iscPeerCount) + " manual peer" + (iscPeerCount !== 1 ? "s" : "") + " · " + String(iscPatternCount) + " shared pattern" + (iscPatternCount !== 1 ? "s" : "")}
                 </div>
               </div>
@@ -925,7 +922,7 @@ export function DashboardView() {
             <h3 style={sectionTitle}>Recent Activity</h3>
             <div style={{ ...cardStyle, padding: 0, overflow: "hidden", maxHeight: 400, overflowY: "auto" }}>
               {recentActivity.length === 0 ? (
-                <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)", fontSize: "var(--font-size-sm)" }}>
+                <div style={{ padding: "var(--space-lg)", color: "var(--text-muted)", textAlign: "center", fontSize: "var(--font-size-sm)" }}>
                   No activity yet. Events will appear here as the system runs.
                 </div>
               ) : (
@@ -935,18 +932,18 @@ export function DashboardView() {
                     style={{
                       padding: "var(--space-xs) var(--space-md)",
                       borderTop: i > 0 ? "1px solid var(--border-color)" : undefined,
-                      fontSize: "var(--font-size-sm)",
+                      fontSize: 12,
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-sm)" }}>
-                      <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)", flexShrink: 0 }}>
+                      <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, flexShrink: 0 }}>
                         {new Date(e.timestamp * 1000).toLocaleTimeString(undefined, { hour12: false })}
                       </span>
                       {e.level === "ERROR" && (
-                        <span style={{ color: "var(--color-error)", fontWeight: "var(--font-weight-semibold)" }}>{"ERROR"}</span>
+                        <span style={{ color: "var(--color-error)", fontWeight: 600 }}>{"ERROR"}</span>
                       )}
                       {e.level === "WARNING" && (
-                        <span style={{ color: "var(--color-warning)" }}>{"WARN"}</span>
+                        <span style={{ color: "#f59e0b" }}>{"WARN"}</span>
                       )}
                       <span style={{ color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {String(e.message)}

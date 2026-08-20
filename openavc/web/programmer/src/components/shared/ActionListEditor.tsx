@@ -148,10 +148,10 @@ export function ActionListEditor({
       {actions.map((action, i) => (
         <div key={i} style={boxed ? boxedRowStyle : undefined}>
           <div style={rowHeaderStyle}>
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
               {showCaption ? `Action ${numberFrom + i + 1}` : ""}
             </span>
-            <div style={{ display: "flex", gap: "var(--space-xs)", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               <ActionTestButton action={action} />
               {i > 0 && (
                 <button
@@ -211,7 +211,7 @@ const rowHeaderStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: "var(--space-xs)",
+  marginBottom: 4,
 };
 
 const boxedRowStyle: CSSProperties = {
@@ -221,32 +221,32 @@ const boxedRowStyle: CSSProperties = {
 };
 
 const testBtnSmStyle: CSSProperties = {
-  display: "flex", alignItems: "center", gap: "var(--space-xs)",
-  padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-xs)", color: "var(--accent)",
+  display: "flex", alignItems: "center", gap: 3,
+  padding: "2px 6px", borderRadius: "var(--border-radius)",
+  fontSize: 11, color: "var(--accent)",
   background: "transparent", border: "1px solid var(--border-color)",
   cursor: "pointer",
 };
 
 const testBtnMdStyle: CSSProperties = {
-  display: "flex", alignItems: "center", gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
+  display: "flex", alignItems: "center", gap: 3,
+  padding: "4px 8px", borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)", color: "var(--accent)",
   background: "transparent", border: "1px solid var(--border-color)",
   cursor: "pointer",
 };
 
 const reorderBtnStyle: CSSProperties = {
-  padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-2xs)", color: "var(--text-muted)",
+  padding: "2px 5px", borderRadius: "var(--border-radius)",
+  fontSize: 9, color: "var(--text-muted)",
   background: "transparent", border: "1px solid var(--border-color)",
   cursor: "pointer", lineHeight: 1,
 };
 
 const removeBtnStyle: CSSProperties = {
-  padding: "var(--space-2xs) var(--space-sm)",
+  padding: "2px 6px",
   borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--color-error)",
   background: "transparent",
   border: "1px solid var(--border-color)",
@@ -257,12 +257,12 @@ const addBtnStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-md)",
+  gap: 4,
+  padding: "5px 10px",
   borderRadius: "var(--border-radius)",
   border: "1px dashed var(--border-color)",
   background: "transparent",
   color: "var(--text-muted)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   cursor: "pointer",
 };

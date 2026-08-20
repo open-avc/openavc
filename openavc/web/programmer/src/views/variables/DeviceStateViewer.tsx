@@ -136,7 +136,7 @@ export function DeviceStatesSubTab() {
 
         <div style={{ flex: 1, overflow: "auto" }}>
           {devices.length === 0 ? (
-            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
               No devices configured yet.
               <br /><br />
               Add devices in the <strong>Devices</strong> tab to see their live state properties here.
@@ -145,7 +145,7 @@ export function DeviceStatesSubTab() {
             Array.from(deviceGroups.entries()).map(([group, groupDevices]) => (
               <div key={group}>
                 {deviceGroups.size > 1 && (
-                  <div style={{ padding: "var(--space-sm) var(--space-md) var(--space-2xs)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", fontWeight: "var(--font-weight-semibold)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
+                  <div style={{ padding: "var(--space-sm) var(--space-md) 2px", fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                     {group}
                   </div>
                 )}
@@ -172,8 +172,8 @@ export function DeviceStatesSubTab() {
                         background: isConnected ? "var(--color-success)" : "var(--text-muted)",
                       }} />
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>{d.name}</div>
-                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{d.driver}</div>
+                        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500, color: "var(--text-primary)" }}>{d.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{d.driver}</div>
                       </div>
                       <Cpu size={14} style={{ color: "var(--text-muted)", flexShrink: 0, opacity: 0.5 }} />
                     </div>
@@ -190,7 +190,7 @@ export function DeviceStatesSubTab() {
         {selectedDevice ? (
           <div style={{ padding: "var(--space-lg)" }}>
             <div style={{ marginBottom: "var(--space-lg)" }}>
-              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-primary)" }}>
+              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, color: "var(--text-primary)" }}>
                 {selectedDevice.name}
               </div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
@@ -205,13 +205,13 @@ export function DeviceStatesSubTab() {
             ) : (
               <>
               {/* Column header */}
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "0 var(--space-md) var(--space-xs)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "0 var(--space-md) 4px", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 <div style={{ flex: 1 }}>Property</div>
                 <div style={{ width: 16, flexShrink: 0, textAlign: "center" }} title="Used in macros, UI, or scripts" />
                 <div style={{ flexShrink: 0, minWidth: 80, textAlign: "right" }}>Live Value</div>
                 <div style={{ width: 22, flexShrink: 0 }} />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {stateEntries.map((entry) => {
                   const meta = entry.meta;
                   const isSelected = selectedProp === entry.key;
@@ -236,22 +236,22 @@ export function DeviceStatesSubTab() {
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                            <code style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>
+                            <code style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)", fontWeight: 500, color: "var(--text-primary)" }}>
                               {entry.prop}
                             </code>
                             {meta?.type && <span style={typeBadgeStyle}>{meta.type}</span>}
                             {meta?.label && (
-                              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{meta.label}</span>
+                              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{meta.label}</span>
                             )}
                           </div>
-                          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                             {entry.key}
                           </div>
                         </div>
                         {/* Usage indicator */}
                         <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title={usageCount > 0 ? `Used in ${usageCount} place(s)` : "Not used yet"}>
                           {usageCount > 0 ? (
-                            <Zap size={12} style={{ color: "var(--color-warning)" }} />
+                            <Zap size={12} style={{ color: "#f59e0b" }} />
                           ) : (
                             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--border-color)" }} />
                           )}
@@ -272,7 +272,7 @@ export function DeviceStatesSubTab() {
                             </div>
                           )}
                           {meta?.values && (
-                            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
                               Possible values: {meta.values.join(", ")}
                             </div>
                           )}
@@ -290,7 +290,7 @@ export function DeviceStatesSubTab() {
                             />
                           </div>
 
-                          <h4 style={{ ...sectionTitle, fontSize: "var(--font-size-xs)", marginBottom: "var(--space-sm)" }}>
+                          <h4 style={{ ...sectionTitle, fontSize: 11, marginBottom: "var(--space-sm)" }}>
                             Where Used ({selectedPropUsages.length})
                           </h4>
                           {selectedPropUsages.length === 0 ? (
@@ -299,7 +299,7 @@ export function DeviceStatesSubTab() {
                               macro triggers, UI bindings, or scripts.
                             </div>
                           ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               {selectedPropUsages.map((u, i) => (
                                 <UsageRow key={i} usage={u} />
                               ))}
@@ -315,10 +315,10 @@ export function DeviceStatesSubTab() {
             )}
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center" }}>
             <Cpu size={32} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: "var(--font-size-base)" }}>Select a device</div>
-            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 360, lineHeight: "var(--line-base)" }}>
+            <div style={{ fontSize: "var(--font-size-md)" }}>Select a device</div>
+            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 360, lineHeight: 1.5 }}>
               Choose a device from the list to browse its live state properties.
               You can copy state keys for use in macros, UI bindings, and scripts.
             </div>

@@ -37,7 +37,7 @@ export function AutoPageEditor({
   };
 
   const reorderBtn: React.CSSProperties = {
-    padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-2xs)",
+    padding: "2px 5px", borderRadius: "var(--border-radius)", fontSize: 9,
     color: "var(--text-muted)", background: "transparent",
     border: "1px solid var(--border-color)", cursor: "pointer", lineHeight: 1,
   };
@@ -45,12 +45,12 @@ export function AutoPageEditor({
   return (
     <div style={{ maxWidth: 560 }}>
       {rules.length === 0 ? (
-        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
           No rules yet. Example: switch to an "Off Hours" page when the room
           powers down.
         </div>
       ) : (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
           Rules are checked in order; the first match wins.
         </div>
       )}
@@ -69,12 +69,12 @@ export function AutoPageEditor({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Switch to</span>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Switch to</span>
               <select
                 value={rule.page ?? 0}
                 onChange={(e) => updateRule(i, { page: Number(e.target.value) })}
                 style={{
-                  padding: "var(--space-xs) var(--space-sm)",
+                  padding: "4px 8px",
                   borderRadius: "var(--border-radius)",
                   border: "1px solid var(--border-color)",
                   background: "var(--bg-primary)",
@@ -86,7 +86,7 @@ export function AutoPageEditor({
                   <option key={p} value={p}>{pageNames[String(p)] || `Page ${p + 1}`}</option>
                 ))}
               </select>
-              <div style={{ marginLeft: "auto", display: "flex", gap: "var(--space-xs)", alignItems: "center" }}>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
                 {i > 0 && (
                   <button onClick={() => moveRule(i, -1)} title="Move up" style={reorderBtn}>&#9650;</button>
                 )}
@@ -97,7 +97,7 @@ export function AutoPageEditor({
                   onClick={() => removeRule(i)}
                   title="Remove rule"
                   style={{
-                    padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
+                    padding: "2px 6px", borderRadius: "var(--border-radius)", fontSize: 11,
                     color: "var(--color-error)", background: "transparent",
                     border: "1px solid var(--border-color)", cursor: "pointer",
                   }}
@@ -106,7 +106,7 @@ export function AutoPageEditor({
                 </button>
               </div>
             </div>
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>when</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>when</span>
             <ConditionGroupEditor
               value={rule.when}
               onChange={(when) => updateRule(i, { when })}
@@ -122,10 +122,10 @@ export function AutoPageEditor({
         onClick={() => setRules([...rules, { page: 0, when: { key: "", operator: "truthy" } }])}
         style={{
           marginTop: "var(--space-sm)",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-xs)",
-          padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          padding: "5px 10px", borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)", background: "transparent",
-          color: "var(--text-muted)", fontSize: "var(--font-size-sm)", cursor: "pointer",
+          color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
         }}
       >
         + Add paging rule

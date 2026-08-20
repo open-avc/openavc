@@ -68,7 +68,7 @@ export function IconTextLayout({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: isVertical ? "var(--space-xs)" : "var(--space-sm)",
+    gap: isVertical ? 4 : 6,
     flexDirection: isVertical ? "column" : "row",
     width: "100%",
     height: "100%",

@@ -29,7 +29,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: "11px",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
 };
@@ -182,7 +182,7 @@ export function ChildEntityTypesEditor({
               <span
                 style={{
                   color: "var(--text-muted)",
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "11px",
                 }}
               >
                 {t.label || "—"} · {varCount}{" "}
@@ -194,7 +194,7 @@ export function ChildEntityTypesEditor({
                   removeType(name);
                 }}
                 title="Remove this child type"
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -364,7 +364,7 @@ function IdFormatSection({
       <div
         style={{
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-semibold)",
+          fontWeight: 600,
           marginBottom: "var(--space-xs)",
         }}
       >
@@ -379,7 +379,7 @@ function IdFormatSection({
         }}
       >
         <div>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Type</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Type</span>
           <select
             value={idf.type ?? "integer"}
             onChange={(e) =>
@@ -397,7 +397,7 @@ function IdFormatSection({
           </select>
         </div>
         <div>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Min</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Min</span>
           <input
             type="number"
             value={idf.min ?? ""}
@@ -410,7 +410,7 @@ function IdFormatSection({
           />
         </div>
         <div>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Max</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Max</span>
           <input
             type="number"
             value={idf.max ?? ""}
@@ -423,7 +423,7 @@ function IdFormatSection({
           />
         </div>
         <div>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Pad width</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Pad width</span>
           <input
             type="number"
             value={idf.pad_width ?? ""}
@@ -436,7 +436,7 @@ function IdFormatSection({
           />
         </div>
         <div>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Max length</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Max length</span>
           <input
             type="number"
             min={1}
@@ -561,7 +561,7 @@ function InstancesSection({
       <div
         style={{
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-semibold)",
+          fontWeight: 600,
           marginBottom: "var(--space-xs)",
         }}
       >
@@ -579,7 +579,7 @@ function InstancesSection({
         }}
       >
         <div>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Create from</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Create from</span>
           <select
             data-testid={`child-instances-source-${name}`}
             value={source}
@@ -595,7 +595,7 @@ function InstancesSection({
         </div>
         {source === "count" && (
           <div>
-            <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Count</span>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>Count</span>
             <input
               data-testid={`child-instances-count-${name}`}
               type="number"
@@ -616,19 +616,19 @@ function InstancesSection({
         )}
         {source === "count_from" && (
           <div>
-            <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Config field</span>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>Config field</span>
             {fieldSelect("count_from", inst?.count_from ?? "")}
           </div>
         )}
         {source === "ids_from" && (
           <div>
-            <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Config field</span>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>Config field</span>
             {fieldSelect("ids_from", inst?.ids_from ?? "")}
           </div>
         )}
         {source === "ids" && (
           <div>
-            <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>IDs</span>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>IDs</span>
             {/* Commit on blur: a live-controlled comma list would swallow
                 the ", " the user just typed on every re-render join. */}
             <input
@@ -655,7 +655,7 @@ function InstancesSection({
             clearable rather than invisible. */}
         {(source === "count_from" || inst?.count_from_state) && (
           <div>
-            <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>
               Follow device state
             </span>
             <select
@@ -687,7 +687,7 @@ function InstancesSection({
         )}
         {source !== "none" && (
           <div>
-            <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>
               Label template
             </span>
             <input
@@ -815,7 +815,7 @@ function StateVarsSection({
       <div
         style={{
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-semibold)",
+          fontWeight: 600,
           marginBottom: "var(--space-xs)",
         }}
       >
@@ -847,11 +847,11 @@ function StateVarsSection({
             alignItems: "center",
           }}
         >
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Field ID</span>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Label</span>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Help</span>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }}>Type</span>
-          <span style={{ ...labelStyle, fontSize: "var(--font-size-xs)" }} title="Mark fields a control would bind to: value and command pickers list them first. Unmarked fields stay available.">Control</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Field ID</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Label</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Help</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }}>Type</span>
+          <span style={{ ...labelStyle, fontSize: "11px" }} title="Mark fields a control would bind to: value and command pickers list them first. Unmarked fields stay available.">Control</span>
           <span />
         </div>
       )}
@@ -919,7 +919,7 @@ function StateVarsSection({
               />
               <button
                 onClick={() => removeVar(name)}
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -1132,10 +1132,10 @@ function PresentationSection({
         {varNames.length === 0 ? (
           <div
             style={{
-              fontSize: "var(--font-size-xs)",
+              fontSize: "11px",
               color: "var(--text-muted)",
               fontStyle: "italic",
-              marginTop: "var(--space-xs)",
+              marginTop: 4,
             }}
           >
             Add state fields above first.
@@ -1146,7 +1146,7 @@ function PresentationSection({
               display: "flex",
               flexWrap: "wrap",
               gap: "var(--space-xs)",
-              marginTop: "var(--space-xs)",
+              marginTop: 4,
             }}
           >
             {varNames.map((n) => (
@@ -1155,9 +1155,9 @@ function PresentationSection({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "var(--space-xs)",
+                  gap: 4,
                   fontSize: "var(--font-size-sm)",
-                  padding: "var(--space-2xs) var(--space-xs)",
+                  padding: "2px var(--space-xs)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                 }}

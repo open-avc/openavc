@@ -42,7 +42,7 @@ export function OscArgsEditor({
       {args.length === 0 && (
         <div
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: "11px",
             color: "var(--text-muted)",
             marginBottom: "var(--space-xs)",
           }}
@@ -92,7 +92,7 @@ export function OscArgsEditor({
               )}
               <button
                 onClick={() => removeArg(i)}
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -100,9 +100,9 @@ export function OscArgsEditor({
             {problem && (
               <div
                 style={{
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "11px",
                   color: "var(--color-error)",
-                  marginTop: "var(--space-2xs)",
+                  marginTop: 2,
                 }}
               >
                 Argument {i + 1} {problem}. The command fails to send until
@@ -124,7 +124,7 @@ export function OscArgsEditor({
       </button>
       <div
         style={{
-          fontSize: "var(--font-size-xs)",
+          fontSize: "11px",
           color: "var(--text-muted)",
           marginTop: "var(--space-xs)",
         }}

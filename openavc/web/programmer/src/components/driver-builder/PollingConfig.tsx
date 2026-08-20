@@ -88,7 +88,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
         />
         <div
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: "11px",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
@@ -103,7 +103,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
         <label style={labelStyle}>Poll Queries</label>
         <div
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: "11px",
             color: "var(--text-muted)",
             marginBottom: "var(--space-sm)",
           }}
@@ -255,7 +255,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
               })()}
               <button
                 onClick={() => removeQuery(i)}
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>

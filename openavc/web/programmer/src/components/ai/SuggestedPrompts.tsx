@@ -60,7 +60,7 @@ export function PromptCards({ onSelect }: { onSelect: (prompt: string) => void }
         gap: "var(--space-lg)",
       }}
     >
-      <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", lineHeight: "var(--line-relaxed)", maxWidth: 400 }}>
+      <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center", maxWidth: 400 }}>
         Describe what you want to build or what's not working.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", justifyContent: "center", maxWidth: 500 }}>
@@ -75,14 +75,14 @@ export function PromptCards({ onSelect }: { onSelect: (prompt: string) => void }
               padding: "var(--space-sm) var(--space-md)",
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
-              background: "var(--bg-surface)",
+              background: "var(--bg-secondary)",
               color: "var(--text-primary)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
               transition: "background 0.15s",
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-secondary)")}
           >
             <span style={{ color: "var(--accent)", flexShrink: 0 }}>{card.icon}</span>
             {card.title}
@@ -117,10 +117,10 @@ export function SuggestionChips({
           key={i}
           onClick={() => onSelect(s)}
           style={{
-            padding: "var(--space-2xs) var(--space-sm)",
-            borderRadius: "var(--radius-lg)",
+            padding: "2px var(--space-sm)",
+            borderRadius: 12,
             border: "1px solid var(--border-color)",
-            background: "var(--bg-surface)",
+            background: "var(--bg-secondary)",
             color: "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
             cursor: "pointer",
@@ -128,7 +128,7 @@ export function SuggestionChips({
             flexShrink: 0,
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-secondary)")}
         >
           {s}
         </button>

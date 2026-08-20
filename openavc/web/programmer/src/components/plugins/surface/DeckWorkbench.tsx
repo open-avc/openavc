@@ -956,7 +956,7 @@ export function DeckWorkbench({
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "flex-start",
-                  gap: "var(--space-2xs)",
+                  gap: 2,
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-surface)",
@@ -966,7 +966,7 @@ export function DeckWorkbench({
                   textAlign: "left",
                 }}
               >
-                <span style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-sm)" }}>
                   <span
                     style={{
                       width: 7,
@@ -975,16 +975,16 @@ export function DeckWorkbench({
                       flexShrink: 0,
                       background:
                         status === "connecting"
-                          ? "var(--color-warning)"
-                          : "var(--color-error)",
+                          ? "var(--color-warning, #f59e0b)"
+                          : "var(--color-error, #ef4444)",
                     }}
                   />
                   {key}
-                  <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", padding: "0 var(--space-xs)" }}>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)", border: "1px solid var(--border-color)", borderRadius: 3, padding: "0 4px" }}>
                     network
                   </span>
                 </span>
-                <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>{status}</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{status}</span>
               </button>
             );
           })}
@@ -1027,7 +1027,7 @@ export function DeckWorkbench({
               hasContent={buttons.some((b) => (b.page ?? 0) === editorPage)}
             />
             {knownSerials.length > 1 && (
-              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {isOwn ? (
                   <>
                     Editing <strong style={{ color: "var(--text-secondary)" }}>{ownerName}'s own layout</strong>. Other decks aren't affected.
@@ -1042,7 +1042,7 @@ export function DeckWorkbench({
           </div>
 
           {draftPage && editorPage >= pageCount && (
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
               New page. It's created (and reachable from the deck) as soon as
               you put something on it.
             </div>
@@ -1086,7 +1086,7 @@ export function DeckWorkbench({
                 color: "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
                 textAlign: "center",
-                lineHeight: "var(--line-relaxed)",
+                lineHeight: 1.6,
               }}
             >
               {deckDisplayName} is not connected.
@@ -1169,7 +1169,7 @@ function RailPanel({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>{title}</h4>
+        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>{title}</h4>
         <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
           <X size={14} />
         </button>
@@ -1226,7 +1226,7 @@ function DeckCards({
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-start",
-              gap: "var(--space-2xs)",
+              gap: 2,
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: isActive ? "var(--accent-dim)" : "var(--bg-surface)",
@@ -1236,7 +1236,7 @@ function DeckCards({
               textAlign: "left",
             }}
           >
-            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", fontWeight: isActive ? "var(--font-weight-semibold)" : "var(--font-weight-normal)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--font-size-sm)", fontWeight: isActive ? 600 : 400 }}>
               <span
                 style={{
                   width: 7,
@@ -1248,12 +1248,12 @@ function DeckCards({
               />
               {deckNames[serial] || model || serial}
               {virtual && (
-                <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", padding: "0 var(--space-xs)" }}>
+                <span style={{ fontSize: 9, color: "var(--text-muted)", border: "1px solid var(--border-color)", borderRadius: 3, padding: "0 4px" }}>
                   virtual
                 </span>
               )}
             </span>
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
               {(deckNames[serial] && model ? `${model} · ` : "")}{status.join(" · ")}
             </span>
           </button>

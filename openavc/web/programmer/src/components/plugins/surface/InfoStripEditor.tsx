@@ -198,7 +198,7 @@ export function InfoStripEditor({
                 padding: "var(--space-sm)",
               }}
             >
-              <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
                 {i === 0 ? "Left item" : "Right item"}
               </div>
               <InfoItemFields

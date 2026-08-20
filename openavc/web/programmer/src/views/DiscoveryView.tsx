@@ -545,7 +545,7 @@ export function DiscoveryPanel() {
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border-color)",
-            borderRadius: "var(--border-radius)",
+            borderRadius: "var(--radius)",
             padding: "var(--space-md)",
             marginBottom: "var(--space-md)",
           }}
@@ -683,7 +683,7 @@ export function DiscoveryPanel() {
             alignItems: "center",
             gap: "var(--space-sm)",
             fontSize: "var(--font-size-xs)",
-            color: "var(--color-warning)",
+            color: "var(--warning, #d9a648)",
             marginTop: "var(--space-xs)",
           }}
         >
@@ -704,8 +704,8 @@ export function DiscoveryPanel() {
       {/* Scan progress */}
       {isRunning && (
         <div style={{ marginBottom: "var(--space-md)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-sm)", marginBottom: "var(--space-xs)" }}>
-            <span style={{ fontWeight: "var(--font-weight-medium)" }}>{phaseLabel}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-sm)", marginBottom: 4 }}>
+            <span style={{ fontWeight: 500 }}>{phaseLabel}</span>
             <span>
               {Object.keys(devices).length} found &middot; {Math.round(displayProgress * 100)}%
               {budgetLabel(scanBudget) && (
@@ -718,8 +718,8 @@ export function DiscoveryPanel() {
           <div
             style={{
               height: 6,
-              background: "var(--bg-base)",
-              borderRadius: "var(--border-radius)",
+              background: "var(--bg-input)",
+              borderRadius: 3,
               overflow: "hidden",
             }}
           >
@@ -744,21 +744,21 @@ export function DiscoveryPanel() {
             alignItems: "flex-start",
             background: "var(--color-warning-bg)",
             border: "1px solid var(--color-warning)",
-            borderRadius: "var(--border-radius)",
+            borderRadius: "var(--radius-md, 6px)",
             padding: "var(--space-sm) var(--space-md)",
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
           }}
         >
-          <AlertTriangle size={16} style={{ flexShrink: 0, color: "var(--color-warning)", marginTop: "var(--space-2xs)" }} />
+          <AlertTriangle size={16} style={{ flexShrink: 0, color: "var(--color-warning)", marginTop: 2 }} />
           <div>
-            <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-2xs)" }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>
               {status === "partial"
                 ? "Scan did not cover everything, so results are incomplete"
                 : "Scan ran with problems on this system"}
             </div>
             {warnings.map((w, i) => (
-              <div key={i} style={{ marginBottom: i < warnings.length - 1 ? "var(--space-2xs)" : 0 }}>
+              <div key={i} style={{ marginBottom: i < warnings.length - 1 ? 2 : 0 }}>
                 {w}
               </div>
             ))}
@@ -829,7 +829,7 @@ export function DiscoveryPanel() {
 
       {/* Results timestamp */}
       {!isRunning && scanCompletedAt && Object.keys(devices).length > 0 && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
           Results from {scanCompletedAt.toLocaleTimeString()} ({Object.keys(devices).length} device{Object.keys(devices).length !== 1 ? "s" : ""})
           {status === "partial" && (
             <span style={{ color: "var(--color-warning)" }}>
@@ -844,8 +844,6 @@ export function DiscoveryPanel() {
         <div
           style={{
             textAlign: "center",
-            fontSize: "var(--font-size-sm)",
-            lineHeight: "var(--line-relaxed)",
             padding: "var(--space-xl)",
             color: "var(--text-muted)",
           }}
@@ -874,7 +872,7 @@ export function DiscoveryPanel() {
             />
           ))}
           {deviceList.length === 0 && status !== "running" && (
-            <div style={{ textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", padding: "var(--space-lg)", color: "var(--text-muted)" }}>
+            <div style={{ textAlign: "center", padding: "var(--space-lg)", color: "var(--text-muted)" }}>
               No devices match the current filters.
             </div>
           )}
@@ -948,7 +946,7 @@ function DeviceCard({
       style={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border-color)",
-        borderRadius: "var(--border-radius)",
+        borderRadius: "var(--radius)",
         overflow: "hidden",
         opacity: hidden ? 0.5 : 1,
       }}
@@ -967,9 +965,9 @@ function DeviceCard({
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 
         <span style={{
-          fontSize: "var(--font-size-2xs)", fontWeight: "var(--font-weight-semibold)", padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
+          fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 3,
           background: tone.bg, color: tone.fg, minWidth: 76, textAlign: "center",
-          letterSpacing: "var(--tracking-wide)",
+          letterSpacing: 0.3,
         }}>
           {tone.label.toUpperCase()}
         </span>
@@ -978,7 +976,7 @@ function DeviceCard({
           {device.ip}
         </span>
 
-        <span style={{ flex: 1, fontWeight: "var(--font-weight-medium)" }}>
+        <span style={{ flex: 1, fontWeight: 500 }}>
           {displayName}
         </span>
 
@@ -986,9 +984,9 @@ function DeviceCard({
           <span
             style={{
               fontSize: "var(--font-size-xs)",
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-base)",
+              padding: "2px 6px",
+              borderRadius: "var(--radius)",
+              background: "var(--bg-input)",
             }}
           >
             {device.manufacturer}
@@ -999,9 +997,9 @@ function DeviceCard({
           <span
             style={{
               fontSize: "var(--font-size-xs)",
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-base)",
+              padding: "2px 6px",
+              borderRadius: "var(--radius)",
+              background: "var(--bg-input)",
             }}
           >
             {categoryLabel(device.category)}
@@ -1012,10 +1010,10 @@ function DeviceCard({
           <span
             style={{
               fontSize: "var(--font-size-xs)",
-              padding: "var(--space-2xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
+              padding: "2px 6px",
+              borderRadius: "var(--radius)",
               background: "var(--accent-bg)",
-              color: "var(--bg-base)",
+              color: "var(--bg-main)",
             }}
           >
             {protocolTag}
@@ -1029,14 +1027,14 @@ function DeviceCard({
           aria-label={hidden ? "Unhide device" : "Hide device"}
           style={{
             background: "none", border: "none", cursor: "pointer",
-            color: "var(--text-muted)", padding: "var(--space-xs)", display: "inline-flex",
+            color: "var(--text-muted)", padding: 4, display: "inline-flex",
           }}
         >
           {hidden ? <Eye size={14} /> : <EyeOff size={14} />}
         </button>
 
         {device.alive ? (
-          <Wifi size={14} style={{ color: "var(--color-success)" }} />
+          <Wifi size={14} style={{ color: "var(--success)" }} />
         ) : (
           <WifiOff size={14} style={{ color: "var(--text-muted)" }} />
         )}
@@ -1056,7 +1054,7 @@ function DeviceCard({
         >
           {/* Identification block (state-specific) */}
           {addedDevice ? (
-            <div style={{ color: "var(--color-success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+            <div style={{ color: "var(--success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
               <span>Added "{addedDevice.name}" to project.</span>
               {addedDevice.deviceId && (
                 <button className="btn btn-sm btn-primary" onClick={() => {
@@ -1085,7 +1083,7 @@ function DeviceCard({
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 color: "var(--text-muted)", padding: 0, display: "inline-flex",
-                alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-xs)",
+                alignItems: "center", gap: 4, fontSize: "var(--font-size-xs)",
               }}
             >
               <HelpCircle size={12} /> {showWhy ? "Hide evidence" : "Why this match?"}
@@ -1123,7 +1121,7 @@ function DeviceCard({
             <div>
               <strong>Banners:</strong>
               {readableBanners.map(({ port, raw, text }) => (
-                <div key={port} title={raw} style={{ fontFamily: "monospace", marginTop: "var(--space-2xs)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                <div key={port} title={raw} style={{ fontFamily: "monospace", marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   Port {port}: {text}
                 </div>
               ))}
@@ -1134,7 +1132,7 @@ function DeviceCard({
             <div>
               <strong>SNMP Info:</strong>
               {Object.entries(device.snmp_info as Record<string, unknown>).map(([key, val]) => (
-                <div key={key} style={{ marginTop: "var(--space-2xs)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                <div key={key} style={{ marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   {key}: {String(val).substring(0, 200)}
                 </div>
               ))}
@@ -1338,16 +1336,16 @@ function DriverAddRow({
     <div
       style={{
         padding: "var(--space-sm)",
-        background: "var(--bg-base)",
-        borderRadius: "var(--border-radius)",
+        background: "var(--bg-input)",
+        borderRadius: "var(--radius)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-        {selectorNode ?? <span style={{ fontWeight: "var(--font-weight-medium)" }}>{driverName}</span>}
+        {selectorNode ?? <span style={{ fontWeight: 500 }}>{driverName}</span>}
         {isCommunity && (
           <span style={{
-            fontSize: "var(--font-size-xs)", padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
-            background: "var(--color-info-bg)", color: "var(--color-info)",
+            fontSize: "var(--font-size-xs)", padding: "1px 6px", borderRadius: 3,
+            background: "rgba(59,130,246,0.15)", color: "#3b82f6",
           }}>
             Community
           </span>
@@ -1378,18 +1376,18 @@ function DriverAddRow({
             marginTop: "var(--space-sm)",
             padding: "var(--space-sm)",
             background: "var(--bg-surface)",
-            borderRadius: "var(--border-radius)",
+            borderRadius: "var(--radius)",
             fontSize: "var(--font-size-xs)",
             whiteSpace: "pre-line",
           }}
         >
           <strong>Setup Instructions:</strong>
-          <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)" }}>{setupText}</div>
+          <div style={{ marginTop: 4, color: "var(--text-muted)" }}>{setupText}</div>
         </div>
       )}
 
       {error && (
-        <div style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)", marginTop: "var(--space-xs)" }}>
+        <div style={{ color: "var(--danger)", fontSize: "var(--font-size-xs)", marginTop: 4 }}>
           {error}
         </div>
       )}
@@ -1481,8 +1479,8 @@ function DriverChoiceCard({
   if (overrideOpen) {
     return (
       <div style={{
-        padding: "var(--space-sm)", background: "var(--bg-base)",
-        borderRadius: "var(--border-radius)", display: "flex", flexDirection: "column",
+        padding: "var(--space-sm)", background: "var(--bg-input)",
+        borderRadius: "var(--radius)", display: "flex", flexDirection: "column",
         gap: "var(--space-sm)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
@@ -1529,7 +1527,7 @@ function DriverChoiceCard({
       value={selected}
       onChange={(e) => setSelected(e.target.value)}
       onClick={(e) => e.stopPropagation()}
-      style={{ minWidth: 220, fontWeight: "var(--font-weight-medium)" }}
+      style={{ minWidth: 220, fontWeight: 500 }}
     >
       {candidates.map((id) => {
         const entry = driverNameLookup.get(id);
@@ -1543,10 +1541,10 @@ function DriverChoiceCard({
   ) : undefined;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {likelyVendor && (
         <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-          Likely <strong style={{ color: "var(--text-primary)" }}>{likelyVendor}</strong> &mdash; {sourceLabel}
+          Likely <strong style={{ color: "var(--text)" }}>{likelyVendor}</strong> &mdash; {sourceLabel}
           {extraNote ? ` (probe also matches ${extraNote})` : ""}
         </div>
       )}
@@ -1617,8 +1615,8 @@ function ManualDriverPicker({
   if (!picking) {
     return (
       <div style={{
-        padding: "var(--space-sm)", background: "var(--bg-base)",
-        borderRadius: "var(--border-radius)", display: "flex", alignItems: "center",
+        padding: "var(--space-sm)", background: "var(--bg-input)",
+        borderRadius: "var(--radius)", display: "flex", alignItems: "center",
         gap: "var(--space-sm)", flexWrap: "wrap",
       }}>
         <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
@@ -1637,8 +1635,8 @@ function ManualDriverPicker({
 
   return (
     <div style={{
-      padding: "var(--space-sm)", background: "var(--bg-base)",
-      borderRadius: "var(--border-radius)", display: "flex", flexDirection: "column",
+      padding: "var(--space-sm)", background: "var(--bg-input)",
+      borderRadius: "var(--radius)", display: "flex", flexDirection: "column",
       gap: "var(--space-sm)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
@@ -1828,24 +1826,24 @@ function describeEvidence(ev: DiscoveryEvidence): { headline: string; detail: st
 function EvidenceList({ evidence }: { evidence: DiscoveryEvidence[] }) {
   if (evidence.length === 0) {
     return (
-      <div style={{ marginTop: "var(--space-xs)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+      <div style={{ marginTop: 4, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
         No evidence collected.
       </div>
     );
   }
   return (
     <div style={{
-      marginTop: "var(--space-xs)", padding: "var(--space-sm)",
-      background: "var(--bg-base)", borderRadius: "var(--border-radius)",
+      marginTop: 4, padding: "var(--space-sm)",
+      background: "var(--bg-input)", borderRadius: "var(--radius)",
       fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
     }}>
       {evidence.map((e, i) => {
         const { headline, detail } = describeEvidence(e);
         return (
-          <div key={i} style={{ marginBottom: "var(--space-xs)" }}>
-            <span style={{ color: "var(--text-primary)" }}>{headline}</span>
+          <div key={i} style={{ marginBottom: 4 }}>
+            <span style={{ color: "var(--text)" }}>{headline}</span>
             {detail && (
-              <span style={{ marginLeft: "var(--space-sm)", fontStyle: "italic" }}>{detail}</span>
+              <span style={{ marginLeft: 8, fontStyle: "italic" }}>{detail}</span>
             )}
           </div>
         );
@@ -1857,7 +1855,7 @@ function EvidenceList({ evidence }: { evidence: DiscoveryEvidence[] }) {
 
 function DetailRow({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
       <span style={{ color: "var(--text-muted)" }}>{label}:</span>
       <span style={{ fontFamily: copyable ? "monospace" : "inherit" }}>{value}</span>
       {copyable && value && value !== "Unknown" && <CopyButton value={value} />}

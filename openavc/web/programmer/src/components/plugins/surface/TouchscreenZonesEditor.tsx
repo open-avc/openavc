@@ -73,7 +73,7 @@ export function TouchscreenZonesEditor({
     );
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {anyDialConfigured
             ? "The strip is showing one readout per dial (label, icon, live value, meter). Each readout is edited on its dial, so click a knob in the picture to change one. Take over the strip with custom zones when you want your own layout: meters, status panels, wider faders."
             : dialCount > 0
@@ -88,9 +88,9 @@ export function TouchscreenZonesEditor({
                 setExpandedZone(0);
               }}
               style={{
-                padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+                padding: "5px 10px", borderRadius: "var(--border-radius)",
                 background: "var(--accent-bg)", color: "white",
-                fontSize: "var(--font-size-sm)", cursor: "pointer",
+                fontSize: 12, cursor: "pointer",
               }}
               title="Copy the current per-dial readouts into editable zones"
             >
@@ -103,9 +103,9 @@ export function TouchscreenZonesEditor({
               setExpandedZone(0);
             }}
             style={{
-              padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+              padding: "5px 10px", borderRadius: "var(--border-radius)",
               border: "1px dashed var(--border-color)", background: "transparent",
-              color: "var(--text-muted)", fontSize: "var(--font-size-sm)", cursor: "pointer",
+              color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
             }}
           >
             Start empty
@@ -136,7 +136,7 @@ export function TouchscreenZonesEditor({
 
   return (
     <div style={{ maxWidth: 560 }}>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         Custom zones own the whole strip (the per-dial readouts are replaced).
         Zones split it evenly unless given pixel bounds; tapping a zone runs
         its actions.
@@ -158,14 +158,14 @@ export function TouchscreenZonesEditor({
                 onClick={() => setExpandedZone(isExpanded ? null : i)}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
-                  width: "100%", padding: "var(--space-sm) var(--space-md)", fontSize: "var(--font-size-sm)",
+                  width: "100%", padding: "6px 10px", fontSize: "var(--font-size-sm)",
                   background: "var(--bg-surface)", textAlign: "left", cursor: "pointer",
                 }}
               >
-                <span style={{ fontWeight: "var(--font-weight-medium)" }}>
+                <span style={{ fontWeight: 500 }}>
                   Zone {i + 1}{zone.label ? `: ${zone.label}` : ""}
                 </span>
-                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   {zone.value_source || "no value"}
                 </span>
               </button>
@@ -177,7 +177,7 @@ export function TouchscreenZonesEditor({
                 }}>
                   {onSimulate && (
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                      <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", flex: 1 }}>Try it</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1 }}>Try it</span>
                       <button
                         onClick={() => onSimulate({ type: "touch", x: zoneCenter(i) })}
                         title="Tap this zone for real"
@@ -228,7 +228,7 @@ export function TouchscreenZonesEditor({
                       onChange={(e) => updateZone(i, { label: e.target.value || undefined })}
                       placeholder="Text shown in the zone"
                       style={{
-                        width: "100%", padding: "var(--space-xs) var(--space-sm)",
+                        width: "100%", padding: "4px 6px",
                         borderRadius: "var(--border-radius)",
                         border: "1px solid var(--border-color)",
                         background: "var(--bg-surface)", color: "var(--text-primary)",
@@ -312,7 +312,7 @@ export function TouchscreenZonesEditor({
                               })
                             }
                             style={{
-                              width: "100%", padding: "var(--space-xs) var(--space-sm)",
+                              width: "100%", padding: "4px 6px",
                               borderRadius: "var(--border-radius)",
                               border: "1px solid var(--border-color)",
                               background: "var(--bg-surface)", color: "var(--text-primary)",
@@ -378,7 +378,7 @@ export function TouchscreenZonesEditor({
                                 })
                               }
                               style={{
-                                width: "100%", padding: "var(--space-xs) var(--space-sm)",
+                                width: "100%", padding: "4px 6px",
                                 borderRadius: "var(--border-radius)",
                                 border: "1px solid var(--border-color)",
                                 background: "var(--bg-surface)", color: "var(--text-primary)",
@@ -417,7 +417,7 @@ export function TouchscreenZonesEditor({
                           />
                           Touch fader
                         </label>
-                        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
                           {zone.drag_adjust?.min === undefined || zone.drag_adjust?.max === undefined
                             ? "Set Min and Max to enable: taps and swipes will jump straight to the touched position."
                             : "Taps and swipes set the value to the touched position (replaces the tap actions for this zone)."}
@@ -452,10 +452,10 @@ export function TouchscreenZonesEditor({
         }}
         style={{
           marginTop: "var(--space-sm)",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-xs)",
-          padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          padding: "5px 10px", borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)", background: "transparent",
-          color: "var(--text-muted)", fontSize: "var(--font-size-sm)", cursor: "pointer",
+          color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
         }}
       >
         + Add custom zone

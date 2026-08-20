@@ -40,7 +40,7 @@ const valueStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-md)",
+  padding: "6px 10px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -51,20 +51,20 @@ const inputStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   cursor: "pointer",
-  fontWeight: "var(--font-weight-medium)",
+  fontWeight: 500,
 };
 
 const btnDangerStyle: React.CSSProperties = {
   ...btnStyle,
-  background: "var(--color-error)",
-  borderColor: "var(--color-error)",
+  background: "#c0392b",
+  borderColor: "#c0392b",
 };
 
 const statusDotStyle = (connected: boolean): React.CSSProperties => ({
@@ -80,7 +80,7 @@ const helpTextStyle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
-  lineHeight: "var(--line-base)",
+  lineHeight: 1.5,
 };
 
 export function CloudSettingsView() {
@@ -254,7 +254,7 @@ export function CloudSettingsView() {
           <div
             style={{
               ...cardStyle,
-              borderColor: "var(--color-error)",
+              borderColor: "#c0392b",
               color: "#e74c3c",
               background: "rgba(192, 57, 43, 0.1)",
             }}
@@ -281,11 +281,11 @@ export function CloudSettingsView() {
             style={{
               ...cardStyle,
               borderColor: "rgba(76, 175, 80, 0.45)",
-              background: "var(--color-success-bg)",
+              background: "rgba(76, 175, 80, 0.06)",
             }}
           >
-            <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <ShieldCheck size={16} style={{ color: "var(--color-success)" }} />
+            <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", display: "flex", alignItems: "center", gap: 6 }}>
+              <ShieldCheck size={16} style={{ color: "rgb(76, 175, 80)" }} />
               Next step: get a trusted certificate
             </div>
             <p style={{ ...helpTextStyle, marginTop: 0 }}>
@@ -308,7 +308,7 @@ export function CloudSettingsView() {
             <h3
               style={{
                 fontSize: "var(--font-size-base)",
-                fontWeight: "var(--font-weight-semibold)",
+                fontWeight: 600,
                 marginBottom: "var(--space-md)",
               }}
             >
@@ -381,7 +381,7 @@ export function CloudSettingsView() {
             <h3
               style={{
                 fontSize: "var(--font-size-base)",
-                fontWeight: "var(--font-weight-semibold)",
+                fontWeight: 600,
                 marginBottom: "var(--space-md)",
               }}
             >

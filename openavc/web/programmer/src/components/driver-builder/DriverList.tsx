@@ -59,7 +59,7 @@ export function DriverList({
             padding: "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
-            color: "var(--text-on-accent-bg)",
+            color: "var(--text-on-accent)",
             fontSize: "var(--font-size-sm)",
             justifyContent: "center",
           }}
@@ -113,7 +113,7 @@ export function DriverList({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
-                  fontWeight: "var(--font-weight-medium)",
+                  fontWeight: 500,
                   fontSize: "var(--font-size-sm)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -124,7 +124,7 @@ export function DriverList({
               >
                 {unsavedDraftName}
               </div>
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
                 unsaved draft
               </div>
             </div>
@@ -137,7 +137,6 @@ export function DriverList({
               fontSize: "var(--font-size-sm)",
               padding: "var(--space-md)",
               textAlign: "center",
-              lineHeight: "var(--line-relaxed)",
             }}
           >
             No custom drivers yet.
@@ -183,7 +182,7 @@ export function DriverList({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "var(--space-sm)",
+                      gap: 6,
                     }}
                   >
                     {isBuiltin && (
@@ -197,7 +196,7 @@ export function DriverList({
                     )}
                     <span
                       style={{
-                        fontWeight: "var(--font-weight-medium)",
+                        fontWeight: 500,
                         fontSize: "var(--font-size-sm)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -211,7 +210,7 @@ export function DriverList({
                   </div>
                   <div
                     style={{
-                      fontSize: "var(--font-size-xs)",
+                      fontSize: "11px",
                       color: "var(--text-muted)",
                     }}
                   >
@@ -230,7 +229,7 @@ export function DriverList({
                       : "Duplicate driver: create an editable copy"
                   }
                   style={{
-                    padding: "var(--space-2xs)",
+                    padding: "2px",
                     borderRadius: "var(--border-radius)",
                     color: "var(--text-muted)",
                     flexShrink: 0,
@@ -245,7 +244,7 @@ export function DriverList({
                   }}
                   title="Export driver as .avcdriver file"
                   style={{
-                    padding: "var(--space-2xs)",
+                    padding: "2px",
                     borderRadius: "var(--border-radius)",
                     color: "var(--text-muted)",
                     flexShrink: 0,
@@ -261,7 +260,7 @@ export function DriverList({
                     }}
                     title="View this driver in the Installed catalog"
                     style={{
-                      padding: "var(--space-2xs)",
+                      padding: "2px",
                       borderRadius: "var(--border-radius)",
                       color: "var(--text-muted)",
                       flexShrink: 0,
@@ -278,7 +277,7 @@ export function DriverList({
                     }}
                     title="Delete driver"
                     style={{
-                      padding: "var(--space-2xs)",
+                      padding: "2px",
                       borderRadius: "var(--border-radius)",
                       color: "var(--text-muted)",
                       flexShrink: 0,

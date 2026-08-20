@@ -196,7 +196,7 @@ export function AssetBrowser({
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {/* Filter chips */}
       {showFilterChips && (
-        <div style={{ padding: "0 var(--space-lg) var(--space-sm)", display: "flex", gap: "var(--space-sm)" }}>
+        <div style={{ padding: "0 16px 8px", display: "flex", gap: 6 }}>
           {(["all", "image", "audio"] as AssetFilter[]).map((f) => {
             const active = filter === f;
             return (
@@ -204,11 +204,11 @@ export function AssetBrowser({
                 key={f}
                 onClick={() => onFilterChange?.(f)}
                 style={{
-                  padding: "var(--space-xs) var(--space-md)",
+                  padding: "4px 10px",
                   borderRadius: 999,
-                  fontSize: "var(--font-size-sm)",
-                  background: active ? "var(--accent-bg)" : "var(--bg-base)",
-                  color: active ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
+                  fontSize: 12,
+                  background: active ? "var(--accent-bg, var(--accent))" : "var(--bg-base)",
+                  color: active ? "#fff" : "var(--text-secondary)",
                   border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
                   cursor: "pointer",
                   textTransform: "capitalize",
@@ -227,13 +227,13 @@ export function AssetBrowser({
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
         style={{
-          margin: "0 var(--space-lg) var(--space-md)",
-          padding: "var(--space-lg)",
+          margin: "0 16px 12px",
+          padding: "16px",
           border: "2px dashed var(--border-color)",
-          borderRadius: "var(--radius-lg)",
+          borderRadius: 8,
           textAlign: "center",
           color: "var(--text-muted)",
-          fontSize: "var(--font-size-base)",
+          fontSize: 13,
         }}
       >
         {uploading ? (
@@ -249,7 +249,7 @@ export function AssetBrowser({
                 border: "none",
                 cursor: "pointer",
                 textDecoration: "underline",
-                fontSize: "var(--font-size-base)",
+                fontSize: 13,
               }}
             >
               browse
@@ -269,12 +269,12 @@ export function AssetBrowser({
       {error && (
         <div
           style={{
-            margin: "0 var(--space-lg) var(--space-sm)",
-            padding: "var(--space-sm) var(--space-md)",
-            background: "var(--color-error-bg)",
-            color: "var(--color-error)",
-            borderRadius: "var(--border-radius)",
-            fontSize: "var(--font-size-sm)",
+            margin: "0 16px 8px",
+            padding: "6px 10px",
+            background: "rgba(244,67,54,0.1)",
+            color: "#ef5350",
+            borderRadius: 4,
+            fontSize: 12,
           }}
         >
           {error}
@@ -282,14 +282,14 @@ export function AssetBrowser({
       )}
 
       {/* Search */}
-      <div style={{ padding: "0 var(--space-lg) var(--space-sm)" }}>
+      <div style={{ padding: "0 16px 8px" }}>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search assets..."
           style={{
-            width: "100%", padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)",
-            borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)",
+            width: "100%", padding: "4px 8px", fontSize: 12,
+            borderRadius: 4, border: "1px solid var(--border-color)",
             background: "var(--bg-primary)", color: "var(--text-primary)",
           }}
         />
@@ -300,12 +300,12 @@ export function AssetBrowser({
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "0 var(--space-lg) var(--space-lg)",
+          padding: "0 16px 16px",
           minHeight: 0,
         }}
       >
         {loading ? (
-          <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", padding: "var(--space-lg)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 13, padding: 16, textAlign: "center" }}>
             Loading...
           </div>
         ) : visibleAssets.length === 0 ? (
@@ -315,7 +315,7 @@ export function AssetBrowser({
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-              gap: "var(--space-sm)",
+              gap: 8,
             }}
           >
             {visibleAssets.map((asset) => {
@@ -327,13 +327,13 @@ export function AssetBrowser({
                   onClick={cardClickable ? () => onSelect?.(`assets://${asset.name}`) : undefined}
                   style={{
                     border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
-                    borderRadius: "var(--radius-lg)",
-                    padding: "var(--space-sm)",
+                    borderRadius: 6,
+                    padding: 6,
                     cursor: cardClickable ? "pointer" : "default",
                     background: isSelected ? "var(--accent-dim)" : "var(--bg-base)",
                     display: "flex",
                     flexDirection: "column",
-                    gap: "var(--space-xs)",
+                    gap: 4,
                     gridColumn: asset.type === "audio" ? "span 2" : undefined,
                     minWidth: 0,
                   }}
@@ -346,7 +346,7 @@ export function AssetBrowser({
                         width: "100%",
                         height: 64,
                         objectFit: "contain",
-                        borderRadius: "var(--border-radius)",
+                        borderRadius: 4,
                       }}
                     />
                   ) : (
@@ -354,7 +354,7 @@ export function AssetBrowser({
                   )}
                   <div
                     style={{
-                      fontSize: "var(--font-size-xs)",
+                      fontSize: 11,
                       color: "var(--text-secondary)",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -369,14 +369,14 @@ export function AssetBrowser({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      fontSize: "var(--font-size-2xs)",
+                      fontSize: 10,
                       color: "var(--text-muted)",
                     }}
                   >
                     <span>
                       {fmtSize(asset.size)}
                       {asset.type === "image" && !usedImageAssets.has(asset.name) && (
-                        <span style={{ marginLeft: "var(--space-xs)", color: "var(--color-warning)", fontWeight: "var(--font-weight-medium)" }} title="Not referenced by any element">
+                        <span style={{ marginLeft: 4, color: "#f59e0b", fontWeight: 500 }} title="Not referenced by any element">
                           unused
                         </span>
                       )}
@@ -387,9 +387,9 @@ export function AssetBrowser({
                         handleDelete(asset.name);
                       }}
                       style={{
-                        padding: "var(--space-2xs) var(--space-xs)",
+                        padding: "2px 4px",
                         color: "var(--text-muted)",
-                        borderRadius: "var(--border-radius)",
+                        borderRadius: 3,
                         background: "none",
                         border: "none",
                         cursor: "pointer",
@@ -412,7 +412,7 @@ export function AssetBrowser({
           message={
             <>
               <div>The following files are large:</div>
-              <div style={{ margin: "var(--space-sm) 0", fontFamily: "monospace", fontSize: "var(--font-size-sm)" }}>
+              <div style={{ margin: "8px 0", fontFamily: "monospace", fontSize: "var(--font-size-sm)" }}>
                 {pendingLargeUpload.largeNames}
               </div>
               <div>Large assets slow down panel loading. Consider compressing them before uploading.</div>
@@ -447,13 +447,13 @@ function AudioPreview({ name }: { name: string }) {
     <div
       style={{
         height: 64,
-        borderRadius: "var(--border-radius)",
+        borderRadius: 4,
         background: "var(--bg-primary)",
         border: "1px solid var(--border-color)",
         display: "flex",
         alignItems: "center",
-        gap: "var(--space-sm)",
-        padding: "0 var(--space-sm)",
+        gap: 8,
+        padding: "0 8px",
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -471,7 +471,7 @@ function AudioPreview({ name }: { name: string }) {
 function EmptyState({ filter, hasSearch }: { filter: AssetFilter; hasSearch: boolean }) {
   if (hasSearch) {
     return (
-      <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", padding: "var(--space-2xl)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
+      <div style={{ color: "var(--text-muted)", fontSize: 13, padding: 32, textAlign: "center" }}>
         No matching assets.
       </div>
     );
@@ -482,7 +482,7 @@ function EmptyState({ filter, hasSearch }: { filter: AssetFilter; hasSearch: boo
     filter === "image" ? "No images uploaded yet." :
     "No assets uploaded yet.";
   return (
-    <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", padding: "var(--space-2xl)", textAlign: "center", lineHeight: "var(--line-relaxed)", display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-sm)" }}>
+    <div style={{ color: "var(--text-muted)", fontSize: 13, padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <Icon size={32} style={{ opacity: 0.5 }} />
       <div>{label}</div>
     </div>
@@ -520,11 +520,11 @@ export function AssetBrowserModal({ filter, currentValue, onSelect, onClose }: A
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "var(--space-md) var(--space-lg)",
+            padding: "12px 16px",
             borderBottom: "1px solid var(--border-color)",
           }}
         >
-          <span style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-lg)" }}>{title}</span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>{title}</span>
           <button
             onClick={onClose}
             style={{
@@ -532,13 +532,13 @@ export function AssetBrowserModal({ filter, currentValue, onSelect, onClose }: A
               border: "none",
               color: "var(--text-muted)",
               cursor: "pointer",
-              padding: "var(--space-xs)",
+              padding: 4,
             }}
           >
             <X size={16} />
           </button>
         </div>
-        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingTop: "var(--space-md)" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", paddingTop: 12 }}>
           <AssetBrowser
             filter={filter}
             selectMode="pick"

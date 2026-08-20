@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { ChevronDown } from "lucide-react";
+import { Save, Play, FileCode, ChevronDown, RefreshCw } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { headerButton, headerPrimaryButton } from "../components/layout/headerActions";
 import { ScriptFileTree } from "../components/scripts/ScriptFileTree";
 import { ScriptEditor, type RuntimeError } from "../components/scripts/ScriptEditor";
 import { ScriptConsole } from "../components/scripts/ScriptConsole";
@@ -709,8 +708,9 @@ export function ScriptView() {
             <div style={{ position: "relative", display: selectedType === "ui" ? "none" : undefined }}>
               <button
                 onClick={() => setShowTemplates(!showTemplates)}
-                style={headerButton}
+                style={actionBtnStyle}
               >
+                <FileCode size={14} />
                 Templates
                 <ChevronDown size={12} />
               </button>
@@ -720,7 +720,7 @@ export function ScriptView() {
                     position: "absolute",
                     top: "100%",
                     right: 0,
-                    marginTop: "var(--space-xs)",
+                    marginTop: 4,
                     background: "var(--bg-surface)",
                     border: "1px solid var(--border-color)",
                     borderRadius: "var(--border-radius)",
@@ -747,10 +747,10 @@ export function ScriptView() {
                           "transparent")
                       }
                     >
-                      <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>
+                      <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>
                         {t.name}
                       </div>
-                      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         {t.description}
                       </div>
                     </div>
@@ -763,10 +763,14 @@ export function ScriptView() {
               onClick={handleSave}
               disabled={!isDirty || saving}
               style={{
-                ...(selectedType === "ui" ? headerPrimaryButton : headerButton),
+                ...actionBtnStyle,
                 opacity: isDirty ? 1 : 0.5,
+                ...(selectedType === "ui"
+                  ? { background: "var(--accent-bg)", color: "#fff" }
+                  : {}),
               }}
             >
+              <Save size={14} />
               {saving ? "Saving..." : "Save"}
             </button>
 
@@ -775,8 +779,13 @@ export function ScriptView() {
                 onClick={handleReloadDriver}
                 disabled={reloading}
                 title="Save and hot-reload the driver (Ctrl+Shift+R)"
-                style={headerPrimaryButton}
+                style={{
+                  ...actionBtnStyle,
+                  background: "var(--accent-bg)",
+                  color: "#fff",
+                }}
               >
+                <RefreshCw size={14} />
                 {reloading ? "Reloading..." : "Save & Reload Driver"}
               </button>
             ) : (
@@ -784,8 +793,13 @@ export function ScriptView() {
                 onClick={handleReloadScript}
                 disabled={reloading}
                 title="Save and hot-reload this script. Other scripts keep running (Ctrl+Shift+R)"
-                style={headerPrimaryButton}
+                style={{
+                  ...actionBtnStyle,
+                  background: "var(--accent-bg)",
+                  color: "#fff",
+                }}
               >
+                <Play size={14} />
                 {reloading ? "Reloading..." : "Save & Reload Script"}
               </button>
             )}
@@ -927,16 +941,14 @@ export function ScriptView() {
                 gap: "var(--space-sm)",
                 padding: "var(--space-xl)",
                 textAlign: "center",
-                fontSize: "var(--font-size-sm)",
-                lineHeight: "var(--line-relaxed)",
               }}
             >
-              <div style={{ fontSize: "var(--font-size-base)" }}>
+              <div style={{ fontSize: "var(--font-size-md)" }}>
                 {scripts.length === 0 && pythonDrivers.length === 0 && uiFiles.length === 0
                   ? "Create your first script, driver or control"
                   : "Select a file to edit"}
               </div>
-              <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: "var(--line-base)" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
                 <strong>Scripts</strong> let you write Python logic that responds
                 to events, state changes, and timers using the <strong>openavc</strong> module.
                 <br /><br />
@@ -981,3 +993,16 @@ const loadingStyle: React.CSSProperties = {
   color: "var(--text-muted)",
 };
 
+const actionBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-xs)",
+  padding: "var(--space-xs) var(--space-md)",
+  borderRadius: "var(--border-radius)",
+  background: "var(--bg-hover)",
+  color: "var(--text-primary)",
+  fontSize: "var(--font-size-sm)",
+  border: "none",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};

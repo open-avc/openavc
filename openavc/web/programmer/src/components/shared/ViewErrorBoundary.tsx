@@ -60,7 +60,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
             <h2
               style={{
                 fontSize: "var(--font-size-lg)",
-                color: "var(--color-error)",
+                color: "var(--color-error, #ef4444)",
                 marginBottom: "var(--space-md)",
               }}
             >
@@ -71,7 +71,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 fontSize: "var(--font-size-sm)",
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-lg)",
-                lineHeight: "var(--line-base)",
+                lineHeight: 1.5,
               }}
             >
               An error occurred in <strong>{this.props.viewName}</strong>.
@@ -81,7 +81,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
             <details
               style={{
                 marginBottom: "var(--space-lg)",
-                fontSize: "var(--font-size-sm)",
+                fontSize: 12,
                 color: "var(--text-muted)",
                 textAlign: "left",
               }}
@@ -93,7 +93,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 style={{
                   whiteSpace: "pre-wrap",
                   fontFamily: "var(--font-mono)",
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: 11,
                   padding: "var(--space-sm)",
                   background: "var(--bg-base)",
                   borderRadius: "var(--border-radius)",
@@ -111,7 +111,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 style={{
                   padding: "var(--space-sm) var(--space-lg)",
                   background: "var(--accent-bg)",
-                  color: "var(--text-on-accent-bg)",
+                  color: "var(--text-on-accent)",
                   border: "none",
                   borderRadius: "var(--border-radius)",
                   cursor: "pointer",

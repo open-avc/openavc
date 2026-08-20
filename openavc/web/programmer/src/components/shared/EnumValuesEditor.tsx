@@ -78,8 +78,8 @@ export function EnumValuesEditor({
           display: "grid",
           gridTemplateColumns: "1fr 1fr 24px",
           gap: "var(--space-xs)",
-          marginBottom: "var(--space-2xs)",
-          fontSize: "var(--font-size-xs)",
+          marginBottom: 2,
+          fontSize: "11px",
           color: "var(--text-muted)",
         }}
       >
@@ -118,7 +118,7 @@ export function EnumValuesEditor({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              padding: "var(--space-2xs)",
+              padding: 2,
               color: "var(--text-muted)",
             }}
           >
@@ -132,15 +132,15 @@ export function EnumValuesEditor({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "var(--space-xs)",
-          fontSize: "var(--font-size-xs)",
+          gap: 4,
+          fontSize: "11px",
           color: "var(--accent)",
-          padding: "var(--space-2xs) 0",
+          padding: "2px 0",
         }}
       >
         <Plus size={12} /> Add value
       </button>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 2 }}>
         Leave the label blank to send the value as-is. Pickers show the label
         and send the value.
       </div>

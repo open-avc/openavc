@@ -112,7 +112,7 @@ export function BasicProperties({
             </FieldRow>
             {["button", "page_nav", "camera_preset"].includes(element.type) && (
               <FieldRow label="Multi-line">
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap"}
@@ -174,7 +174,7 @@ export function BasicProperties({
           {element.button_image && (
             <>
               <FieldRow label="Frameless">
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={!!element.frameless}
@@ -212,7 +212,7 @@ export function BasicProperties({
                   }}
                   style={{ flex: 1 }}
                 />
-                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", minWidth: 32, textAlign: "right" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 32, textAlign: "right" }}>
                   {Math.round((element.image_opacity ?? 1) * 100)}%
                 </span>
               </FieldRow>
@@ -241,7 +241,7 @@ export function BasicProperties({
             )}
           </FieldRow>
           <FieldRow label="Multi-line">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap"}
@@ -259,7 +259,7 @@ export function BasicProperties({
             </label>
           </FieldRow>
           <ShownDecimalsRow element={element} onChange={onChange} placeholder="As reported" />
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: -2, marginBottom: "var(--space-xs)" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
             Rounds a bound value when it is a number. Text is shown exactly as the device reports it.
           </div>
         </>
@@ -353,7 +353,7 @@ export function BasicProperties({
             />
           </FieldRow>
           <FieldRow label="Show Value">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={(element.style?.show_value as boolean) ?? false}
@@ -381,7 +381,7 @@ export function BasicProperties({
             />
           </FieldRow>
           <FieldRow label="Scale to Full Range">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={element.scale_to_full !== false}
@@ -427,7 +427,7 @@ export function BasicProperties({
                 adoptIntrinsicAspect(e.target.value, element, onChange);
               }}
               placeholder="Or enter external URL..."
-              style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, fontSize: 11 }}
             />
           </FieldRow>
           <FieldRow label="Alt Text">
@@ -435,7 +435,7 @@ export function BasicProperties({
               value={element.label || ""}
               onChange={(e) => onChange({ label: e.target.value || undefined })}
               placeholder="Describe the image"
-              style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, fontSize: 11 }}
             />
           </FieldRow>
           <FieldRow label="Fit">
@@ -509,10 +509,10 @@ export function BasicProperties({
               onChange={(e) => onChange({ style: { ...element.style, gauge_width: e.target.value ? Number(e.target.value) : undefined } })}
               min={2} max={20} style={{ flex: 1 }}
             />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
           </FieldRow>
           <FieldRow label="Show Value">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={(element.style?.show_value as boolean) ?? true}
@@ -522,7 +522,7 @@ export function BasicProperties({
             </label>
           </FieldRow>
           <FieldRow label="Show Ticks">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={(element.style?.show_ticks as boolean) ?? true}
@@ -578,7 +578,7 @@ export function BasicProperties({
             />
           </FieldRow>
           <FieldRow label="Show Peak">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={(element.style?.show_peak as boolean) ?? true}
@@ -595,7 +595,7 @@ export function BasicProperties({
                 onChange={(e) => onChange({ style: { ...element.style, peak_hold_ms: e.target.value ? Number(e.target.value) : undefined } })}
                 min={500} max={5000} step={100} style={{ flex: 1 }}
               />
-              <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>ms</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
             </FieldRow>
           )}
           <FieldRow label="Green to">
@@ -606,7 +606,7 @@ export function BasicProperties({
               placeholder="-12"
               style={{ flex: 1 }}
             />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>dB</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
           </FieldRow>
           <FieldRow label="Yellow to">
             <input
@@ -616,7 +616,7 @@ export function BasicProperties({
               placeholder="-3"
               style={{ flex: 1 }}
             />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>dB</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
           </FieldRow>
         </>
       )}
@@ -646,7 +646,7 @@ export function BasicProperties({
 
           <SubSection label="Display Options" />
           <FieldRow label="Show Value">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={(element.style?.show_value as boolean) ?? true}
@@ -656,7 +656,7 @@ export function BasicProperties({
             </label>
           </FieldRow>
           <FieldRow label="Show Scale">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={(element.style?.show_scale as boolean) ?? true}
@@ -688,7 +688,7 @@ export function BasicProperties({
             />
           </FieldRow>
           <FieldRow label="Scale to Full Range">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={element.scale_to_full !== false}
@@ -734,7 +734,7 @@ export function BasicProperties({
           <FieldRow label="Format">
             <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={{ time: "h:mm A", date: "MMM D, YYYY", datetime: "MMM D, YYYY h:mm A", countdown: "HH:mm:ss", elapsed: "HH:mm:ss", meeting: "mm:ss" }[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
           </FieldRow>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", lineHeight: "var(--line-base)", padding: "0 var(--space-xs)", marginTop: -4 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, padding: "0 4px", marginTop: -4 }}>
             <strong>Tokens:</strong>{" "}
             h/hh (12hr) &middot; H/HH (24hr) &middot; mm (min) &middot; ss (sec) &middot; A/a (AM/pm)
             &middot; D/DD (day) &middot; M/MM (month #) &middot; MMM (Jan) &middot; MMMM (January)
@@ -747,7 +747,7 @@ export function BasicProperties({
                   type="datetime-local"
                   value={element.target_time || ""}
                   onChange={(e) => onChange({ target_time: e.target.value || undefined })}
-                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+                  style={{ flex: 1, fontSize: 11 }}
                 />
               </FieldRow>
               <FieldRow label="State Key">
@@ -772,7 +772,7 @@ export function BasicProperties({
                   style={{ flex: 1 }}
                 />
               </FieldRow>
-              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
                 Set a fixed target time, or bind to a state key containing an ISO datetime. State key takes priority.
               </div>
             </>
@@ -788,7 +788,7 @@ export function BasicProperties({
                   style={{ flex: 1 }}
                 />
               </FieldRow>
-              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
                 State key containing the start time (ISO datetime). Timer shows time elapsed since that value.
               </div>
             </>
@@ -796,7 +796,7 @@ export function BasicProperties({
           {element.clock_mode === "meeting" && (
             <FieldRow label="Duration">
               <input type="number" value={element.duration_minutes ?? ""} onChange={(e) => onChange({ duration_minutes: numOrUndefined(e.target.value) })} placeholder="60" min={1} style={{ flex: 1 }} />
-              <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>min</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>min</span>
             </FieldRow>
           )}
           <FieldRow label="Timezone">
@@ -804,10 +804,10 @@ export function BasicProperties({
               value={element.timezone || ""}
               onChange={(e) => onChange({ timezone: e.target.value || undefined })}
               placeholder="America/New_York"
-              style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, fontSize: 11 }}
             />
           </FieldRow>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
             Leave blank for local time. Uses IANA timezone names.
           </div>
         </>
@@ -826,13 +826,13 @@ export function BasicProperties({
           </FieldRow>
           <FieldRow label="Item Height">
             <input type="number" value={remToPx(element.item_height) ?? ""} onChange={(e) => onChange({ item_height: pxToRem(numOrUndefined(e.target.value)) ?? undefined })} placeholder="44" min={24} max={120} style={{ flex: 1 }} />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
           </FieldRow>
           <ListItemsEditor
             items={element.items ?? []}
             onChange={(items) => onChange({ items })}
           />
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontStyle: "italic" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
             For dynamic items, use the Items binding to populate from state keys.
           </div>
         </>
@@ -850,7 +850,7 @@ export function BasicProperties({
             </select>
           </FieldRow>
           {matrixAxisIsList(element.matrix_config, "sources") ? (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
               Sources are set as a list of {matrixList(element.matrix_config, "sources").length} entries,
               each with its own value. The count and key fields do not apply.
             </div>
@@ -875,7 +875,7 @@ export function BasicProperties({
             </FieldRow>
           )}
           {matrixAxisIsList(element.matrix_config, "destinations") ? (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
               Destinations are set as a list of {matrixList(element.matrix_config, "destinations").length} entries,
               each with its own value and route key. The count and key fields do not apply.
             </div>
@@ -904,10 +904,10 @@ export function BasicProperties({
                   value={String(matrixFrom(element.matrix_config, "destinations").route_key || "")}
                   onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { route_key: e.target.value || undefined }) })}
                   placeholder="device.sw.output_*_source"
-                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+                  style={{ flex: 1, fontSize: 11 }}
                 />
               </FieldRow>
-              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
                 Use * for the destination number (1-based)
               </div>
               <FieldRow label="Audio Route Key">
@@ -915,10 +915,10 @@ export function BasicProperties({
                   value={String(matrixFrom(element.matrix_config, "destinations").audio_route_key || "")}
                   onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { audio_route_key: e.target.value || undefined }) })}
                   placeholder="device.sw.output_*_audio_source"
-                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+                  style={{ flex: 1, fontSize: 11 }}
                 />
               </FieldRow>
-              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
                 Optional. When set, an "A≠V" badge appears on any destination whose audio route differs from its video route.
               </div>
             </>
@@ -929,7 +929,7 @@ export function BasicProperties({
                 value={String(matrixFrom(element.matrix_config, "sources").label_key || "")}
                 onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { label_key: e.target.value || undefined }) })}
                 placeholder="device.sw.input_*_name"
-                style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+                style={{ flex: 1, fontSize: 11 }}
               />
             </FieldRow>
           )}
@@ -939,7 +939,7 @@ export function BasicProperties({
                 value={String(matrixFrom(element.matrix_config, "destinations").label_key || "")}
                 onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { label_key: e.target.value || undefined }) })}
                 placeholder="device.sw.output_*_name"
-                style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+                style={{ flex: 1, fontSize: 11 }}
               />
             </FieldRow>
           )}
@@ -947,7 +947,7 @@ export function BasicProperties({
               written out as lists leaves this caption with nothing to caption. */}
           {(!matrixAxisIsList(element.matrix_config, "sources") ||
             !matrixAxisIsList(element.matrix_config, "destinations")) && (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
               Live names from state. * = the entry's number
             </div>
           )}
@@ -957,15 +957,15 @@ export function BasicProperties({
               checked={element.matrix_config?.audio_follow_video ?? false}
               onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, audio_follow_video: e.target.checked } })}
             />
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Route audio with video</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Route audio with video</span>
           </FieldRow>
           {element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_route) && (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add an Audio Route binding in the Bindings tab to send the audio route command.
             </div>
           )}
           {element.matrix_config?.audio_follow_video && (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Only enable this if your matrix needs a separate audio route command. Many switchers route audio together with video automatically, so leave this off for those.
             </div>
           )}
@@ -975,7 +975,7 @@ export function BasicProperties({
               checked={element.matrix_config?.show_lock === true}
               onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_lock: e.target.checked || undefined } })}
             />
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Lock buttons per destination</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Lock buttons per destination</span>
           </FieldRow>
           {element.matrix_config?.show_lock === true &&
             !matrixAxisIsList(element.matrix_config, "destinations") && (
@@ -985,10 +985,10 @@ export function BasicProperties({
                   value={String(matrixFrom(element.matrix_config, "destinations").lock_key || "")}
                   onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { lock_key: e.target.value || undefined }) })}
                   placeholder="var.lock_*"
-                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
+                  style={{ flex: 1, fontSize: 11 }}
                 />
               </FieldRow>
-              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
                 A variable per destination, holding whether it is locked. Use * for
                 the destination number.
               </div>
@@ -996,7 +996,7 @@ export function BasicProperties({
           )}
           {element.matrix_config?.show_lock === true &&
             matrixLockUnbacked(element.matrix_config) && (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Without a variable, a lock is only remembered by the panel that set
               it: it is forgotten when the page redraws, and no other panel sees it.
             </div>
@@ -1007,7 +1007,7 @@ export function BasicProperties({
               checked={element.matrix_config?.show_mute !== false}
               onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_mute: e.target.checked } })}
             />
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Mute buttons per output</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Mute buttons per output</span>
           </FieldRow>
           {/* Only once somebody asked for mute. The box reads ticked when the key
               is absent (which is what the panel does too), so warning on that
@@ -1015,12 +1015,12 @@ export function BasicProperties({
               moment it was dropped, for a button the panel does not draw until
               the binding exists. */}
           {element.matrix_config?.show_mute === true && !((element.bindings as { do?: Record<string, unknown> })?.do?.mute_route) && (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add a Mute Route binding in the Bindings tab to wire the mute buttons to a command.
             </div>
           )}
           {element.matrix_config?.show_mute !== false && element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_mute_route) && (
-            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
               Add an Audio Mute Route binding in the Bindings tab so the mute button also mutes audio.
             </div>
           )}
@@ -1066,9 +1066,9 @@ export function BasicProperties({
               onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? pxToRem(Number(e.target.value)) : undefined } })}
               min={24} max={80} style={{ flex: 1 }}
             />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
           </FieldRow>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
             Blank sizes the crosspoints to the element, between 44 and 72px. A number pins them.
           </div>
         </>
@@ -1087,7 +1087,7 @@ export function BasicProperties({
             </select>
           </FieldRow>
           <FieldRow label="Auto Send">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input type="checkbox" checked={element.auto_send ?? false} onChange={(e) => onChange({ auto_send: e.target.checked })} />
               Send after all digits entered
             </label>
@@ -1100,11 +1100,11 @@ export function BasicProperties({
                 onChange={(e) => onChange({ auto_send_delay_ms: e.target.value ? Number(e.target.value) : undefined })}
                 min={0} max={5000} step={100} style={{ flex: 1 }}
               />
-              <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>ms</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
             </FieldRow>
           )}
           <FieldRow label="Show Display">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={element.show_display ?? true}
@@ -1177,7 +1177,7 @@ export function BasicProperties({
                   max={64}
                   style={{ width: 64 }}
                 />
-                <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
               </FieldRow>
               <FieldRow label="Icon Color">
                 <InlineColorPicker size="md" clearable
@@ -1251,12 +1251,12 @@ function MatrixSetupRow({
           onClick={() => setOpen(true)}
           style={{
             flex: 1,
-            padding: "var(--space-xs) var(--space-sm)",
+            padding: "4px 8px",
             borderRadius: "var(--border-radius)",
             border: "1px dashed var(--accent)",
-            background: "var(--accent-dim)",
+            background: "rgba(138,180,147,0.08)",
             color: "var(--accent)",
-            fontSize: "var(--font-size-xs)",
+            fontSize: 11,
             cursor: "pointer",
           }}
           title="Fill the sources, destinations and route keys in from what the driver declares"
@@ -1265,7 +1265,7 @@ function MatrixSetupRow({
         </button>
       </FieldRow>
       {written && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
           {matrixList(element.matrix_config, "sources").length} sources and{" "}
           {matrixList(element.matrix_config, "destinations").length} destinations are
           written out. Re-open this to rename, reorder or pick up new ports.
@@ -1423,10 +1423,10 @@ function OptionsEditor({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "var(--space-2xs)",
-            padding: "var(--space-2xs) var(--space-sm)",
+            gap: 2,
+            padding: "2px 6px",
             borderRadius: "var(--border-radius)",
-            fontSize: "var(--font-size-xs)",
+            fontSize: 11,
             color: "var(--accent)",
           }}
         >
@@ -1437,7 +1437,7 @@ function OptionsEditor({
       {options.length === 0 && (
         <div
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: 11,
             color: "var(--text-muted)",
             padding: "var(--space-xs)",
           }}
@@ -1446,14 +1446,14 @@ function OptionsEditor({
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {options.map((opt, i) => (
           <div
             key={rowKeys.keys[i]}
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
+              gap: 4,
             }}
           >
             <input
@@ -1462,8 +1462,8 @@ function OptionsEditor({
               placeholder="Label"
               style={{
                 flex: 1,
-                padding: "var(--space-xs) var(--space-sm)",
-                fontSize: "var(--font-size-xs)",
+                padding: "3px 6px",
+                fontSize: 11,
               }}
             />
             <input
@@ -1472,15 +1472,15 @@ function OptionsEditor({
               placeholder="Value"
               style={{
                 flex: 1,
-                padding: "var(--space-xs) var(--space-sm)",
-                fontSize: "var(--font-size-xs)",
+                padding: "3px 6px",
+                fontSize: 11,
               }}
             />
             <button
               onClick={() => removeOption(i)}
               style={{
                 display: "flex",
-                padding: "var(--space-2xs)",
+                padding: 2,
                 color: "var(--text-muted)",
               }}
             >
@@ -1521,32 +1521,32 @@ function ListItemsEditor({
         <label style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Items</label>
         <button
           onClick={addItem}
-          style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)", color: "var(--accent)" }}
+          style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", borderRadius: "var(--border-radius)", fontSize: 11, color: "var(--accent)" }}
         >
           <Plus size={12} /> Add
         </button>
       </div>
       {items.length === 0 && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", padding: "var(--space-xs)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "var(--space-xs)" }}>
           No items. Click Add to create one, or use an Items binding for dynamic content.
         </div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {items.map((item, i) => (
-          <div key={rowKeys.keys[i]} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <div key={rowKeys.keys[i]} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <input
               value={item.label}
               onChange={(e) => updateItem(i, { label: e.target.value })}
               placeholder="Label"
-              style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, padding: "3px 6px", fontSize: 11 }}
             />
             <input
               value={item.value}
               onChange={(e) => updateItem(i, { value: e.target.value })}
               placeholder="Value"
-              style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, padding: "3px 6px", fontSize: 11 }}
             />
-            <button onClick={() => removeItem(i)} style={{ display: "flex", padding: "var(--space-2xs)", color: "var(--text-muted)" }}>
+            <button onClick={() => removeItem(i)} style={{ display: "flex", padding: 2, color: "var(--text-muted)" }}>
               <X size={12} />
             </button>
           </div>
@@ -1566,12 +1566,12 @@ function MatrixLabelEditor({
   onChange: (labels: string[]) => void;
 }) {
   return (
-    <div style={{ marginTop: "var(--space-xs)" }}>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>{title}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {labels.map((label, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</span>
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</span>
             <input
               value={label}
               onChange={(e) => {
@@ -1579,7 +1579,7 @@ function MatrixLabelEditor({
                 updated[i] = e.target.value;
                 onChange(updated);
               }}
-              style={{ flex: 1, padding: "var(--space-2xs) var(--space-sm)", fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, padding: "2px 6px", fontSize: 11 }}
             />
           </div>
         ))}
@@ -1599,11 +1599,11 @@ function MatrixPresetsEditor({
 }) {
   const rowKeys = useRowKeys(presets.length);
   return (
-    <div style={{ marginTop: "var(--space-xs)" }}>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>Presets</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>Presets</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {presets.map((preset, i) => (
-          <div key={rowKeys.keys[i]} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <div key={rowKeys.keys[i]} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <input
               value={preset.name || ""}
               onChange={(e) => {
@@ -1612,7 +1612,7 @@ function MatrixPresetsEditor({
                 onChange(updated);
               }}
               placeholder="Preset name"
-              style={{ flex: 1, padding: "var(--space-2xs) var(--space-sm)", fontSize: "var(--font-size-xs)" }}
+              style={{ flex: 1, padding: "2px 6px", fontSize: 11 }}
             />
             <select
               value={preset.macro || ""}
@@ -1621,7 +1621,7 @@ function MatrixPresetsEditor({
                 updated[i] = { ...updated[i], macro: e.target.value || undefined };
                 onChange(updated);
               }}
-              style={{ flex: 1, fontSize: "var(--font-size-xs)", padding: "var(--space-2xs) var(--space-xs)" }}
+              style={{ flex: 1, fontSize: 11, padding: "2px 4px" }}
             >
               <option value="">No macro</option>
               {macros.map((m) => (
@@ -1634,9 +1634,9 @@ function MatrixPresetsEditor({
                 onChange(presets.filter((_, j) => j !== i));
               }}
               style={{
-                padding: "var(--space-2xs) var(--space-xs)", border: "1px solid var(--border-color)",
-                borderRadius: "var(--border-radius)", background: "transparent", color: "var(--color-error)",
-                fontSize: "var(--font-size-xs)", cursor: "pointer", flexShrink: 0,
+                padding: "1px 5px", border: "1px solid var(--border-color)",
+                borderRadius: 3, background: "transparent", color: "var(--color-error)",
+                fontSize: 11, cursor: "pointer", flexShrink: 0,
               }}
             >
               <X size={10} />
@@ -1646,16 +1646,16 @@ function MatrixPresetsEditor({
         <button
           onClick={() => onChange([...presets, { name: `Preset ${presets.length + 1}` }])}
           style={{
-            padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+            padding: "3px 10px", borderRadius: "var(--border-radius)",
             border: "1px dashed var(--border-color)", background: "transparent",
-            color: "var(--text-muted)", fontSize: "var(--font-size-xs)", cursor: "pointer",
+            color: "var(--text-muted)", fontSize: 11, cursor: "pointer",
             alignSelf: "flex-start",
           }}
         >
           <Plus size={10} /> Add Preset
         </button>
       </div>
-      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontStyle: "italic", marginTop: "var(--space-2xs)" }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginTop: 2 }}>
         Presets appear as buttons above the matrix. Each runs a macro when clicked.
       </div>
     </div>
@@ -1722,13 +1722,13 @@ function SubSection({ label }: { label: string }) {
   return (
     <div
       style={{
-        fontSize: "var(--font-size-2xs)",
-        fontWeight: "var(--font-weight-semibold)",
+        fontSize: 10,
+        fontWeight: 600,
         color: "var(--text-muted)",
         textTransform: "uppercase",
-        letterSpacing: "var(--tracking-wide)",
-        marginTop: "var(--space-sm)",
-        paddingBottom: "var(--space-2xs)",
+        letterSpacing: 1,
+        marginTop: 6,
+        paddingBottom: 2,
         borderBottom: "1px solid var(--border-color)",
       }}
     >
@@ -1782,7 +1782,7 @@ function ResponseCurveFields({
               style={{ flex: 1 }}
             />
           </FieldRow>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: -2, marginBottom: "var(--space-xs)" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
             Decibels the throw spans. Larger gives finer control near the bottom. Leave at 60 for a typical audio taper.
           </div>
         </>
@@ -1883,7 +1883,7 @@ function ValueBehaviorFields({
           />
         </FieldRow>
       )}
-      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: -2, marginBottom: "var(--space-xs)" }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
         "On release only" sends one command when you let go. Use it for devices that can't keep up with a stream of commands. Shown decimals affect the readout, not the value sent (a driver formats that).
       </div>
     </>
@@ -1959,7 +1959,7 @@ function PanelFieldControl({
           onChange={(e) => set(e.target.value)}
           placeholder={field.default != null ? String(field.default) : ""}
           rows={4}
-          style={{ flex: 1, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, resize: "vertical", fontFamily: "var(--font-mono, monospace)", fontSize: "var(--font-size-sm)" }}
         />
       );
     default:
@@ -2011,14 +2011,14 @@ function PluginElementConfig({
           ))}
           <button
             onClick={() => setJsonMode(true)}
-            style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
+            style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
           >
             Edit as JSON
           </button>
         </>
       ) : (
         <>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "var(--space-2xs) 0" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
             {schema && schema.length > 0 ? "Raw JSON:" : "Plugin configuration (JSON):"}
           </div>
           <textarea
@@ -2027,12 +2027,12 @@ function PluginElementConfig({
               try { onChange(JSON.parse(e.target.value)); } catch { /* invalid JSON */ }
             }}
             rows={4}
-            style={{ width: "100%", fontSize: "var(--font-size-xs)", fontFamily: "monospace", resize: "vertical" }}
+            style={{ width: "100%", fontSize: 11, fontFamily: "monospace", resize: "vertical" }}
           />
           {schema && schema.length > 0 && (
             <button
               onClick={() => setJsonMode(false)}
-              style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
+              style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
             >
               Edit as form
             </button>
@@ -2142,28 +2142,28 @@ function GaugeZonesEditor({
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--space-sm)", marginBottom: "var(--space-xs)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6, marginBottom: 4 }}>
         <label style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Color Zones</label>
         <button
           onClick={addZone}
-          style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)", color: "var(--accent)" }}
+          style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", borderRadius: "var(--border-radius)", fontSize: 11, color: "var(--accent)" }}
         >
           <Plus size={12} /> Add Zone
         </button>
       </div>
       {zones.length === 0 && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontStyle: "italic" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
           No color zones. Add zones to color-code value ranges (e.g., green 0-50, yellow 50-80, red 80-100).
         </div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {zones.map((zone, i) => (
-          <div key={rowKeys.keys[i]} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <div key={rowKeys.keys[i]} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div
               style={{
                 width: 18,
                 height: 18,
-                borderRadius: "var(--border-radius)",
+                borderRadius: 3,
                 backgroundColor: zone.color,
                 border: "1px solid var(--border-color)",
                 cursor: "pointer",
@@ -2175,24 +2175,24 @@ function GaugeZonesEditor({
               type="number"
               value={zone.from}
               onChange={(e) => updateZone(i, { from: Number(e.target.value) })}
-              style={{ width: 48, padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-xs)" }}
+              style={{ width: 48, padding: "2px 4px", fontSize: 11 }}
               title="Zone start"
             />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>to</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>to</span>
             <input
               type="number"
               value={zone.to}
               onChange={(e) => updateZone(i, { to: Number(e.target.value) })}
-              style={{ width: 48, padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-xs)" }}
+              style={{ width: 48, padding: "2px 4px", fontSize: 11 }}
               title="Zone end"
             />
             <input
               value={zone.color}
               onChange={(e) => updateZone(i, { color: e.target.value })}
-              style={{ width: 68, padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-2xs)", fontFamily: "monospace" }}
+              style={{ width: 68, padding: "2px 4px", fontSize: 10, fontFamily: "monospace" }}
               title="Color hex"
             />
-            <button onClick={() => removeZone(i)} style={{ display: "flex", padding: "var(--space-2xs)", color: "var(--text-muted)" }}>
+            <button onClick={() => removeZone(i)} style={{ display: "flex", padding: 2, color: "var(--text-muted)" }}>
               <X size={12} />
             </button>
           </div>
@@ -2259,34 +2259,34 @@ function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
   };
 
   return (
-    <div style={{ padding: "0 0 6px 90px", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-        <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Tints using:</span>
+    <div style={{ padding: "0 0 6px 90px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Tints using:</span>
         {swatches.map((s) => (
-          <div key={s.name} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div
               style={{
                 width: 16,
                 height: 16,
                 background: s.color,
                 border: "1px solid var(--border-color)",
-                borderRadius: "var(--border-radius)",
+                borderRadius: 3,
               }}
               title={s.color}
             />
-            <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>{s.name}</span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.name}</span>
           </div>
         ))}
         {!hasBinding && (
           <button
             onClick={createDefaultBinding}
             style={{
-              padding: "var(--space-2xs) var(--space-sm)",
-              fontSize: "var(--font-size-xs)",
+              padding: "2px 8px",
+              fontSize: 11,
               color: "var(--accent)",
               background: "transparent",
               border: "1px solid var(--accent)",
-              borderRadius: "var(--border-radius)",
+              borderRadius: 3,
               cursor: "pointer",
             }}
             title="Create a feedback binding with on/off state colors"
@@ -2296,17 +2296,17 @@ function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
         )}
       </div>
       {element.image_blend_mode === "mask" && !element.frameless && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)", lineHeight: "var(--line-tight)" }}>
+        <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
           Recolor shape reuses the button's background color to fill the image, so the logo blends into the button rectangle. Turn on Frameless to see the shape clearly.
         </div>
       )}
       {!hasBinding && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", lineHeight: "var(--line-tight)" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4 }}>
           Image tints with the button's background. Add state colors so the image reacts to a state change.
         </div>
       )}
       {hasBinding && fb?.states && Object.keys(fb.states).length > 0 && !((element.bindings as { show?: { look?: { key?: string } } })?.show?.look)?.key && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)", lineHeight: "var(--line-tight)" }}>
+        <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
           Pick a state key in the Bindings panel to wire this up.
         </div>
       )}

@@ -143,7 +143,7 @@ export function RoutingMatrix({
               <span style={{ flex: 1, textAlign: "left" }}>
                 {activePreset || "No preset"}
                 {activePreset && isDirty && (
-                  <span style={{ color: "var(--color-warning)", marginLeft: "var(--space-xs)", fontSize: "var(--font-size-xs)" }}>
+                  <span style={{ color: "var(--color-warning, #f59e0b)", marginLeft: 4, fontSize: 11 }}>
                     (modified)
                   </span>
                 )}
@@ -161,7 +161,7 @@ export function RoutingMatrix({
                 overflow: "auto",
               }}>
                 {presetNames.length === 0 && (
-                  <div style={{ padding: "var(--space-sm) var(--space-md)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+                  <div style={{ padding: "var(--space-sm) var(--space-md)", color: "var(--text-muted)", fontSize: 12 }}>
                     No presets saved yet
                   </div>
                 )}
@@ -180,7 +180,7 @@ export function RoutingMatrix({
                     }}
                   >
                     {name}
-                    {name === activePreset && <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)", fontSize: "var(--font-size-xs)" }}>(active)</span>}
+                    {name === activePreset && <span style={{ color: "var(--text-muted)", marginLeft: 6, fontSize: 11 }}>(active)</span>}
                   </button>
                 ))}
               </div>
@@ -234,10 +234,10 @@ export function RoutingMatrix({
             </button>
           )}
           {confirmDelete && (
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
-              <span style={{ color: "var(--color-error)" }}>Delete "{confirmDelete}"?</span>
-              <button onClick={() => handleDeletePreset(confirmDelete)} style={{ ...btnStyle, fontSize: "var(--font-size-sm)" }}>Yes</button>
-              <button onClick={() => setConfirmDelete(null)} style={{ ...btnStyle, fontSize: "var(--font-size-sm)" }}>No</button>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12 }}>
+              <span style={{ color: "var(--color-error, #ef4444)" }}>Delete "{confirmDelete}"?</span>
+              <button onClick={() => handleDeletePreset(confirmDelete)} style={{ ...btnStyle, fontSize: 12 }}>Yes</button>
+              <button onClick={() => setConfirmDelete(null)} style={{ ...btnStyle, fontSize: 12 }}>No</button>
             </div>
           )}
         </div>
@@ -248,14 +248,12 @@ export function RoutingMatrix({
         <div style={{
           padding: "var(--space-xl)",
           textAlign: "center",
-          fontSize: "var(--font-size-sm)",
-          lineHeight: "var(--line-relaxed)",
           color: "var(--text-muted)",
         }}>
-          <div style={{ fontSize: "var(--font-size-base)", fontWeight: "var(--font-weight-medium)", marginBottom: "var(--space-sm)" }}>
+          <div style={{ fontSize: "var(--font-size-base)", fontWeight: 500, marginBottom: "var(--space-sm)" }}>
             Routing Matrix
           </div>
-          <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, margin: "0 auto", lineHeight: "var(--line-base)" }}>
+          <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, margin: "0 auto", lineHeight: 1.5 }}>
             The routing matrix will appear here once the plugin connects and discovers
             devices. Click crosspoints to route audio between transmitters and receivers.
             {showPresets && " Save your routing configuration as presets to recall them later."}
@@ -267,14 +265,14 @@ export function RoutingMatrix({
       {hasData && (
         <div style={{ overflow: "auto" }}>
           {layout.columns_label && (
-            <div style={{ textAlign: "center", lineHeight: "var(--line-relaxed)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+            <div style={{ textAlign: "center", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
               {layout.columns_label}
             </div>
           )}
           <table style={{ borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={{ padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
+                <th style={{ padding: "var(--space-xs) var(--space-sm)", fontSize: 10, color: "var(--text-muted)" }}>
                   {layout.rows_label ?? ""}
                 </th>
                 {colNames.map((col) => (
@@ -282,9 +280,9 @@ export function RoutingMatrix({
                     key={col}
                     style={{
                       padding: "var(--space-xs)",
-                      fontSize: "var(--font-size-2xs)",
+                      fontSize: 10,
                       color: "var(--text-muted)",
-                      fontWeight: "var(--font-weight-normal)",
+                      fontWeight: 400,
                       writingMode: "vertical-lr",
                       transform: "rotate(180deg)",
                       maxHeight: 80,
@@ -301,7 +299,7 @@ export function RoutingMatrix({
                   <td
                     style={{
                       padding: "var(--space-xs) var(--space-sm)",
-                      fontSize: "var(--font-size-2xs)",
+                      fontSize: 10,
                       color: "var(--text-muted)",
                       whiteSpace: "nowrap",
                     }}
@@ -312,14 +310,14 @@ export function RoutingMatrix({
                     const active = getCellState(row, col);
                     const pending = pendingCells.has(`${row}|${col}`);
                     return (
-                      <td key={col} style={{ padding: "var(--space-2xs)" }}>
+                      <td key={col} style={{ padding: 1 }}>
                         <button
                           onClick={() => handleCellClick(row, col)}
                           disabled={pending}
                           style={{
                             width: 24,
                             height: 24,
-                            borderRadius: "var(--border-radius)",
+                            borderRadius: 3,
                             background: active ? "var(--accent-bg)" : "var(--bg-surface)",
                             border: "1px solid var(--border-color)",
                             cursor: pending ? "wait" : "pointer",

@@ -74,32 +74,32 @@ export function Setup({ onComplete }: SetupProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--bg-primary)",
-        color: "var(--text-primary)",
+        background: "var(--bg-primary, #1a1a2e)",
+        color: "var(--text-primary, #fff)",
       }}
     >
       <form
         onSubmit={submit}
         style={{
           width: 340,
-          padding: "var(--space-2xl)",
-          borderRadius: "var(--radius-lg)",
-          background: "var(--bg-surface)",
+          padding: 32,
+          borderRadius: 8,
+          background: "var(--bg-secondary, #232342)",
           boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
           display: "flex",
           flexDirection: "column",
-          gap: "var(--space-lg)",
+          gap: 16,
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: "var(--space-xs)" }}>
-          <h2 style={{ margin: 0, fontSize: "var(--font-size-xl)" }}>Set up OpenAVC</h2>
-          <p style={{ marginTop: "var(--space-sm)", fontSize: "var(--font-size-base)", opacity: 0.7, lineHeight: "var(--line-tight)" }}>
+        <div style={{ textAlign: "center", marginBottom: 4 }}>
+          <h2 style={{ margin: 0, fontSize: 20 }}>Set up OpenAVC</h2>
+          <p style={{ marginTop: 6, fontSize: 13, opacity: 0.7, lineHeight: 1.4 }}>
             Choose an admin username and password. You'll use these to open the
             Programmer. The room panel stays open and never asks for a login.
           </p>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-base)" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           Admin username
           <input
             type="text"
@@ -109,12 +109,12 @@ export function Setup({ onComplete }: SetupProps) {
             disabled={busy}
             style={inputStyle}
           />
-          <span style={{ fontSize: "var(--font-size-sm)", opacity: 0.55 }}>
+          <span style={{ fontSize: 12, opacity: 0.55 }}>
             Keep "admin" or pick your own. You'll enter this to sign in.
           </span>
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-base)" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           New password
           <input
             ref={passRef}
@@ -127,7 +127,7 @@ export function Setup({ onComplete }: SetupProps) {
           />
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-base)" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           Confirm password
           <input
             type="password"
@@ -140,31 +140,31 @@ export function Setup({ onComplete }: SetupProps) {
         </label>
 
         {tooShort && (
-          <div style={{ fontSize: "var(--font-size-sm)", opacity: 0.7 }}>Use at least 8 characters.</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Use at least 8 characters.</div>
         )}
         {mismatch && (
-          <div style={{ fontSize: "var(--font-size-base)", color: "var(--color-error)" }}>Passwords don't match.</div>
+          <div style={{ fontSize: 13, color: "#ef4444" }}>Passwords don't match.</div>
         )}
-        {error && <div style={{ fontSize: "var(--font-size-base)", color: "var(--color-error)" }}>{error}</div>}
+        {error && <div style={{ fontSize: 13, color: "#ef4444" }}>{error}</div>}
 
         <button
           type="submit"
           disabled={!canSubmit}
           style={{
-            padding: "var(--space-md) var(--space-lg)",
-            borderRadius: "var(--border-radius)",
+            padding: "10px 16px",
+            borderRadius: 4,
             border: "none",
             background: canSubmit ? "#8AB493" : "rgba(138,180,147,0.4)",
             color: "#000",
-            fontSize: "var(--font-size-lg)",
-            fontWeight: "var(--font-weight-semibold)",
+            fontSize: 14,
+            fontWeight: 600,
             cursor: canSubmit ? "pointer" : "not-allowed",
           }}
         >
           {busy ? "Creating…" : "Create & Continue"}
         </button>
 
-        <p style={{ fontSize: "var(--font-size-sm)", opacity: 0.55, margin: 0, textAlign: "center" }}>
+        <p style={{ fontSize: 12, opacity: 0.55, margin: 0, textAlign: "center" }}>
           You can change this later in Settings.
         </p>
       </form>
@@ -173,11 +173,11 @@ export function Setup({ onComplete }: SetupProps) {
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-md)",
-  borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-primary)",
+  padding: "8px 10px",
+  borderRadius: 4,
+  border: "1px solid var(--border-color, #444)",
+  background: "var(--bg-primary, #1a1a2e)",
   color: "inherit",
-  fontSize: "var(--font-size-lg)",
+  fontSize: 14,
   outline: "none",
 };

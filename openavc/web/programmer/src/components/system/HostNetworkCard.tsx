@@ -20,8 +20,8 @@ const cardStyle: React.CSSProperties = {
 };
 
 const subTitle: React.CSSProperties = {
-  fontSize: "var(--font-size-base)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontSize: "var(--font-size-md)",
+  fontWeight: 600,
   color: "var(--text-primary)",
   margin: 0,
   marginBottom: "var(--space-xs)",
@@ -31,7 +31,7 @@ const description: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   marginBottom: "var(--space-lg)",
-  lineHeight: "var(--line-base)",
+  lineHeight: 1.5,
 };
 
 const fieldRow: React.CSSProperties = {
@@ -50,7 +50,7 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "var(--space-sm) var(--space-md)",
-  background: "var(--bg-base)",
+  background: "var(--bg-input, var(--bg-elevated))",
   border: "1px solid var(--border-color)",
   borderRadius: "var(--border-radius)",
   color: "var(--text-primary)",
@@ -65,10 +65,10 @@ const btnStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
-  fontWeight: "var(--font-weight-medium)",
+  fontWeight: 500,
   cursor: "pointer",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "var(--text-on-accent)",
   border: "1px solid var(--accent-bg)",
 };
 
@@ -80,7 +80,7 @@ const secondaryBtn: React.CSSProperties = {
 };
 
 const monoValue: React.CSSProperties = {
-  fontFamily: "var(--font-mono)",
+  fontFamily: "var(--font-mono, monospace)",
   fontSize: "var(--font-size-sm)",
   color: "var(--text-primary)",
 };
@@ -350,7 +350,7 @@ function WifiPane({ onChanged }: { onChanged: () => void }) {
                 {n.in_use ? "✓ " : ""}
                 {n.ssid}
               </span>
-              <span style={{ ...labelStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={{ ...labelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Wifi size={14} />
                 {n.signal}%
                 {n.secured && <Lock size={12} />}
@@ -426,9 +426,9 @@ function WifiSection({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: "var(--space-sm)",
+            gap: 6,
             marginLeft: "auto",
-            fontWeight: "var(--font-weight-normal)",
+            fontWeight: 400,
             color: "var(--text-secondary)",
             cursor: busy ? "default" : "pointer",
           }}
@@ -542,7 +542,7 @@ export function HostNetworkCard() {
           </div>
           <span
             style={{
-              fontSize: "var(--font-size-sm)",
+              fontSize: 12,
               color: "var(--text-muted)",
               gridColumn: "2",
               marginTop: -4,
@@ -565,7 +565,7 @@ export function HostNetworkCard() {
         >
           <div style={{ ...subTitle, fontSize: "var(--font-size-sm)" }}>
             {iface.device} ({iface.type}){" "}
-            <span style={{ color: "var(--text-secondary)", fontWeight: "var(--font-weight-normal)" }}>
+            <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}>
               {iface.state}
               {iface.ip4.addresses.length > 0 && ` · ${iface.ip4.addresses.join(", ")}`}
             </span>

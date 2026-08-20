@@ -219,17 +219,17 @@ export function StyleProperties({
           placeholder={shownDefault("font_size") || "14"}
           min={8}
           max={72}
-          style={{ width: 64, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 64, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <div style={{ display: "flex", gap: "var(--space-2xs)" }}>
+        <div style={{ display: "flex", gap: 2 }}>
           {[12, 14, 16, 18, 24, 28].map((size) => (
             <button
               key={size}
               onClick={() => handleStyleChange("font_size", size)}
               style={{
-                padding: "var(--space-2xs) var(--space-xs)",
-                borderRadius: "var(--border-radius)",
-                fontSize: "var(--font-size-2xs)",
+                padding: "2px 4px",
+                borderRadius: 3,
+                fontSize: 10,
                 color:
                   shown("font_size") === size
                     ? "var(--accent)"
@@ -252,7 +252,7 @@ export function StyleProperties({
           onChange={(e) => handleStyleChange("font_weight", e.target.value === "400" ? undefined : e.target.value)}
           style={{
             flex: 1,
-            padding: "var(--space-xs) var(--space-sm)",
+            padding: "4px 6px",
             fontSize: "var(--font-size-sm)",
           }}
         >
@@ -265,14 +265,14 @@ export function StyleProperties({
       </StyleRow>
 
       <StyleRow label="Align" tooltip="Horizontal text alignment">
-        <div style={{ display: "flex", gap: "var(--space-2xs)" }}>
+        <div style={{ display: "flex", gap: 2 }}>
           {(["left", "center", "right"] as const).map((align) => (
             <button
               key={align}
               onClick={() => handleStyleChange("text_align", align)}
               style={{
-                padding: "var(--space-xs) var(--space-sm)",
-                borderRadius: "var(--border-radius)",
+                padding: "3px 8px",
+                borderRadius: 3,
                 fontSize: "var(--font-size-sm)",
                 color:
                   style.text_align === align
@@ -292,14 +292,14 @@ export function StyleProperties({
       </StyleRow>
 
       <StyleRow label="Vertical Align" tooltip="Vertical text position within the element">
-        <div style={{ display: "flex", gap: "var(--space-2xs)" }}>
+        <div style={{ display: "flex", gap: 2 }}>
           {(["top", "center", "bottom"] as const).map((v) => (
             <button
               key={v}
               onClick={() => handleStyleChange("vertical_align", v)}
               style={{
-                padding: "var(--space-xs) var(--space-sm)",
-                borderRadius: "var(--border-radius)",
+                padding: "3px 8px",
+                borderRadius: 3,
                 fontSize: "var(--font-size-sm)",
                 color:
                   style.vertical_align === v
@@ -322,7 +322,7 @@ export function StyleProperties({
         <select
           value={String(style.text_transform || "")}
           onChange={(e) => handleStyleChange("text_transform", e.target.value)}
-          style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Normal</option>
           <option value="uppercase">UPPERCASE</option>
@@ -344,9 +344,9 @@ export function StyleProperties({
           placeholder="0"
           min={-2}
           max={20}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       <StyleRow label="Line Height" tooltip="Space between lines of text (multiplier of font size, e.g. 1.5 = 50% extra space)">
@@ -363,16 +363,16 @@ export function StyleProperties({
           min={0.5}
           max={3}
           step={0.1}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>&times; font size</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>&times; font size</span>
       </StyleRow>
 
       <StyleRow label="Text Wrapping" tooltip="How the element handles line breaks and extra spaces">
         <select
           value={String(style.white_space || "")}
           onChange={(e) => handleStyleChange("white_space", e.target.value || undefined)}
-          style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Normal</option>
           <option value="pre-line">Preserve Line Breaks</option>
@@ -401,9 +401,9 @@ export function StyleProperties({
           placeholder={shownDefault("border_width") || "0"}
           min={0}
           max={20}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       {Number(getEffective("border_width")) ? (
@@ -425,7 +425,7 @@ export function StyleProperties({
             <select
               value={String(style.border_style || "solid")}
               onChange={(e) => handleStyleChange("border_style", e.target.value)}
-              style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+              style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
             >
               <option value="solid">Solid</option>
               <option value="dashed">Dashed</option>
@@ -435,7 +435,7 @@ export function StyleProperties({
           </StyleRow>
         </>
       ) : (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontStyle: "italic" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
           Set border width above 0 to configure color and style
         </div>
       )}
@@ -458,7 +458,7 @@ export function StyleProperties({
           placeholder={shownDefault("border_radius") || "8"}
           min={0}
           max={50}
-          style={{ width: 64, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 64, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
       </StyleRow>
 
@@ -474,7 +474,7 @@ export function StyleProperties({
         <select
           value={String(style.box_shadow || "")}
           onChange={(e) => handleStyleChange("box_shadow", e.target.value)}
-          style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">{themeDefaults?.box_shadow ? `Theme (${themeDefaults.box_shadow})` : "None"}</option>
           <option value="sm">Small</option>
@@ -491,7 +491,7 @@ export function StyleProperties({
         <div
           style={{
             height: 28,
-            borderRadius: "var(--radius-lg)",
+            borderRadius: 6,
             background: "var(--bg-surface)",
             boxShadow: SHADOW_PRESETS[style.box_shadow as string] || String(style.box_shadow),
             border: "1px solid var(--border-color)",
@@ -515,9 +515,9 @@ export function StyleProperties({
           placeholder="0"
           min={0}
           max={50}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       <StyleRow label="Horizontal" tooltip="Left and right margin (overrides All Sides for left/right)">
@@ -533,9 +533,9 @@ export function StyleProperties({
           placeholder="—"
           min={0}
           max={50}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       <StyleRow label="Vertical" tooltip="Top and bottom margin (overrides All Sides for top/bottom)">
@@ -551,9 +551,9 @@ export function StyleProperties({
           placeholder="—"
           min={0}
           max={50}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       {/* --- Padding --- */}
@@ -572,9 +572,9 @@ export function StyleProperties({
           placeholder="0"
           min={0}
           max={100}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       <StyleRow label="Horizontal" tooltip="Left and right padding (overrides All Sides for left/right)">
@@ -590,9 +590,9 @@ export function StyleProperties({
           placeholder="—"
           min={0}
           max={100}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       <StyleRow label="Vertical" tooltip="Top and bottom padding (overrides All Sides for top/bottom)">
@@ -608,16 +608,16 @@ export function StyleProperties({
           placeholder="—"
           min={0}
           max={100}
-          style={{ width: 56, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ width: 56, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>px</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
       </StyleRow>
 
       {/* --- Gradient --- */}
       <SectionLabel>Gradient</SectionLabel>
 
       <StyleRow label="Gradient" tooltip="Apply a color gradient over the background">
-        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
           <input
             type="checkbox"
             checked={gradientEnabled}
@@ -686,7 +686,7 @@ export function StyleProperties({
             <div
               style={{
                 height: 20,
-                borderRadius: "var(--border-radius)",
+                borderRadius: 4,
                 background: `linear-gradient(${Number(gradient.angle ?? 180)}deg, ${gradient.from}, ${gradient.to})`,
                 border: "1px solid var(--border-color)",
               }}
@@ -699,7 +699,7 @@ export function StyleProperties({
       {element.type === "button" && (element.display_mode === "image" || element.display_mode === "image_text") ? (
         <>
           <SectionLabel>Background Image</SectionLabel>
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", padding: "var(--space-xs) 0" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 0" }}>
             Image buttons use the Image properties in the Basic tab.
           </div>
         </>
@@ -720,7 +720,7 @@ export function StyleProperties({
                 <select
                   value={String(style.background_size || "cover")}
                   onChange={(e) => handleStyleChange("background_size", e.target.value)}
-                  style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+                  style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
                 >
                   <option value="cover">Cover (fill, may crop)</option>
                   <option value="contain">Contain (fit, may letterbox)</option>
@@ -732,7 +732,7 @@ export function StyleProperties({
                 <select
                   value={String(style.background_position || "center")}
                   onChange={(e) => handleStyleChange("background_position", e.target.value)}
-                  style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+                  style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
                 >
                   <option value="center">Center</option>
                   <option value="top">Top</option>
@@ -810,7 +810,7 @@ export function StyleProperties({
           min={0}
           max={5000}
           step={50}
-          style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
         <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>ms</span>
       </StyleRow>
@@ -819,7 +819,7 @@ export function StyleProperties({
         <select
           value={String(style.overflow || "")}
           onChange={(e) => handleStyleChange("overflow", e.target.value)}
-          style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         >
           <option value="">Default</option>
           <option value="hidden">Hidden (clip content)</option>
@@ -866,7 +866,7 @@ function CustomClassField({
   const invalid = invalidCssClassNames(value);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <StyleRow
         label="Classes"
         tooltip="Names from the project stylesheet, applied to this element. Rules in the stylesheet that target these classes restyle it."
@@ -880,15 +880,15 @@ function CustomClassField({
           style={{
             flex: 1,
             minWidth: 0,
-            padding: "var(--space-xs) var(--space-sm)",
+            padding: "4px 6px",
             fontSize: "var(--font-size-sm)",
-            fontFamily: "var(--font-mono)",
+            fontFamily: "var(--font-mono, monospace)",
           }}
         />
       </StyleRow>
 
       {invalid.length > 0 && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)" }}>
+        <div style={{ fontSize: 10, color: "#f59e0b" }}>
           The panel will ignore {invalid.map((n) => `"${n}"`).join(", ")}. A class name
           cannot start with a digit or contain spaces or punctuation.
         </div>
@@ -898,12 +898,12 @@ function CustomClassField({
         <div
           key={c.className}
           style={{
-            fontSize: "var(--font-size-2xs)",
-            color: "var(--color-warning)",
-            background: "var(--color-warning-bg)",
+            fontSize: 10,
+            color: "#f59e0b",
+            background: "rgba(245,158,11,0.08)",
             border: "1px solid rgba(245,158,11,0.2)",
-            borderRadius: "var(--border-radius)",
-            padding: "var(--space-xs) var(--space-sm)",
+            borderRadius: 4,
+            padding: "4px 6px",
           }}
         >
           <code>.{c.className}</code> sets the {c.labels.join(" and ")} this control
@@ -914,7 +914,7 @@ function CustomClassField({
       ))}
 
       {stylesheetClasses.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
           {stylesheetClasses.map((name) => {
             const on = applied.includes(name);
             return (
@@ -923,10 +923,10 @@ function CustomClassField({
                 onClick={() => onChange(toggleCssClass(value, name))}
                 title={on ? `Remove .${name}` : `Apply .${name}`}
                 style={{
-                  padding: "var(--space-2xs) var(--space-sm)",
-                  fontSize: "var(--font-size-xs)",
-                  fontFamily: "var(--font-mono)",
-                  borderRadius: "var(--radius-lg)",
+                  padding: "1px 7px",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono, monospace)",
+                  borderRadius: 10,
                   cursor: "pointer",
                   background: on ? "var(--accent)" : "var(--bg-hover)",
                   color: on ? "#10231a" : "var(--text-secondary)",
@@ -939,7 +939,7 @@ function CustomClassField({
           })}
         </div>
       ) : (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
           The project stylesheet defines no classes yet.{" "}
           {onOpenStylesheet && (
             <button
@@ -948,7 +948,7 @@ function CustomClassField({
                 background: "transparent",
                 border: "none",
                 padding: 0,
-                fontSize: "var(--font-size-2xs)",
+                fontSize: 10,
                 color: "var(--accent)",
                 cursor: "pointer",
                 textDecoration: "underline",
@@ -967,13 +967,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        fontSize: "var(--font-size-2xs)",
-        fontWeight: "var(--font-weight-semibold)",
+        fontSize: 10,
+        fontWeight: 600,
         color: "var(--text-muted)",
         textTransform: "uppercase",
-        letterSpacing: "var(--tracking-wide)",
-        marginTop: "var(--space-xs)",
-        paddingBottom: "var(--space-2xs)",
+        letterSpacing: 1,
+        marginTop: 4,
+        paddingBottom: 2,
         borderBottom: "1px solid var(--border-color)",
       }}
     >
@@ -993,7 +993,7 @@ function HelpTip({ text }: { text: string }) {
         width: 14,
         height: 14,
         borderRadius: "50%",
-        fontSize: "var(--font-size-2xs)",
+        fontSize: 9,
         color: "var(--text-muted)",
         border: "1px solid var(--border-color)",
         cursor: "help",
@@ -1021,12 +1021,12 @@ function StyleRow({
 }) {
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-2xs)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
         <label
           style={{
-            fontSize: "var(--font-size-xs)",
+            fontSize: 11,
             color: isOverridden ? "var(--text-primary)" : "var(--text-muted)",
-            fontWeight: isOverridden ? "var(--font-weight-medium)" : "var(--font-weight-normal)",
+            fontWeight: isOverridden ? 500 : 400,
           }}
         >
           {label}
@@ -1037,10 +1037,10 @@ function StyleRow({
             onClick={onReset}
             title="Reset to theme default"
             style={{
-              padding: "0 var(--space-xs)",
-              fontSize: "var(--font-size-2xs)",
+              padding: "0 3px",
+              fontSize: 9,
               color: "var(--text-muted)",
-              borderRadius: "var(--border-radius)",
+              borderRadius: 3,
               cursor: "pointer",
               lineHeight: "14px",
               opacity: 0.6,

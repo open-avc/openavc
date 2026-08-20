@@ -47,15 +47,13 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
           gap: "var(--space-sm)",
           padding: "var(--space-xl)",
           textAlign: "center",
-          fontSize: "var(--font-size-sm)",
-          lineHeight: "var(--line-relaxed)",
           color: "var(--text-muted)",
         }}
       >
-        <div style={{ fontSize: "var(--font-size-base)", color: "var(--text-primary)" }}>
+        <div style={{ fontSize: "var(--font-size-md)", color: "var(--text-primary)" }}>
           {path}
         </div>
-        <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: "var(--line-base)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
           This file travels with the project and your control can load it, but there
           is nothing here to edit. Replace it by dropping a new one in.
         </div>
@@ -102,7 +100,7 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
           <div
             style={{
               fontSize: "var(--font-size-sm)",
-              fontWeight: "var(--font-weight-semibold)",
+              fontWeight: 600,
               color: "var(--color-warning)",
               marginBottom: "var(--space-xs)",
             }}
@@ -125,7 +123,7 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
                 style={{
                   fontSize: "var(--font-size-sm)",
                   color: "var(--text-secondary)",
-                  lineHeight: "var(--line-base)",
+                  lineHeight: 1.5,
                 }}
               >
                 {warning}

@@ -27,10 +27,10 @@ export function HelpBanner({ storageKey, children }: { storageKey: string; child
   if (dismissed) return null;
   return (
     <div style={helpBannerStyle}>
-      <div style={{ flex: 1, lineHeight: "var(--line-base)" }}>{children}</div>
+      <div style={{ flex: 1, lineHeight: 1.5 }}>{children}</div>
       <button
         onClick={() => { setDismissed(true); localStorage.setItem(storageKey, "1"); }}
-        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "var(--space-2xs)", flexShrink: 0 }}
+        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 2, flexShrink: 0 }}
         title="Dismiss"
       >
         <X size={14} />
@@ -59,7 +59,7 @@ export function UsageRow({ usage }: { usage: VariableUsage }) {
       title={hasNav ? `Jump to ${typeLabel}` : undefined}
     >
       <usage.icon size={14} style={{ color: usageColor(usage.type), flexShrink: 0 }} />
-      <span style={{ color: usageColor(usage.type), fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
+      <span style={{ color: usageColor(usage.type), fontWeight: 500, flexShrink: 0 }}>
         {typeLabel}
       </span>
       <span style={{ color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{usage.label}</span>
@@ -376,11 +376,11 @@ const helpBannerStyle: React.CSSProperties = {
   alignItems: "flex-start",
   gap: "var(--space-sm)",
   padding: "var(--space-sm) var(--space-md)",
-  background: "var(--accent-dim)",
+  background: "rgba(138,180,147,0.08)",
   borderBottom: "1px solid rgba(138,180,147,0.15)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   color: "var(--text-secondary)",
-  lineHeight: "var(--line-base)",
+  lineHeight: 1.5,
   fontStyle: "italic",
 };
 
@@ -391,7 +391,7 @@ export const headerBtnStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
@@ -418,14 +418,14 @@ export const createFormStyle: React.CSSProperties = {
 
 export const miniLabel: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 
 export const fieldInput: React.CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 6px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -434,17 +434,17 @@ export const fieldInput: React.CSSProperties = {
 };
 
 export const btnPrimary: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-lg)",
+  padding: "4px 14px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
 };
 
 export const btnSecondary: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-lg)",
+  padding: "4px 14px",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -459,19 +459,19 @@ export const codeStyle: React.CSSProperties = {
 };
 
 export const typeBadgeStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontSize: 10,
+  fontWeight: 600,
   color: "var(--text-muted)",
   background: "var(--bg-hover)",
-  padding: "0 var(--space-xs)",
-  borderRadius: "var(--border-radius)",
+  padding: "0 5px",
+  borderRadius: 3,
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
+  letterSpacing: "0.5px",
 };
 
 export const iconBtn: React.CSSProperties = {
   display: "flex",
-  padding: "var(--space-xs)",
+  padding: 4,
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",
@@ -481,17 +481,16 @@ export const iconBtn: React.CSSProperties = {
 
 export const detailLabel: React.CSSProperties = {
   display: "block",
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
+  fontSize: 11,
+  color: "var(--text-muted)",
   textTransform: "uppercase",
-  fontWeight: "var(--font-weight-semibold)",
-  letterSpacing: "var(--tracking-wide)",
-  marginBottom: "var(--space-xs)",
+  letterSpacing: "0.5px",
+  marginBottom: 4,
 };
 
 export const detailInput: React.CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 8px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -503,8 +502,8 @@ export const sectionTitle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
-  fontWeight: "var(--font-weight-semibold)",
+  letterSpacing: "0.5px",
+  fontWeight: 600,
   marginBottom: "var(--space-md)",
 };
 

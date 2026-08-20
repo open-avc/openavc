@@ -19,7 +19,7 @@ export function IssueList({ issues, compact = false }: IssueListProps) {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "var(--space-xs)",
+        gap: 4,
         marginBottom: compact ? 0 : "var(--space-md)",
       }}
     >
@@ -41,7 +41,7 @@ function IssueRow({ issue, compact }: { issue: ValidationIssue; compact: boolean
       }
     : {
         background: "rgba(255, 152, 0, 0.10)",
-        color: "var(--color-warning)",
+        color: "var(--color-warning, #d97706)",
         border: "1px solid rgba(255, 152, 0, 0.4)",
       };
 
@@ -50,15 +50,15 @@ function IssueRow({ issue, compact }: { issue: ValidationIssue; compact: boolean
       style={{
         display: "flex",
         alignItems: "flex-start",
-        gap: "var(--space-sm)",
-        padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-xs) var(--space-sm)",
+        gap: 6,
+        padding: compact ? "2px 6px" : "var(--space-xs) var(--space-sm)",
         borderRadius: "var(--border-radius)",
-        fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",
+        fontSize: compact ? 11 : "var(--font-size-sm)",
         ...tone,
       }}
     >
-      <Icon size={compact ? 11 : 14} style={{ flexShrink: 0, marginTop: "var(--space-2xs)" }} />
-      <span style={{ lineHeight: "var(--line-tight)" }}>{issue.message}</span>
+      <Icon size={compact ? 11 : 14} style={{ flexShrink: 0, marginTop: 2 }} />
+      <span style={{ lineHeight: 1.4 }}>{issue.message}</span>
     </div>
   );
 }

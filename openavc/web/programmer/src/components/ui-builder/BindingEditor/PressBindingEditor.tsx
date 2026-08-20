@@ -53,7 +53,7 @@ export function PressBindingEditor({
             <button
               onClick={onClear}
               style={{
-                padding: "var(--space-xs) var(--space-sm)",
+                padding: "4px 8px",
                 borderRadius: "var(--border-radius)",
                 fontSize: "var(--font-size-sm)",
                 color: "var(--color-error)",

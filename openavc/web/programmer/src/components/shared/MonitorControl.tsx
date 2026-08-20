@@ -134,12 +134,12 @@ export function MonitorControl({
             display: "flex",
             alignItems: "center",
             gap: "var(--space-sm)",
-            padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-sm) var(--space-md)",
+            padding: compact ? "2px 8px" : "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: on ? "var(--accent-dim)" : "var(--bg-surface)",
+            background: on ? "rgba(138,180,147,0.15)" : "var(--bg-surface)",
             border: "1px solid " + (on ? "rgba(138,180,147,0.3)" : "var(--border-color)"),
             color: on ? "var(--accent)" : "var(--text-secondary)",
-            fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",
+            fontSize: compact ? 11 : "var(--font-size-sm)",
             cursor: "pointer",
             whiteSpace: "nowrap",
           }}
@@ -154,12 +154,12 @@ export function MonitorControl({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-sm)",
+              gap: 4,
+              padding: compact ? "2px 6px" : "var(--space-sm)",
               background: "transparent",
               border: "none",
               color: "var(--text-muted)",
-              fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",
+              fontSize: compact ? 11 : "var(--font-size-sm)",
               cursor: "pointer",
             }}
           >
@@ -322,10 +322,10 @@ function MonitorLimits({
             )}
           </div>
         ) : candidates.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {candidates.map((value) => (
               <div key={value} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 90, cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 90, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={monitor.states?.[value]?.normal === true}
@@ -339,7 +339,7 @@ function MonitorLimits({
                   onChange={(e) => setStateEntry(value, { label: e.target.value })}
                   style={{ ...inputStyle, flex: 1 }}
                 />
-                <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", minWidth: 48 }}>
+                <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", minWidth: 48 }}>
                   {value}
                 </code>
               </div>
@@ -404,7 +404,7 @@ function ValueAdder({ onAdd }: { onAdd: (value: string) => void }) {
 
 function Field({ label, width, children }: { label: string; width?: number; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", flex: width ? undefined : 1, width }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: width ? undefined : 1, width }}>
       <div style={legendStyle}>{label}</div>
       {children}
     </div>
@@ -412,8 +412,8 @@ function Field({ label, width, children }: { label: string; width?: number; chil
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: "var(--space-sm)",
-  background: "var(--bg-base)",
+  padding: "6px 8px",
+  background: "var(--bg-input, var(--bg-hover))",
   border: "1px solid var(--border-color)",
   borderRadius: "var(--border-radius)",
   color: "var(--text-primary)",
@@ -422,13 +422,13 @@ const inputStyle: React.CSSProperties = {
 };
 
 const legendStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-secondary)",
-  marginBottom: "var(--space-xs)",
+  marginBottom: 4,
 };
 
 const hintStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginTop: "var(--space-sm)",
+  marginTop: 6,
 };

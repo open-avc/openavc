@@ -98,7 +98,7 @@ function SchemaFieldGroup({
           width: "100%",
           padding: "var(--space-sm) var(--space-md)",
           background: "var(--bg-hover)",
-          fontWeight: "var(--font-weight-medium)",
+          fontWeight: 500,
           fontSize: "var(--font-size-sm)",
           textAlign: "left",
         }}
@@ -159,7 +159,7 @@ function SchemaFieldMappingList({
   };
 
   const cellStyle: React.CSSProperties = {
-    padding: "var(--space-2xs) var(--space-xs)",
+    padding: "2px 4px",
   };
 
   const cellInputStyle: React.CSSProperties = {
@@ -273,7 +273,7 @@ function SchemaFieldMappingList({
         style={{
           display: "block",
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-medium)",
+          fontWeight: 500,
           marginBottom: "var(--space-xs)",
           color: "var(--text-secondary)",
         }}
@@ -281,7 +281,7 @@ function SchemaFieldMappingList({
         {field.label}
       </label>
       {field.description && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
           {field.description}
         </div>
       )}
@@ -301,9 +301,9 @@ function SchemaFieldMappingList({
                   style={{
                     padding: "var(--space-xs) var(--space-sm)",
                     textAlign: "left",
-                    fontWeight: "var(--font-weight-medium)",
+                    fontWeight: 500,
                     color: "var(--text-secondary)",
-                    fontSize: "var(--font-size-xs)",
+                    fontSize: 11,
                     borderBottom: "1px solid var(--border-color)",
                   }}
                 >
@@ -318,7 +318,7 @@ function SchemaFieldMappingList({
               <tr>
                 <td
                   colSpan={columns.length + 1}
-                  style={{ padding: "var(--space-md)", textAlign: "center", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}
+                  style={{ padding: "var(--space-md)", textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}
                 >
                   No items. Click + to add one.
                 </td>
@@ -349,9 +349,9 @@ function SchemaFieldMappingList({
                     style={{
                       background: "none",
                       color: "var(--text-muted)",
-                      fontSize: "var(--font-size-lg)",
+                      fontSize: 14,
                       cursor: "pointer",
-                      padding: "var(--space-2xs) var(--space-sm)",
+                      padding: "2px 6px",
                       borderRadius: "var(--border-radius)",
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-error)")}
@@ -422,7 +422,7 @@ function SchemaFieldInput({
           <span style={{ fontSize: "var(--font-size-sm)" }}>{field.label}</span>
         </label>
       );
-      return <div>{input}{field.description && <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>{field.description}</div>}</div>;
+      return <div>{input}{field.description && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>{field.description}</div>}</div>;
 
     case "select":
       input = (
@@ -495,7 +495,7 @@ function SchemaFieldInput({
           onChange={(e) => onChange(e.target.value)}
           style={{
             ...inputStyle,
-            fontFamily: "var(--font-mono)",
+            fontFamily: "var(--font-mono, monospace)",
             fontSize: "var(--font-size-sm)",
             resize: "vertical",
             minHeight: "120px",
@@ -525,17 +525,17 @@ function SchemaFieldInput({
         style={{
           display: "block",
           fontSize: "var(--font-size-sm)",
-          fontWeight: "var(--font-weight-medium)",
+          fontWeight: 500,
           marginBottom: "var(--space-xs)",
           color: "var(--text-secondary)",
         }}
       >
         {field.label}
-        {field.required && <span style={{ color: "var(--color-error)", marginLeft: "var(--space-2xs)" }}>*</span>}
+        {field.required && <span style={{ color: "var(--color-error)", marginLeft: 2 }}>*</span>}
       </label>
       {input}
       {field.description && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           {field.description}
         </div>
       )}

@@ -72,7 +72,7 @@ function ConfigFieldInputs({
             >
               {label}
               {isRequired && (
-                <span style={{ color: "var(--color-error)", marginLeft: "var(--space-2xs)" }}>*</span>
+                <span style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
               )}
             </label>
             {kind === "boolean" ? (
@@ -157,7 +157,7 @@ function ConfigFieldInputs({
                 spellCheck={false}
                 style={{
                   width: "100%",
-                  fontFamily: "var(--font-mono)",
+                  fontFamily: "var(--font-mono, monospace)",
                   fontSize: "var(--font-size-sm)",
                   resize: "vertical",
                   minHeight: "120px",
@@ -174,7 +174,7 @@ function ConfigFieldInputs({
               />
             )}
             {description && (
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {description}
               </div>
             )}
@@ -395,7 +395,7 @@ function SerialPortPicker({
           {manual ? "Back" : "Refresh"}
         </button>
       </div>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         Ports on the OpenAVC server. The USB adapter must be plugged into that machine.
       </div>
     </div>
@@ -536,7 +536,7 @@ function ConnectionModePicker({
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
       {/* Segmented mode control */}
-      <div style={{ display: "flex", gap: "var(--space-2xs)", marginBottom: "var(--space-xs)", background: "var(--bg-hover)", borderRadius: "var(--border-radius)", padding: "var(--space-2xs)" }}>
+      <div style={{ display: "flex", gap: 2, marginBottom: "var(--space-xs)", background: "var(--bg-hover)", borderRadius: "var(--border-radius)", padding: 2 }}>
         {modes.map((m) => (
           <button
             key={m.id}
@@ -546,7 +546,7 @@ function ConnectionModePicker({
               padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               background: mode === m.id ? "var(--accent-bg)" : "transparent",
-              color: mode === m.id ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
+              color: mode === m.id ? "var(--text-on-accent)" : "var(--text-secondary)",
               fontSize: "var(--font-size-sm)",
               border: "none",
               cursor: "pointer",
@@ -556,7 +556,7 @@ function ConnectionModePicker({
           </button>
         ))}
       </div>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         {modeHelp[mode]}
       </div>
 
@@ -698,11 +698,10 @@ function DriverSearchSelect({
               <div
                 style={{
                   padding: "var(--space-xs) var(--space-md)",
-                  fontSize: "var(--font-size-2xs)",
+                  fontSize: 11,
                   color: "var(--text-muted)",
                   textTransform: "uppercase",
-                  fontWeight: "var(--font-weight-semibold)",
-                  letterSpacing: "var(--tracking-wide)",
+                  letterSpacing: "0.5px",
                   background: "var(--bg-surface)",
                   position: "sticky",
                   top: 0,
@@ -728,7 +727,7 @@ function DriverSearchSelect({
                 >
                   <span>{d.name || d.id}</span>
                   {d.manufacturer && (
-                    <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>{d.manufacturer}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{d.manufacturer}</span>
                   )}
                 </div>
               ))}
@@ -933,7 +932,7 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Driver <span style={{ color: "var(--color-error)" }}>*</span>
+            Driver <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
           </label>
           <DriverSearchSelect
             drivers={drivers}
@@ -958,15 +957,15 @@ export function AddDeviceDialog({
             }}
           />
           {driverInfo?.help?.overview && (
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
               {driverInfo.help.overview}
             </div>
           )}
           {driverInfo?.help?.setup && (
             <div style={{
-              fontSize: "var(--font-size-xs)",
+              fontSize: 11,
               color: "var(--text-secondary)",
-              marginTop: "var(--space-xs)",
+              marginTop: 4,
               padding: "var(--space-sm)",
               background: "var(--bg-base)",
               borderRadius: "var(--border-radius)",
@@ -986,7 +985,7 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Device ID <span style={{ color: "var(--color-error)" }}>*</span>
+            Device ID <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
           </label>
           <input
             value={deviceId}
@@ -998,16 +997,16 @@ export function AddDeviceDialog({
             style={{
               width: "100%",
               borderColor: deviceId && !isAdding && devices?.some((d) => d.id === deviceId)
-                ? "var(--color-error)" : undefined,
+                ? "var(--color-error, #ef4444)" : undefined,
             }}
           />
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
             Lowercase letters, numbers, and underscores only.
             {deviceId && (
-              <span style={{ marginLeft: "var(--space-sm)" }}>
+              <span style={{ marginLeft: 6 }}>
                 Your ID: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{deviceId}</code>
                 {!isAdding && devices?.some((d) => d.id === deviceId) && (
-                  <span style={{ color: "var(--color-error)", marginLeft: "var(--space-sm)" }}>Already exists</span>
+                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
                 )}
               </span>
             )}
@@ -1046,8 +1045,7 @@ export function AddDeviceDialog({
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-sm)",
                 textTransform: "uppercase",
-                fontWeight: "var(--font-weight-semibold)",
-                letterSpacing: "var(--tracking-wide)",
+                letterSpacing: "0.5px",
               }}
             >
               Connection Settings
@@ -1098,7 +1096,7 @@ export function AddDeviceDialog({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent-bg)",
+              color: "var(--text-on-accent)",
               opacity: isAdding ? 0.6 : 1,
             }}
           >
@@ -1279,7 +1277,7 @@ export function EditDeviceDialog({
           <input value={device.id} disabled style={{ width: "100%", opacity: 0.6 }} />
           <div
             style={{
-              fontSize: "var(--font-size-xs)",
+              fontSize: "11px",
               color: "var(--text-muted)",
               marginTop: "var(--space-xs)",
             }}
@@ -1340,8 +1338,7 @@ export function EditDeviceDialog({
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-sm)",
                 textTransform: "uppercase",
-                fontWeight: "var(--font-weight-semibold)",
-                letterSpacing: "var(--tracking-wide)",
+                letterSpacing: "0.5px",
               }}
             >
               Connection Settings
@@ -1392,7 +1389,7 @@ export function EditDeviceDialog({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent-bg)",
+              color: "var(--text-on-accent)",
               opacity: saving ? 0.6 : 1,
             }}
           >

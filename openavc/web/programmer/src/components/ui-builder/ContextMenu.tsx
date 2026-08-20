@@ -189,7 +189,7 @@ export function ContextMenu({
       {items.map((item, i) => (
         <div key={i}>
         {item.separator && (
-          <div style={{ borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0" }} />
+          <div style={{ borderTop: "1px solid var(--border-color)", margin: "4px 0" }} />
         )}
         <button
           onClick={item.onClick}
@@ -199,8 +199,8 @@ export function ContextMenu({
             alignItems: "center",
             gap: "var(--space-sm)",
             width: "100%",
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--border-radius)",
+            padding: "6px 10px",
+            borderRadius: 4,
             fontSize: "var(--font-size-sm)",
             color: item.danger
               ? "var(--color-error)"
@@ -224,7 +224,7 @@ export function ContextMenu({
           <span style={{ display: "flex", opacity: 0.7 }}>{item.icon}</span>
           <span style={{ flex: 1 }}>{item.label}</span>
           {item.shortcut && (
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
               {item.shortcut}
             </span>
           )}

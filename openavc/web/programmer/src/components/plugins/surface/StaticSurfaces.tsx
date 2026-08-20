@@ -57,7 +57,7 @@ export function GridSurface({
             style={{
               width: keySize,
               height: keySize,
-              borderRadius: "var(--radius-lg)",
+              borderRadius: 6,
               background: isSelected
                 ? "var(--accent-dim)"
                 : bgColor || (hasAssignment ? "var(--bg-elevated)" : "var(--bg-surface)"),
@@ -69,11 +69,11 @@ export function GridSurface({
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: "var(--space-2xs)",
+              gap: 2,
               cursor: "pointer",
               transition: "all var(--transition-fast)",
               overflow: "hidden",
-              padding: "var(--space-xs)",
+              padding: 4,
               color: assignment?.text_color || "var(--text-secondary)",
             }}
             title={
@@ -85,7 +85,7 @@ export function GridSurface({
             {!hasAssignment && (
               <div
                 style={{
-                  fontSize: "var(--font-size-2xs)",
+                  fontSize: 10,
                   color: "var(--text-muted)",
                   opacity: 0.3,
                 }}
@@ -103,7 +103,7 @@ export function GridSurface({
             {assignment?.label && (
               <div
                 style={{
-                  fontSize: "var(--font-size-2xs)",
+                  fontSize: 9,
                   color: assignment?.text_color || "var(--text-secondary)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -174,14 +174,14 @@ export function StripSurface({
             style={{
               width: 50,
               height: 50,
-              borderRadius: "var(--radius-lg)",
+              borderRadius: 6,
               background: isSelected ? "var(--accent-dim)" : "var(--bg-surface)",
               border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              fontSize: "var(--font-size-2xs)",
+              fontSize: 10,
               color: assignment?.label ? "var(--text-primary)" : "var(--text-muted)",
             }}
           >
@@ -227,7 +227,7 @@ function FaderControl({
           width: 8,
           height: 120,
           background: "var(--bg-surface)",
-          borderRadius: "var(--border-radius)",
+          borderRadius: 4,
           border: "1px solid var(--border-color)",
           position: "relative",
         }}
@@ -240,11 +240,11 @@ function FaderControl({
             width: 16,
             height: 12,
             background: assignment?.bindings?.feedback ? "var(--accent-bg)" : "var(--text-muted)",
-            borderRadius: "var(--radius-sm)",
+            borderRadius: 2,
           }}
         />
       </div>
-      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", textAlign: "center", lineHeight: "var(--line-relaxed)" }}>
+      <div style={{ fontSize: 9, color: "var(--text-muted)", textAlign: "center" }}>
         {assignment?.label ?? label}
       </div>
     </div>
@@ -327,7 +327,7 @@ export function CustomSurface({
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "pointer",
-                fontSize: "var(--font-size-2xs)",
+                fontSize: 10,
                 color: "var(--text-muted)",
               }}
             >
@@ -347,14 +347,14 @@ export function CustomSurface({
               top: ctrl.y ?? 0,
               width: ctrlWidth,
               height: ctrlHeight,
-              borderRadius: "var(--radius-lg)",
+              borderRadius: 6,
               background: isSelected ? "var(--accent-dim)" : "var(--bg-surface)",
               border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              fontSize: "var(--font-size-2xs)",
+              fontSize: 10,
               color: assignment?.label ? "var(--text-primary)" : "var(--text-muted)",
             }}
           >
@@ -421,7 +421,7 @@ export function PageTabs({
             if (e.key === "Escape") setEditing(false);
           }}
           style={{
-            width: 110, padding: "var(--space-2xs) var(--space-sm)", textAlign: "center",
+            width: 110, padding: "2px 6px", textAlign: "center",
             borderRadius: "var(--border-radius)",
             border: "1px solid var(--border-color)",
             background: "var(--bg-surface)", color: "var(--text-primary)",

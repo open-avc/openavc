@@ -217,15 +217,14 @@ export function ConfigTableEditor({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            fontWeight: "var(--font-weight-semibold)",
-            letterSpacing: "var(--tracking-wide)",
+            letterSpacing: "0.5px",
           }}
         >
           {label}
         </h3>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
           {saved && (
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-success)" }}>Saved</span>
+            <span style={{ fontSize: "11px", color: "var(--color-success)" }}>Saved</span>
           )}
           <button
             type="button"
@@ -235,7 +234,7 @@ export function ConfigTableEditor({
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: dirty ? "var(--accent)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+              color: dirty ? "var(--accent-contrast, #fff)" : "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
               cursor: dirty && !saving ? "pointer" : "default",
             }}
@@ -246,7 +245,7 @@ export function ConfigTableEditor({
       </div>
 
       {help && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
           {help}
         </div>
       )}
@@ -255,7 +254,7 @@ export function ConfigTableEditor({
         <div
           style={{
             fontSize: "var(--font-size-sm)",
-            color: "var(--color-error)",
+            color: "var(--error, #f44336)",
             marginBottom: "var(--space-sm)",
           }}
         >
@@ -271,8 +270,8 @@ export function ConfigTableEditor({
               display: "grid",
               gridTemplateColumns: gridTemplate,
               gap: "var(--space-xs)",
-              marginBottom: "var(--space-xs)",
-              fontSize: "var(--font-size-xs)",
+              marginBottom: 4,
+              fontSize: "11px",
               color: "var(--text-muted)",
             }}
           >
@@ -280,7 +279,7 @@ export function ConfigTableEditor({
               <span key={k} title={columns[k].help ? String(columns[k].help) : undefined}>
                 {String(columns[k].label || k)}
                 {columns[k].required && (
-                  <span style={{ color: "var(--color-error)", marginLeft: "var(--space-2xs)" }}>*</span>
+                  <span style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
                 )}
               </span>
             ))}
@@ -363,7 +362,7 @@ export function ConfigTableEditor({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: "var(--space-2xs)",
+                  padding: 2,
                   color: "var(--text-muted)",
                 }}
               >
@@ -380,11 +379,11 @@ export function ConfigTableEditor({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "var(--space-xs)",
-          fontSize: "var(--font-size-xs)",
+          gap: 4,
+          fontSize: "11px",
           color: "var(--accent)",
-          padding: "var(--space-xs) 0",
-          marginTop: "var(--space-2xs)",
+          padding: "4px 0",
+          marginTop: 2,
         }}
       >
         <Plus size={12} /> Add {rowLabel}

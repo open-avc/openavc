@@ -83,7 +83,7 @@ export function ConfirmDialog({
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
             background: destructive ? "var(--color-error)" : "var(--accent-bg)",
-            color: destructive ? "var(--text-on-accent-bg)" : "var(--text-on-accent-bg)",
+            color: destructive ? "#fff" : "var(--text-on-accent)",
           }}
         >
           {confirmLabel}

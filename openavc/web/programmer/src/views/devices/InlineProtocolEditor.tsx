@@ -206,14 +206,14 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 const cellLabel: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 const iconBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "var(--space-xs)",
+  gap: 4,
   padding: "var(--space-xs) var(--space-sm)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -430,9 +430,9 @@ export function InlineProtocolEditor({
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "var(--tracking-wide)",
+    letterSpacing: "0.5px",
     marginBottom: "var(--space-md)",
-    fontWeight: "var(--font-weight-semibold)",
+    fontWeight: 600,
   };
 
   return (
@@ -454,9 +454,9 @@ export function InlineProtocolEditor({
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
-                color: "var(--color-error)",
-                fontSize: "var(--font-size-sm)",
+                gap: 4,
+                color: "var(--danger, #d9534f)",
+                fontSize: 12,
               }}
             >
               <AlertCircle size={13} /> {saveError}
@@ -467,9 +467,9 @@ export function InlineProtocolEditor({
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "var(--space-xs)",
-                color: "var(--color-success)",
-                fontSize: "var(--font-size-sm)",
+                gap: 4,
+                color: "var(--success, #5cb85c)",
+                fontSize: 12,
               }}
             >
               <Check size={13} /> Saved
@@ -481,7 +481,7 @@ export function InlineProtocolEditor({
             style={{
               ...iconBtn,
               background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
               opacity: saving ? 0.6 : 1,
             }}
             data-testid="inline-protocol-save"
@@ -491,7 +491,7 @@ export function InlineProtocolEditor({
         </div>
       </div>
 
-      <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: 0, marginBottom: "var(--space-md)" }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 0, marginBottom: "var(--space-md)" }}>
         Define this device's commands and how its replies map to state, with no driver
         file needed. {isHttp
           ? "Commands are HTTP requests (method, path, body)."
@@ -534,11 +534,11 @@ export function InlineProtocolEditor({
               rows={4}
               style={{ ...inputStyle, fontFamily: "var(--font-mono)", resize: "vertical" }}
             />
-            <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
-              <button onClick={importPaste} style={{ ...iconBtn, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }}>
+            <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: 4 }}>
+              <button onClick={importPaste} style={{ ...iconBtn, background: "var(--accent-bg)", color: "var(--text-on-accent)" }}>
                 Add to table
               </button>
-              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", alignSelf: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "center" }}>
                 One per line: <code>Label = string to send</code>
               </span>
             </div>
@@ -649,7 +649,7 @@ export function InlineProtocolEditor({
                     checked={r.poll}
                     onChange={(e) => setCommand(r.key, { poll: e.target.checked })}
                     title="Send this command repeatedly on the device's poll interval (for status queries)"
-                    style={{ marginBottom: "var(--space-sm)" }}
+                    style={{ marginBottom: 8 }}
                   />
                 </div>
                 <button
@@ -665,7 +665,7 @@ export function InlineProtocolEditor({
         )}
 
         {commandRows.some((r) => r.poll) && (
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-sm)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-sm)" }}>
             Polled commands send on the device's <strong>Poll Interval</strong>. Set it
             when you add or edit the device (next to the connection settings). If it's 0,
             polling is off.
@@ -674,7 +674,7 @@ export function InlineProtocolEditor({
 
         {!isHttp && (
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-md)" }}>
-            <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>Line ending</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Line ending</span>
             <select
               value={delimiter}
               onChange={(e) => {
@@ -688,14 +688,14 @@ export function InlineProtocolEditor({
               <option value={"\n"}>LF (\n)</option>
               <option value={""}>None</option>
             </select>
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
               added to each command and used to split replies
             </span>
           </div>
         )}
 
         {!isHttp && (
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-sm)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-sm)" }}>
             Commands are sent as text. To include a raw byte, use{" "}
             <code>{"\\xHH"}</code> (e.g. <code>{"\\x1B"}</code> for ESC, <code>{"\\xFF"}</code>{" "}
             for 0xFF); <code>{"\\r \\n \\t"}</code> also work. (For protocols that need a
@@ -719,7 +719,7 @@ export function InlineProtocolEditor({
             <Plus size={13} /> Add response
           </button>
         </div>
-        <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 0, marginBottom: "var(--space-sm)" }}>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 0, marginBottom: "var(--space-sm)" }}>
           Turn a reply into a live value. The variable appears on this device and
           is usable in bindings, macros, and triggers as{" "}
           <code>$device.{deviceId}.&lt;name&gt;</code>.
@@ -815,7 +815,7 @@ export function InlineProtocolEditor({
                   </div>
                 )}
 
-                <div style={{ width: 16, textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)", paddingBottom: "var(--space-sm)" }}>
+                <div style={{ width: 16, textAlign: "center", color: "var(--text-muted)", paddingBottom: 6 }}>
                   →
                 </div>
                 <div style={{ flex: "1 1 120px" }}>
@@ -890,13 +890,13 @@ export function InlineProtocolEditor({
               style={{
                 ...iconBtn,
                 background: connected ? "var(--accent-bg)" : "var(--bg-hover)",
-                color: connected ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+                color: connected ? "var(--text-on-accent)" : "var(--text-muted)",
               }}
             >
               <Send size={13} /> Send
             </button>
           </div>
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
             {!connected
               ? "Connect the device to send."
               : rawResult ?? "The line ending is appended automatically."}

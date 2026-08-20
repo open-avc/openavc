@@ -59,7 +59,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
       panelStyle={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border-color)",
-        borderRadius: "var(--radius-lg)",
+        borderRadius: "var(--border-radius-lg, 8px)",
         padding: "var(--space-lg)",
         width: 520,
         maxHeight: "85vh",
@@ -70,7 +70,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
         <h3
           style={{
             margin: "0 0 var(--space-md) 0",
-            fontSize: "var(--font-size-lg)",
+            fontSize: "var(--font-size-lg, 16px)",
             color: "var(--text-primary)",
           }}
         >
@@ -90,12 +90,12 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
               autoFocus
             />
             {driverId && sanitizedId !== driverId.trim() && (
-              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 Will be saved as: {sanitizedId}
               </span>
             )}
             {isDuplicate && (
-              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)" }}>
+              <span style={{ fontSize: 11, color: "var(--danger, #ef4444)" }}>
                 Driver ID already exists
               </span>
             )}
@@ -167,7 +167,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
               fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
               marginBottom: "var(--space-xs)",
-              fontWeight: "var(--font-weight-semibold)",
+              fontWeight: 600,
             }}
           >
             Template
@@ -189,7 +189,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
                 <div
                   style={{
                     fontSize: "var(--font-size-sm)",
-                    fontWeight: "var(--font-weight-medium)",
+                    fontWeight: 500,
                     color: "var(--text-primary)",
                   }}
                 >
@@ -197,17 +197,17 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
                   {t.transport === transport && t.id !== "minimal" && (
                     <span
                       style={{
-                        marginLeft: "var(--space-sm)",
-                        fontSize: "var(--font-size-2xs)",
+                        marginLeft: 8,
+                        fontSize: 10,
                         color: "var(--accent)",
-                        fontWeight: "var(--font-weight-normal)",
+                        fontWeight: 400,
                       }}
                     >
                       Recommended
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   {t.description}
                 </div>
               </div>
@@ -246,35 +246,35 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
 const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "var(--space-xs)",
+  gap: 4,
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
-  fontWeight: "var(--font-weight-medium)",
+  fontWeight: 500,
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-md)",
+  padding: "6px 10px",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",
   color: "var(--text-primary)",
   fontSize: "var(--font-size-sm)",
-  fontWeight: "var(--font-weight-normal)",
+  fontWeight: 400,
 };
 
 const createBtnStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
-  fontWeight: "var(--font-weight-medium)",
+  fontWeight: 500,
 };
 
 const cancelBtnStyle: React.CSSProperties = {
-  padding: "var(--space-sm) var(--space-lg)",
+  padding: "6px 16px",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-primary)",

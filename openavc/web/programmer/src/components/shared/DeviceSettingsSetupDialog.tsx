@@ -169,7 +169,7 @@ export function DeviceSettingsSetupDialog({
         {error && (
           <div
             style={{
-              background: "var(--color-error-bg)",
+              background: "rgba(244,67,54,0.15)",
               color: "var(--color-error)",
               padding: "var(--space-sm) var(--space-md)",
               borderRadius: "var(--border-radius)",
@@ -248,13 +248,13 @@ export function DeviceSettingsSetupDialog({
                 />
               )}
               {help && (
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{help}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{help}</div>
               )}
               {result && (
                 <div
                   style={{
-                    fontSize: "var(--font-size-xs)",
-                    marginTop: "var(--space-2xs)",
+                    fontSize: 11,
+                    marginTop: 2,
                     color: result.success ? (result.pending ? "var(--accent)" : "var(--color-success)") : "var(--color-error)",
                   }}
                 >
@@ -294,7 +294,7 @@ export function DeviceSettingsSetupDialog({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent-bg)",
+              color: "var(--text-on-accent)",
               opacity: saving ? 0.6 : 1,
             }}
           >

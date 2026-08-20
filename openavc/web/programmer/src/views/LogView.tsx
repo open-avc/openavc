@@ -16,7 +16,7 @@ export function LogView() {
     <ViewContainer
       title="Log"
       actions={
-        <div style={{ display: "flex", gap: "var(--space-xl)", alignItems: "stretch", alignSelf: "stretch" }} role="tablist">
+        <div style={{ display: "flex", gap: "var(--space-sm)" }} role="tablist">
           <TabButton
             label="System Log"
             active={activeTab === "log"}
@@ -50,15 +50,13 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       style={{
-        padding: "0 var(--space-2xs)",
-        background: "none",
-        color: active ? "var(--text-primary)" : "var(--text-secondary)",
+        padding: "var(--space-xs) var(--space-md)",
+        borderRadius: "var(--border-radius)",
+        background: active ? "var(--accent-bg)" : "var(--bg-hover)",
+        color: active ? "#fff" : "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
-        fontWeight: "var(--font-weight-medium)",
+        fontWeight: active ? 600 : 400,
         border: "none",
-        // The mark sits on the edge of the bar rather than filling a pill, so
-        // the accent stays reserved for the primary action.
-        boxShadow: active ? "inset 0 -2px 0 var(--accent)" : "none",
         cursor: "pointer",
       }}
     >
@@ -224,7 +222,7 @@ function SystemLogTab() {
         }}
       >
         {filtered.length === 0 ? (
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)" }}>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>
             No log entries yet. System activity will appear here.
           </div>
         ) : (
@@ -239,7 +237,7 @@ function SystemLogTab() {
             </thead>
             <tbody>
               {filtered.length > 200 && (
-                <tr><td colSpan={4} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
+                <tr><td colSpan={4} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)", fontSize: "11px" }}>
                   Showing last 200 of {filtered.length} entries
                 </td></tr>
               )}
@@ -249,7 +247,7 @@ function SystemLogTab() {
                   <td style={tdStyle}>
                     <span style={{
                       color: LEVEL_COLORS[e.level] ?? "var(--text-primary)",
-                      fontWeight: e.level === "ERROR" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                      fontWeight: e.level === "ERROR" ? 600 : 400,
                     }}>
                       {e.level}
                     </span>
@@ -397,7 +395,7 @@ function StateChangeTab() {
         }}
       >
         {filtered.length === 0 ? (
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", color: "var(--text-muted)" }}>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>
             No state changes recorded yet. Interact with the system to see live updates.
           </div>
         ) : (
@@ -434,11 +432,11 @@ function StateChangeTab() {
 const thStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",
   textAlign: "left",
-  fontWeight: "var(--font-weight-semibold)",
+  fontWeight: 600,
   color: "var(--text-secondary)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: "11px",
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
+  letterSpacing: "0.5px",
 };
 
 const tdStyle: React.CSSProperties = {
@@ -451,7 +449,7 @@ const tdStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = {
   marginLeft: "var(--space-xs)",
-  padding: "var(--space-2xs) var(--space-sm)",
+  padding: "2px 6px",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-primary)",

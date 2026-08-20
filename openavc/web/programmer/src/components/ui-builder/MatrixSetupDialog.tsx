@@ -343,10 +343,10 @@ export function MatrixSetupDialog({
         display: "flex", flexDirection: "column",
       }}
     >
-      <h3 style={{ marginBottom: "var(--space-xs)", fontSize: "var(--font-size-lg)" }}>
+      <h3 style={{ marginBottom: 4, fontSize: "var(--font-size-lg)" }}>
         Set up from a device
       </h3>
-      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-lg)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-lg)" }}>
         Reads what the driver declares and fills in the sources, the destinations and
         each one&rsquo;s route key. Nothing is applied until you press Apply.
       </div>
@@ -449,7 +449,7 @@ export function MatrixSetupDialog({
           </div>
 
           {chosen.route && (
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-md)", fontSize: "var(--font-size-xs)" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "var(--space-md)", fontSize: 11 }}>
               <input
                 type="checkbox"
                 checked={setRoute}
@@ -462,7 +462,7 @@ export function MatrixSetupDialog({
           )}
 
           {audioPlane && (
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-sm)", fontSize: "var(--font-size-xs)" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "var(--space-sm)", fontSize: 11 }}>
               <input
                 type="checkbox"
                 checked={followAudio}
@@ -473,7 +473,7 @@ export function MatrixSetupDialog({
             </label>
           )}
 
-          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-sm)", fontSize: "var(--font-size-xs)" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "var(--space-sm)", fontSize: 11 }}>
             <input
               type="checkbox"
               checked={setLocks}
@@ -524,13 +524,13 @@ function RowEditor({
 
   return (
     <div style={{ flex: "1 1 340px", minWidth: 300 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-sm)", marginBottom: "var(--space-xs)" }}>
-        <strong style={{ fontSize: "var(--font-size-sm)" }}>{title}</strong>
-        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>{subtitle}</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
+        <strong style={{ fontSize: 12 }}>{title}</strong>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{subtitle}</span>
       </div>
       <div style={listStyle}>
         {rows.length === 0 && (
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", padding: "var(--space-sm)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 8px" }}>
             Nothing to list. Add these by hand after applying.
           </div>
         )}
@@ -556,7 +556,7 @@ function RowEditor({
               style={{
                 flex: 1,
                 minWidth: 0,
-                fontSize: "var(--font-size-xs)",
+                fontSize: 11,
                 color:
                   row.labelFromDevice && row.label_key
                     ? "var(--text-secondary)"
@@ -609,9 +609,9 @@ function RowEditor({
 }
 
 const fieldLabelStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: "var(--space-2xs)",
+  marginBottom: 2,
 };
 
 const listStyle: React.CSSProperties = {
@@ -624,13 +624,13 @@ const listStyle: React.CSSProperties = {
 const rowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-sm)",
+  gap: 5,
+  padding: "3px 6px",
   borderBottom: "1px solid var(--border-color)",
 };
 
 const valueStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
+  fontSize: 10,
   fontFamily: "var(--font-mono)",
   color: "var(--text-muted)",
   maxWidth: 90,
@@ -640,20 +640,20 @@ const valueStyle: React.CSSProperties = {
 };
 
 const offlineBadgeStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
-  padding: "0 var(--space-xs)",
-  borderRadius: "var(--border-radius)",
+  fontSize: 9,
+  padding: "0 4px",
+  borderRadius: 3,
   border: "1px solid rgba(255,152,0,0.5)",
   color: "var(--text-secondary)",
   whiteSpace: "nowrap",
 };
 
 const newBadgeStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
-  padding: "0 var(--space-xs)",
-  borderRadius: "var(--border-radius)",
+  fontSize: 9,
+  padding: "0 4px",
+  borderRadius: 3,
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
 };
 
 const moveBtnStyle: React.CSSProperties = {
@@ -661,39 +661,39 @@ const moveBtnStyle: React.CSSProperties = {
   border: "none",
   color: "var(--text-muted)",
   cursor: "pointer",
-  padding: "var(--space-2xs)",
+  padding: 1,
   lineHeight: 0,
 };
 
 const noteStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
-  gap: "var(--space-sm)",
-  padding: "var(--space-sm)",
-  borderRadius: "var(--border-radius)",
-  background: "var(--accent-dim)",
+  gap: 6,
+  padding: "6px 8px",
+  borderRadius: 4,
+  background: "rgba(138,180,147,0.08)",
   border: "1px solid rgba(138,180,147,0.15)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-secondary)",
-  lineHeight: "var(--line-tight)",
+  lineHeight: 1.4,
 };
 
 const warnStyle: React.CSSProperties = {
   ...noteStyle,
-  marginTop: "var(--space-sm)",
-  background: "var(--color-warning-bg)",
+  marginTop: 6,
+  background: "rgba(255,152,0,0.12)",
   border: "1px solid rgba(255,152,0,0.4)",
   color: "var(--text-primary)",
 };
 
-const iconStyle: React.CSSProperties = { flexShrink: 0, marginTop: "var(--space-2xs)" };
+const iconStyle: React.CSSProperties = { flexShrink: 0, marginTop: 1 };
 
 const primaryBtnStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-lg)",
+  padding: "4px 14px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
-  fontSize: "var(--font-size-sm)",
+  color: "#fff",
+  fontSize: 12,
   border: "none",
   cursor: "pointer",
 };
@@ -701,12 +701,12 @@ const primaryBtnStyle: React.CSSProperties = {
 const secondaryBtnStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-md)",
+  gap: 5,
+  padding: "4px 12px",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-secondary)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   border: "1px solid var(--border-color)",
   cursor: "pointer",
 };

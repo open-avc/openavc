@@ -304,9 +304,9 @@ export function DeviceDetail({
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "var(--tracking-wide)",
+    letterSpacing: "0.5px",
     marginBottom: "var(--space-md)",
-    fontWeight: "var(--font-weight-semibold)",
+    fontWeight: 600,
   };
 
   return (
@@ -337,7 +337,7 @@ export function DeviceDetail({
               gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: isEnabled ? "var(--color-success-bg)" : "var(--bg-hover)",
+              background: isEnabled ? "rgba(76,175,80,0.15)" : "var(--bg-hover)",
               color: isEnabled ? "var(--color-success)" : "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
             }}
@@ -424,7 +424,7 @@ export function DeviceDetail({
                     padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--color-error)",
-                    color: "var(--text-on-accent)",
+                    color: "#fff",
                     fontSize: "var(--font-size-sm)",
                     opacity: deleting ? 0.6 : 1,
                   }}
@@ -447,9 +447,9 @@ export function DeviceDetail({
                 const refs = findDeviceReferences(project, deviceId);
                 if (refs.length === 0) return null;
                 return (
-                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "var(--color-error-bg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "rgba(244,67,54,0.08)", borderRadius: "var(--border-radius)", fontSize: 12, color: "var(--text-secondary)" }}>
                     <strong>Warning:</strong> This device is referenced in {refs.length} place(s):
-                    <ul style={{ margin: "var(--space-xs) 0 0 var(--space-lg)", padding: 0 }}>
+                    <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
                       {refs.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}
                       {refs.length > 5 && <li>...and {refs.length - 5} more</li>}
                     </ul>
@@ -476,13 +476,13 @@ export function DeviceDetail({
             </button>
           )}
         </div>
-        <div style={{ marginLeft: "var(--space-xl)", display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        <div style={{ marginLeft: 22, display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
             {deviceInfo?.driver ?? ""}
           </span>
           <span style={{ color: "var(--border-color)" }}>&middot;</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
-            <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
               {deviceId}
             </code>
             <CopyButton value={deviceId} title="Copy device ID" />
@@ -513,9 +513,9 @@ export function DeviceDetail({
             borderRadius: "var(--border-radius)",
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
-            background: "var(--color-info-bg)",
-            border: "1px solid var(--color-info)",
-            color: "var(--color-info)",
+            background: "var(--bg-info, #1a2a3a)",
+            border: "1px solid var(--color-info, #6aa3d6)",
+            color: "var(--color-info, #6aa3d6)",
           }}
         >
           <Pause size={14} style={{ flexShrink: 0 }} />
@@ -534,13 +534,13 @@ export function DeviceDetail({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-2xs) var(--space-md)",
-              borderRadius: "var(--radius-lg)",
-              border: "1px solid var(--color-info)",
+              gap: 4,
+              padding: "2px 10px",
+              borderRadius: 12,
+              border: "1px solid var(--color-info, #6aa3d6)",
               background: "transparent",
-              color: "var(--color-info)",
-              fontSize: "var(--font-size-xs)",
+              color: "var(--color-info, #6aa3d6)",
+              fontSize: 11,
               cursor: "pointer",
             }}
             title="Clear the pause and reconnect now"
@@ -579,7 +579,7 @@ export function DeviceDetail({
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             background: testResult.success
-              ? "var(--color-success-bg)"
+              ? "rgba(76,175,80,0.15)"
               : "var(--color-error-bg)",
             color: testResult.success ? "var(--color-success)" : "var(--color-error)",
           }}
@@ -596,7 +596,7 @@ export function DeviceDetail({
       {isBridge && (
         <div style={sectionStyle}>
           <h3 style={sectionTitleStyle}>Bridge Ports</h3>
-          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
             Other devices connect through this bridge's ports. To bind one, open
             that device's Connection settings and choose "Through a bridge".
           </div>
@@ -627,15 +627,15 @@ export function DeviceDetail({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "var(--font-size-sm)" }}>
                       {p.label || p.id}
-                      <span style={{ marginLeft: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
+                      <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
                         {p.kind}
                       </span>
                     </span>
-                    <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                    <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                       {p.id}
                     </code>
                   </div>
-                  <div style={{ marginTop: "var(--space-xs)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
                     {bound.length === 0
                       ? `Nothing bound${
                           p.kind === "serial" && p.passthrough_port
@@ -702,7 +702,7 @@ export function DeviceDetail({
               right: 8,
               top: "50%",
               transform: "translateY(-50%)",
-              padding: "var(--space-2xs)",
+              padding: 2,
               background: "transparent",
               color: "var(--text-muted)",
               border: "none",
@@ -733,7 +733,7 @@ export function DeviceDetail({
         {hiddenChildKeyCount > 0 && (
           <div
             style={{
-              fontSize: "var(--font-size-xs)",
+              fontSize: 11,
               color: "var(--text-muted)",
               marginTop: "-4px",
               marginBottom: "var(--space-sm)",
@@ -782,7 +782,7 @@ export function DeviceDetail({
                         width: "40%",
                       }}
                     >
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                         {key}
                         <CopyButton value={`device.${deviceId}.${key}`} size={11} title="Copy full state key" />
                       </span>
@@ -938,7 +938,7 @@ export function DeviceDetail({
                     padding: "var(--space-sm) var(--space-lg)",
                     borderRadius: "var(--border-radius)",
                     background: selectedCommand && !sendBlocked ? "var(--accent-bg)" : "var(--bg-hover)",
-                    color: selectedCommand && !sendBlocked ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+                    color: selectedCommand && !sendBlocked ? "var(--text-on-accent)" : "var(--text-muted)",
                     opacity: sending ? 0.6 : 1,
                   }}
                 >
@@ -949,7 +949,7 @@ export function DeviceDetail({
                   const cmdDef = commands[selectedCommand] as Record<string, unknown> | undefined;
                   const cmdHelp = cmdDef?.help as string | undefined;
                   return cmdHelp ? (
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                       {cmdHelp}
                     </div>
                   ) : null;
@@ -995,7 +995,7 @@ export function DeviceDetail({
                       />
                       </div>
                       {paramHelp && (
-                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)", marginLeft: 120 }}>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, marginLeft: 120 }}>
                           {paramHelp}
                         </div>
                       )}
@@ -1141,7 +1141,7 @@ function CommandPicker({
             left: 0,
             right: 0,
             zIndex: 30,
-            marginTop: "var(--space-2xs)",
+            marginTop: 2,
             maxHeight: 280,
             overflowY: "auto",
             background: "var(--bg-surface)",
@@ -1181,7 +1181,7 @@ function CommandPicker({
                     textAlign: "left",
                     padding: "var(--space-xs) var(--space-md)",
                     background: isSelected ? "var(--accent-bg)" : "transparent",
-                    color: isSelected ? "var(--text-on-accent-bg)" : "var(--text-primary)",
+                    color: isSelected ? "var(--text-on-accent)" : "var(--text-primary)",
                     border: "none",
                     cursor: "pointer",
                     fontSize: "var(--font-size-sm)",
@@ -1191,8 +1191,8 @@ function CommandPicker({
                   <span
                     style={{
                       fontFamily: "var(--font-mono)",
-                      fontSize: "var(--font-size-xs)",
-                      color: isSelected ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+                      fontSize: 11,
+                      color: isSelected ? "var(--text-on-accent)" : "var(--text-muted)",
                       opacity: lbl ? 0.8 : 1,
                     }}
                   >
@@ -1307,9 +1307,9 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "var(--tracking-wide)",
+    letterSpacing: "0.5px",
     marginBottom: "var(--space-md)",
-    fontWeight: "var(--font-weight-semibold)",
+    fontWeight: 600,
     display: "flex",
     alignItems: "center",
     gap: "var(--space-sm)",
@@ -1351,9 +1351,9 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
             >
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>{label}</div>
+                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>{label}</div>
                   {help && (
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{help}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{help}</div>
                   )}
                 </div>
                 {isEditing ? (
@@ -1362,7 +1362,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       <select
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-2xs) var(--space-sm)" }}
+                        style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
                       >
                         <option value="true">Yes</option>
                         <option value="false">No</option>
@@ -1371,7 +1371,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       <select
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-2xs) var(--space-sm)" }}
+                        style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
                       >
                         {enumOptions.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -1392,7 +1392,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                         }
                         style={{
                           fontSize: "var(--font-size-sm)",
-                          padding: "var(--space-2xs) var(--space-sm)",
+                          padding: "2px 6px",
                           width: 180,
                         }}
                         autoFocus
@@ -1407,7 +1407,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       disabled={isSaving}
                       title="Save"
                       style={{
-                        padding: "var(--space-2xs) var(--space-sm)",
+                        padding: "2px 6px",
                         borderRadius: "var(--border-radius)",
                         background: "var(--color-success-bg)",
                         color: "var(--color-success)",
@@ -1422,7 +1422,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       onClick={handleCancel}
                       title="Cancel"
                       style={{
-                        padding: "var(--space-2xs) var(--space-sm)",
+                        padding: "2px 6px",
                         borderRadius: "var(--border-radius)",
                         background: "var(--bg-hover)",
                         fontSize: "var(--font-size-sm)",
@@ -1449,9 +1449,9 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                     {isPending && (
                       <span
                         style={{
-                          fontSize: "var(--font-size-2xs)",
+                          fontSize: 10,
                           color: "var(--accent)",
-                          padding: "var(--space-2xs) var(--space-sm)",
+                          padding: "1px 6px",
                           borderRadius: "var(--border-radius)",
                           background: "var(--accent-dim)",
                         }}
@@ -1465,7 +1465,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       disabled={!connected}
                       title={connected ? "Edit setting" : "Device must be connected to change settings"}
                       style={{
-                        padding: "var(--space-2xs) var(--space-sm)",
+                        padding: "2px 8px",
                         borderRadius: "var(--border-radius)",
                         background: "var(--bg-hover)",
                         fontSize: "var(--font-size-sm)",
@@ -1481,7 +1481,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                 <div
                   style={{
                     marginTop: "var(--space-xs)",
-                    fontSize: "var(--font-size-xs)",
+                    fontSize: 11,
                     color: result.success ? "var(--color-success)" : "var(--color-error)",
                   }}
                 >
@@ -1518,8 +1518,8 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "var(--tracking-wide)",
-            fontWeight: "var(--font-weight-semibold)",
+            letterSpacing: "0.5px",
+            fontWeight: 600,
             margin: 0,
           }}
         >
@@ -1529,12 +1529,12 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
         <button
           onClick={() => setTab("protocol")}
           style={{
-            padding: "var(--space-2xs) var(--space-sm)",
+            padding: "2px 8px",
             borderRadius: "var(--border-radius)",
             background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "protocol" ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
-            fontSize: "var(--font-size-xs)",
-            fontWeight: "var(--font-weight-medium)",
+            color: tab === "protocol" ? "#fff" : "var(--text-secondary)",
+            fontSize: 11,
+            fontWeight: tab === "protocol" ? 600 : 400,
             border: "none",
             cursor: "pointer",
           }}
@@ -1544,12 +1544,12 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
         <button
           onClick={() => setTab("state")}
           style={{
-            padding: "var(--space-2xs) var(--space-sm)",
+            padding: "2px 8px",
             borderRadius: "var(--border-radius)",
             background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "state" ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
-            fontSize: "var(--font-size-xs)",
-            fontWeight: "var(--font-weight-medium)",
+            color: tab === "state" ? "#fff" : "var(--text-secondary)",
+            fontSize: 11,
+            fontWeight: tab === "state" ? 600 : 400,
             border: "none",
             cursor: "pointer",
           }}
@@ -1613,8 +1613,7 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
-            lineHeight: "var(--line-relaxed)",
-            fontFamily: "var(--font-family)",
+            fontFamily: "var(--font-primary, inherit)",
           }}
         >
           No log entries for this device yet.
@@ -1633,14 +1632,14 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
                 alignItems: "baseline",
               }}
             >
-              <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", flexShrink: 0 }}>
+              <span style={{ color: "var(--text-muted)", fontSize: 11, flexShrink: 0 }}>
                 {time.toLocaleTimeString(undefined, { hour12: false })}
               </span>
               <span
                 style={{
                   color: LEVEL_COLORS[e.level] ?? "var(--text-primary)",
-                  fontWeight: e.level === "ERROR" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
-                  fontSize: "var(--font-size-xs)",
+                  fontWeight: e.level === "ERROR" ? 600 : 400,
+                  fontSize: 11,
                   flexShrink: 0,
                   width: 40,
                 }}
@@ -1735,8 +1734,7 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
-            lineHeight: "var(--line-relaxed)",
-            fontFamily: "var(--font-family)",
+            fontFamily: "var(--font-primary, inherit)",
           }}
         >
           No state changes yet. Interact with the device to see live updates.
@@ -1777,11 +1775,11 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
 const devLogThStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
   textAlign: "left",
-  fontWeight: "var(--font-weight-semibold)",
+  fontWeight: 600,
   color: "var(--text-secondary)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 11,
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
+  letterSpacing: "0.5px",
 };
 
 const devLogTdStyle: React.CSSProperties = {
@@ -1807,7 +1805,7 @@ const PERMANENT_OFFLINE_REASONS = new Set([
  *  than OfflineBanner (one border, no icon column of its own): the room still
  *  works, and this is a "go look at that endpoint" not a "nothing responds". */
 function ChildTroubleBanner({ headline, names }: { headline: string; names: string }) {
-  const accent = "var(--color-warning)";
+  const accent = "var(--color-warning, #f59e0b)";
   return (
     <div
       data-testid="child-trouble-banner"
@@ -1815,23 +1813,23 @@ function ChildTroubleBanner({ headline, names }: { headline: string; names: stri
         padding: "var(--space-sm) var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "var(--color-warning-bg)",
+        background: "rgba(245, 158, 11, 0.08)",
         border: "1px solid rgba(245, 158, 11, 0.35)",
         display: "flex",
         gap: "var(--space-sm)",
         alignItems: "flex-start",
       }}
     >
-      <AlertTriangle size={16} style={{ color: accent, flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+      <AlertTriangle size={16} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
       <div>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
           {headline}
         </div>
         <div
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
-            marginTop: "var(--space-2xs)",
+            marginTop: 2,
           }}
         >
           {names}
@@ -1853,26 +1851,26 @@ function OfflineBanner({
   failed: boolean;
   hint?: string;
 }) {
-  const accent = "var(--color-warning)";
+  const accent = "var(--color-warning, #f59e0b)";
   return (
     <div
       style={{
         padding: "var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "var(--color-warning-bg)",
+        background: "rgba(245, 158, 11, 0.1)",
         border: "2px solid rgba(245, 158, 11, 0.4)",
         display: "flex",
         gap: "var(--space-sm)",
         alignItems: "flex-start",
       }}
     >
-      <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+      <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
       <div>
-        <div style={{ fontWeight: "var(--font-weight-semibold)", color: accent, fontSize: "var(--font-size-base)" }}>
+        <div style={{ fontWeight: 600, color: accent, fontSize: "var(--font-size-md)" }}>
           Offline
         </div>
-        <div style={{ fontSize: "var(--font-size-sm)", marginTop: "var(--space-2xs)" }}>{detail}</div>
+        <div style={{ fontSize: "var(--font-size-sm)", marginTop: 2 }}>{detail}</div>
         {hint && (
           <div
             style={{
@@ -1981,11 +1979,11 @@ function OrphanBanner({
         padding: "var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "var(--color-error-bg)",
+        background: "rgba(239, 68, 68, 0.1)",
         border: "2px solid rgba(239, 68, 68, 0.4)",
       }}
     >
-      <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-sm)", color: "var(--color-error)", fontSize: "var(--font-size-base)" }}>
+      <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-md)" }}>
         Driver Not Installed
       </div>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
@@ -1997,7 +1995,7 @@ function OrphanBanner({
           </div>
         )}
         {error && (
-          <div style={{ marginTop: "var(--space-xs)", color: "var(--color-error)", fontSize: "var(--font-size-sm)" }}>
+          <div style={{ marginTop: "var(--space-xs)", color: "#ef4444", fontSize: "var(--font-size-sm)" }}>
             Install failed: {error}
           </div>
         )}
@@ -2010,10 +2008,10 @@ function OrphanBanner({
             style={{
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--color-warning)",
+              background: "var(--color-warning, #f59e0b)",
               color: "#000",
               fontSize: "var(--font-size-sm)",
-              fontWeight: "var(--font-weight-medium)",
+              fontWeight: 500,
               cursor: installing ? "not-allowed" : "pointer",
               opacity: installing ? 0.7 : 1,
             }}

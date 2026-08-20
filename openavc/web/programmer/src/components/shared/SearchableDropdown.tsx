@@ -97,7 +97,7 @@ export function SearchableDropdown({
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          <div style={{ padding: "var(--space-sm)", borderBottom: "1px solid var(--border-color)" }}>
+          <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>
             <input
               ref={searchRef}
               value={search}
@@ -124,15 +124,15 @@ export function SearchableDropdown({
 export const dropdownRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  padding: "var(--space-xs) var(--space-sm) var(--space-xs) var(--space-lg)",
+  padding: "4px 8px 4px 16px",
   cursor: "pointer",
   fontSize: "var(--font-size-sm)",
   transition: "background 0.1s",
 };
 
 export const dropdownGroupHeaderStyle: CSSProperties = {
-  padding: "var(--space-sm) var(--space-sm) var(--space-2xs)",
-  fontSize: "var(--font-size-xs)",
+  padding: "6px 8px 2px",
+  fontSize: 11,
   color: "var(--text-muted)",
   display: "flex",
   alignItems: "baseline",
@@ -140,25 +140,24 @@ export const dropdownGroupHeaderStyle: CSSProperties = {
 };
 
 export const dropdownTypeBadgeStyle: CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
-  padding: "0 var(--space-xs)",
-  borderRadius: "var(--border-radius)",
+  fontSize: 10,
+  padding: "0 4px",
+  borderRadius: 3,
   background: "var(--bg-hover)",
   color: "var(--text-muted)",
 };
 
 export const dropdownEmptyHintStyle: CSSProperties = {
-  padding: "var(--space-md) var(--space-sm)",
-  fontSize: "var(--font-size-sm)",
+  padding: "12px 8px",
+  fontSize: 12,
   color: "var(--text-muted)",
   fontStyle: "italic",
   textAlign: "center",
-  lineHeight: "var(--line-relaxed)",
 };
 
 const triggerStyle: CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 8px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -166,12 +165,12 @@ const triggerStyle: CSSProperties = {
   cursor: "pointer",
   display: "flex",
   alignItems: "center",
-  gap: "var(--space-xs)",
+  gap: 4,
 };
 
 const searchInputStyle: CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 6px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",

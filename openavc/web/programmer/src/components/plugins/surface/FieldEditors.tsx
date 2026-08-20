@@ -41,12 +41,12 @@ export function ActionListEditor({
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-xs)" }}>
-            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Action {i + 1}</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Action {i + 1}</span>
             <button
               onClick={() => onChange(actions.filter((_, j) => j !== i))}
               style={{
-                padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
-                fontSize: "var(--font-size-xs)", color: "var(--color-error)",
+                padding: "2px 6px", borderRadius: "var(--border-radius)",
+                fontSize: 11, color: "var(--color-error)",
                 background: "transparent", border: "1px solid var(--border-color)",
                 cursor: "pointer",
               }}
@@ -66,10 +66,10 @@ export function ActionListEditor({
       <button
         onClick={() => onChange([...actions, { action: "" }])}
         style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-xs)",
-          padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+          padding: "5px 10px", borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)", background: "transparent",
-          color: "var(--text-muted)", fontSize: "var(--font-size-sm)", cursor: "pointer",
+          color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
         }}
       >
         + {addLabel}
@@ -200,9 +200,9 @@ export function MeterFields({
             <button
               onClick={() => update({ thresholds: [...thresholds, {}] })}
               style={{
-                alignSelf: "flex-start", fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
+                alignSelf: "flex-start", fontSize: 11, color: "var(--text-muted)",
                 border: "1px dashed var(--border-color)", borderRadius: "var(--border-radius)",
-                padding: "var(--space-2xs) var(--space-sm)", background: "transparent", cursor: "pointer",
+                padding: "2px 8px", background: "transparent", cursor: "pointer",
               }}
             >
               + Color above a level
@@ -280,7 +280,7 @@ export function ZoneFeedbackFields({
             {colorPair("Active", "style_active")}
             {colorPair("Inactive", "style_inactive")}
           </div>
-          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
             Each pair is background then text.
           </div>
         </>

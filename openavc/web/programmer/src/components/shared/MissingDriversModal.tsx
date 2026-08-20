@@ -66,10 +66,10 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
       <Dialog title={allDone ? "Drivers installed" : "Install complete (with errors)"} onClose={onClose}>
         {result.installed.length > 0 && (
           <div style={{ marginBottom: "var(--space-md)" }}>
-            <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)" }}>
+            <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)" }}>
               Installed ({result.installed.length})
             </div>
-            <ul style={{ margin: 0, paddingLeft: "var(--space-xl)", fontSize: "var(--font-size-sm)" }}>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--font-size-sm)" }}>
               {result.installed.map((id) => (
                 <li key={id}>
                   <code>{id}</code>
@@ -80,10 +80,10 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
         )}
         {result.activated.length > 0 && (
           <div style={{ marginBottom: "var(--space-md)" }}>
-            <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", color: "var(--color-success)" }}>
+            <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", color: "var(--color-success)" }}>
               Activated devices ({result.activated.length})
             </div>
-            <ul style={{ margin: 0, paddingLeft: "var(--space-xl)", fontSize: "var(--font-size-sm)" }}>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--font-size-sm)" }}>
               {result.activated.map((id) => (
                 <li key={id}>
                   <code>{id}</code>
@@ -94,10 +94,10 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
         )}
         {result.failed.length > 0 && (
           <div style={{ marginBottom: "var(--space-md)" }}>
-            <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", color: "var(--color-error)" }}>
+            <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", color: "var(--color-error)" }}>
               Failed ({result.failed.length})
             </div>
-            <ul style={{ margin: 0, paddingLeft: "var(--space-xl)", fontSize: "var(--font-size-sm)" }}>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--font-size-sm)" }}>
               {result.failed.map((f) => (
                 <li key={f.driver_id}>
                   <code>{f.driver_id}</code>: {f.error}
@@ -141,7 +141,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
 
       {installable.length > 0 && (
         <div style={{ marginBottom: "var(--space-md)" }}>
-          <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
+          <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
             Available from community ({installable.length})
           </div>
           <div
@@ -173,16 +173,16 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
                     type="checkbox"
                     checked={selected.has(m.driver_id)}
                     onChange={() => toggle(m.driver_id)}
-                    style={{ marginTop: "var(--space-xs)" }}
+                    style={{ marginTop: 3 }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
+                    <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
                       {cm.name}
                       {cm.manufacturer && (
-                        <span style={{ color: "var(--text-muted)", fontWeight: "var(--font-weight-normal)" }}> · {cm.manufacturer}</span>
+                        <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {cm.manufacturer}</span>
                       )}
                     </div>
-                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                       {m.driver_id} · used by {m.device_ids.length} device{m.device_ids.length === 1 ? "" : "s"}
                     </div>
                   </div>
@@ -195,7 +195,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
 
       {uncatalogued.length > 0 && (
         <div style={{ marginBottom: "var(--space-md)" }}>
-          <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+          <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
             Not in community catalog ({uncatalogued.length})
           </div>
           <div
@@ -208,13 +208,13 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
           >
             {uncatalogued.map((m) => (
               <div key={m.driver_id} style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-xs)" }}>
-                <code style={{ fontSize: "var(--font-size-xs)", fontFamily: "var(--font-mono)" }}>{m.driver_id}</code>{" "}
+                <code style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>{m.driver_id}</code>{" "}
                 <span style={{ color: "var(--text-muted)" }}>
                   · used by {m.device_ids.length} device{m.device_ids.length === 1 ? "" : "s"}
                 </span>
               </div>
             ))}
-            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
               Reassign these devices to a different driver, or upload the driver file manually from the Drivers tab.
             </div>
           </div>
@@ -240,10 +240,10 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
           style={{
             padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: selected.size === 0 ? "var(--bg-hover)" : "var(--accent)",
-            color: selected.size === 0 ? "var(--text-muted)" : "var(--text-primary)",
+            background: selected.size === 0 ? "var(--bg-hover)" : "var(--color-accent, #4f8cff)",
+            color: selected.size === 0 ? "var(--text-muted)" : "#fff",
             fontSize: "var(--font-size-sm)",
-            fontWeight: "var(--font-weight-medium)",
+            fontWeight: 500,
             cursor: installing || selected.size === 0 ? "not-allowed" : "pointer",
           }}
         >

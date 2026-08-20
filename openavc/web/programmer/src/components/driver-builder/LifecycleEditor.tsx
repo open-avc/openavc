@@ -151,7 +151,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
             >
               <span
                 style={{
-                  fontSize: "var(--font-size-xs)",
+                  fontSize: "11px",
                   color: "var(--text-muted)",
                   fontFamily: "var(--font-mono)",
                   width: 24,
@@ -220,14 +220,14 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
               )}
               <button
                 onClick={() => removeItem(i)}
-                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
+                style={{ padding: "2px", color: "var(--text-muted)" }}
                 title="Remove"
               >
                 <Trash2 size={14} />
               </button>
             </div>
             {showArgs && (
-              <div style={{ marginLeft: "var(--space-2xl)" }}>
+              <div style={{ marginLeft: 32 }}>
                 <OscArgsEditor
                   args={args ?? []}
                   onChange={(newArgs) =>

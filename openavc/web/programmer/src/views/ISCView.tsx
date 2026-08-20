@@ -7,12 +7,12 @@ import {
   Plus,
   Trash2,
   Send,
+  RefreshCw,
   Shield,
   Eye,
   Terminal,
 } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { headerButton } from "../components/layout/headerActions";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 
@@ -206,8 +206,8 @@ export function ISCView() {
     <ViewContainer
       title="Inter-System Communication"
       actions={
-        <button onClick={fetchStatus} style={headerButton} title="Refresh">
-          Refresh
+        <button onClick={fetchStatus} style={headerBtnStyle} title="Refresh">
+          <RefreshCw size={14} /> Refresh
         </button>
       }
     >
@@ -227,7 +227,7 @@ export function ISCView() {
                   style={{
                     width: 40,
                     height: 22,
-                    borderRadius: "var(--radius-lg)",
+                    borderRadius: 11,
                     background: enabled ? "var(--accent-bg)" : "var(--bg-hover)",
                     position: "relative",
                     cursor: "pointer",
@@ -266,13 +266,13 @@ export function ISCView() {
                 </div>
                 <div style={statBox}>
                   <div style={statLabel}>Connected</div>
-                  <div style={{ ...statValue, color: connectedCount > 0 ? "var(--color-success)" : "var(--text-muted)" }}>
+                  <div style={{ ...statValue, color: connectedCount > 0 ? "#10b981" : "var(--text-muted)" }}>
                     {connectedCount}
                   </div>
                 </div>
               </div>
             ) : (
-              <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+              <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
                 {!enabled
                   ? "ISC is disabled. Enable it to discover and communicate with other OpenAVC instances on your network."
                   : "ISC is enabled in the project but not running yet. Save and reload the project to start ISC."}
@@ -288,7 +288,7 @@ export function ISCView() {
           {/* Peer list */}
           <div style={cardStyle}>
             <h3 style={sectionTitle}>
-              <Network size={14} style={{ marginRight: "var(--space-sm)" }} />
+              <Network size={14} style={{ marginRight: 6 }} />
               Discovered Peers ({peers.length})
             </h3>
             {peers.length === 0 ? (
@@ -303,15 +303,15 @@ export function ISCView() {
                   <div key={peer.instance_id} style={peerRow}>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                       {peer.connected ? (
-                        <Wifi size={16} style={{ color: "var(--color-success)", flexShrink: 0 }} />
+                        <Wifi size={16} style={{ color: "#10b981", flexShrink: 0 }} />
                       ) : (
                         <WifiOff size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                       )}
                       <div>
-                        <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>
+                        <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
                           {peer.name || peer.instance_id.slice(0, 8)}
                         </div>
-                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                           {peer.host ? `${peer.host}:${peer.port}` : "inbound"}{" "}
                           · {peer.source}{" "}
                           · {peer.connected ? "connected" : "disconnected"}
@@ -324,7 +324,7 @@ export function ISCView() {
                         width: 8,
                         height: 8,
                         borderRadius: "50%",
-                        background: peer.connected ? "var(--color-success)" : "var(--color-error)",
+                        background: peer.connected ? "#10b981" : "#ef4444",
                         flexShrink: 0,
                       }}
                     />
@@ -340,17 +340,17 @@ export function ISCView() {
           {/* Shared State Patterns */}
           <div style={cardStyle}>
             <h3 style={sectionTitle}>
-              <Send size={14} style={{ marginRight: "var(--space-sm)" }} />
+              <Send size={14} style={{ marginRight: 6 }} />
               Shared State Patterns
             </h3>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: "var(--line-base)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: 1.5 }}>
               Glob patterns for state keys to share with peers. For example,{" "}
               <code style={codeStyle}>device.projector1.*</code> shares all projector1
               state, and <code style={codeStyle}>var.*</code> shares all variables.
             </div>
 
             {sharedState.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)", marginBottom: "var(--space-sm)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: "var(--space-sm)" }}>
                 {sharedState.map((pattern) => (
                   <div key={pattern} style={listItemStyle}>
                     <code style={codeStyle}>{pattern}</code>
@@ -383,16 +383,16 @@ export function ISCView() {
           {/* Manual Peers */}
           <div style={cardStyle}>
             <h3 style={sectionTitle}>
-              <Network size={14} style={{ marginRight: "var(--space-sm)" }} />
+              <Network size={14} style={{ marginRight: 6 }} />
               Manual Peers
             </h3>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: "var(--line-base)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: 1.5 }}>
               Add peers by IP address for cross-subnet setups where mDNS
               auto-discovery doesn't reach.
             </div>
 
             {manualPeers.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)", marginBottom: "var(--space-sm)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: "var(--space-sm)" }}>
                 {manualPeers.map((addr) => (
                   <div key={addr} style={listItemStyle}>
                     <code style={codeStyle}>{addr}</code>
@@ -424,7 +424,7 @@ export function ISCView() {
               </button>
             </div>
             {peerError && (
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", marginTop: "var(--space-xs)" }}>
+              <div style={{ fontSize: 11, color: "var(--danger, #ef4444)", marginTop: "var(--space-xs)" }}>
                 {peerError}
               </div>
             )}
@@ -433,10 +433,10 @@ export function ISCView() {
           {/* Remote Command Allowlist */}
           <div style={cardStyle}>
             <h3 style={sectionTitle}>
-              <Terminal size={14} style={{ marginRight: "var(--space-sm)" }} />
+              <Terminal size={14} style={{ marginRight: 6 }} />
               Remote Command Allowlist
             </h3>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: "var(--line-base)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: 1.5 }}>
               Device commands a peer is allowed to run on this instance. Patterns
               match <code style={codeStyle}>device_id.command</code>. For example,{" "}
               <code style={codeStyle}>projector1.*</code> allows every projector1
@@ -444,14 +444,14 @@ export function ISCView() {
               on any device, and <code style={codeStyle}>*</code> allows all.
             </div>
             {allowedCommands.length === 0 && (
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning, #f59e0b)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
                 No commands allowed. Peers can share state and events but cannot
                 control any device here until you add a pattern.
               </div>
             )}
 
             {allowedCommands.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)", marginBottom: "var(--space-sm)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: "var(--space-sm)" }}>
                 {allowedCommands.map((pattern) => (
                   <div key={pattern} style={listItemStyle}>
                     <code style={codeStyle}>{pattern}</code>
@@ -484,15 +484,15 @@ export function ISCView() {
           {/* Auth Key */}
           <div style={cardStyle}>
             <h3 style={sectionTitle}>
-              <Shield size={14} style={{ marginRight: "var(--space-sm)" }} />
+              <Shield size={14} style={{ marginRight: 6 }} />
               Authentication
             </h3>
-            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: "var(--line-base)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginBottom: "var(--space-md)", lineHeight: 1.5 }}>
               Shared secret key required for ISC connections.
               All instances must use the same key to communicate.
             </div>
             {!authKey && (
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning, #f59e0b)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
                 No auth key set. ISC will reject all incoming connections until a key is configured.
               </div>
             )}
@@ -529,6 +529,19 @@ export function ISCView() {
 
 // --- Styles ---
 
+const headerBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-xs)",
+  padding: "var(--space-xs) var(--space-md)",
+  borderRadius: "var(--border-radius)",
+  background: "var(--bg-hover)",
+  color: "var(--text-secondary)",
+  fontSize: "var(--font-size-sm)",
+  border: "none",
+  cursor: "pointer",
+};
+
 const cardStyle: React.CSSProperties = {
   background: "var(--bg-surface)",
   border: "1px solid var(--border-color)",
@@ -541,8 +554,8 @@ const sectionTitle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "var(--tracking-wide)",
-  fontWeight: "var(--font-weight-semibold)",
+  letterSpacing: "0.5px",
+  fontWeight: 600,
   margin: 0,
   display: "flex",
   alignItems: "center",
@@ -555,17 +568,16 @@ const statBox: React.CSSProperties = {
 };
 
 const statLabel: React.CSSProperties = {
-  fontSize: "var(--font-size-2xs)",
+  fontSize: 10,
   color: "var(--text-muted)",
   textTransform: "uppercase",
-  fontWeight: "var(--font-weight-semibold)",
-  letterSpacing: "var(--tracking-wide)",
-  marginBottom: "var(--space-2xs)",
+  letterSpacing: "0.5px",
+  marginBottom: 2,
 };
 
 const statValue: React.CSSProperties = {
-  fontSize: "var(--font-size-base)",
-  fontWeight: "var(--font-weight-semibold)",
+  fontSize: "var(--font-size-md)",
+  fontWeight: 600,
   fontFamily: "var(--font-mono)",
 };
 
@@ -573,7 +585,7 @@ const emptyText: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-muted)",
   fontStyle: "italic",
-  lineHeight: "var(--line-base)",
+  lineHeight: 1.5,
 };
 
 const peerRow: React.CSSProperties = {
@@ -602,7 +614,7 @@ const listItemStyle: React.CSSProperties = {
 
 const fieldInput: React.CSSProperties = {
   flex: 1,
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 8px",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -614,10 +626,10 @@ const btnSmall: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 8px",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent-bg)",
+  color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
@@ -625,7 +637,7 @@ const btnSmall: React.CSSProperties = {
 
 const iconBtn: React.CSSProperties = {
   display: "flex",
-  padding: "var(--space-xs)",
+  padding: 4,
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

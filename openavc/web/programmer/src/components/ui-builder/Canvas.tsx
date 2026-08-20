@@ -782,7 +782,7 @@ export function Canvas({
           flexShrink: 0,
           margin: "auto",
           position: "relative",
-          borderRadius: isOverlay ? "var(--radius-lg)" : "var(--radius-lg)",
+          borderRadius: isOverlay ? "12px" : "8px",
           boxShadow: isOverlay
             ? "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1)"
             : "0 4px 24px rgba(0,0,0,0.5)",
@@ -834,7 +834,7 @@ export function Canvas({
                   position: "absolute",
                   top: 2,
                   left: 10,
-                  fontSize: "var(--font-size-2xs)",
+                  fontSize: 10,
                   color: "rgba(255,255,255,0.3)",
                   pointerEvents: "none",
                   zIndex: 2,
@@ -878,7 +878,7 @@ export function Canvas({
                       cursor: "pointer",
                       outline: isMasterSelected ? "2px solid #9C27B0" : "none",
                       outlineOffset: 1,
-                      borderRadius: "var(--border-radius)",
+                      borderRadius: 4,
                       zIndex: 0,
                     }}
                     title={`Master element: ${el.id}`}
@@ -888,15 +888,15 @@ export function Canvas({
                         position: "absolute",
                         top: 2,
                         left: 4,
-                        fontSize: "var(--font-size-2xs)",
-                        padding: "var(--space-2xs) var(--space-xs)",
-                        borderRadius: "var(--border-radius)",
+                        fontSize: 9,
+                        padding: "1px 5px",
+                        borderRadius: 3,
                         background: "rgba(156,39,176,0.85)",
-                        color: "var(--text-on-accent)",
+                        color: "#fff",
                         pointerEvents: "none",
                         zIndex: 1,
-                        fontWeight: "var(--font-weight-semibold)",
-                        letterSpacing: "var(--tracking-wide)",
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
                       }}
                     >
                       Master
@@ -947,7 +947,7 @@ export function Canvas({
                     height: `${paletteDragPreview.placement.h}%`,
                     opacity: 0.85,
                     pointerEvents: "none",
-                    borderRadius: "var(--radius-lg)",
+                    borderRadius: 8,
                     outline: "2px solid var(--accent)",
                     outlineOffset: -1,
                     background: "var(--bg-elevated)",
@@ -956,7 +956,7 @@ export function Canvas({
                     justifyContent: "center",
                     color: "var(--text-primary)",
                     fontSize: "var(--font-size-sm)",
-                    fontWeight: "var(--font-weight-medium)",
+                    fontWeight: 500,
                     textTransform: "capitalize",
                     zIndex: 95,
                   }}

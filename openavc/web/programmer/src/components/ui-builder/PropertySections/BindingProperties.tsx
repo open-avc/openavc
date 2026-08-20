@@ -171,7 +171,7 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
     const itemsBinding = (show.items as Record<string, unknown>) || undefined;
     showCards.push(
       <Card key="items" title="Items" help="Populate list rows dynamically from a state key pattern (use * as a wildcard).">
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <input
             value={String(itemsBinding?.key_pattern || "")}
             onChange={(e) => setShowKey("items", e.target.value ? { source: "state", key_pattern: e.target.value } : null)}
@@ -419,14 +419,14 @@ function ValueSourceEditor({
         </>
       )}
       {key && liveValue !== undefined && (
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-surface)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 11 }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
-          <span style={{ fontWeight: "var(--font-weight-medium)" }}>{String(liveValue)}</span>
+          <span style={{ fontWeight: 500 }}>{String(liveValue)}</span>
         </div>
       )}
 
       {link && key && isVar && (
-        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
           <input type="checkbox" checked={writeBack} onChange={(e) => setWriteBack(e.target.checked)} />
           Two-way (this control can change it)
         </label>
@@ -443,7 +443,7 @@ function ValueSourceEditor({
             <strong> On change</strong> card below, where each option can run its own command.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={hintStyle}>
               A device value is read-only here. To let this control change the device, add a command
               that uses <strong>$value</strong>.
@@ -472,7 +472,7 @@ function VisibleWhenEditor({
   const hasCondition = value != null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-      <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", cursor: "pointer" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
         <input
           type="checkbox"
           checked={hasCondition}
@@ -481,7 +481,7 @@ function VisibleWhenEditor({
         Show only when…
       </label>
       {hasCondition && (
-        <div style={{ marginLeft: "var(--space-xl)" }}>
+        <div style={{ marginLeft: 20 }}>
           <ConditionGroupEditor
             value={value}
             onChange={onChange}
@@ -506,10 +506,10 @@ function Bucket({ label, hint, children }: { label: string; hint: string; childr
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <div>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)", textTransform: "uppercase", color: "var(--accent)" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.6px", textTransform: "uppercase", color: "var(--accent)" }}>
           {label}
         </div>
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{hint}</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{hint}</div>
       </div>
       {children}
     </div>
@@ -525,14 +525,14 @@ function Card({ title, help, status, children }: { title: string; help?: string;
         overflow: "hidden",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-sm)", padding: "var(--space-sm) var(--space-md)", background: "var(--bg-surface)" }}>
-        <span style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>{title}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "6px 10px", background: "var(--bg-surface)" }}>
+        <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>{title}</span>
         {status && (
           // The chip is one word; the reason it carries (which device is
           // missing, what is not filled in) was being dropped on the floor.
           <span
             title={status.text}
-            style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-xs)", color: status.kind === "broken" ? "var(--color-error)" : "var(--color-warning)" }}
+            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: status.kind === "broken" ? "var(--color-error)" : "var(--color-warning)" }}
           >
             <AlertTriangle size={12} />
             {status.kind === "broken" ? "Broken" : status.text || "Incomplete"}
@@ -540,7 +540,7 @@ function Card({ title, help, status, children }: { title: string; help?: string;
         )}
       </div>
       <div style={{ padding: "var(--space-sm)", background: "var(--bg-base)", borderTop: "1px solid var(--border-color)" }}>
-        {help && <div style={{ ...hintStyle, marginBottom: "var(--space-sm)" }}>{help}</div>}
+        {help && <div style={{ ...hintStyle, marginBottom: 6 }}>{help}</div>}
         {children}
       </div>
     </div>
@@ -549,19 +549,19 @@ function Card({ title, help, status, children }: { title: string; help?: string;
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 6px",
   fontSize: "var(--font-size-sm)",
 };
 
 const hintStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   color: "var(--text-muted)",
-  lineHeight: "var(--line-tight)",
+  lineHeight: 1.4,
   fontStyle: "italic",
 };
 
 const clearBtnStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-sm)",
+  padding: "4px 8px",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
   color: "var(--color-error)",
@@ -577,7 +577,7 @@ const modeToggleStyle: React.CSSProperties = {
   border: "none",
   background: "transparent",
   color: "var(--text-muted)",
-  fontSize: "var(--font-size-xs)",
+  fontSize: 11,
   textDecoration: "underline",
   cursor: "pointer",
 };
@@ -586,13 +586,13 @@ const linkBtnStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-md)",
+  gap: 4,
+  padding: "5px 10px",
   borderRadius: "var(--border-radius)",
   border: "1px dashed var(--border-color)",
   background: "transparent",
   color: "var(--text-muted)",
-  fontSize: "var(--font-size-sm)",
+  fontSize: 12,
   cursor: "pointer",
 };
 
@@ -602,9 +602,9 @@ const warnBoxStyle: React.CSSProperties = {
   gap: "var(--space-sm)",
   padding: "var(--space-sm)",
   borderRadius: "var(--border-radius)",
-  background: "var(--color-warning-bg)",
+  background: "rgba(245,158,11,0.1)",
   border: "1px solid rgba(245,158,11,0.25)",
-  fontSize: "var(--font-size-sm)",
-  color: "var(--color-warning)",
-  lineHeight: "var(--line-tight)",
+  fontSize: 12,
+  color: "#d97706",
+  lineHeight: 1.4,
 };

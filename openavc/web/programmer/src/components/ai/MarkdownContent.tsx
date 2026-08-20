@@ -18,7 +18,7 @@ export function MarkdownContent({ content, streaming }: MarkdownContentProps) {
             width: 6,
             height: 14,
             background: "var(--accent-bg)",
-            marginLeft: "var(--space-2xs)",
+            marginLeft: 2,
             verticalAlign: "text-bottom",
             animation: "blink 1s step-end infinite",
           }}

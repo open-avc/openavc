@@ -1,23 +1,5 @@
 import { useConnectionStore } from "../../store/connectionStore";
-
-/** What the gutter bar says about a device, worst state first.
- *
- * A dot beside every row makes the healthy ones as loud as the broken ones,
- * which is the wrong way round in a list you scan to find the problem. So a
- * row that is fine carries no mark at all, and the colour is spent only where
- * something needs doing. */
-function faultColor(
-  orphaned: boolean,
-  connected: boolean,
-  paused: boolean,
-  enabled: boolean
-): string {
-  if (orphaned) return "var(--color-warning)";
-  if (!enabled) return "var(--text-muted)";
-  if (paused) return "var(--color-info)";
-  if (!connected) return "var(--color-error)";
-  return "transparent";
-}
+import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 
 export function DeviceListItem({
   deviceId,
@@ -46,45 +28,32 @@ export function DeviceListItem({
     (s) => s.liveState[`device.${deviceId}.paused`] as boolean | undefined
   );
 
-  const bar = faultColor(orphaned ?? false, connected ?? false, paused ?? false, enabled);
-
   return (
     <button
       onClick={onClick}
       style={{
         display: "flex",
         alignItems: "center",
+        gap: "var(--space-md)",
         width: "100%",
-        height: 40,
+        padding: "var(--space-md)",
+        borderRadius: "var(--border-radius)",
         background: selected ? "var(--accent-dim)" : "transparent",
-        // Quieter than the chrome hairline on purpose: a column of rows should
-        // read as rhythm, not as a table.
-        borderBottom: "1px solid var(--border-list)",
         textAlign: "left",
+        marginBottom: "var(--space-xs)",
         transition: "background var(--transition-fast)",
+        opacity: enabled && !orphaned ? 1 : 0.6,
       }}
     >
-      {/* The gutter is a fixed lane on the column's own edge, not a margin in
-          front of the text. A bar that starts wherever the previous element
-          left off is a bar you cannot scan down. */}
-      <div
-        aria-hidden="true"
-        style={{ width: 16, display: "flex", justifyContent: "center", flexShrink: 0 }}
-      >
-        <span
-          style={{
-            width: 3,
-            height: 22,
-            borderRadius: "var(--radius-sm)",
-            background: bar,
-          }}
-        />
-      </div>
-      <div style={{ minWidth: 0, paddingRight: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+      <DeviceStatusDot
+        connected={connected ?? false}
+        orphaned={orphaned ?? false}
+        paused={paused ?? false}
+      />
+      <div style={{ minWidth: 0 }}>
         <div
           style={{
-            fontSize: "var(--font-size-base)",
-            color: enabled ? "var(--text-primary)" : "var(--text-muted)",
+            fontWeight: 500,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -93,19 +62,16 @@ export function DeviceListItem({
           {name}
         </div>
         <div style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--font-size-xs)",
-          color: orphaned ? "var(--color-warning)" : "var(--text-muted)",
-          display: "flex", alignItems: "center", gap: "var(--space-xs)",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          fontSize: "var(--font-size-sm)",
+          color: orphaned ? "var(--color-warning, #f59e0b)" : "var(--text-muted)",
+          display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap",
         }}>
           <span>{driver}{orphaned ? " (not installed)" : ""}</span>
           {groupNames && groupNames.length > 0 && groupNames.map((gn) => (
             <span key={gn} style={{
-              fontFamily: "var(--font-family)",
-              fontSize: "var(--font-size-2xs)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)",
-              background: "var(--accent-dim)", color: "var(--accent)",
-              lineHeight: "14px",
+              fontSize: 9, padding: "0 4px", borderRadius: 3,
+              background: "rgba(138,180,147,0.12)", color: "var(--accent)",
+              lineHeight: "16px",
             }}>{gn}</span>
           ))}
         </div>

@@ -78,7 +78,7 @@ export function BezelCanvas({
         gap: CANVAS_GAP,
         padding: "var(--space-lg)",
         background: "#0c0c14",
-        borderRadius: "var(--radius-lg)",
+        borderRadius: 16,
         border: "1px solid var(--border-color)",
       }}
     >
@@ -126,7 +126,7 @@ export function BezelCanvas({
               style={{
                 flex: 1,
                 height: Math.max(34, Math.round((gridWidth * 0.55 * 58) / 248)),
-                borderRadius: "var(--border-radius)",
+                borderRadius: 4,
                 overflow: "hidden",
                 background: "#000",
                 border:
@@ -138,7 +138,7 @@ export function BezelCanvas({
                 justifyContent: "center",
                 cursor: "pointer",
                 color: "#445",
-                fontSize: "var(--font-size-2xs)",
+                fontSize: 10,
               }}
             >
               {liveImagesValid && images["screen"] ? (
@@ -196,7 +196,7 @@ export function BezelCanvas({
           style={{
             width: gridWidth,
             height: Math.round(gridWidth / 8),
-            borderRadius: "var(--border-radius)",
+            borderRadius: 4,
             overflow: "hidden",
             background: "#000",
             border:
@@ -208,7 +208,7 @@ export function BezelCanvas({
             alignItems: "center",
             justifyContent: "center",
             color: "#445",
-            fontSize: "var(--font-size-2xs)",
+            fontSize: 10,
             position: "relative",
           }}
         >
@@ -250,7 +250,7 @@ export function BezelCanvas({
                   width: `${(b.w / 800) * 100}%`,
                   top: 0, bottom: 0,
                   border: "2px solid #f59e0b",
-                  borderRadius: "var(--border-radius)",
+                  borderRadius: 3,
                   pointerEvents: "none",
                 }}
               />
@@ -269,7 +269,7 @@ export function BezelCanvas({
               !!dial?.label || !!dial?.adjust?.key ||
               !!dial?.cw?.length || !!dial?.ccw?.length || !!dial?.press?.length;
             return (
-              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-xs)" }}>
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                 <button
                   onClick={(e) => {
                     if (e.shiftKey) {
@@ -304,11 +304,11 @@ export function BezelCanvas({
                       height: 9,
                       marginLeft: -1,
                       background: hasAssignment ? "var(--accent)" : "#3a3a4e",
-                      borderRadius: "var(--radius-sm)",
+                      borderRadius: 1,
                     }}
                   />
                 </button>
-                <div style={{ fontSize: "var(--font-size-2xs)", color: "#667", maxWidth: 64, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 9, color: "#667", maxWidth: 64, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {dial?.label || `Dial ${i + 1}`}
                 </div>
               </div>
@@ -323,9 +323,9 @@ export function BezelCanvas({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          gap: "var(--space-sm)",
-          marginTop: "var(--space-2xs)",
-          fontSize: "var(--font-size-2xs)",
+          gap: 6,
+          marginTop: 2,
+          fontSize: 10,
           color: "#556",
           userSelect: "none",
         }}
@@ -391,7 +391,7 @@ function KeyCell({
           width: "100%",
           height: "100%",
           padding: 0,
-          borderRadius: "var(--radius-lg)",
+          borderRadius: 8,
           overflow: "hidden",
           border: selected ? "2px solid var(--accent)" : "1px solid #2a2a3a",
           boxShadow: flashing ? "0 0 0 3px #f59e0b" : undefined,
@@ -401,7 +401,7 @@ function KeyCell({
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: "var(--space-2xs)",
+          gap: 2,
           color: assignment?.text_color || "#778",
         }}
       >
@@ -415,7 +415,7 @@ function KeyCell({
         ) : (
           <>
             {!hasAssignment && (
-              <span style={{ fontSize: "var(--font-size-2xs)", color: "#33334a" }}>{index + 1}</span>
+              <span style={{ fontSize: 10, color: "#33334a" }}>{index + 1}</span>
             )}
             {assignment?.icon && (
               <ElementIcon
@@ -427,7 +427,7 @@ function KeyCell({
             {assignment?.label && (
               <span
                 style={{
-                  fontSize: "var(--font-size-2xs)",
+                  fontSize: 9,
                   maxWidth: CANVAS_KEY_PX - 10,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -452,7 +452,7 @@ function KeyCell({
             justifyContent: "center",
             width: 14,
             height: 14,
-            borderRadius: "var(--border-radius)",
+            borderRadius: 4,
             background: "rgba(12,12,20,0.75)",
             color: "var(--accent)",
             pointerEvents: "none",
@@ -477,7 +477,7 @@ function KeyCell({
             justifyContent: "center",
             width: 16,
             height: 16,
-            borderRadius: "var(--border-radius)",
+            borderRadius: 4,
             background: "rgba(12,12,20,0.8)",
             color: "#cdd",
             cursor: "pointer",
@@ -518,7 +518,7 @@ function CanvasTouchKey({
       style={{
         width: 22,
         height: 44,
-        borderRadius: "var(--radius-lg)",
+        borderRadius: 11,
         flexShrink: 0,
         border: selected ? "2px solid var(--accent)" : "1px solid #2a2a3a",
         boxShadow: flashing ? "0 0 0 3px #f59e0b" : undefined,

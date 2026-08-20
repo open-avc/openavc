@@ -74,9 +74,9 @@ export function DeviceGroupsPanel() {
             style={{
               display: "flex", alignItems: "center", gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-sm)",
-              background: "var(--accent-bg)", color: "var(--text-on-accent-bg)",
+              background: "var(--accent-bg)", color: "var(--text-on-accent)",
               border: "none", borderRadius: "var(--border-radius)",
-              fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: "var(--font-weight-medium)",
+              fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: 500,
             }}
           >
             <Plus size={14} /> New Group
@@ -89,20 +89,20 @@ export function DeviceGroupsPanel() {
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
               placeholder="Group name (e.g., All Projectors)"
-              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-base)", color: "var(--text-primary)" }}
+              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-input)", color: "var(--text-primary)" }}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
             {autoGroupId && (
-              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 ID: <code style={{ fontFamily: "var(--font-mono)" }}>{autoGroupId}</code>
                 {groups.some((g) => g.id === autoGroupId) && (
-                  <span style={{ color: "var(--color-error)", marginLeft: "var(--space-sm)" }}>Already exists</span>
+                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
                 )}
               </div>
             )}
             <div style={{ display: "flex", gap: "var(--space-xs)" }}>
-              <button onClick={handleCreate} disabled={!autoGroupId || groups.some((g) => g.id === autoGroupId)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent-bg)", color: "var(--text-on-accent-bg)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer", opacity: !autoGroupId || groups.some((g) => g.id === autoGroupId) ? 0.5 : 1 }}>Create</button>
+              <button onClick={handleCreate} disabled={!autoGroupId || groups.some((g) => g.id === autoGroupId)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent-bg)", color: "var(--text-on-accent)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer", opacity: !autoGroupId || groups.some((g) => g.id === autoGroupId) ? 0.5 : 1 }}>Create</button>
               <button onClick={() => { setShowCreate(false); setNewGroupName(""); }} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-hover)", color: "var(--text-secondary)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
@@ -110,9 +110,9 @@ export function DeviceGroupsPanel() {
 
         <div style={{ flex: 1, overflow: "auto" }}>
           {groups.length === 0 ? (
-            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
               <Layers size={32} style={{ opacity: 0.3, marginBottom: "var(--space-sm)" }} />
-              <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-secondary)", marginBottom: "var(--space-sm)" }}>No groups yet</div>
+              <div style={{ fontWeight: 500, color: "var(--text-secondary)", marginBottom: "var(--space-sm)" }}>No groups yet</div>
               <div>
                 Groups let you control multiple devices at once.
                 Create a "Projectors" group to power them all on with one macro step.
@@ -121,9 +121,9 @@ export function DeviceGroupsPanel() {
                 onClick={() => setShowCreate(true)}
                 style={{
                   marginTop: "var(--space-md)", padding: "var(--space-xs) var(--space-md)",
-                  background: "var(--accent-bg)", color: "var(--text-on-accent-bg)",
+                  background: "var(--accent-bg)", color: "var(--text-on-accent)",
                   border: "none", borderRadius: "var(--border-radius)",
-                  fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: "var(--font-weight-medium)",
+                  fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Create your first group
@@ -147,15 +147,15 @@ export function DeviceGroupsPanel() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                     <Layers size={14} style={{ color: "var(--accent)" }} />
-                    <span style={{ fontWeight: selectedGroupId === g.id ? "var(--font-weight-semibold)" : "var(--font-weight-normal)", color: "var(--text-primary)" }}>{g.name}</span>
+                    <span style={{ fontWeight: selectedGroupId === g.id ? 600 : 400, color: "var(--text-primary)" }}>{g.name}</span>
                   </div>
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
                     {g.device_ids.length} device{g.device_ids.length !== 1 ? "s" : ""}
                   </div>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setDeleteConfirm(g.id); }}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "var(--space-2xs)" }}
+                  style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 2 }}
                   title="Delete group"
                 >
                   <Trash2 size={14} />
@@ -176,18 +176,18 @@ export function DeviceGroupsPanel() {
                 <input
                   value={selectedGroup.name}
                   onChange={(e) => handleUpdateGroup(selectedGroup.id, { name: e.target.value })}
-                  style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)", background: "transparent", border: "none", color: "var(--text-primary)", outline: "none", padding: 0 }}
+                  style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, background: "transparent", border: "none", color: "var(--text-primary)", outline: "none", padding: 0 }}
                 />
               </div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                ID: <code style={{ background: "var(--bg-hover)", padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)" }}>{selectedGroup.id}</code>
+                ID: <code style={{ background: "var(--bg-hover)", padding: "1px 4px", borderRadius: 3 }}>{selectedGroup.id}</code>
               </div>
             </div>
 
-            <h3 style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)", marginBottom: "var(--space-sm)" }}>
+            <h3 style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "var(--space-sm)" }}>
               Devices ({selectedGroup.device_ids.length})
             </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               {devices.map((dev) => {
                 const isMember = selectedGroup.device_ids.includes(dev.id);
                 return (
@@ -198,7 +198,7 @@ export function DeviceGroupsPanel() {
                       padding: "var(--space-xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       cursor: "pointer",
-                      background: isMember ? "var(--accent-dim)" : "transparent",
+                      background: isMember ? "rgba(138,180,147,0.08)" : "transparent",
                     }}
                   >
                     <input
@@ -206,8 +206,8 @@ export function DeviceGroupsPanel() {
                       checked={isMember}
                       onChange={() => toggleDevice(selectedGroup.id, dev.id)}
                     />
-                    <span style={{ fontWeight: isMember ? "var(--font-weight-medium)" : "var(--font-weight-normal)", color: "var(--text-primary)" }}>{dev.name}</span>
-                    <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>({dev.id})</span>
+                    <span style={{ fontWeight: isMember ? 500 : 400, color: "var(--text-primary)" }}>{dev.name}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({dev.id})</span>
                   </label>
                 );
               })}
@@ -219,12 +219,12 @@ export function DeviceGroupsPanel() {
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", textAlign: "center", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", textAlign: "center" }}>
             <Layers size={32} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: "var(--font-size-base)" }}>
+            <div style={{ fontSize: "var(--font-size-md)" }}>
               {groups.length === 0 ? "Create your first device group" : "Select a group to manage its devices"}
             </div>
-            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: "var(--line-base)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
               Device groups let you target multiple devices with a single macro step.
               Create a group, add devices to it, then use "Group Command" in your macros.
             </div>
