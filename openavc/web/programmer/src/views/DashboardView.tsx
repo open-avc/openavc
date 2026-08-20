@@ -37,7 +37,7 @@ function CopyButton({ text }: { text: string }) {
         border: "none",
         color: copied ? "var(--color-success)" : "var(--text-muted)",
         cursor: "pointer",
-        padding: 4,
+        padding: "var(--space-xs)",
         flexShrink: 0,
       }}
     >
@@ -184,7 +184,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
           style={{ width: 260, height: 260, background: "#fff", padding: "var(--space-sm)", borderRadius: "var(--border-radius)" }}
           dangerouslySetInnerHTML={{ __html: pairSvg }}
         />
-        <code style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center" }}>
+        <code style={{ fontSize: "var(--font-size-sm)", fontFamily: "var(--font-mono)", color: "var(--text-muted)", wordBreak: "break-all", textAlign: "center" }}>
           {pairUrl}
         </code>
         <div style={{
@@ -226,7 +226,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
               borderRadius: "var(--border-radius)",
               cursor: "pointer",
               fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
+              fontWeight: "var(--font-weight-medium)",
             }}
           >
             <Printer size={14} />
@@ -243,13 +243,13 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
               borderRadius: "var(--border-radius)",
               cursor: "pointer",
               fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
+              fontWeight: "var(--font-weight-medium)",
             }}
           >
             Close
           </button>
         </div>
-        <div style={{ color: "var(--text-muted)", fontSize: 11, textAlign: "center", maxWidth: 300 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", textAlign: "center", maxWidth: 300 }}>
           Printing produces a full-page sign whose QR opens the room panel directly.
         </div>
       </div>
@@ -335,8 +335,8 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    fontWeight: 600,
+    letterSpacing: "var(--tracking-wide)",
+    fontWeight: "var(--font-weight-semibold)",
     marginBottom: "var(--space-md)",
   };
 
@@ -377,7 +377,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 padding: "var(--space-sm) var(--space-md)",
                 marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-xs)" : 0,
               }}>
-                <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                <code style={{ flex: 1, fontSize: "var(--font-size-base)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                   {panelUrl}
                 </code>
                 <CopyButton text={panelUrl} />
@@ -386,20 +386,20 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Open in new tab"
-                  style={{ color: "var(--text-muted)", padding: 4, flexShrink: 0 }}
+                  style={{ color: "var(--text-muted)", padding: "var(--space-xs)", flexShrink: 0 }}
                 >
                   <ExternalLink size={14} />
                 </a>
               </div>
             )}
             {certifiedBase && panelUrl && (
-              <div style={{ color: "var(--color-success)", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
+              <div style={{ color: "var(--color-success)", fontSize: "var(--font-size-xs)", marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
                 Trusted address: opens with no browser warnings.
               </div>
             )}
             {shortPanelUrl && (
               <>
-                <div style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 2 }}>
+                <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", marginBottom: "var(--space-2xs)" }}>
                   Or type this short address, which forwards to the one above:
                 </div>
                 <div style={{
@@ -411,7 +411,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                   padding: "var(--space-sm) var(--space-md)",
                   marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
                 }}>
-                  <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                  <code style={{ flex: 1, fontSize: "var(--font-size-base)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                     {shortPanelUrl}
                   </code>
                   <CopyButton text={shortPanelUrl} />
@@ -427,7 +427,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
               }}>
-                <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+                <code style={{ flex: 1, fontSize: "var(--font-size-base)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
                   {hostnameUrl}
                 </code>
                 <CopyButton text={hostnameUrl} />
@@ -497,10 +497,10 @@ function MonitorRow({ monitor, value, first }: {
       }}
     >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
           {monitorLabel(monitor)}
         </div>
-        <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+        <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
           {monitor.key}
         </code>
       </div>
@@ -510,11 +510,11 @@ function MonitorRow({ monitor, value, first }: {
         )}
         <div style={{
           fontSize: "var(--font-size-sm)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
           fontFamily: "var(--font-mono)",
           color: tone,
           background: "var(--bg-hover)",
-          padding: "2px 8px",
+          padding: "var(--space-2xs) var(--space-sm)",
           borderRadius: "var(--border-radius)",
         }}>
           {monitorReading(monitor, value)}
@@ -629,8 +629,8 @@ export function DashboardView() {
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    fontWeight: 600,
+    letterSpacing: "var(--tracking-wide)",
+    fontWeight: "var(--font-weight-semibold)",
     marginBottom: "var(--space-md)",
   };
 
@@ -647,7 +647,7 @@ export function DashboardView() {
           {/* Top bar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-lg)" }}>
             <div>
-              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: 600 }}>{String(projectName)}</div>
+              <div style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)" }}>{String(projectName)}</div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
                 {"OpenAVC v" + String(systemStatus?.version ?? "")}
               </div>
@@ -667,21 +667,21 @@ export function DashboardView() {
                 <Cpu size={14} style={{ color: "var(--accent)" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Devices</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(connectedCount) + "/" + String(enabledCount)}</div>
+              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(connectedCount) + "/" + String(enabledCount)}</div>
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
                 <Zap size={14} style={{ color: "#f59e0b" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Triggers</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(triggerCount)}</div>
+              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(triggerCount)}</div>
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
                 <FileCode size={14} style={{ color: "#8b5cf6" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Scripts</span>
               </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(scriptCount)}</div>
+              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(scriptCount)}</div>
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
@@ -690,7 +690,7 @@ export function DashboardView() {
               </div>
               <div
                 title={cloudStopDetail || undefined}
-                style={{ fontSize: "var(--font-size-xl)", fontWeight: 700, color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}
+                style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)", color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}
               >
                 {!isCloudEnabled ? "—" : isCloudConnected ? "Online" : cloudOfflineLabel}
               </div>
@@ -720,10 +720,10 @@ export function DashboardView() {
             >
               <ArrowUpCircle size={20} style={{ color: "var(--accent)", flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
+                <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>
                   {"OpenAVC v" + String(liveState["system.update_available"]) + " available"}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                   View changelog and install
                 </div>
               </div>
@@ -734,7 +734,7 @@ export function DashboardView() {
           {/* Getting Started — shown when project is empty */}
           {devices.length === 0 && macros.length === 0 && (
             <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", background: "var(--color-info-bg)" }}>
-              <div style={{ fontSize: "var(--font-size-base)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
+              <div style={{ fontSize: "var(--font-size-base)", fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-md)" }}>
                 Getting Started
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -754,18 +754,18 @@ export function DashboardView() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                   >
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", flexShrink: 0 }}>
                       {item.step}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>{item.label}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{item.desc}</div>
+                      <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>{item.label}</div>
+                      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{item.desc}</div>
                     </div>
                     <ArrowRight size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: "var(--space-md)", fontSize: 12, color: "var(--text-muted)" }}>
+              <div style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
                 New to OpenAVC?{" "}
                 <a href="https://docs.openavc.com/getting-started" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
                   Read the Getting Started guide
@@ -786,10 +786,10 @@ export function DashboardView() {
             }}>
               <AlertTriangle size={18} style={{ color: "var(--color-error)", flexShrink: 0 }} />
               <div>
-                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
+                <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)" }}>
                   {String(disconnectedCount) + " device" + (disconnectedCount !== 1 ? "s" : "") + " disconnected"}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                   {devices.filter(d => d.enabled !== false && liveState[`device.${d.id}.connected`] !== true).map(d => String(d.name)).join(", ")}
                 </div>
               </div>
@@ -821,10 +821,10 @@ export function DashboardView() {
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                         <DeviceStatusDot connected={isConnected} />
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {String(dev.name)}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                             {String(dev.driver)}{!isEnabled ? " (disabled)" : ""}
                           </div>
                         </div>
@@ -854,21 +854,21 @@ export function DashboardView() {
                     }}
                   >
                     <span style={{
-                      fontSize: 10,
-                      fontWeight: 600,
+                      fontSize: "var(--font-size-2xs)",
+                      fontWeight: "var(--font-weight-semibold)",
                       color: "var(--text-muted)",
                       background: "var(--bg-hover)",
-                      padding: "1px 6px",
-                      borderRadius: 3,
+                      padding: "var(--space-2xs) var(--space-sm)",
+                      borderRadius: "var(--border-radius)",
                       textTransform: "uppercase" as const,
-                      letterSpacing: "0.5px",
+                      letterSpacing: "var(--tracking-wide)",
                       flexShrink: 0,
                     }}>
                       {t.triggerType === "schedule" ? "cron" : t.triggerType === "state_change" ? "state" : t.triggerType}
                     </span>
-                    <span style={{ fontWeight: 500 }}>{t.macroName}</span>
+                    <span style={{ fontWeight: "var(--font-weight-medium)" }}>{t.macroName}</span>
                     {t.detail && (
-                      <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                      <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                         {t.detail}
                       </code>
                     )}
@@ -910,7 +910,7 @@ export function DashboardView() {
                   <DeviceStatusDot connected={true} size={8} />
                   <span>ISC Enabled</span>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                   {String(iscPeerCount) + " manual peer" + (iscPeerCount !== 1 ? "s" : "") + " · " + String(iscPatternCount) + " shared pattern" + (iscPatternCount !== 1 ? "s" : "")}
                 </div>
               </div>
@@ -932,15 +932,15 @@ export function DashboardView() {
                     style={{
                       padding: "var(--space-xs) var(--space-md)",
                       borderTop: i > 0 ? "1px solid var(--border-color)" : undefined,
-                      fontSize: 12,
+                      fontSize: "var(--font-size-sm)",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-sm)" }}>
-                      <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, flexShrink: 0 }}>
+                      <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)", flexShrink: 0 }}>
                         {new Date(e.timestamp * 1000).toLocaleTimeString(undefined, { hour12: false })}
                       </span>
                       {e.level === "ERROR" && (
-                        <span style={{ color: "var(--color-error)", fontWeight: 600 }}>{"ERROR"}</span>
+                        <span style={{ color: "var(--color-error)", fontWeight: "var(--font-weight-semibold)" }}>{"ERROR"}</span>
                       )}
                       {e.level === "WARNING" && (
                         <span style={{ color: "#f59e0b" }}>{"WARN"}</span>

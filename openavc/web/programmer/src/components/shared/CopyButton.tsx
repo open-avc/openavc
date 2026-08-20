@@ -40,7 +40,7 @@ export function CopyButton({ value, size = 12, title = "Copy to clipboard" }: Co
 const btnStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  padding: 2,
+  padding: "var(--space-2xs)",
   background: "none",
   border: "none",
   color: "var(--text-muted)",
@@ -54,7 +54,7 @@ const copiedLabelStyle: React.CSSProperties = {
   position: "absolute",
   top: -18,
   right: 0,
-  fontSize: 10,
+  fontSize: "var(--font-size-2xs)",
   color: "var(--accent)",
   whiteSpace: "nowrap",
 };

@@ -27,10 +27,10 @@ export function HelpBanner({ storageKey, children }: { storageKey: string; child
   if (dismissed) return null;
   return (
     <div style={helpBannerStyle}>
-      <div style={{ flex: 1, lineHeight: 1.5 }}>{children}</div>
+      <div style={{ flex: 1, lineHeight: "var(--line-base)" }}>{children}</div>
       <button
         onClick={() => { setDismissed(true); localStorage.setItem(storageKey, "1"); }}
-        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 2, flexShrink: 0 }}
+        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "var(--space-2xs)", flexShrink: 0 }}
         title="Dismiss"
       >
         <X size={14} />
@@ -59,7 +59,7 @@ export function UsageRow({ usage }: { usage: VariableUsage }) {
       title={hasNav ? `Jump to ${typeLabel}` : undefined}
     >
       <usage.icon size={14} style={{ color: usageColor(usage.type), flexShrink: 0 }} />
-      <span style={{ color: usageColor(usage.type), fontWeight: 500, flexShrink: 0 }}>
+      <span style={{ color: usageColor(usage.type), fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
         {typeLabel}
       </span>
       <span style={{ color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{usage.label}</span>
@@ -378,9 +378,9 @@ const helpBannerStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",
   background: "rgba(138,180,147,0.08)",
   borderBottom: "1px solid rgba(138,180,147,0.15)",
-  fontSize: 12,
+  fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
-  lineHeight: 1.5,
+  lineHeight: "var(--line-base)",
   fontStyle: "italic",
 };
 
@@ -418,14 +418,14 @@ export const createFormStyle: React.CSSProperties = {
 
 export const miniLabel: React.CSSProperties = {
   display: "block",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  marginBottom: 2,
+  marginBottom: "var(--space-2xs)",
 };
 
 export const fieldInput: React.CSSProperties = {
   width: "100%",
-  padding: "4px 6px",
+  padding: "var(--space-xs) var(--space-sm)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -434,7 +434,7 @@ export const fieldInput: React.CSSProperties = {
 };
 
 export const btnPrimary: React.CSSProperties = {
-  padding: "4px 14px",
+  padding: "var(--space-xs) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
   color: "#fff",
@@ -444,7 +444,7 @@ export const btnPrimary: React.CSSProperties = {
 };
 
 export const btnSecondary: React.CSSProperties = {
-  padding: "4px 14px",
+  padding: "var(--space-xs) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -459,19 +459,19 @@ export const codeStyle: React.CSSProperties = {
 };
 
 export const typeBadgeStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 600,
+  fontSize: "var(--font-size-2xs)",
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-muted)",
   background: "var(--bg-hover)",
-  padding: "0 5px",
-  borderRadius: 3,
+  padding: "0 var(--space-xs)",
+  borderRadius: "var(--border-radius)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
+  letterSpacing: "var(--tracking-wide)",
 };
 
 export const iconBtn: React.CSSProperties = {
   display: "flex",
-  padding: 4,
+  padding: "var(--space-xs)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",
@@ -481,16 +481,16 @@ export const iconBtn: React.CSSProperties = {
 
 export const detailLabel: React.CSSProperties = {
   display: "block",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  marginBottom: 4,
+  letterSpacing: "var(--tracking-wide)",
+  marginBottom: "var(--space-xs)",
 };
 
 export const detailInput: React.CSSProperties = {
   width: "100%",
-  padding: "4px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -502,8 +502,8 @@ export const sectionTitle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  fontWeight: 600,
+  letterSpacing: "var(--tracking-wide)",
+  fontWeight: "var(--font-weight-semibold)",
   marginBottom: "var(--space-md)",
 };
 

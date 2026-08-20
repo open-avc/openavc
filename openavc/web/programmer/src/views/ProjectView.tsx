@@ -367,7 +367,7 @@ export function ProjectView() {
     color: "var(--text-secondary)",
     marginBottom: "var(--space-xs)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    letterSpacing: "var(--tracking-wide)",
   };
 
   const inputStyle: React.CSSProperties = { width: "100%", maxWidth: 480 };
@@ -510,24 +510,24 @@ export function ProjectView() {
                 onClick={() => openOpenDialog(lib)}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ fontWeight: "var(--font-weight-medium)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {lib.name}
                   </div>
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 2 }}>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                     {lib.device_count} device{lib.device_count !== 1 ? "s" : ""} · {lib.page_count} page
                     {lib.page_count !== 1 ? "s" : ""} · {lib.macro_count} macro
                     {lib.macro_count !== 1 ? "s" : ""}
                     {lib.script_count > 0 && ` · ${lib.script_count} script${lib.script_count !== 1 ? "s" : ""}`}
                   </div>
                   {lib.required_drivers && lib.required_drivers.length > 0 && (
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                    <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap", marginTop: "var(--space-xs)" }}>
                       {lib.required_drivers.map((d: string) => (
                         <span
                           key={d}
                           style={{
-                            fontSize: 10,
-                            padding: "1px 6px",
-                            borderRadius: 3,
+                            fontSize: "var(--font-size-2xs)",
+                            padding: "var(--space-2xs) var(--space-sm)",
+                            borderRadius: "var(--border-radius)",
                             background: "var(--bg-hover)",
                             color: "var(--text-muted)",
                           }}
@@ -592,7 +592,7 @@ export function ProjectView() {
             marginTop: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
-            lineHeight: 1.5,
+            lineHeight: "var(--line-base)",
           }}
         >
           Click a project to open it. Opening a project replaces the running one, and a backup is created automatically.
@@ -619,7 +619,7 @@ export function ProjectView() {
             display: "flex",
             flexDirection: "column",
             height: 480,
-            paddingTop: 12,
+            paddingTop: "var(--space-md)",
           }}
         >
           <AssetBrowser
@@ -634,7 +634,7 @@ export function ProjectView() {
             marginTop: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
-            lineHeight: 1.5,
+            lineHeight: "var(--line-base)",
           }}
         >
           Images and audio used by panels, macros, and plugins. Drop files to upload, or click an audio file's player to preview it.
@@ -704,10 +704,10 @@ export function ProjectView() {
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
+                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
                     {b.reason}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                     {b.timestamp ? new Date(b.timestamp).toLocaleString() : "Unknown"} · {Math.round(b.size / 1024)} KB{b.format === "legacy" ? " · Legacy" : ""}
                   </div>
                 </div>
@@ -732,7 +732,7 @@ export function ProjectView() {
           marginTop: "var(--space-md)",
           fontSize: "var(--font-size-sm)",
           color: "var(--text-muted)",
-          lineHeight: 1.5,
+          lineHeight: "var(--line-base)",
         }}>
           Backups are created automatically before project replacement, AI changes, and cloud updates. Restoring replaces the current project and reloads.
         </p>

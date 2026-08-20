@@ -19,22 +19,22 @@ const boxStyle: React.CSSProperties = {
   background: "var(--bg-surface)",
   maxHeight: 132,
   overflowY: "auto",
-  padding: "4px 6px",
+  padding: "var(--space-xs) var(--space-sm)",
 };
 
 const rowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 6,
-  fontSize: 11,
+  gap: "var(--space-sm)",
+  fontSize: "var(--font-size-xs)",
   cursor: "pointer",
-  padding: "2px 0",
+  padding: "var(--space-2xs) 0",
 };
 
 const noteStyle: React.CSSProperties = {
-  fontSize: 10,
+  fontSize: "var(--font-size-2xs)",
   color: "var(--text-muted)",
-  padding: "2px 0",
+  padding: "var(--space-2xs) 0",
 };
 
 export function GrantEditor({
@@ -58,7 +58,7 @@ export function GrantEditor({
 
   return (
     <>
-      <div style={{ fontSize: 11, fontWeight: 600, paddingTop: 6 }}>Can reach</div>
+      <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", paddingTop: "var(--space-sm)" }}>Can reach</div>
       <div style={noteStyle}>
         This control sees and controls only what you tick. Everything else in the
         project stays hidden from it.

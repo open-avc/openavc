@@ -73,6 +73,7 @@
     Consolas, monospace;
   /* A scale with some travel in it. The old one spanned 10px end to end, so
      nothing on a screen could be emphatic and nothing could recede. */
+  --font-size-2xs: 10px;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-base: 13px;
@@ -80,7 +81,22 @@
   --font-size-xl: 19px;
   --font-size-2xl: 26px;
 
+  /* Three weights, and no more. Plex Sans is the variable cut, so these are
+     real instances rather than the browser thickening an outline. */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --line-tight: 1.4;
+  --line-base: 1.5;
+  --line-relaxed: 1.6;
+
+  /* Tracking is em, not px, so a section header keeps its spacing when the
+     size next to it changes. */
+  --tracking-wide: 0.05em;
+
   /* Spacing */
+  --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;

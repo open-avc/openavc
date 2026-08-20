@@ -298,7 +298,7 @@ function DeviceCommandEditor({
               })}
             </select>
             {step.command && commands[step.command]?.help && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                 {commands[step.command].help}
               </div>
             )}
@@ -344,12 +344,12 @@ function DeviceCommandEditor({
                 />
                 </div>
                 {isDynamic && (
-                  <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", marginTop: "var(--space-2xs)", marginLeft: 78 }}>
                     Value will be read from state at runtime
                   </div>
                 )}
                 {!isDynamic && paramDef?.help && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, marginLeft: 78 }}>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)", marginLeft: 78 }}>
                     {paramDef.help}
                   </div>
                 )}
@@ -472,7 +472,7 @@ function GroupCommandEditor({
                 })}
               </select>
               {step.command && sharedCommands[step.command]?.help && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                   {sharedCommands[step.command].help}
                 </div>
               )}
@@ -520,7 +520,7 @@ function GroupCommandEditor({
                   />
                 </div>
                 {isDynamic && (
-                  <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", marginTop: "var(--space-2xs)", marginLeft: 78 }}>
                     Value will be read from state at runtime
                   </div>
                 )}
@@ -624,12 +624,12 @@ function StateSetEditor({
               style={{
                 display: "flex",
                 alignItems: "center",
-                padding: "3px 6px",
+                padding: "var(--space-xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
                 border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
                 background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
                 color: isDynamic ? "var(--accent)" : "var(--text-muted)",
-                fontSize: 11,
+                fontSize: "var(--font-size-xs)",
                 cursor: "pointer",
                 flexShrink: 0,
                 fontFamily: "var(--font-mono)",
@@ -717,7 +717,7 @@ function EventEmitEditor({
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <HelpText>
         Fire a named event that scripts and other macros can listen for. Use dot-separated
-        names (e.g. <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>custom.room_reset</code>).
+        names (e.g. <code style={{ background: "var(--bg-hover)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)" }}>custom.room_reset</code>).
       </HelpText>
       <div style={rowStyle}>
         <label style={labelStyle}>Event</label>
@@ -739,7 +739,7 @@ function EventEmitEditor({
       </div>
 
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>Payload</label>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)" }}>Payload</label>
         {payloadEntries.map(([k, v], i) => (
           <div key={i} style={{ ...rowStyle, marginBottom: "var(--space-xs)" }}>
             <input
@@ -779,13 +779,13 @@ function EventEmitEditor({
         </button>
         <div style={hintStyle}>
           Optional data sent with the event. Listeners read it as the event payload: scripts
-          via the <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>payload</code> argument,
-          triggered macros via <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>$trigger.&lt;field&gt;</code>.
+          via the <code style={{ background: "var(--bg-hover)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)" }}>payload</code> argument,
+          triggered macros via <code style={{ background: "var(--bg-hover)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)" }}>$trigger.&lt;field&gt;</code>.
         </div>
       </div>
 
       <div style={hintStyle}>
-        Scripts use <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>@on_event("custom.my_event")</code> to
+        Scripts use <code style={{ background: "var(--bg-hover)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)" }}>@on_event("custom.my_event")</code> to
         respond to emitted events.
       </div>
     </div>
@@ -816,7 +816,7 @@ function WaitUntilEditor({
       </HelpText>
 
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>Wait until</label>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)" }}>Wait until</label>
         <ConditionEditor
           condition={condition}
           onChange={(c) => onChange({ condition: c })}
@@ -840,13 +840,13 @@ function WaitUntilEditor({
           style={{ ...inputStyle, maxWidth: 120 }}
           placeholder={never ? "never" : "seconds"}
         />
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>seconds</span>
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>seconds</span>
         <label
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            fontSize: 12,
+            gap: "var(--space-sm)",
+            fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             cursor: "pointer",
             marginLeft: "var(--space-sm)",
@@ -870,8 +870,8 @@ function WaitUntilEditor({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 6,
-              fontSize: 12,
+              gap: "var(--space-sm)",
+              fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
               cursor: "pointer",
             }}
@@ -888,8 +888,8 @@ function WaitUntilEditor({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 6,
-              fontSize: 12,
+              gap: "var(--space-sm)",
+              fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
               cursor: "pointer",
             }}
@@ -1005,7 +1005,7 @@ function UINavigateEditor({
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <HelpText>
         Send every connected panel to a specific page or overlay. For switching modes within the
-        same page, prefer <strong>Set Variable</strong> plus <code style={{ background: "var(--bg-hover)", padding: "0 4px", borderRadius: 2 }}>visible_when</code>{" "}
+        same page, prefer <strong>Set Variable</strong> plus <code style={{ background: "var(--bg-hover)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)" }}>visible_when</code>{" "}
         element bindings. That pattern survives panel reconnects and doesn't push every panel to a new page.
       </HelpText>
       <div style={rowStyle}>
@@ -1165,7 +1165,7 @@ function ConditionalEditor({
 
       {/* Condition */}
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>If</label>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)" }}>If</label>
         <ConditionEditor
           condition={condition}
           onChange={(c) => onChange({ ...step, condition: c })}
@@ -1175,8 +1175,8 @@ function ConditionalEditor({
 
       {/* Then steps */}
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: 4, color: "#10b981" }}>Then</label>
-        <div style={{ borderLeft: "2px solid #10b981", paddingLeft: 12, display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)", color: "#10b981" }}>Then</label>
+        <div style={{ borderLeft: "2px solid #10b981", paddingLeft: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           {thenSteps.map((s, i) => (
             <InlineStepCard
               key={i}
@@ -1198,8 +1198,8 @@ function ConditionalEditor({
 
       {/* Else steps */}
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: 4, color: "#ef4444" }}>Else (optional)</label>
-        <div style={{ borderLeft: "2px solid #ef4444", paddingLeft: 12, display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)", color: "#ef4444" }}>Else (optional)</label>
+        <div style={{ borderLeft: "2px solid #ef4444", paddingLeft: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           {elseSteps.map((s, i) => (
             <InlineStepCard
               key={i}
@@ -1268,12 +1268,12 @@ function InlineStepCard({
         }}
       >
         <span style={{
-          fontSize: 10,
-          fontWeight: 600,
+          fontSize: "var(--font-size-2xs)",
+          fontWeight: "var(--font-weight-semibold)",
           color: "#fff",
           background: typeInfo?.color ?? "#666",
-          padding: "1px 5px",
-          borderRadius: 3,
+          padding: "var(--space-2xs) var(--space-xs)",
+          borderRadius: "var(--border-radius)",
           textTransform: "uppercase",
           flexShrink: 0,
         }}>
@@ -1282,7 +1282,7 @@ function InlineStepCard({
         <span style={{ flex: 1, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {typeInfo?.summary(step, devices as any) ?? ""}
         </span>
-        <div style={{ display: "flex", gap: 1, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", gap: "var(--space-2xs)", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
           {onMove && (
             <>
               <button
@@ -1306,7 +1306,7 @@ function InlineStepCard({
           {onMoveToBranch && (
             <button
               onClick={onMoveToBranch}
-              style={{ ...inlineIconBtn, fontSize: 10 }}
+              style={{ ...inlineIconBtn, fontSize: "var(--font-size-2xs)" }}
               title="Move to other branch"
             >
               ⇄
@@ -1335,8 +1335,8 @@ const inlineIconBtn: React.CSSProperties = {
   border: "none",
   color: "var(--text-muted)",
   cursor: "pointer",
-  padding: "1px 3px",
-  fontSize: 11,
+  padding: "var(--space-2xs) var(--space-xs)",
+  fontSize: "var(--font-size-xs)",
   lineHeight: 1,
   display: "flex",
   alignItems: "center",
@@ -1371,13 +1371,13 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          padding: "3px 10px",
+          gap: "var(--space-xs)",
+          padding: "var(--space-xs) var(--space-md)",
           borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)",
           background: "transparent",
           color: "var(--text-muted)",
-          fontSize: 12,
+          fontSize: "var(--font-size-sm)",
           cursor: "pointer",
         }}
       >
@@ -1388,7 +1388,7 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
           position: "absolute",
           top: "100%",
           left: 0,
-          marginTop: 4,
+          marginTop: "var(--space-xs)",
           background: "var(--bg-surface)",
           border: "1px solid var(--border-color)",
           borderRadius: "var(--border-radius)",
@@ -1408,7 +1408,7 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
                 gap: "var(--space-sm)",
                 padding: "var(--space-xs) var(--space-sm)",
                 cursor: "pointer",
-                fontSize: 12,
+                fontSize: "var(--font-size-sm)",
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -1421,12 +1421,12 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
             <div key={pluginName}>
               <div style={{
                 padding: "var(--space-xs) var(--space-sm)",
-                fontSize: 10,
+                fontSize: "var(--font-size-2xs)",
                 color: "var(--text-muted)",
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: "var(--tracking-wide)",
                 borderTop: "1px solid var(--border-color)",
-                marginTop: 4,
+                marginTop: "var(--space-xs)",
               }}>
                 {pluginName}
               </div>
@@ -1440,7 +1440,7 @@ function AddStepDropdown({ onAdd }: { onAdd: (action: string) => void }) {
                     gap: "var(--space-sm)",
                     padding: "var(--space-xs) var(--space-sm)",
                     cursor: "pointer",
-                    fontSize: 12,
+                    fontSize: "var(--font-size-sm)",
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -1538,13 +1538,13 @@ function PluginParamField({
     switch (param.type) {
       case "boolean":
         input = (
-          <label style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flex: 1 }}>
             <input
               type="checkbox"
               checked={Boolean(value)}
               onChange={(e) => onChange(e.target.checked)}
             />
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
               {param.description ?? ""}
             </span>
           </label>
@@ -1673,12 +1673,12 @@ function PluginParamField({
             style={{
               display: "flex",
               alignItems: "center",
-              padding: "3px 6px",
+              padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
               background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
               color: isDynamic ? "var(--accent)" : "var(--text-muted)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               cursor: "pointer",
               flexShrink: 0,
               fontFamily: "var(--font-mono)",
@@ -1692,7 +1692,7 @@ function PluginParamField({
         <div style={{ ...hintStyle, marginLeft: 78 }}>{param.description}</div>
       )}
       {isDynamic && (
-        <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, marginLeft: 78 }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", marginTop: "var(--space-2xs)", marginLeft: 78 }}>
           Value will be read from state at runtime
         </div>
       )}
@@ -1719,10 +1719,10 @@ function MissingPluginActionEditor({
         fontSize: "var(--font-size-sm)",
       }}
     >
-      <div style={{ fontWeight: 500, color: "#ef4444", marginBottom: 4 }}>
+      <div style={{ fontWeight: "var(--font-weight-medium)", color: "#ef4444", marginBottom: "var(--space-xs)" }}>
         Missing plugin: {pluginId}
       </div>
-      <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+      <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
         Action <code>{step.action}</code> is from a plugin that isn't installed or
         enabled. Install or enable the plugin to edit this step. The macro will
         fail at this step if run.
@@ -1735,7 +1735,7 @@ function MissingPluginActionEditor({
             background: "var(--bg-primary)",
             borderRadius: "var(--border-radius)",
             fontFamily: "var(--font-mono)",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
           }}
         >
@@ -1754,11 +1754,11 @@ function StepGuards({ step, onChange }: { step: MacroStep; onChange: (patch: Par
 
   return (
     <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: 500 }}>Guards</div>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)", fontWeight: "var(--font-weight-medium)" }}>Guards</div>
 
       {/* skip_if_offline (device commands only) */}
       {isDeviceCommand && (
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", marginBottom: "var(--space-xs)" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", cursor: "pointer", marginBottom: "var(--space-xs)" }}>
           <input
             type="checkbox"
             checked={step.skip_if_offline ?? false}
@@ -1769,7 +1769,7 @@ function StepGuards({ step, onChange }: { step: MacroStep; onChange: (patch: Par
       )}
 
       {/* skip_if toggle */}
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", cursor: "pointer" }}>
         <input
           type="checkbox"
           checked={hasSkipIf}
@@ -1785,7 +1785,7 @@ function StepGuards({ step, onChange }: { step: MacroStep; onChange: (patch: Par
       </label>
 
       {hasSkipIf && (
-        <div style={{ marginTop: "var(--space-xs)", marginLeft: 20 }}>
+        <div style={{ marginTop: "var(--space-xs)", marginLeft: "var(--space-xl)" }}>
           <ConditionEditor
             condition={step.skip_if!}
             onChange={(c) => onChange({ skip_if: c })}
@@ -1803,9 +1803,9 @@ function HelpText({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        fontSize: 12,
+        fontSize: "var(--font-size-sm)",
         color: "var(--text-muted)",
-        lineHeight: 1.4,
+        lineHeight: "var(--line-tight)",
         marginBottom: "var(--space-xs)",
       }}
     >
@@ -1818,8 +1818,8 @@ function HelpText({ children }: { children: React.ReactNode }) {
 
 const codeStyle: React.CSSProperties = {
   background: "var(--bg-hover)",
-  padding: "0 4px",
-  borderRadius: 2,
+  padding: "0 var(--space-xs)",
+  borderRadius: "var(--radius-sm)",
 };
 
 const rowStyle: React.CSSProperties = {
@@ -1837,7 +1837,7 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   flex: 1,
-  padding: "4px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",
@@ -1846,8 +1846,8 @@ const inputStyle: React.CSSProperties = {
 };
 
 const hintStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   fontStyle: "italic",
-  marginTop: 2,
+  marginTop: "var(--space-2xs)",
 };

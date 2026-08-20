@@ -17,7 +17,7 @@ const bubbleBase: React.CSSProperties = {
   padding: "var(--space-md)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
-  lineHeight: 1.6,
+  lineHeight: "var(--line-relaxed)",
   maxWidth: "85%",
   wordBreak: "break-word",
 };
@@ -60,13 +60,13 @@ function renderBlocks(blocks: ContentBlock[], streaming?: boolean) {
 const smallButton: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 3,
-  padding: "1px 6px",
+  gap: "var(--space-xs)",
+  padding: "var(--space-2xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-surface)",
   color: "var(--text-secondary)",
-  fontSize: 10,
+  fontSize: "var(--font-size-2xs)",
   cursor: "pointer",
 };
 
@@ -97,8 +97,8 @@ function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => 
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          fontSize: 10,
+          gap: "var(--space-xs)",
+          fontSize: "var(--font-size-2xs)",
           color: "var(--color-error)",
           textAlign: "right",
         }}
@@ -188,13 +188,13 @@ export function ChatMessage({ message, canUndo, onUndo, onRetry }: ChatMessagePr
             }}
           >
             {Boolean(message.inputTokens || message.outputTokens) && (
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
                 {message.inputTokens?.toLocaleString()} in / {message.outputTokens?.toLocaleString()} out
               </span>
             )}
             {message.undoUnavailable && (
               <span
-                style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}
+                style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontStyle: "italic" }}
                 title="A project snapshot couldn't be captured before this response, so its changes can't be rolled back here."
               >
                 Undo unavailable

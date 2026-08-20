@@ -308,7 +308,7 @@ export function AIChatView() {
                   placeholder="Search..."
                   style={{
                     width: "100%",
-                    padding: "4px 8px 4px 24px",
+                    padding: "var(--space-xs) var(--space-sm) var(--space-xs) var(--space-xl)",
                     fontSize: "var(--font-size-xs)",
                     borderRadius: "var(--border-radius)",
                     border: "1px solid var(--border-color)",
@@ -355,7 +355,7 @@ export function AIChatView() {
                       border: "none",
                       cursor: "pointer",
                       color: "var(--text-muted)",
-                      padding: 2,
+                      padding: "var(--space-2xs)",
                       flexShrink: 0,
                     }}
                     title="Delete conversation"
@@ -488,7 +488,7 @@ export function AIChatView() {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  fontWeight: 600,
+                  fontWeight: "var(--font-weight-semibold)",
                 }}
               >
                 Dismiss

@@ -90,12 +90,12 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
               autoFocus
             />
             {driverId && sanitizedId !== driverId.trim() && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                 Will be saved as: {sanitizedId}
               </span>
             )}
             {isDuplicate && (
-              <span style={{ fontSize: 11, color: "var(--color-error)" }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)" }}>
                 Driver ID already exists
               </span>
             )}
@@ -167,7 +167,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
               fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
               marginBottom: "var(--space-xs)",
-              fontWeight: 600,
+              fontWeight: "var(--font-weight-semibold)",
             }}
           >
             Template
@@ -189,7 +189,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
                 <div
                   style={{
                     fontSize: "var(--font-size-sm)",
-                    fontWeight: 500,
+                    fontWeight: "var(--font-weight-medium)",
                     color: "var(--text-primary)",
                   }}
                 >
@@ -197,17 +197,17 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
                   {t.transport === transport && t.id !== "minimal" && (
                     <span
                       style={{
-                        marginLeft: 8,
-                        fontSize: 10,
+                        marginLeft: "var(--space-sm)",
+                        fontSize: "var(--font-size-2xs)",
                         color: "var(--accent)",
-                        fontWeight: 400,
+                        fontWeight: "var(--font-weight-normal)",
                       }}
                     >
                       Recommended
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   {t.description}
                 </div>
               </div>
@@ -246,35 +246,35 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
 const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 4,
+  gap: "var(--space-xs)",
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
-  fontWeight: 500,
+  fontWeight: "var(--font-weight-medium)",
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "6px 10px",
+  padding: "var(--space-sm) var(--space-md)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",
   color: "var(--text-primary)",
   fontSize: "var(--font-size-sm)",
-  fontWeight: 400,
+  fontWeight: "var(--font-weight-normal)",
 };
 
 const createBtnStyle: React.CSSProperties = {
-  padding: "6px 16px",
+  padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
   color: "#fff",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",
-  fontWeight: 500,
+  fontWeight: "var(--font-weight-medium)",
 };
 
 const cancelBtnStyle: React.CSSProperties = {
-  padding: "6px 16px",
+  padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-primary)",

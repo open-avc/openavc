@@ -459,7 +459,7 @@ function EmptyState() {
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
-            lineHeight: 1.5,
+            lineHeight: "var(--line-base)",
           }}
         >
           Select a driver from the list to edit it, or use "Create New Driver"

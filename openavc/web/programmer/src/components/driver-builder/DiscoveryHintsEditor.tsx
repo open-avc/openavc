@@ -22,7 +22,7 @@ const SECTION: React.CSSProperties = {
 };
 const H2: React.CSSProperties = {
   fontSize: "var(--font-size-base)",
-  fontWeight: 700,
+  fontWeight: "var(--font-weight-semibold)",
   marginBottom: "var(--space-xs)",
 };
 const INTRO: React.CSSProperties = {
@@ -33,13 +33,13 @@ const INTRO: React.CSSProperties = {
 const LABEL: React.CSSProperties = {
   display: "block",
   fontSize: "var(--font-size-sm)",
-  fontWeight: 600,
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
   marginTop: "var(--space-md)",
   marginBottom: "var(--space-xs)",
 };
 const HELP: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
 };
@@ -632,8 +632,8 @@ function ProbeBlock({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 4,
-                  fontSize: 11,
+                  gap: "var(--space-xs)",
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                 }}
               >
@@ -944,8 +944,8 @@ function CrossVendorToggle({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
-        fontSize: 11,
+        gap: "var(--space-xs)",
+        fontSize: "var(--font-size-xs)",
         color: "var(--text-muted)",
       }}
     >
@@ -964,7 +964,7 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      style={{ padding: 2, color: "var(--text-muted)" }}
+      style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
       title="Remove"
     >
       <Trash2 size={14} />
@@ -1092,7 +1092,7 @@ function PortList({
               }}
             />
             {err && (
-              <span style={{ color: "var(--color-error)", fontSize: 11 }}>
+              <span style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)" }}>
                 {err}
               </span>
             )}
@@ -1134,7 +1134,7 @@ function TxtFilterEditor({
   }
   const txtMonoSm: React.CSSProperties = {
     fontFamily: "var(--font-mono)",
-    fontSize: 11,
+    fontSize: "var(--font-size-xs)",
   };
   return (
     <div style={{ marginLeft: "var(--space-md)" }}>
@@ -1172,7 +1172,7 @@ function TxtFilterEditor({
       <button
         type="button"
         onClick={() => onChange({ ...(txt ?? {}), "": "" })}
-        style={{ ...ADD, fontSize: 11 }}
+        style={{ ...ADD, fontSize: "var(--font-size-xs)" }}
       >
         <Plus size={10} /> TXT pair
       </button>

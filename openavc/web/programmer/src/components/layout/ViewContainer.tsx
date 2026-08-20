@@ -30,7 +30,7 @@ export function ViewContainer({ title, actions, children }: ViewContainerProps) 
         <h1
           style={{
             fontSize: "var(--font-size-lg)",
-            fontWeight: 600,
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           {title}

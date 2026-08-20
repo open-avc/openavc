@@ -353,16 +353,16 @@ export function FeedbackBindingEditor({
       {stateKey && liveValue !== undefined && (
         <div style={{
           display: "flex", alignItems: "center", gap: "var(--space-sm)",
-          padding: "4px 8px", borderRadius: "var(--border-radius)",
-          background: "var(--bg-hover)", fontSize: 12,
+          padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
+          background: "var(--bg-hover)", fontSize: "var(--font-size-sm)",
         }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
-          <span style={{ fontWeight: 600, fontFamily: "var(--font-mono, monospace)" }}>
+          <span style={{ fontWeight: "var(--font-weight-semibold)", fontFamily: "var(--font-mono, monospace)" }}>
             {String(liveValue)}
           </span>
           {conditionMet !== null && (
             <span style={{
-              marginLeft: "auto", fontSize: 11, fontWeight: 500,
+              marginLeft: "auto", fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-medium)",
               color: conditionMet ? "var(--color-success, #4caf50)" : "var(--text-muted)",
             }}>
               {conditionMet ? "Active" : "Inactive"}
@@ -380,7 +380,7 @@ export function FeedbackBindingEditor({
           <button
             onClick={() => isMultiState ? switchToSimple() : switchToMultiState()}
             style={{
-              fontSize: 11, color: "var(--text-muted)", background: "none",
+              fontSize: "var(--font-size-xs)", color: "var(--text-muted)", background: "none",
               border: "none", cursor: "pointer", textDecoration: "underline",
               padding: 0,
             }}
@@ -398,9 +398,9 @@ export function FeedbackBindingEditor({
             <button
               onClick={() => handleAddState()}
               style={{
-                display: "flex", alignItems: "center", gap: 3,
-                padding: "2px 8px", borderRadius: "var(--border-radius)",
-                fontSize: 11, color: "var(--accent)", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: "var(--space-xs)",
+                padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
+                fontSize: "var(--font-size-xs)", color: "var(--accent)", cursor: "pointer",
                 background: "transparent", border: "none",
               }}
             >
@@ -409,14 +409,14 @@ export function FeedbackBindingEditor({
           </div>
 
           {suggestedStates.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Suggested:</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Suggested:</span>
               {suggestedStates.map((sv) => (
                 <button
                   key={sv}
                   onClick={() => handleAddState(sv)}
                   style={{
-                    padding: "1px 8px", borderRadius: 10, fontSize: 11, cursor: "pointer",
+                    padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--radius-lg)", fontSize: "var(--font-size-xs)", cursor: "pointer",
                     background: "var(--bg-hover)", color: "var(--text-secondary)",
                     border: "1px solid var(--border-color)",
                   }}
@@ -436,23 +436,23 @@ export function FeedbackBindingEditor({
                 style={{
                   padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
                   border: `1px solid ${isLive ? "var(--accent)" : "var(--border-color)"}`,
-                  display: "flex", flexDirection: "column", gap: 6,
+                  display: "flex", flexDirection: "column", gap: "var(--space-sm)",
                   background: isLive ? "var(--accent-dim, rgba(138,180,147,0.05))" : undefined,
                 }}
               >
                 {/* State key row */}
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                   <input
                     value={sk}
                     onBlur={(e) => handleRenameState(sk, e.target.value.trim())}
                     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    style={{ flex: 1, padding: "3px 6px", fontSize: 12, fontWeight: 600, borderRadius: 3, border: "1px solid var(--border-color)" }}
+                    style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)" }}
                   />
                   <button
                     onClick={() => handleChange({ default_state: sk })}
                     title="Set as default"
                     style={{
-                      padding: "2px 6px", fontSize: 10, borderRadius: 3, cursor: "pointer",
+                      padding: "var(--space-2xs) var(--space-sm)", fontSize: "var(--font-size-2xs)", borderRadius: "var(--border-radius)", cursor: "pointer",
                       background: isDefault ? "var(--accent-bg)" : "var(--bg-hover)",
                       color: isDefault ? "#fff" : "var(--text-muted)",
                       border: "none",
@@ -462,13 +462,13 @@ export function FeedbackBindingEditor({
                   </button>
                   <button
                     onClick={() => handleRemoveState(sk)}
-                    style={{ padding: 2, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                    style={{ padding: "var(--space-2xs)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
                     title="Remove state"
                   >
                     <Trash2 size={12} />
                   </button>
                   {isLive && (
-                    <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>LIVE</span>
+                    <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--accent)", fontWeight: "var(--font-weight-semibold)" }}>LIVE</span>
                   )}
                 </div>
 
@@ -522,10 +522,10 @@ export function FeedbackBindingEditor({
                 {/* Preview */}
                 <div style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  padding: "6px 12px", borderRadius: 4,
+                  padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)",
                   background: String(appearance.bg_color || "var(--bg-hover)"),
                   color: String(appearance.text_color || "var(--text-primary)"),
-                  fontSize: 12, fontWeight: 500, minHeight: 28,
+                  fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", minHeight: 28,
                 }}>
                   {String(appearance.label || sk)}
                 </div>
@@ -560,8 +560,8 @@ export function FeedbackBindingEditor({
                   handleChange(patch);
                 }}
                 style={{
-                  padding: "4px 10px", borderRadius: "var(--border-radius)",
-                  fontSize: 11, cursor: "pointer",
+                  padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
+                  fontSize: "var(--font-size-xs)", cursor: "pointer",
                   background: "var(--bg-hover)", border: "1px solid var(--border-color)",
                   color: "var(--text-secondary)",
                 }}
@@ -585,7 +585,7 @@ export function FeedbackBindingEditor({
                   key={v}
                   onClick={() => handleChange({ condition: { equals: v === "true" } })}
                   style={{
-                    flex: 1, padding: "6px 12px", borderRadius: "var(--border-radius)",
+                    flex: 1, padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)",
                     fontSize: "var(--font-size-sm)", cursor: "pointer",
                     fontWeight: String(condition.equals) === v ? 600 : 400,
                     background: String(condition.equals) === v ? "var(--accent-bg)" : "var(--bg-hover)",
@@ -639,7 +639,7 @@ export function FeedbackBindingEditor({
           <label style={labelStyle}>When active (condition matches)</label>
           <div style={{
             padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-            border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: 6,
+            border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "var(--space-sm)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={colorLabelStyle}>Background</span>
@@ -691,10 +691,10 @@ export function FeedbackBindingEditor({
             {/* Preview */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              padding: "6px 12px", borderRadius: 4, marginTop: 2,
+              padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", marginTop: "var(--space-2xs)",
               background: styleActive.bg_color || "var(--bg-hover)",
               color: styleActive.text_color || "var(--text-primary)",
-              fontSize: 12, fontWeight: 500, minHeight: 28,
+              fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", minHeight: 28,
             }}>
               {showConditionalLabel && labelActive ? labelActive : "Active Preview"}
             </div>
@@ -708,7 +708,7 @@ export function FeedbackBindingEditor({
           <label style={labelStyle}>When inactive (condition doesn't match)</label>
           <div style={{
             padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-            border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: 6,
+            border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "var(--space-sm)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={colorLabelStyle}>Background</span>
@@ -760,10 +760,10 @@ export function FeedbackBindingEditor({
             {/* Preview */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              padding: "6px 12px", borderRadius: 4, marginTop: 2,
+              padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", marginTop: "var(--space-2xs)",
               background: styleInactive.bg_color || "var(--bg-surface)",
               color: styleInactive.text_color || "var(--text-muted)",
-              fontSize: 12, fontWeight: 500, minHeight: 28,
+              fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", minHeight: 28,
             }}>
               {showConditionalLabel && labelInactive ? labelInactive : "Inactive Preview"}
             </div>
@@ -775,7 +775,7 @@ export function FeedbackBindingEditor({
         <button
           onClick={onClear}
           style={{
-            padding: "4px 8px", borderRadius: "var(--border-radius)",
+            padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)", color: "var(--color-error)",
             background: "transparent", border: "1px solid var(--border-color)",
             alignSelf: "flex-start", cursor: "pointer",
@@ -793,15 +793,15 @@ export function FeedbackBindingEditor({
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 11,
-  fontWeight: 500,
+  fontSize: "var(--font-size-xs)",
+  fontWeight: "var(--font-weight-medium)",
   color: "var(--text-muted)",
-  marginBottom: 3,
+  marginBottom: "var(--space-xs)",
 };
 
 const selectStyle: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -811,7 +811,7 @@ const selectStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -820,7 +820,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 const colorLabelStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   width: 56,
   flexShrink: 0,

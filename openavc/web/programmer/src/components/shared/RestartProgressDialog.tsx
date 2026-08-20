@@ -155,7 +155,7 @@ export function RestartProgressDialog({
 
   return (
     <Dialog title="Restarting OpenAVC" onClose={onClose}>
-      <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.5 }}>
+      <div style={{ fontSize: "var(--font-size-sm)", lineHeight: "var(--line-base)" }}>
         {isProtocolSwitch && phase === "starting" && (
           <div style={{ marginBottom: "var(--space-md)", color: "var(--text-secondary)" }}>
             After restart, this page will be at <code>{targetUrl}</code>.
@@ -189,7 +189,7 @@ export function RestartProgressDialog({
         {phase === "cert-error" && (
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-              <AlertTriangle size={18} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
+              <AlertTriangle size={18} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 The server is back, but your browser doesn't trust the new
                 HTTPS certificate yet. Download and install the CA certificate,
@@ -208,7 +208,7 @@ export function RestartProgressDialog({
                 Close
               </button>
             </div>
-            <div style={{ marginTop: "var(--space-md)", fontSize: 12, color: "var(--text-muted)" }}>
+            <div style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
               New URL: <code>{targetUrl}</code>
             </div>
           </div>
@@ -217,7 +217,7 @@ export function RestartProgressDialog({
         {phase === "timeout" && (
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-              <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: 2 }} />
+              <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 The server didn't come back within 60 seconds. It may have
                 refused the new configuration. Check the service status
@@ -245,7 +245,7 @@ export function RestartProgressDialog({
         {phase === "error" && (
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-              <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: 2 }} />
+              <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 Failed to ask the server to restart: <code>{errorDetail}</code>
               </span>
@@ -271,7 +271,7 @@ const btnPrimary: React.CSSProperties = {
   borderRadius: "var(--border-radius)",
   cursor: "pointer",
   fontSize: "var(--font-size-sm)",
-  fontWeight: 500,
+  fontWeight: "var(--font-weight-medium)",
 };
 
 const btnSecondary: React.CSSProperties = {

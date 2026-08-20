@@ -305,25 +305,25 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           }}
         >
-            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Start Device Simulation</h3>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 8px" }}>
+            <h3 style={{ margin: "0 0 var(--space-md)", fontSize: "var(--font-size-lg)" }}>Start Device Simulation</h3>
+            <p style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)", margin: "0 0 var(--space-sm)" }}>
               This will redirect all device connections to simulated virtual devices on your local machine.
             </p>
-            <ul style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.8, margin: "0 0 16px", paddingLeft: 18 }}>
+            <ul style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)", margin: "0 0 var(--space-lg)", paddingLeft: "var(--space-lg)" }}>
               <li>Devices will disconnect from real hardware</li>
               <li>Only drivers with simulation support will respond</li>
               <li>IP addresses and ports from your project are assumed correct</li>
               <li>Stop simulation to reconnect to real devices</li>
             </ul>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-lg)" }}>
               <input type="checkbox" id="sim-dismiss" style={{ accentColor: "var(--accent)" }} />
-              <label htmlFor="sim-dismiss" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              <label htmlFor="sim-dismiss" style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
                 Don't show this again
               </label>
             </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: "var(--space-sm)", justifyContent: "flex-end" }}>
               <button onClick={() => setShowSimConfirm(false)} style={{
-                padding: "6px 16px", borderRadius: 4, fontSize: 13,
+                padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-base)",
                 background: "var(--bg-hover)", color: "var(--text-secondary)",
               }}>Cancel</button>
               <button onClick={async () => {
@@ -332,7 +332,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 setShowSimConfirm(false);
                 await startSimulation();
               }} style={{
-                padding: "6px 16px", borderRadius: 4, fontSize: 13,
+                padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-base)",
                 background: "var(--accent-bg)", color: "#fff",
               }}>Start Simulation</button>
             </div>

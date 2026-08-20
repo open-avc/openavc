@@ -29,7 +29,7 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
   };
 
   const helpStyle: React.CSSProperties = {
-    fontSize: "11px",
+    fontSize: "var(--font-size-xs)",
     color: "var(--text-muted)",
     marginTop: "var(--space-xs)",
   };
@@ -56,7 +56,7 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
           State Push Behavior
         </h3>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
           <input
             type="checkbox"
             checked={sim.push_state ?? false}
@@ -146,7 +146,7 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
                 />
                 <span
                   style={{
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
                     width: 60,
                   }}
@@ -335,7 +335,7 @@ function ErrorModesEditor({
       <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
         Error Modes
       </h3>
-      <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+      <p style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         Define error scenarios that can be injected during simulation to test
         error handling. A mode can affect the wire (stop or corrupt responses)
         and/or change state values when injected. Use State Change Only for
@@ -410,7 +410,7 @@ function ErrorModesEditor({
                 delete next[key];
                 onUpdate({ error_modes: next });
               }}
-              style={{ padding: "2px", color: "var(--text-muted)" }}
+              style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
             >
               <Trash2 size={14} />
             </button>
@@ -427,7 +427,7 @@ function ErrorModesEditor({
             >
               <span
                 style={{
-                  fontSize: "11px",
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                   width: 160,
                   textAlign: "right",
@@ -479,7 +479,7 @@ function ErrorModesEditor({
                 onClick={() =>
                   updateMode(key, removeErrorModeStateEntry(mode, varName))
                 }
-                style={{ padding: "2px", color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={12} />
               </button>
@@ -490,7 +490,7 @@ function ErrorModesEditor({
               onClick={() =>
                 updateMode(key, addErrorModeStateEntry(mode, stateVarNames))
               }
-              style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0", marginTop: 2 }}
+              style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", padding: "var(--space-2xs) 0", marginTop: "var(--space-2xs)" }}
             >
               + State Change
             </button>

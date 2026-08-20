@@ -24,13 +24,13 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
   const IconComp = value ? getIconComponent(value) : null;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
       <div
         onClick={() => setOpen(true)}
         style={{
           width: 28,
           height: 28,
-          borderRadius: 4,
+          borderRadius: "var(--border-radius)",
           border: "1px solid var(--border-color)",
           display: "flex",
           alignItems: "center",
@@ -44,8 +44,8 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
       <button
         onClick={() => setOpen(true)}
         style={{
-          padding: "3px 8px",
-          borderRadius: 3,
+          padding: "var(--space-xs) var(--space-sm)",
+          borderRadius: "var(--border-radius)",
           fontSize: "var(--font-size-sm)",
           color: "var(--accent)",
           background: "var(--bg-base)",
@@ -58,10 +58,10 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
         <button
           onClick={() => onChange("")}
           style={{
-            padding: "2px 4px",
-            fontSize: 10,
+            padding: "var(--space-2xs) var(--space-xs)",
+            fontSize: "var(--font-size-2xs)",
             color: "var(--text-muted)",
-            borderRadius: 3,
+            borderRadius: "var(--border-radius)",
           }}
         >
           Clear
@@ -128,11 +128,11 @@ function IconBrowserModal({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "12px 16px",
+            padding: "var(--space-md) var(--space-lg)",
             borderBottom: "1px solid var(--border-color)",
           }}
         >
-          <span style={{ fontWeight: 600, fontSize: 14 }}>Choose Icon</span>
+          <span style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-lg)" }}>Choose Icon</span>
           <button
             onClick={onClose}
             style={{
@@ -140,7 +140,7 @@ function IconBrowserModal({
               border: "none",
               color: "var(--text-muted)",
               cursor: "pointer",
-              padding: 4,
+              padding: "var(--space-xs)",
             }}
           >
             <X size={16} />
@@ -148,7 +148,7 @@ function IconBrowserModal({
         </div>
 
         {/* Search */}
-        <div style={{ padding: "8px 16px" }}>
+        <div style={{ padding: "var(--space-sm) var(--space-lg)" }}>
           <input
             type="text"
             placeholder="Search icons..."
@@ -157,12 +157,12 @@ function IconBrowserModal({
             autoFocus
             style={{
               width: "100%",
-              padding: "6px 10px",
-              borderRadius: 6,
+              padding: "var(--space-sm) var(--space-md)",
+              borderRadius: "var(--radius-lg)",
               border: "1px solid var(--border-color)",
               background: "var(--bg-base)",
               color: "var(--text-primary)",
-              fontSize: 13,
+              fontSize: "var(--font-size-base)",
             }}
           />
         </div>
@@ -171,8 +171,8 @@ function IconBrowserModal({
         <div
           style={{
             display: "flex",
-            gap: 2,
-            padding: "0 16px 8px",
+            gap: "var(--space-2xs)",
+            padding: "0 var(--space-lg) var(--space-sm)",
             overflowX: "auto",
             flexShrink: 0,
           }}
@@ -182,9 +182,9 @@ function IconBrowserModal({
               key={cat}
               onClick={() => setActiveCategory(cat)}
               style={{
-                padding: "3px 8px",
-                borderRadius: 3,
-                fontSize: 11,
+                padding: "var(--space-xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                fontSize: "var(--font-size-xs)",
                 whiteSpace: "nowrap",
                 color:
                   activeCategory === cat
@@ -208,14 +208,14 @@ function IconBrowserModal({
           style={{
             flex: 1,
             overflowY: "auto",
-            padding: "0 16px 16px",
+            padding: "0 var(--space-lg) var(--space-lg)",
           }}
         >
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(48px, 1fr))",
-              gap: 4,
+              gap: "var(--space-xs)",
             }}
           >
             {filteredIcons.slice(0, 300).map((name) => {
@@ -233,7 +233,7 @@ function IconBrowserModal({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-lg)",
                     border: isSelected
                       ? "2px solid var(--accent)"
                       : "1px solid transparent",
@@ -253,9 +253,9 @@ function IconBrowserModal({
             <div
               style={{
                 textAlign: "center",
-                padding: 24,
+                padding: "var(--space-xl)",
                 color: "var(--text-muted)",
-                fontSize: 13,
+                fontSize: "var(--font-size-base)",
               }}
             >
               No icons match "{search}"
@@ -265,9 +265,9 @@ function IconBrowserModal({
             <div
               style={{
                 textAlign: "center",
-                padding: 8,
+                padding: "var(--space-sm)",
                 color: "var(--text-muted)",
-                fontSize: 11,
+                fontSize: "var(--font-size-xs)",
               }}
             >
               Showing 300 of {filteredIcons.length}. Refine your search

@@ -89,13 +89,13 @@ export function ColorBindingEditor({
 
       {/* Live value indicator */}
       {stateKey && liveValue !== undefined && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 11 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-surface)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)" }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
-          <span style={{ fontWeight: 500 }}>{String(liveValue)}</span>
+          <span style={{ fontWeight: "var(--font-weight-medium)" }}>{String(liveValue)}</span>
           {matchedColor && (
             <>
               <span style={{ color: "var(--text-muted)" }}>→</span>
-              <div style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: matchedColor, border: "1px solid var(--border-color)" }} />
+              <div style={{ width: 14, height: 14, borderRadius: "var(--border-radius)", backgroundColor: matchedColor, border: "1px solid var(--border-color)" }} />
             </>
           )}
         </div>
@@ -105,7 +105,7 @@ export function ColorBindingEditor({
       {Object.keys(colorMap).length === 0 && (
         <div>
           <label style={labelStyle}>Quick Presets</label>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
             {[
               { label: "On / Off", map: { "true": "#4CAF50", "false": "#F44336" }, def: "#9E9E9E" },
               { label: "Connected", map: { "true": "#4CAF50", "false": "#F44336", "connecting": "#FFC107" }, def: "#9E9E9E" },
@@ -115,7 +115,7 @@ export function ColorBindingEditor({
                 key={preset.label}
                 onClick={() => handleChange({ map: preset.map, default: preset.def })}
                 style={{
-                  padding: "3px 8px", borderRadius: 4, fontSize: 11,
+                  padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
                   color: "var(--accent)", background: "var(--accent-dim)",
                   border: "1px solid var(--border-color)", cursor: "pointer",
                 }}
@@ -141,7 +141,7 @@ export function ColorBindingEditor({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 4,
+            gap: "var(--space-xs)",
           }}
         >
           {Object.entries(colorMap).map(([mapKey, mapColor], idx) => (
@@ -150,7 +150,7 @@ export function ColorBindingEditor({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 4,
+                gap: "var(--space-xs)",
               }}
             >
               <input
@@ -174,11 +174,11 @@ export function ColorBindingEditor({
                 placeholder="Value"
                 style={{
                   width: 80,
-                  padding: "3px 4px",
-                  fontSize: 11,
+                  padding: "var(--space-xs)",
+                  fontSize: "var(--font-size-xs)",
                 }}
               />
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                 →
               </span>
               <InlineColorPicker
@@ -189,7 +189,7 @@ export function ColorBindingEditor({
                 onClick={() => removeMapEntry(mapKey)}
                 style={{
                   display: "flex",
-                  padding: 2,
+                  padding: "var(--space-2xs)",
                   color: "var(--text-muted)",
                 }}
               >
@@ -202,10 +202,10 @@ export function ColorBindingEditor({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--accent)",
               background: "transparent",
               border: "1px dashed var(--border-color)",
@@ -221,7 +221,7 @@ export function ColorBindingEditor({
         <button
           onClick={onClear}
           style={{
-            padding: "4px 8px",
+            padding: "var(--space-xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)",
             color: "var(--color-error)",
@@ -239,15 +239,15 @@ export function ColorBindingEditor({
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  marginBottom: 2,
+  marginBottom: "var(--space-2xs)",
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  lineHeight: 1.4,
-  marginTop: 4,
+  lineHeight: "var(--line-tight)",
+  marginTop: "var(--space-xs)",
   fontStyle: "italic",
 };

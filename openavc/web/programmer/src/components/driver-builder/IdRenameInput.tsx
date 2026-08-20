@@ -52,7 +52,7 @@ export function IdRenameInput({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
       <input
         data-testid={testid}
         value={draft}
@@ -74,7 +74,7 @@ export function IdRenameInput({
         }}
       />
       {error && (
-        <div style={{ fontSize: 11, color: "var(--color-error)" }}>{error}</div>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)" }}>{error}</div>
       )}
     </div>
   );

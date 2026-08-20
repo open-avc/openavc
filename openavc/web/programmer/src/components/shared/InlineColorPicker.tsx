@@ -33,12 +33,12 @@ export function InlineColorPicker({
   const { open } = panel;
 
   return (
-    <div ref={panel.containerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+    <div ref={panel.containerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
       <div
         ref={panel.triggerRef}
         onClick={panel.toggle}
         style={{
-          width: swatchPx, height: swatchPx, borderRadius: 4, flexShrink: 0,
+          width: swatchPx, height: swatchPx, borderRadius: "var(--border-radius)", flexShrink: 0,
           backgroundColor: displayColor,
           border: isInherited ? "1px dashed var(--border-color)" : "1px solid var(--border-color)",
           cursor: "pointer",
@@ -52,13 +52,13 @@ export function InlineColorPicker({
         style={{
           width: inputPx, padding: size === "md" ? "4px 6px" : "3px 4px",
           fontSize: size === "md" ? "var(--font-size-sm)" : 11,
-          borderRadius: 3, border: "1px solid var(--border-color)",
+          borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)",
         }}
       />
       {clearable && value && (
         <button
           onClick={() => onChange("")}
-          style={{ padding: "2px 4px", fontSize: 10, color: "var(--text-muted)", borderRadius: 3 }}
+          style={{ padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", borderRadius: "var(--border-radius)" }}
         >
           Clear
         </button>

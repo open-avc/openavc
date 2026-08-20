@@ -71,7 +71,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 fontSize: "var(--font-size-sm)",
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-lg)",
-                lineHeight: 1.5,
+                lineHeight: "var(--line-base)",
               }}
             >
               An error occurred in <strong>{this.props.viewName}</strong>.
@@ -81,7 +81,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
             <details
               style={{
                 marginBottom: "var(--space-lg)",
-                fontSize: 12,
+                fontSize: "var(--font-size-sm)",
                 color: "var(--text-muted)",
                 textAlign: "left",
               }}
@@ -93,7 +93,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 style={{
                   whiteSpace: "pre-wrap",
                   fontFamily: "var(--font-mono)",
-                  fontSize: 11,
+                  fontSize: "var(--font-size-xs)",
                   padding: "var(--space-sm)",
                   background: "var(--bg-base)",
                   borderRadius: "var(--border-radius)",

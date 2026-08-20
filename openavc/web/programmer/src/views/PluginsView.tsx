@@ -137,7 +137,7 @@ function PluginListItem({
       <div style={{ minWidth: 0, flex: 1 }}>
         <div
           style={{
-            fontWeight: 500,
+            fontWeight: "var(--font-weight-medium)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -188,7 +188,7 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
           display: "flex",
           alignItems: "center",
           gap: "var(--space-sm)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
           marginBottom: "var(--space-sm)",
           color: "var(--color-warning, #f59e0b)",
         }}
@@ -211,7 +211,7 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
               background: "var(--color-warning, #f59e0b)",
               color: "#000",
               fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
+              fontWeight: "var(--font-weight-medium)",
             }}
           >
             Install from Community
@@ -386,7 +386,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
         }}
       >
         <div>
-          <h2 style={{ fontSize: "var(--font-size-xl)", fontWeight: 600, marginBottom: "var(--space-xs)" }}>
+          <h2 style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)" }}>
             {info.name}
           </h2>
           <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
@@ -394,8 +394,8 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
             {info.author && ` by ${info.author}`}
             {info.category && ` · ${categoryLabels[info.category] ?? info.category}`}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-            <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-2xs)" }}>
+            <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
               {plugin.plugin_id}
             </code>
             <CopyButton value={plugin.plugin_id} title="Copy plugin ID" />
@@ -431,7 +431,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   background: "var(--accent-bg)",
                   color: "var(--text-on-accent)",
                   fontSize: "var(--font-size-sm)",
-                  fontWeight: 500,
+                  fontWeight: "var(--font-weight-medium)",
                 }}
               >
                 <Power size={14} />
@@ -552,7 +552,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
               background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
+              fontWeight: "var(--font-weight-medium)",
             }}
           >
             <RefreshCw size={14} />
@@ -586,7 +586,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
             border: "1px solid var(--border-color)",
           }}
         >
-          <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: "var(--space-sm)", color: "var(--text-secondary)" }}>
+          <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-sm)", color: "var(--text-secondary)" }}>
             How to Use
           </h3>
           <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>
@@ -655,7 +655,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   background: "var(--accent-bg)",
                   color: "var(--text-on-accent)",
                   fontSize: "var(--font-size-sm)",
-                  fontWeight: 500,
+                  fontWeight: "var(--font-weight-medium)",
                 }}
               >
                 Open {surfaceView.label}
@@ -664,7 +664,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
             </div>
           ) : isRunning ? (
             <>
-              <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
+              <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
                 Surface Layout
               </h3>
               <SurfaceConfigurator
@@ -710,11 +710,11 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
       {detailInfo?.config_schema && Object.keys(detailInfo.config_schema).length > 0 && (
         <div style={{ marginBottom: "var(--space-lg)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-md)" }}>
-            <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, color: "var(--text-secondary)" }}>
+            <h3 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)" }}>
               Configuration
             </h3>
             {saving && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Saving...</span>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Saving...</span>
             )}
           </div>
           <SchemaFormRenderer
@@ -737,11 +737,11 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
         >
           {info.guest_alias && (
             <div style={{ marginBottom: "var(--space-md)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+              <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
                 Guest URL
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                <code style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                <code style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
                   /{info.guest_alias}
                 </code>
                 <CopyButton
@@ -753,7 +753,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
           )}
           {info.capabilities && info.capabilities.length > 0 && (
             <div style={{ marginBottom: "var(--space-md)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+              <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
                 Capabilities
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
@@ -764,7 +764,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                       padding: "2px var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       background: "var(--bg-hover)",
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
                     }}
                   >
@@ -776,7 +776,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
           )}
           {info.sandbox_permissions && info.sandbox_permissions.length > 0 && (
             <div style={{ marginBottom: "var(--space-md)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+              <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
                 Panel Sandbox Permissions
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
@@ -790,7 +790,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                         perm === "allow-same-origin"
                           ? "var(--color-warning-bg)"
                           : "var(--bg-hover)",
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color:
                         perm === "allow-same-origin"
                           ? "var(--color-warning)"
@@ -802,7 +802,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                 ))}
               </div>
               {info.sandbox_permissions.includes("allow-same-origin") && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                   This plugin's touch panel UI runs with full page access
                   (allow-same-origin), a trust grant that comes with
                   installing the plugin.
@@ -812,7 +812,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
           )}
           {info.platforms && info.platforms.length > 0 && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
+              <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-secondary)", marginBottom: "var(--space-xs)" }}>
                 Platforms
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
@@ -823,7 +823,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                       padding: "2px var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       background: "var(--bg-hover)",
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
                     }}
                   >
@@ -972,7 +972,7 @@ export function PluginsView() {
               </div>
             )}
             {!loading && filtered.length === 0 && (
-              <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
+              <div style={{ padding: "var(--space-lg)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
                 {plugins.length === 0
                   ? <>
                       No plugins installed. Click the <strong>Browse</strong> tab to find and install plugins.
@@ -999,7 +999,7 @@ export function PluginsView() {
             style={{
               padding: "var(--space-sm) var(--space-md)",
               borderTop: "1px solid var(--border-color)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
             }}
           >

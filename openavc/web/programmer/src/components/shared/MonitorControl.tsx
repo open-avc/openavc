@@ -154,7 +154,7 @@ export function MonitorControl({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
+              gap: "var(--space-xs)",
               padding: compact ? "2px 6px" : "var(--space-sm)",
               background: "transparent",
               border: "none",
@@ -322,10 +322,10 @@ function MonitorLimits({
             )}
           </div>
         ) : candidates.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
             {candidates.map((value) => (
               <div key={value} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 90, cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 90, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={monitor.states?.[value]?.normal === true}
@@ -339,7 +339,7 @@ function MonitorLimits({
                   onChange={(e) => setStateEntry(value, { label: e.target.value })}
                   style={{ ...inputStyle, flex: 1 }}
                 />
-                <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", minWidth: 48 }}>
+                <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", minWidth: 48 }}>
                   {value}
                 </code>
               </div>
@@ -404,7 +404,7 @@ function ValueAdder({ onAdd }: { onAdd: (value: string) => void }) {
 
 function Field({ label, width, children }: { label: string; width?: number; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: width ? undefined : 1, width }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", flex: width ? undefined : 1, width }}>
       <div style={legendStyle}>{label}</div>
       {children}
     </div>
@@ -412,7 +412,7 @@ function Field({ label, width, children }: { label: string; width?: number; chil
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: "6px 8px",
+  padding: "var(--space-sm)",
   background: "var(--bg-base)",
   border: "1px solid var(--border-color)",
   borderRadius: "var(--border-radius)",
@@ -422,13 +422,13 @@ const inputStyle: React.CSSProperties = {
 };
 
 const legendStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-secondary)",
-  marginBottom: 4,
+  marginBottom: "var(--space-xs)",
 };
 
 const hintStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  marginTop: 6,
+  marginTop: "var(--space-sm)",
 };

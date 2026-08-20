@@ -304,9 +304,9 @@ export function DeviceDetail({
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    letterSpacing: "var(--tracking-wide)",
     marginBottom: "var(--space-md)",
-    fontWeight: 600,
+    fontWeight: "var(--font-weight-semibold)",
   };
 
   return (
@@ -447,9 +447,9 @@ export function DeviceDetail({
                 const refs = findDeviceReferences(project, deviceId);
                 if (refs.length === 0) return null;
                 return (
-                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "rgba(244,67,54,0.08)", borderRadius: "var(--border-radius)", fontSize: 12, color: "var(--text-secondary)" }}>
+                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "rgba(244,67,54,0.08)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
                     <strong>Warning:</strong> This device is referenced in {refs.length} place(s):
-                    <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                    <ul style={{ margin: "var(--space-xs) 0 0 var(--space-lg)", padding: 0 }}>
                       {refs.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}
                       {refs.length > 5 && <li>...and {refs.length - 5} more</li>}
                     </ul>
@@ -476,13 +476,13 @@ export function DeviceDetail({
             </button>
           )}
         </div>
-        <div style={{ marginLeft: 22, display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        <div style={{ marginLeft: "var(--space-xl)", display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
             {deviceInfo?.driver ?? ""}
           </span>
           <span style={{ color: "var(--border-color)" }}>&middot;</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
+            <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
               {deviceId}
             </code>
             <CopyButton value={deviceId} title="Copy device ID" />
@@ -534,13 +534,13 @@ export function DeviceDetail({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 4,
-              padding: "2px 10px",
-              borderRadius: 12,
+              gap: "var(--space-xs)",
+              padding: "var(--space-2xs) var(--space-md)",
+              borderRadius: "var(--radius-lg)",
               border: "1px solid var(--color-info, #6aa3d6)",
               background: "transparent",
               color: "var(--color-info, #6aa3d6)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               cursor: "pointer",
             }}
             title="Clear the pause and reconnect now"
@@ -596,7 +596,7 @@ export function DeviceDetail({
       {isBridge && (
         <div style={sectionStyle}>
           <h3 style={sectionTitleStyle}>Bridge Ports</h3>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
             Other devices connect through this bridge's ports. To bind one, open
             that device's Connection settings and choose "Through a bridge".
           </div>
@@ -627,15 +627,15 @@ export function DeviceDetail({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "var(--font-size-sm)" }}>
                       {p.label || p.id}
-                      <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                      <span style={{ marginLeft: "var(--space-sm)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)", textTransform: "uppercase" }}>
                         {p.kind}
                       </span>
                     </span>
-                    <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                    <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                       {p.id}
                     </code>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+                  <div style={{ marginTop: "var(--space-xs)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                     {bound.length === 0
                       ? `Nothing bound${
                           p.kind === "serial" && p.passthrough_port
@@ -702,7 +702,7 @@ export function DeviceDetail({
               right: 8,
               top: "50%",
               transform: "translateY(-50%)",
-              padding: 2,
+              padding: "var(--space-2xs)",
               background: "transparent",
               color: "var(--text-muted)",
               border: "none",
@@ -733,7 +733,7 @@ export function DeviceDetail({
         {hiddenChildKeyCount > 0 && (
           <div
             style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               marginTop: "-4px",
               marginBottom: "var(--space-sm)",
@@ -782,7 +782,7 @@ export function DeviceDetail({
                         width: "40%",
                       }}
                     >
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
                         {key}
                         <CopyButton value={`device.${deviceId}.${key}`} size={11} title="Copy full state key" />
                       </span>
@@ -949,7 +949,7 @@ export function DeviceDetail({
                   const cmdDef = commands[selectedCommand] as Record<string, unknown> | undefined;
                   const cmdHelp = cmdDef?.help as string | undefined;
                   return cmdHelp ? (
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                       {cmdHelp}
                     </div>
                   ) : null;
@@ -995,7 +995,7 @@ export function DeviceDetail({
                       />
                       </div>
                       {paramHelp && (
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, marginLeft: 120 }}>
+                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)", marginLeft: 120 }}>
                           {paramHelp}
                         </div>
                       )}
@@ -1141,7 +1141,7 @@ function CommandPicker({
             left: 0,
             right: 0,
             zIndex: 30,
-            marginTop: 2,
+            marginTop: "var(--space-2xs)",
             maxHeight: 280,
             overflowY: "auto",
             background: "var(--bg-surface)",
@@ -1191,7 +1191,7 @@ function CommandPicker({
                   <span
                     style={{
                       fontFamily: "var(--font-mono)",
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: isSelected ? "var(--text-on-accent)" : "var(--text-muted)",
                       opacity: lbl ? 0.8 : 1,
                     }}
@@ -1307,9 +1307,9 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
     fontSize: "var(--font-size-sm)",
     color: "var(--text-secondary)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    letterSpacing: "var(--tracking-wide)",
     marginBottom: "var(--space-md)",
-    fontWeight: 600,
+    fontWeight: "var(--font-weight-semibold)",
     display: "flex",
     alignItems: "center",
     gap: "var(--space-sm)",
@@ -1351,9 +1351,9 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
             >
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>{label}</div>
+                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>{label}</div>
                   {help && (
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{help}</div>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{help}</div>
                   )}
                 </div>
                 {isEditing ? (
@@ -1362,7 +1362,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       <select
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
+                        style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-2xs) var(--space-sm)" }}
                       >
                         <option value="true">Yes</option>
                         <option value="false">No</option>
@@ -1371,7 +1371,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       <select
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
+                        style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-2xs) var(--space-sm)" }}
                       >
                         {enumOptions.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -1392,7 +1392,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                         }
                         style={{
                           fontSize: "var(--font-size-sm)",
-                          padding: "2px 6px",
+                          padding: "var(--space-2xs) var(--space-sm)",
                           width: 180,
                         }}
                         autoFocus
@@ -1407,7 +1407,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       disabled={isSaving}
                       title="Save"
                       style={{
-                        padding: "2px 6px",
+                        padding: "var(--space-2xs) var(--space-sm)",
                         borderRadius: "var(--border-radius)",
                         background: "var(--color-success-bg)",
                         color: "var(--color-success)",
@@ -1422,7 +1422,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       onClick={handleCancel}
                       title="Cancel"
                       style={{
-                        padding: "2px 6px",
+                        padding: "var(--space-2xs) var(--space-sm)",
                         borderRadius: "var(--border-radius)",
                         background: "var(--bg-hover)",
                         fontSize: "var(--font-size-sm)",
@@ -1449,9 +1449,9 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                     {isPending && (
                       <span
                         style={{
-                          fontSize: 10,
+                          fontSize: "var(--font-size-2xs)",
                           color: "var(--accent)",
-                          padding: "1px 6px",
+                          padding: "var(--space-2xs) var(--space-sm)",
                           borderRadius: "var(--border-radius)",
                           background: "var(--accent-dim)",
                         }}
@@ -1465,7 +1465,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       disabled={!connected}
                       title={connected ? "Edit setting" : "Device must be connected to change settings"}
                       style={{
-                        padding: "2px 8px",
+                        padding: "var(--space-2xs) var(--space-sm)",
                         borderRadius: "var(--border-radius)",
                         background: "var(--bg-hover)",
                         fontSize: "var(--font-size-sm)",
@@ -1481,7 +1481,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                 <div
                   style={{
                     marginTop: "var(--space-xs)",
-                    fontSize: 11,
+                    fontSize: "var(--font-size-xs)",
                     color: result.success ? "var(--color-success)" : "var(--color-error)",
                   }}
                 >
@@ -1518,8 +1518,8 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
             margin: 0,
           }}
         >
@@ -1529,11 +1529,11 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
         <button
           onClick={() => setTab("protocol")}
           style={{
-            padding: "2px 8px",
+            padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
             color: tab === "protocol" ? "#fff" : "var(--text-secondary)",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             fontWeight: tab === "protocol" ? 600 : 400,
             border: "none",
             cursor: "pointer",
@@ -1544,11 +1544,11 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
         <button
           onClick={() => setTab("state")}
           style={{
-            padding: "2px 8px",
+            padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
             color: tab === "state" ? "#fff" : "var(--text-secondary)",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             fontWeight: tab === "state" ? 600 : 400,
             border: "none",
             cursor: "pointer",
@@ -1632,14 +1632,14 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
                 alignItems: "baseline",
               }}
             >
-              <span style={{ color: "var(--text-muted)", fontSize: 11, flexShrink: 0 }}>
+              <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)", flexShrink: 0 }}>
                 {time.toLocaleTimeString(undefined, { hour12: false })}
               </span>
               <span
                 style={{
                   color: LEVEL_COLORS[e.level] ?? "var(--text-primary)",
                   fontWeight: e.level === "ERROR" ? 600 : 400,
-                  fontSize: 11,
+                  fontSize: "var(--font-size-xs)",
                   flexShrink: 0,
                   width: 40,
                 }}
@@ -1775,11 +1775,11 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
 const devLogThStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
   textAlign: "left",
-  fontWeight: 600,
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
+  letterSpacing: "var(--tracking-wide)",
 };
 
 const devLogTdStyle: React.CSSProperties = {
@@ -1820,16 +1820,16 @@ function ChildTroubleBanner({ headline, names }: { headline: string; names: stri
         alignItems: "flex-start",
       }}
     >
-      <AlertTriangle size={16} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
+      <AlertTriangle size={16} style={{ color: accent, flexShrink: 0, marginTop: "var(--space-2xs)" }} />
       <div>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>
           {headline}
         </div>
         <div
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
-            marginTop: 2,
+            marginTop: "var(--space-2xs)",
           }}
         >
           {names}
@@ -1865,12 +1865,12 @@ function OfflineBanner({
         alignItems: "flex-start",
       }}
     >
-      <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
+      <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: "var(--space-2xs)" }} />
       <div>
-        <div style={{ fontWeight: 600, color: accent, fontSize: "var(--font-size-base)" }}>
+        <div style={{ fontWeight: "var(--font-weight-semibold)", color: accent, fontSize: "var(--font-size-base)" }}>
           Offline
         </div>
-        <div style={{ fontSize: "var(--font-size-sm)", marginTop: 2 }}>{detail}</div>
+        <div style={{ fontSize: "var(--font-size-sm)", marginTop: "var(--space-2xs)" }}>{detail}</div>
         {hint && (
           <div
             style={{
@@ -1983,7 +1983,7 @@ function OrphanBanner({
         border: "2px solid rgba(239, 68, 68, 0.4)",
       }}
     >
-      <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-base)" }}>
+      <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-base)" }}>
         Driver Not Installed
       </div>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
@@ -2011,7 +2011,7 @@ function OrphanBanner({
               background: "var(--color-warning, #f59e0b)",
               color: "#000",
               fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
+              fontWeight: "var(--font-weight-medium)",
               cursor: installing ? "not-allowed" : "pointer",
               opacity: installing ? 0.7 : 1,
             }}

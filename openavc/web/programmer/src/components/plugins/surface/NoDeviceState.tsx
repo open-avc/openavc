@@ -57,12 +57,12 @@ export function NoDeviceState({
       }}
     >
       <Usb size={40} strokeWidth={1.2} style={{ color: "var(--text-muted)" }} />
-      <div style={{ fontWeight: 600 }}>No {noun} detected</div>
+      <div style={{ fontWeight: "var(--font-weight-semibold)" }}>No {noun} detected</div>
       <div
         style={{
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
-          lineHeight: 1.6,
+          lineHeight: "var(--line-relaxed)",
         }}
       >
         Connect a {noun} by USB and it appears here automatically, ready to
@@ -102,7 +102,7 @@ export function NoDeviceState({
               gap: "var(--space-sm)",
               width: "100%",
               color: "var(--text-muted)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
             }}
           >
             <span style={{ flex: 1, borderTop: "1px solid var(--border-color)" }} />
@@ -135,7 +135,7 @@ export function NoDeviceState({
                 background: "var(--accent-bg)",
                 color: "var(--text-on-accent)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: 500,
+                fontWeight: "var(--font-weight-medium)",
                 cursor: pending ? "default" : "pointer",
                 opacity: pending ? 0.6 : 1,
               }}
@@ -145,9 +145,9 @@ export function NoDeviceState({
           </div>
           <div
             style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
-              lineHeight: 1.6,
+              lineHeight: "var(--line-relaxed)",
               maxWidth: 360,
             }}
           >

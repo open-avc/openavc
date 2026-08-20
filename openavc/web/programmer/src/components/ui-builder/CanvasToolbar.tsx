@@ -99,9 +99,9 @@ const isCustomPage = (p: UIPage) => p.render_mode === "custom" && !!p.custom_fil
 
 const toolButton: React.CSSProperties = {
   display: "flex",
-  padding: 3,
+  padding: "var(--space-xs)",
   color: "var(--text-muted)",
-  borderRadius: 3,
+  borderRadius: "var(--border-radius)",
   background: "transparent",
   border: "none",
   cursor: "pointer",
@@ -423,9 +423,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
   const menuItemStyle: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: "var(--space-sm)",
     width: "100%",
-    padding: "5px 12px",
+    padding: "var(--space-xs) var(--space-md)",
     fontSize: "var(--font-size-sm)",
     color: "var(--text-primary)",
     background: "transparent",
@@ -449,8 +449,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 3,
-          padding: "2px 8px",
+          gap: "var(--space-xs)",
+          padding: "var(--space-2xs) var(--space-sm)",
           borderRadius: "var(--border-radius)",
           background: isActive ? "var(--accent-dim)" : "transparent",
           cursor: "pointer",
@@ -501,11 +501,11 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             onClick={(e) => e.stopPropagation()}
             style={{
               width: 80,
-              padding: "0 4px",
+              padding: "0 var(--space-xs)",
               fontSize: "var(--font-size-sm)",
               background: "var(--bg-base)",
               border: "1px solid var(--accent)",
-              borderRadius: 3,
+              borderRadius: "var(--border-radius)",
               color: "var(--text-primary)",
             }}
           />
@@ -530,7 +530,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                 if (e.detail > 1) return;
                 startRename(page.id, page.name);
               }}
-              style={{ display: "flex", padding: 1, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+              style={{ display: "flex", padding: "var(--space-2xs)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
               title="Rename page"
             >
               <Pencil size={10} />
@@ -541,7 +541,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                 if (e.detail > 1) return;
                 handleDuplicatePage(page.id);
               }}
-              style={{ display: "flex", padding: 1, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+              style={{ display: "flex", padding: "var(--space-2xs)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
               title="Duplicate page"
             >
               <Copy size={10} />
@@ -553,7 +553,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                   if (e.detail > 1) return;
                   handleDeletePage(page.id);
                 }}
-                style={{ display: "flex", padding: 1, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                style={{ display: "flex", padding: "var(--space-2xs)", color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
                 title="Delete page"
               >
                 <X size={11} />
@@ -587,7 +587,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 2,
+            gap: "var(--space-2xs)",
             flex: 1,
             minWidth: 0,
             overflow: "auto",
@@ -596,7 +596,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           {organizedPages.map(({ group, pages: groupPages }) => {
             const isCollapsed = group ? collapsedGroups.has(group.name) : false;
             return (
-              <div key={group?.name || "_ungrouped"} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <div key={group?.name || "_ungrouped"} style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)" }}>
                 {/* Group header */}
                 {group && (
                   <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
@@ -617,12 +617,12 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 2,
-                        padding: "2px 6px",
-                        fontSize: 10,
-                        fontWeight: 600,
+                        gap: "var(--space-2xs)",
+                        padding: "var(--space-2xs) var(--space-sm)",
+                        fontSize: "var(--font-size-2xs)",
+                        fontWeight: "var(--font-weight-semibold)",
                         textTransform: "uppercase",
-                        letterSpacing: "0.5px",
+                        letterSpacing: "var(--tracking-wide)",
                         color: "var(--text-muted)",
                         background: "none",
                         border: "none",
@@ -645,13 +645,13 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                           onClick={(e) => e.stopPropagation()}
                           style={{
                             width: 70,
-                            padding: "0 3px",
-                            fontSize: 10,
-                            fontWeight: 600,
+                            padding: "0 var(--space-xs)",
+                            fontSize: "var(--font-size-2xs)",
+                            fontWeight: "var(--font-weight-semibold)",
                             textTransform: "uppercase",
                             background: "var(--bg-base)",
                             border: "1px solid var(--accent)",
-                            borderRadius: 3,
+                            borderRadius: "var(--border-radius)",
                             color: "var(--text-primary)",
                           }}
                         />
@@ -669,7 +669,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          padding: 2,
+                          padding: "var(--space-2xs)",
                           color: "var(--text-muted)",
                           background: "none",
                           border: "none",
@@ -686,7 +686,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                 {!isCollapsed && groupPages.map(renderTab)}
                 {/* Group separator */}
                 {group && (
-                  <div style={{ width: 1, height: 16, background: "var(--border-color)", margin: "0 2px" }} />
+                  <div style={{ width: 1, height: 16, background: "var(--border-color)", margin: "0 var(--space-2xs)" }} />
                 )}
               </div>
             );
@@ -700,8 +700,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 2,
-                padding: "3px 10px",
+                gap: "var(--space-2xs)",
+                padding: "var(--space-xs) var(--space-md)",
                 borderRadius: "var(--border-radius)",
                 color: "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
@@ -711,7 +711,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               title="Add page, overlay, or sidebar"
             >
               <Plus size={14} />
-              <span style={{ fontSize: 11 }}>Add</span>
+              <span style={{ fontSize: "var(--font-size-xs)" }}>Add</span>
               <ChevronDownIcon size={10} />
             </button>
             {showAddMenu && (
@@ -720,10 +720,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                   position: "absolute",
                   top: "100%",
                   right: 0,
-                  marginTop: 4,
+                  marginTop: "var(--space-xs)",
                   background: "var(--bg-surface)",
                   border: "1px solid var(--border-color)",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-lg)",
                   boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
                   zIndex: 100,
                   minWidth: 130,
@@ -747,7 +747,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                     {item.label}
                   </button>
                 ))}
-                <div style={{ borderTop: "1px solid var(--border-color)", margin: "4px 0" }} />
+                <div style={{ borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0" }} />
                 <button
                   onClick={() => {
                     setShowNewGroupPrompt(true);
@@ -786,7 +786,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             {/* Layout variants, icon-only. The panel picks an arrangement by
                 the shape of the glass at runtime; this picks which one you are
                 authoring. */}
-            <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", flexShrink: 0 }}>
               {layouts.map((layout) => {
                 const isActive = layout.id === (activeLayout?.id ?? null);
                 const Icon = layout.orientation === "portrait" ? RectangleVertical : RectangleHorizontal;
@@ -798,8 +798,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      padding: "3px 5px",
-                      borderRadius: 3,
+                      padding: "var(--space-xs)",
+                      borderRadius: "var(--border-radius)",
                       border: "1px solid",
                       borderColor: isActive ? "var(--accent)" : "var(--border-color)",
                       background: isActive ? "var(--accent-dim)" : "transparent",
@@ -823,9 +823,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 1,
-                    padding: "3px 4px",
-                    borderRadius: 3,
+                    gap: "var(--space-2xs)",
+                    padding: "var(--space-xs)",
+                    borderRadius: "var(--border-radius)",
                     border: "1px dashed var(--border-color)",
                     background: "transparent",
                     color: "var(--text-muted)",
@@ -840,7 +840,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               {activeLayout && !activeLayout.primary && (
                 <button
                   onClick={() => setPendingDeleteLayoutId(activeLayout.id)}
-                  style={{ ...toolButton, padding: "2px 3px" }}
+                  style={{ ...toolButton, padding: "var(--space-2xs) var(--space-xs)" }}
                   title="Delete this arrangement. The controls and the primary arrangement are untouched."
                 >
                   <X size={11} />
@@ -855,11 +855,11 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               onChange={(e) => setScreenPresetIndex(Number(e.target.value))}
               title={`Canvas: ${presetSize.width}x${presetSize.height}`}
               style={{
-                padding: "2px 4px",
+                padding: "var(--space-2xs) var(--space-xs)",
                 fontSize: "var(--font-size-sm)",
                 background: "var(--bg-base)",
                 border: "1px solid var(--border-color)",
-                borderRadius: 3,
+                borderRadius: "var(--border-radius)",
                 color: "var(--text-secondary)",
                 flexShrink: 0,
               }}
@@ -873,14 +873,14 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
 
             {/* Grid toggle + snap summary. The numbers moved into a popover —
                 they are set once per page, not per drag. */}
-            <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", flexShrink: 0 }}>
               <button
                 onClick={toggleGrid}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  padding: "2px 6px",
-                  borderRadius: 3,
+                  padding: "var(--space-2xs) var(--space-sm)",
+                  borderRadius: "var(--border-radius)",
                   background: showGrid ? "var(--accent-dim)" : "transparent",
                   color: showGrid ? "var(--accent)" : "var(--text-muted)",
                   border: "none",
@@ -897,10 +897,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 3,
-                      padding: "2px 6px",
-                      borderRadius: 3,
-                      fontSize: 11,
+                      gap: "var(--space-xs)",
+                      padding: "var(--space-2xs) var(--space-sm)",
+                      borderRadius: "var(--border-radius)",
+                      fontSize: "var(--font-size-xs)",
                       background: "transparent",
                       border: "1px solid var(--border-color)",
                       color: snap.enabled ? "var(--text-secondary)" : "var(--text-muted)",
@@ -917,20 +917,20 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                         position: "absolute",
                         top: "100%",
                         left: 0,
-                        marginTop: 4,
+                        marginTop: "var(--space-xs)",
                         background: "var(--bg-surface)",
                         border: "1px solid var(--border-color)",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-lg)",
                         boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
                         zIndex: 100,
-                        padding: "8px 10px",
+                        padding: "var(--space-sm) var(--space-md)",
                         display: "flex",
                         flexDirection: "column",
-                        gap: 6,
+                        gap: "var(--space-sm)",
                       }}
                     >
                       <label
-                        style={{ fontSize: 11, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}
+                        style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: "var(--space-xs)", whiteSpace: "nowrap" }}
                         title="Snap while dragging. Hold Alt to ignore it for one move."
                       >
                         <input
@@ -940,8 +940,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                         />
                         Snap while dragging
                       </label>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Cols</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+                        <label style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>Cols</label>
                         <NumericInput
                           integer
                           min={1}
@@ -951,13 +951,13 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                             if (v !== undefined) handleSnapChange({ x: 100 / v });
                           }}
                           style={{
-                            width: 42, padding: "1px 3px", fontSize: 11, textAlign: "center",
+                            width: 42, padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-xs)", textAlign: "center",
                             background: "var(--bg-primary)", border: "1px solid var(--border-color)",
-                            borderRadius: 3, color: "var(--text-primary)",
+                            borderRadius: "var(--border-radius)", color: "var(--text-primary)",
                           }}
                           title="Snap increment across. Changing it never moves an element."
                         />
-                        <label style={{ fontSize: 10, color: "var(--text-muted)" }}>Rows</label>
+                        <label style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>Rows</label>
                         <NumericInput
                           integer
                           min={1}
@@ -967,9 +967,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                             if (v !== undefined) handleSnapChange({ y: 100 / v });
                           }}
                           style={{
-                            width: 42, padding: "1px 3px", fontSize: 11, textAlign: "center",
+                            width: 42, padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-xs)", textAlign: "center",
                             background: "var(--bg-primary)", border: "1px solid var(--border-color)",
-                            borderRadius: 3, color: "var(--text-primary)",
+                            borderRadius: "var(--border-radius)", color: "var(--text-primary)",
                           }}
                           title="Snap increment down. Changing it never moves an element."
                         />
@@ -985,7 +985,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             {/* Arrange tools — always present, lit when the selection can use
                 them. A toolbar that reshuffles itself every time you click is
                 a toolbar you can never learn. */}
-            <div style={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", flexShrink: 0 }}>
               {(
                 [
                   { action: "align-left" as AlignAction, icon: <AlignStartVertical size={13} />, title: "Align left" },
@@ -1011,7 +1011,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                   </button>
                 );
               })}
-              <div style={{ width: 1, height: 14, background: "var(--border-color)", margin: "0 2px" }} />
+              <div style={{ width: 1, height: 14, background: "var(--border-color)", margin: "0 var(--space-2xs)" }} />
               {/* Match size: needs a second element to match against, and the
                   first one selected is the one being matched TO. */}
               {(
@@ -1075,7 +1075,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             <div style={divider} />
 
             {/* Undo/Redo */}
-            <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", flexShrink: 0 }}>
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
@@ -1118,20 +1118,20 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             never shifts the blocks on either side. */}
         <div style={{ flex: 1, minWidth: 8, textAlign: "center" }}>
           {!previewMode && selectedElementIds.length > 1 && (
-            <span style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500 }}>
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", fontWeight: "var(--font-weight-medium)" }}>
               {selectedElementIds.length} selected
             </span>
           )}
         </div>
 
         {/* Save state + manual Save button */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", flexShrink: 0 }}>
           {error && !conflictDetected ? (
-            <span style={{ color: "var(--color-error, #d33)", fontWeight: 500 }} title={error}>
+            <span style={{ color: "var(--color-error, #d33)", fontWeight: "var(--font-weight-medium)" }} title={error}>
               Save failed
             </span>
           ) : saving ? (
-            <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-secondary)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", color: "var(--text-secondary)" }}>
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
               Saving...
             </span>
@@ -1140,9 +1140,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               Pending...
             </span>
           ) : dirty ? (
-            <span style={{ color: "var(--color-warning)", fontWeight: 500 }}>Unsaved</span>
+            <span style={{ color: "var(--color-warning)", fontWeight: "var(--font-weight-medium)" }}>Unsaved</span>
           ) : (
-            <span style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-secondary)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", color: "var(--text-secondary)" }}>
               <Check size={12} />
               Saved
             </span>
@@ -1156,10 +1156,10 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             disabled={!dirty && !error}
             title="Save now (Ctrl+S)"
             style={{
-              padding: "2px 8px",
-              fontSize: 11,
-              fontWeight: 600,
-              borderRadius: 3,
+              padding: "var(--space-2xs) var(--space-sm)",
+              fontSize: "var(--font-size-xs)",
+              fontWeight: "var(--font-weight-semibold)",
+              borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
               background: dirty || error ? "var(--accent-bg)" : "var(--bg-hover)",
               color: dirty || error ? "#fff" : "var(--text-muted)",
@@ -1176,8 +1176,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           <button
             onClick={onValidate}
             style={{
-              display: "flex", alignItems: "center", gap: 4,
-              padding: "3px 10px", borderRadius: "var(--border-radius)",
+              display: "flex", alignItems: "center", gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
               background: "transparent", border: "1px solid var(--border-color)",
               color: "var(--text-secondary)", fontSize: "var(--font-size-sm)",
               cursor: "pointer", flexShrink: 0,
@@ -1191,13 +1191,13 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
         )}
 
         {/* Zoom */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
           <button
             onClick={() => setZoom(zoom - 0.1)}
             disabled={zoom <= 0.25}
             style={{
               display: "flex",
-              padding: 2,
+              padding: "var(--space-2xs)",
               color: zoom <= 0.25 ? "var(--border-color)" : "var(--text-muted)",
               cursor: zoom <= 0.25 ? "default" : "pointer",
             }}
@@ -1215,7 +1215,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               background: "transparent",
               border: "none",
               cursor: "pointer",
-              padding: "1px 0",
+              padding: "var(--space-2xs) 0",
             }}
           >
             {Math.round(zoom * 100)}%
@@ -1225,7 +1225,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             disabled={zoom >= 2}
             style={{
               display: "flex",
-              padding: 2,
+              padding: "var(--space-2xs)",
               color: zoom >= 2 ? "var(--border-color)" : "var(--text-muted)",
               cursor: zoom >= 2 ? "default" : "pointer",
             }}
@@ -1240,13 +1240,13 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            padding: "3px 10px",
+            gap: "var(--space-xs)",
+            padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: previewMode ? "var(--color-success)" : "var(--accent-bg)",
             color: "#fff",
             fontSize: "var(--font-size-sm)",
-            fontWeight: 500,
+            fontWeight: "var(--font-weight-medium)",
             flexShrink: 0,
           }}
           title={previewMode ? "Exit preview" : "Preview panel"}
@@ -1273,12 +1273,12 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             top: tabMenu.y,
             background: "var(--bg-surface)",
             border: "1px solid var(--border-color)",
-            borderRadius: 6,
+            borderRadius: "var(--radius-lg)",
             boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
             zIndex: LAYER.popover,
             minWidth: 170,
             overflow: "hidden",
-            padding: "4px 0",
+            padding: "var(--space-xs) 0",
           }}
         >
           <button
@@ -1342,8 +1342,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           </button>
           {pageGroups.length > 0 && (
             <>
-              <div style={{ borderTop: "1px solid var(--border-color)", margin: "4px 0" }} />
-              <div style={{ padding: "2px 12px", fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <div style={{ borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0" }} />
+              <div style={{ padding: "var(--space-2xs) var(--space-md)", fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
                 Group
               </div>
               <button
@@ -1375,7 +1375,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
           )}
           {pages.length > 1 && (
             <>
-              <div style={{ borderTop: "1px solid var(--border-color)", margin: "4px 0" }} />
+              <div style={{ borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0" }} />
               <button
                 style={{ ...menuItemStyle, color: "var(--color-error)" }}
                 {...menuHover}

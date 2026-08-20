@@ -217,14 +217,14 @@ export function ConfigTableEditor({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
+            letterSpacing: "var(--tracking-wide)",
           }}
         >
           {label}
         </h3>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
           {saved && (
-            <span style={{ fontSize: "11px", color: "var(--color-success)" }}>Saved</span>
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-success)" }}>Saved</span>
           )}
           <button
             type="button"
@@ -245,7 +245,7 @@ export function ConfigTableEditor({
       </div>
 
       {help && (
-        <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
           {help}
         </div>
       )}
@@ -270,8 +270,8 @@ export function ConfigTableEditor({
               display: "grid",
               gridTemplateColumns: gridTemplate,
               gap: "var(--space-xs)",
-              marginBottom: 4,
-              fontSize: "11px",
+              marginBottom: "var(--space-xs)",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
             }}
           >
@@ -279,7 +279,7 @@ export function ConfigTableEditor({
               <span key={k} title={columns[k].help ? String(columns[k].help) : undefined}>
                 {String(columns[k].label || k)}
                 {columns[k].required && (
-                  <span style={{ color: "var(--color-error)", marginLeft: 2 }}>*</span>
+                  <span style={{ color: "var(--color-error)", marginLeft: "var(--space-2xs)" }}>*</span>
                 )}
               </span>
             ))}
@@ -362,7 +362,7 @@ export function ConfigTableEditor({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: 2,
+                  padding: "var(--space-2xs)",
                   color: "var(--text-muted)",
                 }}
               >
@@ -379,11 +379,11 @@ export function ConfigTableEditor({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          fontSize: "11px",
+          gap: "var(--space-xs)",
+          fontSize: "var(--font-size-xs)",
           color: "var(--accent)",
-          padding: "4px 0",
-          marginTop: 2,
+          padding: "var(--space-xs) 0",
+          marginTop: "var(--space-2xs)",
         }}
       >
         <Plus size={12} /> Add {rowLabel}

@@ -720,7 +720,7 @@ export function ScriptView() {
                     position: "absolute",
                     top: "100%",
                     right: 0,
-                    marginTop: 4,
+                    marginTop: "var(--space-xs)",
                     background: "var(--bg-surface)",
                     border: "1px solid var(--border-color)",
                     borderRadius: "var(--border-radius)",
@@ -747,10 +747,10 @@ export function ScriptView() {
                           "transparent")
                       }
                     >
-                      <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>
+                      <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>
                         {t.name}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                         {t.description}
                       </div>
                     </div>
@@ -948,7 +948,7 @@ export function ScriptView() {
                   ? "Create your first script, driver or control"
                   : "Select a file to edit"}
               </div>
-              <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
+              <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: "var(--line-base)" }}>
                 <strong>Scripts</strong> let you write Python logic that responds
                 to events, state changes, and timers using the <strong>openavc</strong> module.
                 <br /><br />

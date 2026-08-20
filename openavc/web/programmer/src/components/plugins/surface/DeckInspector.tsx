@@ -114,16 +114,16 @@ export function DeckInspector({
             background: "var(--bg-surface)",
             color: "var(--text-primary)",
             fontSize: "var(--font-size-base)",
-            fontWeight: 600,
+            fontWeight: "var(--font-weight-semibold)",
           }}
         />
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: "var(--space-sm)",
             marginTop: "var(--space-xs)",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             flexWrap: "wrap",
           }}
@@ -143,15 +143,15 @@ export function DeckInspector({
           {transport === "network" && !connected && networkStatus &&
             networkStatus !== "removed" && <> · {networkStatus}</>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-          <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-2xs)" }}>
+          <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
             {serial}
           </code>
           <CopyButton value={serial} title="Copy serial" />
         </div>
         {transport === "network" && address && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-            <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-2xs)" }}>
+            <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
               {address}
             </code>
             <CopyButton value={address} title="Copy address" />
@@ -169,7 +169,7 @@ export function DeckInspector({
               justifyContent: "space-between", gap: "var(--space-sm)",
             }}
           >
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
               {customZoneCount > 0
                 ? `${customZoneCount} custom zone${customZoneCount === 1 ? "" : "s"}`
                 : "One readout per dial"}
@@ -177,9 +177,9 @@ export function DeckInspector({
             <button
               onClick={onOpenStrip}
               style={{
-                padding: "2px 10px", borderRadius: "var(--border-radius)",
+                padding: "var(--space-2xs) var(--space-md)", borderRadius: "var(--border-radius)",
                 background: "var(--bg-hover)", color: "var(--text-secondary)",
-                fontSize: 11, cursor: "pointer",
+                fontSize: "var(--font-size-xs)", cursor: "pointer",
               }}
             >
               Customize…
@@ -205,12 +205,12 @@ export function DeckInspector({
               {level}%
             </span>
           </div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Just this deck.{" "}
             {typeof brightness === "number" && (
               <button
                 onClick={() => onBrightness(undefined)}
-                style={{ color: "var(--accent)", cursor: "pointer", background: "none", fontSize: 10 }}
+                style={{ color: "var(--accent)", cursor: "pointer", background: "none", fontSize: "var(--font-size-2xs)" }}
               >
                 Use the shared level ({fallbackBrightness}%)
               </button>
@@ -277,12 +277,12 @@ export function DeckInspector({
                   value={moveTarget}
                   onChange={(e) => setMoveTarget(e.target.value)}
                   style={{
-                    padding: "4px 6px",
+                    padding: "var(--space-xs) var(--space-sm)",
                     borderRadius: "var(--border-radius)",
                     border: "1px solid var(--border-color)",
                     background: "var(--bg-surface)",
                     color: "var(--text-primary)",
-                    fontSize: 12,
+                    fontSize: "var(--font-size-sm)",
                   }}
                 >
                   {moveTargets.map((t) => (
@@ -426,12 +426,12 @@ export function DeckInspector({
                 onChange={(e) => setAddModel(e.target.value)}
                 style={{
                   flex: 1,
-                  padding: "4px 6px",
+                  padding: "var(--space-xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   border: "1px solid var(--border-color)",
                   background: "var(--bg-surface)",
                   color: "var(--text-primary)",
-                  fontSize: 12,
+                  fontSize: "var(--font-size-sm)",
                 }}
               >
                 {virtualModels.map((m) => (
@@ -468,7 +468,7 @@ function InlineConfirm({
   onNo: () => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
       <span style={{ color: "var(--color-error, #ef4444)" }}>{question}</span>
       <div style={{ display: "flex", gap: "var(--space-xs)" }}>
         <button onClick={onYes} style={pageMenuConfirmStyle}>Yes</button>

@@ -213,8 +213,8 @@ export function OutlinePanel({
   };
 
   const iconBtnStyle: React.CSSProperties = {
-    display: "flex", padding: 1, background: "transparent", border: "none",
-    cursor: "pointer", borderRadius: 2, flexShrink: 0,
+    display: "flex", padding: "var(--space-2xs)", background: "transparent", border: "none",
+    cursor: "pointer", borderRadius: "var(--radius-sm)", flexShrink: 0,
   };
 
   const renderRow = (
@@ -256,10 +256,10 @@ export function OutlinePanel({
           }
         }}
         style={{
-          display: "flex", alignItems: "center", gap: 4,
-          padding: "3px 8px", paddingLeft: 8 + depth * 12,
+          display: "flex", alignItems: "center", gap: "var(--space-xs)",
+          padding: "var(--space-xs) var(--space-sm)", paddingLeft: 8 + depth * 12,
           cursor: isMaster ? "pointer" : isLocked ? "pointer" : "grab",
-          fontSize: 11, borderRadius: 3, userSelect: "none",
+          fontSize: "var(--font-size-xs)", borderRadius: "var(--border-radius)", userSelect: "none",
           opacity: isDragging ? 0.45 : isHidden ? 0.55 : 1,
           background,
           color: isSelected ? "var(--accent)" : "var(--text-primary)",
@@ -289,12 +289,12 @@ export function OutlinePanel({
           {el.id}
         </span>
         {displayLabel && (
-          <span style={{ color: "var(--text-muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 50 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-2xs)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 50 }}>
             {displayLabel}
           </span>
         )}
         {!isMaster && !hasBindings(el) && ["button", "slider", "fader", "select", "text_input", "keypad"].includes(el.type) && (
-          <span style={{ color: "#ff9800", fontSize: 9, flexShrink: 0 }} title="No bindings">!</span>
+          <span style={{ color: "#ff9800", fontSize: "var(--font-size-2xs)", flexShrink: 0 }} title="No bindings">!</span>
         )}
         {isMaster && (
           <Star size={10} style={{ color: "var(--accent)", flexShrink: 0 }} />
@@ -357,16 +357,16 @@ export function OutlinePanel({
   const pageZoneActive = !!drag && drag.over === null && drag.parentId !== undefined;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: "var(--font-size-sm)" }}>
       {/* Search */}
-      <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border-color)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-base)" }}>
+      <div style={{ padding: "var(--space-sm)", borderBottom: "1px solid var(--border-color)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-base)" }}>
           <Search size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search elements..."
-            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 11, color: "var(--text-primary)" }}
+            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "var(--font-size-xs)", color: "var(--text-primary)" }}
           />
           {search && (
             <button onClick={() => setSearch("")} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0 }}>
@@ -379,25 +379,25 @@ export function OutlinePanel({
       {/* Element list. Everything in here that isn't a row is the page-level
           drop zone, so dragging a control out of a container is a flick at the
           blank space under the list. */}
-      <div data-outline-list="" style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
+      <div data-outline-list="" style={{ flex: 1, overflowY: "auto", padding: "var(--space-xs) 0" }}>
         {filteredMasters.length > 0 && (
           <div data-outline-masters="">
-            <div style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <div style={{ padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-2xs)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)" }}>
               Master Elements
             </div>
             {filteredMasters.map((el) => renderRow(el, true))}
-            <div style={{ height: 1, margin: "4px 8px", background: "var(--border-color)" }} />
+            <div style={{ height: 1, margin: "var(--space-xs) var(--space-sm)", background: "var(--border-color)" }} />
           </div>
         )}
 
         <div
           style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "4px 8px", fontSize: 10, fontWeight: 600,
+            display: "flex", alignItems: "center", gap: "var(--space-xs)",
+            padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-2xs)", fontWeight: "var(--font-weight-semibold)",
             color: pageZoneActive ? "var(--accent)" : "var(--text-muted)",
-            textTransform: "uppercase", letterSpacing: "0.05em",
+            textTransform: "uppercase", letterSpacing: "var(--tracking-wide)",
             background: pageZoneActive ? "var(--accent-dim)" : "transparent",
-            borderRadius: 3,
+            borderRadius: "var(--border-radius)",
           }}
           title="Drop a control here to take it out of its container"
         >
@@ -405,7 +405,7 @@ export function OutlinePanel({
           <span>Page ({rows.length})</span>
         </div>
         {rows.length === 0 ? (
-          <div style={{ padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontStyle: "italic" }}>
+          <div style={{ padding: "var(--space-sm) var(--space-md)", color: "var(--text-muted)", fontSize: "var(--font-size-xs)", fontStyle: "italic" }}>
             {search ? "No matching elements" : "No elements on this page"}
           </div>
         ) : (
@@ -436,9 +436,9 @@ export function OutlinePanel({
             // A drag ghost lives inside the page, so it stays out of the
             // shared floating ladder in components/shared/layers.ts.
             zIndex: 200,
-            padding: "3px 8px",
-            borderRadius: 4,
-            fontSize: 11,
+            padding: "var(--space-xs) var(--space-sm)",
+            borderRadius: "var(--border-radius)",
+            fontSize: "var(--font-size-xs)",
             whiteSpace: "nowrap",
             background: "var(--bg-surface)",
             border: `1px solid ${drag.parentId === undefined ? "var(--color-error)" : "var(--accent)"}`,

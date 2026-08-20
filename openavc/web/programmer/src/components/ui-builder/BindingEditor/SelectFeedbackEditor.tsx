@@ -90,14 +90,14 @@ export function SelectFeedbackEditor({
                 style={{
                   border: "1px solid var(--border-color)",
                   borderRadius: "var(--border-radius)",
-                  padding: "6px 8px",
+                  padding: "var(--space-sm)",
                 }}
               >
                 <div
                   style={{
                     fontSize: "var(--font-size-sm)",
-                    fontWeight: 500,
-                    marginBottom: 4,
+                    fontWeight: "var(--font-weight-medium)",
+                    marginBottom: "var(--space-xs)",
                     display: "flex",
                     justifyContent: "space-between",
                   }}
@@ -105,7 +105,7 @@ export function SelectFeedbackEditor({
                   <span>{opt.label}</span>
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
                       fontFamily: "var(--font-mono)",
                     }}
@@ -122,7 +122,7 @@ export function SelectFeedbackEditor({
                 >
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
                       width: 24,
                     }}
@@ -137,7 +137,7 @@ export function SelectFeedbackEditor({
                   />
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
                       width: 24,
                     }}
@@ -161,7 +161,7 @@ export function SelectFeedbackEditor({
         <button
           onClick={onClear}
           style={{
-            padding: "4px 8px",
+            padding: "var(--space-xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)",
             color: "var(--color-error)",
@@ -180,15 +180,15 @@ export function SelectFeedbackEditor({
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  marginBottom: 2,
+  marginBottom: "var(--space-2xs)",
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  lineHeight: 1.4,
-  marginTop: 4,
+  lineHeight: "var(--line-tight)",
+  marginTop: "var(--space-xs)",
   fontStyle: "italic",
 };

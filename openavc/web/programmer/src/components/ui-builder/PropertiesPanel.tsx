@@ -152,16 +152,16 @@ export function PropertiesPanel({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           Multi-Select
         </div>
-        <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>
+        <div style={{ fontSize: "var(--font-size-base)", color: "var(--text-primary)", fontWeight: "var(--font-weight-medium)" }}>
           {multiSelectCount} elements selected
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, marginBottom: 4 }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", lineHeight: "var(--line-tight)", marginBottom: "var(--space-xs)" }}>
           Changes below apply to all selected elements.
         </div>
 
@@ -177,9 +177,9 @@ export function PropertiesPanel({
           const themeDefault = getCommonThemeDefault(key);
           return (
             <div key={key} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <label style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 70, flexShrink: 0 }}>{label}</label>
+              <label style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", minWidth: 70, flexShrink: 0 }}>{label}</label>
               {type === "number" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                   <input
                     type="number"
                     // Measurements are shown in px and stored in rem, the same
@@ -201,9 +201,9 @@ export function PropertiesPanel({
                           : undefined,
                       })
                     }
-                    style={{ width: 60, padding: "2px 4px", fontSize: 11, borderRadius: 3, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", textAlign: "center" }}
+                    style={{ width: 60, padding: "var(--space-2xs) var(--space-xs)", fontSize: "var(--font-size-xs)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", textAlign: "center" }}
                   />
-                  {unit && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{unit}</span>}
+                  {unit && <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>{unit}</span>}
                 </div>
               ) : (
                 // InlineColorPicker (not a native input) so multi-select can show
@@ -291,8 +291,8 @@ export function PropertiesPanel({
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
+          letterSpacing: "var(--tracking-wide)",
+          fontWeight: "var(--font-weight-semibold)",
         }}>
           Properties
         </span>
@@ -367,11 +367,11 @@ export function PropertiesPanel({
           return (
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "4px 8px", marginBottom: 6, borderRadius: 4,
+              padding: "var(--space-xs) var(--space-sm)", marginBottom: "var(--space-sm)", borderRadius: "var(--border-radius)",
               background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
             }}>
-              <span style={{ color: "#f59e0b", fontWeight: 500 }}>
+              <span style={{ color: "#f59e0b", fontWeight: "var(--font-weight-medium)" }}>
                 Overrides theme ({overrideKeys.length})
               </span>
               <button
@@ -381,12 +381,12 @@ export function PropertiesPanel({
                   handleChange({ style: { ...element.style, ...reset } });
                 }}
                 style={{
-                  padding: "1px 6px", borderRadius: 3, fontSize: 10,
+                  padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-2xs)",
                   background: "transparent", border: "1px solid rgba(245,158,11,0.3)",
                   color: "#f59e0b", cursor: "pointer",
                 }}
               >
-                <Undo2 size={10} style={{ verticalAlign: "middle", marginRight: 2 }} />
+                <Undo2 size={10} style={{ verticalAlign: "middle", marginRight: "var(--space-2xs)" }} />
                 Reset to theme
               </button>
             </div>
@@ -487,18 +487,18 @@ function MasterElementProperties({
           fontSize: "var(--font-size-sm)",
           color: "#9C27B0",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
+          letterSpacing: "var(--tracking-wide)",
+          fontWeight: "var(--font-weight-semibold)",
           padding: "var(--space-xs)",
         }}
       >
         <span
           style={{
             display: "inline-block",
-            padding: "1px 6px",
-            borderRadius: 3,
+            padding: "var(--space-2xs) var(--space-sm)",
+            borderRadius: "var(--border-radius)",
             background: "rgba(156,39,176,0.15)",
-            fontSize: 10,
+            fontSize: "var(--font-size-2xs)",
           }}
         >
           Master
@@ -545,7 +545,7 @@ function MasterElementProperties({
           onChangeParent={() => undefined}
         />
         {masterOrientation === "portrait" && !masterElement.placements?.portrait && (
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             No portrait position of its own yet, so it is showing the landscape one. Move it
             and it gets one.
           </div>
@@ -585,7 +585,7 @@ function MasterElementProperties({
           </FieldRow>
 
           {!isAllPages && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)", paddingLeft: "var(--space-xs)" }}>
               {project.ui.pages.map((p) => (
                 <label
                   key={p.id}
@@ -596,8 +596,8 @@ function MasterElementProperties({
                     fontSize: "var(--font-size-sm)",
                     color: "var(--text-secondary)",
                     cursor: "pointer",
-                    padding: "2px 4px",
-                    borderRadius: 3,
+                    padding: "var(--space-2xs) var(--space-xs)",
+                    borderRadius: "var(--border-radius)",
                   }}
                 >
                   <input
@@ -607,7 +607,7 @@ function MasterElementProperties({
                   />
                   {p.name}
                   {p.page_type && p.page_type !== "page" && (
-                    <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
                       ({p.page_type})
                     </span>
                   )}
@@ -627,7 +627,7 @@ function MasterElementProperties({
             alignItems: "center",
             justifyContent: "center",
             gap: "var(--space-sm)",
-            padding: "6px 12px",
+            padding: "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: "var(--bg-hover)",
             border: "1px solid var(--border-color)",
@@ -647,7 +647,7 @@ function MasterElementProperties({
             alignItems: "center",
             justifyContent: "center",
             gap: "var(--space-sm)",
-            padding: "6px 12px",
+            padding: "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: "rgba(244,67,54,0.1)",
             border: "1px solid rgba(244,67,54,0.3)",
@@ -663,10 +663,10 @@ function MasterElementProperties({
 
       <div
         style={{
-          fontSize: 11,
+          fontSize: "var(--font-size-xs)",
           color: "var(--text-muted)",
           padding: "var(--space-xs)",
-          lineHeight: 1.4,
+          lineHeight: "var(--line-tight)",
         }}
       >
         Master elements appear on multiple pages. Changes here apply everywhere.
@@ -763,8 +763,8 @@ function PageProperties({
         fontSize: "var(--font-size-sm)",
         color: "var(--text-secondary)",
         textTransform: "uppercase",
-        letterSpacing: "0.5px",
-        fontWeight: 600,
+        letterSpacing: "var(--tracking-wide)",
+        fontWeight: "var(--font-weight-semibold)",
         padding: "var(--space-xs)",
         marginTop: topGap ? "var(--space-sm)" : undefined,
       }}
@@ -790,7 +790,7 @@ function PageProperties({
           <select
             value={pageType}
             onChange={(e) => handleTypeChange(e.target.value)}
-            style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+            style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
           >
             <option value="page">Page</option>
             <option value="overlay">Overlay</option>
@@ -802,7 +802,7 @@ function PageProperties({
           <select
             value={isCustom ? "custom" : "elements"}
             onChange={(e) => onChange({ render_mode: e.target.value as "elements" | "custom" })}
-            style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+            style={{ flex: 1, padding: "var(--space-xs) var(--space-sm)", fontSize: "var(--font-size-sm)" }}
           >
             <option value="elements">Controls you place here</option>
             <option value="custom">A page you wrote yourself</option>
@@ -822,7 +822,7 @@ function PageProperties({
               settingsLabel="Settings passed to the page (JSON):"
             />
             {keptElements > 0 && (
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "var(--space-2xs) 0" }}>
                 {keptElements} control{keptElements === 1 ? "" : "s"} on this page
                 {keptElements === 1 ? " is" : " are"} not drawn while it shows your own
                 page. Switch Contents back to show {keptElements === 1 ? "it" : "them"} again.
@@ -850,7 +850,7 @@ function PageProperties({
                 placeholder={isSidebar ? "25" : "31.25"}
                 style={{ flex: 1 }}
               />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>% of screen</span>
+              <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>% of screen</span>
             </FieldRow>
 
             {isOverlay && (
@@ -864,7 +864,7 @@ function PageProperties({
                   placeholder="37.5"
                   style={{ flex: 1 }}
                 />
-                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>% of screen</span>
+                <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>% of screen</span>
               </FieldRow>
             )}
 
@@ -937,7 +937,7 @@ function PageProperties({
       {sectionHeader("Snapping", true)}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
         <FieldRow label="Snap">
-          <label style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flex: 1 }}>
             <input
               type="checkbox"
               checked={pageSnap(page).enabled}
@@ -945,7 +945,7 @@ function PageProperties({
                 onChange({ snap: { ...pageSnap(page), enabled: e.target.checked } })
               }
             />
-            <span style={{ fontSize: 11 }}>Snap while dragging</span>
+            <span style={{ fontSize: "var(--font-size-xs)" }}>Snap while dragging</span>
           </label>
         </FieldRow>
 
@@ -974,7 +974,7 @@ function PageProperties({
             style={{ flex: 1 }}
           />
         </FieldRow>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", padding: "0 0 0 76px" }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontStyle: "italic", padding: "0 0 0 76px" }}>
           A ruler, not a container. Changing it, or switching it off, moves nothing
           that is already placed. Hold Alt while dragging to ignore it for one move.
         </div>
@@ -994,12 +994,12 @@ function PageProperties({
             value={bg.color || ""}
             onChange={(e) => updateBg({ color: e.target.value })}
             placeholder="Theme default"
-            style={{ flex: 1, fontSize: 11 }}
+            style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
           />
           {bg.color && (
             <button
               onClick={() => updateBg({ color: undefined })}
-              style={{ fontSize: 10, padding: "2px 4px" }}
+              style={{ fontSize: "var(--font-size-2xs)", padding: "var(--space-2xs) var(--space-xs)" }}
               title="Clear"
             >
               ✕
@@ -1028,7 +1028,7 @@ function PageProperties({
                 onChange={(e) => updateBg({ image_opacity: Number(e.target.value) })}
                 style={{ flex: 1 }}
               />
-              <span style={{ fontSize: 10, width: 28, textAlign: "right", color: "var(--text-muted)" }}>
+              <span style={{ fontSize: "var(--font-size-2xs)", width: 28, textAlign: "right", color: "var(--text-muted)" }}>
                 {Math.round((bg.image_opacity ?? 1) * 100)}%
               </span>
             </FieldRow>
@@ -1075,7 +1075,7 @@ function PageProperties({
               }
             }}
           />
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Overlay gradient</span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Overlay gradient</span>
         </FieldRow>
 
         {hasGradient && (
@@ -1086,7 +1086,7 @@ function PageProperties({
                 value={bg.gradient?.from || ""}
                 onChange={(e) => updateGradient({ from: e.target.value })}
                 placeholder="rgba(0,0,0,0.8)"
-                style={{ flex: 1, fontSize: 11 }}
+                style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
               />
             </FieldRow>
             <FieldRow label="To">
@@ -1095,7 +1095,7 @@ function PageProperties({
                 value={bg.gradient?.to || ""}
                 onChange={(e) => updateGradient({ to: e.target.value })}
                 placeholder="rgba(0,0,0,0.4)"
-                style={{ flex: 1, fontSize: 11 }}
+                style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
               />
             </FieldRow>
             <FieldRow label="Angle">
@@ -1108,7 +1108,7 @@ function PageProperties({
                 max={360}
                 style={{ flex: 1 }}
               />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>deg</span>
+              <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>deg</span>
             </FieldRow>
           </>
         )}
@@ -1116,10 +1116,10 @@ function PageProperties({
 
       <div
         style={{
-          fontSize: 11,
+          fontSize: "var(--font-size-xs)",
           color: "var(--text-muted)",
           padding: "var(--space-xs)",
-          lineHeight: 1.4,
+          lineHeight: "var(--line-tight)",
         }}
       >
         {isOverlayOrSidebar
@@ -1160,9 +1160,9 @@ function Section({
           alignItems: "center",
           gap: "var(--space-xs)",
           width: "100%",
-          padding: "6px 8px",
+          padding: "var(--space-sm)",
           fontSize: "var(--font-size-sm)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
           background: highlight ? "rgba(138,180,147,0.06)" : "var(--bg-surface)",
           color: "var(--text-primary)",
           textAlign: "left",
@@ -1213,8 +1213,8 @@ function ThemeSection({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           Theme
@@ -1226,8 +1226,8 @@ function ThemeSection({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-          gap: 6,
-          marginBottom: 8,
+          gap: "var(--space-sm)",
+          marginBottom: "var(--space-sm)",
         }}
       >
         {themes.map((t) => {
@@ -1238,22 +1238,22 @@ function ThemeSection({
               onClick={() => onThemeChange(t.id)}
               title={`Switch to "${t.name}"`}
               style={{
-                padding: 6,
-                borderRadius: 6,
+                padding: "var(--space-sm)",
+                borderRadius: "var(--radius-lg)",
                 border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
                 background: isSelected ? "var(--accent-dim, rgba(138,180,147,0.12))" : "var(--bg-surface)",
                 cursor: "pointer",
                 textAlign: "center",
               }}
             >
-              <div style={{ display: "flex", gap: 2, justifyContent: "center", marginBottom: 3 }}>
+              <div style={{ display: "flex", gap: "var(--space-2xs)", justifyContent: "center", marginBottom: "var(--space-xs)" }}>
                 {(t.preview_colors || []).slice(0, 4).map((c, i) => (
                   <div
                     key={i}
                     style={{
                       width: 14,
                       height: 14,
-                      borderRadius: 3,
+                      borderRadius: "var(--border-radius)",
                       backgroundColor: c,
                       border: "1px solid rgba(128,128,128,0.3)",
                     }}
@@ -1262,7 +1262,7 @@ function ThemeSection({
               </div>
               <div
                 style={{
-                  fontSize: 10,
+                  fontSize: "var(--font-size-2xs)",
                   fontWeight: isSelected ? 600 : 400,
                   color: "var(--text-primary)",
                 }}
@@ -1278,7 +1278,7 @@ function ThemeSection({
         style={{
           height: 1,
           background: "var(--border-color)",
-          margin: "4px 0 8px",
+          margin: "var(--space-xs) 0 var(--space-sm)",
         }}
       />
     </>

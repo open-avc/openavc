@@ -109,7 +109,7 @@ export function QuickActions({
                 background: "var(--accent-bg)",
                 color: "var(--text-on-accent)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: 500,
+                fontWeight: "var(--font-weight-medium)",
                 border: "none",
                 cursor: isRunning ? "default" : "pointer",
                 opacity: isRunning ? 0.6 : 1,

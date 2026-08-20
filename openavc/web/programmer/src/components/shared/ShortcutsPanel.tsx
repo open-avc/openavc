@@ -73,8 +73,8 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
               border: "none",
               color: "var(--text-muted)",
               cursor: "pointer",
-              fontSize: 18,
-              padding: 4,
+              fontSize: "var(--font-size-xl)",
+              padding: "var(--space-xs)",
             }}
           >
             &times;
@@ -84,11 +84,11 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
         {SHORTCUT_GROUPS.map((group) => (
           <div key={group.title} style={{ marginBottom: "var(--space-lg)" }}>
             <div style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              fontWeight: 600,
+              letterSpacing: "var(--tracking-wide)",
+              fontWeight: "var(--font-weight-semibold)",
               marginBottom: "var(--space-sm)",
             }}>
               {group.title}
@@ -100,16 +100,16 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  padding: "4px 0",
+                  padding: "var(--space-xs) 0",
                   fontSize: "var(--font-size-sm)",
                 }}
               >
                 <span style={{ color: "var(--text-secondary)" }}>{s.description}</span>
                 <kbd style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  padding: "1px 6px",
-                  borderRadius: 3,
+                  fontSize: "var(--font-size-xs)",
+                  padding: "var(--space-2xs) var(--space-sm)",
+                  borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
                   border: "1px solid var(--border-color)",
                   color: "var(--text-primary)",
@@ -121,8 +121,8 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
 
-        <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: "var(--space-sm)" }}>
-          Press <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 4px", borderRadius: 2, background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Ctrl+/</kbd> or <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 4px", borderRadius: 2, background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Escape</kbd> to close
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", textAlign: "center", marginTop: "var(--space-sm)" }}>
+          Press <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)", background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Ctrl+/</kbd> or <kbd style={{ fontFamily: "var(--font-mono)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)", background: "var(--bg-hover)", border: "1px solid var(--border-color)" }}>Escape</kbd> to close
         </div>
     </Modal>
   );

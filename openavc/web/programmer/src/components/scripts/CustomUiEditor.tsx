@@ -53,7 +53,7 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
         <div style={{ fontSize: "var(--font-size-base)", color: "var(--text-primary)" }}>
           {path}
         </div>
-        <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
+        <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: "var(--line-base)" }}>
           This file travels with the project and your control can load it, but there
           is nothing here to edit. Replace it by dropping a new one in.
         </div>
@@ -100,7 +100,7 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
           <div
             style={{
               fontSize: "var(--font-size-sm)",
-              fontWeight: 600,
+              fontWeight: "var(--font-weight-semibold)",
               color: "var(--color-warning)",
               marginBottom: "var(--space-xs)",
             }}
@@ -123,7 +123,7 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
                 style={{
                   fontSize: "var(--font-size-sm)",
                   color: "var(--text-secondary)",
-                  lineHeight: 1.5,
+                  lineHeight: "var(--line-base)",
                 }}
               >
                 {warning}

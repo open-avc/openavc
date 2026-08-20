@@ -162,7 +162,7 @@ export function InstalledDriversView({
               placeholder="Search drivers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ width: "100%", paddingLeft: 28, fontSize: "var(--font-size-sm)" }}
+              style={{ width: "100%", paddingLeft: "var(--space-2xl)", fontSize: "var(--font-size-sm)" }}
             />
           </div>
         </div>
@@ -176,7 +176,7 @@ export function InstalledDriversView({
                 textAlign: "center",
                 color: "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
-                lineHeight: 1.5,
+                lineHeight: "var(--line-base)",
               }}
             >
               {searchQuery ? (
@@ -226,8 +226,8 @@ export function InstalledDriversView({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 6,
-                      fontWeight: 500,
+                      gap: "var(--space-sm)",
+                      fontWeight: "var(--font-weight-medium)",
                       fontSize: "var(--font-size-sm)",
                     }}
                   >
@@ -245,13 +245,13 @@ export function InstalledDriversView({
                       <span
                         title="Python driver"
                         style={{
-                          fontSize: 10,
-                          padding: "1px 5px",
-                          borderRadius: 3,
+                          fontSize: "var(--font-size-2xs)",
+                          padding: "var(--space-2xs) var(--space-xs)",
+                          borderRadius: "var(--border-radius)",
                           background: "var(--bg-hover)",
                           color: "var(--text-muted)",
                           fontFamily: "var(--font-mono)",
-                          fontWeight: 600,
+                          fontWeight: "var(--font-weight-semibold)",
                           flexShrink: 0,
                         }}
                       >
@@ -263,7 +263,7 @@ export function InstalledDriversView({
                     style={{
                       fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
-                      marginTop: 2,
+                      marginTop: "var(--space-2xs)",
                     }}
                   >
                     {d.manufacturer} &middot; {d.category || "Other"}
@@ -504,7 +504,7 @@ export function DriverDetailPanel({
           {driver.version && <span>&middot; v{driver.version}</span>}
           {driver.author && <span>&middot; {driver.author}</span>}
           {installed?.filename && (
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)" }}>
               &middot; {installed.filename}
             </span>
           )}
@@ -514,7 +514,7 @@ export function DriverDetailPanel({
             <span
               style={{
                 fontSize: "var(--font-size-xs)",
-                padding: "2px 8px",
+                padding: "var(--space-2xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
                 background: CATEGORY_COLORS[driver.category] || "#95a5a6",
                 color: "#fff",
@@ -538,12 +538,12 @@ export function DriverDetailPanel({
               padding: "var(--space-sm) var(--space-md)",
               background: "rgba(244,67,54,0.08)",
               borderRadius: "var(--border-radius)",
-              fontSize: 12,
+              fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",
             }}
           >
             <strong>In use:</strong> {devicesUsingDriver.length} device(s) reference this driver:
-            <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+            <ul style={{ margin: "var(--space-xs) 0 0 var(--space-lg)", padding: 0 }}>
               {devicesUsingDriver.slice(0, 5).map((name, i) => (
                 <li key={i}>{name}</li>
               ))}
@@ -551,7 +551,7 @@ export function DriverDetailPanel({
                 <li>...and {devicesUsingDriver.length - 5} more</li>
               )}
             </ul>
-            <div style={{ marginTop: 4 }}>
+            <div style={{ marginTop: "var(--space-xs)" }}>
               Remove or reassign these devices before uninstalling.
             </div>
           </div>
@@ -561,7 +561,7 @@ export function DriverDetailPanel({
       {/* Overview */}
       {(help?.overview || driver.description) && (
         <Section title="Overview">
-          <p style={{ margin: 0, lineHeight: 1.6 }}>
+          <p style={{ margin: 0, lineHeight: "var(--line-relaxed)" }}>
             {help?.overview || driver.description}
           </p>
         </Section>
@@ -575,7 +575,7 @@ export function DriverDetailPanel({
               margin: 0,
               whiteSpace: "pre-wrap",
               fontFamily: "inherit",
-              lineHeight: 1.6,
+              lineHeight: "var(--line-relaxed)",
               color: "var(--text-muted)",
             }}
           >
@@ -596,10 +596,10 @@ export function DriverDetailPanel({
           >
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Property</th>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Type</th>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Default</th>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Required</th>
+                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Property</th>
+                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Type</th>
+                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Default</th>
+                <th style={{ textAlign: "left", padding: "var(--space-xs) var(--space-sm)" }}>Required</th>
               </tr>
             </thead>
             <tbody>
@@ -607,16 +607,16 @@ export function DriverDetailPanel({
                 const s = schema as Record<string, unknown>;
                 return (
                   <tr key={key} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                    <td style={{ padding: "4px 8px", fontWeight: 500 }}>
+                    <td style={{ padding: "var(--space-xs) var(--space-sm)", fontWeight: "var(--font-weight-medium)" }}>
                       {(s.label as string) || key}
                     </td>
-                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
+                    <td style={{ padding: "var(--space-xs) var(--space-sm)", color: "var(--text-muted)" }}>
                       {(s.type as string) || "string"}
                     </td>
-                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
+                    <td style={{ padding: "var(--space-xs) var(--space-sm)", color: "var(--text-muted)" }}>
                       {s.default !== undefined ? String(s.default) : "\u2014"}
                     </td>
-                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
+                    <td style={{ padding: "var(--space-xs) var(--space-sm)", color: "var(--text-muted)" }}>
                       {s.required ? "Yes" : "No"}
                     </td>
                   </tr>
@@ -630,12 +630,12 @@ export function DriverDetailPanel({
       {/* Commands */}
       {Object.keys(commands).length > 0 && (
         <Section title="Commands">
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
             {Object.entries(commands).map(([key, cmd]) => {
               const c = cmd as Record<string, unknown>;
               return (
                 <div key={key} style={{ fontSize: "var(--font-size-sm)" }}>
-                  <span style={{ fontWeight: 500 }}>{(c.label as string) || key}</span>
+                  <span style={{ fontWeight: "var(--font-weight-medium)" }}>{(c.label as string) || key}</span>
                   {typeof c.help === "string" && (
                     <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
                       {c.help}
@@ -651,7 +651,7 @@ export function DriverDetailPanel({
       {/* State Variables */}
       {Object.keys(stateVars).length > 0 && (
         <Section title="State Variables">
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
             {Object.entries(stateVars).map(([key, sv]) => {
               const s = sv as Record<string, unknown>;
               return (
@@ -669,7 +669,7 @@ export function DriverDetailPanel({
       {/* Device Settings — values written to and polled from the hardware */}
       {Object.keys(deviceSettings).length > 0 && (
         <Section title="Device Settings">
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
             {Object.entries(deviceSettings).map(([key, def]) => {
               const s = def as DeviceSettingDef;
               return <VarRow key={key} label={s.label || key} type={s.type || "string"} />;
@@ -695,7 +695,7 @@ export function DriverDetailPanel({
                 Read from the device when it connects.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
                 {Object.entries(vars).map(([key, sv]) => {
                   const s = sv as ChildEntityStateVarDef;
                   return <VarRow key={key} label={s.label || key} type={s.type || "string"} />;
@@ -714,7 +714,7 @@ export function DriverDetailPanel({
 function VarRow({ label, type }: { label: string; type: string }) {
   return (
     <div style={{ fontSize: "var(--font-size-sm)" }}>
-      <span style={{ fontWeight: 500 }}>{label}</span>
+      <span style={{ fontWeight: "var(--font-weight-medium)" }}>{label}</span>
       <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
         ({type})
       </span>
@@ -730,9 +730,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         style={{
           margin: "0 0 var(--space-sm) 0",
           fontSize: "var(--font-size-sm)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
           textTransform: "uppercase",
-          letterSpacing: "0.05em",
+          letterSpacing: "var(--tracking-wide)",
           color: "var(--text-muted)",
         }}
       >

@@ -65,15 +65,15 @@ export function ActivitySubTab() {
 
       {/* Filter bar */}
       <div style={{ display: "flex", gap: "var(--space-sm)", padding: "var(--space-sm) var(--space-md)", borderBottom: "1px solid var(--border-color)", alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Filter:</span>
+        <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Filter:</span>
         {(["all", "device", "var", "system"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             style={{
-              padding: "2px 10px",
-              borderRadius: 12,
-              fontSize: 11,
+              padding: "var(--space-2xs) var(--space-md)",
+              borderRadius: "var(--radius-lg)",
+              fontSize: "var(--font-size-xs)",
               border: "1px solid " + (filter === f ? "var(--accent)" : "var(--border-color)"),
               background: filter === f ? "rgba(138,180,147,0.15)" : "transparent",
               color: filter === f ? "var(--accent)" : "var(--text-secondary)",
@@ -89,8 +89,8 @@ export function ActivitySubTab() {
           placeholder="Filter by key..."
           style={{
             marginLeft: "auto",
-            padding: "2px 8px",
-            fontSize: 11,
+            padding: "var(--space-2xs) var(--space-sm)",
+            fontSize: "var(--font-size-xs)",
             borderRadius: "var(--border-radius)",
             border: "1px solid var(--border-color)",
             background: "var(--bg-surface)",
@@ -122,26 +122,26 @@ export function ActivitySubTab() {
                 borderBottom: "1px solid var(--border-color)",
               }}
             >
-              <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0, width: 70 }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0, width: 70 }}>
                 {formatTime(entry.timestamp)}
               </span>
               <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {entry.key}
               </code>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", flexShrink: 0 }}>
                 {entry.old_value !== null && entry.old_value !== undefined ? String(entry.old_value) : "null"}
               </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", flexShrink: 0 }}>
                 &rarr;
               </span>
-              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", fontWeight: 500, flexShrink: 0 }}>
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
                 {entry.new_value !== null && entry.new_value !== undefined ? String(entry.new_value) : "null"}
               </span>
               <span style={{
-                fontSize: 10, padding: "0 6px", borderRadius: 8, flexShrink: 0,
+                fontSize: "var(--font-size-2xs)", padding: "0 var(--space-sm)", borderRadius: "var(--radius-lg)", flexShrink: 0,
                 background: `${sourceColor(entry.source)}20`,
                 color: sourceColor(entry.source),
-                fontWeight: 500,
+                fontWeight: "var(--font-weight-medium)",
               }}>
                 {entry.source}
               </span>

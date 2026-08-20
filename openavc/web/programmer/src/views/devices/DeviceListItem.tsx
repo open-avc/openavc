@@ -70,12 +70,12 @@ export function DeviceListItem({
           width: 3,
           height: 22,
           flexShrink: 0,
-          marginLeft: 6,
-          borderRadius: 1,
+          marginLeft: "var(--space-sm)",
+          borderRadius: "var(--radius-sm)",
           background: bar,
         }}
       />
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
         <div
           style={{
             fontSize: "var(--font-size-sm)",
@@ -98,7 +98,7 @@ export function DeviceListItem({
           {groupNames && groupNames.length > 0 && groupNames.map((gn) => (
             <span key={gn} style={{
               fontFamily: "var(--font-family)",
-              fontSize: 9, padding: "0 4px", borderRadius: "var(--radius-sm)",
+              fontSize: "var(--font-size-2xs)", padding: "0 var(--space-xs)", borderRadius: "var(--radius-sm)",
               background: "var(--accent-dim)", color: "var(--accent)",
               lineHeight: "14px",
             }}>{gn}</span>

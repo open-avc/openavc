@@ -66,8 +66,8 @@ export function TriggerEditor({ trigger, onChange }: TriggerEditorProps) {
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           {showAdvanced ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -222,18 +222,18 @@ function ScheduleEditor({
 
       {/* Day toggles */}
       {presetIdx !== 3 && (
-        <div style={{ display: "flex", gap: 4, marginLeft: 78 }}>
+        <div style={{ display: "flex", gap: "var(--space-xs)", marginLeft: 78 }}>
           {DAYS.map((day, i) => (
             <button
               key={day}
               onClick={() => toggleDay(DAY_VALUES[i])}
               style={{
-                padding: "2px 8px",
-                borderRadius: 4,
+                padding: "var(--space-2xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
                 border: "1px solid var(--border-color)",
                 background: activeDays.has(DAY_VALUES[i]) ? "var(--accent-bg)" : "transparent",
                 color: activeDays.has(DAY_VALUES[i]) ? "#fff" : "var(--text-secondary)",
-                fontSize: 11,
+                fontSize: "var(--font-size-xs)",
                 cursor: "pointer",
                 fontWeight: activeDays.has(DAY_VALUES[i]) ? 600 : 400,
               }}
@@ -272,16 +272,16 @@ function ScheduleEditor({
       <div>
         <div
           onClick={() => setShowFieldEditor(!showFieldEditor)}
-          style={{ fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
+          style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", cursor: "pointer" }}
         >
           {showFieldEditor ? "▾" : "▸"} Field-by-field editor
         </div>
         {showFieldEditor && (
-          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ marginTop: "var(--space-sm)", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
+            <div style={{ display: "flex", gap: "var(--space-xs)" }}>
               {FIELD_LABELS.map((f, i) => (
                 <div key={f.label} style={{ flex: 1, textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2, fontWeight: 600 }}>{f.label}</div>
+                  <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginBottom: "var(--space-2xs)", fontWeight: "var(--font-weight-semibold)" }}>{f.label}</div>
                   <input
                     type="text"
                     value={cronFields[i]}
@@ -292,11 +292,11 @@ function ScheduleEditor({
                       width: "100%",
                       textAlign: "center",
                       fontFamily: "var(--font-mono)",
-                      fontSize: 12,
-                      padding: "3px 4px",
+                      fontSize: "var(--font-size-sm)",
+                      padding: "var(--space-xs)",
                     }}
                   />
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 1 }}>{f.hint}</div>
+                  <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{f.hint}</div>
                 </div>
               ))}
             </div>
@@ -308,7 +308,7 @@ function ScheduleEditor({
       <div>
         <div
           onClick={() => setShowRaw(!showRaw)}
-          style={{ fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
+          style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", cursor: "pointer" }}
         >
           {showRaw ? "▾" : "▸"} Raw cron expression
         </div>
@@ -318,7 +318,7 @@ function ScheduleEditor({
             value={cron}
             onChange={(e) => onChange({ cron: e.target.value })}
             placeholder="0 18 * * 1-5"
-            style={{ ...inputStyle, marginTop: 4, fontFamily: "var(--font-mono)", fontSize: 12 }}
+            style={{ ...inputStyle, marginTop: "var(--space-xs)", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
           />
         )}
       </div>
@@ -327,13 +327,13 @@ function ScheduleEditor({
       <div>
         <div
           onClick={() => setShowExamples(!showExamples)}
-          style={{ fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
+          style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", cursor: "pointer" }}
         >
           {showExamples ? "▾" : "▸"} Common examples
         </div>
         {showExamples && (
           <div style={{
-            marginTop: 4,
+            marginTop: "var(--space-xs)",
             border: "1px solid var(--border-color)",
             borderRadius: "var(--border-radius)",
             overflow: "hidden",
@@ -346,8 +346,8 @@ function ScheduleEditor({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  padding: "4px 8px",
-                  fontSize: 11,
+                  padding: "var(--space-xs) var(--space-sm)",
+                  fontSize: "var(--font-size-xs)",
                   cursor: "pointer",
                   borderBottom: "1px solid var(--border-color)",
                 }}
@@ -355,7 +355,7 @@ function ScheduleEditor({
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <span style={{ color: "var(--text-primary)" }}>{ex.label}</span>
-                <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{ex.cron}</code>
+                <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{ex.cron}</code>
               </div>
             ))}
           </div>
@@ -364,12 +364,12 @@ function ScheduleEditor({
 
       {/* Validation + Preview */}
       {cron && !isValidCron(cron) && (
-        <div style={{ fontSize: 12, color: "var(--color-error, #f44336)", fontWeight: 500 }}>
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error, #f44336)", fontWeight: "var(--font-weight-medium)" }}>
           Invalid cron expression: must have 5 fields (minute hour day month weekday)
         </div>
       )}
       {cron && isValidCron(cron) && (
-        <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 500 }}>
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--accent)", fontWeight: "var(--font-weight-medium)" }}>
           {describeCron(cron)}
         </div>
       )}
@@ -557,7 +557,7 @@ function EventEditor({
               onChange={(e) => onChange({ event_pattern: e.target.value })}
               placeholder="Type to search all events..."
               list="event-autocomplete"
-              style={{ ...inputStyle, fontFamily: "var(--font-mono)", fontSize: 12 }}
+              style={{ ...inputStyle, fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
             />
           </div>
           <datalist id="event-autocomplete">
@@ -567,25 +567,25 @@ function EventEditor({
           </datalist>
           {filteredSuggestions.length > 0 && filteredSuggestions.length <= 10 && (
             <div style={{
-              marginTop: 4,
+              marginTop: "var(--space-xs)",
               marginLeft: 78,
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               display: "flex",
               flexWrap: "wrap",
-              gap: 4,
+              gap: "var(--space-xs)",
             }}>
               {filteredSuggestions.slice(0, 8).map((s) => (
                 <span
                   key={s.pattern}
                   onClick={() => onChange({ event_pattern: s.pattern })}
                   style={{
-                    padding: "1px 6px",
-                    borderRadius: 3,
+                    padding: "var(--space-2xs) var(--space-sm)",
+                    borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     cursor: "pointer",
                     fontFamily: "var(--font-mono)",
-                    fontSize: 10,
+                    fontSize: "var(--font-size-2xs)",
                   }}
                   title={s.label}
                 >
@@ -616,7 +616,7 @@ function EventEditor({
       )}
 
       {trigger.event_pattern && (
-        <div style={{ fontSize: 12, color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--accent)", fontFamily: "var(--font-mono)" }}>
           {trigger.event_pattern}
         </div>
       )}
@@ -635,7 +635,7 @@ function StartupEditor({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
+      <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-tight)" }}>
         Runs when the system starts up. Use the delay to wait for devices to connect.
       </div>
       <div style={rowStyle}>
@@ -688,14 +688,14 @@ function ConditionsEditor({
           fontSize: "var(--font-size-sm)",
           color: "var(--text-muted)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
+          letterSpacing: "var(--tracking-wide)",
+          fontWeight: "var(--font-weight-semibold)",
           marginBottom: "var(--space-sm)",
         }}
       >
         Conditions {conditions.length > 0 && `(${conditions.length})`}
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         Only run if ALL conditions are true
       </div>
 
@@ -785,7 +785,7 @@ function ConditionsEditor({
           border: "1px dashed var(--border-color)",
           background: "transparent",
           color: "var(--text-muted)",
-          fontSize: 11,
+          fontSize: "var(--font-size-xs)",
           cursor: "pointer",
         }}
       >
@@ -835,11 +835,11 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
         borderRadius: "var(--border-radius)",
         border: `1px solid ${allPass ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
         background: allPass ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
-        fontSize: 11,
+        fontSize: "var(--font-size-xs)",
       }}
     >
       <div style={{
-        fontWeight: 600,
+        fontWeight: "var(--font-weight-semibold)",
         color: allPass ? "#10b981" : "#ef4444",
         marginBottom: conditions.length > 1 ? 4 : 0,
       }}>
@@ -854,12 +854,12 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
             alignItems: "center",
             gap: "var(--space-xs)",
             color: "var(--text-secondary)",
-            padding: "1px 0",
+            padding: "var(--space-2xs) 0",
           }}>
-            <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: 600 }}>
+            <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: "var(--font-weight-semibold)" }}>
               {passes ? "T" : "F"}
             </span>
-            <code style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+            <code style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-2xs)" }}>
               {cond.key}
             </code>
             <span style={{ color: "var(--text-muted)" }}>
@@ -881,8 +881,8 @@ function TimingHelp() {
       <div
         onClick={() => setExpanded(!expanded)}
         style={{
-          display: "flex", alignItems: "center", gap: 4,
-          cursor: "pointer", fontSize: 11, color: "var(--text-muted)",
+          display: "flex", alignItems: "center", gap: "var(--space-xs)",
+          cursor: "pointer", fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
         }}
       >
         <HelpCircle size={12} />
@@ -890,17 +890,17 @@ function TimingHelp() {
       </div>
       {expanded && (
         <div style={{
-          marginTop: 6, padding: "var(--space-sm)", borderRadius: 4,
+          marginTop: "var(--space-sm)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
           background: "rgba(138,180,147,0.06)", border: "1px solid rgba(138,180,147,0.15)",
-          fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6,
+          fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)",
         }}>
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ marginBottom: "var(--space-sm)" }}>
             <strong>Debounce</strong> &mdash; Waits for the value to stop changing. Each new change resets the timer. Fires once after the value settles. Use for flickering sensors or rapid adjustments.
           </div>
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ marginBottom: "var(--space-sm)" }}>
             <strong>Delay</strong> &mdash; Waits a set time after the debounce settles, then re-checks the condition before firing. If the condition is no longer true, the trigger is skipped. Use for "turn off after X minutes of inactivity."
           </div>
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ marginBottom: "var(--space-sm)" }}>
             <strong>Cooldown</strong> (in Advanced) &mdash; After the trigger fires, prevents it from firing again for this many seconds. Use to avoid rapid re-triggering.
           </div>
           <div style={{ fontStyle: "italic", color: "var(--text-muted)" }}>
@@ -929,7 +929,7 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   flex: 1,
-  padding: "4px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",
@@ -938,13 +938,13 @@ const inputStyle: React.CSSProperties = {
 };
 
 const unitStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   flexShrink: 0,
 };
 
 const hintStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   fontStyle: "italic",
   marginTop: -4,
@@ -953,7 +953,7 @@ const hintStyle: React.CSSProperties = {
 
 const iconBtnStyle: React.CSSProperties = {
   display: "flex",
-  padding: 2,
+  padding: "var(--space-2xs)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

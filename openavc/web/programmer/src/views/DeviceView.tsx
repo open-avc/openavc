@@ -193,7 +193,7 @@ export function DeviceView() {
       <>
         <div>Delete {selectedIds.size} device(s)? This cannot be undone.</div>
         {allRefs.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-secondary)" }}>
+          <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
             Warning: These devices are referenced in {allRefs.length} place(s) (macros, triggers, UI bindings).
           </div>
         )}
@@ -262,11 +262,11 @@ export function DeviceView() {
               aria-selected={subTab === tab.id}
               onClick={() => setSubTab(tab.id)}
               style={{
-                padding: "0 2px",
+                padding: "0 var(--space-2xs)",
                 background: "none",
                 color: subTab === tab.id ? "var(--text-primary)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: 500,
+                fontWeight: "var(--font-weight-medium)",
                 border: "none",
                 // The mark sits on the edge of the bar rather than filling a
                 // pill, so the accent stays reserved for the primary action.
@@ -361,11 +361,11 @@ export function DeviceView() {
               <button
                 onClick={() => setShowTopology((v) => !v)}
                 style={{
-                  display: "flex", alignItems: "center", gap: 4, width: "100%",
+                  display: "flex", alignItems: "center", gap: "var(--space-xs)", width: "100%",
                   padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-surface)",
                   border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)",
-                  color: "var(--text-secondary)", fontSize: 11, cursor: "pointer",
-                  textTransform: "uppercase", letterSpacing: "0.5px",
+                  color: "var(--text-secondary)", fontSize: "var(--font-size-xs)", cursor: "pointer",
+                  textTransform: "uppercase", letterSpacing: "var(--tracking-wide)",
                 }}
               >
                 {showTopology ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -376,7 +376,7 @@ export function DeviceView() {
                   style={{
                     marginTop: "var(--space-xs)", padding: "var(--space-sm)",
                     border: "1px solid var(--border-color)",
-                    borderRadius: "var(--border-radius)", fontSize: 11,
+                    borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
                   }}
                 >
                   {bridges.map(({ dev, ports }) => (
@@ -385,19 +385,19 @@ export function DeviceView() {
                         onClick={() => setSelectedId(dev.id)}
                         style={{
                           background: "none", border: "none", padding: 0, cursor: "pointer",
-                          color: "var(--text-primary)", fontWeight: 600, textAlign: "left",
+                          color: "var(--text-primary)", fontWeight: "var(--font-weight-semibold)", textAlign: "left",
                         }}
                       >
                         {dev.name || dev.id}
                       </button>
                       {ports.map(({ port, bound }) => (
-                        <div key={port.id} style={{ marginLeft: 10, marginTop: 2, color: "var(--text-secondary)" }}>
+                        <div key={port.id} style={{ marginLeft: "var(--space-md)", marginTop: "var(--space-2xs)", color: "var(--text-secondary)" }}>
                           {port.label || port.id}
                           {bound.length === 0 ? (
-                            <div style={{ marginLeft: 10, color: "var(--text-muted)" }}>&mdash; unbound</div>
+                            <div style={{ marginLeft: "var(--space-md)", color: "var(--text-muted)" }}>&mdash; unbound</div>
                           ) : (
                             bound.map((b) => (
-                              <div key={b.id} style={{ marginLeft: 10 }}>
+                              <div key={b.id} style={{ marginLeft: "var(--space-md)" }}>
                                 <button
                                   onClick={() => setSelectedId(b.id)}
                                   style={{
@@ -439,8 +439,8 @@ export function DeviceView() {
           {/* Device count summary + filter chips */}
           {deviceConfigs.length > 0 && (
             <div style={{
-              display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center",
-              marginBottom: "var(--space-sm)", fontSize: 11, color: "var(--text-muted)",
+              display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", alignItems: "center",
+              marginBottom: "var(--space-sm)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
             }}>
               <span>{statusCounts.total} device{statusCounts.total !== 1 ? "s" : ""}:</span>
               {([
@@ -453,7 +453,7 @@ export function DeviceView() {
                   key={f.key}
                   onClick={() => setStatusFilter(f.key)}
                   style={{
-                    padding: "1px 6px", borderRadius: 3, fontSize: 11, cursor: "pointer",
+                    padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)", cursor: "pointer",
                     background: statusFilter === f.key ? "var(--accent-bg)" : "var(--bg-hover)",
                     color: statusFilter === f.key ? "#fff" : "var(--text-secondary)",
                     border: "none",
@@ -560,10 +560,10 @@ export function DeviceView() {
           )}
 
           {deviceConfigs.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
               No devices configured. Click &quot;Add Device&quot; to get started.
               <br />
-              <a href="https://docs.openavc.com/devices-and-drivers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: 12 }}>
+              <a href="https://docs.openavc.com/devices-and-drivers" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", fontSize: "var(--font-size-sm)" }}>
                 Learn about devices and drivers
               </a>
             </p>
@@ -577,13 +577,13 @@ export function DeviceView() {
                 {hasGroups && (
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       color: "var(--text-muted)",
                       textTransform: "uppercase",
-                      letterSpacing: "0.5px",
+                      letterSpacing: "var(--tracking-wide)",
                       padding: "var(--space-sm) var(--space-md)",
                       marginTop: "var(--space-sm)",
-                      fontWeight: 600,
+                      fontWeight: "var(--font-weight-semibold)",
                     }}
                   >
                     {group || "Ungrouped"}

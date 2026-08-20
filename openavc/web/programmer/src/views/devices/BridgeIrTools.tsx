@@ -11,7 +11,7 @@ import { IrLearnSession } from "../../api/irLearn";
 const btn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 4,
+  gap: "var(--space-xs)",
   padding: "var(--space-xs) var(--space-sm)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -106,17 +106,17 @@ export function BridgeIrTools({
         borderRadius: "var(--border-radius)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>Test this port</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-sm)" }}>
+        <span style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>Test this port</span>
         <button style={btn} onClick={() => { stopLearn(); setOpen(false); }}>
           <X size={14} />
         </button>
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         A diagnostic to check the emitter: learn or fire a code without saving it.
         To build a reusable code set, add an IR device on this port.
       </div>
-      <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: 6 }}>
+      <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-sm)" }}>
         {learning ? (
           <button style={btn} onClick={stopLearn}>Stop learning</button>
         ) : (
@@ -131,7 +131,7 @@ export function BridgeIrTools({
           width: "100%",
           boxSizing: "border-box",
           fontFamily: "var(--font-mono)",
-          fontSize: 11,
+          fontSize: "var(--font-size-xs)",
           padding: "var(--space-xs) var(--space-sm)",
           resize: "vertical",
         }}
@@ -139,7 +139,7 @@ export function BridgeIrTools({
         value={pronto}
         onChange={(e) => setPronto(e.target.value)}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
         <button
           style={{ ...btn, opacity: connected && pronto.trim() ? 1 : 0.5 }}
           onClick={emit}
@@ -148,11 +148,11 @@ export function BridgeIrTools({
           <Zap size={14} /> Test emit
         </button>
         {err ? (
-          <span style={{ color: "var(--color-error)", fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)", display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
             <AlertCircle size={12} /> {err}
           </span>
         ) : (
-          status && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{status}</span>
+          status && <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>{status}</span>
         )}
       </div>
     </div>

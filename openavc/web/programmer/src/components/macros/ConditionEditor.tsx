@@ -97,10 +97,10 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
       </div>
       {/* Operator hint */}
       {selectedOp && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", paddingLeft: 2 }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", paddingLeft: "var(--space-2xs)" }}>
           {selectedOp.hint}
           {condition.key && liveValue !== undefined && (
-            <span style={{ marginLeft: 8, color: "var(--text-secondary)" }}>
+            <span style={{ marginLeft: "var(--space-sm)", color: "var(--text-secondary)" }}>
               Current value: <strong>{String(liveValue)}</strong>
             </span>
           )}
@@ -109,12 +109,12 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
       {/* Expanded help */}
       {showHelp && (
         <div style={{
-          padding: "var(--space-sm)", borderRadius: 4, fontSize: 11,
+          padding: "var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
           background: "rgba(138,180,147,0.06)", border: "1px solid rgba(138,180,147,0.15)",
-          color: "var(--text-secondary)", lineHeight: 1.5,
+          color: "var(--text-secondary)", lineHeight: "var(--line-base)",
         }}>
           {OPERATORS.map((op) => (
-            <div key={op.value} style={{ marginBottom: 2 }}>
+            <div key={op.value} style={{ marginBottom: "var(--space-2xs)" }}>
               <strong>{op.label}</strong> &mdash; {op.hint}
             </div>
           ))}
@@ -125,7 +125,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
 }
 
 const selectStyle: React.CSSProperties = {
-  padding: "4px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",
@@ -134,7 +134,7 @@ const selectStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "4px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",

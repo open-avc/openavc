@@ -60,7 +60,7 @@ export function StateTableRenderer({
         <h4
           style={{
             fontSize: "var(--font-size-sm)",
-            fontWeight: 600,
+            fontWeight: "var(--font-weight-semibold)",
             color: "var(--text-secondary)",
             marginBottom: "var(--space-sm)",
           }}
@@ -95,7 +95,7 @@ export function StateTableRenderer({
                   padding: "var(--space-xs) var(--space-sm)",
                   borderBottom: "1px solid var(--border-color)",
                   color: "var(--text-muted)",
-                  fontWeight: 500,
+                  fontWeight: "var(--font-weight-medium)",
                 }}
               >
                 Key
@@ -106,7 +106,7 @@ export function StateTableRenderer({
                   padding: "var(--space-xs) var(--space-sm)",
                   borderBottom: "1px solid var(--border-color)",
                   color: "var(--text-muted)",
-                  fontWeight: 500,
+                  fontWeight: "var(--font-weight-medium)",
                 }}
               >
                 Value
@@ -174,8 +174,8 @@ export function PluginLogRenderer({ pluginId }: { pluginId: string }) {
     <div
       style={{
         fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        lineHeight: 1.6,
+        fontSize: "var(--font-size-xs)",
+        lineHeight: "var(--line-relaxed)",
         maxHeight: 300,
         overflow: "auto",
         padding: "var(--space-sm)",
@@ -242,7 +242,7 @@ export function StatusCardSlot() {
               alignItems: "center",
               gap: "var(--space-sm)",
               marginBottom: "var(--space-sm)",
-              fontWeight: 600,
+              fontWeight: "var(--font-weight-semibold)",
               fontSize: "var(--font-size-sm)",
             }}
           >
@@ -251,7 +251,7 @@ export function StatusCardSlot() {
           </div>
           <div
             style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               marginBottom: "var(--space-sm)",
             }}
@@ -338,7 +338,7 @@ export function DevicePanelSlot({
             <h3
               style={{
                 fontSize: "var(--font-size-sm)",
-                fontWeight: 600,
+                fontWeight: "var(--font-weight-semibold)",
                 marginBottom: "var(--space-sm)",
                 display: "flex",
                 alignItems: "center",
@@ -348,9 +348,9 @@ export function DevicePanelSlot({
               {panel.label}
               <span
                 style={{
-                  fontSize: 10,
+                  fontSize: "var(--font-size-2xs)",
                   color: "var(--text-muted)",
-                  fontWeight: 400,
+                  fontWeight: "var(--font-weight-normal)",
                 }}
               >
                 via {panel.plugin_name}

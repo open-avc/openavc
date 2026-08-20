@@ -152,7 +152,7 @@ export function MacroView() {
                   ? "Create your first macro"
                   : "Select a macro to edit"}
               </div>
-              <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 400, lineHeight: 1.5 }}>
+              <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 400, lineHeight: "var(--line-base)" }}>
                 Macros are reusable sequences of actions: power on devices,
                 switch inputs, set variables, and more. They can be triggered
                 from the UI, from scripts, or from other macros.
@@ -195,10 +195,10 @@ export function MacroView() {
               alignItems: "center",
             }}>
               <div>
-                <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "var(--font-size-base)" }}>
+                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--text-primary)", fontSize: "var(--font-size-base)" }}>
                   Convert to Script
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                   This will create <code style={{ fontFamily: "var(--font-mono)" }}>{scriptPreview.fileName}</code> &mdash; review the generated code below.
                 </div>
               </div>
@@ -209,8 +209,8 @@ export function MacroView() {
                 margin: 0,
                 padding: "var(--space-md)",
                 fontFamily: "var(--font-mono)",
-                fontSize: 12,
-                lineHeight: 1.5,
+                fontSize: "var(--font-size-sm)",
+                lineHeight: "var(--line-base)",
                 color: "var(--text-primary)",
                 background: "var(--bg-primary)",
                 whiteSpace: "pre-wrap",
@@ -225,13 +225,13 @@ export function MacroView() {
                 padding: "var(--space-sm) var(--space-md)",
                 borderTop: "1px solid rgba(245,158,11,0.3)",
                 background: "rgba(245,158,11,0.06)",
-                fontSize: 12,
+                fontSize: "var(--font-size-sm)",
                 color: "var(--text-secondary)",
-                lineHeight: 1.5,
+                lineHeight: "var(--line-base)",
               }}>
-                <div style={{ fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>Conversion notes</div>
+                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "#f59e0b", marginBottom: "var(--space-xs)" }}>Conversion notes</div>
                 {scriptPreview.warnings.map((w, i) => (
-                  <div key={i} style={{ display: "flex", gap: 6, marginBottom: 2 }}>
+                  <div key={i} style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-2xs)" }}>
                     <span style={{ color: "#f59e0b", flexShrink: 0 }}>•</span>
                     <span>{w}</span>
                   </div>
@@ -246,7 +246,7 @@ export function MacroView() {
               justifyContent: "space-between",
               alignItems: "center",
             }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 400, lineHeight: 1.4 }}>
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", maxWidth: 400, lineHeight: "var(--line-tight)" }}>
                 The original macro and its triggers will remain active. Disable or delete the macro after verifying the script works.
               </div>
               <div style={{ display: "flex", gap: "var(--space-sm)" }}>

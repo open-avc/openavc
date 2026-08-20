@@ -18,7 +18,7 @@ export function AssetPicker({ value, onChange }: AssetPickerProps) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
         {currentName ? (
           <img
             src={api.getAssetUrl(currentName)}
@@ -27,7 +27,7 @@ export function AssetPicker({ value, onChange }: AssetPickerProps) {
               width: 32,
               height: 32,
               objectFit: "cover",
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
             }}
           />
@@ -36,7 +36,7 @@ export function AssetPicker({ value, onChange }: AssetPickerProps) {
             style={{
               width: 32,
               height: 32,
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               border: "1px dashed var(--border-color)",
               display: "flex",
               alignItems: "center",
@@ -50,8 +50,8 @@ export function AssetPicker({ value, onChange }: AssetPickerProps) {
         <button
           onClick={() => setOpen(true)}
           style={{
-            padding: "3px 8px",
-            borderRadius: 3,
+            padding: "var(--space-xs) var(--space-sm)",
+            borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)",
             color: "var(--accent)",
             background: "var(--bg-base)",
@@ -64,10 +64,10 @@ export function AssetPicker({ value, onChange }: AssetPickerProps) {
           <button
             onClick={() => onChange("")}
             style={{
-              padding: "2px 4px",
-              fontSize: 10,
+              padding: "var(--space-2xs) var(--space-xs)",
+              fontSize: "var(--font-size-2xs)",
               color: "var(--text-muted)",
-              borderRadius: 3,
+              borderRadius: "var(--border-radius)",
             }}
           >
             Clear

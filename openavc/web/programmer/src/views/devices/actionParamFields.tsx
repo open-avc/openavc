@@ -89,7 +89,7 @@ export function ActionParamFields({
                 display: "block",
                 fontSize: "var(--font-size-sm)",
                 color: "var(--text-secondary)",
-                marginBottom: 4,
+                marginBottom: "var(--space-xs)",
               }}
             >
               {label}
@@ -106,7 +106,7 @@ export function ActionParamFields({
               style={{ width: "100%" }}
             />
             {def.help && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                 {def.help}
               </div>
             )}

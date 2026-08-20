@@ -14,7 +14,7 @@ import { BridgeIrTools } from "./BridgeIrTools";
 const btn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 6,
+  gap: "var(--space-sm)",
   padding: "var(--space-xs) var(--space-md)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -109,14 +109,14 @@ export function BridgeIrPort({
         )}
       </div>
       {bound.length === 0 && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           Creates an IR device bound to this port. Build its code set (learn, paste
           Pronto, or type a sendir string) on its device page. Each code becomes
           a command you can put on a panel button or call from a macro.
         </div>
       )}
       {error && (
-        <div style={{ color: "var(--color-error)", fontSize: 11, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <div style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)", marginTop: "var(--space-xs)", display: "inline-flex", alignItems: "center", gap: "var(--space-xs)" }}>
           <AlertCircle size={12} /> {error}
         </div>
       )}

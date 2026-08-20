@@ -74,10 +74,10 @@ export function SelectChangeEditor({
           >
             <div
               style={{
-                padding: "4px 8px",
+                padding: "var(--space-xs) var(--space-sm)",
                 background: "var(--bg-surface)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: 500,
+                fontWeight: "var(--font-weight-medium)",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -86,7 +86,7 @@ export function SelectChangeEditor({
               <span>{opt.label}</span>
               <span
                 style={{
-                  fontSize: 11,
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                   fontFamily: "var(--font-mono)",
                 }}
@@ -106,9 +106,9 @@ export function SelectChangeEditor({
                   onClick={() => handleClearOption(opt.value)}
                   style={{
                     marginTop: "var(--space-xs)",
-                    padding: "2px 6px",
+                    padding: "var(--space-2xs) var(--space-sm)",
                     borderRadius: "var(--border-radius)",
-                    fontSize: 11,
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--color-error)",
                     background: "transparent",
                     border: "1px solid var(--border-color)",
@@ -127,7 +127,7 @@ export function SelectChangeEditor({
         <button
           onClick={onClear}
           style={{
-            padding: "4px 8px",
+            padding: "var(--space-xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)",
             color: "var(--color-error)",

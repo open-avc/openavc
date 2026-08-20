@@ -144,7 +144,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
               >
                 {name}
               </span>
-              <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
+              <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
                 {field.label}
               </span>
               <button
@@ -152,7 +152,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                   e.stopPropagation();
                   removeField(name);
                 }}
-                style={{ padding: "2px", color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -183,9 +183,9 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                     />
                     <div
                       style={{
-                        fontSize: "11px",
+                        fontSize: "var(--font-size-xs)",
                         color: "var(--text-muted)",
-                        marginTop: 2,
+                        marginTop: "var(--space-2xs)",
                       }}
                     >
                       Use as {`{${name}}`} in command strings.
@@ -405,9 +405,9 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                     />
                     <div
                       style={{
-                        fontSize: "11px",
+                        fontSize: "var(--font-size-xs)",
                         color: "var(--text-muted)",
-                        marginTop: 2,
+                        marginTop: "var(--space-2xs)",
                       }}
                     >
                       Comma-separated. The Add Device dialog renders these as
@@ -506,7 +506,7 @@ function ComputedFieldsEditor({
       <h4
         style={{
           fontSize: "var(--font-size-sm)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
           marginBottom: "var(--space-xs)",
         }}
       >
@@ -514,7 +514,7 @@ function ComputedFieldsEditor({
       </h4>
       <p
         style={{
-          fontSize: "11px",
+          fontSize: "var(--font-size-xs)",
           color: "var(--text-muted)",
           marginBottom: "var(--space-sm)",
         }}
@@ -544,7 +544,7 @@ function ComputedFieldsEditor({
             placeholder="name"
             style={{ width: 160, fontFamily: "var(--font-mono)" }}
           />
-          <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
+          <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
             =
           </span>
           <input
@@ -558,7 +558,7 @@ function ComputedFieldsEditor({
           <button
             onClick={() => removeField(name)}
             title="Remove this computed field"
-            style={{ padding: "2px", color: "var(--text-muted)" }}
+            style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
           >
             <Trash2 size={14} />
           </button>

@@ -222,14 +222,14 @@ function StepLog({
               alignItems: "center",
               gap: "var(--space-xs)",
               fontSize: "var(--font-size-sm)",
-              padding: "2px 0",
+              padding: "var(--space-2xs) 0",
               color: s.status === "error" ? "var(--color-error)" : "var(--text-primary)",
             }}
           >
             <span style={{ flexShrink: 0, width: 16, display: "flex" }}>{icon}</span>
             <span style={{ flex: 1 }}>{s.step}</span>
             {s.pct != null && (
-              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{s.pct}%</span>
+              <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>{s.pct}%</span>
             )}
           </div>
         );

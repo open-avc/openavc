@@ -57,23 +57,23 @@ export function Login({ onSuccess }: LoginProps) {
         onSubmit={submit}
         style={{
           width: 320,
-          padding: 32,
-          borderRadius: 8,
+          padding: "var(--space-2xl)",
+          borderRadius: "var(--radius-lg)",
           background: "var(--bg-surface)",
           boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
           display: "flex",
           flexDirection: "column",
-          gap: 16,
+          gap: "var(--space-lg)",
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 20 }}>OpenAVC Programmer</h2>
-          <p style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
+        <div style={{ textAlign: "center", marginBottom: "var(--space-sm)" }}>
+          <h2 style={{ margin: 0, fontSize: "var(--font-size-xl)" }}>OpenAVC Programmer</h2>
+          <p style={{ marginTop: "var(--space-xs)", fontSize: "var(--font-size-base)", opacity: 0.7 }}>
             Sign in to continue
           </p>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-base)" }}>
           Username
           <input
             type="text"
@@ -85,7 +85,7 @@ export function Login({ onSuccess }: LoginProps) {
           />
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-base)" }}>
           Password
           <input
             ref={passRef}
@@ -99,27 +99,27 @@ export function Login({ onSuccess }: LoginProps) {
         </label>
 
         {error && (
-          <div style={{ fontSize: 13, color: "#ef4444" }}>{error}</div>
+          <div style={{ fontSize: "var(--font-size-base)", color: "#ef4444" }}>{error}</div>
         )}
 
         <button
           type="submit"
           disabled={busy || !pass}
           style={{
-            padding: "10px 16px",
-            borderRadius: 4,
+            padding: "var(--space-md) var(--space-lg)",
+            borderRadius: "var(--border-radius)",
             border: "none",
             background: busy || !pass ? "rgba(138,180,147,0.4)" : "#8AB493",
             color: "#000",
-            fontSize: 14,
-            fontWeight: 600,
+            fontSize: "var(--font-size-lg)",
+            fontWeight: "var(--font-weight-semibold)",
             cursor: busy || !pass ? "not-allowed" : "pointer",
           }}
         >
           {busy ? "Signing in…" : "Sign In"}
         </button>
 
-        <p style={{ fontSize: 12, opacity: 0.55, margin: 0, textAlign: "center" }}>
+        <p style={{ fontSize: "var(--font-size-sm)", opacity: 0.55, margin: 0, textAlign: "center" }}>
           Your password is exchanged for a session key kept in this tab only.
         </p>
       </form>
@@ -128,11 +128,11 @@ export function Login({ onSuccess }: LoginProps) {
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 4,
+  padding: "var(--space-sm) var(--space-md)",
+  borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color, #444)",
   background: "var(--bg-primary, #1a1a2e)",
   color: "inherit",
-  fontSize: 14,
+  fontSize: "var(--font-size-lg)",
   outline: "none",
 };

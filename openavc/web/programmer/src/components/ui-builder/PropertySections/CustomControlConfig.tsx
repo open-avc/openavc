@@ -122,11 +122,11 @@ export function CustomControlConfig({
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { void handleDrop(e); }}
           style={{
-            flex: 1, fontSize: 11, cursor: busy ? "wait" : "pointer",
+            flex: 1, fontSize: "var(--font-size-xs)", cursor: busy ? "wait" : "pointer",
             border: `1px dashed ${dragOver ? "var(--accent)" : "var(--border-color)"}`,
-            borderRadius: 4,
+            borderRadius: "var(--border-radius)",
             background: dragOver ? "var(--bg-hover)" : "transparent",
-            padding: "6px 8px", textAlign: "center", color: "var(--text-muted)",
+            padding: "var(--space-sm)", textAlign: "center", color: "var(--text-muted)",
           }}
         >
           {busy ? "Uploading..." : dragOver ? "Drop to add" : "Drop files here, or choose files or a .zip"}
@@ -140,19 +140,19 @@ export function CustomControlConfig({
         </label>
       </FieldRow>
 
-      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "var(--space-2xs) 0" }}>
         Files live in the project and travel with it. Every panel can read them,
         so keep passwords and customer data out.
       </div>
 
       {error && (
-        <div style={{ fontSize: 10, color: "var(--color-error)", padding: "2px 0" }}>{error}</div>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-error)", padding: "var(--space-2xs) 0" }}>{error}</div>
       )}
       {note && (
-        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>{note}</div>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "var(--space-2xs) 0" }}>{note}</div>
       )}
 
-      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
+      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", padding: "var(--space-2xs) 0" }}>
         {settingsLabel}
       </div>
       <textarea
@@ -161,7 +161,7 @@ export function CustomControlConfig({
           try { onChange({ custom_config: JSON.parse(e.target.value) }); } catch { /* invalid JSON */ }
         }}
         rows={3}
-        style={{ width: "100%", fontSize: 11, fontFamily: "monospace", resize: "vertical" }}
+        style={{ width: "100%", fontSize: "var(--font-size-xs)", fontFamily: "monospace", resize: "vertical" }}
       />
     </>
   );

@@ -237,7 +237,7 @@ function SystemLogTab() {
             </thead>
             <tbody>
               {filtered.length > 200 && (
-                <tr><td colSpan={4} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)", fontSize: "11px" }}>
+                <tr><td colSpan={4} style={{ ...tdStyle, textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
                   Showing last 200 of {filtered.length} entries
                 </td></tr>
               )}
@@ -432,11 +432,11 @@ function StateChangeTab() {
 const thStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",
   textAlign: "left",
-  fontWeight: 600,
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
-  fontSize: "11px",
+  fontSize: "var(--font-size-xs)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
+  letterSpacing: "var(--tracking-wide)",
 };
 
 const tdStyle: React.CSSProperties = {
@@ -449,7 +449,7 @@ const tdStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = {
   marginLeft: "var(--space-xs)",
-  padding: "2px 6px",
+  padding: "var(--space-2xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-primary)",

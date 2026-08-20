@@ -21,7 +21,7 @@ const cardStyle: React.CSSProperties = {
 
 const subTitle: React.CSSProperties = {
   fontSize: "var(--font-size-base)",
-  fontWeight: 600,
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-primary)",
   margin: 0,
   marginBottom: "var(--space-xs)",
@@ -31,7 +31,7 @@ const description: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   marginBottom: "var(--space-lg)",
-  lineHeight: 1.5,
+  lineHeight: "var(--line-base)",
 };
 
 const fieldRow: React.CSSProperties = {
@@ -65,7 +65,7 @@ const btnStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
-  fontWeight: 500,
+  fontWeight: "var(--font-weight-medium)",
   cursor: "pointer",
   background: "var(--accent-bg)",
   color: "var(--text-on-accent)",
@@ -350,7 +350,7 @@ function WifiPane({ onChanged }: { onChanged: () => void }) {
                 {n.in_use ? "✓ " : ""}
                 {n.ssid}
               </span>
-              <span style={{ ...labelStyle, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ ...labelStyle, display: "inline-flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <Wifi size={14} />
                 {n.signal}%
                 {n.secured && <Lock size={12} />}
@@ -426,9 +426,9 @@ function WifiSection({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
+            gap: "var(--space-sm)",
             marginLeft: "auto",
-            fontWeight: 400,
+            fontWeight: "var(--font-weight-normal)",
             color: "var(--text-secondary)",
             cursor: busy ? "default" : "pointer",
           }}
@@ -542,7 +542,7 @@ export function HostNetworkCard() {
           </div>
           <span
             style={{
-              fontSize: 12,
+              fontSize: "var(--font-size-sm)",
               color: "var(--text-muted)",
               gridColumn: "2",
               marginTop: -4,
@@ -565,7 +565,7 @@ export function HostNetworkCard() {
         >
           <div style={{ ...subTitle, fontSize: "var(--font-size-sm)" }}>
             {iface.device} ({iface.type}){" "}
-            <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}>
+            <span style={{ color: "var(--text-secondary)", fontWeight: "var(--font-weight-normal)" }}>
               {iface.state}
               {iface.ip4.addresses.length > 0 && ` · ${iface.ip4.addresses.join(", ")}`}
             </span>

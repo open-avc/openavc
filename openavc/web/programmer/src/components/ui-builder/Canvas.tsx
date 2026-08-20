@@ -834,7 +834,7 @@ export function Canvas({
                   position: "absolute",
                   top: 2,
                   left: 10,
-                  fontSize: 10,
+                  fontSize: "var(--font-size-2xs)",
                   color: "rgba(255,255,255,0.3)",
                   pointerEvents: "none",
                   zIndex: 2,
@@ -878,7 +878,7 @@ export function Canvas({
                       cursor: "pointer",
                       outline: isMasterSelected ? "2px solid #9C27B0" : "none",
                       outlineOffset: 1,
-                      borderRadius: 4,
+                      borderRadius: "var(--border-radius)",
                       zIndex: 0,
                     }}
                     title={`Master element: ${el.id}`}
@@ -888,15 +888,15 @@ export function Canvas({
                         position: "absolute",
                         top: 2,
                         left: 4,
-                        fontSize: 9,
-                        padding: "1px 5px",
-                        borderRadius: 3,
+                        fontSize: "var(--font-size-2xs)",
+                        padding: "var(--space-2xs) var(--space-xs)",
+                        borderRadius: "var(--border-radius)",
                         background: "rgba(156,39,176,0.85)",
                         color: "#fff",
                         pointerEvents: "none",
                         zIndex: 1,
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
+                        fontWeight: "var(--font-weight-semibold)",
+                        letterSpacing: "var(--tracking-wide)",
                       }}
                     >
                       Master
@@ -947,7 +947,7 @@ export function Canvas({
                     height: `${paletteDragPreview.placement.h}%`,
                     opacity: 0.85,
                     pointerEvents: "none",
-                    borderRadius: 8,
+                    borderRadius: "var(--radius-lg)",
                     outline: "2px solid var(--accent)",
                     outlineOffset: -1,
                     background: "var(--bg-elevated)",
@@ -956,7 +956,7 @@ export function Canvas({
                     justifyContent: "center",
                     color: "var(--text-primary)",
                     fontSize: "var(--font-size-sm)",
-                    fontWeight: 500,
+                    fontWeight: "var(--font-weight-medium)",
                     textTransform: "capitalize",
                     zIndex: 95,
                   }}

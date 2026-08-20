@@ -40,7 +40,7 @@ const valueStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "6px 10px",
+  padding: "var(--space-sm) var(--space-md)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -51,14 +51,14 @@ const inputStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  padding: "6px 16px",
+  padding: "var(--space-sm) var(--space-lg)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--accent-bg)",
   color: "#fff",
   cursor: "pointer",
-  fontWeight: 500,
+  fontWeight: "var(--font-weight-medium)",
 };
 
 const btnDangerStyle: React.CSSProperties = {
@@ -80,7 +80,7 @@ const helpTextStyle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-muted)",
   marginTop: "var(--space-xs)",
-  lineHeight: 1.5,
+  lineHeight: "var(--line-base)",
 };
 
 export function CloudSettingsView() {
@@ -284,7 +284,7 @@ export function CloudSettingsView() {
               background: "rgba(76, 175, 80, 0.06)",
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <ShieldCheck size={16} style={{ color: "rgb(76, 175, 80)" }} />
               Next step: get a trusted certificate
             </div>
@@ -308,7 +308,7 @@ export function CloudSettingsView() {
             <h3
               style={{
                 fontSize: "var(--font-size-base)",
-                fontWeight: 600,
+                fontWeight: "var(--font-weight-semibold)",
                 marginBottom: "var(--space-md)",
               }}
             >
@@ -381,7 +381,7 @@ export function CloudSettingsView() {
             <h3
               style={{
                 fontSize: "var(--font-size-base)",
-                fontWeight: 600,
+                fontWeight: "var(--font-weight-semibold)",
                 marginBottom: "var(--space-md)",
               }}
             >

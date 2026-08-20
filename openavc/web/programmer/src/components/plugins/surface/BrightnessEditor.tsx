@@ -49,7 +49,7 @@ export function BrightnessEditor({
   };
 
   const numInputStyle: React.CSSProperties = {
-    width: 64, padding: "4px 6px",
+    width: 64, padding: "var(--space-xs) var(--space-sm)",
     borderRadius: "var(--border-radius)",
     border: "1px solid var(--border-color)",
     background: "var(--bg-surface)", color: "var(--text-primary)",
@@ -57,7 +57,7 @@ export function BrightnessEditor({
   };
 
   const reorderBtn: React.CSSProperties = {
-    padding: "2px 5px", borderRadius: "var(--border-radius)", fontSize: 9,
+    padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-2xs)",
     color: "var(--text-muted)", background: "transparent",
     border: "1px solid var(--border-color)", cursor: "pointer", lineHeight: 1,
   };
@@ -87,7 +87,7 @@ export function BrightnessEditor({
             }
             style={numInputStyle}
           />
-          <span style={{ fontSize: 12 }}>% applies when no rule below matches.</span>
+          <span style={{ fontSize: "var(--font-size-sm)" }}>% applies when no rule below matches.</span>
         </label>
       )}
 
@@ -106,7 +106,7 @@ export function BrightnessEditor({
         />
         Dim when idle
         {idleDim && (
-          <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: 12 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
             to
             <input
               type="number" min={0} max={100}
@@ -141,15 +141,15 @@ export function BrightnessEditor({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Set brightness to</span>
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Set brightness to</span>
               <input
                 type="number" min={0} max={100}
                 value={rule.level ?? 70}
                 onChange={(e) => updateRule(i, { level: Number(e.target.value) })}
                 style={numInputStyle}
               />
-              <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>%</span>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>%</span>
+              <div style={{ marginLeft: "auto", display: "flex", gap: "var(--space-xs)", alignItems: "center" }}>
                 {i > 0 && (
                   <button onClick={() => moveRule(i, -1)} title="Move up" style={reorderBtn}>&#9650;</button>
                 )}
@@ -160,7 +160,7 @@ export function BrightnessEditor({
                   onClick={() => removeRule(i)}
                   title="Remove rule"
                   style={{
-                    padding: "2px 6px", borderRadius: "var(--border-radius)", fontSize: 11,
+                    padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
                     color: "var(--color-error)", background: "transparent",
                     border: "1px solid var(--border-color)", cursor: "pointer",
                   }}
@@ -169,7 +169,7 @@ export function BrightnessEditor({
                 </button>
               </div>
             </div>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>when</span>
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>when</span>
             <ConditionGroupEditor
               value={rule.when}
               onChange={(when) => updateRule(i, { when })}
@@ -185,10 +185,10 @@ export function BrightnessEditor({
         onClick={() => setRules([...rules, { level: 30, when: { key: "", operator: "truthy" } }])}
         style={{
           marginTop: "var(--space-sm)",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-          padding: "5px 10px", borderRadius: "var(--border-radius)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-xs)",
+          padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
           border: "1px dashed var(--border-color)", background: "transparent",
-          color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
+          color: "var(--text-muted)", fontSize: "var(--font-size-sm)", cursor: "pointer",
         }}
       >
         + Add brightness rule

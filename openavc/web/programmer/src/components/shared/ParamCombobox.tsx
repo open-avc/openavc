@@ -100,7 +100,7 @@ export function ParamCombobox({
         onFocus={openDropdown}
         onClick={openDropdown}
         onKeyDown={onKeyDown}
-        style={{ flex: 1, width: "100%", paddingRight: 24 }}
+        style={{ flex: 1, width: "100%", paddingRight: "var(--space-xl)" }}
       />
       <ChevronDown
         size={14}
@@ -129,7 +129,7 @@ export function ParamCombobox({
             ...panel.panelStyle,
             overflowY: "auto",
             margin: 0,
-            padding: 4,
+            padding: "var(--space-xs)",
             listStyle: "none",
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-color)",
@@ -150,12 +150,12 @@ export function ParamCombobox({
                 }}
                 onMouseEnter={() => setHighlight(i)}
                 style={{
-                  padding: "5px 8px",
-                  borderRadius: 4,
+                  padding: "var(--space-xs) var(--space-sm)",
+                  borderRadius: "var(--border-radius)",
                   cursor: "pointer",
                   display: "flex",
                   justifyContent: "space-between",
-                  gap: 8,
+                  gap: "var(--space-sm)",
                   fontSize: "var(--font-size-sm)",
                   background: active
                     ? "var(--bg-hover)"
@@ -173,7 +173,7 @@ export function ParamCombobox({
                     style={{
                       color: "var(--text-muted)",
                       fontFamily: "var(--font-mono)",
-                      fontSize: 11,
+                      fontSize: "var(--font-size-xs)",
                       flexShrink: 0,
                     }}
                   >

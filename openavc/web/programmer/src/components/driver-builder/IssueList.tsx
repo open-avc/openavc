@@ -19,7 +19,7 @@ export function IssueList({ issues, compact = false }: IssueListProps) {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 4,
+        gap: "var(--space-xs)",
         marginBottom: compact ? 0 : "var(--space-md)",
       }}
     >
@@ -50,15 +50,15 @@ function IssueRow({ issue, compact }: { issue: ValidationIssue; compact: boolean
       style={{
         display: "flex",
         alignItems: "flex-start",
-        gap: 6,
+        gap: "var(--space-sm)",
         padding: compact ? "2px 6px" : "var(--space-xs) var(--space-sm)",
         borderRadius: "var(--border-radius)",
         fontSize: compact ? 11 : "var(--font-size-sm)",
         ...tone,
       }}
     >
-      <Icon size={compact ? 11 : 14} style={{ flexShrink: 0, marginTop: 2 }} />
-      <span style={{ lineHeight: 1.4 }}>{issue.message}</span>
+      <Icon size={compact ? 11 : 14} style={{ flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+      <span style={{ lineHeight: "var(--line-tight)" }}>{issue.message}</span>
     </div>
   );
 }

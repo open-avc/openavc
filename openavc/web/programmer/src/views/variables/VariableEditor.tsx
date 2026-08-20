@@ -155,7 +155,7 @@ export function VariablesSubTab() {
         message: (
           <>
             <div>{unused.length} variable(s) have no references and will be deleted:</div>
-            <ul style={{ margin: "8px 0 0 16px", padding: 0, fontSize: 12 }}>
+            <ul style={{ margin: "var(--space-sm) 0 0 var(--space-lg)", padding: 0, fontSize: "var(--font-size-sm)" }}>
               {unused.map((v) => <li key={v.id}><code style={codeStyle}>var.{v.id}</code> ({v.label})</li>)}
             </ul>
           </>
@@ -236,7 +236,7 @@ export function VariablesSubTab() {
         ? (
           <>
             <div>Variable "{id}" is used in {usages.length} place(s):</div>
-            <ul style={{ margin: "8px 0 0 16px", padding: 0, fontSize: 12 }}>
+            <ul style={{ margin: "var(--space-sm) 0 0 var(--space-lg)", padding: 0, fontSize: "var(--font-size-sm)" }}>
               {usages.slice(0, 5).map((u, i) => <li key={i}>{u.label}: {u.detail}</li>)}
               {usages.length > 5 && <li>...and {usages.length - 5} more</li>}
             </ul>
@@ -510,7 +510,7 @@ export function VariablesSubTab() {
         {/* List */}
         <div style={{ flex: 1, overflow: "auto" }}>
           {filteredVariables.length === 0 ? (
-            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
+            <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)" }}>
               {variables.length === 0 ? (
                 <>
                   No variables defined yet.
@@ -564,18 +564,18 @@ export function VariablesSubTab() {
                       <span style={typeBadgeStyle}>{v.type}</span>
                       {v.persist && <span title="Persisted across restarts"><HardDrive size={12} style={{ color: "var(--text-muted)" }} /></span>}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                       {v.label}{live !== undefined ? ` = ${JSON.stringify(live)}` : ""}
                     </div>
                     {v.description && (
-                      <div style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", opacity: 0.7, marginTop: "var(--space-2xs)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {v.description}
                       </div>
                     )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
                     {usages.length > 0 && (
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                         {usages.length} use{usages.length !== 1 ? "s" : ""}
                       </span>
                     )}
@@ -601,11 +601,11 @@ export function VariablesSubTab() {
             {/* Header */}
             <div style={{ marginBottom: "var(--space-xl)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                <code style={{ fontSize: "var(--font-size-lg)", color: "var(--accent)", fontWeight: 600 }}>
+                <code style={{ fontSize: "var(--font-size-lg)", color: "var(--accent)", fontWeight: "var(--font-weight-semibold)" }}>
                   var.{selectedVar.id}
                 </code>
                 <CopyButton value={`var.${selectedVar.id}`} size={14} title="Copy variable key" />
-                <span style={{ ...typeBadgeStyle, marginLeft: "var(--space-xs)", fontSize: 12 }}>{selectedVar.type}</span>
+                <span style={{ ...typeBadgeStyle, marginLeft: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>{selectedVar.type}</span>
                 <button
                   onClick={() => handleStartRename(selectedVar.id)}
                   style={{ ...iconBtn, marginLeft: "var(--space-sm)" }}
@@ -673,7 +673,7 @@ export function VariablesSubTab() {
               <div>
                 <label style={detailLabel}>Current Value</label>
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                  <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
+                  <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: "var(--font-weight-medium)" }}>
                     {selectedLiveValue !== undefined ? JSON.stringify(selectedLiveValue) : "not set"}
                   </span>
                   {selectedLiveValue !== undefined && (
@@ -686,7 +686,7 @@ export function VariablesSubTab() {
                         else if (isNumericVar(selectedVar.type)) parsed = Number(val) || 0;
                         setStateValue(`var.${selectedVar.id}`, parsed).catch(() => showError("Failed to set value"));
                       }}
-                      style={{ ...iconBtn, fontSize: 11, padding: "1px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)" }}
+                      style={{ ...iconBtn, fontSize: "var(--font-size-xs)", padding: "var(--space-2xs) var(--space-sm)", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)" }}
                       title="Set current value"
                     >
                       Set
@@ -713,7 +713,7 @@ export function VariablesSubTab() {
               {isNumericVar(selectedVar.type) ? (
                 <div style={{ display: "flex", gap: "var(--space-md)", alignItems: "center" }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ ...miniLabel, marginBottom: 2 }}>Min</label>
+                    <label style={{ ...miniLabel, marginBottom: "var(--space-2xs)" }}>Min</label>
                     <input
                       type="number"
                       style={detailInput}
@@ -728,7 +728,7 @@ export function VariablesSubTab() {
                     />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label style={{ ...miniLabel, marginBottom: 2 }}>Max</label>
+                    <label style={{ ...miniLabel, marginBottom: "var(--space-2xs)" }}>Max</label>
                     <input
                       type="number"
                       style={detailInput}
@@ -745,9 +745,9 @@ export function VariablesSubTab() {
                 </div>
               ) : selectedVar.type === "string" ? (
                 <div>
-                  <label style={{ ...miniLabel, marginBottom: 2 }}>Allowed Values (one per line, leave empty for any)</label>
+                  <label style={{ ...miniLabel, marginBottom: "var(--space-2xs)" }}>Allowed Values (one per line, leave empty for any)</label>
                   <textarea
-                    style={{ ...detailInput, minHeight: 60, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 12 }}
+                    style={{ ...detailInput, minHeight: 60, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
                     value={(selectedVar.validation?.allowed ?? []).join("\n")}
                     onChange={(e) => {
                       const raw = e.target.value;
@@ -760,22 +760,22 @@ export function VariablesSubTab() {
                   />
                 </div>
               ) : (
-                <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+                <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", fontStyle: "italic" }}>
                   Boolean variables don't need validation rules.
                 </div>
               )}
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                 When a value is set outside these rules, a warning appears in the Activity log.
               </div>
               {selectedLiveValue !== undefined && (() => {
                 const v = selectedVar.validation;
                 if (!v) return null;
                 if (isNumericVar(selectedVar.type) && typeof selectedLiveValue === "number") {
-                  if (v.min != null && selectedLiveValue < v.min) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value {selectedLiveValue} is below minimum ({v.min})</div>;
-                  if (v.max != null && selectedLiveValue > v.max) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value {selectedLiveValue} is above maximum ({v.max})</div>;
+                  if (v.min != null && selectedLiveValue < v.min) return <div style={{ fontSize: "var(--font-size-sm)", color: "#ef4444", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value {selectedLiveValue} is below minimum ({v.min})</div>;
+                  if (v.max != null && selectedLiveValue > v.max) return <div style={{ fontSize: "var(--font-size-sm)", color: "#ef4444", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value {selectedLiveValue} is above maximum ({v.max})</div>;
                 }
                 if (selectedVar.type === "string" && v.allowed && v.allowed.length > 0 && typeof selectedLiveValue === "string") {
-                  if (!v.allowed.includes(selectedLiveValue)) return <div style={{ fontSize: 12, color: "#ef4444", fontWeight: 500, marginTop: 4 }}>Current value "{selectedLiveValue}" is not in allowed values</div>;
+                  if (!v.allowed.includes(selectedLiveValue)) return <div style={{ fontSize: "var(--font-size-sm)", color: "#ef4444", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value "{selectedLiveValue}" is not in allowed values</div>;
                 }
                 return null;
               })()}
@@ -797,7 +797,7 @@ export function VariablesSubTab() {
                   liveValue={selectedLiveValue}
                   onChange={handleMonitors}
                 />
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)", maxWidth: 300 }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)", maxWidth: 300 }}>
                   Monitored readings appear on the Dashboard with their live
                   value, and in the cloud if this system is paired.
                 </div>
@@ -821,7 +821,7 @@ export function VariablesSubTab() {
                   <HardDrive size={14} />
                   {selectedVar.persist ? "Persisted Across Restarts" : "Persist Across Restarts"}
                 </button>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                   When enabled, this variable&apos;s value is saved to disk and restored after a server restart.
                 </div>
               </div>
@@ -844,7 +844,7 @@ export function VariablesSubTab() {
                   This variable is not referenced by any macros, UI bindings, or scripts yet.
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
                   {selectedUsages.map((u, i) => (
                     <UsageRow key={i} usage={u} />
                   ))}
@@ -857,7 +857,7 @@ export function VariablesSubTab() {
             <div style={{ fontSize: "var(--font-size-base)" }}>
               {variables.length === 0 ? "Create your first variable" : "Select a variable to see details"}
             </div>
-            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
+            <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: "var(--line-base)" }}>
               Variables are shared values visible across your entire system.
               When a macro sets a variable, UI elements update instantly and
               scripts can react. Think of them as signals on a bus.
@@ -883,37 +883,37 @@ export function VariablesSubTab() {
           overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
           panelStyle={{ background: "var(--bg-surface)", border: "1px solid var(--border-color)", padding: "var(--space-lg)", width: "min(440px, 90vw)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
         >
-            <div style={{ fontWeight: 600, fontSize: "var(--font-size-base)", color: "var(--text-primary)", marginBottom: "var(--space-md)" }}>
+            <div style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-base)", color: "var(--text-primary)", marginBottom: "var(--space-md)" }}>
               Rename Variable
             </div>
             <div style={{ marginBottom: "var(--space-md)" }}>
               <label style={miniLabel}>Current: <code style={codeStyle}>var.{renameTarget.oldId}</code></label>
               <input
-                style={{ ...detailInput, marginTop: 4 }}
+                style={{ ...detailInput, marginTop: "var(--space-xs)" }}
                 value={renameTarget.newId}
                 onChange={(e) => setRenameTarget({ ...renameTarget, newId: e.target.value.replace(/[^a-zA-Z0-9_]/g, "") })}
                 placeholder="new_variable_id"
                 autoFocus
                 onKeyDown={(e) => e.key === "Enter" && handleConfirmRename()}
               />
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
                 New key: <code style={codeStyle}>var.{renameTarget.newId.trim() || "..."}</code>
               </div>
             </div>
             {renameTarget.usages.length > 0 && (
-              <div style={{ marginBottom: "var(--space-md)", padding: "var(--space-sm)", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--border-radius)", fontSize: 12 }}>
-                <div style={{ fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>
+              <div style={{ marginBottom: "var(--space-md)", padding: "var(--space-sm)", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)" }}>
+                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "#f59e0b", marginBottom: "var(--space-xs)" }}>
                   {renameTarget.usages.length} reference(s) will be updated:
                 </div>
                 {renameTarget.usages.slice(0, 8).map((u, i) => (
-                  <div key={i} style={{ color: "var(--text-secondary)", fontSize: 11, padding: "1px 0" }}>
+                  <div key={i} style={{ color: "var(--text-secondary)", fontSize: "var(--font-size-xs)", padding: "var(--space-2xs) 0" }}>
                     {u.label}: {u.detail}
                   </div>
                 ))}
                 {renameTarget.usages.length > 8 && (
-                  <div style={{ color: "var(--text-muted)", fontSize: 11 }}>...and {renameTarget.usages.length - 8} more</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>...and {renameTarget.usages.length - 8} more</div>
                 )}
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)", fontStyle: "italic" }}>
                   Script references (.py files) must be updated manually.
                 </div>
               </div>
@@ -1005,34 +1005,34 @@ function SourceBindingEditor({
   return (
     <div style={{ marginBottom: "var(--space-xl)" }}>
       <h3 style={sectionTitle}>
-        <Link size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
+        <Link size={14} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
         Source
       </h3>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)", fontStyle: "italic" }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)", fontStyle: "italic" }}>
         Choose where this variable gets its value.
       </div>
 
       {/* Mode toggle */}
       <div style={{ display: "flex", gap: "var(--space-md)", marginBottom: "var(--space-md)" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
           <input type="radio" name={`source-${variable.id}`} checked={!isBound} onChange={() => handleModeChange(false)} />
           Manual
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
           <input type="radio" name={`source-${variable.id}`} checked={isBound} onChange={() => handleModeChange(true)} />
           Bound to state key
         </label>
       </div>
 
       {!isBound && (
-        <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", fontStyle: "italic" }}>
           You control this value: set it from macros, scripts, or UI actions.
         </div>
       )}
 
       {isBound && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", marginBottom: 2 }}>
+          <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", fontStyle: "italic", marginBottom: "var(--space-2xs)" }}>
             This variable automatically mirrors a device property. Use the value map
             to translate hardware values into friendly text.
           </div>
@@ -1047,7 +1047,7 @@ function SourceBindingEditor({
           </div>
 
           {variable.source_key && sourceValue === undefined && (
-            <div style={{ fontSize: 12, color: "#f59e0b", fontStyle: "italic" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "#f59e0b", fontStyle: "italic" }}>
               Source key "{variable.source_key}" has no value. The device may be offline or the key may not exist.
             </div>
           )}
@@ -1055,20 +1055,20 @@ function SourceBindingEditor({
           {/* Value Map */}
           <div>
             <label style={detailLabel}>Value Map (optional)</label>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", marginBottom: "var(--space-xs)" }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontStyle: "italic", marginBottom: "var(--space-xs)" }}>
               Translate raw device values into something more useful. If a value
               isn&apos;t in the map, the raw value is used.
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
               {Object.entries(sourceMap).map(([mapKey, mapValue], idx) => (
-                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div key={idx} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                   <input
                     value={mapKey}
                     onChange={(e) => updateMapEntry(mapKey, e.target.value, mapValue)}
                     placeholder="Source value"
                     style={{ ...fieldInput, width: 120 }}
                   />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>&rarr;</span>
+                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>&rarr;</span>
                   <input
                     value={String(mapValue ?? "")}
                     onChange={(e) => updateMapEntry(mapKey, mapKey, e.target.value)}
@@ -1087,9 +1087,9 @@ function SourceBindingEditor({
               <button
                 onClick={addMapEntry}
                 style={{
-                  display: "flex", alignItems: "center", gap: 4,
-                  padding: "3px 8px", borderRadius: "var(--border-radius)",
-                  fontSize: 11, color: "var(--accent)", background: "transparent",
+                  display: "flex", alignItems: "center", gap: "var(--space-xs)",
+                  padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
+                  fontSize: "var(--font-size-xs)", color: "var(--accent)", background: "transparent",
                   border: "1px dashed var(--border-color)", alignSelf: "flex-start",
                   cursor: "pointer",
                 }}
@@ -1114,7 +1114,7 @@ function SourceBindingEditor({
               <span style={{ color: "var(--text-muted)" }}> = </span>
               <span style={{ color: "var(--text-primary)" }}>{String(sourceValue)}</span>
               <span style={{ color: "var(--text-muted)" }}> &rarr; Variable: </span>
-              <span style={{ color: "var(--accent)", fontWeight: 600 }}>{String(mappedValue)}</span>
+              <span style={{ color: "var(--accent)", fontWeight: "var(--font-weight-semibold)" }}>{String(mappedValue)}</span>
             </div>
           )}
         </div>

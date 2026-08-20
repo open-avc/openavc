@@ -106,31 +106,31 @@ export function StylesheetEditor({
           display: "flex",
           alignItems: "center",
           gap: "var(--space-sm)",
-          padding: "10px 14px",
+          padding: "var(--space-md) var(--space-lg)",
           borderBottom: "1px solid var(--border-color)",
           background: "var(--bg-surface)",
           flexShrink: 0,
         }}
       >
         <FileCode size={16} style={{ color: "var(--accent)" }} />
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Project Stylesheet</span>
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)" }}>Project Stylesheet</span>
+        <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
           CSS applied to every panel in this project, on top of the theme
         </span>
         <div style={{ flex: 1 }} />
         {dirty && (
-          <span style={{ fontSize: 11, color: "#f59e0b" }}>Unsaved changes</span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "#f59e0b" }}>Unsaved changes</span>
         )}
         <button
           onClick={handleSave}
           disabled={!dirty}
           style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "4px 12px", borderRadius: "var(--border-radius)",
+            display: "flex", alignItems: "center", gap: "var(--space-sm)",
+            padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
             border: "none", cursor: dirty ? "pointer" : "default",
             background: dirty ? "var(--accent)" : "var(--bg-hover)",
             color: dirty ? "#10231a" : "var(--text-muted)",
-            fontSize: 12, fontWeight: 600,
+            fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)",
           }}
         >
           <Save size={13} /> Save
@@ -187,25 +187,25 @@ export function StylesheetEditor({
               flexShrink: 0,
               borderTop: "1px solid var(--border-color)",
               background: "var(--bg-surface)",
-              padding: "8px 12px",
+              padding: "var(--space-sm) var(--space-md)",
               maxHeight: 96,
               overflowY: "auto",
             }}
           >
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
               {classNames.length === 0
                 ? "No classes defined yet. A rule like .brand-button { } adds one, and it becomes selectable on any element."
                 : `Classes in this stylesheet (${classNames.length}). Pick these on an element under Properties > Style > Custom classes:`}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
               {classNames.map((name) => (
                 <span
                   key={name}
                   style={{
                     fontFamily: "var(--font-mono, monospace)",
-                    fontSize: 11,
-                    padding: "1px 6px",
-                    borderRadius: 10,
+                    fontSize: "var(--font-size-xs)",
+                    padding: "var(--space-2xs) var(--space-sm)",
+                    borderRadius: "var(--radius-lg)",
                     background: "var(--bg-hover)",
                     color: "var(--text-secondary)",
                   }}
@@ -218,7 +218,7 @@ export function StylesheetEditor({
               <button
                 onClick={() => setDraft(STARTER_CSS)}
                 style={{
-                  marginTop: 6, padding: "2px 8px", fontSize: 11,
+                  marginTop: "var(--space-sm)", padding: "var(--space-2xs) var(--space-sm)", fontSize: "var(--font-size-xs)",
                   borderRadius: "var(--border-radius)", cursor: "pointer",
                   background: "var(--bg-hover)", border: "1px solid var(--border-color)",
                   color: "var(--text-secondary)",
@@ -234,8 +234,8 @@ export function StylesheetEditor({
           <div
             style={{
               flexShrink: 0,
-              padding: "6px 12px",
-              fontSize: 11,
+              padding: "var(--space-sm) var(--space-md)",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               borderBottom: "1px solid var(--border-color)",
               background: "var(--bg-base)",

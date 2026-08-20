@@ -61,13 +61,13 @@ export function CollapsibleSection({
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            gap: 2,
+            gap: "var(--space-2xs)",
           }}
         >
           <span
             style={{
               fontSize: "var(--font-size-base)",
-              fontWeight: 600,
+              fontWeight: "var(--font-weight-semibold)",
               color: "var(--text-primary)",
             }}
           >
@@ -76,9 +76,9 @@ export function CollapsibleSection({
           {subtitle && (
             <span
               style={{
-                fontSize: "11px",
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
-                fontWeight: 400,
+                fontWeight: "var(--font-weight-normal)",
               }}
             >
               {subtitle}
@@ -88,7 +88,7 @@ export function CollapsibleSection({
         {meta && (
           <span
             style={{
-              fontSize: "11px",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               fontFamily: "var(--font-mono)",
               flexShrink: 0,
@@ -107,12 +107,12 @@ export function CollapsibleSection({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 3,
-              fontSize: "11px",
+              gap: "var(--space-xs)",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               textDecoration: "none",
               flexShrink: 0,
-              padding: "2px 6px",
+              padding: "var(--space-2xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
             }}
           >

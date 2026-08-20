@@ -170,7 +170,7 @@ function SortableStepItem({
           onClick={(e) => e.stopPropagation()}
           style={{
             cursor: "grab",
-            padding: "2px 0",
+            padding: "var(--space-2xs) 0",
             color: "var(--text-muted)",
             display: "flex",
             alignItems: "center",
@@ -191,12 +191,12 @@ function SortableStepItem({
         />
         <span
           style={{
-            fontSize: 11,
-            fontWeight: 600,
+            fontSize: "var(--font-size-xs)",
+            fontWeight: "var(--font-weight-semibold)",
             color: "#fff",
             background: labelBg,
-            padding: "1px 6px",
-            borderRadius: 3,
+            padding: "var(--space-2xs) var(--space-sm)",
+            borderRadius: "var(--border-radius)",
             textTransform: "uppercase",
             flexShrink: 0,
           }}
@@ -218,7 +218,7 @@ function SortableStepItem({
         <div
           style={{
             display: "flex",
-            gap: 2,
+            gap: "var(--space-2xs)",
             flexShrink: 0,
           }}
           onClick={(e) => e.stopPropagation()}
@@ -279,10 +279,10 @@ function SortableStepItem({
         {conditionalResult && (
           <span
             style={{
-              fontSize: 10,
-              fontWeight: 600,
-              padding: "0 5px",
-              borderRadius: 3,
+              fontSize: "var(--font-size-2xs)",
+              fontWeight: "var(--font-weight-semibold)",
+              padding: "0 var(--space-xs)",
+              borderRadius: "var(--border-radius)",
               flexShrink: 0,
               background: conditionalResult.conditionResult ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
               color: conditionalResult.conditionResult ? "#10b981" : "#ef4444",
@@ -299,7 +299,7 @@ function SortableStepItem({
         <div
           style={{
             padding: "var(--space-xs) var(--space-md)",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "#ef4444",
             background: "rgba(239,68,68,0.08)",
             borderTop: "1px solid rgba(239,68,68,0.2)",
@@ -320,7 +320,7 @@ function SortableStepItem({
         <div
           style={{
             padding: "var(--space-xs) var(--space-md)",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "#f59e0b",
             background: "rgba(245,158,11,0.08)",
             borderTop: "1px solid rgba(245,158,11,0.2)",
@@ -343,7 +343,7 @@ function SortableStepItem({
         <div
           style={{
             padding: "var(--space-xs) var(--space-md)",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             borderTop: "1px solid var(--border-color)",
             display: "flex",
             flexWrap: "wrap",
@@ -356,10 +356,10 @@ function SortableStepItem({
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 3,
-                padding: "1px 6px",
-                borderRadius: 3,
-                fontSize: 11,
+                gap: "var(--space-xs)",
+                padding: "var(--space-2xs) var(--space-sm)",
+                borderRadius: "var(--border-radius)",
+                fontSize: "var(--font-size-xs)",
                 background: dr.success ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
                 color: dr.success ? "#10b981" : "#ef4444",
               }}
@@ -590,22 +590,22 @@ export function MacroEditor({
             onChange={(e) => onUpdate({ ...macro, name: e.target.value })}
             style={{
               width: "100%",
-              padding: "6px 10px",
+              padding: "var(--space-sm) var(--space-md)",
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
               background: "var(--bg-primary)",
               color: "var(--text-primary)",
               fontSize: "var(--font-size-base)",
-              fontWeight: 600,
+              fontWeight: "var(--font-weight-semibold)",
             }}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, paddingLeft: 2 }}>
-            <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-2xs)", paddingLeft: "var(--space-2xs)" }}>
+            <code style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
               {macro.id}
             </code>
             <CopyButton value={macro.id} title="Copy macro ID" />
-            <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ color: "var(--border-color)", margin: "0 var(--space-xs)" }}>|</span>
+            <label style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               Cancel group:
               <span title="Macros in the same cancel group interrupt each other. Example: put System On and System Off in the same group so starting one cancels the other.">
                 <HelpCircle size={11} style={{ opacity: 0.5 }} />
@@ -619,12 +619,12 @@ export function MacroEditor({
                 title="Macros in the same cancel group interrupt each other. Use this for System On / System Off pairs."
                 style={{
                   width: 100,
-                  padding: "1px 4px",
-                  fontSize: 11,
+                  padding: "var(--space-2xs) var(--space-xs)",
+                  fontSize: "var(--font-size-xs)",
                   fontFamily: "var(--font-mono)",
                   background: "var(--bg-primary)",
                   border: "1px solid var(--border-color)",
-                  borderRadius: 3,
+                  borderRadius: "var(--border-radius)",
                   color: "var(--text-primary)",
                 }}
               />
@@ -634,8 +634,8 @@ export function MacroEditor({
                 ))}
               </datalist>
             </label>
-            <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ color: "var(--border-color)", margin: "0 var(--space-xs)" }}>|</span>
+            <label style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               Overlap:
               <span title="What happens when this macro is fired again while it's still running, from any source (trigger, script, button, REST, AI, or another macro). Allow: run concurrently (default). Skip: ignore the new run while one is in progress. Queue: wait for the running one to finish, then run. A trigger can still add its own overlap rule; the stricter of the two applies.">
                 <HelpCircle size={11} style={{ opacity: 0.5 }} />
@@ -645,11 +645,11 @@ export function MacroEditor({
                 onChange={(e) => onUpdate({ ...macro, overlap: e.target.value === "allow" ? undefined : (e.target.value as "skip" | "queue") })}
                 title="How concurrent re-runs of this macro are handled, from every entry point."
                 style={{
-                  padding: "1px 4px",
-                  fontSize: 11,
+                  padding: "var(--space-2xs) var(--space-xs)",
+                  fontSize: "var(--font-size-xs)",
                   background: "var(--bg-primary)",
                   border: "1px solid var(--border-color)",
-                  borderRadius: 3,
+                  borderRadius: "var(--border-radius)",
                   color: "var(--text-primary)",
                 }}
               >
@@ -658,8 +658,8 @@ export function MacroEditor({
                 <option value="queue">Queue</option>
               </select>
             </label>
-            <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ color: "var(--border-color)", margin: "0 var(--space-xs)" }}>|</span>
+            <label style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               Cooldown:
               <span title="Minimum seconds between starts of this macro, enforced no matter what fires it. 0 = no cooldown.">
                 <HelpCircle size={11} style={{ opacity: 0.5 }} />
@@ -676,12 +676,12 @@ export function MacroEditor({
                 title="Minimum seconds between starts of this macro (0 = off)."
                 style={{
                   width: 48,
-                  padding: "1px 4px",
-                  fontSize: 11,
+                  padding: "var(--space-2xs) var(--space-xs)",
+                  fontSize: "var(--font-size-xs)",
                   fontFamily: "var(--font-mono)",
                   background: "var(--bg-primary)",
                   border: "1px solid var(--border-color)",
-                  borderRadius: 3,
+                  borderRadius: "var(--border-radius)",
                   color: "var(--text-primary)",
                 }}
               />
@@ -760,7 +760,7 @@ export function MacroEditor({
             padding: "var(--space-sm) var(--space-md)",
             background: "rgba(239,68,68,0.1)",
             borderBottom: "1px solid rgba(239,68,68,0.3)",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "#ef4444",
           }}
         >
@@ -782,21 +782,21 @@ export function MacroEditor({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 2,
+            gap: "var(--space-2xs)",
             padding: "var(--space-sm) var(--space-md)",
             background: "rgba(245,158,11,0.08)",
             borderBottom: "1px solid rgba(245,158,11,0.3)",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", color: "#f59e0b", fontWeight: 600 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", color: "#f59e0b", fontWeight: "var(--font-weight-semibold)" }}>
             <AlertTriangle size={14} style={{ flexShrink: 0 }} />
             {issueSummary(issues!)} won't run as built
           </div>
           {issues!.map((issue, n) => (
-            <div key={n} style={{ paddingLeft: 22 }}>
-              <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+            <div key={n} style={{ paddingLeft: "var(--space-xl)" }}>
+              <strong style={{ color: "var(--text-primary)", fontWeight: "var(--font-weight-medium)" }}>
                 {issueLabel(issue)}
               </strong>
               : {issue.message}
@@ -815,7 +815,7 @@ export function MacroEditor({
             gap: "var(--space-sm)",
             padding: "var(--space-xs) var(--space-md)",
             borderBottom: "1px solid var(--border-color)",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
           }}
         >
@@ -823,7 +823,7 @@ export function MacroEditor({
           {callers.length > 0 && (
             <span>
               Called by: {callers.map((m) => (
-                <span key={m.id} style={{ color: "#ec4899", fontWeight: 500 }}>{m.name}</span>
+                <span key={m.id} style={{ color: "#ec4899", fontWeight: "var(--font-weight-medium)" }}>{m.name}</span>
               )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}
             </span>
           )}
@@ -833,7 +833,7 @@ export function MacroEditor({
           {callees.length > 0 && (
             <span>
               Calls: {callees.map((m) => (
-                <span key={m!.id} style={{ color: "#ec4899", fontWeight: 500 }}>{m!.name}</span>
+                <span key={m!.id} style={{ color: "#ec4899", fontWeight: "var(--font-weight-medium)" }}>{m!.name}</span>
               )).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ", ", el], [])}
             </span>
           )}
@@ -858,7 +858,7 @@ export function MacroEditor({
               padding: "var(--space-xl)",
               textAlign: "center",
               color: "var(--text-muted)",
-              lineHeight: 1.6,
+              lineHeight: "var(--line-relaxed)",
             }}
           >
             <div style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
@@ -959,7 +959,7 @@ export function MacroEditor({
                 top: "100%",
                 left: 0,
                 right: 0,
-                marginTop: 4,
+                marginTop: "var(--space-xs)",
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border-color)",
                 borderRadius: "var(--border-radius)",
@@ -992,8 +992,8 @@ export function MacroEditor({
                   >
                     <Clipboard size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontWeight: 500, color: "var(--accent)" }}>Paste Copied Step</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                      <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--accent)" }}>Paste Copied Step</div>
+                      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                         {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any) ?? s.action : ""; })()}
                       </div>
                     </div>
@@ -1028,12 +1028,12 @@ export function MacroEditor({
                       borderRadius: "50%",
                       background: t.color,
                       flexShrink: 0,
-                      marginTop: 5,
+                      marginTop: "var(--space-xs)",
                     }}
                   />
                   <div>
-                    <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>{t.label}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.description}</div>
+                    <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>{t.label}</div>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{t.description}</div>
                   </div>
                 </div>
               ))}
@@ -1044,12 +1044,12 @@ export function MacroEditor({
                     alignItems: "center",
                     justifyContent: "space-between",
                     padding: "var(--space-xs) var(--space-md)",
-                    fontSize: 10,
+                    fontSize: "var(--font-size-2xs)",
                     color: "var(--text-muted)",
                     textTransform: "uppercase",
-                    letterSpacing: 0.5,
+                    letterSpacing: "var(--tracking-wide)",
                     borderTop: "1px solid var(--border-color)",
-                    marginTop: 4,
+                    marginTop: "var(--space-xs)",
                     background: "var(--bg-primary)",
                   }}>
                     <span>Plugin Actions</span>
@@ -1064,7 +1064,7 @@ export function MacroEditor({
                         border: "none",
                         color: "var(--text-muted)",
                         cursor: "pointer",
-                        fontSize: 11,
+                        fontSize: "var(--font-size-xs)",
                         padding: 0,
                       }}
                     >
@@ -1083,9 +1083,9 @@ export function MacroEditor({
                       <div key={pluginName}>
                         <div style={{
                           padding: "var(--space-xs) var(--space-md)",
-                          fontSize: 10,
+                          fontSize: "var(--font-size-2xs)",
                           color: "var(--text-muted)",
-                          fontWeight: 600,
+                          fontWeight: "var(--font-weight-semibold)",
                         }}>
                           {pluginName}
                         </div>
@@ -1117,13 +1117,13 @@ export function MacroEditor({
                                 borderRadius: "50%",
                                 background: "#a855f7",
                                 flexShrink: 0,
-                                marginTop: 5,
+                                marginTop: "var(--space-xs)",
                               }}
                             />
                             <div>
-                              <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>{a.label}</div>
+                              <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>{a.label}</div>
                               {a.description && (
-                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{a.description}</div>
+                                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{a.description}</div>
                               )}
                             </div>
                           </div>
@@ -1143,7 +1143,7 @@ export function MacroEditor({
                 position: "absolute",
                 top: "100%",
                 right: 0,
-                marginTop: 4,
+                marginTop: "var(--space-xs)",
                 minWidth: 320,
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border-color)",
@@ -1152,7 +1152,7 @@ export function MacroEditor({
                 zIndex: 10,
               }}
             >
-              <div style={{ padding: "var(--space-sm) var(--space-md)", fontSize: 11, color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)" }}>
+              <div style={{ padding: "var(--space-sm) var(--space-md)", fontSize: "var(--font-size-xs)", color: "var(--text-muted)", borderBottom: "1px solid var(--border-color)" }}>
                 Pre-built step patterns. Edit them after inserting.
               </div>
               {STEP_TEMPLATES.map((t) => (
@@ -1176,11 +1176,11 @@ export function MacroEditor({
                       "transparent")
                   }
                 >
-                  <LayoutTemplate size={14} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} />
+                  <LayoutTemplate size={14} style={{ color: "var(--accent)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
                   <div>
-                    <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>{t.label}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.description}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                    <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>{t.label}</div>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{t.description}</div>
+                    <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                       {t.steps.length} steps
                     </div>
                   </div>
@@ -1211,7 +1211,7 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
         borderRadius: "var(--border-radius)",
         border: `1px solid ${isSuccess ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
         background: isSuccess ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
-        fontSize: 12,
+        fontSize: "var(--font-size-sm)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: hasErrors ? "var(--space-xs)" : 0 }}>
@@ -1220,11 +1220,11 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
         ) : (
           <XCircle size={14} style={{ color: "#ef4444" }} />
         )}
-        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+        <span style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--text-primary)" }}>
           Last run: {isSuccess ? "Completed" : lastRun.status === "error" ? "Failed" : "Completed with errors"}
         </span>
         <span style={{ color: "var(--text-muted)" }}>
-          <Clock size={11} style={{ verticalAlign: "middle", marginRight: 2 }} />
+          <Clock size={11} style={{ verticalAlign: "middle", marginRight: "var(--space-2xs)" }} />
           {durationSec}s at {time}
         </span>
       </div>
@@ -1235,13 +1235,13 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
             display: "flex",
             alignItems: "center",
             gap: "var(--space-xs)",
-            padding: "2px 0",
+            padding: "var(--space-2xs) 0",
             color: "#ef4444",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
           }}
         >
           <XCircle size={11} style={{ flexShrink: 0 }} />
-          <span style={{ fontWeight: 500 }}>Step {err.stepIndex + 1}:</span>
+          <span style={{ fontWeight: "var(--font-weight-medium)" }}>Step {err.stepIndex + 1}:</span>
           <span>{err.error}</span>
           {err.device && <span style={{ color: "var(--text-muted)" }}>({err.device})</span>}
         </div>
@@ -1266,7 +1266,7 @@ const btnStyle: React.CSSProperties = {
 
 const iconBtnStyle: React.CSSProperties = {
   display: "flex",
-  padding: 2,
+  padding: "var(--space-2xs)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

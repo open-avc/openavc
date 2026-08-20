@@ -81,8 +81,8 @@ export function ScriptConsole({
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           Console
@@ -108,7 +108,7 @@ export function ScriptConsole({
           flex: 1,
           overflow: "auto",
           fontFamily: "var(--font-mono)",
-          fontSize: 12,
+          fontSize: "var(--font-size-sm)",
           padding: "var(--space-xs)",
           background: "var(--bg-primary)",
         }}
@@ -178,8 +178,8 @@ function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { time
       style={{
         display: "flex",
         gap: "var(--space-sm)",
-        padding: "1px 0",
-        lineHeight: 1.4,
+        padding: "var(--space-2xs) 0",
+        lineHeight: "var(--line-tight)",
       }}
     >
       <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>
@@ -213,7 +213,7 @@ function ConsoleEntry({ entry, formatTime, focusId, focusType }: { entry: { time
 
 const toolBtnStyle: React.CSSProperties = {
   display: "flex",
-  padding: 4,
+  padding: "var(--space-xs)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

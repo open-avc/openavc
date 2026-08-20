@@ -101,8 +101,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           Triggers {triggers.length > 0 && `(${triggers.length})`}
@@ -113,13 +113,13 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 3,
-              padding: "2px 8px",
+              gap: "var(--space-xs)",
+              padding: "var(--space-2xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
               background: "transparent",
               color: "var(--text-secondary)",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               cursor: "pointer",
             }}
           >
@@ -133,7 +133,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                 position: "absolute",
                 top: "100%",
                 right: 0,
-                marginTop: 4,
+                marginTop: "var(--space-xs)",
                 minWidth: 280,
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border-color)",
@@ -168,14 +168,14 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                       borderRadius: "50%",
                       background: t.color,
                       flexShrink: 0,
-                      marginTop: 5,
+                      marginTop: "var(--space-xs)",
                     }}
                   />
                   <div>
-                    <div style={{ fontWeight: 500, color: "var(--text-primary)" }}>
+                    <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--text-primary)" }}>
                       {t.label}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                       {t.description}
                     </div>
                   </div>
@@ -193,10 +193,10 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
             padding: "var(--space-md)",
             textAlign: "center",
             color: "var(--text-muted)",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             border: "1px dashed var(--border-color)",
             borderRadius: "var(--border-radius)",
-            lineHeight: 1.5,
+            lineHeight: "var(--line-base)",
           }}
         >
           No triggers. This macro can only run manually or from a UI button.
@@ -256,12 +256,12 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   />
                   <span
                     style={{
-                      fontSize: 11,
-                      fontWeight: 600,
+                      fontSize: "var(--font-size-xs)",
+                      fontWeight: "var(--font-weight-semibold)",
                       color: "#fff",
                       background: typeInfo?.color ?? "#666",
-                      padding: "1px 6px",
-                      borderRadius: 3,
+                      padding: "var(--space-2xs) var(--space-sm)",
+                      borderRadius: "var(--border-radius)",
                       textTransform: "uppercase",
                       flexShrink: 0,
                     }}
@@ -286,13 +286,13 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: 3,
-                        fontSize: 10,
-                        fontWeight: 600,
+                        gap: "var(--space-xs)",
+                        fontSize: "var(--font-size-2xs)",
+                        fontWeight: "var(--font-weight-semibold)",
                         color: "#f59e0b",
                         background: "rgba(245,158,11,0.15)",
-                        padding: "0 5px",
-                        borderRadius: 3,
+                        padding: "0 var(--space-xs)",
+                        borderRadius: "var(--border-radius)",
                         flexShrink: 0,
                       }}
                       title={
@@ -321,11 +321,11 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   {(trigger.conditions?.length ?? 0) > 0 && (
                     <span
                       style={{
-                        fontSize: 10,
+                        fontSize: "var(--font-size-2xs)",
                         color: "var(--text-muted)",
                         background: "var(--bg-hover)",
-                        padding: "0 4px",
-                        borderRadius: 3,
+                        padding: "0 var(--space-xs)",
+                        borderRadius: "var(--border-radius)",
                         flexShrink: 0,
                       }}
                     >
@@ -333,7 +333,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     </span>
                   )}
                   <div
-                    style={{ display: "flex", gap: 2, flexShrink: 0 }}
+                    style={{ display: "flex", gap: "var(--space-2xs)", flexShrink: 0 }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
@@ -369,7 +369,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   <div
                     style={{
                       padding: "var(--space-xs) var(--space-md)",
-                      fontSize: 12,
+                      fontSize: "var(--font-size-sm)",
                       color: "#f59e0b",
                       background: "rgba(245,158,11,0.08)",
                       borderTop: "1px solid rgba(245,158,11,0.2)",
@@ -412,7 +412,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
 
 const iconBtnStyle: React.CSSProperties = {
   display: "flex",
-  padding: 2,
+  padding: "var(--space-2xs)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

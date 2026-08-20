@@ -91,8 +91,8 @@ export function ElementPalette({
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontWeight: 600,
+          letterSpacing: "var(--tracking-wide)",
+          fontWeight: "var(--font-weight-semibold)",
         }}
       >
         Elements
@@ -101,8 +101,8 @@ export function ElementPalette({
       {disabledNote && (
         <div
           style={{
-            fontSize: 11,
-            lineHeight: 1.4,
+            fontSize: "var(--font-size-xs)",
+            lineHeight: "var(--line-tight)",
             color: "var(--text-muted)",
             border: "1px solid var(--border-color)",
             borderRadius: "var(--border-radius)",
@@ -136,16 +136,16 @@ export function ElementPalette({
           <div key={cat.key}>
             <div
               style={{
-                fontSize: 11,
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
                 textTransform: "uppercase",
-                letterSpacing: "0.5px",
+                letterSpacing: "var(--tracking-wide)",
                 marginBottom: "var(--space-xs)",
               }}
             >
               {cat.label}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
               {items.map((info) => (
                 <PaletteItem
                   key={info.type}
@@ -164,16 +164,16 @@ export function ElementPalette({
         <div>
           <div
             style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               textTransform: "uppercase",
-              letterSpacing: "0.5px",
+              letterSpacing: "var(--tracking-wide)",
               marginBottom: "var(--space-xs)",
             }}
           >
             Plugins
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
             {panelElements.map((ext) => (
               <PaletteItem
                 key={`plugin-${ext.plugin_id}-${ext.type}`}
@@ -221,7 +221,7 @@ function PaletteItem({
         display: "flex",
         alignItems: "center",
         gap: "var(--space-sm)",
-        padding: "6px 8px",
+        padding: "var(--space-sm)",
         borderRadius: "var(--border-radius)",
         cursor: disabled ? "default" : "grab",
         opacity: isDragging ? 0.4 : disabled ? 0.4 : 1,
@@ -249,7 +249,7 @@ function PaletteItem({
       <div style={{ minWidth: 0 }}>
         <div>{info.label}</div>
         {info.description && (
-          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", lineHeight: "var(--line-tight)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {info.description}
           </div>
         )}

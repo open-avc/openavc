@@ -120,7 +120,7 @@ export function NetworkDeckDialog({
       }}
     >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 600 }}>Add a network deck</div>
+          <div style={{ fontWeight: "var(--font-weight-semibold)" }}>Add a network deck</div>
           <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
             <X size={16} />
           </button>
@@ -147,19 +147,19 @@ export function NetworkDeckDialog({
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>{f.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>{f.name}</div>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                     {f.kind} · {f.host}:{f.port}
                     {f.serial ? ` · ${f.serial}` : ""}
                   </div>
                 </div>
                 {f.already_added ? (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Added</span>
+                  <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Added</span>
                 ) : (
                   <button
                     onClick={() => addEntry(f.host, f.port, f.serial)}
                     style={{
-                      padding: "2px 12px",
+                      padding: "var(--space-2xs) var(--space-md)",
                       borderRadius: "var(--border-radius)",
                       background: "var(--accent-bg)",
                       color: "var(--text-on-accent)",
@@ -176,7 +176,7 @@ export function NetworkDeckDialog({
           </div>
         )}
         {found !== null && found.length === 0 && (
-          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", lineHeight: "var(--line-relaxed)" }}>
             {browseAvailable
               ? "No decks answered. Automatic discovery only sees decks on this network segment. Add one by address below."
               : "Automatic discovery isn't available from this server (it doesn't cross Docker bridge networks, NAT, or VLANs). Add the deck by its address."}
@@ -187,11 +187,11 @@ export function NetworkDeckDialog({
             onClick={() => void scan()}
             style={{
               alignSelf: "flex-start",
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-secondary)",
               background: "var(--bg-hover)",
               borderRadius: "var(--border-radius)",
-              padding: "2px 10px",
+              padding: "var(--space-2xs) var(--space-md)",
               cursor: "pointer",
             }}
           >
@@ -205,7 +205,7 @@ export function NetworkDeckDialog({
             alignItems: "center",
             gap: "var(--space-sm)",
             color: "var(--text-muted)",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
           }}
         >
           <span style={{ flex: 1, borderTop: "1px solid var(--border-color)" }} />
@@ -256,7 +256,7 @@ export function NetworkDeckDialog({
               background: "var(--accent-bg)",
               color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
+              fontWeight: "var(--font-weight-medium)",
               cursor: hostTrimmed ? "pointer" : "default",
               opacity: hostTrimmed ? 1 : 0.5,
             }}
@@ -267,14 +267,14 @@ export function NetworkDeckDialog({
         {testResult && (
           <div
             style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: testResult.success ? "var(--color-success)" : "var(--color-error)",
             }}
           >
             {testResult.success ? "Reachable, ready to add." : `Not reachable: ${testResult.error}`}
           </div>
         )}
-        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", lineHeight: "var(--line-relaxed)" }}>
           The deck shows its address on its keys at power-up. For installed
           systems, set a static IP there so the address never changes.
         </div>

@@ -34,16 +34,16 @@ const HWACCEL_OPTS: [string, string][] = [
 
 const labelStyle: CSSProperties = {
   display: "block",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  marginBottom: 4,
+  letterSpacing: "var(--tracking-wide)",
+  marginBottom: "var(--space-xs)",
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  padding: "5px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   fontSize: "var(--font-size-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -52,7 +52,7 @@ const inputStyle: CSSProperties = {
 };
 
 const primaryBtn: CSSProperties = {
-  padding: "6px 16px",
+  padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
   color: "#fff",
@@ -62,7 +62,7 @@ const primaryBtn: CSSProperties = {
 };
 
 const secondaryBtn: CSSProperties = {
-  padding: "6px 16px",
+  padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
@@ -73,7 +73,7 @@ const secondaryBtn: CSSProperties = {
 
 const iconBtnStyle: CSSProperties = {
   display: "flex",
-  padding: 6,
+  padding: "var(--space-sm)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   border: "none",
@@ -132,7 +132,7 @@ function ProbeReadout({ result }: { result: ProbeResult }) {
         fontSize: "var(--font-size-sm)",
       }}
     >
-      {summary && <div style={{ color, fontWeight: 600, marginBottom: 2 }}>{summary}</div>}
+      {summary && <div style={{ color, fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-2xs)" }}>{summary}</div>}
       <div style={{ color: result.success ? "var(--text-secondary)" : color }}>{result.advice || result.message}</div>
     </div>
   );
@@ -394,7 +394,7 @@ export function VideoStreamsSection() {
           <button
             onClick={refresh}
             title="Refresh"
-            style={{ display: "flex", padding: 6, borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
+            style={{ display: "flex", padding: "var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--bg-hover)", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
           >
             <RefreshCw size={15} />
           </button>
@@ -428,16 +428,16 @@ export function VideoStreamsSection() {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)" }}>{s.name}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {s.stream_id}
                 </div>
               </div>
               <span
                 style={{
-                  fontSize: 10,
-                  fontWeight: 600,
+                  fontSize: "var(--font-size-2xs)",
+                  fontWeight: "var(--font-weight-semibold)",
                   textTransform: "uppercase",
-                  letterSpacing: "0.5px",
+                  letterSpacing: "var(--tracking-wide)",
                   color: s.status === "streaming" ? "var(--color-success, #2e7d32)" : "var(--text-muted)",
                 }}
               >
@@ -457,7 +457,7 @@ export function VideoStreamsSection() {
         )}
       </div>
 
-      <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
+      <p style={{ marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: "var(--line-base)" }}>
         Video streams play on panels through the Video Stream element in the UI Builder. Use Test to check that a source
         is reachable and whether it needs transcoding before you save it.
       </p>

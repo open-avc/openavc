@@ -149,7 +149,7 @@ export function ScriptFileTree({
             }}
             onClick={() => setScriptsCollapsed(!scriptsCollapsed)}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               {scriptsCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               <span style={sectionHeaderStyle}>
                 Scripts ({scripts.length})
@@ -262,7 +262,7 @@ export function ScriptFileTree({
                         ) : s.description ? (
                           <div style={descStyle}>{s.description}</div>
                         ) : null}
-                        <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", marginTop: "var(--space-2xs)" }}>
                           <code style={idStyle}>{s.id}</code>
                           <CopyButton value={s.id} size={10} title="Copy script ID" />
                         </div>
@@ -297,13 +297,13 @@ export function ScriptFileTree({
             }}
             onClick={() => setDriversCollapsed(!driversCollapsed)}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               {driversCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               <span style={sectionHeaderStyle}>
                 Python Drivers ({drivers.length})
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               <button
                 onClick={(e) => { e.stopPropagation(); onImportDriver(); }}
                 style={{ ...addBtnStyle, background: "var(--bg-hover)", color: "var(--text-secondary)" }}
@@ -373,18 +373,18 @@ export function ScriptFileTree({
                         {d.manufacturer && (
                           <div style={descStyle}>{d.manufacturer}</div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", marginTop: "var(--space-2xs)" }}>
                           <code style={idStyle}>{d.id}</code>
                           <CopyButton value={d.id} size={10} title="Copy driver ID" />
                           {d.devices_using.length > 0 && (
                             <span
                               style={{
-                                marginLeft: 4,
-                                fontSize: 10,
+                                marginLeft: "var(--space-xs)",
+                                fontSize: "var(--font-size-2xs)",
                                 color: "var(--text-muted)",
                                 background: "var(--bg-hover)",
-                                padding: "0 4px",
-                                borderRadius: 3,
+                                padding: "0 var(--space-xs)",
+                                borderRadius: "var(--border-radius)",
                               }}
                               title={`Used by: ${d.devices_using.join(", ")}`}
                             >
@@ -446,13 +446,13 @@ export function ScriptFileTree({
             }}
             onClick={() => setUiCollapsed(!uiCollapsed)}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               {uiCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               <span style={sectionHeaderStyle}>
                 Custom Controls ({uiFiles.length})
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
               <button
                 onClick={(e) => { e.stopPropagation(); onImportUiFiles(); }}
                 style={{ ...addBtnStyle, background: "var(--bg-hover)", color: "var(--text-secondary)" }}
@@ -491,7 +491,7 @@ export function ScriptFileTree({
                 autoFocus
                 onKeyDown={(e) => e.key === "Enter" && handleCreateUiFile()}
               />
-              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
                 One control is one folder. Point the element at its page.
               </div>
               <div style={{ display: "flex", gap: "var(--space-xs)" }}>
@@ -553,7 +553,7 @@ export function ScriptFileTree({
                             <div style={itemNameStyle(null, true, selectedId === f.path && selectedType === "ui")}>
                               {group.folder ? f.path.slice(group.folder.length + 1) : f.path}
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", marginTop: "var(--space-2xs)" }}>
                               <code style={idStyle}>{formatSize(f.size)}</code>
                               <CopyButton value={f.path} size={10} title="Copy file path" />
                             </div>
@@ -588,8 +588,8 @@ function formatSize(bytes: number): string {
 
 const folderHeaderStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
-  fontSize: 11,
-  fontWeight: 600,
+  fontSize: "var(--font-size-xs)",
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
   fontFamily: "var(--font-mono)",
   background: "var(--bg-base)",
@@ -600,15 +600,15 @@ const sectionHeaderStyle: React.CSSProperties = {
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  fontWeight: 600,
+  letterSpacing: "var(--tracking-wide)",
+  fontWeight: "var(--font-weight-semibold)",
 };
 
 const addBtnStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 4,
-  padding: "2px 8px",
+  gap: "var(--space-xs)",
+  padding: "var(--space-2xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
   color: "#fff",
@@ -618,7 +618,7 @@ const addBtnStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "4px 8px",
+  padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-primary)",
@@ -627,7 +627,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 const createBtnStyle: React.CSSProperties = {
-  padding: "4px 12px",
+  padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
   color: "#fff",
@@ -650,7 +650,7 @@ const emptyStyle: React.CSSProperties = {
   textAlign: "center",
   color: "var(--text-muted)",
   fontSize: "var(--font-size-sm)",
-  lineHeight: 1.5,
+  lineHeight: "var(--line-base)",
 };
 
 function itemNameStyle(error: string | null | undefined, active: boolean, selected: boolean): React.CSSProperties {
@@ -665,7 +665,7 @@ function itemNameStyle(error: string | null | undefined, active: boolean, select
 }
 
 const descStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -673,7 +673,7 @@ const descStyle: React.CSSProperties = {
 };
 
 const errorDescStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--color-error)",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -682,7 +682,7 @@ const errorDescStyle: React.CSSProperties = {
 };
 
 const idStyle: React.CSSProperties = {
-  fontSize: 10,
+  fontSize: "var(--font-size-2xs)",
   color: "var(--text-muted)",
   fontFamily: "var(--font-mono)",
   opacity: 0.7,
@@ -690,7 +690,7 @@ const idStyle: React.CSSProperties = {
 
 const deleteBtnStyle: React.CSSProperties = {
   display: "flex",
-  padding: 4,
+  padding: "var(--space-xs)",
   borderRadius: "var(--border-radius)",
   background: "transparent",
   color: "var(--text-muted)",

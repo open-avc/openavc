@@ -468,7 +468,7 @@ export function DriverEditor({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
+                gap: "var(--space-sm)",
                 padding: "var(--space-sm) var(--space-lg)",
                 fontSize: "var(--font-size-sm)",
                 borderBottom:
@@ -586,7 +586,7 @@ export function DriverEditor({
               {isNew ? (
                 <div
                   style={{
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
                     marginTop: "var(--space-xs)",
                   }}
@@ -596,7 +596,7 @@ export function DriverEditor({
               ) : idChanged ? (
                 <div
                   style={{
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     marginTop: "var(--space-xs)",
                     padding: "var(--space-xs) var(--space-sm)",
                     borderRadius: "var(--border-radius)",
@@ -613,7 +613,7 @@ export function DriverEditor({
               ) : (
                 <div
                   style={{
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
                     marginTop: "var(--space-xs)",
                   }}
@@ -732,7 +732,7 @@ export function DriverEditor({
               </label>
               <div
                 style={{
-                  fontSize: "11px",
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                   marginTop: "var(--space-xs)",
                 }}
@@ -999,7 +999,7 @@ export function DriverEditor({
               <FileCode size={14} />
               <span style={{ flex: 1 }}>
                 Live YAML preview
-                <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+                <span style={{ color: "var(--text-muted)", marginLeft: "var(--space-sm)" }}>
                   (read-only)
                 </span>
               </span>
@@ -1009,11 +1009,11 @@ export function DriverEditor({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
-                  padding: "2px 8px",
+                  gap: "var(--space-xs)",
+                  padding: "var(--space-2xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
-                  fontSize: "11px",
+                  fontSize: "var(--font-size-xs)",
                 }}
               >
                 {yamlCopied ? <Check size={12} /> : <Copy size={12} />}
@@ -1028,7 +1028,7 @@ export function DriverEditor({
                 overflow: "auto",
                 fontFamily: "var(--font-mono)",
                 fontSize: "var(--font-size-sm)",
-                lineHeight: 1.5,
+                lineHeight: "var(--line-base)",
                 color: "var(--text-primary)",
                 whiteSpace: "pre",
               }}
@@ -1039,7 +1039,7 @@ export function DriverEditor({
               style={{
                 padding: "var(--space-xs) var(--space-md)",
                 borderTop: "1px solid var(--border-color)",
-                fontSize: "11px",
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
                 flexShrink: 0,
               }}
@@ -1153,7 +1153,7 @@ function HelpFieldsSection({
         />
         <div
           style={{
-            fontSize: "11px",
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
@@ -1225,7 +1225,7 @@ function PublishingSection({
             placeholder="e.g. 0.9.0"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Blocks install on older OpenAVC versions that lack required
             features. Leave blank if the driver works on every supported
             version.
@@ -1241,7 +1241,7 @@ function PublishingSection({
             placeholder="https://github.com/..."
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Optional. Reference implementation or protocol docs.
           </div>
         </div>
@@ -1263,7 +1263,7 @@ function PublishingSection({
             placeholder="e.g. sis, telnet"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Protocol identifiers for catalog filtering. Comma-separated.
           </div>
         </div>
@@ -1275,7 +1275,7 @@ function PublishingSection({
             placeholder="e.g. matrix, 4k, hdmi"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Free-form discovery tags. Comma-separated.
           </div>
         </div>
@@ -1297,7 +1297,7 @@ function PublishingSection({
             placeholder="e.g. 23, 80"
             style={{ width: "100%", fontFamily: "var(--font-mono)" }}
           />
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Network ports this driver speaks on. Used by the discovery
             engine. Comma-separated.
           </div>
@@ -1306,9 +1306,9 @@ function PublishingSection({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: "var(--space-sm)",
             fontSize: "var(--font-size-sm)",
-            paddingBottom: 6,
+            paddingBottom: "var(--space-sm)",
           }}
         >
           <input
@@ -1325,9 +1325,9 @@ function PublishingSection({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: "var(--space-sm)",
             fontSize: "var(--font-size-sm)",
-            paddingBottom: 6,
+            paddingBottom: "var(--space-sm)",
             color: draft.verified ? "var(--accent)" : "var(--text-muted)",
           }}
         >
@@ -1340,7 +1340,7 @@ function PublishingSection({
           Verified
         </div>
       </div>
-      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         <strong>Simulated:</strong> set when this driver has a simulator
         section so users can test without hardware. <strong>Verified:</strong>{" "}
         read-only. The community catalog flips this once a driver is
@@ -1358,7 +1358,7 @@ function CommandFramingEditor({
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }) {
   const helpStyle: React.CSSProperties = {
-    fontSize: "11px",
+    fontSize: "var(--font-size-xs)",
     color: "var(--text-muted)",
     marginTop: "var(--space-xs)",
   };
@@ -1431,8 +1431,8 @@ function LearnMore({ href, label }: { href: string; label: string }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 4,
-        fontSize: "11px",
+        gap: "var(--space-xs)",
+        fontSize: "var(--font-size-xs)",
         color: "var(--text-muted)",
         textDecoration: "none",
         marginBottom: "var(--space-md)",

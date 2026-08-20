@@ -8,7 +8,7 @@
 
 
 export const fieldInputStyle: React.CSSProperties = {
-  width: "100%", padding: "4px 6px",
+  width: "100%", padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--bg-surface)", color: "var(--text-primary)",
@@ -17,14 +17,14 @@ export const fieldInputStyle: React.CSSProperties = {
 
 export const panelLabelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 12,
-  fontWeight: 600,
+  fontSize: "var(--font-size-sm)",
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
   marginBottom: "var(--space-xs)",
 };
 
 export const panelHintStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
   width: 56,
   flexShrink: 0,
@@ -39,14 +39,14 @@ export const dialTestBtnStyle: React.CSSProperties = {
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   color: "var(--text-secondary)",
-  fontSize: 14,
+  fontSize: "var(--font-size-lg)",
   cursor: "pointer",
 };
 
 export const pageMenuConfirmStyle: React.CSSProperties = {
-  padding: "2px 8px",
+  padding: "var(--space-2xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   cursor: "pointer",
-  fontSize: 12,
+  fontSize: "var(--font-size-sm)",
 };

@@ -116,7 +116,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </select>
         <div
           style={{
-            fontSize: "11px",
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
@@ -153,7 +153,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </select>
         <div
           style={{
-            fontSize: "11px",
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
@@ -202,7 +202,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             </select>
             <div
               style={{
-                fontSize: "11px",
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
                 marginTop: "var(--space-xs)",
               }}
@@ -281,7 +281,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
               </div>
               <div
                 style={{
-                  fontSize: "11px",
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                   marginTop: "var(--space-xs)",
                 }}
@@ -314,7 +314,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
                 />
                 <div
                   style={{
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
                     marginTop: "var(--space-xs)",
                   }}
@@ -365,7 +365,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             />
             <div
               style={{
-                fontSize: "11px",
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
                 marginTop: "var(--space-xs)",
               }}
@@ -390,7 +390,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             />
             <div
               style={{
-                fontSize: "11px",
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
                 marginTop: "var(--space-xs)",
               }}
@@ -454,7 +454,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
             />
             <div
               style={{
-                fontSize: "11px",
+                fontSize: "var(--font-size-xs)",
                 color: "var(--text-muted)",
                 marginTop: "var(--space-xs)",
               }}
@@ -564,7 +564,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           </div>
           <div
             style={{
-              fontSize: "11px",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               marginTop: "calc(-1 * var(--space-md))",
               marginBottom: "var(--space-md)",
@@ -591,7 +591,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         />
         <div
           style={{
-            fontSize: "11px",
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
@@ -692,7 +692,7 @@ function AlsoUsableOver({
       </div>
       <div
         style={{
-          fontSize: "11px",
+          fontSize: "var(--font-size-xs)",
           color: "var(--text-muted)",
           marginTop: "var(--space-xs)",
         }}

@@ -88,7 +88,7 @@ export function ControlAssignmentPanel({
       : keyNoun;
 
   const whatItShows = !visualDeck ? (
-    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+    <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
       This model has no display. The label only names the switch in the
       editor, and there is nothing for colors or feedback to change.
     </div>
@@ -119,7 +119,7 @@ export function ControlAssignmentPanel({
           </div>
         )}
       </div>
-      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+      <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         {colorOnly
           ? "This key has no display. It glows with this color. Feedback colors override it when active; labels and icons don't apply."
           : "Feedback colors override these when active."}
@@ -185,7 +185,7 @@ export function ControlAssignmentPanel({
     >
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-sm)" }}>
-        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {title}
         </h4>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
@@ -194,10 +194,10 @@ export function ControlAssignmentPanel({
               onClick={onPress}
               title="Press this key for real (same as pushing it on the deck)"
               style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "2px 8px", borderRadius: "var(--border-radius)",
+                display: "flex", alignItems: "center", gap: "var(--space-xs)",
+                padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)",
                 background: "var(--bg-hover)", color: "var(--text-secondary)",
-                fontSize: 11, cursor: "pointer",
+                fontSize: "var(--font-size-xs)", cursor: "pointer",
               }}
             >
               <Play size={11} /> Press
@@ -228,7 +228,7 @@ export function ControlAssignmentPanel({
             <Pin size={13} style={{ color: locked ? "var(--accent)" : "var(--text-muted)" }} />
             Same on every page
           </label>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Locked keys keep this assignment on every page. Great for page
             switchers.
             {!locked && lockShadowCount > 0 && (
@@ -263,7 +263,7 @@ export function ControlAssignmentPanel({
           surfaceOrder
         />
       ) : (
-        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Loading project...</div>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Loading project...</div>
       )}
 
       {whatItShows}
@@ -274,12 +274,12 @@ export function ControlAssignmentPanel({
           onClick={() => setMoreOpen(!moreOpen)}
           style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            width: "100%", padding: "6px 10px", fontSize: "var(--font-size-sm)",
+            width: "100%", padding: "var(--space-sm) var(--space-md)", fontSize: "var(--font-size-sm)",
             background: "var(--bg-surface)", textAlign: "left", cursor: "pointer",
           }}
         >
-          <span style={{ fontWeight: 500 }}>More</span>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <span style={{ fontWeight: "var(--font-weight-medium)" }}>More</span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
             visibility{locked ? "" : " · arrange"}
           </span>
         </button>
@@ -297,7 +297,7 @@ export function ControlAssignmentPanel({
             })
           }
         />
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           A hidden button shows as a blank key and ignores presses.
         </div>
       </div>
@@ -340,7 +340,7 @@ export function ControlAssignmentPanel({
                 value={targetPage}
                 onChange={(e) => setTargetPage(Number(e.target.value))}
                 style={{
-                  padding: "4px 6px", borderRadius: "var(--border-radius)",
+                  padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
                   border: "1px solid var(--border-color)",
                   background: "var(--bg-surface)", color: "var(--text-primary)",
                   fontSize: "var(--font-size-sm)", flex: 1,
@@ -354,7 +354,7 @@ export function ControlAssignmentPanel({
                 value={targetKey}
                 onChange={(e) => setTargetKey(Number(e.target.value))}
                 style={{
-                  padding: "4px 6px", borderRadius: "var(--border-radius)",
+                  padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)",
                   border: "1px solid var(--border-color)",
                   background: "var(--bg-surface)", color: "var(--text-primary)",
                   fontSize: "var(--font-size-sm)", width: 96,
@@ -372,7 +372,7 @@ export function ControlAssignmentPanel({
                   setArrangeMode(null);
                 }}
                 style={{
-                  padding: "4px 10px", borderRadius: "var(--border-radius)",
+                  padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)",
                   background: "var(--accent-bg)", color: "white",
                   fontSize: "var(--font-size-sm)", cursor: "pointer",
                 }}
@@ -382,7 +382,7 @@ export function ControlAssignmentPanel({
             </div>
           )}
           {arrangeMode === "move" && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
               Moving replaces whatever is at the target.
             </div>
           )}

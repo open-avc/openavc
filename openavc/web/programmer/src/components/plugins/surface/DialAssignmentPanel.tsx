@@ -70,7 +70,7 @@ export function DialAssignmentPanel({
           updateAdjust({ [field]: raw === "" ? undefined : Number(raw) });
         }}
         style={{
-          width: "100%", padding: "4px 6px",
+          width: "100%", padding: "var(--space-xs) var(--space-sm)",
           borderRadius: "var(--border-radius)",
           border: "1px solid var(--border-color)",
           background: "var(--bg-surface)", color: "var(--text-primary)",
@@ -82,7 +82,7 @@ export function DialAssignmentPanel({
 
   if (!project) {
     return (
-      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Loading project...</div>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>Loading project...</div>
     );
   }
 
@@ -103,7 +103,7 @@ export function DialAssignmentPanel({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
+        <h4 style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-semibold)" }}>
           Dial {dialIndex + 1}
         </h4>
         <button onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer" }}>
@@ -114,7 +114,7 @@ export function DialAssignmentPanel({
       {/* Try it: real input through the same path as the hardware */}
       {onSimulate && (
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", flex: 1 }}>Try it</span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", flex: 1 }}>Try it</span>
           <button
             onClick={() => onSimulate({ type: "dial_turn", index: dialIndex, amount: -1 })}
             title="Turn counter-clockwise"
@@ -200,7 +200,7 @@ export function DialAssignmentPanel({
             onChange={(meter) => onUpdate({ meter })}
           />
         </div>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           The strip under this dial shows the label, icon, live value, and
           level bar.
         </div>
@@ -221,7 +221,7 @@ export function DialAssignmentPanel({
             {numberField("Max", "max", "none")}
           </div>
         )}
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           Each detent adds or subtracts the step, clamped to min/max. Use a
           variable, then have a macro or trigger watch it to drive a device.
           The live value shows on the touchscreen under this dial.
@@ -258,7 +258,7 @@ export function DialAssignmentPanel({
             ))}
           </div>
         )}
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           Turning while the dial is held uses this instead, a smaller step
           for fine trim. A push that turned never fires the press actions.
         </div>
@@ -327,7 +327,7 @@ export function DialAssignmentPanel({
             />
           </div>
         )}
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
           With a long-press set, a quick push fires Press on release; holding
           past the threshold fires this instead.
         </div>
@@ -336,7 +336,7 @@ export function DialAssignmentPanel({
       {/* Touch — the dial's strip zone is its touch surface */}
       <div>
         <label style={panelLabelStyle}>Touch (the readout on the strip)</label>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
           Tapping this dial's readout presses the dial; long-tapping runs the
           long-press. Override either below.
         </div>
@@ -378,7 +378,7 @@ export function DialAssignmentPanel({
           />
           Touch fader
         </label>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
           {adjust.min === undefined || adjust.max === undefined
             ? "Set Min and Max on the adjust to enable: touching the readout will jump straight to that position."
             : "Touching the readout sets the value to the touched position (replaces the tap-presses-the-dial default)."}
@@ -389,11 +389,11 @@ export function DialAssignmentPanel({
             style={{
               marginTop: "var(--space-sm)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: "100%", padding: "5px 10px",
+              width: "100%", padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
               background: "var(--bg-hover)", color: "var(--text-secondary)",
-              fontSize: 12, cursor: "pointer",
+              fontSize: "var(--font-size-sm)", cursor: "pointer",
             }}
           >
             Customize the whole strip…

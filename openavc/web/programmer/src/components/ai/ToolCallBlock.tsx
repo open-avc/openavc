@@ -66,9 +66,9 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
           {statusIcon}
         </span>
         <Wrench size={12} />
-        <span style={{ fontWeight: 500 }}>{toolCall.name}</span>
+        <span style={{ fontWeight: "var(--font-weight-medium)" }}>{toolCall.name}</span>
         {summary && (
-          <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+          <span style={{ color: "var(--text-muted)", fontWeight: "var(--font-weight-normal)" }}>
             {" "}
             {summary}
           </span>
@@ -78,7 +78,7 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
             style={{
               marginLeft: "auto",
               color: "var(--text-muted)",
-              fontSize: 10,
+              fontSize: "var(--font-size-2xs)",
               flexShrink: 0,
             }}
           >
@@ -92,7 +92,7 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
             padding: "var(--space-sm)",
             borderTop: "1px solid var(--border-color)",
             margin: 0,
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             overflow: "auto",
             maxHeight: 200,

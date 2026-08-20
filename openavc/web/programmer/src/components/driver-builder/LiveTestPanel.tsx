@@ -515,9 +515,9 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     marginBottom: "var(--space-xs)",
   };
   const helpStyle: React.CSSProperties = {
-    fontSize: "11px",
+    fontSize: "var(--font-size-xs)",
     color: "var(--text-muted)",
-    marginTop: 4,
+    marginTop: "var(--space-xs)",
   };
 
   const onConnectCount = (draft.on_connect ?? []).length;
@@ -606,9 +606,9 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
                 <label
                   style={{
                     display: "block",
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
-                    marginBottom: 2,
+                    marginBottom: "var(--space-2xs)",
                   }}
                 >
                   {field.label}
@@ -719,8 +719,8 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           {transport === "http" && (
             <label
               style={{
-                display: "flex", alignItems: "center", gap: 6,
-                marginTop: 6, fontSize: "var(--font-size-sm)",
+                display: "flex", alignItems: "center", gap: "var(--space-sm)",
+                marginTop: "var(--space-sm)", fontSize: "var(--font-size-sm)",
                 color: "var(--text-secondary)", cursor: "pointer",
               }}
             >
@@ -775,7 +775,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           marginBottom: "var(--space-md)",
         }}
       >
-        <div style={{ flex: 1, fontSize: "11px", color: "var(--text-muted)" }}>
+        <div style={{ flex: 1, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
           {productionPath ? (
             <>
               Will run{" "}
@@ -870,16 +870,16 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
           alignItems: "center",
           gap: "var(--space-sm)",
           color: "var(--text-secondary)",
-          marginBottom: 4,
+          marginBottom: "var(--space-xs)",
         }}
       >
         <span style={{ flex: 1 }}>{entry.command}</span>
         {entry.throttled && (
           <span
             style={{
-              fontSize: "10px",
-              padding: "1px 6px",
-              borderRadius: 8,
+              fontSize: "var(--font-size-2xs)",
+              padding: "var(--space-2xs) var(--space-sm)",
+              borderRadius: "var(--radius-lg)",
               background: "var(--color-warning-bg)",
               color: "var(--color-warning, #e8b250)",
               border: "1px solid var(--color-warning, #e8b250)",
@@ -890,7 +890,7 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
             Throttled
           </span>
         )}
-        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
           {new Date(entry.timestamp).toLocaleTimeString()}
         </span>
       </div>
@@ -907,11 +907,11 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
       {Object.entries(entry.state_changes).length > 0 && (
         <div
           style={{
-            marginTop: 4,
-            padding: "4px 6px",
+            marginTop: "var(--space-xs)",
+            padding: "var(--space-xs) var(--space-sm)",
             background: "var(--bg-surface)",
-            borderRadius: 4,
-            fontSize: "11px",
+            borderRadius: "var(--border-radius)",
+            fontSize: "var(--font-size-xs)",
           }}
         >
           <span style={{ color: "var(--text-muted)" }}>State changes:</span>{" "}
@@ -931,8 +931,8 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
               : "var(--color-error)",
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            marginTop: 4,
+            gap: "var(--space-xs)",
+            marginTop: "var(--space-xs)",
           }}
         >
           <AlertCircle size={12} /> {entry.error}
@@ -945,11 +945,11 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
             color: "var(--color-warning, #e8b250)",
             display: "flex",
             alignItems: "flex-start",
-            gap: 4,
-            marginTop: 4,
+            gap: "var(--space-xs)",
+            marginTop: "var(--space-xs)",
           }}
         >
-          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: "var(--space-2xs)" }} />
           <span>{msg}</span>
         </div>
       ))}
@@ -1010,7 +1010,7 @@ function ConflictBanner({
           gap: "var(--space-xs)",
           color: tone.fg,
           fontSize: "var(--font-size-sm)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
           marginBottom: "var(--space-xs)",
         }}
       >
@@ -1023,7 +1023,7 @@ function ConflictBanner({
       </div>
       <div
         style={{
-          fontSize: "11px",
+          fontSize: "var(--font-size-xs)",
           color: "var(--text-secondary)",
           marginBottom: "var(--space-sm)",
         }}
@@ -1057,7 +1057,7 @@ function ConflictBanner({
                 <span style={{ color: "var(--text-primary)" }}>
                   {c.device_name}
                 </span>{" "}
-                <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
                   ({c.device_id}
                   {c.connected
                     ? ", connected"
@@ -1119,13 +1119,13 @@ function ConflictBanner({
 const pillButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 4,
-  padding: "2px 10px",
-  borderRadius: 12,
+  gap: "var(--space-xs)",
+  padding: "var(--space-2xs) var(--space-md)",
+  borderRadius: "var(--radius-lg)",
   border: "1px solid var(--accent)",
   background: "transparent",
   color: "var(--accent)",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   cursor: "pointer",
 };
 
@@ -1159,9 +1159,9 @@ function CommandPreview({
 
   const labelStyle: React.CSSProperties = {
     display: "block",
-    fontSize: "11px",
+    fontSize: "var(--font-size-xs)",
     color: "var(--text-muted)",
-    marginBottom: 2,
+    marginBottom: "var(--space-2xs)",
   };
 
   return (
@@ -1207,9 +1207,9 @@ function CommandPreview({
                 {(def.help || def.description) && (
                   <div
                     style={{
-                      fontSize: "10px",
+                      fontSize: "var(--font-size-2xs)",
                       color: "var(--text-muted)",
-                      marginTop: 2,
+                      marginTop: "var(--space-2xs)",
                     }}
                   >
                     {def.help || def.description}
@@ -1222,7 +1222,7 @@ function CommandPreview({
       ) : (
         <div
           style={{
-            fontSize: "11px",
+            fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",
             marginBottom: "var(--space-sm)",
           }}
@@ -1245,16 +1245,16 @@ function CommandPreview({
             padding: "var(--space-xs) var(--space-sm)",
           }}
         >
-          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: "var(--space-2xs)" }} />
           <span>{shapeMismatch}</span>
         </div>
       ) : (
         <>
           <div
             style={{
-              fontSize: "11px",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
-              marginBottom: 4,
+              marginBottom: "var(--space-xs)",
             }}
           >
             Wire format
@@ -1270,20 +1270,20 @@ function CommandPreview({
               color: "var(--text-primary)",
               display: "flex",
               alignItems: "flex-start",
-              gap: 4,
+              gap: "var(--space-xs)",
               overflow: "auto",
             }}
           >
-            <ChevronRight size={12} style={{ flexShrink: 0, marginTop: 3 }} />
+            <ChevronRight size={12} style={{ flexShrink: 0, marginTop: "var(--space-xs)" }} />
             <WirePreview preview={preview} error={previewError} />
           </div>
           {preview?.wire_hex && (
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: "10px",
+                fontSize: "var(--font-size-2xs)",
                 color: "var(--text-muted)",
-                marginTop: 4,
+                marginTop: "var(--space-xs)",
                 wordBreak: "break-all",
               }}
             >

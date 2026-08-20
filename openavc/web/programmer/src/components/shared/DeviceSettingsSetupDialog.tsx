@@ -248,13 +248,13 @@ export function DeviceSettingsSetupDialog({
                 />
               )}
               {help && (
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{help}</div>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>{help}</div>
               )}
               {result && (
                 <div
                   style={{
-                    fontSize: 11,
-                    marginTop: 2,
+                    fontSize: "var(--font-size-xs)",
+                    marginTop: "var(--space-2xs)",
                     color: result.success ? (result.pending ? "var(--accent)" : "var(--color-success)") : "var(--color-error)",
                   }}
                 >

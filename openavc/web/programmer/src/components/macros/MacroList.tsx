@@ -42,8 +42,8 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
+            letterSpacing: "var(--tracking-wide)",
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           Macros ({macros.length})
@@ -53,8 +53,8 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            padding: "2px 8px",
+            gap: "var(--space-xs)",
+            padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
             color: "#fff",
@@ -93,7 +93,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
               textAlign: "center",
               color: "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
-              lineHeight: 1.5,
+              lineHeight: "var(--line-base)",
             }}
           >
             {macros.length === 0 ? (
@@ -150,7 +150,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                 </div>
                 <div
                   style={{
-                    fontSize: 11,
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
                   }}
                 >
@@ -161,9 +161,9 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 4,
-                      marginTop: 2,
-                      fontSize: 11,
+                      gap: "var(--space-xs)",
+                      marginTop: "var(--space-2xs)",
+                      fontSize: "var(--font-size-xs)",
                       color: "#f59e0b",
                     }}
                     title={issues![m.id]
@@ -174,8 +174,8 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                     {issueSummary(issues![m.id])} won't run
                   </div>
                 )}
-                <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 1 }}>
-                  <code style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2xs)", marginTop: "var(--space-2xs)" }}>
+                  <code style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", fontFamily: "var(--font-mono)", opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {m.id}
                   </code>
                   <CopyButton value={m.id} size={10} title="Copy macro ID" />
@@ -188,7 +188,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                 }}
                 style={{
                   display: "flex",
-                  padding: 4,
+                  padding: "var(--space-xs)",
                   borderRadius: "var(--border-radius)",
                   background: "transparent",
                   color: "var(--text-muted)",

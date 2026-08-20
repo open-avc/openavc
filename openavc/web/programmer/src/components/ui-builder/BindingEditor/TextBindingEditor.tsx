@@ -76,7 +76,7 @@ export function TextBindingEditor({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
+              gap: "var(--space-xs)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
             }}
@@ -225,7 +225,7 @@ export function TextBindingEditor({
         <button
           onClick={onClear}
           style={{
-            padding: "4px 8px",
+            padding: "var(--space-xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)",
             color: "var(--color-error)",
@@ -243,20 +243,20 @@ export function TextBindingEditor({
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  marginBottom: 2,
+  marginBottom: "var(--space-2xs)",
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "4px 6px",
+  padding: "var(--space-xs) var(--space-sm)",
   fontSize: "var(--font-size-sm)",
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  lineHeight: 1.4,
+  lineHeight: "var(--line-tight)",
   fontStyle: "italic",
 };

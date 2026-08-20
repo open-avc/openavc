@@ -27,9 +27,9 @@ const labelStyle: React.CSSProperties = {
 };
 
 const helpStyle: React.CSSProperties = {
-  fontSize: "11px",
+  fontSize: "var(--font-size-xs)",
   color: "var(--text-muted)",
-  marginTop: 2,
+  marginTop: "var(--space-2xs)",
 };
 
 type WriteDef = NonNullable<DriverDeviceSettingDef["write"]>;
@@ -153,7 +153,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
               >
                 {key}
               </span>
-              <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
+              <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
                 {setting.label}
               </span>
               <button
@@ -161,7 +161,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                   e.stopPropagation();
                   removeSetting(key);
                 }}
-                style={{ padding: "2px", color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -241,7 +241,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                         fontFamily: "var(--font-mono)",
                       }}
                     />
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 2 }}>
+                    <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                       State variable to store this value. Defaults to the setting key.
                     </div>
                   </div>
@@ -401,7 +401,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                         display: "flex",
                         alignItems: "center",
                         gap: "var(--space-xs)",
-                        fontSize: 11,
+                        fontSize: "var(--font-size-xs)",
                         color: "var(--color-warning, #b8860b)",
                         marginBottom: "var(--space-xs)",
                       }}
@@ -433,9 +433,9 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                             display: "flex",
                             alignItems: "center",
                             gap: "var(--space-xs)",
-                            fontSize: 11,
+                            fontSize: "var(--font-size-xs)",
                             color: "var(--color-warning, #b8860b)",
-                            marginTop: 4,
+                            marginTop: "var(--space-xs)",
                           }}
                         >
                           <AlertTriangle size={12} />
@@ -646,7 +646,7 @@ function OscArgsEditor({
             <button
               type="button"
               onClick={() => remove(i)}
-              style={{ padding: "2px", color: "var(--text-muted)" }}
+              style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
             >
               <Trash2 size={14} />
             </button>
@@ -660,7 +660,7 @@ function OscArgsEditor({
           display: "flex",
           alignItems: "center",
           gap: "var(--space-xs)",
-          fontSize: "11px",
+          fontSize: "var(--font-size-xs)",
           color: "var(--accent)",
         }}
       >
@@ -725,7 +725,7 @@ function HttpHeadersEditor({
           <button
             type="button"
             onClick={() => removeRow(i)}
-            style={{ padding: "2px", color: "var(--text-muted)" }}
+            style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
           >
             <Trash2 size={14} />
           </button>
@@ -738,7 +738,7 @@ function HttpHeadersEditor({
           display: "flex",
           alignItems: "center",
           gap: "var(--space-xs)",
-          fontSize: "11px",
+          fontSize: "var(--font-size-xs)",
           color: "var(--accent)",
         }}
       >

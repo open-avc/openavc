@@ -221,7 +221,7 @@ export function ChildEntities({
                   style={{
                     marginLeft: "var(--space-xs)",
                     color: isActive ? "var(--text-on-accent)" : "var(--color-error)",
-                    fontWeight: 600,
+                    fontWeight: "var(--font-weight-semibold)",
                   }}
                 >
                   · {downByType[t]} down
@@ -512,13 +512,13 @@ function ChildSearchResults({
           >
             <span
               style={{
-                fontSize: 10,
+                fontSize: "var(--font-size-2xs)",
                 textTransform: "uppercase",
-                letterSpacing: "0.5px",
+                letterSpacing: "var(--tracking-wide)",
                 color: "var(--text-muted)",
                 background: "var(--bg-hover)",
                 borderRadius: "var(--border-radius)",
-                padding: "1px 6px",
+                padding: "var(--space-2xs) var(--space-sm)",
               }}
             >
               {typeLabel}
@@ -532,7 +532,7 @@ function ChildSearchResults({
             >
               {entry.local_id_padded}
             </span>
-            <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
+            <span style={{ fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)" }}>
               {entry.label || entry.display_name || "(no label)"}
             </span>
           </div>
@@ -549,7 +549,7 @@ function ChildSearchResults({
                   <tr key={k} style={{ borderBottom: "1px solid var(--border-color)" }}>
                     <td
                       style={{
-                        padding: "2px 8px",
+                        padding: "var(--space-2xs) var(--space-sm)",
                         width: "30%",
                         fontFamily: "var(--font-mono)",
                         color: "var(--text-secondary)",
@@ -557,7 +557,7 @@ function ChildSearchResults({
                     >
                       {k}
                     </td>
-                    <td style={{ padding: "2px 8px", fontFamily: "var(--font-mono)" }}>
+                    <td style={{ padding: "var(--space-2xs) var(--space-sm)", fontFamily: "var(--font-mono)" }}>
                       {v}
                     </td>
                   </tr>
@@ -930,7 +930,7 @@ function ChildEntityList({
                         style={{
                           width: "100%",
                           fontSize: "var(--font-size-sm)",
-                          padding: "2px 6px",
+                          padding: "var(--space-2xs) var(--space-sm)",
                         }}
                       />
                     ) : (
@@ -945,7 +945,7 @@ function ChildEntityList({
                         style={{
                           width: "100%",
                           textAlign: "left",
-                          padding: "2px 6px",
+                          padding: "var(--space-2xs) var(--space-sm)",
                           background: "transparent",
                           border: "none",
                           cursor: "pointer",
@@ -1031,7 +1031,7 @@ function ChildEntityList({
                             >
                               <td
                                 style={{
-                                  padding: "2px 8px",
+                                  padding: "var(--space-2xs) var(--space-sm)",
                                   width: "30%",
                                   fontFamily: "var(--font-mono)",
                                   color: "var(--text-secondary)",
@@ -1041,7 +1041,7 @@ function ChildEntityList({
                               </td>
                               <td
                                 style={{
-                                  padding: "2px 8px",
+                                  padding: "var(--space-2xs) var(--space-sm)",
                                   fontFamily: "var(--font-mono)",
                                 }}
                               >
@@ -1072,9 +1072,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
           fontSize: "var(--font-size-sm)",
           color: "var(--text-secondary)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
+          letterSpacing: "var(--tracking-wide)",
           marginBottom: "var(--space-md)",
-          fontWeight: 600,
+          fontWeight: "var(--font-weight-semibold)",
         }}
       >
         {title}
@@ -1156,9 +1156,9 @@ const headerRowStyle: React.CSSProperties = {
 };
 
 const headerCellStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
+  fontSize: "var(--font-size-xs)",
+  fontWeight: "var(--font-weight-semibold)",
   color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: "0.5px",
+  letterSpacing: "var(--tracking-wide)",
 };

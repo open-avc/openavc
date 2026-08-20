@@ -72,7 +72,7 @@ function ConfigFieldInputs({
             >
               {label}
               {isRequired && (
-                <span style={{ color: "var(--color-error)", marginLeft: 2 }}>*</span>
+                <span style={{ color: "var(--color-error)", marginLeft: "var(--space-2xs)" }}>*</span>
               )}
             </label>
             {kind === "boolean" ? (
@@ -174,7 +174,7 @@ function ConfigFieldInputs({
               />
             )}
             {description && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
                 {description}
               </div>
             )}
@@ -395,7 +395,7 @@ function SerialPortPicker({
           {manual ? "Back" : "Refresh"}
         </button>
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
         Ports on the OpenAVC server. The USB adapter must be plugged into that machine.
       </div>
     </div>
@@ -536,7 +536,7 @@ function ConnectionModePicker({
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
       {/* Segmented mode control */}
-      <div style={{ display: "flex", gap: 2, marginBottom: "var(--space-xs)", background: "var(--bg-hover)", borderRadius: "var(--border-radius)", padding: 2 }}>
+      <div style={{ display: "flex", gap: "var(--space-2xs)", marginBottom: "var(--space-xs)", background: "var(--bg-hover)", borderRadius: "var(--border-radius)", padding: "var(--space-2xs)" }}>
         {modes.map((m) => (
           <button
             key={m.id}
@@ -556,7 +556,7 @@ function ConnectionModePicker({
           </button>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
         {modeHelp[mode]}
       </div>
 
@@ -698,10 +698,10 @@ function DriverSearchSelect({
               <div
                 style={{
                   padding: "var(--space-xs) var(--space-md)",
-                  fontSize: 11,
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                   textTransform: "uppercase",
-                  letterSpacing: "0.5px",
+                  letterSpacing: "var(--tracking-wide)",
                   background: "var(--bg-surface)",
                   position: "sticky",
                   top: 0,
@@ -727,7 +727,7 @@ function DriverSearchSelect({
                 >
                   <span>{d.name || d.id}</span>
                   {d.manufacturer && (
-                    <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{d.manufacturer}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>{d.manufacturer}</span>
                   )}
                 </div>
               ))}
@@ -957,15 +957,15 @@ export function AddDeviceDialog({
             }}
           />
           {driverInfo?.help?.overview && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
               {driverInfo.help.overview}
             </div>
           )}
           {driverInfo?.help?.setup && (
             <div style={{
-              fontSize: 11,
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-secondary)",
-              marginTop: 4,
+              marginTop: "var(--space-xs)",
               padding: "var(--space-sm)",
               background: "var(--bg-base)",
               borderRadius: "var(--border-radius)",
@@ -1000,13 +1000,13 @@ export function AddDeviceDialog({
                 ? "var(--color-error, #ef4444)" : undefined,
             }}
           />
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
             Lowercase letters, numbers, and underscores only.
             {deviceId && (
-              <span style={{ marginLeft: 6 }}>
+              <span style={{ marginLeft: "var(--space-sm)" }}>
                 Your ID: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{deviceId}</code>
                 {!isAdding && devices?.some((d) => d.id === deviceId) && (
-                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: 6 }}>Already exists</span>
+                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: "var(--space-sm)" }}>Already exists</span>
                 )}
               </span>
             )}
@@ -1045,7 +1045,7 @@ export function AddDeviceDialog({
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-sm)",
                 textTransform: "uppercase",
-                letterSpacing: "0.5px",
+                letterSpacing: "var(--tracking-wide)",
               }}
             >
               Connection Settings
@@ -1277,7 +1277,7 @@ export function EditDeviceDialog({
           <input value={device.id} disabled style={{ width: "100%", opacity: 0.6 }} />
           <div
             style={{
-              fontSize: "11px",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               marginTop: "var(--space-xs)",
             }}
@@ -1338,7 +1338,7 @@ export function EditDeviceDialog({
                 color: "var(--text-secondary)",
                 marginBottom: "var(--space-sm)",
                 textTransform: "uppercase",
-                letterSpacing: "0.5px",
+                letterSpacing: "var(--tracking-wide)",
               }}
             >
               Connection Settings

@@ -169,7 +169,7 @@ export function StateVariableEditor({
               />
               <button
                 onClick={() => removeVariable(name)}
-                style={{ padding: "2px", color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
@@ -246,7 +246,7 @@ export function StateVariableEditor({
                   placeholder="unit (dB)"
                   style={{ fontSize: "var(--font-size-sm)" }}
                 />
-                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   Numeric bounds and unit, used by panel sliders, the UI
                   Builder&apos;s range matching, and the simulator UI.
                 </div>
@@ -280,9 +280,9 @@ export function StateVariableEditor({
                 />
                 <div
                   style={{
-                    fontSize: "11px",
+                    fontSize: "var(--font-size-xs)",
                     color: "var(--text-muted)",
-                    marginTop: 2,
+                    marginTop: "var(--space-2xs)",
                   }}
                 >
                   Allowed values for this enum, separated by commas.

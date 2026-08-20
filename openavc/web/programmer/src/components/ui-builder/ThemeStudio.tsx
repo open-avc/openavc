@@ -252,7 +252,7 @@ function ColorPickerCell({ value, onChange, fallback }: ColorPickerCellProps) {
           height: 22,
           padding: 0,
           border: "1px solid var(--border-color)",
-          borderRadius: 3,
+          borderRadius: "var(--border-radius)",
           cursor: "pointer",
           flexShrink: 0,
         }}
@@ -278,7 +278,7 @@ function ColorPickerCell({ value, onChange, fallback }: ColorPickerCellProps) {
         width: 28,
         height: 22,
         border: "1px solid var(--border-color)",
-        borderRadius: 3,
+        borderRadius: "var(--border-radius)",
         cursor: "pointer",
         flexShrink: 0,
         display: "block",
@@ -1130,32 +1130,32 @@ export function ThemeStudio({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
-            padding: "10px 16px",
+            gap: "var(--space-md)",
+            padding: "var(--space-md) var(--space-lg)",
             borderBottom: "1px solid var(--border-color)",
             background: "var(--bg-surface)",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+          <div style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-semibold)", color: "var(--text-primary)" }}>
             Theme Studio
           </div>
           {working && (
-            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
               Editing <strong style={{ color: "var(--text-primary)" }}>{working.name}</strong>
-              <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>
+              <span style={{ marginLeft: "var(--space-sm)", color: "var(--text-muted)" }}>
                 ({isCustom ? "custom" : "built-in"})
               </span>
               {isDirty && (
                 <span
                   title="Unsaved changes"
                   style={{
-                    marginLeft: 8,
-                    padding: "1px 8px",
+                    marginLeft: "var(--space-sm)",
+                    padding: "var(--space-2xs) var(--space-sm)",
                     background: "rgba(255,167,38,0.18)",
                     color: "#ffa726",
-                    borderRadius: 10,
-                    fontSize: 11,
-                    fontWeight: 600,
+                    borderRadius: "var(--radius-lg)",
+                    fontSize: "var(--font-size-xs)",
+                    fontWeight: "var(--font-weight-semibold)",
                   }}
                 >
                   Unsaved
@@ -1169,12 +1169,12 @@ export function ThemeStudio({
             onChange={(e) => setPreviewView(e.target.value)}
             title="What the preview pane shows"
             style={{
-              padding: "4px 8px",
+              padding: "var(--space-xs) var(--space-sm)",
               background: "var(--bg-surface)",
               color: "var(--text-primary)",
               border: "1px solid var(--border-color)",
-              borderRadius: 4,
-              fontSize: 12,
+              borderRadius: "var(--border-radius)",
+              fontSize: "var(--font-size-sm)",
             }}
           >
             <option value="gallery">Preview: Element Gallery</option>
@@ -1189,8 +1189,8 @@ export function ThemeStudio({
               onClick={onResetElementStyles}
               title="Remove per-element style overrides so all elements inherit from the theme"
               style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "4px 10px", borderRadius: 4, fontSize: 11,
+                display: "flex", alignItems: "center", gap: "var(--space-xs)",
+                padding: "var(--space-xs) var(--space-md)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
                 background: "transparent", border: "1px solid var(--border-color)",
                 color: "var(--text-secondary)", cursor: "pointer",
               }}
@@ -1211,7 +1211,7 @@ export function ThemeStudio({
               justifyContent: "center",
               background: "transparent",
               border: "1px solid var(--border-color)",
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               cursor: "pointer",
               color: "var(--text-secondary)",
             }}
@@ -1280,11 +1280,11 @@ export function ThemeStudio({
               >
                 <div
                   style={{
-                    padding: "6px 10px",
-                    fontSize: 10,
+                    padding: "var(--space-sm) var(--space-md)",
+                    fontSize: "var(--font-size-2xs)",
                     color: "var(--text-muted)",
                     textTransform: "uppercase",
-                    letterSpacing: "0.5px",
+                    letterSpacing: "var(--tracking-wide)",
                     borderBottom: "1px solid var(--border-color)",
                     background: "var(--bg-base)",
                   }}
@@ -1371,10 +1371,10 @@ export function ThemeStudio({
             }}
             message={
               <>
-                <p style={{ marginBottom: 8 }}>
+                <p style={{ marginBottom: "var(--space-sm)" }}>
                   You have unsaved edits to <strong>"{working?.name}"</strong>.
                 </p>
-                <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
                   {isCustom
                     ? "Save Changes overwrites this theme. Discard reloads it."
                     : "Built-in themes can't be modified. Save as Custom creates an editable copy. Discard loses your edits."}
@@ -1393,11 +1393,11 @@ export function ThemeStudio({
             onConfirm={handleDeleteTheme}
             message={
               <>
-                <p style={{ marginBottom: 8 }}>
+                <p style={{ marginBottom: "var(--space-sm)" }}>
                   Delete <strong>"{working.name}"</strong>? This permanently removes the theme file
                   from this project's <code>themes/</code> directory.
                 </p>
-                <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
                   Pages still set to this theme will fall back to <strong>dark-default</strong>.
                 </p>
               </>
@@ -1440,25 +1440,25 @@ function ThemeCardPreview({ theme }: { theme: ThemeSummary }) {
     <div
       style={{
         background: bg,
-        padding: "10px 12px",
+        padding: "var(--space-md)",
         fontFamily,
         display: "flex",
         flexDirection: "column",
-        gap: 6,
+        gap: "var(--space-sm)",
       }}
     >
-      <div style={{ color: text, fontSize: 11, fontWeight: 600, letterSpacing: 0.2 }}>
+      <div style={{ color: text, fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-semibold)", letterSpacing: "var(--tracking-wide)" }}>
         Sample Panel
       </div>
-      <div style={{ display: "flex", gap: 4 }}>
+      <div style={{ display: "flex", gap: "var(--space-xs)" }}>
         <div
           style={{
             background: buttonBg,
             color: buttonText,
             border: `1px solid ${buttonBorder}`,
             borderRadius: miniRadius,
-            padding: "3px 8px",
-            fontSize: 10,
+            padding: "var(--space-xs) var(--space-sm)",
+            fontSize: "var(--font-size-2xs)",
             flex: 1,
             textAlign: "center",
             fontFamily,
@@ -1471,12 +1471,12 @@ function ThemeCardPreview({ theme }: { theme: ThemeSummary }) {
             background: accent,
             color: buttonText,
             borderRadius: miniRadius,
-            padding: "3px 8px",
-            fontSize: 10,
+            padding: "var(--space-xs) var(--space-sm)",
+            fontSize: "var(--font-size-2xs)",
             flex: 1,
             textAlign: "center",
             fontFamily,
-            fontWeight: 600,
+            fontWeight: "var(--font-weight-semibold)",
           }}
         >
           Active
@@ -1486,7 +1486,7 @@ function ThemeCardPreview({ theme }: { theme: ThemeSummary }) {
         style={{
           background: surface,
           border: `1px solid ${surfaceBorder}`,
-          borderRadius: 3,
+          borderRadius: "var(--border-radius)",
           height: 5,
           position: "relative",
           overflow: "hidden",
@@ -1540,11 +1540,11 @@ function ThemePickerColumn({
         onMouseLeave={() => setHoveredId((id) => (id === t.id ? null : id))}
         style={{
           position: "relative",
-          borderRadius: 6,
+          borderRadius: "var(--radius-lg)",
           border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
           background: "var(--bg-surface)",
           cursor: "pointer",
-          marginBottom: 8,
+          marginBottom: "var(--space-sm)",
           overflow: "hidden",
           transition: "transform 0.12s, box-shadow 0.12s",
           transform: isHovered && !isSelected ? "translateY(-1px)" : "none",
@@ -1554,19 +1554,19 @@ function ThemePickerColumn({
         <ThemeCardPreview theme={t} />
         <div
           style={{
-            padding: "6px 10px 8px",
+            padding: "var(--space-sm) var(--space-md) var(--space-sm)",
             background: isSelected ? "var(--accent-dim, rgba(138,180,147,0.12))" : "var(--bg-surface)",
             borderTop: "1px solid var(--border-color)",
           }}
         >
           <div
             style={{
-              fontSize: 12,
+              fontSize: "var(--font-size-sm)",
               fontWeight: isSelected ? 700 : 600,
               color: "var(--text-primary)",
               display: "flex",
               alignItems: "center",
-              gap: 5,
+              gap: "var(--space-xs)",
             }}
           >
             {t.name}
@@ -1587,10 +1587,10 @@ function ThemePickerColumn({
           {t.description && (
             <div
               style={{
-                fontSize: 10,
+                fontSize: "var(--font-size-2xs)",
                 color: "var(--text-muted)",
-                marginTop: 2,
-                lineHeight: 1.35,
+                marginTop: "var(--space-2xs)",
+                lineHeight: "var(--line-tight)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 display: "-webkit-box",
@@ -1622,7 +1622,7 @@ function ThemePickerColumn({
               justifyContent: "center",
               background: "rgba(0,0,0,0.6)",
               border: "1px solid rgba(255,255,255,0.3)",
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               cursor: busy ? "wait" : "pointer",
               color: "#fff",
               backdropFilter: "blur(4px)",
@@ -1647,26 +1647,26 @@ function ThemePickerColumn({
     >
       <div
         style={{
-          padding: "10px 12px",
-          fontSize: 10,
+          padding: "var(--space-md)",
+          fontSize: "var(--font-size-2xs)",
           color: "var(--text-muted)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
+          letterSpacing: "var(--tracking-wide)",
           borderBottom: "1px solid var(--border-color)",
         }}
       >
         Themes
       </div>
-      <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "var(--space-sm)" }}>
         {builtins.length > 0 && (
           <>
             <div
               style={{
-                fontSize: 10,
+                fontSize: "var(--font-size-2xs)",
                 color: "var(--text-muted)",
-                fontWeight: 600,
+                fontWeight: "var(--font-weight-semibold)",
                 textTransform: "uppercase",
-                padding: "4px 4px",
+                padding: "var(--space-xs)",
               }}
             >
               Built-in
@@ -1678,11 +1678,11 @@ function ThemePickerColumn({
           <>
             <div
               style={{
-                fontSize: 10,
+                fontSize: "var(--font-size-2xs)",
                 color: "var(--text-muted)",
-                fontWeight: 600,
+                fontWeight: "var(--font-weight-semibold)",
                 textTransform: "uppercase",
-                padding: "8px 4px 4px",
+                padding: "var(--space-sm) var(--space-xs) var(--space-xs)",
               }}
             >
               Custom
@@ -1693,8 +1693,8 @@ function ThemePickerColumn({
         {customs.length === 0 && builtins.length > 0 && (
           <div
             style={{
-              padding: "8px",
-              fontSize: 11,
+              padding: "var(--space-sm)",
+              fontSize: "var(--font-size-xs)",
               color: "var(--text-muted)",
               textAlign: "center",
               fontStyle: "italic",
@@ -1706,7 +1706,7 @@ function ThemePickerColumn({
       </div>
       <div
         style={{
-          padding: 8,
+          padding: "var(--space-sm)",
           borderTop: "1px solid var(--border-color)",
         }}
       >
@@ -1714,16 +1714,16 @@ function ThemePickerColumn({
           onClick={onImport}
           style={{
             width: "100%",
-            padding: "6px 10px",
+            padding: "var(--space-sm) var(--space-md)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 6,
+            gap: "var(--space-sm)",
             background: "var(--bg-hover)",
             border: "1px solid var(--border-color)",
-            borderRadius: 4,
+            borderRadius: "var(--border-radius)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
           }}
         >
@@ -1753,7 +1753,7 @@ function SegmentedControl({
       aria-label={ariaLabel}
       style={{
         display: "inline-flex",
-        borderRadius: 6,
+        borderRadius: "var(--radius-lg)",
         overflow: "hidden",
         border: "1px solid var(--border-color)",
       }}
@@ -1768,8 +1768,8 @@ function SegmentedControl({
             aria-checked={selected}
             onClick={() => onChange(opt.value)}
             style={{
-              padding: "5px 14px",
-              fontSize: 11,
+              padding: "var(--space-xs) var(--space-lg)",
+              fontSize: "var(--font-size-xs)",
               fontWeight: selected ? 600 : 400,
               background: selected ? "var(--accent-bg)" : "var(--bg-hover)",
               color: selected ? "#fff" : "var(--text-secondary)",
@@ -1827,54 +1827,54 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
   const surfaceModified = surfaceStyle !== savedSurfaceStyle;
 
   const modifiedPill = (
-    <span style={{ fontSize: 9, color: "var(--accent)", fontWeight: 600, marginLeft: 6 }}>
+    <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--accent)", fontWeight: "var(--font-weight-semibold)", marginLeft: "var(--space-sm)" }}>
       modified
     </span>
   );
 
   const labelStyle: React.CSSProperties = {
-    fontSize: 12,
-    fontWeight: 600,
+    fontSize: "var(--font-size-sm)",
+    fontWeight: "var(--font-weight-semibold)",
     color: "var(--text-primary)",
-    marginBottom: 2,
+    marginBottom: "var(--space-2xs)",
   };
   const hintStyle: React.CSSProperties = {
-    fontSize: 10,
+    fontSize: "var(--font-size-2xs)",
     color: "var(--text-muted)",
-    lineHeight: 1.3,
-    marginBottom: 4,
+    lineHeight: "var(--line-tight)",
+    marginBottom: "var(--space-xs)",
   };
 
   return (
     <div
       style={{
         background: "var(--bg-surface)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-lg)",
         border: "1px solid var(--border-color)",
-        marginBottom: 10,
+        marginBottom: "var(--space-md)",
       }}
     >
       <div
         style={{
-          fontSize: 10,
-          fontWeight: 700,
+          fontSize: "var(--font-size-2xs)",
+          fontWeight: "var(--font-weight-semibold)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
+          letterSpacing: "var(--tracking-wide)",
           color: "var(--text-secondary)",
-          padding: "8px 10px",
+          padding: "var(--space-sm) var(--space-md)",
           borderBottom: "1px solid var(--border-color)",
         }}
       >
         Quick Adjust
       </div>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
         {/* Brand Accent */}
         <div>
           <div style={labelStyle}>Brand Accent{accentModified && modifiedPill}</div>
           <div style={hintStyle}>
             Active buttons, slider fills, fader handles, focus rings, and highlights
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
             <input
               type="color"
               aria-label="Brand accent color"
@@ -1885,7 +1885,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
                 height: 28,
                 padding: 0,
                 border: "1px solid var(--border-color)",
-                borderRadius: 4,
+                borderRadius: "var(--border-radius)",
                 cursor: "pointer",
                 flexShrink: 0,
               }}
@@ -1895,7 +1895,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
               aria-label="Brand accent hex value"
               value={accent}
               onChange={(e) => onSetVar("accent", e.target.value)}
-              style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+              style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
             />
           </div>
         </div>
@@ -1918,7 +1918,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
             }}
           />
           {roundnessPreset === null && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
               Custom ({borderRadius}px), adjust in the Theme section below
             </div>
           )}
@@ -1964,7 +1964,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
             }}
           />
           {typographyPreset === null && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
               Custom: {fontFamily}
             </div>
           )}
@@ -2059,31 +2059,31 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
 
   const sectionStyle: React.CSSProperties = {
     background: "var(--bg-surface)",
-    borderRadius: 6,
+    borderRadius: "var(--radius-lg)",
     border: "1px solid var(--border-color)",
-    marginBottom: 10,
+    marginBottom: "var(--space-md)",
   };
   const titleStyle: React.CSSProperties = {
-    fontSize: 10,
-    fontWeight: 700,
+    fontSize: "var(--font-size-2xs)",
+    fontWeight: "var(--font-weight-semibold)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    letterSpacing: "var(--tracking-wide)",
     color: "var(--text-secondary)",
-    padding: "8px 10px",
+    padding: "var(--space-sm) var(--space-md)",
     borderBottom: "1px solid var(--border-color)",
     display: "flex",
     alignItems: "center",
   };
-  const rowLabel: React.CSSProperties = { width: 90, fontSize: 11, color: "var(--text-secondary)", flexShrink: 0 };
-  const hint: React.CSSProperties = { fontSize: 9, color: "var(--text-muted)", lineHeight: 1.3, marginTop: 2 };
+  const rowLabel: React.CSSProperties = { width: 90, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", flexShrink: 0 };
+  const hint: React.CSSProperties = { fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", lineHeight: "var(--line-tight)", marginTop: "var(--space-2xs)" };
 
   return (
     <div style={sectionStyle}>
       <div style={titleStyle}>
         Page Background
-        {isModified && <span style={{ color: "var(--accent)", marginLeft: 6, fontSize: 9 }}>modified</span>}
+        {isModified && <span style={{ color: "var(--accent)", marginLeft: "var(--space-sm)", fontSize: "var(--font-size-2xs)" }}>modified</span>}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 10 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-md)", padding: "var(--space-md)" }}>
         <div style={hint}>
           The background painted behind every page that doesn&apos;t set its own. Color, image,
           and gradient layer in that order.
@@ -2091,26 +2091,26 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
 
         {/* Solid color */}
         <div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
             <label style={rowLabel}>Color</label>
             <select
               value={colorMode}
               onChange={(e) => setColorMode(e.target.value as "inherit" | "custom")}
-              style={{ flex: 1, fontSize: 11 }}
+              style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
             >
               <option value="inherit">Theme page background (default)</option>
               <option value="custom">Custom color</option>
             </select>
           </div>
           {colorMode === "custom" && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+            <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", marginTop: "var(--space-xs)" }}>
               <span style={rowLabel} />
               <ColorPickerCell value={bgColorRaw} fallback="#1a1a2e" onChange={(next) => update({ background_color: next })} />
               <input
                 type="text"
                 value={bgColorRaw}
                 onChange={(e) => update({ background_color: e.target.value })}
-                style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+                style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
               />
             </div>
           )}
@@ -2118,33 +2118,33 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
 
         {/* Gradient overlay */}
         <div>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--text-secondary)", cursor: "pointer" }}>
+          <label style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", cursor: "pointer" }}>
             <input type="checkbox" checked={!!gradient} onChange={(e) => setGradientEnabled(e.target.checked)} />
             Gradient overlay
           </label>
           {gradient && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <label style={rowLabel}>From</label>
                 <ColorPickerCell value={String(gradient.from ?? "")} fallback="#1a1a2e" onChange={(next) => patchGradient({ from: next })} />
                 <input
                   type="text"
                   value={String(gradient.from ?? "")}
                   onChange={(e) => patchGradient({ from: e.target.value })}
-                  style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+                  style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
                 />
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <label style={rowLabel}>To</label>
                 <ColorPickerCell value={String(gradient.to ?? "")} fallback="#000000" onChange={(next) => patchGradient({ to: next })} />
                 <input
                   type="text"
                   value={String(gradient.to ?? "")}
                   onChange={(e) => patchGradient({ to: e.target.value })}
-                  style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+                  style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
                 />
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <label style={rowLabel}>Angle (deg)</label>
                 <NumericInput
                   value={gradient.angle ?? 180}
@@ -2153,7 +2153,7 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
                   onCommit={(v) => {
                     if (v !== undefined) patchGradient({ angle: v });
                   }}
-                  style={{ flex: 1, fontSize: 11 }}
+                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
                 />
               </div>
             </div>
@@ -2162,42 +2162,42 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
 
         {/* Background image */}
         <div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
             <label style={rowLabel}>Image</label>
             <input
               type="text"
               value={image}
               placeholder="assets://bg.jpg or https://…"
               onChange={(e) => setImage(e.target.value)}
-              style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+              style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
             />
           </div>
           <div style={hint}>Upload images in the Assets panel, then reference them as assets://name.</div>
           {image && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <label style={rowLabel}>Fit</label>
                 <select
                   value={imageSize}
                   onChange={(e) => update({ background_image_size: e.target.value })}
-                  style={{ flex: 1, fontSize: 11 }}
+                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
                 >
                   {IMAGE_SIZE_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <label style={rowLabel}>Position</label>
                 <input
                   type="text"
                   value={imagePos}
                   placeholder="center"
                   onChange={(e) => update({ background_image_position: e.target.value })}
-                  style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+                  style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
                 />
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                 <label style={rowLabel}>Opacity</label>
                 <NumericInput
                   value={imageOpacity}
@@ -2207,7 +2207,7 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
                   onCommit={(v) => {
                     if (v !== undefined) update({ background_image_opacity: v });
                   }}
-                  style={{ flex: 1, fontSize: 11 }}
+                  style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
                 />
               </div>
             </div>
@@ -2368,7 +2368,7 @@ function EditorColumn({
           alignItems: "center",
           justifyContent: "center",
           color: "var(--text-muted)",
-          padding: 16,
+          padding: "var(--space-lg)",
         }}
       >
         Loading theme…
@@ -2378,17 +2378,17 @@ function EditorColumn({
 
   const sectionStyle: React.CSSProperties = {
     background: "var(--bg-surface)",
-    borderRadius: 6,
+    borderRadius: "var(--radius-lg)",
     border: "1px solid var(--border-color)",
-    marginBottom: 10,
+    marginBottom: "var(--space-md)",
   };
   const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 10,
-    fontWeight: 700,
+    fontSize: "var(--font-size-2xs)",
+    fontWeight: "var(--font-weight-semibold)",
     textTransform: "uppercase",
-    letterSpacing: "0.5px",
+    letterSpacing: "var(--tracking-wide)",
     color: "var(--text-secondary)",
-    padding: "8px 10px",
+    padding: "var(--space-sm) var(--space-md)",
     borderBottom: "1px solid var(--border-color)",
   };
 
@@ -2400,11 +2400,11 @@ function EditorColumn({
       {/* Action bar */}
       <div
         style={{
-          padding: "8px 10px",
+          padding: "var(--space-sm) var(--space-md)",
           background: "var(--bg-surface)",
           borderBottom: "1px solid var(--border-color)",
           display: "flex",
-          gap: 6,
+          gap: "var(--space-sm)",
           flexWrap: "wrap",
           alignItems: "center",
         }}
@@ -2417,15 +2417,15 @@ function EditorColumn({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
-              padding: "6px 12px",
+              gap: "var(--space-xs)",
+              padding: "var(--space-sm) var(--space-md)",
               background: "var(--accent-bg)",
               color: "#fff",
               border: "none",
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               cursor: busy || !isDirty ? "not-allowed" : "pointer",
-              fontSize: 12,
-              fontWeight: 600,
+              fontSize: "var(--font-size-sm)",
+              fontWeight: "var(--font-weight-semibold)",
               opacity: busy || !isDirty ? 0.55 : 1,
             }}
           >
@@ -2437,14 +2437,14 @@ function EditorColumn({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
-              padding: "6px 10px",
+              gap: "var(--space-xs)",
+              padding: "var(--space-sm) var(--space-md)",
               background: "rgba(255,167,38,0.12)",
               color: "#ffa726",
               border: "1px solid rgba(255,167,38,0.3)",
-              borderRadius: 4,
-              fontSize: 11,
-              fontWeight: 600,
+              borderRadius: "var(--border-radius)",
+              fontSize: "var(--font-size-xs)",
+              fontWeight: "var(--font-weight-semibold)",
             }}
           >
             <AlertTriangle size={12} /> Built-in (read-only)
@@ -2457,14 +2457,14 @@ function EditorColumn({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm) var(--space-md)",
             background: isCustom ? "var(--bg-hover)" : "var(--accent-bg)",
             color: isCustom ? "var(--text-primary)" : "#fff",
             border: isCustom ? "1px solid var(--border-color)" : "none",
-            borderRadius: 4,
+            borderRadius: "var(--border-radius)",
             cursor: busy ? "not-allowed" : "pointer",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             opacity: busy ? 0.55 : 1,
           }}
         >
@@ -2478,13 +2478,13 @@ function EditorColumn({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm) var(--space-md)",
             background: "var(--bg-hover)",
             border: "1px solid var(--border-color)",
-            borderRadius: 4,
+            borderRadius: "var(--border-radius)",
             cursor: !isDirty ? "not-allowed" : "pointer",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
             opacity: !isDirty ? 0.5 : 1,
           }}
@@ -2497,13 +2497,13 @@ function EditorColumn({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
+            gap: "var(--space-xs)",
+            padding: "var(--space-sm) var(--space-md)",
             background: "var(--bg-hover)",
             border: "1px solid var(--border-color)",
-            borderRadius: 4,
+            borderRadius: "var(--border-radius)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
           }}
         >
@@ -2517,13 +2517,13 @@ function EditorColumn({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 4,
-              padding: "6px 12px",
+              gap: "var(--space-xs)",
+              padding: "var(--space-sm) var(--space-md)",
               background: "transparent",
               border: "1px solid var(--border-color)",
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               cursor: busy ? "not-allowed" : "pointer",
-              fontSize: 12,
+              fontSize: "var(--font-size-sm)",
               color: "#ef5350",
               marginLeft: "auto",
             }}
@@ -2536,8 +2536,8 @@ function EditorColumn({
       {statusMsg && (
         <div
           style={{
-            padding: "6px 12px",
-            fontSize: 11,
+            padding: "var(--space-sm) var(--space-md)",
+            fontSize: "var(--font-size-xs)",
             color: statusMsg.kind === "error" ? "#ef5350" : "#66bb6a",
             background: "var(--bg-surface)",
             borderBottom: "1px solid var(--border-color)",
@@ -2553,36 +2553,36 @@ function EditorColumn({
       {Object.keys(themeOverrides).length > 0 && (
         <div
           style={{
-            padding: "8px 12px",
+            padding: "var(--space-sm) var(--space-md)",
             background: "rgba(255,167,38,0.12)",
             borderBottom: "1px solid rgba(255,167,38,0.4)",
             color: "#ffa726",
-            fontSize: 11,
+            fontSize: "var(--font-size-xs)",
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            gap: "var(--space-sm)",
           }}
         >
           <AlertTriangle size={14} style={{ flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
             <strong>{Object.keys(themeOverrides).length} project override{Object.keys(themeOverrides).length === 1 ? "" : "s"}</strong>
             {" "}applied on top of this theme:{" "}
-            <code style={{ fontSize: 10 }}>{Object.keys(themeOverrides).join(", ")}</code>
-            <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
+            <code style={{ fontSize: "var(--font-size-2xs)" }}>{Object.keys(themeOverrides).join(", ")}</code>
+            <div style={{ color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
               The panel may not match what the editor shows until these are cleared or saved into the theme.
             </div>
           </div>
           <button
             onClick={onClearOverrides}
             style={{
-              padding: "4px 10px",
+              padding: "var(--space-xs) var(--space-md)",
               background: "transparent",
               border: "1px solid #ffa726",
-              borderRadius: 4,
+              borderRadius: "var(--border-radius)",
               color: "#ffa726",
               cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
+              fontSize: "var(--font-size-xs)",
+              fontWeight: "var(--font-weight-semibold)",
               flexShrink: 0,
             }}
           >
@@ -2591,27 +2591,27 @@ function EditorColumn({
         </div>
       )}
 
-      <div ref={scrollContainerRef} style={{ flex: 1, overflow: "auto", padding: 10 }}>
+      <div ref={scrollContainerRef} style={{ flex: 1, overflow: "auto", padding: "var(--space-md)" }}>
         {/* Theme info */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>Theme Info</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <label style={{ width: 70, fontSize: 11, color: "var(--text-secondary)" }}>Name</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", padding: "var(--space-md)" }}>
+            <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
+              <label style={{ width: 70, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>Name</label>
               <input
                 value={working.name}
                 onChange={(e) => onSetName(e.target.value)}
-                style={{ flex: 1, fontSize: 12 }}
+                style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
               />
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <label style={{ width: 70, fontSize: 11, color: "var(--text-secondary)", paddingTop: 4 }}>
+            <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "flex-start" }}>
+              <label style={{ width: 70, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", paddingTop: "var(--space-xs)" }}>
                 Description
               </label>
               <input
                 value={working.description || ""}
                 onChange={(e) => onSetDesc(e.target.value)}
-                style={{ flex: 1, fontSize: 12 }}
+                style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
               />
             </div>
           </div>
@@ -2630,7 +2630,7 @@ function EditorColumn({
         {/* Theme tokens — foundational values used across many elements */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>Theme</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)", padding: "var(--space-md)" }}>
             {THEME_TOKENS.map((tok) => {
               const val = vars[tok.key];
               const saved = savedVars[tok.key];
@@ -2642,11 +2642,11 @@ function EditorColumn({
               const isInherited = (val == null || val === "") && !!fallback;
               return (
                 <div key={tok.key}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
                     <label
                       style={{
                         width: 130,
-                        fontSize: 11,
+                        fontSize: "var(--font-size-xs)",
                         color: isModified ? "var(--accent)" : "var(--text-secondary)",
                         fontWeight: isModified ? 600 : 400,
                       }}
@@ -2667,7 +2667,7 @@ function EditorColumn({
                           placeholder={isInherited ? `${fallback} (inherited)` : ""}
                           title={isInherited ? `Inherits ${fallback}` : undefined}
                           onChange={(e) => onSetVar(tok.key, e.target.value)}
-                          style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
+                          style={{ flex: 1, fontSize: "var(--font-size-xs)", fontFamily: "monospace" }}
                         />
                       </>
                     ) : tok.type === "number" ? (
@@ -2680,13 +2680,13 @@ function EditorColumn({
                         }}
                         min={0}
                         max={64}
-                        style={{ flex: 1, fontSize: 11 }}
+                        style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
                       />
                     ) : (
                       <select
                         value={String(val ?? "Inter, system-ui, sans-serif")}
                         onChange={(e) => onSetVar(tok.key, e.target.value)}
-                        style={{ flex: 1, fontSize: 11 }}
+                        style={{ flex: 1, fontSize: "var(--font-size-xs)" }}
                       >
                         <option value="Inter, system-ui, sans-serif">Inter</option>
                         <option value="system-ui, sans-serif">System UI</option>
@@ -2704,7 +2704,7 @@ function EditorColumn({
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          padding: 2,
+                          padding: "var(--space-2xs)",
                           background: "transparent",
                           border: "none",
                           cursor: "pointer",
@@ -2733,7 +2733,7 @@ function EditorColumn({
         {/* Per-element styling */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>Elements</div>
-          <div style={{ padding: 10 }}>
+          <div style={{ padding: "var(--space-md)" }}>
             {ELEMENT_ORDER.map((elType) => {
               const controls = ELEMENT_CONTROLS[elType];
               if (!controls) return null;
@@ -2741,20 +2741,20 @@ function EditorColumn({
                 <details
                   key={elType}
                   ref={(el) => { elementRefs.current[elType] = el; }}
-                  style={{ marginBottom: 6 }}
+                  style={{ marginBottom: "var(--space-sm)" }}
                 >
                   <summary
                     style={{
                       cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 600,
+                      fontSize: "var(--font-size-sm)",
+                      fontWeight: "var(--font-weight-semibold)",
                       color: "var(--text-primary)",
-                      padding: "4px 0",
+                      padding: "var(--space-xs) 0",
                     }}
                   >
                     {ELEMENT_TYPE_LABELS[elType] || elType}
                   </summary>
-                  <div style={{ paddingLeft: 12, paddingTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ paddingLeft: "var(--space-md)", paddingTop: "var(--space-xs)", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
                     {controls.map((control) => {
                       const val =
                         control.source.kind === "var"
@@ -2792,7 +2792,7 @@ function EditorColumn({
                           <div
                             style={{
                               display: "flex",
-                              gap: 6,
+                              gap: "var(--space-sm)",
                               alignItems: isBoxShadow ? "flex-start" : "center",
                             }}
                           >
@@ -2800,7 +2800,7 @@ function EditorColumn({
                               title={control.hint}
                               style={{
                                 width: 130,
-                                fontSize: 10,
+                                fontSize: "var(--font-size-2xs)",
                                 color: isModified ? "var(--accent)" : "var(--text-muted)",
                                 fontWeight: isModified ? 600 : 400,
                                 paddingTop: isBoxShadow ? 4 : 0,
@@ -2833,7 +2833,7 @@ function EditorColumn({
                                       : undefined
                                   }
                                   onChange={(e) => setControl(e.target.value)}
-                                  style={{ flex: 1, fontSize: 10, fontFamily: "monospace" }}
+                                  style={{ flex: 1, fontSize: "var(--font-size-2xs)", fontFamily: "monospace" }}
                                 />
                               </>
                             ) : control.type === "number" ? (
@@ -2851,7 +2851,7 @@ function EditorColumn({
                                       : storeStyleValue(control.source.key, Number(e.target.value)),
                                   )
                                 }
-                                style={{ flex: 1, fontSize: 10 }}
+                                style={{ flex: 1, fontSize: "var(--font-size-2xs)" }}
                               />
                             ) : isBoxShadow ? (
                               <textarea
@@ -2863,11 +2863,11 @@ function EditorColumn({
                                 spellCheck={false}
                                 style={{
                                   flex: 1,
-                                  fontSize: 10,
+                                  fontSize: "var(--font-size-2xs)",
                                   fontFamily: "monospace",
                                   resize: "vertical",
                                   minHeight: 32,
-                                  lineHeight: 1.3,
+                                  lineHeight: "var(--line-tight)",
                                 }}
                               />
                             ) : (
@@ -2877,7 +2877,7 @@ function EditorColumn({
                                 onChange={(e) => setControl(e.target.value)}
                                 placeholder="none"
                                 title={String(val ?? "")}
-                                style={{ flex: 1, fontSize: 10, fontFamily: "monospace" }}
+                                style={{ flex: 1, fontSize: "var(--font-size-2xs)", fontFamily: "monospace" }}
                               />
                             )}
                             {isModified && (
@@ -2888,7 +2888,7 @@ function EditorColumn({
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
-                                  padding: 2,
+                                  padding: "var(--space-2xs)",
                                   background: "transparent",
                                   border: "none",
                                   cursor: "pointer",
@@ -2904,11 +2904,11 @@ function EditorColumn({
                           {control.hint && (
                             <div
                               style={{
-                                fontSize: 9,
+                                fontSize: "var(--font-size-2xs)",
                                 color: "var(--text-muted)",
                                 paddingLeft: 136,
-                                marginTop: 1,
-                                lineHeight: 1.3,
+                                marginTop: "var(--space-2xs)",
+                                lineHeight: "var(--line-tight)",
                               }}
                             >
                               {control.hint}
@@ -2929,16 +2929,16 @@ function EditorColumn({
           <div style={sectionTitleStyle}>
             Contrast (WCAG)
             {failingContrasts.length > 0 && (
-              <span style={{ color: "#ef5350", marginLeft: 6, fontWeight: 600 }}>
+              <span style={{ color: "#ef5350", marginLeft: "var(--space-sm)", fontWeight: "var(--font-weight-semibold)" }}>
                 {failingContrasts.length} failing
               </span>
             )}
           </div>
-          <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ padding: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
             {contrastChecks.map((c) => (
               <div
                 key={c.label}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}
+                style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)" }}
               >
                 {c.level === "fail" ? (
                   <AlertTriangle size={12} style={{ color: "#ef5350", flexShrink: 0 }} />
@@ -2948,12 +2948,12 @@ function EditorColumn({
                   <Check size={12} style={{ color: "#66bb6a", flexShrink: 0 }} />
                 )}
                 <span style={{ flex: 1, color: "var(--text-secondary)" }}>{c.label}</span>
-                <div style={{ display: "flex", gap: 2 }}>
+                <div style={{ display: "flex", gap: "var(--space-2xs)" }}>
                   <div
                     style={{
                       width: 12,
                       height: 12,
-                      borderRadius: 2,
+                      borderRadius: "var(--radius-sm)",
                       background: c.fg,
                       border: "1px solid rgba(128,128,128,0.3)",
                     }}
@@ -2962,7 +2962,7 @@ function EditorColumn({
                     style={{
                       width: 12,
                       height: 12,
-                      borderRadius: 2,
+                      borderRadius: "var(--radius-sm)",
                       background: c.bg,
                       border: "1px solid rgba(128,128,128,0.3)",
                     }}
@@ -2971,8 +2971,8 @@ function EditorColumn({
                 <span
                   style={{
                     fontFamily: "monospace",
-                    fontSize: 10,
-                    fontWeight: 600,
+                    fontSize: "var(--font-size-2xs)",
+                    fontWeight: "var(--font-weight-semibold)",
                     color:
                       c.level === "fail" ? "#ef5350"
                       : c.level === "na" ? "var(--text-muted)"
@@ -2983,11 +2983,11 @@ function EditorColumn({
                   }}
                 >
                   {c.ratio ? `${c.ratio.toFixed(1)}:1` : "—"}{" "}
-                  <span style={{ fontSize: 8 }}>{c.level === "na" ? "n/a" : c.level}</span>
+                  <span style={{ fontSize: "var(--font-size-2xs)" }}>{c.level === "na" ? "n/a" : c.level}</span>
                 </span>
               </div>
             ))}
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
+            <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)", marginTop: "var(--space-sm)", lineHeight: "var(--line-tight)" }}>
               WCAG AA requires 4.5:1 for normal text. AAA requires 7:1.
             </div>
           </div>

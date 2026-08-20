@@ -178,16 +178,16 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
           padding: "var(--space-sm) var(--space-md)",
           borderRadius: "var(--border-radius)",
           marginBottom: "var(--space-md)",
-          lineHeight: 1.6,
+          lineHeight: "var(--line-relaxed)",
         }}
       >
         <strong>Quick reference:</strong>{" "}
-        <code style={{ background: "var(--bg-surface)", padding: "1px 4px", borderRadius: 3 }}>(\d+)</code> captures a number,{" "}
-        <code style={{ background: "var(--bg-surface)", padding: "1px 4px", borderRadius: 3 }}>(\w+)</code> captures a word,{" "}
-        <code style={{ background: "var(--bg-surface)", padding: "1px 4px", borderRadius: 3 }}>(.+)</code> captures anything.
+        <code style={{ background: "var(--bg-surface)", padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)" }}>(\d+)</code> captures a number,{" "}
+        <code style={{ background: "var(--bg-surface)", padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)" }}>(\w+)</code> captures a word,{" "}
+        <code style={{ background: "var(--bg-surface)", padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)" }}>(.+)</code> captures anything.
         <br />
-        Example: if the device sends <code style={{ background: "var(--bg-surface)", padding: "1px 4px", borderRadius: 3 }}>Vol65</code>, the
-        pattern <code style={{ background: "var(--bg-surface)", padding: "1px 4px", borderRadius: 3 }}>Vol(\d+)</code> captures <strong>65</strong> as
+        Example: if the device sends <code style={{ background: "var(--bg-surface)", padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)" }}>Vol65</code>, the
+        pattern <code style={{ background: "var(--bg-surface)", padding: "var(--space-2xs) var(--space-xs)", borderRadius: "var(--border-radius)" }}>Vol(\d+)</code> captures <strong>65</strong> as
         Group 1, which you map to your <em>volume</em> state variable.
       </div>
 
@@ -227,7 +227,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               <span
                 style={{
                   fontSize: "var(--font-size-sm)",
-                  fontWeight: 600,
+                  fontWeight: "var(--font-weight-semibold)",
                 }}
               >
                 Response Rule {i + 1}
@@ -246,7 +246,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
             </div>
             <button
               onClick={() => removeResponse(i)}
-              style={{ padding: "2px", color: "var(--text-muted)" }}
+              style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
             >
               <Trash2 size={14} />
             </button>
@@ -353,7 +353,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                         jsonRows.filter((_, j) => j !== ri),
                       )
                     }
-                    style={{ padding: "2px", color: "var(--text-muted)" }}
+                    style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -416,7 +416,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               />
               <div
                 style={{
-                  fontSize: "11px",
+                  fontSize: "var(--font-size-xs)",
                   color: "var(--text-muted)",
                   marginTop: "var(--space-xs)",
                 }}
@@ -442,7 +442,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 }}
               />
               {pattern && (() => { try { new RegExp(pattern); return null; } catch (e) { return (
-                <div style={{ fontSize: 11, color: "var(--color-error, #f44336)", marginTop: 2 }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error, #f44336)", marginTop: "var(--space-2xs)" }}>
                   Invalid regex: {String(e).replace("SyntaxError: ", "")}
                 </div>
               ); } })()}
@@ -537,7 +537,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                   const next = mappings.filter((_, j) => j !== mi);
                   updateResponse(i, buildResponse(pattern, next, resp, stateVars));
                 }}
-                style={{ padding: "2px", color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={12} />
               </button>
@@ -623,7 +623,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               placeholder="off"
               style={{ width: 80, fontSize: "var(--font-size-sm)" }}
             />
-            <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+            <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
               Drop re-matches of this rule for N seconds — for high-rate
               telemetry frames (meters). Leave blank for normal responses.
             </span>
@@ -830,7 +830,7 @@ function ChildSetEditor({
                   </option>
                 ))}
               </select>
-              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                 ID from
               </span>
               <input
@@ -858,7 +858,7 @@ function ChildSetEditor({
               <span style={{ flex: 1 }} />
               <button
                 onClick={() => onChange(entries.filter((_, j) => j !== idx))}
-                style={{ padding: "2px", color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={12} />
               </button>
@@ -885,7 +885,7 @@ function ChildSetEditor({
                   display: "flex",
                   gap: "var(--space-sm)",
                   alignItems: "center",
-                  marginBottom: 2,
+                  marginBottom: "var(--space-2xs)",
                 }}
               >
                 <select
@@ -906,7 +906,7 @@ function ChildSetEditor({
                     </option>
                   ))}
                 </select>
-                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   =
                 </span>
                 <input
@@ -936,7 +936,7 @@ function ChildSetEditor({
                     delete nextState[prop];
                     updateEntry(idx, { ...entry, state: nextState });
                   }}
-                  style={{ padding: "2px", color: "var(--text-muted)" }}
+                  style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
                 >
                   <Trash2 size={10} />
                 </button>
@@ -953,7 +953,7 @@ function ChildSetEditor({
                   },
                 });
               }}
-              style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+              style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", padding: "var(--space-2xs) 0" }}
             >
               + Property
             </button>
@@ -1024,12 +1024,12 @@ function ValueMapEditor({
       <button
         onClick={hasMap ? toggleMap : addEntry}
         style={{
-          fontSize: "11px",
+          fontSize: "var(--font-size-xs)",
           color: "var(--text-muted)",
           display: "flex",
           alignItems: "center",
-          gap: 2,
-          padding: "2px 0",
+          gap: "var(--space-2xs)",
+          padding: "var(--space-2xs) 0",
         }}
       >
         {hasMap ? (
@@ -1050,28 +1050,28 @@ function ValueMapEditor({
             borderRadius: "var(--border-radius)",
           }}
         >
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginBottom: "var(--space-xs)" }}>
             Map raw values to friendly names (e.g., &quot;01&quot; → &quot;on&quot;)
           </div>
           {entries.map(([key, value], i) => (
-            <div key={i} style={{ display: "flex", gap: 4, marginBottom: 2, alignItems: "flex-start" }}>
+            <div key={i} style={{ display: "flex", gap: "var(--space-xs)", marginBottom: "var(--space-2xs)", alignItems: "flex-start" }}>
               <IdRenameInput
                 value={key}
                 sanitize={(raw) => raw}
                 onCommit={(next) => renameEntry(key, next)}
                 placeholder="raw"
-                style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "11px" }}
+                style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)" }}
               />
-              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
+              <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>→</span>
               <input
                 value={value}
                 onChange={(e) => setEntryValue(key, e.target.value)}
                 placeholder="mapped"
-                style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "11px" }}
+                style={{ width: 80, fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)" }}
               />
               <button
                 onClick={() => removeEntry(key)}
-                style={{ padding: 1, color: "var(--text-muted)" }}
+                style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
               >
                 <Trash2 size={10} />
               </button>
@@ -1079,7 +1079,7 @@ function ValueMapEditor({
           ))}
           <button
             onClick={addEntry}
-            style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+            style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", padding: "var(--space-2xs) 0" }}
           >
             + Add
           </button>
@@ -1106,7 +1106,7 @@ function WireIdMapRows({
       <button
         onClick={() => onChange({ "": "" })}
         title="Translate the captured wire id to the child ID (e.g. a 0-based protocol channel to a 1-based child)"
-        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+        style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", padding: "var(--space-2xs) 0" }}
       >
         + Wire ID map
       </button>
@@ -1121,7 +1121,7 @@ function WireIdMapRows({
   };
   return (
     <div style={{ margin: "2px 0 var(--space-xs) 0" }}>
-      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
         Wire ID → Child ID
       </div>
       {rows.map(([wire, local], ri) => (
@@ -1131,7 +1131,7 @@ function WireIdMapRows({
             display: "flex",
             gap: "var(--space-xs)",
             alignItems: "center",
-            marginBottom: 2,
+            marginBottom: "var(--space-2xs)",
           }}
         >
           <input
@@ -1153,7 +1153,7 @@ function WireIdMapRows({
               fontSize: "var(--font-size-sm)",
             }}
           />
-          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>→</span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>→</span>
           <input
             value={String(local)}
             onChange={(e) =>
@@ -1172,7 +1172,7 @@ function WireIdMapRows({
           />
           <button
             onClick={() => rebuild((next) => delete next[wire])}
-            style={{ padding: 1, color: "var(--text-muted)" }}
+            style={{ padding: "var(--space-2xs)", color: "var(--text-muted)" }}
           >
             <Trash2 size={10} />
           </button>
@@ -1182,7 +1182,7 @@ function WireIdMapRows({
         onClick={() => rebuild((next) => {
           if (!("" in next)) next[""] = "";
         })}
-        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+        style={{ fontSize: "var(--font-size-xs)", color: "var(--accent)", padding: "var(--space-2xs) 0" }}
       >
         + Add
       </button>

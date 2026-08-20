@@ -66,7 +66,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         rows={1}
         style={{
           flex: 1,
-          padding: "8px 12px",
+          padding: "var(--space-sm) var(--space-md)",
           fontSize: "var(--font-size-sm)",
           borderRadius: "var(--border-radius)",
           border: "1px solid var(--border-color)",
@@ -74,7 +74,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           color: "var(--text-primary)",
           resize: "none",
           fontFamily: "inherit",
-          lineHeight: 1.5,
+          lineHeight: "var(--line-base)",
           minHeight: 38,
           maxHeight: 120,
           overflow: "auto",
@@ -84,7 +84,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         onClick={handleSend}
         disabled={disabled || !text.trim()}
         style={{
-          padding: "8px 12px",
+          padding: "var(--space-sm) var(--space-md)",
           borderRadius: "var(--border-radius)",
           background: disabled || !text.trim() ? "var(--bg-hover)" : "var(--accent-bg)",
           color: disabled || !text.trim() ? "var(--text-muted)" : "#fff",

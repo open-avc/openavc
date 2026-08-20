@@ -169,7 +169,7 @@ export function ParamInput({
   const rowStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: "var(--space-xs)",
     ...style,
   };
 
@@ -303,7 +303,7 @@ export function ParamInput({
           />
         )}
         {comboHint && (
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+          <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}>
             {comboHint}
           </div>
         )}
@@ -351,7 +351,7 @@ export function ParamInput({
         </select>
         {children !== undefined && registered.length === 0 && (
           <div
-            style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}
+            style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-2xs)" }}
           >
             No registered {ownChildType} entries on this device yet. See the
             Child Entities tab.
@@ -394,8 +394,8 @@ export function ParamInput({
   const error = validateParam(def, value);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", ...style }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
         {widget}
         {/* Display only — the unit is never part of the value sent. */}
         {def.unit && (
@@ -414,7 +414,7 @@ export function ParamInput({
       {error && (
         <InlineError
           message={error}
-          style={{ padding: "2px 8px", marginTop: 0, fontSize: 11, borderRadius: 4 }}
+          style={{ padding: "var(--space-2xs) var(--space-sm)", marginTop: 0, fontSize: "var(--font-size-xs)", borderRadius: "var(--border-radius)" }}
         />
       )}
     </div>
