@@ -602,9 +602,9 @@ const warnBoxStyle: React.CSSProperties = {
   gap: "var(--space-sm)",
   padding: "var(--space-sm)",
   borderRadius: "var(--border-radius)",
-  background: "rgba(245,158,11,0.1)",
+  background: "var(--color-warning-bg)",
   border: "1px solid rgba(245,158,11,0.25)",
   fontSize: "var(--font-size-sm)",
-  color: "#d97706",
+  color: "var(--color-warning)",
   lineHeight: "var(--line-tight)",
 };

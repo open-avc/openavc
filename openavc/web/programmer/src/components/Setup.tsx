@@ -74,8 +74,8 @@ export function Setup({ onComplete }: SetupProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--bg-primary, #1a1a2e)",
-        color: "var(--text-primary, #fff)",
+        background: "var(--bg-primary)",
+        color: "var(--text-primary)",
       }}
     >
       <form
@@ -143,9 +143,9 @@ export function Setup({ onComplete }: SetupProps) {
           <div style={{ fontSize: "var(--font-size-sm)", opacity: 0.7 }}>Use at least 8 characters.</div>
         )}
         {mismatch && (
-          <div style={{ fontSize: "var(--font-size-base)", color: "#ef4444" }}>Passwords don't match.</div>
+          <div style={{ fontSize: "var(--font-size-base)", color: "var(--color-error)" }}>Passwords don't match.</div>
         )}
-        {error && <div style={{ fontSize: "var(--font-size-base)", color: "#ef4444" }}>{error}</div>}
+        {error && <div style={{ fontSize: "var(--font-size-base)", color: "var(--color-error)" }}>{error}</div>}
 
         <button
           type="submit"
@@ -175,8 +175,8 @@ export function Setup({ onComplete }: SetupProps) {
 const inputStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",
   borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color, #444)",
-  background: "var(--bg-primary, #1a1a2e)",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-primary)",
   color: "inherit",
   fontSize: "var(--font-size-lg)",
   outline: "none",

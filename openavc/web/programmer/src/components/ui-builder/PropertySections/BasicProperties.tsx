@@ -1254,7 +1254,7 @@ function MatrixSetupRow({
             padding: "var(--space-xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             border: "1px dashed var(--accent)",
-            background: "rgba(138,180,147,0.08)",
+            background: "var(--accent-dim)",
             color: "var(--accent)",
             fontSize: "var(--font-size-xs)",
             cursor: "pointer",
@@ -1959,7 +1959,7 @@ function PanelFieldControl({
           onChange={(e) => set(e.target.value)}
           placeholder={field.default != null ? String(field.default) : ""}
           rows={4}
-          style={{ flex: 1, resize: "vertical", fontFamily: "var(--font-mono, monospace)", fontSize: "var(--font-size-sm)" }}
+          style={{ flex: 1, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-sm)" }}
         />
       );
     default:

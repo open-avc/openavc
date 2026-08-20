@@ -240,7 +240,7 @@ const warningBoxStyle: React.CSSProperties = {
   fontSize: "var(--font-size-xs)",
   padding: "var(--space-sm)",
   borderRadius: "var(--border-radius)",
-  background: "rgba(255,152,0,0.12)",
+  background: "var(--color-warning-bg)",
   border: "1px solid rgba(255,152,0,0.4)",
   color: "var(--text-primary)",
 };

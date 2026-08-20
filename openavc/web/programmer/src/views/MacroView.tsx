@@ -226,15 +226,15 @@ export function MacroView() {
               <div style={{
                 padding: "var(--space-sm) var(--space-md)",
                 borderTop: "1px solid rgba(245,158,11,0.3)",
-                background: "rgba(245,158,11,0.06)",
+                background: "var(--color-warning-bg)",
                 fontSize: "var(--font-size-sm)",
                 color: "var(--text-secondary)",
                 lineHeight: "var(--line-base)",
               }}>
-                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "#f59e0b", marginBottom: "var(--space-xs)" }}>Conversion notes</div>
+                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--color-warning)", marginBottom: "var(--space-xs)" }}>Conversion notes</div>
                 {scriptPreview.warnings.map((w, i) => (
                   <div key={i} style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-2xs)" }}>
-                    <span style={{ color: "#f59e0b", flexShrink: 0 }}>•</span>
+                    <span style={{ color: "var(--color-warning)", flexShrink: 0 }}>•</span>
                     <span>{w}</span>
                   </div>
                 ))}

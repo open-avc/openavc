@@ -134,7 +134,7 @@ const warningBox: React.CSSProperties = {
   alignItems: "flex-start",
   gap: "var(--space-sm)",
   padding: "var(--space-md)",
-  background: "rgba(255, 152, 0, 0.08)",
+  background: "var(--color-warning-bg)",
   border: "1px solid rgba(255, 152, 0, 0.3)",
   borderRadius: "var(--border-radius)",
   fontSize: "var(--font-size-sm)",
@@ -148,7 +148,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       type="button"
       style={{
         ...toggleStyle,
-        background: checked ? "var(--accent-bg)" : "var(--bg-hover, #555)",
+        background: checked ? "var(--accent-bg)" : "var(--bg-hover)",
       }}
       onClick={() => onChange(!checked)}
     >
@@ -698,7 +698,7 @@ export function SystemSettingsView() {
             - !hasDirty: settings saved; offer to restart in-app. */}
         {restartNeeded && (
           <div style={warningBox}>
-            <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+            <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap", flex: 1 }}>
               <span style={{ flex: 1 }}>
                 {hasDirty
@@ -710,8 +710,8 @@ export function SystemSettingsView() {
                   onClick={() => setShowRestartDialog(true)}
                   style={{
                     ...btnStyle,
-                    background: "rgb(255, 152, 0)",
-                    color: "#fff",
+                    background: "var(--color-warning)",
+                    color: "var(--text-on-accent)",
                     border: "none",
                   }}
                 >
@@ -726,7 +726,7 @@ export function SystemSettingsView() {
         {/* Security warning */}
         {noAuth && publicBind && (
           <div style={warningBox}>
-            <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+            <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
             <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer login</strong> below to require credentials.</span>
           </div>
         )}
@@ -871,7 +871,7 @@ export function SystemSettingsView() {
 
           {switchingOff && (
             <div style={warningBox}>
-              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 You're disabling HTTPS while connected over <code>https://</code>. After restart, this page will be at{" "}
                 <code>http://&lt;server&gt;:{net.http_port}/programmer</code>. Update any bookmarks pointing to{" "}
@@ -881,7 +881,7 @@ export function SystemSettingsView() {
           )}
           {switchingOn && (
             <div style={warningBox}>
-              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 You're enabling HTTPS while connected over <code>http://</code>. After restart, this page will be at{" "}
                 <code>https://&lt;server&gt;:{tls?.port ?? 8443}/programmer</code>. Your browser will show a warning
@@ -934,13 +934,13 @@ export function SystemSettingsView() {
                       gap: "var(--space-sm)",
                       padding: "var(--space-md)",
                       marginBottom: "var(--space-md)",
-                      background: "rgba(76, 175, 80, 0.08)",
+                      background: "var(--color-success-bg)",
                       border: "1px solid rgba(76, 175, 80, 0.3)",
                       borderRadius: "var(--border-radius)",
                       fontSize: "var(--font-size-sm)",
                       color: "var(--text-primary)",
                     }}>
-                      <Smartphone size={16} style={{ color: "rgb(76, 175, 80)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+                      <Smartphone size={16} style={{ color: "var(--color-success)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
                       <span>
                         The OpenAVC Panel app (Android v0.1.0-rc6 or newer) trusts this server automatically, with no
                         certificate install needed. The instructions below are for web browsers and the iOS panel app.
@@ -966,7 +966,7 @@ export function SystemSettingsView() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
                         <code style={{
-                          fontFamily: "var(--font-mono, monospace)",
+                          fontFamily: "var(--font-mono)",
                           fontSize: "var(--font-size-sm)",
                           padding: "var(--space-xs) var(--space-sm)",
                           background: "var(--bg-surface)",
@@ -1107,7 +1107,7 @@ export function SystemSettingsView() {
                       border: "1px solid var(--border-color)",
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-xs)" }}>
-                        <FileCheck2 size={16} style={{ color: "rgb(76, 175, 80)" }} />
+                        <FileCheck2 size={16} style={{ color: "var(--color-success)" }} />
                         <strong style={{ fontSize: "var(--font-size-sm)" }}>
                           {uploadResult ? "Certificate uploaded" : "Active certificate"}
                         </strong>
@@ -1126,7 +1126,7 @@ export function SystemSettingsView() {
                         </div>
                         <div><strong>Valid for:</strong> {(uploadResult?.sans ?? tlsStatus?.cert?.sans ?? []).join(", ") || "—"}</div>
                         {uploadResult?.warnings.includes("is-ca-cert") && (
-                          <div style={{ marginTop: "var(--space-xs)", color: "rgb(255, 152, 0)" }}>
+                          <div style={{ marginTop: "var(--space-xs)", color: "var(--color-warning)" }}>
                             <AlertTriangle size={12} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
                             This looks like a CA certificate, not a server certificate. Most browsers won't trust it.
                           </div>
@@ -1269,7 +1269,7 @@ export function SystemSettingsView() {
                   )}
 
                   {tlsProvidedBlank && !uploadResult && (
-                    <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
+                    <div style={{ ...helpText, color: "var(--color-error)", marginTop: "var(--space-sm)" }}>
                       Upload a certificate before saving.
                     </div>
                   )}
@@ -1285,13 +1285,13 @@ export function SystemSettingsView() {
                   max={65535}
                   style={{
                     ...inputStyle,
-                    borderColor: tlsPortError ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
+                    borderColor: tlsPortError ? "var(--color-error)" : (inputStyle.borderColor as string),
                   }}
                   value={tls.port}
                   onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
                 />
                 {tlsPortError && (
-                  <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
+                  <span style={{ ...helpText, color: "var(--color-error)" }}>
                     {tlsPortError}
                   </span>
                 )}
@@ -1329,7 +1329,7 @@ export function SystemSettingsView() {
                   </div>
                   <div><strong>Valid for:</strong> {tlsStatus.cert.sans.join(", ")}</div>
                   {tlsStatus.cert.warnings.length > 0 && (
-                    <div style={{ marginTop: "var(--space-sm)", color: "rgb(255, 152, 0)" }}>
+                    <div style={{ marginTop: "var(--space-sm)", color: "var(--color-warning)" }}>
                       <Lock size={12} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
                       {tlsStatus.cert.warnings.map((w) => warningLabel(w)).join("; ")}
                     </div>
@@ -1337,7 +1337,7 @@ export function SystemSettingsView() {
                 </div>
               )}
               {tlsStatus?.enabled && tlsStatus.error && (
-                <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
+                <div style={{ ...helpText, color: "var(--color-error)", marginTop: "var(--space-sm)" }}>
                   <Lock size={12} style={{ verticalAlign: "middle", marginRight: "var(--space-xs)" }} />
                   {tlsStatus.error}
                 </div>
@@ -1372,7 +1372,7 @@ export function SystemSettingsView() {
             <h4 style={subCardTitle}>
               <ShieldCheck
                 size={16}
-                style={{ verticalAlign: "text-bottom", marginRight: "var(--space-sm)", color: "rgb(76, 175, 80)" }}
+                style={{ verticalAlign: "text-bottom", marginRight: "var(--space-sm)", color: "var(--color-success)" }}
               />
               Trusted certificate
             </h4>
@@ -1420,7 +1420,7 @@ export function SystemSettingsView() {
                   </div>
                 ) : cloudCert.active ? (
                   <div style={{ fontSize: "var(--font-size-sm)", lineHeight: "var(--line-relaxed)", marginBottom: "var(--space-md)" }}>
-                    <div style={{ color: "rgb(76, 175, 80)", marginBottom: "var(--space-xs)" }}>
+                    <div style={{ color: "var(--color-success)", marginBottom: "var(--space-xs)" }}>
                       Serving a trusted certificate for <code>*.{cloudCert.hostname_suffix}</code>
                     </div>
                     {certifiedUrl && (
@@ -1458,7 +1458,7 @@ export function SystemSettingsView() {
                 ) : cloudCert.last_error ? (
                   <div style={{ marginBottom: "var(--space-md)" }}>
                     <div style={warningBox}>
-                      <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+                      <AlertTriangle size={16} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
                       <span>
                         {CLOUD_CERT_ERROR_LABELS[cloudCert.last_error] ?? `Issuance failed (${cloudCert.last_error}).`}
                         {cloudCert.last_error_detail && (

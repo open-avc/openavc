@@ -136,7 +136,7 @@ export function MonitorControl({
             gap: "var(--space-sm)",
             padding: compact ? "var(--space-2xs) var(--space-sm)" : "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: on ? "rgba(138,180,147,0.15)" : "var(--bg-surface)",
+            background: on ? "var(--accent-dim)" : "var(--bg-surface)",
             border: "1px solid " + (on ? "rgba(138,180,147,0.3)" : "var(--border-color)"),
             color: on ? "var(--accent)" : "var(--text-secondary)",
             fontSize: compact ? "var(--font-size-xs)" : "var(--font-size-sm)",

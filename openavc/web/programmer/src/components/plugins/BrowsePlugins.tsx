@@ -360,7 +360,7 @@ function PluginCard({
 
       {/* Error (transient install error) */}
       {error && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", padding: "var(--space-xs)", background: "rgba(244, 67, 54, 0.1)", borderRadius: "var(--border-radius)" }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", padding: "var(--space-xs)", background: "var(--color-error-bg)", borderRadius: "var(--border-radius)" }}>
           {error}
         </div>
       )}
@@ -368,7 +368,7 @@ function PluginCard({
       {/* Persistent load-failed diagnostic (A60). Survives across refreshes
           because it's read from the .install-error sidecar on the server. */}
       {!error && loadFailed && loadError && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", padding: "var(--space-xs)", background: "rgba(244, 67, 54, 0.1)", borderRadius: "var(--border-radius)" }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", padding: "var(--space-xs)", background: "var(--color-error-bg)", borderRadius: "var(--border-radius)" }}>
           <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-2xs)" }}>Plugin failed to load</div>
           <div style={{ wordBreak: "break-word" }}>{loadError}</div>
         </div>

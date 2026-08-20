@@ -460,7 +460,7 @@ export function IrCodesEditor({
           {saved && !dirty && (
             <span
               style={{
-                color: "var(--color-success, #38a169)",
+                color: "var(--color-success)",
                 fontSize: "var(--font-size-sm)",
                 display: "inline-flex",
                 alignItems: "center",
@@ -493,7 +493,7 @@ export function IrCodesEditor({
         <div
           style={{
             ...card,
-            borderColor: "var(--color-warning, #d69e2e)",
+            borderColor: "var(--color-warning)",
             display: "flex",
             alignItems: "center",
             gap: "var(--space-sm)",
@@ -643,7 +643,7 @@ export function IrCodesEditor({
               key={r.key}
               style={
                 incompleteKeys.has(r.key)
-                  ? { ...card, border: "1px solid var(--color-warning, #d69e2e)" }
+                  ? { ...card, border: "1px solid var(--color-warning)" }
                   : card
               }
             >
@@ -699,7 +699,7 @@ export function IrCodesEditor({
                         style={{
                           fontSize: "var(--font-size-xs)",
                           color: incompleteKeys.has(r.key)
-                            ? "var(--color-warning, #d69e2e)"
+                            ? "var(--color-warning)"
                             : "var(--text-muted)",
                           flex: 1,
                           wordBreak: "break-all",

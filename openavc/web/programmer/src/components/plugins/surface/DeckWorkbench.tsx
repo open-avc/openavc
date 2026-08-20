@@ -975,8 +975,8 @@ export function DeckWorkbench({
                       flexShrink: 0,
                       background:
                         status === "connecting"
-                          ? "var(--color-warning, #f59e0b)"
-                          : "var(--color-error, #ef4444)",
+                          ? "var(--color-warning)"
+                          : "var(--color-error)",
                     }}
                   />
                   {key}

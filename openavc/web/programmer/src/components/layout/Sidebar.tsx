@@ -222,7 +222,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: "#f59e0b",
+              background: "var(--color-warning)",
             }}
           />
         )}

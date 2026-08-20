@@ -294,7 +294,7 @@ export function OutlinePanel({
           </span>
         )}
         {!isMaster && !hasBindings(el) && ["button", "slider", "fader", "select", "text_input", "keypad"].includes(el.type) && (
-          <span style={{ color: "#ff9800", fontSize: "var(--font-size-2xs)", flexShrink: 0 }} title="No bindings">!</span>
+          <span style={{ color: "var(--color-warning)", fontSize: "var(--font-size-2xs)", flexShrink: 0 }} title="No bindings">!</span>
         )}
         {isMaster && (
           <Star size={10} style={{ color: "var(--accent)", flexShrink: 0 }} />

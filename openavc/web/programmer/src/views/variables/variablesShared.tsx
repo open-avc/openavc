@@ -376,7 +376,7 @@ const helpBannerStyle: React.CSSProperties = {
   alignItems: "flex-start",
   gap: "var(--space-sm)",
   padding: "var(--space-sm) var(--space-md)",
-  background: "rgba(138,180,147,0.08)",
+  background: "var(--accent-dim)",
   borderBottom: "1px solid rgba(138,180,147,0.15)",
   fontSize: "var(--font-size-sm)",
   color: "var(--text-secondary)",

@@ -60,7 +60,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
             <h2
               style={{
                 fontSize: "var(--font-size-lg)",
-                color: "var(--color-error, #ef4444)",
+                color: "var(--color-error)",
                 marginBottom: "var(--space-md)",
               }}
             >

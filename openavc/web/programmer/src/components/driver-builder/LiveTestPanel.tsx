@@ -881,8 +881,8 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
               padding: "var(--space-2xs) var(--space-sm)",
               borderRadius: "var(--radius-lg)",
               background: "var(--color-warning-bg)",
-              color: "var(--color-warning, #e8b250)",
-              border: "1px solid var(--color-warning, #e8b250)",
+              color: "var(--color-warning)",
+              border: "1px solid var(--color-warning)",
               fontFamily: "var(--font-family)",
             }}
             title="Blocked by the test panel's 2-second rate limit, not the device."
@@ -900,7 +900,7 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
         </div>
       )}
       {entry.received.map((r, j) => (
-        <div key={j} style={{ color: "var(--color-success, #4caf50)" }}>
+        <div key={j} style={{ color: "var(--color-success)" }}>
           ← {visibleBytes(r)}
         </div>
       ))}
@@ -927,7 +927,7 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
         <div
           style={{
             color: entry.throttled
-              ? "var(--color-warning, #e8b250)"
+              ? "var(--color-warning)"
               : "var(--color-error)",
             display: "flex",
             alignItems: "center",
@@ -942,7 +942,7 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
         <div
           key={`contract-${j}`}
           style={{
-            color: "var(--color-warning, #e8b250)",
+            color: "var(--color-warning)",
             display: "flex",
             alignItems: "flex-start",
             gap: "var(--space-xs)",
@@ -991,8 +991,8 @@ function ConflictBanner({
   const allPaused = conflicts.every(isPausedConflict);
   const allResolved = allPaused || acknowledged;
   const tone = allResolved
-    ? { bg: "var(--color-info-bg)", fg: "var(--color-info, #6aa3d6)" }
-    : { bg: "var(--color-warning-bg)", fg: "var(--color-warning, #e8b250)" };
+    ? { bg: "var(--color-info-bg)", fg: "var(--color-info)" }
+    : { bg: "var(--color-warning-bg)", fg: "var(--color-warning)" };
   return (
     <div
       style={{

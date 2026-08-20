@@ -219,8 +219,8 @@ function AuthedApp() {
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "var(--space-sm) var(--space-md)",
-            background: "rgba(244,67,54,0.12)", borderBottom: "1px solid rgba(244,67,54,0.3)",
-            fontSize: "var(--font-size-base)", color: "#ef4444", flexShrink: 0,
+            background: "var(--color-error-bg)", borderBottom: "1px solid rgba(244,67,54,0.3)",
+            fontSize: "var(--font-size-base)", color: "var(--color-error)", flexShrink: 0,
           }}>
             <span>
               <strong>Conflict:</strong> The project was modified by another session. Your changes could not be saved.
@@ -228,13 +228,13 @@ function AuthedApp() {
             <div style={{ display: "flex", gap: "var(--space-sm)" }}>
               <button
                 onClick={dismissConflict}
-                style={{ padding: "var(--space-2xs) var(--space-md)", borderRadius: "var(--border-radius)", border: "1px solid rgba(244,67,54,0.3)", background: "transparent", color: "#ef4444", fontSize: "var(--font-size-sm)", cursor: "pointer" }}
+                style={{ padding: "var(--space-2xs) var(--space-md)", borderRadius: "var(--border-radius)", border: "1px solid rgba(244,67,54,0.3)", background: "transparent", color: "var(--color-error)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}
               >
                 Dismiss
               </button>
               <button
                 onClick={forceReload}
-                style={{ padding: "var(--space-2xs) var(--space-md)", borderRadius: "var(--border-radius)", border: "none", background: "#ef4444", color: "#fff", fontSize: "var(--font-size-sm)", cursor: "pointer" }}
+                style={{ padding: "var(--space-2xs) var(--space-md)", borderRadius: "var(--border-radius)", border: "none", background: "var(--color-error)", color: "var(--text-on-accent)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}
               >
                 Reload Project
               </button>

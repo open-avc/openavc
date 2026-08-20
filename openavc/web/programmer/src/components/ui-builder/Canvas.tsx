@@ -892,7 +892,7 @@ export function Canvas({
                         padding: "var(--space-2xs) var(--space-xs)",
                         borderRadius: "var(--border-radius)",
                         background: "rgba(156,39,176,0.85)",
-                        color: "#fff",
+                        color: "var(--text-on-accent)",
                         pointerEvents: "none",
                         zIndex: 1,
                         fontWeight: "var(--font-weight-semibold)",

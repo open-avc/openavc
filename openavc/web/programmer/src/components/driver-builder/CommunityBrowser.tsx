@@ -411,7 +411,7 @@ export function CommunityBrowser() {
                   activeCategory === cat ? "var(--accent)" : "var(--border-color)",
                 background:
                   activeCategory === cat ? "var(--accent)" : "transparent",
-                color: activeCategory === cat ? "#fff" : "var(--text-muted)",
+                color: activeCategory === cat ? "var(--text-on-accent)" : "var(--text-muted)",
                 fontSize: "var(--font-size-sm)",
                 cursor: "pointer",
                 fontWeight: activeCategory === cat ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
@@ -624,7 +624,7 @@ function DriverCard({
                   borderRadius: "var(--border-radius)",
                   fontSize: "var(--font-size-2xs)",
                   fontWeight: "var(--font-weight-semibold)",
-                  background: "rgba(239, 68, 68, 0.15)",
+                  background: "var(--color-error-bg)",
                   color: "var(--color-error)",
                   border: "1px solid rgba(239, 68, 68, 0.4)",
                   textTransform: "uppercase",
@@ -645,7 +645,7 @@ function DriverCard({
               title={`${card.brand} is covered by ${driver.name}, a generic / multi-brand driver. If a dedicated ${card.brand} driver becomes available, it will appear above this card.`}
               style={{
                 fontSize: "var(--font-size-sm)",
-                color: "#888",
+                color: "var(--text-muted)",
                 marginTop: "var(--space-2xs)",
                 fontStyle: "italic",
               }}
@@ -656,7 +656,7 @@ function DriverCard({
             <div
               style={{
                 fontSize: "var(--font-size-sm)",
-                color: "#888",
+                color: "var(--text-muted)",
                 marginTop: "var(--space-2xs)",
               }}
             >
@@ -699,7 +699,7 @@ function DriverCard({
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-xs)",
-            color: "#888",
+            color: "var(--text-muted)",
             background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.1)",
           }}
@@ -740,7 +740,7 @@ function DriverCard({
       <div
         style={{
           fontSize: "var(--font-size-sm)",
-          color: "#888",
+          color: "var(--text-muted)",
           lineHeight: "var(--line-base)",
           overflow: "hidden",
           display: "-webkit-box",
@@ -753,7 +753,7 @@ function DriverCard({
       </div>
 
       {compatibleModelCount > 0 && (
-        <div style={{ fontSize: "var(--font-size-xs)", color: "#888" }}>
+        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
           Compatible with {compatibleModelCount}{" "}
           {compatibleModelCount === 1 ? "model" : "models"}
         </div>
@@ -765,7 +765,7 @@ function DriverCard({
           style={{
             fontSize: "var(--font-size-xs)",
             color: "var(--color-error)",
-            background: "rgba(239,68,68,0.1)",
+            background: "var(--color-error-bg)",
             padding: "var(--space-xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
           }}
@@ -803,7 +803,7 @@ function DriverCard({
                 borderRadius: "var(--border-radius)",
                 fontSize: "var(--font-size-sm)",
                 background: "#007acc",
-                color: "#fff",
+                color: "var(--text-on-accent)",
                 border: "none",
                 cursor: "pointer",
                 fontWeight: "var(--font-weight-medium)",
@@ -839,7 +839,7 @@ function DriverCard({
                 borderRadius: "var(--border-radius)",
                 fontSize: "var(--font-size-sm)",
                 color: "var(--color-success)",
-                background: "rgba(76,175,80,0.12)",
+                background: "var(--color-success-bg)",
                 fontWeight: "var(--font-weight-medium)",
               }}
             >
@@ -864,7 +864,7 @@ function DriverCard({
               borderRadius: "var(--border-radius)",
               fontSize: "var(--font-size-sm)",
               background: installing || requiresPlatform ? "var(--bg-hover)" : "#007acc",
-              color: installing || requiresPlatform ? "var(--text-muted)" : "#fff",
+              color: installing || requiresPlatform ? "var(--text-muted)" : "var(--text-primary)",
               border: "none",
               cursor: installing || requiresPlatform ? "default" : "pointer",
               fontWeight: "var(--font-weight-medium)",
@@ -933,7 +933,7 @@ function CommunityDriverDetail({
       onClose={onClose}
       label="Community Driver Details"
       panelStyle={{
-        background: "var(--bg-surface, #2d2d2d)",
+        background: "var(--bg-surface)",
         borderRadius: "8px",
         border: "1px solid var(--border-color)",
         width: "min(560px, 90vw)",
@@ -948,7 +948,7 @@ function CommunityDriverDetail({
             style={{
               marginBottom: "var(--space-md)",
               padding: "var(--space-sm) var(--space-md)",
-              background: "rgba(239, 68, 68, 0.1)",
+              background: "var(--color-error-bg)",
               border: "1px solid rgba(239, 68, 68, 0.3)",
               borderRadius: "var(--border-radius)",
               color: "var(--color-error)",
@@ -1025,7 +1025,7 @@ function CommunityDriverDetail({
               padding: "var(--space-2xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               fontSize: "var(--font-size-xs)",
-              color: "#888",
+              color: "var(--text-muted)",
               background: "rgba(255,255,255,0.05)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
@@ -1037,7 +1037,7 @@ function CommunityDriverDetail({
               padding: "var(--space-2xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               fontSize: "var(--font-size-xs)",
-              color: "#888",
+              color: "var(--text-muted)",
               background: "rgba(255,255,255,0.05)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
@@ -1197,7 +1197,7 @@ function CommunityDriverDetail({
               marginTop: "var(--space-sm)",
               fontSize: "var(--font-size-xs)",
               color: "var(--color-error)",
-              background: "rgba(239,68,68,0.1)",
+              background: "var(--color-error-bg)",
               padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
             }}
@@ -1239,7 +1239,7 @@ function CommunityDriverDetail({
                   borderRadius: "var(--border-radius)",
                   fontSize: "var(--font-size-sm)",
                   background: "#007acc",
-                  color: "#fff",
+                  color: "var(--text-on-accent)",
                   border: "none",
                   cursor: "pointer",
                   fontWeight: "var(--font-weight-medium)",
@@ -1275,7 +1275,7 @@ function CommunityDriverDetail({
                   borderRadius: "var(--border-radius)",
                   fontSize: "var(--font-size-sm)",
                   color: "var(--color-success)",
-                  background: "rgba(76,175,80,0.12)",
+                  background: "var(--color-success-bg)",
                   fontWeight: "var(--font-weight-medium)",
                 }}
               >
@@ -1300,7 +1300,7 @@ function CommunityDriverDetail({
                 borderRadius: "var(--border-radius)",
                 fontSize: "var(--font-size-sm)",
                 background: installing || requiresPlatform ? "var(--bg-hover)" : "#007acc",
-                color: installing || requiresPlatform ? "var(--text-muted)" : "#fff",
+                color: installing || requiresPlatform ? "var(--text-muted)" : "var(--text-primary)",
                 border: "none",
                 cursor: installing || requiresPlatform ? "default" : "pointer",
                 fontWeight: "var(--font-weight-medium)",
@@ -1387,7 +1387,7 @@ function ErrorState({
       >
         Failed to load community drivers.
         <br />
-        <span style={{ fontSize: "var(--font-size-sm)", color: "#888" }}>
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
           {error.replace(/^Error:\s*/i, "").slice(0, 200)}
         </span>
       </div>
@@ -1443,7 +1443,7 @@ function EmptyFilterState({
           : "No community drivers available yet."}
       </span>
       {hasDrivers && (
-        <span style={{ fontSize: "var(--font-size-sm)", color: "#888" }}>
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
           Try a different search term or category.
         </span>
       )}

@@ -357,13 +357,13 @@ export function FeedbackBindingEditor({
           background: "var(--bg-hover)", fontSize: "var(--font-size-sm)",
         }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
-          <span style={{ fontWeight: "var(--font-weight-semibold)", fontFamily: "var(--font-mono, monospace)" }}>
+          <span style={{ fontWeight: "var(--font-weight-semibold)", fontFamily: "var(--font-mono)" }}>
             {String(liveValue)}
           </span>
           {conditionMet !== null && (
             <span style={{
               marginLeft: "auto", fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-medium)",
-              color: conditionMet ? "var(--color-success, #4caf50)" : "var(--text-muted)",
+              color: conditionMet ? "var(--color-success)" : "var(--text-muted)",
             }}>
               {conditionMet ? "Active" : "Inactive"}
             </span>
@@ -437,7 +437,7 @@ export function FeedbackBindingEditor({
                   padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
                   border: `1px solid ${isLive ? "var(--accent)" : "var(--border-color)"}`,
                   display: "flex", flexDirection: "column", gap: "var(--space-sm)",
-                  background: isLive ? "var(--accent-dim, rgba(138,180,147,0.05))" : undefined,
+                  background: isLive ? "var(--accent-dim)" : undefined,
                 }}
               >
                 {/* State key row */}
@@ -589,7 +589,7 @@ export function FeedbackBindingEditor({
                     fontSize: "var(--font-size-sm)", cursor: "pointer",
                     fontWeight: "var(--font-weight-medium)",
                     background: String(condition.equals) === v ? "var(--accent-bg)" : "var(--bg-hover)",
-                    color: String(condition.equals) === v ? "var(--text-on-accent, #fff)" : "var(--text-secondary)",
+                    color: String(condition.equals) === v ? "var(--text-on-accent)" : "var(--text-secondary)",
                     border: "1px solid " + (String(condition.equals) === v ? "var(--accent)" : "var(--border-color)"),
                   }}
                 >

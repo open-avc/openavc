@@ -312,7 +312,7 @@ export function ButtonBindingEditor({
                           fontSize: "var(--font-size-sm)", cursor: "pointer",
                           fontWeight: "var(--font-weight-medium)",
                           background: String(toggleValue) === String(v) ? "var(--accent-bg)" : "var(--bg-hover)",
-                          color: String(toggleValue) === String(v) ? "var(--text-on-accent, #fff)" : "var(--text-secondary)",
+                          color: String(toggleValue) === String(v) ? "var(--text-on-accent)" : "var(--text-secondary)",
                           border: "1px solid " + (String(toggleValue) === String(v) ? "var(--accent)" : "var(--border-color)"),
                         }}
                       >
@@ -367,7 +367,7 @@ export function ButtonBindingEditor({
                 <span style={{ fontWeight: "var(--font-weight-semibold)" }}>{String(toggleLiveValue)}</span>
                 <span style={{
                   marginLeft: "auto", fontWeight: "var(--font-weight-medium)",
-                  color: toggleIsActive ? "var(--color-success, #4caf50)" : "var(--text-muted)",
+                  color: toggleIsActive ? "var(--color-success)" : "var(--text-muted)",
                 }}>
                   {toggleIsActive ? "ON" : "OFF"}
                 </span>
@@ -376,7 +376,7 @@ export function ButtonBindingEditor({
             {!toggleKey && (
               <div style={{
                 fontSize: "var(--font-size-xs)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-                background: "var(--color-warning-bg, #fff3e0)", color: "var(--color-warning, #e65100)",
+                background: "var(--color-warning-bg)", color: "var(--color-warning)",
                 display: "flex", alignItems: "center", gap: "var(--space-sm)",
               }}>
                 <span style={{ fontSize: "var(--font-size-lg)" }}>&#9888;</span>

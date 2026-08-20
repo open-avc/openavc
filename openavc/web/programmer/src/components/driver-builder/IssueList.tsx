@@ -41,7 +41,7 @@ function IssueRow({ issue, compact }: { issue: ValidationIssue; compact: boolean
       }
     : {
         background: "rgba(255, 152, 0, 0.10)",
-        color: "var(--color-warning, #d97706)",
+        color: "var(--color-warning)",
         border: "1px solid rgba(255, 152, 0, 0.4)",
       };
 

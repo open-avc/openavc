@@ -882,13 +882,13 @@ function CustomClassField({
             minWidth: 0,
             padding: "var(--space-xs) var(--space-sm)",
             fontSize: "var(--font-size-sm)",
-            fontFamily: "var(--font-mono, monospace)",
+            fontFamily: "var(--font-mono)",
           }}
         />
       </StyleRow>
 
       {invalid.length > 0 && (
-        <div style={{ fontSize: "var(--font-size-2xs)", color: "#f59e0b" }}>
+        <div style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-warning)" }}>
           The panel will ignore {invalid.map((n) => `"${n}"`).join(", ")}. A class name
           cannot start with a digit or contain spaces or punctuation.
         </div>
@@ -899,8 +899,8 @@ function CustomClassField({
           key={c.className}
           style={{
             fontSize: "var(--font-size-2xs)",
-            color: "#f59e0b",
-            background: "rgba(245,158,11,0.08)",
+            color: "var(--color-warning)",
+            background: "var(--color-warning-bg)",
             border: "1px solid rgba(245,158,11,0.2)",
             borderRadius: "var(--border-radius)",
             padding: "var(--space-xs) var(--space-sm)",
@@ -925,7 +925,7 @@ function CustomClassField({
                 style={{
                   padding: "var(--space-2xs) var(--space-sm)",
                   fontSize: "var(--font-size-xs)",
-                  fontFamily: "var(--font-mono, monospace)",
+                  fontFamily: "var(--font-mono)",
                   borderRadius: "var(--radius-lg)",
                   cursor: "pointer",
                   background: on ? "var(--accent)" : "var(--bg-hover)",

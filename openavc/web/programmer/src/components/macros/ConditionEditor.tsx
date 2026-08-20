@@ -110,7 +110,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
       {showHelp && (
         <div style={{
           padding: "var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-xs)",
-          background: "rgba(138,180,147,0.06)", border: "1px solid rgba(138,180,147,0.15)",
+          background: "var(--accent-dim)", border: "1px solid rgba(138,180,147,0.15)",
           color: "var(--text-secondary)", lineHeight: "var(--line-base)",
         }}>
           {OPERATORS.map((op) => (

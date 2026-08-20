@@ -495,7 +495,7 @@ function SchemaFieldInput({
           onChange={(e) => onChange(e.target.value)}
           style={{
             ...inputStyle,
-            fontFamily: "var(--font-mono, monospace)",
+            fontFamily: "var(--font-mono)",
             fontSize: "var(--font-size-sm)",
             resize: "vertical",
             minHeight: "120px",

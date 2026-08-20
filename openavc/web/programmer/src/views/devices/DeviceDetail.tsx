@@ -337,7 +337,7 @@ export function DeviceDetail({
               gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: isEnabled ? "rgba(76,175,80,0.15)" : "var(--bg-hover)",
+              background: isEnabled ? "var(--color-success-bg)" : "var(--bg-hover)",
               color: isEnabled ? "var(--color-success)" : "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
             }}
@@ -424,7 +424,7 @@ export function DeviceDetail({
                     padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--color-error)",
-                    color: "#fff",
+                    color: "var(--text-on-accent)",
                     fontSize: "var(--font-size-sm)",
                     opacity: deleting ? 0.6 : 1,
                   }}
@@ -447,7 +447,7 @@ export function DeviceDetail({
                 const refs = findDeviceReferences(project, deviceId);
                 if (refs.length === 0) return null;
                 return (
-                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "rgba(244,67,54,0.08)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "var(--color-error-bg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
                     <strong>Warning:</strong> This device is referenced in {refs.length} place(s):
                     <ul style={{ margin: "var(--space-xs) 0 0 var(--space-lg)", padding: 0 }}>
                       {refs.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}
@@ -514,8 +514,8 @@ export function DeviceDetail({
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             background: "var(--color-info-bg)",
-            border: "1px solid var(--color-info, #6aa3d6)",
-            color: "var(--color-info, #6aa3d6)",
+            border: "1px solid var(--color-info)",
+            color: "var(--color-info)",
           }}
         >
           <Pause size={14} style={{ flexShrink: 0 }} />
@@ -537,9 +537,9 @@ export function DeviceDetail({
               gap: "var(--space-xs)",
               padding: "var(--space-2xs) var(--space-md)",
               borderRadius: "var(--radius-lg)",
-              border: "1px solid var(--color-info, #6aa3d6)",
+              border: "1px solid var(--color-info)",
               background: "transparent",
-              color: "var(--color-info, #6aa3d6)",
+              color: "var(--color-info)",
               fontSize: "var(--font-size-xs)",
               cursor: "pointer",
             }}
@@ -579,7 +579,7 @@ export function DeviceDetail({
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
             background: testResult.success
-              ? "rgba(76,175,80,0.15)"
+              ? "var(--color-success-bg)"
               : "var(--color-error-bg)",
             color: testResult.success ? "var(--color-success)" : "var(--color-error)",
           }}
@@ -1807,7 +1807,7 @@ const PERMANENT_OFFLINE_REASONS = new Set([
  *  than OfflineBanner (one border, no icon column of its own): the room still
  *  works, and this is a "go look at that endpoint" not a "nothing responds". */
 function ChildTroubleBanner({ headline, names }: { headline: string; names: string }) {
-  const accent = "var(--color-warning, #f59e0b)";
+  const accent = "var(--color-warning)";
   return (
     <div
       data-testid="child-trouble-banner"
@@ -1815,7 +1815,7 @@ function ChildTroubleBanner({ headline, names }: { headline: string; names: stri
         padding: "var(--space-sm) var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "rgba(245, 158, 11, 0.08)",
+        background: "var(--color-warning-bg)",
         border: "1px solid rgba(245, 158, 11, 0.35)",
         display: "flex",
         gap: "var(--space-sm)",
@@ -1853,14 +1853,14 @@ function OfflineBanner({
   failed: boolean;
   hint?: string;
 }) {
-  const accent = "var(--color-warning, #f59e0b)";
+  const accent = "var(--color-warning)";
   return (
     <div
       style={{
         padding: "var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "rgba(245, 158, 11, 0.1)",
+        background: "var(--color-warning-bg)",
         border: "2px solid rgba(245, 158, 11, 0.4)",
         display: "flex",
         gap: "var(--space-sm)",
@@ -1981,11 +1981,11 @@ function OrphanBanner({
         padding: "var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "rgba(239, 68, 68, 0.1)",
+        background: "var(--color-error-bg)",
         border: "2px solid rgba(239, 68, 68, 0.4)",
       }}
     >
-      <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-base)" }}>
+      <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-sm)", color: "var(--color-error)", fontSize: "var(--font-size-base)" }}>
         Driver Not Installed
       </div>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
@@ -1997,7 +1997,7 @@ function OrphanBanner({
           </div>
         )}
         {error && (
-          <div style={{ marginTop: "var(--space-xs)", color: "#ef4444", fontSize: "var(--font-size-sm)" }}>
+          <div style={{ marginTop: "var(--space-xs)", color: "var(--color-error)", fontSize: "var(--font-size-sm)" }}>
             Install failed: {error}
           </div>
         )}
@@ -2010,7 +2010,7 @@ function OrphanBanner({
             style={{
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--color-warning, #f59e0b)",
+              background: "var(--color-warning)",
               color: "#000",
               fontSize: "var(--font-size-sm)",
               fontWeight: "var(--font-weight-medium)",

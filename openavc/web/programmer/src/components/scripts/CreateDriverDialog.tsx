@@ -70,7 +70,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
         <h3
           style={{
             margin: "0 0 var(--space-md) 0",
-            fontSize: "var(--font-size-lg, 16px)",
+            fontSize: "var(--font-size-lg)",
             color: "var(--text-primary)",
           }}
         >

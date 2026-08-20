@@ -97,7 +97,7 @@ export function DeviceGroupsPanel() {
               <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                 ID: <code style={{ fontFamily: "var(--font-mono)" }}>{autoGroupId}</code>
                 {groups.some((g) => g.id === autoGroupId) && (
-                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: "var(--space-sm)" }}>Already exists</span>
+                  <span style={{ color: "var(--color-error)", marginLeft: "var(--space-sm)" }}>Already exists</span>
                 )}
               </div>
             )}
@@ -198,7 +198,7 @@ export function DeviceGroupsPanel() {
                       padding: "var(--space-xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
                       cursor: "pointer",
-                      background: isMember ? "rgba(138,180,147,0.08)" : "transparent",
+                      background: isMember ? "var(--accent-dim)" : "transparent",
                     }}
                   >
                     <input

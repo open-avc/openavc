@@ -328,7 +328,7 @@ function DeviceCommandEditor({
                 <div style={rowStyle}>
                 <label style={{ ...labelStyle, minWidth: 60 }}>
                   {paramKey}
-                  {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
+                  {paramDef?.required && <span style={{ color: "var(--color-error)" }}> *</span>}
                 </label>
                 <ParamInput
                   def={(paramDef ?? {}) as Partial<DriverParamDef>}
@@ -505,7 +505,7 @@ function GroupCommandEditor({
                 <div style={rowStyle}>
                   <label style={{ ...labelStyle, minWidth: 60 }}>
                     {paramDef?.label ?? paramKey}
-                    {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
+                    {paramDef?.required && <span style={{ color: "var(--color-error)" }}> *</span>}
                   </label>
                   <ParamInput
                     def={(paramDef ?? {}) as Partial<DriverParamDef>}
@@ -627,7 +627,7 @@ function StateSetEditor({
                 padding: "var(--space-xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
                 border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
-                background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
+                background: isDynamic ? "var(--accent-dim)" : "transparent",
                 color: isDynamic ? "var(--accent)" : "var(--text-muted)",
                 fontSize: "var(--font-size-xs)",
                 cursor: "pointer",
@@ -1175,8 +1175,8 @@ function ConditionalEditor({
 
       {/* Then steps */}
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)", color: "#10b981" }}>Then</label>
-        <div style={{ borderLeft: "2px solid #10b981", paddingLeft: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)", color: "var(--color-success)" }}>Then</label>
+        <div style={{ borderLeft: "2px solid var(--color-success)", paddingLeft: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           {thenSteps.map((s, i) => (
             <InlineStepCard
               key={i}
@@ -1198,8 +1198,8 @@ function ConditionalEditor({
 
       {/* Else steps */}
       <div>
-        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)", color: "#ef4444" }}>Else (optional)</label>
-        <div style={{ borderLeft: "2px solid #ef4444", paddingLeft: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        <label style={{ ...labelStyle, display: "block", marginBottom: "var(--space-xs)", color: "var(--color-error)" }}>Else (optional)</label>
+        <div style={{ borderLeft: "2px solid var(--color-error)", paddingLeft: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
           {elseSteps.map((s, i) => (
             <InlineStepCard
               key={i}
@@ -1270,7 +1270,7 @@ function InlineStepCard({
         <span style={{
           fontSize: "var(--font-size-2xs)",
           fontWeight: "var(--font-weight-semibold)",
-          color: "#fff",
+          color: "var(--text-on-accent)",
           background: typeInfo?.color ?? "#666",
           padding: "var(--space-2xs) var(--space-xs)",
           borderRadius: "var(--border-radius)",
@@ -1519,7 +1519,7 @@ function PluginParamField({
   const labelEl = (
     <label style={labelStyle}>
       {param.label || param.key}
-      {param.required && <span style={{ color: "#ef4444" }}> *</span>}
+      {param.required && <span style={{ color: "var(--color-error)" }}> *</span>}
     </label>
   );
 
@@ -1678,7 +1678,7 @@ function PluginParamField({
               padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
-              background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
+              background: isDynamic ? "var(--accent-dim)" : "transparent",
               color: isDynamic ? "var(--accent)" : "var(--text-muted)",
               fontSize: "var(--font-size-xs)",
               cursor: "pointer",
@@ -1715,13 +1715,13 @@ function MissingPluginActionEditor({
       style={{
         padding: "var(--space-sm) var(--space-md)",
         borderRadius: "var(--border-radius)",
-        border: "1px solid #ef4444",
-        background: "rgba(239,68,68,0.08)",
+        border: "1px solid var(--color-error)",
+        background: "var(--color-error-bg)",
         color: "var(--text-secondary)",
         fontSize: "var(--font-size-sm)",
       }}
     >
-      <div style={{ fontWeight: "var(--font-weight-medium)", color: "#ef4444", marginBottom: "var(--space-xs)" }}>
+      <div style={{ fontWeight: "var(--font-weight-medium)", color: "var(--color-error)", marginBottom: "var(--space-xs)" }}>
         Missing plugin: {pluginId}
       </div>
       <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>

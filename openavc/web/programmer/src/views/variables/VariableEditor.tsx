@@ -771,11 +771,11 @@ export function VariablesSubTab() {
                 const v = selectedVar.validation;
                 if (!v) return null;
                 if (isNumericVar(selectedVar.type) && typeof selectedLiveValue === "number") {
-                  if (v.min != null && selectedLiveValue < v.min) return <div style={{ fontSize: "var(--font-size-sm)", color: "#ef4444", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value {selectedLiveValue} is below minimum ({v.min})</div>;
-                  if (v.max != null && selectedLiveValue > v.max) return <div style={{ fontSize: "var(--font-size-sm)", color: "#ef4444", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value {selectedLiveValue} is above maximum ({v.max})</div>;
+                  if (v.min != null && selectedLiveValue < v.min) return <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value {selectedLiveValue} is below minimum ({v.min})</div>;
+                  if (v.max != null && selectedLiveValue > v.max) return <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value {selectedLiveValue} is above maximum ({v.max})</div>;
                 }
                 if (selectedVar.type === "string" && v.allowed && v.allowed.length > 0 && typeof selectedLiveValue === "string") {
-                  if (!v.allowed.includes(selectedLiveValue)) return <div style={{ fontSize: "var(--font-size-sm)", color: "#ef4444", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value "{selectedLiveValue}" is not in allowed values</div>;
+                  if (!v.allowed.includes(selectedLiveValue)) return <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)", fontWeight: "var(--font-weight-medium)", marginTop: "var(--space-xs)" }}>Current value "{selectedLiveValue}" is not in allowed values</div>;
                 }
                 return null;
               })()}
@@ -811,7 +811,7 @@ export function VariablesSubTab() {
                     gap: "var(--space-sm)",
                     padding: "var(--space-sm) var(--space-md)",
                     borderRadius: "var(--border-radius)",
-                    background: selectedVar.persist ? "rgba(138,180,147,0.15)" : "var(--bg-surface)",
+                    background: selectedVar.persist ? "var(--accent-dim)" : "var(--bg-surface)",
                     border: "1px solid " + (selectedVar.persist ? "rgba(138,180,147,0.3)" : "var(--border-color)"),
                     color: selectedVar.persist ? "var(--accent)" : "var(--text-secondary)",
                     fontSize: "var(--font-size-sm)",
@@ -901,8 +901,8 @@ export function VariablesSubTab() {
               </div>
             </div>
             {renameTarget.usages.length > 0 && (
-              <div style={{ marginBottom: "var(--space-md)", padding: "var(--space-sm)", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)" }}>
-                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "#f59e0b", marginBottom: "var(--space-xs)" }}>
+              <div style={{ marginBottom: "var(--space-md)", padding: "var(--space-sm)", background: "var(--color-warning-bg)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)" }}>
+                <div style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--color-warning)", marginBottom: "var(--space-xs)" }}>
                   {renameTarget.usages.length} reference(s) will be updated:
                 </div>
                 {renameTarget.usages.slice(0, 8).map((u, i) => (
@@ -1047,7 +1047,7 @@ function SourceBindingEditor({
           </div>
 
           {variable.source_key && sourceValue === undefined && (
-            <div style={{ fontSize: "var(--font-size-sm)", color: "#f59e0b", fontStyle: "italic" }}>
+            <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning)", fontStyle: "italic" }}>
               Source key "{variable.source_key}" has no value. The device may be offline or the key may not exist.
             </div>
           )}

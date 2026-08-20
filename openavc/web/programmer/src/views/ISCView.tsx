@@ -266,7 +266,7 @@ export function ISCView() {
                 </div>
                 <div style={statBox}>
                   <div style={statLabel}>Connected</div>
-                  <div style={{ ...statValue, color: connectedCount > 0 ? "#10b981" : "var(--text-muted)" }}>
+                  <div style={{ ...statValue, color: connectedCount > 0 ? "var(--color-success)" : "var(--text-muted)" }}>
                     {connectedCount}
                   </div>
                 </div>
@@ -303,7 +303,7 @@ export function ISCView() {
                   <div key={peer.instance_id} style={peerRow}>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                       {peer.connected ? (
-                        <Wifi size={16} style={{ color: "#10b981", flexShrink: 0 }} />
+                        <Wifi size={16} style={{ color: "var(--color-success)", flexShrink: 0 }} />
                       ) : (
                         <WifiOff size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                       )}
@@ -324,7 +324,7 @@ export function ISCView() {
                         width: 8,
                         height: 8,
                         borderRadius: "50%",
-                        background: peer.connected ? "#10b981" : "#ef4444",
+                        background: peer.connected ? "var(--color-success)" : "var(--color-error)",
                         flexShrink: 0,
                       }}
                     />
@@ -444,7 +444,7 @@ export function ISCView() {
               on any device, and <code style={codeStyle}>*</code> allows all.
             </div>
             {allowedCommands.length === 0 && (
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning, #f59e0b)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
                 No commands allowed. Peers can share state and events but cannot
                 control any device here until you add a pattern.
               </div>
@@ -492,7 +492,7 @@ export function ISCView() {
               All instances must use the same key to communicate.
             </div>
             {!authKey && (
-              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning, #f59e0b)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning)", marginBottom: "var(--space-sm)", lineHeight: "var(--line-base)" }}>
                 No auth key set. ISC will reject all incoming connections until a key is configured.
               </div>
             )}

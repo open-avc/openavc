@@ -402,7 +402,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                         alignItems: "center",
                         gap: "var(--space-xs)",
                         fontSize: "var(--font-size-xs)",
-                        color: "var(--color-warning, #b8860b)",
+                        color: "var(--color-warning)",
                         marginBottom: "var(--space-xs)",
                       }}
                     >
@@ -434,7 +434,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                             alignItems: "center",
                             gap: "var(--space-xs)",
                             fontSize: "var(--font-size-xs)",
-                            color: "var(--color-warning, #b8860b)",
+                            color: "var(--color-warning)",
                             marginTop: "var(--space-xs)",
                           }}
                         >

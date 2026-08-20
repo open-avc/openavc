@@ -169,7 +169,7 @@ export function DeviceSettingsSetupDialog({
         {error && (
           <div
             style={{
-              background: "rgba(244,67,54,0.15)",
+              background: "var(--color-error-bg)",
               color: "var(--color-error)",
               padding: "var(--space-sm) var(--space-md)",
               borderRadius: "var(--border-radius)",

@@ -49,8 +49,8 @@ export function Login({ onSuccess }: LoginProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--bg-primary, #1a1a2e)",
-        color: "var(--text-primary, #fff)",
+        background: "var(--bg-primary)",
+        color: "var(--text-primary)",
       }}
     >
       <form
@@ -99,7 +99,7 @@ export function Login({ onSuccess }: LoginProps) {
         </label>
 
         {error && (
-          <div style={{ fontSize: "var(--font-size-base)", color: "#ef4444" }}>{error}</div>
+          <div style={{ fontSize: "var(--font-size-base)", color: "var(--color-error)" }}>{error}</div>
         )}
 
         <button
@@ -130,8 +130,8 @@ export function Login({ onSuccess }: LoginProps) {
 const inputStyle: React.CSSProperties = {
   padding: "var(--space-sm) var(--space-md)",
   borderRadius: "var(--border-radius)",
-  border: "1px solid var(--border-color, #444)",
-  background: "var(--bg-primary, #1a1a2e)",
+  border: "1px solid var(--border-color)",
+  background: "var(--bg-primary)",
   color: "inherit",
   fontSize: "var(--font-size-lg)",
   outline: "none",

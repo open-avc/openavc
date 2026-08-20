@@ -160,7 +160,7 @@ export function ParamCombobox({
                   background: active
                     ? "var(--bg-hover)"
                     : selected
-                      ? "rgba(138,180,147,0.15)"
+                      ? "var(--accent-dim)"
                       : "transparent",
                   color: selected ? "var(--accent)" : "var(--text-primary)",
                 }}

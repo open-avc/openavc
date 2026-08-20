@@ -671,7 +671,7 @@ export function DashboardView() {
             </div>
             <div style={cardStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
-                <Zap size={14} style={{ color: "#f59e0b" }} />
+                <Zap size={14} style={{ color: "var(--color-warning)" }} />
                 <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Triggers</span>
               </div>
               <div style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-semibold)" }}>{String(triggerCount)}</div>
@@ -946,7 +946,7 @@ export function DashboardView() {
                         <span style={{ color: "var(--color-error)", fontWeight: "var(--font-weight-semibold)" }}>{"ERROR"}</span>
                       )}
                       {e.level === "WARNING" && (
-                        <span style={{ color: "#f59e0b" }}>{"WARN"}</span>
+                        <span style={{ color: "var(--color-warning)" }}>{"WARN"}</span>
                       )}
                       <span style={{ color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {String(e.message)}

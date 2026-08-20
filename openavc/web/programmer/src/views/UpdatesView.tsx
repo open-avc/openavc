@@ -450,8 +450,8 @@ export function UpdatesView() {
                       textTransform: "uppercase",
                       letterSpacing: "var(--tracking-wide)",
                       background: entry.status === "success" || entry.status === "applied"
-                        ? "rgba(76,175,80,0.15)"
-                        : "rgba(239,68,68,0.15)",
+                        ? "var(--color-success-bg)"
+                        : "var(--color-error-bg)",
                       color: entry.status === "success" || entry.status === "applied"
                         ? "var(--color-success)"
                         : "var(--color-error)",

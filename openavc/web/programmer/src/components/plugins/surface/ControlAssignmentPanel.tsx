@@ -234,7 +234,7 @@ export function ControlAssignmentPanel({
             {!locked && lockShadowCount > 0 && (
               <>
                 {" "}
-                <span style={{ color: "var(--color-warning, #f59e0b)" }}>
+                <span style={{ color: "var(--color-warning)" }}>
                   {lockShadowCount} page{lockShadowCount === 1 ? " has" : "s have"} something
                   on this key; that stays hidden while it's locked.
                 </span>

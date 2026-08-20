@@ -271,8 +271,8 @@ export function AssetBrowser({
           style={{
             margin: "0 var(--space-lg) var(--space-sm)",
             padding: "var(--space-sm) var(--space-md)",
-            background: "rgba(244,67,54,0.1)",
-            color: "#ef5350",
+            background: "var(--color-error-bg)",
+            color: "var(--color-error)",
             borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-sm)",
           }}
@@ -376,7 +376,7 @@ export function AssetBrowser({
                     <span>
                       {fmtSize(asset.size)}
                       {asset.type === "image" && !usedImageAssets.has(asset.name) && (
-                        <span style={{ marginLeft: "var(--space-xs)", color: "#f59e0b", fontWeight: "var(--font-weight-medium)" }} title="Not referenced by any element">
+                        <span style={{ marginLeft: "var(--space-xs)", color: "var(--color-warning)", fontWeight: "var(--font-weight-medium)" }} title="Not referenced by any element">
                           unused
                         </span>
                       )}

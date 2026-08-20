@@ -502,7 +502,7 @@ export function DeviceView() {
                   const ls = useConnectionStore.getState().liveState;
                   setSelectedIds(new Set(filteredDevices.filter((d) => ls[`device.${d.id}.connected`]).map((d) => d.id)));
                 }}
-                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "rgba(76,175,80,0.15)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
+                style={{ padding: "2px var(--space-sm)", borderRadius: "var(--border-radius)", background: "var(--color-success-bg)", color: "var(--color-success)", fontSize: "var(--font-size-sm)" }}
               >
                 Online
               </button>
@@ -524,7 +524,7 @@ export function DeviceView() {
                 style={{
                   padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
-                  background: "rgba(76,175,80,0.15)",
+                  background: "var(--color-success-bg)",
                   color: "var(--color-success)",
                   fontSize: "var(--font-size-sm)",
                 }}

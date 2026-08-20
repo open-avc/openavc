@@ -63,8 +63,8 @@ const btnStyle: React.CSSProperties = {
 
 const btnDangerStyle: React.CSSProperties = {
   ...btnStyle,
-  background: "#c0392b",
-  borderColor: "#c0392b",
+  background: "var(--color-error)",
+  borderColor: "var(--color-error)",
 };
 
 const statusDotStyle = (connected: boolean): React.CSSProperties => ({
@@ -254,7 +254,7 @@ export function CloudSettingsView() {
           <div
             style={{
               ...cardStyle,
-              borderColor: "#c0392b",
+              borderColor: "var(--color-error)",
               color: "#e74c3c",
               background: "rgba(192, 57, 43, 0.1)",
             }}
@@ -281,11 +281,11 @@ export function CloudSettingsView() {
             style={{
               ...cardStyle,
               borderColor: "rgba(76, 175, 80, 0.45)",
-              background: "rgba(76, 175, 80, 0.06)",
+              background: "var(--color-success-bg)",
             }}
           >
             <div style={{ fontWeight: "var(--font-weight-semibold)", marginBottom: "var(--space-xs)", display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <ShieldCheck size={16} style={{ color: "rgb(76, 175, 80)" }} />
+              <ShieldCheck size={16} style={{ color: "var(--color-success)" }} />
               Next step: get a trusted certificate
             </div>
             <p style={{ ...helpTextStyle, marginTop: 0 }}>

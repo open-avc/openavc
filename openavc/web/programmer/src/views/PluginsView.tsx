@@ -48,7 +48,7 @@ function PluginStatusDot({
       : status === "error"
         ? "var(--color-error)"
         : status === "missing"
-          ? "var(--color-warning, #f59e0b)"
+          ? "var(--color-warning)"
           : isIncompat
             ? "#f97316"
             : "var(--text-muted)";
@@ -150,7 +150,7 @@ function PluginListItem({
             fontSize: "var(--font-size-sm)",
             color:
               plugin.status === "missing" || incompatible
-                ? "var(--color-warning, #f59e0b)"
+                ? "var(--color-warning)"
                 : "var(--text-muted)",
           }}
         >
@@ -179,7 +179,7 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
         padding: "var(--space-md)",
         borderRadius: "var(--border-radius)",
         marginBottom: "var(--space-md)",
-        background: "rgba(245, 158, 11, 0.12)",
+        background: "var(--color-warning-bg)",
         border: "1px solid rgba(245, 158, 11, 0.3)",
       }}
     >
@@ -190,7 +190,7 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
           gap: "var(--space-sm)",
           fontWeight: "var(--font-weight-semibold)",
           marginBottom: "var(--space-sm)",
-          color: "var(--color-warning, #f59e0b)",
+          color: "var(--color-warning)",
         }}
       >
         <AlertTriangle size={16} />
@@ -208,7 +208,7 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
             style={{
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--color-warning, #f59e0b)",
+              background: "var(--color-warning)",
               color: "#000",
               fontSize: "var(--font-size-sm)",
               fontWeight: "var(--font-weight-medium)",
@@ -242,8 +242,8 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
             style={{
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
-              background: "var(--color-error, #dc2626)",
-              color: "#fff",
+              background: "var(--color-error)",
+              color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
             }}
           >
@@ -487,8 +487,8 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                     style={{
                       padding: "var(--space-xs) var(--space-md)",
                       borderRadius: "var(--border-radius)",
-                      background: "var(--color-error, #dc2626)",
-                      color: "#fff",
+                      background: "var(--color-error)",
+                      color: "var(--text-on-accent)",
                       fontSize: "var(--font-size-sm)",
                     }}
                   >
@@ -529,7 +529,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
-                  color: isRunning ? "var(--text-muted)" : "var(--color-error, #dc2626)",
+                  color: isRunning ? "var(--text-muted)" : "var(--color-error)",
                   fontSize: "var(--font-size-sm)",
                   cursor: "pointer",
                   opacity: isRunning ? 0.6 : 1,
@@ -602,7 +602,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
             padding: "var(--space-md)",
             borderRadius: "var(--border-radius)",
             marginBottom: "var(--space-md)",
-            background: "rgba(244, 67, 54, 0.12)",
+            background: "var(--color-error-bg)",
             border: "1px solid rgba(244, 67, 54, 0.3)",
             fontSize: "var(--font-size-sm)",
             color: "var(--color-error)",

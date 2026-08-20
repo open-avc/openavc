@@ -219,7 +219,7 @@ export function InstalledDriversView({
                     cursor: "pointer",
                     borderBottom: "1px solid var(--border-color)",
                     background:
-                      selectedId === d.id ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
+                      selectedId === d.id ? "var(--accent-dim)" : "transparent",
                   }}
                 >
                   <div
@@ -446,7 +446,7 @@ export function DriverDetailPanel({
                     padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--color-error)",
-                    color: "#fff",
+                    color: "var(--text-on-accent)",
                     fontSize: "var(--font-size-sm)",
                     opacity: uninstalling ? 0.6 : 1,
                   }}
@@ -520,7 +520,7 @@ export function DriverDetailPanel({
                 padding: "var(--space-2xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
                 background: CATEGORY_COLORS[driver.category] || "#95a5a6",
-                color: "#fff",
+                color: "var(--text-on-accent)",
               }}
             >
               {driver.category}
@@ -539,7 +539,7 @@ export function DriverDetailPanel({
             style={{
               marginTop: "var(--space-sm)",
               padding: "var(--space-sm) var(--space-md)",
-              background: "rgba(244,67,54,0.08)",
+              background: "var(--color-error-bg)",
               borderRadius: "var(--border-radius)",
               fontSize: "var(--font-size-sm)",
               color: "var(--text-secondary)",

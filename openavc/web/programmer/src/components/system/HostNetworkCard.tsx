@@ -80,7 +80,7 @@ const secondaryBtn: React.CSSProperties = {
 };
 
 const monoValue: React.CSSProperties = {
-  fontFamily: "var(--font-mono, monospace)",
+  fontFamily: "var(--font-mono)",
   fontSize: "var(--font-size-sm)",
   color: "var(--text-primary)",
 };

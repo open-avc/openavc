@@ -671,7 +671,7 @@ const noteStyle: React.CSSProperties = {
   gap: "var(--space-sm)",
   padding: "var(--space-sm)",
   borderRadius: "var(--border-radius)",
-  background: "rgba(138,180,147,0.08)",
+  background: "var(--accent-dim)",
   border: "1px solid rgba(138,180,147,0.15)",
   fontSize: "var(--font-size-xs)",
   color: "var(--text-secondary)",
@@ -681,7 +681,7 @@ const noteStyle: React.CSSProperties = {
 const warnStyle: React.CSSProperties = {
   ...noteStyle,
   marginTop: "var(--space-sm)",
-  background: "rgba(255,152,0,0.12)",
+  background: "var(--color-warning-bg)",
   border: "1px solid rgba(255,152,0,0.4)",
   color: "var(--text-primary)",
 };

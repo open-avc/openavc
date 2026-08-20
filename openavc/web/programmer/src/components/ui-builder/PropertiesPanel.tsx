@@ -369,10 +369,10 @@ export function PropertiesPanel({
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
               padding: "var(--space-xs) var(--space-sm)", marginBottom: "var(--space-sm)", borderRadius: "var(--border-radius)",
-              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
+              background: "var(--color-warning-bg)", border: "1px solid rgba(245,158,11,0.2)",
               fontSize: "var(--font-size-xs)",
             }}>
-              <span style={{ color: "#f59e0b", fontWeight: "var(--font-weight-medium)" }}>
+              <span style={{ color: "var(--color-warning)", fontWeight: "var(--font-weight-medium)" }}>
                 Overrides theme ({overrideKeys.length})
               </span>
               <button
@@ -384,7 +384,7 @@ export function PropertiesPanel({
                 style={{
                   padding: "var(--space-2xs) var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-2xs)",
                   background: "transparent", border: "1px solid rgba(245,158,11,0.3)",
-                  color: "#f59e0b", cursor: "pointer",
+                  color: "var(--color-warning)", cursor: "pointer",
                 }}
               >
                 <Undo2 size={10} style={{ verticalAlign: "middle", marginRight: "var(--space-2xs)" }} />
@@ -650,7 +650,7 @@ function MasterElementProperties({
             gap: "var(--space-sm)",
             padding: "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: "rgba(244,67,54,0.1)",
+            background: "var(--color-error-bg)",
             border: "1px solid rgba(244,67,54,0.3)",
             cursor: "pointer",
             fontSize: "var(--font-size-sm)",
@@ -1164,7 +1164,7 @@ function Section({
           padding: "var(--space-sm)",
           fontSize: "var(--font-size-sm)",
           fontWeight: "var(--font-weight-semibold)",
-          background: highlight ? "rgba(138,180,147,0.06)" : "var(--bg-surface)",
+          background: highlight ? "var(--accent-dim)" : "var(--bg-surface)",
           color: "var(--text-primary)",
           textAlign: "left",
         }}
@@ -1242,7 +1242,7 @@ function ThemeSection({
                 padding: "var(--space-sm)",
                 borderRadius: "var(--radius-lg)",
                 border: isSelected ? "2px solid var(--accent)" : "1px solid var(--border-color)",
-                background: isSelected ? "var(--accent-dim, rgba(138,180,147,0.12))" : "var(--bg-surface)",
+                background: isSelected ? "var(--accent-dim)" : "var(--bg-surface)",
                 cursor: "pointer",
                 textAlign: "center",
               }}

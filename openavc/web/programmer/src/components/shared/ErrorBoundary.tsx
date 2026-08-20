@@ -27,7 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div
           style={{
             padding: "var(--space-2xl)",
-            color: "var(--text-primary, #f44336)",
+            color: "var(--text-primary)",
             fontFamily: "var(--font-family)",
             fontSize: "var(--font-size-lg)",
           }}
@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 padding: "var(--space-sm) var(--space-lg)",
                 background: "#333",
-                color: "#fff",
+                color: "var(--text-on-accent)",
                 border: "none",
                 borderRadius: "var(--border-radius)",
                 cursor: "pointer",
@@ -66,8 +66,8 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 padding: "var(--space-sm) var(--space-lg)",
                 background: "transparent",
-                color: "var(--text-primary, #fff)",
-                border: "1px solid var(--border-color, #555)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border-color)",
                 borderRadius: "var(--border-radius)",
                 cursor: "pointer",
               }}

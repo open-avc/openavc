@@ -454,7 +454,7 @@ export function DriverEditor({
             errorCount > 0
               ? "var(--color-error)"
               : warningCount > 0
-                ? "var(--color-warning, #d97706)"
+                ? "var(--color-warning)"
                 : null;
           return (
             <button
@@ -600,8 +600,8 @@ export function DriverEditor({
                     marginTop: "var(--space-xs)",
                     padding: "var(--space-xs) var(--space-sm)",
                     borderRadius: "var(--border-radius)",
-                    background: "rgba(255, 152, 0, 0.15)",
-                    color: "var(--color-warning, #d97706)",
+                    background: "var(--color-warning-bg)",
+                    color: "var(--color-warning)",
                     border: "1px solid rgba(255, 152, 0, 0.4)",
                   }}
                 >

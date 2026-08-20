@@ -193,7 +193,7 @@ function SortableStepItem({
           style={{
             fontSize: "var(--font-size-2xs)",
             fontWeight: "var(--font-weight-semibold)",
-            color: "#fff",
+            color: "var(--text-on-accent)",
             background: labelBg,
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
@@ -266,7 +266,7 @@ function SortableStepItem({
         {lintIssues.length > 0 && (
           <span
             title={lintIssues.map((i) => `${issueLabel(i)}: ${i.message}`).join("\n")}
-            style={{ display: "flex", flexShrink: 0, color: "#f59e0b" }}
+            style={{ display: "flex", flexShrink: 0, color: "var(--color-warning)" }}
           >
             <AlertTriangle size={14} />
           </span>
@@ -274,7 +274,7 @@ function SortableStepItem({
         {/* Step result indicators */}
         {stepError && (
           <span title={stepError.error} style={{ display: "flex", flexShrink: 0 }}>
-            <XCircle size={14} style={{ color: "#ef4444" }} />
+            <XCircle size={14} style={{ color: "var(--color-error)" }} />
           </span>
         )}
         {conditionalResult && (
@@ -285,8 +285,8 @@ function SortableStepItem({
               padding: "0 var(--space-xs)",
               borderRadius: "var(--border-radius)",
               flexShrink: 0,
-              background: conditionalResult.conditionResult ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
-              color: conditionalResult.conditionResult ? "#10b981" : "#ef4444",
+              background: conditionalResult.conditionResult ? "var(--color-success-bg)" : "var(--color-error-bg)",
+              color: conditionalResult.conditionResult ? "var(--color-success)" : "var(--color-error)",
             }}
             title={`Condition on '${conditionalResult.conditionKey}' evaluated ${conditionalResult.conditionResult ? "TRUE" : "FALSE"} → ${conditionalResult.branch} branch`}
           >
@@ -301,8 +301,8 @@ function SortableStepItem({
           style={{
             padding: "var(--space-xs) var(--space-md)",
             fontSize: "var(--font-size-sm)",
-            color: "#ef4444",
-            background: "rgba(239,68,68,0.08)",
+            color: "var(--color-error)",
+            background: "var(--color-error-bg)",
             borderTop: "1px solid rgba(239,68,68,0.2)",
             display: "flex",
             alignItems: "center",
@@ -322,8 +322,8 @@ function SortableStepItem({
           style={{
             padding: "var(--space-xs) var(--space-md)",
             fontSize: "var(--font-size-sm)",
-            color: "#f59e0b",
-            background: "rgba(245,158,11,0.08)",
+            color: "var(--color-warning)",
+            background: "var(--color-warning-bg)",
             borderTop: "1px solid rgba(245,158,11,0.2)",
           }}
         >
@@ -361,8 +361,8 @@ function SortableStepItem({
                 padding: "var(--space-2xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
                 fontSize: "var(--font-size-xs)",
-                background: dr.success ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
-                color: dr.success ? "#10b981" : "#ef4444",
+                background: dr.success ? "var(--color-success-bg)" : "var(--color-error-bg)",
+                color: dr.success ? "var(--color-success)" : "var(--color-error)",
               }}
               title={dr.success ? "Success" : dr.error ?? "Failed"}
             >
@@ -696,9 +696,9 @@ export function MacroEditor({
           style={{
             ...btnStyle,
             background: isDone
-              ? "#10b981"
+              ? "var(--color-success)"
               : isError
-              ? "#ef4444"
+              ? "var(--color-error)"
               : "var(--accent)",
             opacity: isRunning ? 0.7 : 1,
           }}
@@ -719,7 +719,7 @@ export function MacroEditor({
           disabled={!isRunning}
           style={{
             ...btnStyle,
-            background: isRunning ? "#ef4444" : "var(--bg-hover)",
+            background: isRunning ? "var(--color-error)" : "var(--bg-hover)",
             opacity: isRunning ? 1 : 0.4,
           }}
           title="Cancel running macro"
@@ -736,8 +736,8 @@ export function MacroEditor({
             gap: "var(--space-xs)",
             padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: macro.stop_on_error ? "rgba(244,67,54,0.15)" : "var(--bg-hover)",
-            color: macro.stop_on_error ? "#ef4444" : "var(--text-muted)",
+            background: macro.stop_on_error ? "var(--color-error-bg)" : "var(--bg-hover)",
+            color: macro.stop_on_error ? "var(--color-error)" : "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             border: "none",
             cursor: "pointer",
@@ -759,10 +759,10 @@ export function MacroEditor({
             alignItems: "center",
             gap: "var(--space-sm)",
             padding: "var(--space-sm) var(--space-md)",
-            background: "rgba(239,68,68,0.1)",
+            background: "var(--color-error-bg)",
             borderBottom: "1px solid rgba(239,68,68,0.3)",
             fontSize: "var(--font-size-sm)",
-            color: "#ef4444",
+            color: "var(--color-error)",
           }}
         >
           <AlertTriangle size={14} style={{ flexShrink: 0 }} />
@@ -785,13 +785,13 @@ export function MacroEditor({
             flexDirection: "column",
             gap: "var(--space-2xs)",
             padding: "var(--space-sm) var(--space-md)",
-            background: "rgba(245,158,11,0.08)",
+            background: "var(--color-warning-bg)",
             borderBottom: "1px solid rgba(245,158,11,0.3)",
             fontSize: "var(--font-size-sm)",
             color: "var(--text-secondary)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", color: "#f59e0b", fontWeight: "var(--font-weight-semibold)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", color: "var(--color-warning)", fontWeight: "var(--font-weight-semibold)" }}>
             <AlertTriangle size={14} style={{ flexShrink: 0 }} />
             {issueSummary(issues!)} won't run as built
           </div>
@@ -1213,15 +1213,15 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
         padding: "var(--space-sm) var(--space-md)",
         borderRadius: "var(--border-radius)",
         border: `1px solid ${isSuccess ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-        background: isSuccess ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+        background: isSuccess ? "var(--color-success-bg)" : "var(--color-error-bg)",
         fontSize: "var(--font-size-sm)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: hasErrors ? "var(--space-xs)" : 0 }}>
         {isSuccess ? (
-          <CheckCircle size={14} style={{ color: "#10b981" }} />
+          <CheckCircle size={14} style={{ color: "var(--color-success)" }} />
         ) : (
-          <XCircle size={14} style={{ color: "#ef4444" }} />
+          <XCircle size={14} style={{ color: "var(--color-error)" }} />
         )}
         <span style={{ fontWeight: "var(--font-weight-semibold)", color: "var(--text-primary)" }}>
           Last run: {isSuccess ? "Completed" : lastRun.status === "error" ? "Failed" : "Completed with errors"}
@@ -1239,7 +1239,7 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
             alignItems: "center",
             gap: "var(--space-xs)",
             padding: "var(--space-2xs) 0",
-            color: "#ef4444",
+            color: "var(--color-error)",
             fontSize: "var(--font-size-xs)",
           }}
         >
@@ -1260,7 +1260,7 @@ const btnStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
-  color: "#fff",
+  color: "var(--text-primary)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",

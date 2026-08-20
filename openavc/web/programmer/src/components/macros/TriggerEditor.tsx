@@ -364,7 +364,7 @@ function ScheduleEditor({
 
       {/* Validation + Preview */}
       {cron && !isValidCron(cron) && (
-        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error, #f44336)", fontWeight: "var(--font-weight-medium)" }}>
+        <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)", fontWeight: "var(--font-weight-medium)" }}>
           Invalid cron expression: must have 5 fields (minute hour day month weekday)
         </div>
       )}
@@ -834,13 +834,13 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
         padding: "var(--space-xs) var(--space-sm)",
         borderRadius: "var(--border-radius)",
         border: `1px solid ${allPass ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-        background: allPass ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+        background: allPass ? "var(--color-success-bg)" : "var(--color-error-bg)",
         fontSize: "var(--font-size-xs)",
       }}
     >
       <div style={{
         fontWeight: "var(--font-weight-semibold)",
-        color: allPass ? "#10b981" : "#ef4444",
+        color: allPass ? "var(--color-success)" : "var(--color-error)",
         marginBottom: conditions.length > 1 ? "var(--space-xs)" : 0,
       }}>
         Evaluated now: {allPass ? "ALL TRUE, trigger would fire" : "FALSE, trigger would not fire"}
@@ -856,7 +856,7 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
             color: "var(--text-secondary)",
             padding: "var(--space-2xs) 0",
           }}>
-            <span style={{ color: passes ? "#10b981" : "#ef4444", fontWeight: "var(--font-weight-semibold)" }}>
+            <span style={{ color: passes ? "var(--color-success)" : "var(--color-error)", fontWeight: "var(--font-weight-semibold)" }}>
               {passes ? "T" : "F"}
             </span>
             <code style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-2xs)" }}>
@@ -891,7 +891,7 @@ function TimingHelp() {
       {expanded && (
         <div style={{
           marginTop: "var(--space-sm)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-          background: "rgba(138,180,147,0.06)", border: "1px solid rgba(138,180,147,0.15)",
+          background: "var(--accent-dim)", border: "1px solid rgba(138,180,147,0.15)",
           fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", lineHeight: "var(--line-relaxed)",
         }}>
           <div style={{ marginBottom: "var(--space-sm)" }}>

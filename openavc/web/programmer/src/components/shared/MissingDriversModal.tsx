@@ -241,7 +241,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
             padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: selected.size === 0 ? "var(--bg-hover)" : "var(--accent)",
-            color: selected.size === 0 ? "var(--text-muted)" : "#fff",
+            color: selected.size === 0 ? "var(--text-muted)" : "var(--text-primary)",
             fontSize: "var(--font-size-sm)",
             fontWeight: "var(--font-weight-medium)",
             cursor: installing || selected.size === 0 ? "not-allowed" : "pointer",

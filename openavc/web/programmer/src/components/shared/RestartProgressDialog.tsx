@@ -189,7 +189,7 @@ export function RestartProgressDialog({
         {phase === "cert-error" && (
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-              <AlertTriangle size={18} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={18} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 The server is back, but your browser doesn't trust the new
                 HTTPS certificate yet. Download and install the CA certificate,
@@ -217,7 +217,7 @@ export function RestartProgressDialog({
         {phase === "timeout" && (
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-              <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={18} style={{ color: "var(--color-error)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 The server didn't come back within 60 seconds. It may have
                 refused the new configuration. Check the service status
@@ -245,7 +245,7 @@ export function RestartProgressDialog({
         {phase === "error" && (
           <div>
             <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-              <AlertTriangle size={18} style={{ color: "rgb(244, 67, 54)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
+              <AlertTriangle size={18} style={{ color: "var(--color-error)", flexShrink: 0, marginTop: "var(--space-2xs)" }} />
               <span>
                 Failed to ask the server to restart: <code>{errorDetail}</code>
               </span>
@@ -266,7 +266,7 @@ const btnPrimary: React.CSSProperties = {
   gap: "var(--space-xs)",
   padding: "var(--space-sm) var(--space-md)",
   background: "var(--accent)",
-  color: "#fff",
+  color: "var(--text-on-accent)",
   border: "none",
   borderRadius: "var(--border-radius)",
   cursor: "pointer",

@@ -111,9 +111,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function ProbeReadout({ result }: { result: ProbeResult }) {
-  let color = "var(--color-success, #2e7d32)";
-  if (!result.success) color = "var(--color-error, #c0392b)";
-  else if (result.transcode_recommended) color = "var(--color-warning, #b26a00)";
+  let color = "var(--color-success)";
+  if (!result.success) color = "var(--color-error)";
+  else if (result.transcode_recommended) color = "var(--color-warning)";
 
   const dims = result.width && result.height ? `${result.width}x${result.height}` : null;
   const summary = result.success
@@ -439,7 +439,7 @@ export function VideoStreamsSection() {
                   fontWeight: "var(--font-weight-semibold)",
                   textTransform: "uppercase",
                   letterSpacing: "var(--tracking-wide)",
-                  color: s.status === "streaming" ? "var(--color-success, #2e7d32)" : "var(--text-muted)",
+                  color: s.status === "streaming" ? "var(--color-success)" : "var(--text-muted)",
                 }}
               >
                 {s.status === "streaming" ? "Live" : "Idle"}

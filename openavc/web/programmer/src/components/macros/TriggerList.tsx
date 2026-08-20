@@ -221,14 +221,14 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                 style={{
                   border: `1px solid ${
                     isFired ? typeInfo?.color ?? "var(--accent)"
-                    : pending ? "#f59e0b"
+                    : pending ? "var(--color-warning)"
                     : "var(--border-color)"
                   }`,
                   borderRadius: "var(--border-radius)",
                   background: isFired
                     ? `${typeInfo?.color ?? "var(--accent)"}11`
                     : pending
-                    ? "rgba(245,158,11,0.06)"
+                    ? "var(--color-warning-bg)"
                     : "var(--bg-surface)",
                   transition: "border-color 0.3s, background 0.3s",
                   opacity: trigger.enabled ? 1 : 0.5,
@@ -258,7 +258,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     style={{
                       fontSize: "var(--font-size-2xs)",
                       fontWeight: "var(--font-weight-semibold)",
-                      color: "#fff",
+                      color: "var(--text-on-accent)",
                       background: typeInfo?.color ?? "#666",
                       padding: "var(--space-2xs) var(--space-sm)",
                       borderRadius: "var(--border-radius)",
@@ -290,8 +290,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                         gap: "var(--space-xs)",
                         fontSize: "var(--font-size-2xs)",
                         fontWeight: "var(--font-weight-semibold)",
-                        color: "#f59e0b",
-                        background: "rgba(245,158,11,0.15)",
+                        color: "var(--color-warning)",
+                        background: "var(--color-warning-bg)",
                         padding: "0 var(--space-xs)",
                         borderRadius: "var(--border-radius)",
                         flexShrink: 0,
@@ -313,7 +313,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   {lintIssues.length > 0 && (
                     <span
                       title={lintIssues.map((x) => `${issueLabel(x)}: ${x.message}`).join("\n")}
-                      style={{ display: "flex", flexShrink: 0, color: "#f59e0b" }}
+                      style={{ display: "flex", flexShrink: 0, color: "var(--color-warning)" }}
                     >
                       <AlertTriangle size={14} />
                     </span>
@@ -355,7 +355,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     </button>
                     <button
                       onClick={() => deleteTrigger(i)}
-                      style={{ ...iconBtnStyle, color: "#ef4444" }}
+                      style={{ ...iconBtnStyle, color: "var(--color-error)" }}
                       title="Delete trigger"
                     >
                       <Trash2 size={14} />
@@ -371,8 +371,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     style={{
                       padding: "var(--space-xs) var(--space-md)",
                       fontSize: "var(--font-size-sm)",
-                      color: "#f59e0b",
-                      background: "rgba(245,158,11,0.08)",
+                      color: "var(--color-warning)",
+                      background: "var(--color-warning-bg)",
                       borderTop: "1px solid rgba(245,158,11,0.2)",
                     }}
                   >

@@ -143,7 +143,7 @@ export function RoutingMatrix({
               <span style={{ flex: 1, textAlign: "left" }}>
                 {activePreset || "No preset"}
                 {activePreset && isDirty && (
-                  <span style={{ color: "var(--color-warning, #f59e0b)", marginLeft: "var(--space-xs)", fontSize: "var(--font-size-xs)" }}>
+                  <span style={{ color: "var(--color-warning)", marginLeft: "var(--space-xs)", fontSize: "var(--font-size-xs)" }}>
                     (modified)
                   </span>
                 )}
@@ -235,7 +235,7 @@ export function RoutingMatrix({
           )}
           {confirmDelete && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
-              <span style={{ color: "var(--color-error, #ef4444)" }}>Delete "{confirmDelete}"?</span>
+              <span style={{ color: "var(--color-error)" }}>Delete "{confirmDelete}"?</span>
               <button onClick={() => handleDeletePreset(confirmDelete)} style={{ ...btnStyle, fontSize: "var(--font-size-sm)" }}>Yes</button>
               <button onClick={() => setConfirmDelete(null)} style={{ ...btnStyle, fontSize: "var(--font-size-sm)" }}>No</button>
             </div>

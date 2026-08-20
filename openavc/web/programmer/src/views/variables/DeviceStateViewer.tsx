@@ -251,7 +251,7 @@ export function DeviceStatesSubTab() {
                         {/* Usage indicator */}
                         <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }} title={usageCount > 0 ? `Used in ${usageCount} place(s)` : "Not used yet"}>
                           {usageCount > 0 ? (
-                            <Zap size={12} style={{ color: "#f59e0b" }} />
+                            <Zap size={12} style={{ color: "var(--color-warning)" }} />
                           ) : (
                             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--border-color)" }} />
                           )}

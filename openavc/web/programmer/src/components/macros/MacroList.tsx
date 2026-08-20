@@ -164,7 +164,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                       gap: "var(--space-xs)",
                       marginTop: "var(--space-2xs)",
                       fontSize: "var(--font-size-xs)",
-                      color: "#f59e0b",
+                      color: "var(--color-warning)",
                     }}
                     title={issues![m.id]
                       .map((i) => `${issueLabel(i)}: ${i.message}`)

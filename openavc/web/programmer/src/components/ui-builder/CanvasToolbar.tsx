@@ -1128,7 +1128,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
         {/* Save state + manual Save button */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", fontSize: "var(--font-size-xs)", flexShrink: 0 }}>
           {error && !conflictDetected ? (
-            <span style={{ color: "var(--color-error, #d33)", fontWeight: "var(--font-weight-medium)" }} title={error}>
+            <span style={{ color: "var(--color-error)", fontWeight: "var(--font-weight-medium)" }} title={error}>
               Save failed
             </span>
           ) : saving ? (

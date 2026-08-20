@@ -1556,7 +1556,7 @@ function ThemePickerColumn({
         <div
           style={{
             padding: "var(--space-sm) var(--space-md) var(--space-sm)",
-            background: isSelected ? "var(--accent-dim, rgba(138,180,147,0.12))" : "var(--bg-surface)",
+            background: isSelected ? "var(--accent-dim)" : "var(--bg-surface)",
             borderTop: "1px solid var(--border-color)",
           }}
         >

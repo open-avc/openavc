@@ -157,7 +157,7 @@ function ConfigFieldInputs({
                 spellCheck={false}
                 style={{
                   width: "100%",
-                  fontFamily: "var(--font-mono, monospace)",
+                  fontFamily: "var(--font-mono)",
                   fontSize: "var(--font-size-sm)",
                   resize: "vertical",
                   minHeight: "120px",
@@ -933,7 +933,7 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Driver <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
+            Driver <span style={{ color: "var(--color-error)" }}>*</span>
           </label>
           <DriverSearchSelect
             drivers={drivers}
@@ -986,7 +986,7 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Device ID <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
+            Device ID <span style={{ color: "var(--color-error)" }}>*</span>
           </label>
           <input
             value={deviceId}
@@ -998,7 +998,7 @@ export function AddDeviceDialog({
             style={{
               width: "100%",
               borderColor: deviceId && !isAdding && devices?.some((d) => d.id === deviceId)
-                ? "var(--color-error, #ef4444)" : undefined,
+                ? "var(--color-error)" : undefined,
             }}
           />
           <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
@@ -1007,7 +1007,7 @@ export function AddDeviceDialog({
               <span style={{ marginLeft: "var(--space-sm)" }}>
                 Your ID: <code style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{deviceId}</code>
                 {!isAdding && devices?.some((d) => d.id === deviceId) && (
-                  <span style={{ color: "var(--color-error, #ef4444)", marginLeft: "var(--space-sm)" }}>Already exists</span>
+                  <span style={{ color: "var(--color-error)", marginLeft: "var(--space-sm)" }}>Already exists</span>
                 )}
               </span>
             )}

@@ -1207,7 +1207,7 @@ export function UIBuilderView() {
               alignItems: "center",
               gap: "var(--space-md)",
               padding: "var(--space-sm) var(--space-lg)",
-              background: "rgba(244,67,54,0.15)",
+              background: "var(--color-error-bg)",
               color: "var(--color-error)",
               fontSize: "var(--font-size-sm)",
               borderBottom: "1px solid var(--color-error)",
@@ -1683,7 +1683,7 @@ export function UIBuilderView() {
                     key={i}
                     style={{
                       display: "flex", gap: "var(--space-sm)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)",
-                      background: issue.severity === "error" ? "rgba(244,67,54,0.08)" : "rgba(255,152,0,0.08)",
+                      background: issue.severity === "error" ? "var(--color-error-bg)" : "var(--color-warning-bg)",
                       border: `1px solid ${issue.severity === "error" ? "rgba(244,67,54,0.2)" : "rgba(255,152,0,0.2)"}`,
                       cursor: issue.pageId ? "pointer" : "default",
                     }}
@@ -1695,7 +1695,7 @@ export function UIBuilderView() {
                       }
                     }}
                   >
-                    <span style={{ color: issue.severity === "error" ? "var(--color-error)" : "#ff9800", fontWeight: "var(--font-weight-semibold)", flexShrink: 0 }}>
+                    <span style={{ color: issue.severity === "error" ? "var(--color-error)" : "var(--color-warning)", fontWeight: "var(--font-weight-semibold)", flexShrink: 0 }}>
                       {issue.severity === "error" ? "ERR" : "WARN"}
                     </span>
                     <div>

@@ -469,7 +469,7 @@ function InlineConfirm({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)", fontSize: "var(--font-size-sm)" }}>
-      <span style={{ color: "var(--color-error, #ef4444)" }}>{question}</span>
+      <span style={{ color: "var(--color-error)" }}>{question}</span>
       <div style={{ display: "flex", gap: "var(--space-xs)" }}>
         <button onClick={onYes} style={pageMenuConfirmStyle}>Yes</button>
         <button onClick={onNo} style={pageMenuConfirmStyle}>No</button>

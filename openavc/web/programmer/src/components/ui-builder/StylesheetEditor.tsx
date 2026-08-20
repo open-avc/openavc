@@ -119,7 +119,7 @@ export function StylesheetEditor({
         </span>
         <div style={{ flex: 1 }} />
         {dirty && (
-          <span style={{ fontSize: "var(--font-size-xs)", color: "#f59e0b" }}>Unsaved changes</span>
+          <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-warning)" }}>Unsaved changes</span>
         )}
         <button
           onClick={handleSave}
@@ -202,7 +202,7 @@ export function StylesheetEditor({
                 <span
                   key={name}
                   style={{
-                    fontFamily: "var(--font-mono, monospace)",
+                    fontFamily: "var(--font-mono)",
                     fontSize: "var(--font-size-xs)",
                     padding: "var(--space-2xs) var(--space-sm)",
                     borderRadius: "var(--radius-lg)",

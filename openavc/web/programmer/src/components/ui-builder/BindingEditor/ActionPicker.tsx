@@ -214,7 +214,7 @@ function DeviceCommandConfig({
           }}>
             <span style={{
               width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-              background: deviceInfo.connected ? "#10b981" : "#ef4444",
+              background: deviceInfo.connected ? "var(--color-success)" : "var(--color-error)",
             }} />
             <span>{deviceInfo.connected ? "Connected" : "Offline"}</span>
             <span style={{ color: "var(--border-color)" }}>|</span>
@@ -258,7 +258,7 @@ function DeviceCommandConfig({
               <div style={{
                 display: "flex", alignItems: "flex-start", gap: "var(--space-sm)",
                 marginTop: "var(--space-xs)", padding: "var(--space-sm)", borderRadius: "var(--border-radius)",
-                background: "rgba(138,180,147,0.08)", border: "1px solid rgba(138,180,147,0.15)",
+                background: "var(--accent-dim)", border: "1px solid rgba(138,180,147,0.15)",
                 fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", lineHeight: "var(--line-tight)",
               }}>
                 <Info size={13} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--accent)" }} />
@@ -292,7 +292,7 @@ function DeviceCommandConfig({
                     </span>
                   )}
                   {paramRequired && (
-                    <span style={{ fontSize: "var(--font-size-2xs)", color: "#ef4444" }}>required</span>
+                    <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--color-error)" }}>required</span>
                   )}
                   {paramDefault !== undefined && (
                     <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
@@ -445,7 +445,7 @@ function StateSetConfig({
                   padding: "var(--space-xs) var(--space-sm)",
                   borderRadius: "var(--border-radius)",
                   border: `1px solid ${isDynamic ? "var(--accent)" : "var(--border-color)"}`,
-                  background: isDynamic ? "rgba(138,180,147,0.15)" : "transparent",
+                  background: isDynamic ? "var(--accent-dim)" : "transparent",
                   color: isDynamic ? "var(--accent)" : "var(--text-muted)",
                   fontSize: "var(--font-size-xs)",
                   cursor: "pointer",

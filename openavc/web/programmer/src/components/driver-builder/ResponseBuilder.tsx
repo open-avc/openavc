@@ -438,11 +438,11 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                   fontFamily: "var(--font-mono)",
                   fontSize: "var(--font-size-sm)",
                   borderColor: pattern && (() => { try { new RegExp(pattern); return false; } catch { return true; } })()
-                    ? "var(--color-error, #f44336)" : undefined,
+                    ? "var(--color-error)" : undefined,
                 }}
               />
               {pattern && (() => { try { new RegExp(pattern); return null; } catch (e) { return (
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error, #f44336)", marginTop: "var(--space-2xs)" }}>
+                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--color-error)", marginTop: "var(--space-2xs)" }}>
                   Invalid regex: {String(e).replace("SyntaxError: ", "")}
                 </div>
               ); } })()}

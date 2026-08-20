@@ -164,7 +164,7 @@ export function ColorBindingEditor({
                   }
                   if (newKey in colorMap) {
                     e.target.value = mapKey;
-                    e.target.style.outline = "2px solid var(--color-error, #c62828)";
+                    e.target.style.outline = "2px solid var(--color-error)";
                     setTimeout(() => { e.target.style.outline = ""; }, 1500);
                     return;
                   }

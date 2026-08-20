@@ -280,20 +280,20 @@ function DisplayForm({
           </p>
         )}
         {kind === "browser" && selectedOutput?.primary && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: "var(--line-base)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning)", lineHeight: "var(--line-base)" }}>
             That is this server&apos;s primary screen, usually the console or
             panel display. Present will cover it whenever this display is on.
           </p>
         )}
         {kind === "browser" && selectedMissing && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)", lineHeight: "var(--line-base)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning)", lineHeight: "var(--line-base)" }}>
             The configured output isn&apos;t connected right now. The window
             opens automatically when it returns, or pick a connected output
             above.
           </p>
         )}
         {display && effectiveId !== display.id && (
-          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning, #b26a00)" }}>
+          <p style={{ margin: 0, fontSize: "var(--font-size-sm)", color: "var(--color-warning)" }}>
             Changing the display ID changes its display link
             {display.kind === "stream" ? " and its stream addresses" : ""}. Any
             device already using the old one will need the new one.
@@ -543,7 +543,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
             </strong>
           </span>
         </div>
-        <div style={{ color: presenting.length ? "var(--color-success, #2e7d32)" : "var(--text-muted)" }}>
+        <div style={{ color: presenting.length ? "var(--color-success)" : "var(--text-muted)" }}>
           {presenting.length
             ? `Presenting: ${presenting.map((p) => p.label || p.name).join(", ")}`
             : "No one is presenting"}
@@ -559,13 +559,13 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
             padding: "var(--space-sm) var(--space-md)",
             marginBottom: "var(--space-sm)",
             borderRadius: "var(--border-radius)",
-            border: "1px solid var(--color-warning, #b26a00)",
+            border: "1px solid var(--color-warning)",
             color: "var(--text-secondary)",
             fontSize: "var(--font-size-sm)",
             lineHeight: "var(--line-base)",
           }}
         >
-          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--color-warning, #b26a00)" }} />
+          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: "var(--space-2xs)", color: "var(--color-warning)" }} />
           <span>
             Guests can&apos;t share their screen yet: browsers only allow screen
             capture over HTTPS, and HTTPS is off on this system. Enable it in
@@ -615,7 +615,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                     textTransform: "uppercase",
                     letterSpacing: "var(--tracking-wide)",
                     flexShrink: 0,
-                    color: d.output_state === "live" ? "var(--color-success, #2e7d32)" : "var(--text-muted)",
+                    color: d.output_state === "live" ? "var(--color-success)" : "var(--text-muted)",
                   }}
                 >
                   {d.output_state === "live" ? `Live: ${d.showing}` : "Idle"}
@@ -632,8 +632,8 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                         flexShrink: 0,
                         padding: "var(--space-2xs) var(--space-sm)",
                         borderRadius: 999,
-                        border: `1px solid ${chip.warn ? "var(--color-warning, #b26a00)" : "var(--border-color)"}`,
-                        color: chip.warn ? "var(--color-warning, #b26a00)" : "var(--text-muted)",
+                        border: `1px solid ${chip.warn ? "var(--color-warning)" : "var(--border-color)"}`,
+                        color: chip.warn ? "var(--color-warning)" : "var(--text-muted)",
                       }}
                     >
                       {chip.text}
@@ -713,7 +713,7 @@ export function PresentManagementPanel({ running }: { running: boolean }) {
                         color:
                           d.encoder_state === "starting"
                             ? "var(--text-muted)"
-                            : "var(--color-warning, #b26a00)",
+                            : "var(--color-warning)",
                       }}
                     >
                       {d.encoder_state === "starting"

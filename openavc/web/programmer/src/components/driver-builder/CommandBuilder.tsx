@@ -1467,10 +1467,10 @@ function ParamRow({
             <div
               style={{
                 fontSize: "var(--font-size-xs)",
-                color: "var(--color-warning, #d97706)",
+                color: "var(--color-warning)",
                 padding: "var(--space-xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
-                background: "rgba(255, 152, 0, 0.12)",
+                background: "var(--color-warning-bg)",
                 border: "1px solid rgba(255, 152, 0, 0.35)",
               }}
             >
@@ -1654,10 +1654,10 @@ function ParamOptionsEditor({
             <div
               style={{
                 fontSize: "var(--font-size-xs)",
-                color: "var(--color-warning, #d97706)",
+                color: "var(--color-warning)",
                 padding: "var(--space-xs) var(--space-sm)",
                 borderRadius: "var(--border-radius)",
-                background: "rgba(255, 152, 0, 0.12)",
+                background: "var(--color-warning-bg)",
                 border: "1px solid rgba(255, 152, 0, 0.35)",
               }}
             >
