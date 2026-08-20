@@ -125,6 +125,28 @@ VALID_KEY_PREFIXES = ("device.", "var.", "ui.", "system.", "isc.", "plugin.")
 # guards, or pollute ISC mesh state) are rejected.
 PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
 
+# A namespace nothing outside this process may write, and why. These keys are a
+# *mirror* — something else owns the value and refreshes it — so a door write
+# lands, reports success, and is gone at the owner's next update. Telling a
+# caller "OK" for a write that will be discarded is the worst answer an API can
+# give: it is indistinguishable from working, right up until the value it is
+# steering disappears.
+#
+# The owner writes through ``StateStore.set`` directly (``source="isc"``),
+# which is a different path from the doors below — so refusing here costs the
+# mesh nothing. ``device.*`` has the same mirror shape and is deliberately NOT
+# here: a driver owns those keys, but poking one by hand is how an integrator
+# tests a binding against gear that is not on the bench yet, and taking that
+# away is a separate decision from closing a namespace nobody can use at all.
+DOOR_READONLY_PREFIXES = {
+    "isc.": (
+        "'{key}' mirrors state received from another OpenAVC system, so a "
+        "write here would be replaced by that system's next update. To send a "
+        "value to peers, set it under 'var.' and cover that key with a Shared "
+        "State Pattern on the Inter-System page."
+    ),
+}
+
 
 def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | None:
     """One policy for every remote door into the state store.
@@ -137,6 +159,10 @@ def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | Non
 
     ``panel=True`` marks the one unauthenticated door (panel WebSocket
     clients), which is held to ``PANEL_WRITABLE_PREFIXES``.
+
+    A namespace in ``DOOR_READONLY_PREFIXES`` is refused for every door,
+    authenticated or not: the value is a mirror of something this process does
+    not own, so the write would be silently undone rather than rejected.
 
     This is a pre-flight check, not the enforcement point. ``set()`` still
     drops a non-primitive on its own — that backstop covers in-process writers
@@ -153,6 +179,10 @@ def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | Non
         if panel:
             return f"Panel clients can only set keys under: {names}"
         return f"State key '{key}' must start with one of: {names}"
+
+    for prefix, reason in DOOR_READONLY_PREFIXES.items():
+        if key.startswith(prefix):
+            return reason.format(key=key)
 
     if not is_flat_primitive(value):
         return (

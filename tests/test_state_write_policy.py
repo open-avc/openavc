@@ -20,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from openavc.core.state_store import (
+    DOOR_READONLY_PREFIXES,
     PANEL_WRITABLE_PREFIXES,
     VALID_KEY_PREFIXES,
     check_state_write,
@@ -37,7 +38,12 @@ def test_off_namespace_key_is_rejected():
 
 
 def test_every_valid_namespace_is_accepted():
+    # "Valid" is where a key may LIVE — the panel binds by namespace, the relay
+    # and ISC filter by it. Whether a door may write one is a second question,
+    # and the mirrored namespaces answer it differently (see below).
     for prefix in VALID_KEY_PREFIXES:
+        if prefix in DOOR_READONLY_PREFIXES:
+            continue
         assert check_state_write(prefix + "thing", "x") is None, prefix
 
 
@@ -230,3 +236,73 @@ def test_predicate_accepts_exactly_the_documented_types():
     assert is_flat_primitive(1) and is_flat_primitive(1.5) and is_flat_primitive(True)
     assert not is_flat_primitive(b"bytes")
     assert not is_flat_primitive({"a": 1}) and not is_flat_primitive([1])
+
+
+# ---------------------------------------------------------------------------
+# A namespace the doors may read but not write
+#
+# isc.* holds state received FROM a peer. The policy listed it as writable, so
+# a caller wrote a peer's mirror, was told it worked, and lost the value at
+# that peer's next update — the one answer worse than a refusal, because it is
+# indistinguishable from success until the thing it was steering stops
+# responding. ISC's own writer goes through StateStore.set directly, so the
+# door can refuse without costing the mesh anything.
+# ---------------------------------------------------------------------------
+
+
+def test_a_mirrored_namespace_is_refused_at_every_door():
+    reason = check_state_write("isc.peer7.room_temp", 21)
+    assert reason is not None
+    # The refusal names the key, why it would not stick, and what to do instead.
+    assert "isc.peer7.room_temp" in reason
+    assert "var." in reason
+    assert "Shared State Pattern" in reason
+
+
+def test_the_refusal_does_not_depend_on_the_value():
+    # Nothing about the value makes a mirrored key writable, so every value
+    # gets the SAME reason. Ordering is the real assertion: with this check
+    # placed after the flat-primitive one, a dict would come back told to send
+    # a JSON string — advice that leads somewhere it cannot go.
+    expected = check_state_write("isc.peer7.k", 21)
+    for value in (21, "warm", True, None, {"nested": 1}, [1, 2]):
+        assert check_state_write("isc.peer7.k", value) == expected, value
+
+
+def test_a_panel_is_still_refused_for_its_own_reason():
+    # Two rules reach isc.* for a panel client. The panel one runs first and
+    # says the thing a panel author needs to hear.
+    reason = check_state_write("isc.peer7.k", 1, panel=True)
+    assert reason is not None
+    assert "Panel clients" in reason
+
+
+def test_the_mirrored_namespace_is_still_a_valid_key():
+    # Refusing the write must not make the key illegal: a page binds to
+    # isc.<peer>.<key> to show what a peer reports, and that has to keep
+    # working. The two questions are separate, and only one of them changed.
+    assert "isc." in VALID_KEY_PREFIXES
+
+
+def test_every_other_namespace_still_writes():
+    for key in (
+        "var.house_lights",
+        "plugin.scheduler.next_run",
+        "ui.page1.visible",
+        "system.help_state",
+        "device.projector1.power",
+    ):
+        assert check_state_write(key, "x") is None, key
+
+
+def test_isc_own_writer_does_not_go_through_the_door():
+    """The precondition this fix rested on, pinned so it stays true.
+
+    If ISC ever routed its peer updates through ``check_state_write``, this
+    refusal would silently empty the mesh's state — the failure would be a
+    room showing nothing rather than an error anybody sees. The mesh writes
+    through ``StateStore.set`` with a source tag instead.
+    """
+    source = (_SERVER / "core" / "isc.py").read_text(encoding="utf-8")
+    assert "check_state_write" not in source
+    assert 'source="isc"' in source

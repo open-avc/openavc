@@ -762,15 +762,20 @@ class TestUINavigateMacroStep:
 
 
 # ===========================================================================
-# L-081 — The state store accepts isc. keys; the AI state-key validator must
-# accept them too (parity with StateStore._VALID_PREFIXES).
+# L-081 — The AI state-key validator answers for isc. keys the same way every
+# other door does. It originally accepted them, matching a policy that listed
+# isc. as writable; that policy was wrong (the key is a peer's mirror and the
+# write is undone at the peer's next update), so the shared answer is now a
+# refusal — and this class exists to keep the AI door on whatever the shared
+# answer is, rather than holding an opinion of its own.
 # ===========================================================================
 
 
 class TestStateKeyISCPrefix:
-    def test_isc_prefix_accepted(self):
+    def test_isc_prefix_refused_with_a_reason(self):
         from openavc.core.state_store import check_state_write
-        assert check_state_write("isc.room1.scene", "movie") is None
+        err = check_state_write("isc.room1.scene", "movie")
+        assert err and "Shared State Pattern" in err
 
     def test_isc_listed_in_error_message(self):
         from openavc.core.state_store import check_state_write
