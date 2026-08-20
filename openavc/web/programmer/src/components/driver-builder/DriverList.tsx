@@ -59,7 +59,7 @@ export function DriverList({
             padding: "var(--space-sm) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
-            color: "var(--text-on-accent)",
+            color: "var(--text-on-accent-bg)",
             fontSize: "var(--font-size-sm)",
             justifyContent: "center",
           }}

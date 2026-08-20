@@ -23,6 +23,9 @@
   --bg-primary: #0e1113;
   --bg-surface: #151a1d;
   --bg-elevated: #1c2226;
+  /* The rail RECEDES rather than lifts. It sits under the page, not on it --
+     a tool rail that is lighter than what it frames reads as a phone tab bar. */
+  --bg-rail: #0a0d0f;
   --bg-hover: #232b30;
   --bg-selected: #2a3a31;
 
@@ -36,9 +39,14 @@
   --accent: #8ab493;
   --accent-hover: #a3c7ac;
   --accent-dim: rgba(138, 180, 147, 0.13);
-  /* Deeper sage for filled buttons (4.9:1 with white text) */
-  --accent-bg: #4a7d5c;
-  --accent-bg-hover: #5c9270;
+  /* The primary action IS the sage -- one green, not two. The fill is the
+     bright mark and the label goes near-black on it, because white on #8ab493
+     is about 2:1 and unreadable. That ink is its OWN token: --text-on-accent
+     is also worn by labels on error and warning fills, so it cannot follow
+     the sage anywhere. */
+  --accent-bg: #8ab493;
+  --accent-bg-hover: #a3c7ac;
+  --text-on-accent-bg: #0a0d0f;
 
   /* Status. Kept clearly apart from the accent hue so "selected" and
      "healthy" never read as the same thing. */
@@ -57,9 +65,14 @@
   --color-error-bg: rgba(229, 84, 76, 0.13);
   --color-info-bg: rgba(106, 163, 214, 0.13);
 
-  /* Borders. One hairline, and corners tight enough to read as panels
-     rather than cards. */
+  /* Corners tight enough to read as panels rather than cards.
+     Three border weights, because they are three different jobs. --border-color is
+     the hairline around a CONTROL. Chrome -- the rail, the header, a pane edge
+     -- is quieter, and a divider INSIDE a list is quieter still, so rows read
+     as rhythm rather than as a table. */
   --border-color: #232c31;
+  --border-chrome: #1e262b;
+  --border-list: #161d21;
   --radius-sm: 2px;
   --border-radius: 3px;
   --radius-lg: 6px;
@@ -98,6 +111,10 @@
   /* Tracking is em, not px, so a section header keeps its spacing when the
      size next to it changes. */
   --tracking-wide: 0.05em;
+  /* The eyebrow: a 10px uppercase micro-label naming what a block IS. Tracking
+     has to open up as the size comes down, so this is not --tracking-wide with
+     a different name -- that one rides 12px labels, where 0.09em would gap. */
+  --tracking-wider: 0.09em;
 
   /* Spacing */
   --space-2xs: 2px;
@@ -128,6 +145,7 @@
   --bg-primary: #f7f7f5;
   --bg-surface: #ffffff;
   --bg-elevated: #efefec;
+  --bg-rail: #ededea;
   --bg-hover: #e7e7e3;
   --bg-selected: #dfe8e1;
 
@@ -141,6 +159,7 @@
   --accent-dim: rgba(61, 101, 75, 0.10);
   --accent-bg: #3d654b;
   --accent-bg-hover: #2c4a37;
+  --text-on-accent-bg: #ededea;
 
   --color-success: #2f7d4f;
   --color-warning: #9a6300;
@@ -152,7 +171,9 @@
   --color-error-bg: rgba(192, 57, 47, 0.10);
   --color-info-bg: rgba(43, 108, 163, 0.10);
 
-  --border-color: #e2e2de;
+  --border-color: #d6d6d1;
+  --border-chrome: #e2e2de;
+  --border-list: #ededea;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.07);
   --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.09);

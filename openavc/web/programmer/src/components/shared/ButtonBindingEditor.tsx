@@ -312,7 +312,7 @@ export function ButtonBindingEditor({
                           fontSize: "var(--font-size-sm)", cursor: "pointer",
                           fontWeight: "var(--font-weight-medium)",
                           background: String(toggleValue) === String(v) ? "var(--accent-bg)" : "var(--bg-hover)",
-                          color: String(toggleValue) === String(v) ? "var(--text-on-accent)" : "var(--text-secondary)",
+                          color: String(toggleValue) === String(v) ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
                           border: "1px solid " + (String(toggleValue) === String(v) ? "var(--accent)" : "var(--border-color)"),
                         }}
                       >

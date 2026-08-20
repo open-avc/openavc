@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Save, AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { headerPrimaryButton } from "../components/layout/headerActions";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
@@ -125,7 +126,7 @@ const btnStyle: React.CSSProperties = {
   cursor: "pointer",
   transition: "all var(--transition-fast)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   border: "1px solid var(--accent-bg)",
 };
 
@@ -682,12 +683,11 @@ export function SystemSettingsView() {
       title="System Settings"
       actions={
         <button
-          style={{ ...btnStyle, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
+          style={{ ...headerPrimaryButton, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
           onClick={handleSave}
           disabled={!hasDirty || saving || saveBlocked}
           title={saveBlocked ? "Fix the validation errors below before saving" : undefined}
         >
-          <Save size={14} />
           <span>{saving ? "Saving..." : "Save"}</span>
         </button>
       }

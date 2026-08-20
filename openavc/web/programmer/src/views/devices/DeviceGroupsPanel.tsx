@@ -74,7 +74,7 @@ export function DeviceGroupsPanel() {
             style={{
               display: "flex", alignItems: "center", gap: "var(--space-xs)",
               padding: "var(--space-xs) var(--space-sm)",
-              background: "var(--accent-bg)", color: "var(--text-on-accent)",
+              background: "var(--accent-bg)", color: "var(--text-on-accent-bg)",
               border: "none", borderRadius: "var(--border-radius)",
               fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: "var(--font-weight-medium)",
             }}
@@ -102,7 +102,7 @@ export function DeviceGroupsPanel() {
               </div>
             )}
             <div style={{ display: "flex", gap: "var(--space-xs)" }}>
-              <button onClick={handleCreate} disabled={!autoGroupId || groups.some((g) => g.id === autoGroupId)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent-bg)", color: "var(--text-on-accent)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer", opacity: !autoGroupId || groups.some((g) => g.id === autoGroupId) ? 0.5 : 1 }}>Create</button>
+              <button onClick={handleCreate} disabled={!autoGroupId || groups.some((g) => g.id === autoGroupId)} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--accent-bg)", color: "var(--text-on-accent-bg)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer", opacity: !autoGroupId || groups.some((g) => g.id === autoGroupId) ? 0.5 : 1 }}>Create</button>
               <button onClick={() => { setShowCreate(false); setNewGroupName(""); }} style={{ padding: "var(--space-xs) var(--space-sm)", background: "var(--bg-hover)", color: "var(--text-secondary)", border: "none", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-sm)", cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
@@ -121,7 +121,7 @@ export function DeviceGroupsPanel() {
                 onClick={() => setShowCreate(true)}
                 style={{
                   marginTop: "var(--space-md)", padding: "var(--space-xs) var(--space-md)",
-                  background: "var(--accent-bg)", color: "var(--text-on-accent)",
+                  background: "var(--accent-bg)", color: "var(--text-on-accent-bg)",
                   border: "none", borderRadius: "var(--border-radius)",
                   fontSize: "var(--font-size-sm)", cursor: "pointer", fontWeight: "var(--font-weight-medium)",
                 }}

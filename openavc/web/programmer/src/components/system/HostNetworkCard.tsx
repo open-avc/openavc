@@ -68,7 +68,7 @@ const btnStyle: React.CSSProperties = {
   fontWeight: "var(--font-weight-medium)",
   cursor: "pointer",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   border: "1px solid var(--accent-bg)",
 };
 

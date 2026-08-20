@@ -653,7 +653,7 @@ const newBadgeStyle: React.CSSProperties = {
   padding: "0 var(--space-xs)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
 };
 
 const moveBtnStyle: React.CSSProperties = {
@@ -692,7 +692,7 @@ const primaryBtnStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",

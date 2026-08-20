@@ -208,7 +208,7 @@ export function AssetBrowser({
                   borderRadius: 999,
                   fontSize: "var(--font-size-sm)",
                   background: active ? "var(--accent-bg)" : "var(--bg-base)",
-                  color: active ? "var(--text-on-accent)" : "var(--text-secondary)",
+                  color: active ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
                   border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
                   cursor: "pointer",
                   textTransform: "capitalize",

@@ -759,7 +759,7 @@ const applyBtnStyle: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   fontSize: "var(--font-size-xs)",
   border: "none",
   cursor: "pointer",

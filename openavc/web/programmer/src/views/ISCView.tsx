@@ -7,12 +7,12 @@ import {
   Plus,
   Trash2,
   Send,
-  RefreshCw,
   Shield,
   Eye,
   Terminal,
 } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { headerButton } from "../components/layout/headerActions";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 
@@ -206,8 +206,8 @@ export function ISCView() {
     <ViewContainer
       title="Inter-System Communication"
       actions={
-        <button onClick={fetchStatus} style={headerBtnStyle} title="Refresh">
-          <RefreshCw size={14} /> Refresh
+        <button onClick={fetchStatus} style={headerButton} title="Refresh">
+          Refresh
         </button>
       }
     >
@@ -529,19 +529,6 @@ export function ISCView() {
 
 // --- Styles ---
 
-const headerBtnStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-md)",
-  borderRadius: "var(--border-radius)",
-  background: "var(--bg-hover)",
-  color: "var(--text-secondary)",
-  fontSize: "var(--font-size-sm)",
-  border: "none",
-  cursor: "pointer",
-};
-
 const cardStyle: React.CSSProperties = {
   background: "var(--bg-surface)",
   border: "1px solid var(--border-color)",
@@ -630,7 +617,7 @@ const btnSmall: React.CSSProperties = {
   padding: "var(--space-xs) var(--space-sm)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",

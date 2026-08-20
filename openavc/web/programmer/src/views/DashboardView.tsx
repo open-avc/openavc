@@ -221,7 +221,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
               gap: "var(--space-xs)",
               padding: "var(--space-sm) var(--space-lg)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent)",
+              color: "var(--text-on-accent-bg)",
               border: "none",
               borderRadius: "var(--border-radius)",
               cursor: "pointer",
@@ -754,7 +754,7 @@ export function DashboardView() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                   >
-                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "var(--text-on-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "var(--accent-bg)", color: "var(--text-on-accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--font-size-sm)", fontWeight: "var(--font-weight-medium)", flexShrink: 0 }}>
                       {item.step}
                     </div>
                     <div style={{ flex: 1 }}>

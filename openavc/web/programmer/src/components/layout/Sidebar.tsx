@@ -217,8 +217,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             title="Unsaved changes"
             style={{
               position: "absolute",
-              top: 6,
-              right: 6,
+              top: 4,
+              right: 4,
               width: 8,
               height: 8,
               borderRadius: "50%",
@@ -235,12 +235,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           aria-label={item.label}
           aria-current={activeView === item.id ? "page" : undefined}
         >
-          <item.icon size={20} />
+          <item.icon size={18} />
           <span className={styles.tooltip}>{item.label}</span>
         </button>
       ))}
       {pluginViews.length > 0 && (
-        <div style={{ width: "100%", borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0", display: "flex", flexDirection: "column", alignItems: "center" }} />
+        <div style={{ width: "100%", borderTop: "1px solid var(--border-chrome)", margin: "var(--space-xs) 0", display: "flex", flexDirection: "column", alignItems: "center" }} />
       )}
       {pluginViews.map((view) => {
         const viewId: ViewId = `plugin-view:${view.plugin_id}.${view.id}`;
@@ -252,7 +252,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
             aria-label={view.label}
             aria-current={activeView === viewId ? "page" : undefined}
           >
-            <Plug size={16} />
+            <Plug size={18} />
             <span className={styles.tooltip}>{view.label}</span>
           </button>
         );
@@ -283,14 +283,16 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         }}
         aria-label={simulationActive ? "Stop Simulation" : simBusy ? "Starting..." : "Simulate Devices"}
         style={{
-          background: simulationActive ? "rgba(34, 197, 94, 0.15)" : undefined,
-          color: simulationActive ? "#22c55e" : undefined,
+          // Nothing in the rail is filled, this included: an active simulator
+          // is said by the icon's colour, not by a plate that then outshouts
+          // the screen you are actually on.
+          color: simulationActive ? "var(--color-success)" : undefined,
           opacity: simBusy ? 0.6 : 1,
           marginBottom: "var(--space-xs)",
         }}
       >
-        {simBusy ? <Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} /> :
-         simulationActive ? <StopCircle size={20} /> : <PlayCircle size={20} />}
+        {simBusy ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> :
+         simulationActive ? <StopCircle size={18} /> : <PlayCircle size={18} />}
         <span className={styles.tooltip}>
           {simulationActive ? "Stop Simulation" : simBusy ? "Starting Simulation..." : "Simulate Devices"}
         </span>
@@ -333,7 +335,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 await startSimulation();
               }} style={{
                 padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)", fontSize: "var(--font-size-base)",
-                background: "var(--accent-bg)", color: "var(--text-on-accent)",
+                background: "var(--accent-bg)", color: "var(--text-on-accent-bg)",
               }}>Start Simulation</button>
             </div>
         </Modal>
@@ -343,12 +345,11 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         onClick={() => onViewChange("updates")}
         aria-label={updateAvailable ? "Update available: v" + updateAvailable : "Updates"}
         style={{
-          background: updateAvailable && activeView !== "updates" ? "rgba(33, 150, 243, 0.1)" : undefined,
-          color: updateAvailable ? "var(--accent)" : undefined,
+          color: updateAvailable ? "var(--color-info)" : undefined,
           marginBottom: "var(--space-sm)",
         }}
       >
-        <ArrowUpCircle size={20} />
+        <ArrowUpCircle size={18} />
         <span className={styles.tooltip}>{updateAvailable ? "Update available: v" + updateAvailable : "Updates"}</span>
       </button>
       {hasSession() && (
@@ -362,7 +363,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           aria-label="Sign out"
           style={{ marginBottom: "var(--space-xs)" }}
         >
-          <LogOut size={20} />
+          <LogOut size={18} />
           <span className={styles.tooltip}>Sign out</span>
         </button>
       )}

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Search, Plug, AlertTriangle, RefreshCw, Power, PowerOff, Trash2, ArrowRight } from "lucide-react";
 import { CopyButton } from "../components/shared/CopyButton";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { headerButton } from "../components/layout/headerActions";
 import { usePluginStore } from "../store/pluginStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
@@ -429,7 +430,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--accent-bg)",
-                  color: "var(--text-on-accent)",
+                  color: "var(--text-on-accent-bg)",
                   fontSize: "var(--font-size-sm)",
                   fontWeight: "var(--font-weight-medium)",
                 }}
@@ -550,7 +551,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent)",
+              color: "var(--text-on-accent-bg)",
               fontSize: "var(--font-size-sm)",
               fontWeight: "var(--font-weight-medium)",
             }}
@@ -653,7 +654,7 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
                   padding: "var(--space-xs) var(--space-md)",
                   borderRadius: "var(--border-radius)",
                   background: "var(--accent-bg)",
-                  color: "var(--text-on-accent)",
+                  color: "var(--text-on-accent-bg)",
                   fontSize: "var(--font-size-sm)",
                   fontWeight: "var(--font-weight-medium)",
                 }}
@@ -875,14 +876,14 @@ export function PluginsView() {
       actions={
         <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
           {/* Tab toggle */}
-          <div style={{ display: "flex", borderRadius: "var(--border-radius)", overflow: "hidden", border: "1px solid var(--border-color)" }}>
+          <div style={{ display: "flex", height: 25, borderRadius: "var(--border-radius)", overflow: "hidden", border: "1px solid var(--border-color)" }}>
             <button
               onClick={() => setTab("installed")}
               style={{
-                padding: "var(--space-xs) var(--space-md)",
+                padding: "0 var(--space-md)",
                 fontSize: "var(--font-size-sm)",
                 background: tab === "installed" ? "var(--accent-bg)" : "transparent",
-                color: tab === "installed" ? "var(--text-on-accent)" : "var(--text-secondary)",
+                color: tab === "installed" ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
                 fontWeight: "var(--font-weight-medium)",
               }}
             >
@@ -891,10 +892,10 @@ export function PluginsView() {
             <button
               onClick={() => setTab("browse")}
               style={{
-                padding: "var(--space-xs) var(--space-md)",
+                padding: "0 var(--space-md)",
                 fontSize: "var(--font-size-sm)",
                 background: tab === "browse" ? "var(--accent-bg)" : "transparent",
-                color: tab === "browse" ? "var(--text-on-accent)" : "var(--text-secondary)",
+                color: tab === "browse" ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
                 fontWeight: "var(--font-weight-medium)",
               }}
             >
@@ -903,15 +904,7 @@ export function PluginsView() {
           </div>
           <button
             onClick={() => load()}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-xs) var(--space-sm)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              fontSize: "var(--font-size-sm)",
-            }}
+            style={{ ...headerButton, padding: "0 var(--space-sm)" }}
             title="Refresh"
           >
             <RefreshCw size={14} />

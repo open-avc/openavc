@@ -102,7 +102,7 @@ export function SetupActionWizard({
     padding: "var(--space-sm) var(--space-lg)",
     borderRadius: "var(--border-radius)",
     background: variant === "primary" ? "var(--accent-bg)" : "var(--bg-hover)",
-    color: variant === "primary" ? "var(--text-on-accent)" : "var(--text-primary)",
+    color: variant === "primary" ? "var(--text-on-accent-bg)" : "var(--text-primary)",
     display: "flex",
     alignItems: "center",
     gap: "var(--space-xs)",
@@ -144,7 +144,7 @@ export function SetupActionWizard({
               disabled={blocked}
               style={{
                 ...btnStyle(blocked ? "muted" : "primary"),
-                color: blocked ? "var(--text-muted)" : "var(--text-on-accent)",
+                color: blocked ? "var(--text-muted)" : "var(--text-on-accent-bg)",
               }}
             >
               Start

@@ -258,7 +258,7 @@ function ViewTabButton({
         padding: "var(--space-xs) var(--space-md)",
         borderRadius: "var(--border-radius)",
         background: active ? "var(--accent-bg)" : "var(--bg-hover)",
-        color: active ? "var(--text-on-accent)" : "var(--text-primary)",
+        color: active ? "var(--text-on-accent-bg)" : "var(--text-primary)",
         fontSize: "var(--font-size-sm)",
         fontWeight: "var(--font-weight-medium)",
         border: "none",
@@ -419,7 +419,7 @@ commands:
                 ? "var(--accent)"
                 : "var(--bg-hover)",
               color: pasteText.trim()
-                ? "var(--text-on-accent)"
+                ? "var(--text-on-accent-bg)"
                 : "var(--text-muted)",
             }}
           >

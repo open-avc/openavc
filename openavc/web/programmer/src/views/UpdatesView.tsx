@@ -46,7 +46,7 @@ const btnStyle: React.CSSProperties = {
 const primaryBtn: React.CSSProperties = {
   ...btnStyle,
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   border: "1px solid var(--accent)",
 };
 

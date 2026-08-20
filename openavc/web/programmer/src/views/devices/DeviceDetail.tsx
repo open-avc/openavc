@@ -938,7 +938,7 @@ export function DeviceDetail({
                     padding: "var(--space-sm) var(--space-lg)",
                     borderRadius: "var(--border-radius)",
                     background: selectedCommand && !sendBlocked ? "var(--accent-bg)" : "var(--bg-hover)",
-                    color: selectedCommand && !sendBlocked ? "var(--text-on-accent)" : "var(--text-muted)",
+                    color: selectedCommand && !sendBlocked ? "var(--text-on-accent-bg)" : "var(--text-muted)",
                     opacity: sending ? 0.6 : 1,
                   }}
                 >
@@ -1181,7 +1181,7 @@ function CommandPicker({
                     textAlign: "left",
                     padding: "var(--space-xs) var(--space-md)",
                     background: isSelected ? "var(--accent-bg)" : "transparent",
-                    color: isSelected ? "var(--text-on-accent)" : "var(--text-primary)",
+                    color: isSelected ? "var(--text-on-accent-bg)" : "var(--text-primary)",
                     border: "none",
                     cursor: "pointer",
                     fontSize: "var(--font-size-sm)",
@@ -1192,7 +1192,7 @@ function CommandPicker({
                     style={{
                       fontFamily: "var(--font-mono)",
                       fontSize: "var(--font-size-xs)",
-                      color: isSelected ? "var(--text-on-accent)" : "var(--text-muted)",
+                      color: isSelected ? "var(--text-on-accent-bg)" : "var(--text-muted)",
                       opacity: lbl ? 0.8 : 1,
                     }}
                   >
@@ -1532,7 +1532,7 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "protocol" ? "var(--text-on-accent)" : "var(--text-secondary)",
+            color: tab === "protocol" ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
             fontWeight: "var(--font-weight-medium)",
             border: "none",
@@ -1547,7 +1547,7 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
             padding: "var(--space-2xs) var(--space-sm)",
             borderRadius: "var(--border-radius)",
             background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "state" ? "var(--text-on-accent)" : "var(--text-secondary)",
+            color: tab === "state" ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
             fontWeight: "var(--font-weight-medium)",
             border: "none",

@@ -1,16 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  Save,
   Download,
   Upload,
-  Plus,
-  FilePlus,
   Trash2,
   Copy,
   FolderOpen,
   MoreHorizontal,
 } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { headerButton, headerPrimaryButton } from "../components/layout/headerActions";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Dialog } from "../components/shared/Dialog";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
@@ -355,11 +353,6 @@ export function ProjectView() {
     cursor: "pointer",
   };
 
-  const accentBtnStyle: React.CSSProperties = {
-    ...btnStyle,
-    background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-    color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
-  };
 
   const labelStyle: React.CSSProperties = {
     display: "block",
@@ -390,24 +383,28 @@ export function ProjectView() {
       title="Program"
       actions={
         <>
-          <button onClick={() => setShowBlank(true)} style={btnStyle}>
-            <FilePlus size={14} /> New
+          <button onClick={() => setShowBlank(true)} style={headerButton}>
+            New
           </button>
-          <button onClick={handleImportCurrent} style={btnStyle}>
-            <Upload size={14} /> Import
+          <button onClick={handleImportCurrent} style={headerButton}>
+            Import
           </button>
-          <button onClick={handleExportCurrent} style={btnStyle}>
-            <Download size={14} /> Export
+          <button onClick={handleExportCurrent} style={headerButton}>
+            Export
           </button>
-          <button onClick={openSaveAs} style={btnStyle}>
-            <Plus size={14} /> Save As
+          <button onClick={openSaveAs} style={headerButton}>
+            Save As
           </button>
           <button
             onClick={() => save()}
             disabled={!dirty || saving}
-            style={{ ...accentBtnStyle, opacity: saving ? 0.6 : 1 }}
+            style={{
+              ...(dirty ? headerPrimaryButton : headerButton),
+              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
+              opacity: saving ? 0.6 : 1,
+            }}
           >
-            <Save size={14} /> {saving ? "Saving..." : "Save"}
+            {saving ? "Saving..." : "Save"}
           </button>
         </>
       }
@@ -669,7 +666,7 @@ export function ProjectView() {
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent)",
+              color: "var(--text-on-accent-bg)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
               opacity: creatingBackup ? 0.6 : 1,
@@ -751,7 +748,7 @@ export function ProjectView() {
           <textarea style={{ ...dialogInputStyle, minHeight: 60, resize: "vertical" }} value={saveAsDesc} onChange={(e) => setSaveAsDesc(e.target.value)} placeholder="Optional" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowSaveAs(false)} style={btnStyle}>Cancel</button>
-            <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
+            <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
               {busy ? "Saving..." : "Save"}
             </button>
           </div>
@@ -769,7 +766,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={blankId} onChange={(e) => setBlankId(e.target.value)} placeholder="Auto-generated from name" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowBlank(false)} style={btnStyle}>Cancel</button>
-            <button onClick={handleBlank} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !blankName.trim()}>
+            <button onClick={handleBlank} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !blankName.trim()}>
               {busy ? "Creating..." : "Create"}
             </button>
           </div>
@@ -787,7 +784,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={openId} onChange={(e) => setOpenId(e.target.value)} placeholder="Auto-generated from name" />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowOpen(null)} style={btnStyle}>Cancel</button>
-            <button onClick={handleOpen} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !openName.trim()}>
+            <button onClick={handleOpen} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !openName.trim()}>
               {busy ? "Opening..." : "Open"}
             </button>
           </div>
@@ -802,7 +799,7 @@ export function ProjectView() {
           <input style={dialogInputStyle} value={dupName} onChange={(e) => setDupName(e.target.value)} />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowDuplicate(null)} style={btnStyle}>Cancel</button>
-            <button onClick={handleDuplicate} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !dupId.trim() || !dupName.trim()}>
+            <button onClick={handleDuplicate} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }} disabled={busy || !dupId.trim() || !dupName.trim()}>
               {busy ? "Duplicating..." : "Duplicate"}
             </button>
           </div>

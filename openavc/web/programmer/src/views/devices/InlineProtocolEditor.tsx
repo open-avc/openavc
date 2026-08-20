@@ -481,7 +481,7 @@ export function InlineProtocolEditor({
             style={{
               ...iconBtn,
               background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
               opacity: saving ? 0.6 : 1,
             }}
             data-testid="inline-protocol-save"
@@ -535,7 +535,7 @@ export function InlineProtocolEditor({
               style={{ ...inputStyle, fontFamily: "var(--font-mono)", resize: "vertical" }}
             />
             <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
-              <button onClick={importPaste} style={{ ...iconBtn, background: "var(--accent-bg)", color: "var(--text-on-accent)" }}>
+              <button onClick={importPaste} style={{ ...iconBtn, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }}>
                 Add to table
               </button>
               <span style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", alignSelf: "center" }}>
@@ -890,7 +890,7 @@ export function InlineProtocolEditor({
               style={{
                 ...iconBtn,
                 background: connected ? "var(--accent-bg)" : "var(--bg-hover)",
-                color: connected ? "var(--text-on-accent)" : "var(--text-muted)",
+                color: connected ? "var(--text-on-accent-bg)" : "var(--text-muted)",
               }}
             >
               <Send size={13} /> Send

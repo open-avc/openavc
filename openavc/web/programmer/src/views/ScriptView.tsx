@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Save, Play, FileCode, ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
+import { headerButton, headerPrimaryButton } from "../components/layout/headerActions";
 import { ScriptFileTree } from "../components/scripts/ScriptFileTree";
 import { ScriptEditor, type RuntimeError } from "../components/scripts/ScriptEditor";
 import { ScriptConsole } from "../components/scripts/ScriptConsole";
@@ -708,9 +709,8 @@ export function ScriptView() {
             <div style={{ position: "relative", display: selectedType === "ui" ? "none" : undefined }}>
               <button
                 onClick={() => setShowTemplates(!showTemplates)}
-                style={actionBtnStyle}
+                style={headerButton}
               >
-                <FileCode size={14} />
                 Templates
                 <ChevronDown size={12} />
               </button>
@@ -763,14 +763,10 @@ export function ScriptView() {
               onClick={handleSave}
               disabled={!isDirty || saving}
               style={{
-                ...actionBtnStyle,
+                ...(selectedType === "ui" ? headerPrimaryButton : headerButton),
                 opacity: isDirty ? 1 : 0.5,
-                ...(selectedType === "ui"
-                  ? { background: "var(--accent-bg)", color: "#fff" }
-                  : {}),
               }}
             >
-              <Save size={14} />
               {saving ? "Saving..." : "Save"}
             </button>
 
@@ -779,13 +775,8 @@ export function ScriptView() {
                 onClick={handleReloadDriver}
                 disabled={reloading}
                 title="Save and hot-reload the driver (Ctrl+Shift+R)"
-                style={{
-                  ...actionBtnStyle,
-                  background: "var(--accent-bg)",
-                  color: "var(--text-on-accent)",
-                }}
+                style={headerPrimaryButton}
               >
-                <RefreshCw size={14} />
                 {reloading ? "Reloading..." : "Save & Reload Driver"}
               </button>
             ) : (
@@ -793,13 +784,8 @@ export function ScriptView() {
                 onClick={handleReloadScript}
                 disabled={reloading}
                 title="Save and hot-reload this script. Other scripts keep running (Ctrl+Shift+R)"
-                style={{
-                  ...actionBtnStyle,
-                  background: "var(--accent-bg)",
-                  color: "var(--text-on-accent)",
-                }}
+                style={headerPrimaryButton}
               >
-                <Play size={14} />
                 {reloading ? "Reloading..." : "Save & Reload Script"}
               </button>
             )}
@@ -995,16 +981,3 @@ const loadingStyle: React.CSSProperties = {
   color: "var(--text-muted)",
 };
 
-const actionBtnStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-xs) var(--space-md)",
-  borderRadius: "var(--border-radius)",
-  background: "var(--bg-hover)",
-  color: "var(--text-primary)",
-  fontSize: "var(--font-size-sm)",
-  border: "none",
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};

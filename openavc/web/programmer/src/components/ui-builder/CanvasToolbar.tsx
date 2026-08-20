@@ -1163,7 +1163,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
               background: dirty || error ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty || error ? "var(--text-on-accent)" : "var(--text-muted)",
+              color: dirty || error ? "var(--text-on-accent-bg)" : "var(--text-muted)",
               cursor: dirty || error ? "pointer" : "default",
               opacity: dirty || error ? 1 : 0.5,
             }}
@@ -1245,7 +1245,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
             background: previewMode ? "var(--color-success)" : "var(--accent-bg)",
-            color: "var(--text-on-accent)",
+            color: "var(--text-on-accent-bg)",
             fontSize: "var(--font-size-sm)",
             fontWeight: "var(--font-weight-medium)",
             flexShrink: 0,

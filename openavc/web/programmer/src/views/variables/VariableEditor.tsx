@@ -5,6 +5,7 @@ import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { Modal } from "../../components/shared/Modal";
 import { VariableKeyPicker } from "../../components/shared/VariableKeyPicker";
 import { MonitorControl } from "../../components/shared/MonitorControl";
+import { headerButton, headerPrimaryButton } from "../../components/layout/headerActions";
 import {
   dropMonitorsForVariable, renameMonitorKey,
 } from "../../api/monitorHelpers";
@@ -17,7 +18,7 @@ import { showError } from "../../store/toastStore";
 import {
   type VariableUsage,
   HelpBanner, UsageRow, buildUsageMap,
-  headerBtnStyle, searchInputStyle, createFormStyle, miniLabel, fieldInput,
+  searchInputStyle, createFormStyle, miniLabel, fieldInput,
   btnPrimary, btnSecondary, codeStyle, typeBadgeStyle, iconBtn,
   detailLabel, detailInput, sectionTitle,
 } from "./variablesShared";
@@ -70,16 +71,16 @@ export function VariablesActions() {
     <div style={{ display: "flex", gap: "var(--space-sm)" }}>
       <button
         onClick={() => window.dispatchEvent(new CustomEvent("openavc:delete-unused-vars"))}
-        style={{ ...headerBtnStyle, background: "var(--bg-hover)", color: "var(--text-secondary)" }}
+        style={headerButton}
         title="Delete all variables with zero usages"
       >
-        <Trash2 size={14} /> Delete Unused
+        Delete Unused
       </button>
       <button
         onClick={() => window.dispatchEvent(new CustomEvent("openavc:toggle-var-create"))}
-        style={headerBtnStyle}
+        style={headerPrimaryButton}
       >
-        <Plus size={14} /> New Variable
+        New Variable
       </button>
     </div>
   );

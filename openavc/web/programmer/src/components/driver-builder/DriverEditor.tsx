@@ -319,7 +319,7 @@ export function DriverEditor({
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
             background: yamlPaneOpen ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: yamlPaneOpen ? "var(--text-on-accent)" : "var(--text-primary)",
+            color: yamlPaneOpen ? "var(--text-on-accent-bg)" : "var(--text-primary)",
             fontSize: "var(--font-size-sm)",
           }}
         >
@@ -355,7 +355,7 @@ export function DriverEditor({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
               opacity: saving ? 0.6 : 1,
             }}
           >
@@ -394,7 +394,7 @@ export function DriverEditor({
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent)",
+              color: "var(--text-on-accent-bg)",
               fontSize: "var(--font-size-sm)",
               opacity: saving ? 0.6 : 1,
             }}

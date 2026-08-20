@@ -111,7 +111,7 @@ export class ViewErrorBoundary extends Component<Props, State> {
                 style={{
                   padding: "var(--space-sm) var(--space-lg)",
                   background: "var(--accent-bg)",
-                  color: "var(--text-on-accent)",
+                  color: "var(--text-on-accent-bg)",
                   border: "none",
                   borderRadius: "var(--border-radius)",
                   cursor: "pointer",

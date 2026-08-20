@@ -54,31 +54,36 @@ export function DeviceListItem({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: "var(--space-sm)",
         width: "100%",
-        height: 38,
-        paddingRight: "var(--space-sm)",
+        height: 40,
         background: selected ? "var(--accent-dim)" : "transparent",
-        borderBottom: "1px solid var(--border-color)",
+        // Quieter than the chrome hairline on purpose: a column of rows should
+        // read as rhythm, not as a table.
+        borderBottom: "1px solid var(--border-list)",
         textAlign: "left",
         transition: "background var(--transition-fast)",
       }}
     >
-      <span
+      {/* The gutter is a fixed lane on the column's own edge, not a margin in
+          front of the text. A bar that starts wherever the previous element
+          left off is a bar you cannot scan down. */}
+      <div
         aria-hidden="true"
-        style={{
-          width: 3,
-          height: 22,
-          flexShrink: 0,
-          marginLeft: "var(--space-sm)",
-          borderRadius: "var(--radius-sm)",
-          background: bar,
-        }}
-      />
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+        style={{ width: 16, display: "flex", justifyContent: "center", flexShrink: 0 }}
+      >
+        <span
+          style={{
+            width: 3,
+            height: 22,
+            borderRadius: "var(--radius-sm)",
+            background: bar,
+          }}
+        />
+      </div>
+      <div style={{ minWidth: 0, paddingRight: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
         <div
           style={{
-            fontSize: "var(--font-size-sm)",
+            fontSize: "var(--font-size-base)",
             color: enabled ? "var(--text-primary)" : "var(--text-muted)",
             overflow: "hidden",
             textOverflow: "ellipsis",

@@ -266,7 +266,7 @@ const btnPrimary: React.CSSProperties = {
   gap: "var(--space-xs)",
   padding: "var(--space-sm) var(--space-md)",
   background: "var(--accent)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   border: "none",
   borderRadius: "var(--border-radius)",
   cursor: "pointer",

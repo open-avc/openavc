@@ -297,7 +297,7 @@ export function DeckInspector({
                       if (moveTarget) onMoveLayoutTo(moveTarget);
                       setMoveTarget(null);
                     }}
-                    style={{ ...pageMenuConfirmStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }}
+                    style={{ ...pageMenuConfirmStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }}
                   >
                     Move
                   </button>
@@ -443,7 +443,7 @@ export function DeckInspector({
                   if (addModel) onAddVirtual(addModel);
                   setAdding(false);
                 }}
-                style={{ ...pageMenuConfirmStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }}
+                style={{ ...pageMenuConfirmStyle, background: "var(--accent-bg)", color: "var(--text-on-accent-bg)" }}
               >
                 Add
               </button>

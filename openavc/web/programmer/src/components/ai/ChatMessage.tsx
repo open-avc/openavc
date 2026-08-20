@@ -26,7 +26,7 @@ const userBubble: React.CSSProperties = {
   ...bubbleBase,
   whiteSpace: "pre-wrap",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   marginLeft: "auto",
 };
 

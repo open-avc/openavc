@@ -85,7 +85,7 @@ export function PromptDialog({
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
             background: "var(--accent-bg)",
-            color: "var(--text-on-accent)",
+            color: "var(--text-on-accent-bg)",
             opacity: value.trim() ? 1 : 0.5,
           }}
           disabled={!value.trim()}

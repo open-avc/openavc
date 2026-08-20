@@ -805,7 +805,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
             padding: "var(--space-sm) var(--space-lg)",
             borderRadius: "var(--border-radius)",
             background: canSend ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: canSend ? "var(--text-on-accent)" : "var(--text-muted)",
+            color: canSend ? "var(--text-on-accent-bg)" : "var(--text-muted)",
             opacity: sending ? 0.6 : 1,
             cursor: canSend ? "pointer" : "not-allowed",
           }}

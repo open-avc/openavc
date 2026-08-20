@@ -546,7 +546,7 @@ function ConnectionModePicker({
               padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
               background: mode === m.id ? "var(--accent-bg)" : "transparent",
-              color: mode === m.id ? "var(--text-on-accent)" : "var(--text-secondary)",
+              color: mode === m.id ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
               fontSize: "var(--font-size-sm)",
               border: "none",
               cursor: "pointer",
@@ -1098,7 +1098,7 @@ export function AddDeviceDialog({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent)",
+              color: "var(--text-on-accent-bg)",
               opacity: isAdding ? 0.6 : 1,
             }}
           >
@@ -1392,7 +1392,7 @@ export function EditDeviceDialog({
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--text-on-accent)",
+              color: "var(--text-on-accent-bg)",
               opacity: saving ? 0.6 : 1,
             }}
           >

@@ -232,7 +232,7 @@ function ScheduleEditor({
                 borderRadius: "var(--border-radius)",
                 border: "1px solid var(--border-color)",
                 background: activeDays.has(DAY_VALUES[i]) ? "var(--accent-bg)" : "transparent",
-                color: activeDays.has(DAY_VALUES[i]) ? "var(--text-on-accent)" : "var(--text-secondary)",
+                color: activeDays.has(DAY_VALUES[i]) ? "var(--text-on-accent-bg)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-xs)",
                 cursor: "pointer",
                 fontWeight: "var(--font-weight-medium)",

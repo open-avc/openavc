@@ -56,7 +56,7 @@ const primaryBtn: CSSProperties = {
   padding: "var(--space-sm) var(--space-lg)",
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   border: "none",
   cursor: "pointer",
   fontSize: "var(--font-size-sm)",

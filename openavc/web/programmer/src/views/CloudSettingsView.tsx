@@ -56,7 +56,7 @@ const btnStyle: React.CSSProperties = {
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
   background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
+  color: "var(--text-on-accent-bg)",
   cursor: "pointer",
   fontWeight: "var(--font-weight-medium)",
 };

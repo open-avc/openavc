@@ -235,7 +235,7 @@ export function ConfigTableEditor({
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: dirty ? "var(--accent)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+              color: dirty ? "var(--text-on-accent-bg)" : "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
               cursor: dirty && !saving ? "pointer" : "default",
             }}
