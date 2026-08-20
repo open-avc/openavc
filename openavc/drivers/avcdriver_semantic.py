@@ -26,6 +26,7 @@ from openavc.drivers.spec import (
     AUTH_TYPES,
     AVAILABILITIES,
     CHILD_ID_TYPES,
+    CHILD_RESERVED_PROPS,
     CLOUD_PRIORITIES,
     CONFIG_FIELD_SOURCES,
     DEFS,
@@ -52,6 +53,25 @@ from openavc.drivers.spec import (
     platform_requirements,
 )
 from openavc.utils.regex_safety import regex_safety_error as _regex_redos_error
+
+def _child_writable_props(type_def: Any) -> set[str]:
+    """Every property a driver may write on a child of this type.
+
+    The declared ``state_variables`` PLUS the reserved keys the platform
+    injects at runtime (``online``, ``label``, ``offline_reason``,
+    ``offline_detail``). Three sites need this, and each of them used to
+    compare against the raw declaration alone -- so a YAML driver reporting
+    presence, which is the single commonest thing a child roster does, was
+    told the key it was writing did not exist. The runtime always allowed it
+    (BaseDriver._effective_child_schema injects the same names), so this was
+    the static half refusing what the live half accepts: the driver worked,
+    and `python -m openavc.drivers.check`, the Driver Builder and catalog CI
+    all said it was broken. Which in practice means it could not ship.
+    """
+    declared = type_def.get("state_variables") if isinstance(type_def, dict) else None
+    names = set(declared) if isinstance(declared, dict) else set()
+    return names | set(CHILD_RESERVED_PROPS)
+
 
 # Placeholder key standing in for a mapping whose KEYS were built at runtime
 # rather than written out. A YAML definition can never contain one — the
@@ -772,8 +792,7 @@ def validate_driver_definition(
                         continue
                     tdef = child_types_map.get(ctype)
                     tdef = tdef if isinstance(tdef, dict) else {}
-                    cvars = tdef.get("state_variables")
-                    cvars = cvars if isinstance(cvars, dict) else {}
+                    cvars = _child_writable_props(tdef)
                     id_fmt = tdef.get("id_format")
                     id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
                     id_type = id_fmt.get("type", "integer")
@@ -945,8 +964,7 @@ def validate_driver_definition(
                 continue
             tdef = child_types_map.get(ctype)
             tdef = tdef if isinstance(tdef, dict) else {}
-            cvars = tdef.get("state_variables")
-            cvars = cvars if isinstance(cvars, dict) else {}
+            cvars = _child_writable_props(tdef)
             cid = entry.get("id")
             id_fmt = tdef.get("id_format")
             id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
@@ -1052,11 +1070,14 @@ def validate_driver_definition(
             for p in cmd_params.values()
             if isinstance(p, dict) and p.get("type") == "child_id"
         ]
-        child_target_vars: dict[str, Any] = {}
+        # Empty means "this command is not addressed to a single child type",
+        # which is what the two error wordings below branch on. Once it IS
+        # addressed the set is never empty (the reserved props are always in
+        # it), so that branch still reads the way it always did.
+        child_target_vars: set[str] = set()
         if len(child_param_types) == 1 and child_param_types[0] in child_types_map:
             _tdef = child_types_map.get(child_param_types[0])
-            _cvars = _tdef.get("state_variables") if isinstance(_tdef, dict) else None
-            child_target_vars = _cvars if isinstance(_cvars, dict) else {}
+            child_target_vars = _child_writable_props(_tdef)
         sets_def = cmd_def.get("sets")
         if sets_def is not None and not isinstance(sets_def, dict):
             errors.append(f"Command '{cmd_name}': 'sets' must be a mapping")

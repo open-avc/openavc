@@ -29,6 +29,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.drivers.spec import CHILD_RESERVED_PROP_SCHEMA
 from openavc.transport.binary_helpers import (
     DEFAULT_MAX_BUFFER,
     encode_escape_sequences,
@@ -931,7 +932,15 @@ def compile_child_set(
                 f"{ctype!r}; skipping entry"
             )
             continue
-        cvars = tdef.get("state_variables") or {}
+        # Declared vars PLUS the reserved keys the platform injects, so a
+        # captured value coerces by the right type. Without the reserved
+        # half, `online` compiles as a string and a YAML driver reporting
+        # an offline endpoint writes "false" -- which is truthy, so the
+        # status light stays green on the one child that is down.
+        cvars = {
+            **CHILD_RESERVED_PROP_SCHEMA,
+            **(tdef.get("state_variables") or {}),
+        }
         cid = entry.get("id")
         idspec: tuple[str, Any]
         id_map: dict[str, Any] | None = None
@@ -1051,7 +1060,15 @@ def compile_osc_child_set(
                 f"{ctype!r}; skipping entry"
             )
             continue
-        cvars = tdef.get("state_variables") or {}
+        # Declared vars PLUS the reserved keys the platform injects, so a
+        # captured value coerces by the right type. Without the reserved
+        # half, `online` compiles as a string and a YAML driver reporting
+        # an offline endpoint writes "false" -- which is truthy, so the
+        # status light stays green on the one child that is down.
+        cvars = {
+            **CHILD_RESERVED_PROP_SCHEMA,
+            **(tdef.get("state_variables") or {}),
+        }
         cid = entry.get("id")
         idspec: tuple[str, Any]
         id_map: dict[str, Any] | None = None

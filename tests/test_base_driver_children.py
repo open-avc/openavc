@@ -696,7 +696,9 @@ def test_dynamic_child_schema_exposed_via_get_child_schema():
     # The type is reported dynamic; the type-level schema carries no controls.
     types = drv.get_child_entity_types()
     assert types["component"]["dynamic"] is True
-    assert set(types["component"]["state_variables"]) == {"online", "label"}
+    assert set(types["component"]["state_variables"]) == {
+        "online", "label", "offline_reason", "offline_detail",
+    }
     assert drv.is_child_type_dynamic("component") is True
     assert drv.is_child_type_dynamic("named_control") is False
 
@@ -832,3 +834,169 @@ def test_reregister_same_id_with_different_schema_warns(caplog):
             schema={"gain": {"type": "number"}},
         )
     assert "different schema" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Child fault vocabulary — a child gets more than one boolean.
+#
+# `online` alone made an endpoint somebody carried out of the rack and one
+# sitting right there with a wedged service read identically, and the remedy
+# for the two is nothing alike. These pin the pair that tells them apart.
+# ---------------------------------------------------------------------------
+
+
+def test_the_two_fault_keys_are_injected_like_online_and_label():
+    drv = _make_dsp()
+    schema = drv.get_child_entity_types()["named_control"]["state_variables"]
+    assert schema["offline_reason"]["type"] == "string"
+    assert schema["offline_detail"]["type"] == "string"
+
+
+def test_reserved_props_is_what_the_schema_injects_from():
+    """The constant used to be declared and read nowhere — a second list
+    beside two hardcoded setdefaults, claiming to be the rule while the rule
+    lived elsewhere. It is now load-bearing, and this is what says so."""
+    drv = _make_dsp()
+    schema = drv.get_child_entity_types()["named_control"]["state_variables"]
+    for prop in BaseDriver._CHILD_RESERVED_PROPS:
+        assert prop in schema, prop
+
+
+def test_a_child_registers_present_and_claiming_nothing():
+    drv = _make_dsp()
+    drv.register_child("named_control", "Gain1")
+    state = drv.get_child_state("named_control", "Gain1")
+    assert state["online"] is True
+    assert state["offline_reason"] == ""
+    assert state["offline_detail"] == ""
+
+
+def test_a_declared_enum_fault_key_still_registers_claiming_nothing():
+    """The seeding ladder needs an explicit arm for the fault keys, and THIS
+    is the case that proves it rather than the one above.
+
+    Injected, `offline_reason` is `{"type": "string"}`, whose state_var_default
+    is "" anyway — so a test using the platform's own definition passes with
+    the arm and without it. The hazard is a driver that DECLARES the key, and
+    the natural way to declare it (the way the Driver Builder would author it)
+    is an enum of the codes. state_var_default on an enum returns its FIRST
+    VALUE, so without the arm every child in the room would register already
+    reporting `not_responding` — an eight-output frame arriving with eight
+    faults nobody has.
+    """
+
+    class EnumDeclaring(BaseDriver):
+        DRIVER_INFO = {
+            "id": "enum_declaring",
+            "name": "Enum Declaring",
+            "child_entity_types": {
+                "port": {
+                    "label": "Port",
+                    "state_variables": {
+                        "offline_reason": {
+                            "type": "enum",
+                            "values": ["not_responding", "service_fault"],
+                        },
+                    },
+                },
+            },
+        }
+
+        async def connect(self) -> bool:
+            return True
+
+        async def disconnect(self) -> None:
+            return None
+
+        async def send_command(self, command: str, params: Any = None) -> Any:
+            return None
+
+    drv = EnumDeclaring("dev", {}, StateStore(), EventBus())
+    drv.register_child("port", 1)
+    assert drv.get_child_state("port", 1)["offline_reason"] == ""
+
+
+def test_a_driver_may_write_the_fault_keys_through_the_normal_path():
+    drv = _make_dsp()
+    drv.register_child("named_control", "Gain1")
+    drv.set_child_state_batch(
+        "named_control", "Gain1", drv.child_fault("not_responding"),
+    )
+    state = drv.get_child_state("named_control", "Gain1")
+    assert state["online"] is False
+    assert state["offline_reason"] == "not_responding"
+    assert "power" in state["offline_detail"].lower()
+
+
+def test_child_fault_clears_both_keys_and_restores_presence():
+    """A fault nothing ever clears makes one transient failure look permanent
+    for as long as the device stays up."""
+    drv = _make_dsp()
+    drv.register_child("named_control", "Gain1")
+    drv.set_child_state_batch(
+        "named_control", "Gain1", drv.child_fault("service_fault"),
+    )
+    drv.set_child_state_batch("named_control", "Gain1", drv.child_fault())
+    state = drv.get_child_state("named_control", "Gain1")
+    assert state["online"] is True
+    assert state["offline_reason"] == ""
+    assert state["offline_detail"] == ""
+
+
+def test_a_fault_code_always_takes_the_boolean_down_with_it():
+    """The coupling is the point: `online` is the one glanceable signal, so a
+    wedged endpoint reads as not-in-service rather than green with the answer
+    hidden in a column somebody has to know to read."""
+    for code in ("not_responding", "service_fault"):
+        assert BaseDriver.child_fault(code)["online"] is False
+
+
+def test_a_driver_may_word_its_own_sentence():
+    fault = BaseDriver.child_fault("service_fault", "Stream engine is idle.")
+    assert fault["offline_detail"] == "Stream engine is idle."
+    assert fault["offline_reason"] == "service_fault"
+
+
+def test_an_unrecognised_code_is_refused_rather_than_written():
+    """It would otherwise reach a panel as a bare token with no sentence
+    behind it, and a driver typo would look like a code the frontend has
+    not learned yet."""
+    with pytest.raises(ValueError, match="not a child fault code"):
+        BaseDriver.child_fault("wedged")
+
+
+def test_a_driver_that_declares_a_reserved_prop_keeps_its_own_definition():
+    """How a driver adds wording (a label, a help string, a cloud_priority)
+    without taking the key over."""
+
+    class Declaring(BaseDriver):
+        DRIVER_INFO = {
+            "id": "declaring",
+            "name": "Declaring",
+            "child_entity_types": {
+                "port": {
+                    "label": "Port",
+                    "state_variables": {
+                        "offline_reason": {
+                            "type": "string",
+                            "label": "Why This Port Is Down",
+                        },
+                    },
+                },
+            },
+        }
+
+        async def connect(self) -> bool:
+            return True
+
+        async def disconnect(self) -> None:
+            return None
+
+        async def send_command(self, command: str, params: Any = None) -> Any:
+            return None
+
+    drv = Declaring("dev", {}, StateStore(), EventBus())
+    schema = drv.get_child_entity_types()["port"]["state_variables"]
+    assert schema["offline_reason"]["label"] == "Why This Port Is Down"
+    # ...and the ones it did not declare still arrive.
+    assert schema["offline_detail"]["type"] == "string"

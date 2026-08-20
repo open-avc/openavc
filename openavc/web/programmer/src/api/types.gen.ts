@@ -90,6 +90,13 @@ export const CHILD_ID_TYPES = ["integer", "string"] as const;
 export const INSTANCE_SOURCES = ["count", "count_from", "ids_from", "ids"] as const;
 
 /**
+ * State keys the platform provides on every child, on top of whatever the type
+ * declares. A driver never declares these and always may write them, so every
+ * picker, validator and column chooser has to know they are real.
+ */
+export const CHILD_RESERVED_PROPS: ReadonlySet<string> = new Set(["label", "offline_detail", "offline_reason", "online"]);
+
+/**
  * Ports a discovery port_open hint may not use (they match every web/SSH
  * host).
  */
@@ -770,7 +777,9 @@ export interface DriverStateVarDef {
 
 /**
  * Child state variable. Same shape as device state variables, but label is not
- * required (the platform injects online and label automatically).
+ * required (the platform injects online, label, offline_reason and
+ * offline_detail automatically). Declaring one of those four is allowed and
+ * keeps your definition; the rest are still added.
  */
 export interface DriverChildStateVarDef {
   type: string;

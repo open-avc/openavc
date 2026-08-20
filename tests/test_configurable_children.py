@@ -1050,3 +1050,120 @@ def test_loader_accepts_format_spec_child_id_placeholder():
     assert not any(
         "must contain" in e for e in validate_driver_definition(ACME_OSC_MIXER)
     )
+
+
+# ---------------------------------------------------------------------------
+# Reserved child props through the declarative doors.
+#
+# A YAML driver could not write `online` at all: the child_set validator
+# compared each state prop against the RAW declared state_variables, with no
+# platform injection, so the single commonest thing a child roster does was
+# reported as a prop that does not exist. The runtime always allowed it
+# (BaseDriver._effective_child_schema injects the same names), so this was the
+# static half refusing what the live half accepts — and since the static half
+# is `python -m openavc.drivers.check`, the Driver Builder and catalog CI, in
+# practice such a driver could not ship.
+#
+# There are THREE sites, not the two the backlog section named: the OSC
+# child_set walk, the main child_set walk, and `sets:` / `query_for:` on a
+# command addressed to exactly one child.
+# ---------------------------------------------------------------------------
+
+
+def _matrix_with(responses=None, commands=None):
+    """ACME_MATRIX with its responses and/or commands swapped out."""
+    import copy
+    d = copy.deepcopy(ACME_MATRIX)
+    if responses is not None:
+        d["responses"] = responses
+    if commands is not None:
+        d["commands"] = commands
+    return d
+
+
+@pytest.mark.parametrize("prop", ["online", "label", "offline_reason", "offline_detail"])
+def test_child_set_may_write_a_reserved_prop(prop):
+    """Site 2 — the main child_set walk."""
+    d = _matrix_with(responses=[
+        {
+            "match": r"Out(\d+) (\S+)",
+            "child_set": [{"type": "output", "id": "$1", "state": {prop: "$2"}}],
+        },
+    ])
+    errors = validate_driver_definition(d)
+    assert not [e for e in errors if prop in e], errors
+
+
+def test_a_prop_the_type_really_does_not_declare_is_still_refused():
+    """The fix widens the set by exactly the reserved names and nothing else —
+    an author's typo must still be caught, or the check is worthless."""
+    d = _matrix_with(responses=[
+        {
+            "match": r"Out(\d+) (\S+)",
+            "child_set": [
+                {"type": "output", "id": "$1", "state": {"onlien": "$2"}},
+            ],
+        },
+    ])
+    errors = validate_driver_definition(d)
+    assert any("onlien" in e for e in errors), errors
+
+
+def test_a_command_addressed_to_one_child_may_set_a_reserved_prop():
+    """Site 3 — `sets:` on a command whose single child_id param names the
+    type. This is the site the backlog section missed."""
+    d = _matrix_with(commands={
+        "wake": {
+            "label": "Wake",
+            "send": "WAKE {output}!\\r\\n",
+            "params": {
+                "output": {
+                    "type": "child_id", "child_type": "output", "required": True,
+                },
+            },
+            "sets": {"online": "true"},
+        },
+    })
+    errors = validate_driver_definition(d)
+    assert not [e for e in errors if "online" in e], errors
+
+
+def test_query_for_may_name_a_reserved_prop_on_the_addressed_child():
+    """Site 3's other half."""
+    d = _matrix_with(commands={
+        "ping": {
+            "label": "Ping",
+            "send": "PING {output}!\\r\\n",
+            "params": {
+                "output": {
+                    "type": "child_id", "child_type": "output", "required": True,
+                },
+            },
+            "query_for": "offline_reason",
+        },
+    })
+    errors = validate_driver_definition(d)
+    assert not [e for e in errors if "offline_reason" in e], errors
+
+
+@pytest.mark.asyncio
+async def test_a_yaml_driver_writing_online_reaches_the_state_store():
+    """End to end rather than validator-only: the point of the fix is that a
+    declarative roster can report presence, so prove the value lands."""
+    d = _matrix_with(responses=[
+        {
+            "match": r"Out(\d+) (\S+)",
+            "child_set": [
+                {
+                    "type": "output",
+                    "id": "$1",
+                    "state": {"online": "$2", "offline_reason": "not_responding"},
+                },
+            ],
+        },
+    ])
+    driver = _make_driver(d)
+    driver._register_declared_children()
+    await driver.on_data_received(b"Out2 false")
+    assert driver.state.get("device.dev1.output.02.online") is False
+    assert driver.state.get("device.dev1.output.02.offline_reason") == "not_responding"

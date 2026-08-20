@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-react";
 import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
+import { childPresence, childStateFor, countNotOk } from "./childPresence";
 import type {
   ChildEntitiesListResponse,
   ChildEntityEntry,
@@ -66,6 +67,7 @@ export function ChildEntities({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<unknown>(null);
   const [refreshOutcome, setRefreshOutcome] = useState<string | null>(null);
+  const liveState = useConnectionStore((s) => s.liveState);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -153,6 +155,17 @@ export function ChildEntities({
   const types = Object.keys(data.child_entity_types);
   if (types.length === 0) return null; // Driver doesn't declare any.
 
+  // Per-type "not answering" counts, for the tab badges. Read live so the
+  // number moves with the WS delta rather than the last fetch.
+  const downByType: Record<string, number> = {};
+  for (const t of types) {
+    downByType[t] = countNotOk(
+      (data.children[t] ?? []).map((e) =>
+        childStateFor(liveState, deviceId, t, e),
+      ),
+    );
+  }
+
   const term = search.trim().toLowerCase();
   const schema = activeType ? data.child_entity_types[activeType] : null;
   const entries = activeType ? data.children[activeType] ?? [] : [];
@@ -199,6 +212,20 @@ export function ChildEntities({
               <span style={{ marginLeft: "var(--space-xs)", opacity: 0.7 }}>
                 {count}
               </span>
+              {/* The health, not just the size. A bare total is what let two
+                  wedged decoders sit unnoticed behind the word "8". */}
+              {downByType[t] > 0 && (
+                <span
+                  data-testid={`child-type-down-${t}`}
+                  style={{
+                    marginLeft: "var(--space-xs)",
+                    color: isActive ? "var(--text-on-accent)" : "var(--error, #e5534b)",
+                    fontWeight: 600,
+                  }}
+                >
+                  · {downByType[t]} down
+                </span>
+              )}
             </button>
           );
         })}
@@ -571,6 +598,7 @@ function ChildEntityList({
   const [editing, setEditing] = useState<{ id: number | string; value: string } | null>(null);
   const [savingId, setSavingId] = useState<number | string | null>(null);
   const [labelOverrides, setLabelOverrides] = useState<Record<string, string>>({});
+  const [troubleOnly, setTroubleOnly] = useState(false);
 
   // Reset row-level UI state when the active tab changes.
   useEffect(() => {
@@ -578,6 +606,7 @@ function ChildEntityList({
     setEditing(null);
     setSavingId(null);
     setLabelOverrides({});
+    setTroubleOnly(false);
   }, [childType]);
 
   const summaryFields = useMemo(
@@ -618,6 +647,31 @@ function ChildEntityList({
     [liveStateByPaddedId],
   );
 
+  // Endpoints that are not answering come first, and keep their roster order
+  // among themselves. On a frame with 96 outputs the two that are down are
+  // otherwise wherever they happen to fall, which is the whole complaint:
+  // the answer was on screen and had to be hunted for. A stable partition,
+  // not a sort — reordering healthy rows under somebody would be worse than
+  // not ordering at all.
+  const ordered = useMemo(() => {
+    const down: ChildEntityEntry[] = [];
+    const up: ChildEntityEntry[] = [];
+    for (const e of entries) {
+      (childPresence(liveStateForChild(e)).ok ? up : down).push(e);
+    }
+    return down.length === 0 ? entries : [...down, ...up];
+  }, [entries, liveStateForChild]);
+
+  const downCount = useMemo(
+    () => countNotOk(entries.map((e) => liveStateForChild(e))),
+    [entries, liveStateForChild],
+  );
+
+  const visible = useMemo(
+    () => (troubleOnly ? ordered.filter((e) => !childPresence(liveStateForChild(e)).ok) : ordered),
+    [ordered, troubleOnly, liveStateForChild],
+  );
+
   // How much room the ID column needs. A numbered roster is two or three
   // characters; a device-enumerated one is a MAC address, and 64px drew it on
   // top of the Label column beside it.
@@ -628,10 +682,10 @@ function ChildEntityList({
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
-    count: entries.length,
+    count: visible.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => {
-      const entry = entries[index];
+      const entry = visible[index];
       if (!entry || !expanded.has(entry.local_id)) return ROW_HEIGHT;
       // A child's expanded panel lists one row per declared control, which for
       // dynamic children (e.g. a Q-SYS mixer) can be dozens — so size the
@@ -643,7 +697,7 @@ function ChildEntityList({
     },
     overscan: 6,
     // Key on padded id so virtualization survives list changes.
-    getItemKey: (index) => entries[index]?.local_id_padded ?? index,
+    getItemKey: (index) => visible[index]?.local_id_padded ?? index,
   });
 
   // Row heights reflow on expand/collapse automatically: each row is measured
@@ -696,11 +750,39 @@ function ChildEntityList({
 
   return (
     <>
+      {/* Only offered when there is something to filter TO. A checkbox that
+          can only ever produce an empty list is noise on the 95% of devices
+          whose ports are all fine. */}
+      {downCount > 0 && (
+        <label
+          data-testid="child-trouble-filter"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+            marginBottom: "var(--space-sm)",
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={troubleOnly}
+            onChange={(e) => setTroubleOnly(e.target.checked)}
+          />
+          Show only the {downCount === 1 ? "one that is" : `${downCount} that are`}{" "}
+          not answering
+        </label>
+      )}
+
       {/* Column header. Sticky so it stays visible while the row body
           scrolls inside the virtualizer below. */}
       <div style={headerRowStyle}>
         <div style={{ ...headerCellStyle, width: 32 }}></div>
-        <div style={{ ...headerCellStyle, width: idWidth }}>ID</div>
+        {/* Aligns with the presence dot on every row below. */}
+        <div style={{ ...headerCellStyle, width: 8, flexShrink: 0 }}></div>
+        <div style={{ ...headerCellStyle, width: idWidth, flexShrink: 0 }}>ID</div>
         <div style={{ ...headerCellStyle, flex: 1.5 }}>Label</div>
         {summaryFields.map((field) => (
           <div
@@ -736,7 +818,7 @@ function ChildEntityList({
           }}
         >
           {items.map((virtualItem) => {
-            const entry = entries[virtualItem.index];
+            const entry = visible[virtualItem.index];
             if (!entry) return null;
             const isExpanded = expanded.has(entry.local_id);
             const isEditing = editing?.id === entry.local_id;
@@ -796,6 +878,7 @@ function ChildEntityList({
                   >
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
+                  <PresenceDot state={liveS} />
                   <div
                     style={{
                       width: idWidth,
@@ -980,6 +1063,39 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </div>
+  );
+}
+
+
+/** One glanceable mark per row: filled when the endpoint is in service,
+ *  hollow and warned when it is not. The title carries the driver's own
+ *  sentence where it wrote one, so hovering a bad row explains it without
+ *  expanding anything. */
+function PresenceDot({ state }: { state: Record<string, unknown> }) {
+  const { ok, reason, detail } = childPresence(state);
+  const title = ok
+    ? "In service"
+    : detail || (reason ? `Not in service (${reason})` : "Not answering");
+  return (
+    <span
+      data-testid="child-presence-dot"
+      data-ok={ok ? "true" : "false"}
+      data-reason={reason}
+      title={title}
+      aria-label={title}
+      style={{
+        width: 8,
+        height: 8,
+        flexShrink: 0,
+        borderRadius: "50%",
+        // Hollow, not just recoloured: a ring reads as "not right" even where
+        // the colour does not land (a projector-lit room, a colour-blind
+        // reader), which is exactly the room this gets read in.
+        background: ok ? "var(--success, #4caf50)" : "transparent",
+        border: ok ? "none" : "2px solid var(--error, #e5534b)",
+        boxSizing: "border-box",
+      }}
+    />
   );
 }
 

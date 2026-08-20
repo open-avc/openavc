@@ -6,7 +6,7 @@ import type {
 import type { DriverValidationIssue } from "../../api/driverClient";
 // Contract constant tables, generated from the platform's driver-contract
 // registry (types.gen.ts).
-import { DISALLOWED_OPEN_PORTS } from "../../api/types";
+import { CHILD_RESERVED_PROPS, DISALLOWED_OPEN_PORTS } from "../../api/types";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
 // authoring time.
@@ -461,13 +461,14 @@ export function validateDriver(
         severity: "warning",
         section: "behavior",
         field: `child_entity_types.${typeName}`,
-        message: `Child type "${typeName}" declares no state fields. Each child would only carry the platform's online/label keys.`,
+        message: `Child type "${typeName}" declares no state fields. Each child would only carry the platform's reserved keys (${[...CHILD_RESERVED_PROPS].sort().join(", ")}).`,
       });
     }
     // summary_fields / label_field naming a field that isn't declared:
-    // the row simply renders nothing. `online` and `label` are
-    // platform-injected, so they're always valid targets.
-    const fieldSet = new Set([...fieldNames, "online", "label"]);
+    // the row simply renders nothing. The platform-injected keys are always
+    // valid targets, and come from the generated contract table so a new one
+    // does not start reading as an author's typo.
+    const fieldSet = new Set([...fieldNames, ...CHILD_RESERVED_PROPS]);
     for (const sf of typeDef.summary_fields ?? []) {
       if (!fieldSet.has(sf)) {
         issues.push({

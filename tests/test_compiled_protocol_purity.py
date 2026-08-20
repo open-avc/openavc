@@ -19,6 +19,12 @@ ALLOWED = {
     "openavc",
     "openavc.drivers",
     "openavc.drivers.compiled_protocol",
+    # The driver contract's constant tables. Stdlib-only (ipaddress + re) and
+    # already vendored into openavc-drivers, so it travels everywhere this
+    # module does. compiled_protocol needs it for the reserved child props:
+    # the child_set: compiler coerces by declared type, and the reserved keys
+    # have to coerce by theirs or `online` writes the truthy string "false".
+    "openavc.drivers.spec",
     "openavc.transport",
     "openavc.transport.binary_helpers",
     "openavc.utils",

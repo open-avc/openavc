@@ -171,6 +171,38 @@ CHILD_ID_TYPES: tuple[str, ...] = ("integer", "string")
 # The mutually exclusive roster sources an instances: block may declare.
 INSTANCE_SOURCES: tuple[str, ...] = ("count", "count_from", "ids_from", "ids")
 
+# State keys the platform provides on every registered child, on top of
+# whatever the type declares in state_variables. A driver never declares
+# these and always may write them; a driver that DOES declare one keeps its
+# own definition (label, help, cloud_priority), which is how a driver adds
+# wording without taking the key over.
+#
+# All four are driver-managed — the platform seeds them and then has no
+# opinion, because only the driver can see a sub-unit. `online` is presence.
+# `label` is the user's friendly name. `offline_reason` / `offline_detail`
+# are the child-level pair of the device's own offline_reason/offline_detail:
+# a stable code automation can match on, and the sentence a person reads. See
+# openavc/core/connection_fault.py for the codes and what each one means.
+#
+# This tuple is the contract half — the names. It lives here rather than in
+# base.py because avcdriver_semantic.py has to see it (a YAML driver writing
+# one of these through child_set: is writing a key it never declared) and
+# that module is stdlib-only and vendored into openavc-drivers.
+# Name -> the state-variable definition each reserved prop gets when the
+# driver has not declared one itself. The TYPE half matters beyond the schema:
+# the declarative child_set: compiler coerces a captured value by its declared
+# type, so without an entry here a YAML driver reporting `online` would land
+# the STRING "false" rather than the boolean False -- and a string "false" is
+# truthy, so an offline endpoint would draw as a lit green status light.
+CHILD_RESERVED_PROP_SCHEMA: dict[str, dict[str, str]] = {
+    "online": {"type": "boolean", "label": "Online"},
+    "label": {"type": "string", "label": "Label"},
+    "offline_reason": {"type": "string", "label": "Fault"},
+    "offline_detail": {"type": "string", "label": "Fault Detail"},
+}
+
+CHILD_RESERVED_PROPS: tuple[str, ...] = tuple(CHILD_RESERVED_PROP_SCHEMA)
+
 # --- OSC ---------------------------------------------------------------------
 
 # OSC argument type tags the ConfigurableDriver runtime can encode from a YAML
@@ -761,7 +793,7 @@ DEFS = {
     },
     'childStateVariableEntry': {
         'type': 'object',
-        'doc': 'Child state variable. Same shape as device state variables, but label is not required (the platform injects online and label automatically).',
+        'doc': 'Child state variable. Same shape as device state variables, but label is not required (the platform injects online, label, offline_reason and offline_detail automatically). Declaring one of those four is allowed and keeps your definition; the rest are still added.',
         'fields': {
             'type': {
                 'type': 'string',

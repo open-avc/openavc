@@ -611,6 +611,11 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
      "child id_format.type values."),
     ("INSTANCE_SOURCES", _LIST, lambda: spec.INSTANCE_SOURCES,
      "The mutually exclusive child-roster sources."),
+    ("CHILD_RESERVED_PROPS", _SET, lambda: spec.CHILD_RESERVED_PROPS,
+     "State keys the platform provides on every child, on top of whatever "
+     "the type declares. A driver never declares these and always may write "
+     "them, so every picker, validator and column chooser has to know they "
+     "are real."),
     ("DISALLOWED_OPEN_PORTS", _NUM_SET, lambda: spec.DISALLOWED_OPEN_PORTS,
      "Ports a discovery port_open hint may not use (they match every "
      "web/SSH host)."),

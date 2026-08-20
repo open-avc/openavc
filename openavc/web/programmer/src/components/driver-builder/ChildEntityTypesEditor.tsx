@@ -829,8 +829,12 @@ function StateVarsSection({
         }}
       >
         Each registered child gets one state key per field. The platform also
-        injects a boolean <code>online</code> and a string <code>label</code>.
-        You don't need to declare those.
+        injects <code>online</code> (a boolean), <code>label</code> (the
+        user's name for it), and <code>offline_reason</code> /{" "}
+        <code>offline_detail</code> for saying what is wrong with one. You
+        don't need to declare any of those. Set the last two from your driver
+        with <code>child_fault()</code> so a sub-unit that has stopped working
+        says which kind of trouble it is in, rather than only that it has.
       </div>
 
       {varNames.length > 0 && (

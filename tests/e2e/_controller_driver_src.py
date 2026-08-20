@@ -124,3 +124,11 @@ class E2ETestController(BaseDriver):
         elif kind == "remove":
             if self.is_child_registered(ctype, lid):
                 self.deregister_child(ctype, lid)
+        elif kind == "fault":
+            # Drive the child fault vocabulary from the test: `code` empty
+            # clears, a code sets it and takes `online` down with it.
+            if self.is_child_registered(ctype, lid):
+                self.set_child_state_batch(
+                    ctype, lid,
+                    self.child_fault(op.get("code", ""), op.get("message", "")),
+                )

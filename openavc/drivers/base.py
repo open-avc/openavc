@@ -25,15 +25,22 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from openavc.core.connection_fault import (
+    CHILD_FAULT_CODES,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     ConnectionFault,
     ConnectionFaultError,
     classify_connection_fault,
+    default_child_fault_message,
     default_fault_message,
+    is_child_fault_code,
 )
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
+from openavc.drivers.spec import (
+    CHILD_RESERVED_PROP_SCHEMA,
+    CHILD_RESERVED_PROPS,
+)
 from openavc.core.state_store import StateStore
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.log_redaction import collect_secret_values, get_secret_registry
@@ -2443,13 +2450,40 @@ class BaseDriver(ABC):
     # always injects a boolean `online` key per registered child so that
     # listeners can distinguish "configured but offline" from "not configured".
 
-    # State keys the platform always provides for every registered child,
-    # in addition to whatever the driver declares in
-    # child_entity_types[<type>].state_variables. `online` is driver-managed
-    # (the driver sets it as it observes connectivity). `label` is the
-    # user-set friendly name, sourced from the project file on registration
-    # and writable through the IDE / REST.
-    _CHILD_RESERVED_PROPS: tuple[str, ...] = ("online", "label")
+    # State keys the platform always provides for every registered child, in
+    # addition to whatever the driver declares in
+    # child_entity_types[<type>].state_variables. All four are driver-managed
+    # — the platform seeds them and then has no opinion, because only the
+    # driver can see a sub-unit:
+    #
+    #   online          presence, seeded True at registration
+    #   label           the user-set friendly name, sourced from the project
+    #                   file on registration and writable through the IDE/REST
+    #   offline_reason  a stable code from the child fault taxonomy that
+    #                   automation can match on, or "" for nothing claimed
+    #   offline_detail  the sentence a person reads on the device page
+    #
+    # The last two are the child-level pair of device.<id>.offline_reason /
+    # offline_detail, and exist because one boolean cannot tell an endpoint
+    # somebody carried out of the rack from one sitting right there with a
+    # wedged service — remedies that are nothing alike.
+    #
+    # The names are the contract, so they live in drivers/spec.py (which
+    # avcdriver_semantic.py can see and openavc-drivers vendors); this is the
+    # runtime's handle on them. It USED to be a second list beside two
+    # hardcoded setdefault calls in _effective_child_schema, read nowhere —
+    # dead code claiming to be the rule. It is now what that method injects
+    # from, so there is one list and it is this one.
+    _CHILD_RESERVED_PROPS: tuple[str, ...] = CHILD_RESERVED_PROPS
+
+    # The definition each reserved prop gets when the driver has not declared
+    # it itself. A driver that DOES declare one keeps its own (its label, help
+    # and cloud_priority), which is how a driver adds wording without taking
+    # the key over. Lives in spec.py because the child_set: compiler needs the
+    # same types -- see CHILD_RESERVED_PROP_SCHEMA there.
+    _CHILD_RESERVED_PROP_SCHEMA: dict[str, dict[str, Any]] = (
+        CHILD_RESERVED_PROP_SCHEMA
+    )
 
     def _child_type_def(self, child_type: str) -> dict[str, Any]:
         """Return the DRIVER_INFO child_entity_types[<type>] definition.
@@ -2484,8 +2518,10 @@ class BaseDriver(ABC):
             declared = dict(type_def.get("state_variables", {}))
         else:
             declared = dict(declared)
-        declared.setdefault("online", {"type": "boolean"})
-        declared.setdefault("label", {"type": "string"})
+        for prop in self._CHILD_RESERVED_PROPS:
+            declared.setdefault(
+                prop, dict(self._CHILD_RESERVED_PROP_SCHEMA[prop])
+            )
         return declared
 
     def _format_child_id(self, child_type: str, local_id: int | str) -> str:
@@ -2694,12 +2730,20 @@ class BaseDriver(ABC):
         project_entry = self._project_child_entities.get(child_type, {}).get(padded)
         project_label = project_entry.get("label", "") if project_entry else ""
 
+        # Every reserved prop needs an explicit arm. Without one they fall
+        # through to _default_for_var_def and seed from the declared type —
+        # which for the two fault keys means every child in the room
+        # registering already carrying a fault code, and for `online` means a
+        # child arriving offline. The defaults ARE the semantics here: a child
+        # is present until told otherwise, and claims no fault until one.
         updates: dict[str, Any] = {}
         for prop, var_def in eff_schema.items():
             if prop == "online":
                 value = overrides.get("online", True)
             elif prop == "label":
                 value = overrides.get("label", project_label)
+            elif prop in ("offline_reason", "offline_detail"):
+                value = overrides.get(prop, "")
             elif prop in overrides:
                 value = overrides[prop]
             else:
@@ -2776,6 +2820,52 @@ class BaseDriver(ABC):
             value,
             source=f"device.{self.device_id}",
         )
+
+    @staticmethod
+    def child_fault(code: str = "", message: str = "") -> dict[str, Any]:
+        """The three reserved keys that say what shape a child is in.
+
+        Returns a fragment to merge into whatever a driver is already writing
+        for that child, rather than writing anything itself. That is
+        deliberate: presence usually arrives in the same poll reply as
+        everything else about the child, and a driver that has built one batch
+        should not have to break it in two (and make a panel flicker through a
+        half-applied state) to say why an endpoint is down.
+
+            self.set_children_state_batch([
+                (ctype, mac, {**common, **self.child_fault()}),          # fine
+                (ctype, mac, {**common, **self.child_fault(              # down
+                    CHILD_NOT_RESPONDING)}),
+            ])
+
+        Called with no code it means "in service, nothing claimed" and clears
+        both fault keys — clearing matters as much as setting, because a fault
+        nothing ever clears makes one transient failure look permanent for as
+        long as the device stays up.
+
+        ``online`` is False whenever a code is set. That coupling is the point:
+        it is the one glanceable signal, so a wedged endpoint has to read as
+        not-in-service rather than as green with an explanation in a column
+        somebody has to know to read. Which KIND of trouble is the reason's
+        job, not the boolean's.
+
+        An unrecognised code is refused rather than written. It would otherwise
+        reach a panel as a bare token with no sentence behind it, and a typo in
+        a driver would be indistinguishable from a code the frontend has not
+        learned yet.
+        """
+        if not code:
+            return {"online": True, "offline_reason": "", "offline_detail": ""}
+        if not is_child_fault_code(code):
+            raise ValueError(
+                f"{code!r} is not a child fault code (expected one of "
+                f"{', '.join(sorted(CHILD_FAULT_CODES))})"
+            )
+        return {
+            "online": False,
+            "offline_reason": code,
+            "offline_detail": message or default_child_fault_message(code),
+        }
 
     def set_child_state_batch(
         self, child_type: str, local_id: int | str, updates: dict[str, Any]

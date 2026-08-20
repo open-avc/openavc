@@ -280,3 +280,91 @@ def test_driver_add_and_remove_updates_ui(server_factory, page: Page):
     )
     # Row 7 is still there (only encoder 1 was removed).
     expect(page.locator('[data-testid="child-row-007"]')).to_be_visible()
+
+
+# ── A sub-unit that is not answering ────────────────────────────────────────
+#
+# The reason this exists: an MXNet decoder stopped passing video, the tab said
+# `online: false` in a monospace column, and an afternoon went into hunting a
+# power fault that was not there. These drive the real server and a real
+# Chromium, because the whole point is what a person SEES on the page.
+
+def test_a_wedged_endpoint_is_visible_without_opening_anything(
+    page: Page, server_factory,
+) -> None:
+    """The device page itself says which sub-units are in trouble.
+
+    Not a column inside a collapsed panel: the banner is on the page the way
+    an offline device's reason is on its card.
+    """
+    handle = server_factory(initial_children=4)
+    _open_device(page, handle.base_url, "Test Controller")
+
+    # Nothing wrong: no banner at all. A healthy device must not carry one,
+    # the way a connected device carries no offline banner.
+    expect(page.locator('[data-testid="child-trouble-banner"]')).to_have_count(0)
+
+    handle.write_ops([{
+        "op": "fault", "child_type": "encoder", "local_id": 3,
+        "code": "service_fault",
+    }])
+
+    banner = page.locator('[data-testid="child-trouble-banner"]')
+    expect(banner).to_be_visible(timeout=EXPECT_TIMEOUT)
+    # Counted against the roster, and named the way the list names it.
+    expect(banner).to_contain_text("1 of 4 encoder is not answering")
+    expect(banner).to_contain_text("Encoder 3")
+
+
+def test_the_row_and_the_tab_agree_with_the_banner(
+    page: Page, server_factory,
+) -> None:
+    """Three surfaces, one rule -- a red row with a calm tab, or a banner over
+    a list showing nothing wrong, is worse than any of them alone."""
+    handle = server_factory(initial_children=4)
+    _open_device(page, handle.base_url, "Test Controller")
+
+    handle.write_ops([{
+        "op": "fault", "child_type": "encoder", "local_id": 3,
+        "code": "not_responding",
+    }])
+
+    expect(page.locator('[data-testid="child-type-down-encoder"]')).to_contain_text(
+        "1 down", timeout=EXPECT_TIMEOUT,
+    )
+    # The bad row is lifted to the top of the list, whatever its roster order.
+    first_row = page.locator('[data-testid^="child-row-"]').first
+    expect(first_row).to_have_attribute(
+        "data-testid", "child-row-003", timeout=EXPECT_TIMEOUT,
+    )
+    dot = first_row.locator('[data-testid="child-presence-dot"]')
+    expect(dot).to_have_attribute("data-ok", "false")
+    expect(dot).to_have_attribute("data-reason", "not_responding")
+    # The taxonomy's sentence reached the browser, not just the code.
+    assert "power" in (dot.get_attribute("title") or "").lower()
+
+
+def test_a_recovered_endpoint_clears_everything(
+    page: Page, server_factory,
+) -> None:
+    """A fault nothing ever clears makes one transient outage look permanent
+    for as long as the system stays up."""
+    handle = server_factory(initial_children=4)
+    _open_device(page, handle.base_url, "Test Controller")
+
+    handle.write_ops([{
+        "op": "fault", "child_type": "encoder", "local_id": 2,
+        "code": "not_responding",
+    }])
+    expect(page.locator('[data-testid="child-trouble-banner"]')).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+
+    handle.write_ops([{
+        "op": "fault", "child_type": "encoder", "local_id": 2, "code": "",
+    }])
+
+    expect(page.locator('[data-testid="child-trouble-banner"]')).to_have_count(
+        0, timeout=EXPECT_TIMEOUT,
+    )
+    expect(page.locator('[data-testid="child-type-down-encoder"]')).to_have_count(0)

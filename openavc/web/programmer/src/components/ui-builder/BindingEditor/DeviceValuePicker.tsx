@@ -19,6 +19,7 @@ import type {
   ChildEntitiesListResponse,
   ChildEntityEntry,
 } from "../../../api/types";
+import { CHILD_RESERVED_PROPS } from "../../../api/types";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
 import {
@@ -123,8 +124,10 @@ interface PropEntry {
 }
 
 /** Platform-injected child state keys — real and pickable, but never what a
- *  control binds to, so they sort last (dimmed) inside their child group. */
-const PLATFORM_CHILD_PROPS = new Set(["online", "label"]);
+ *  control binds to, so they sort last (dimmed) inside their child group.
+ *  Generated from the driver contract: hand-listing them is how a new one
+ *  ends up offered as an ordinary control in a command cascade. */
+const PLATFORM_CHILD_PROPS = CHILD_RESERVED_PROPS;
 
 /** Effective var defs for one child: a dynamic child's own schema when
  *  present, else the type-level schema. */

@@ -133,6 +133,43 @@ class TestKeyTier:
         assert relay._key_tier("device.ctrl1.encoder.005.name") == "child"
         assert relay._key_tier("device.ctrl1.encoder.005.signal_present") == "child"
 
+    def test_reserved_presence_and_fault_keys_ride_the_fast_tier(self):
+        """A child's presence and fault keys are not chatty telemetry — they
+        move when something happens to the endpoint, and they are what an
+        alert is waiting on. They would otherwise take the 5 s child cadence
+        by default, since a driver does not declare them. The device's own
+        connected / offline_reason are fast for the same reason."""
+        agent = _RecordingAgent(drivers={"ctrl1": _chazy_like_driver()})
+        relay = StateRelay(agent, StateStore())
+        assert relay._key_tier("device.ctrl1.encoder.005.online") == "top"
+        assert relay._key_tier("device.ctrl1.encoder.005.offline_reason") == "top"
+        assert relay._key_tier("device.ctrl1.encoder.005.offline_detail") == "top"
+
+    def test_a_childs_label_stays_on_the_default_cadence(self):
+        """`label` is reserved too, but nothing waits on a friendly name —
+        it changes when a person types one."""
+        agent = _RecordingAgent(drivers={"ctrl1": _chazy_like_driver()})
+        relay = StateRelay(agent, StateStore())
+        assert relay._key_tier("device.ctrl1.encoder.005.label") == "child"
+
+    def test_a_driver_that_declares_a_reserved_key_keeps_its_own_priority(self):
+        """The fast default applies only where the driver said nothing. A
+        driver that declares `online` low meant it."""
+        driver = _StubDriver({
+            "id": "quiet",
+            "child_entity_types": {
+                "port": {
+                    "label": "Port",
+                    "state_variables": {
+                        "online": {"type": "boolean", "cloud_priority": "low"},
+                    },
+                },
+            },
+        })
+        agent = _RecordingAgent(drivers={"q": driver})
+        relay = StateRelay(agent, StateStore())
+        assert relay._key_tier("device.q.port.001.online") == "low"
+
     def test_child_low_priority_is_low(self):
         agent = _RecordingAgent(drivers={"ctrl1": _chazy_like_driver()})
         relay = StateRelay(agent, StateStore())

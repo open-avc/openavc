@@ -1,4 +1,5 @@
 import type { ChildEntityEntry, ChildEntityStateVarDef } from "../../api/types";
+import { CHILD_RESERVED_PROPS } from "../../api/types";
 
 /** One dropdown option: the value sent to the runtime + a human label. */
 export interface ParamOption {
@@ -91,7 +92,10 @@ export function parseStateOptionList(raw: unknown): ParamOption[] {
 
 // Platform-managed child state vars — never offered as selectable controls in
 // a `child_schema` cascade (they're injected into every dynamic child).
-const PLATFORM_CHILD_KEYS = new Set(["online", "label"]);
+// Generated from the driver contract rather than listed here: a new reserved
+// key added to the platform would otherwise start offering itself as a
+// control the moment it shipped.
+const PLATFORM_CHILD_KEYS = CHILD_RESERVED_PROPS;
 
 /**
  * Build the option list for a param that cascades off a sibling child's

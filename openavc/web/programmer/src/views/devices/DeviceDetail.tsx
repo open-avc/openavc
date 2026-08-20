@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown, Pause, Play } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown, Pause, Play, AlertTriangle } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
@@ -12,6 +12,8 @@ import {
   MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
 import type { MonitorConfig } from "../../api/types";
+import { scanChildTrouble, troubleSummary } from "./childPresence";
+import type { ChildTypeInfo } from "./childPresence";
 import { normalizeOptionList, optionLabel, parseStateOptionList } from "../../components/shared/paramOptions";
 import {
   hasInvalidParams,
@@ -155,6 +157,16 @@ export function DeviceDetail({
       | undefined;
     return cet ? new Set(Object.keys(cet)) : new Set<string>();
   }, [deviceInfo]);
+
+  // Which sub-units are not answering, for the banner below. A wedged
+  // endpoint used to be one word in a column inside a collapsed panel, which
+  // is how an afternoon went into hunting a power fault that did not exist.
+  // It belongs on the page the way an offline device's reason is on its card.
+  const childTrouble = useMemo(() => {
+    const cet = (deviceInfo?.driver_info?.child_entity_types ?? {}) as
+      Record<string, ChildTypeInfo>;
+    return troubleSummary(scanChildTrouble(liveState, deviceId, cet));
+  }, [liveState, deviceId, deviceInfo]);
 
   // Extract device state from flat liveState
   const prefix = `device.${deviceId}.`;
@@ -536,6 +548,16 @@ export function DeviceDetail({
             <Play size={12} /> Resume
           </button>
         </div>
+      )}
+
+      {/* Sub-units that are not answering. Shown while the device itself is
+          up: when the device is offline its own banner is the story, and
+          every port under it reads down for the same one reason. */}
+      {connected && childTrouble && (
+        <ChildTroubleBanner
+          headline={childTrouble.headline}
+          names={childTrouble.names}
+        />
       )}
 
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
@@ -1778,6 +1800,45 @@ const PERMANENT_OFFLINE_REASONS = new Set([
   "invalid_config",
   "client_missing",
 ]);
+
+/** The device is fine; some of what it manages is not. Deliberately quieter
+ *  than OfflineBanner (one border, no icon column of its own): the room still
+ *  works, and this is a "go look at that endpoint" not a "nothing responds". */
+function ChildTroubleBanner({ headline, names }: { headline: string; names: string }) {
+  const accent = "var(--color-warning, #f59e0b)";
+  return (
+    <div
+      data-testid="child-trouble-banner"
+      style={{
+        padding: "var(--space-sm) var(--space-md)",
+        borderRadius: "var(--border-radius)",
+        marginBottom: "var(--space-md)",
+        background: "rgba(245, 158, 11, 0.08)",
+        border: "1px solid rgba(245, 158, 11, 0.35)",
+        display: "flex",
+        gap: "var(--space-sm)",
+        alignItems: "flex-start",
+      }}
+    >
+      <AlertTriangle size={16} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
+      <div>
+        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
+          {headline}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-secondary)",
+            marginTop: 2,
+          }}
+        >
+          {names}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function OfflineBanner({
   detail,

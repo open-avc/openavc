@@ -666,7 +666,7 @@ child_entity_types:
 - `id_format`: How the controller addresses this sub-unit.
   - `type: integer` (default): numbered sub-units. `min`/`max` bound the valid range; `pad_width` zero-pads the ID when it appears in state keys (omit it, or set it to `0`, to leave the ID unpadded).
   - `type: string`: sub-units keyed by a device-native **name** instead of a number (a Q-SYS component Code Name, an MQTT topic leaf, a zone name). The name must be `[A-Za-z0-9_-]` only (so it's safe in a state key and in glob subscriptions) and at most `max_length` characters (default 128). Sanitize the device's native name to that charset and keep the original in the child's `label`.
-- `state_variables`: Same shape as device `state_variables` (types: `string`, `integer`, `number`, `float`, `boolean`, `enum`), including the optional `min`/`max`/`step`/`unit` numeric metadata and the `control: true` flag — a child variable flagged as a control is what the UI Builder's value picker and the `options_from: child_schema` command cascade list first. The platform always adds a boolean `online` and a string `label` per child, so you don't declare those. Each variable may carry an optional `cloud_priority`:
+- `state_variables`: Same shape as device `state_variables` (types: `string`, `integer`, `number`, `float`, `boolean`, `enum`), including the optional `min`/`max`/`step`/`unit` numeric metadata and the `control: true` flag — a child variable flagged as a control is what the UI Builder's value picker and the `options_from: child_schema` command cascade list first. The platform always adds four keys per child, so you don't declare those: a boolean `online`, a string `label` (the user's own name for the unit), and `offline_reason` / `offline_detail` for saying what is wrong with one (see [Saying what is wrong with a sub-unit](#saying-what-is-wrong-with-a-sub-unit)). You may still declare any of them if you want your own label, help text or `cloud_priority` on it — yours wins, and the others are still added. Each variable may carry an optional `cloud_priority`:
   - `high` — relayed to the cloud at the fast top-level cadence (for latency-sensitive fields like routing or mute).
   - `low` — relayed at the slow verbose cadence (for chatty per-IO state).
   - omitted — the default per-child cadence.
@@ -2441,7 +2441,7 @@ Only Python drivers can register children at runtime (a YAML driver just declare
 1. **On connect, enumerate the roster.** Run one cheap "list everything" command, parse it, and register each unit. `register_child` is idempotent, so calling it again on every poll is safe.
 2. **Fill in detail** with `poll_children`, which batches the registered IDs (50 at a time) instead of firing one request per unit.
 3. **On poll, reconcile** — register units that appeared, deregister ones the controller no longer reports. Keep the roster query on the normal poll interval and run the heavier per-unit detail refresh on a slower cadence (a separate `detail_poll_interval`) so a large controller doesn't flood the network every cycle.
-4. **Set `online` to match the unit's nature.** Physical endpoints (encoders/decoders) that come and go derive `online` from their link state and stay registered while offline; virtual objects (groups, walls, presets) are online whenever the controller lists them, and only disappear when deleted on the device.
+4. **Set `online` to match the unit's nature, and say why when it is down.** Physical endpoints (encoders/decoders) that come and go derive `online` from their link state and stay registered while offline; virtual objects (groups, walls, presets) are online whenever the controller lists them, and only disappear when deleted on the device. Where you can tell one kind of trouble from another, use `child_fault()` rather than flattening it into the boolean — see [Saying what is wrong with a sub-unit](#saying-what-is-wrong-with-a-sub-unit) below.
 5. **Support "Refresh from Device"** by overriding `refresh_children`.
 
 ```python
@@ -2498,6 +2498,79 @@ class MatrixControllerDriver(BaseDriver):
 ```
 
 Commands that act on a specific child take a `child_id` parameter (see the [`commands`](#commands-entry) reference) — the platform substitutes the integer local ID into the wire template, so there's no separate per-child command surface.
+
+### Saying what is wrong with a sub-unit
+
+A sub-unit that is not working gets more than a boolean. `online` alone cannot
+tell an endpoint somebody unplugged and carried out of the rack from one
+sitting right there, answering, whose streaming service has hung. The remedy
+for the two is nothing alike: go and find it, versus power-cycle it.
+
+So the platform gives every child two more keys beside `online`, mirroring the
+`offline_reason` / `offline_detail` pair a whole device already gets:
+
+| Key | What it holds |
+|---|---|
+| `offline_reason` | A stable code automation can match on, or `""` for nothing claimed |
+| `offline_detail` | The sentence a person reads on the device page |
+
+Two codes, each earning its place by having a different remedy:
+
+| Code | Means | What someone does about it |
+|---|---|---|
+| `not_responding` | The device lists it and it is not answering | Go and find it. Power, cabling, network. |
+| `service_fault` | It is answering, but the function it exists to perform is not running | Power-cycle it, or restart it from the controller. |
+
+Build the fragment with `child_fault()` and merge it into whatever you were
+already writing for that child, so presence lands in the same batch as
+everything else and a panel never flickers through a half-applied state:
+
+```python
+from openavc.core.connection_fault import CHILD_NOT_RESPONDING
+
+updates = []
+for endpoint in roster:
+    common = {"name": endpoint.name, "ip": endpoint.ip}
+    if endpoint.reachable:
+        common.update(self.child_fault())                     # in service
+    else:
+        common.update(self.child_fault(CHILD_NOT_RESPONDING))  # and why
+    updates.append(("encoder", endpoint.mac, common))
+
+self.set_children_state_batch(updates)
+```
+
+Three things to know:
+
+- **`online` goes down with any code.** That coupling is deliberate. `online`
+  is the one glanceable signal in the IDE (the dot on each row, the count on
+  the tab, the line on the device page), so a wedged endpoint has to read as
+  not-in-service rather than as green with the answer hidden in a column
+  somebody has to know to read. *Which* kind of trouble is the reason's job.
+- **Clearing matters as much as setting.** `child_fault()` with no arguments
+  restores presence and clears both keys. A fault nothing ever clears makes
+  one transient outage look permanent for as long as the system stays up.
+- **Say nothing rather than guess.** If you can tell that something is wrong
+  but not what kind, set `online` to `False` and leave the reason empty. That
+  is what every driver written before these keys does, and it is fine. A code
+  that fires on a healthy state is worse than no code: an AV-over-IP encoder
+  with nothing plugged into it can sit in a "not streaming" state forever
+  while being perfectly reachable, and reporting that as a fault puts a red
+  mark on a frame with nothing wrong with it.
+
+You can write these from a YAML driver too, through `child_set:` like any
+other property:
+
+```yaml
+responses:
+  - match: "ENDPOINT (\\d+) (UP|DOWN)"
+    child_set:
+      - type: output
+        id: "$1"
+        state:
+          online: {group: 2, map: {UP: "true", DOWN: "false"}}
+          offline_reason: {group: 2, map: {UP: "", DOWN: "not_responding"}}
+```
 
 ### BaseDriver Hooks Reference
 

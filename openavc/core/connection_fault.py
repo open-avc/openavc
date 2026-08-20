@@ -8,8 +8,15 @@ fixed taxonomy and returns a stable ``code`` (used by triggers and automation
 as ``device.<id>.offline_reason``) and a human ``message`` (shown on the device
 card as ``device.<id>.offline_detail``).
 
-This is the single place that owns the taxonomy: pure / stdlib, no I/O, and no
-driver- or transport-specific branching beyond the small amount the taxonomy
+It also owns the CHILD-entity fault vocabulary at the bottom of the file --
+the same question ("why is this thing not working") one level down, for a
+sub-unit of a device rather than the device itself. Those are asserted by the
+driver rather than derived here, because nothing the platform can see tells a
+wedged endpoint from an absent one, but they share this home so there is one
+vocabulary and one place the frontend maps a code to copy.
+
+This is the single place that owns both taxonomies: pure / stdlib, no I/O, and
+no driver- or transport-specific branching beyond the small amount the taxonomy
 itself needs (serial has no auth / route / host-key semantics). Adding a new
 failure signature means adding it here, not in a driver, a transport, or the
 frontend.
@@ -128,6 +135,80 @@ _PERMANENT_FAULT_CODES = frozenset({
 def is_permanent_fault(code: str) -> bool:
     """True when ``code`` names a fault that retrying can't fix on its own."""
     return code in _PERMANENT_FAULT_CODES
+
+
+# --- Child entities ---------------------------------------------------------
+# A device's fault codes above answer "why did the CONNECTION fail". A child
+# entity's answer a different question, because by the time one is in trouble
+# the connection to its parent is usually fine: the controller is talking to
+# us happily and telling us that one of the things it manages is not right.
+#
+# They live in this module anyway, beside the device set, because there is one
+# question here ("why is this thing not working") and it should have one home,
+# one vocabulary and one place the frontend maps codes to copy. Splitting them
+# would leave two modules both answering it.
+#
+# Unlike the device codes, these are never derived — nothing the platform can
+# see distinguishes them. Only the driver knows, so the driver asserts one,
+# exactly as it already asserts `online`.
+#
+# The set is deliberately small: every code here earns its place by having a
+# DIFFERENT REMEDY from the others, which is the whole point of the item that
+# added them (an endpoint somebody carried out of the rack and an endpoint
+# sitting right there with a wedged service both read `online: false`, and one
+# means go find it while the other means power-cycle it). A driver that knows
+# something is wrong but not what leaves the reason empty and sets
+# `online: False` — that is what every driver does today and it degrades
+# correctly, which is better than a code meaning "dunno".
+
+#: The device lists it, and it is not answering. Go find it — power, cabling,
+#: network. This is absence, whether it was unplugged or has left the building.
+CHILD_NOT_RESPONDING = "not_responding"
+#: It IS answering — presence is fine, its control channel is live — but the
+#: function it exists to perform is not running. Power-cycle or restart it.
+#: This is the one the boolean could never say.
+CHILD_SERVICE_FAULT = "service_fault"
+# A third code, `disabled` (off on purpose, not a fault), was drafted and cut
+# before it shipped. The one case in the corpus that looked like it — an MXNet
+# destination whose video path is disabled — is what pressing Off on a matrix
+# destination produces, so it is ordinary operation and `source_video: ""`
+# already says it. A code that fires on a normal state is noise, and noise in
+# this particular field is the thing the whole feature exists to remove. Add it
+# when a device genuinely reports "taken out of service".
+
+#: Every code a driver may put in `device.<id>.<type>.<lid>.offline_reason`.
+#: The empty string is always allowed and means "nothing claimed".
+CHILD_FAULT_CODES: frozenset[str] = frozenset({
+    CHILD_NOT_RESPONDING,
+    CHILD_SERVICE_FAULT,
+})
+
+#: The sentence each code gets when the driver does not word its own. A driver
+#: SHOULD word its own where it knows more (which service, which port), and
+#: these keep a bare code from reaching a person as a bare code.
+_CHILD_DEFAULT_MESSAGES = {
+    CHILD_NOT_RESPONDING: (
+        "Not answering. Check that it has power and a network connection."
+    ),
+    CHILD_SERVICE_FAULT: (
+        "Reachable, but not running. Power-cycle it, or restart it from the "
+        "controller."
+    ),
+}
+
+
+def default_child_fault_message(code: str) -> str:
+    """The standard sentence for a child fault ``code``, or "" if unknown.
+
+    Empty rather than a generic fallback on purpose: an unrecognised code is
+    a driver bug, and inventing a confident sentence for it would hide that.
+    """
+    return _CHILD_DEFAULT_MESSAGES.get(code, "")
+
+
+def is_child_fault_code(code: str) -> bool:
+    """True when ``code`` is one this taxonomy defines."""
+    return code in CHILD_FAULT_CODES
 
 
 class ConnectionFaultError(ConnectionError):

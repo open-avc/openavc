@@ -62,6 +62,14 @@ _TIER_TOP = "top"
 _TIER_CHILD = "child"
 _TIER_LOW = "low"
 
+# Reserved child keys that ride the fast tier when the driver has not
+# declared a cloud_priority of its own. `label` is deliberately NOT here:
+# a friendly name changes when somebody types one, and nothing is waiting
+# on it.
+_RESERVED_FAST_CHILD_PROPS = frozenset({
+    "online", "offline_reason", "offline_detail",
+})
+
 
 def is_cloud_excluded_key(key: str) -> bool:
     """True for state keys that must never be sent to the cloud.
@@ -366,6 +374,19 @@ class StateRelay:
         if not isinstance(var_def, dict) and type_def.get("dynamic"):
             var_def = self._dynamic_child_var(driver, child_type, local_id, prop)
         if not isinstance(var_def, dict):
+            # The reserved presence/fault keys ride the FAST tier rather than
+            # the default child cadence, matching the device's own connected /
+            # offline_reason. They are rare (a child changes shape when
+            # something happens to it, not every poll) and they are precisely
+            # what an alert is waiting on. wyrestorm_networkhd -- the one
+            # driver whose author picked a tier for child presence by hand --
+            # already declares cloud_priority "high" on its `online`, so this
+            # makes the platform default what the considered case chose.
+            #
+            # Reached only when the driver did NOT declare the key: a driver
+            # that declares one keeps its own cloud_priority, handled below.
+            if prop in _RESERVED_FAST_CHILD_PROPS:
+                return _TIER_TOP
             return _TIER_CHILD
         priority = var_def.get("cloud_priority")
         if priority == "low":

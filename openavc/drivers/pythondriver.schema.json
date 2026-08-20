@@ -593,7 +593,7 @@
     },
     "childStateVariableEntry": {
       "type": "object",
-      "description": "Child state variable. Same shape as device state variables, but label is not required (the platform injects online and label automatically).",
+      "description": "Child state variable. Same shape as device state variables, but label is not required (the platform injects online, label, offline_reason and offline_detail automatically). Declaring one of those four is allowed and keeps your definition; the rest are still added.",
       "properties": {
         "type": {
           "type": "string",
