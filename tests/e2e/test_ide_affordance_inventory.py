@@ -29,12 +29,17 @@ deliberately, never to make a red run green::
 A regeneration is a claim that every difference in it is one you meant, so read
 the diff before committing it -- the same rule ``golden-master/`` carries.
 
+It reads and never writes. A walk that clicks things to see what they reveal
+will eventually click something that CHANGES the project, and then it is not an
+inventory, it is an edit -- so the only rows it opens are the ones named in
+DETAIL_ROWS.
+
 What this does NOT cover, so nobody reads it as more than it is: dialogs and
 menus that open on click, controls that only appear once a row is hovered or an
-element selected, anything gated behind a device being online, and the contents
-of any screen that needs data this seed project does not have. Those are worth
-adding; the absence of a screen from the fixture is not evidence that screen is
-safe.
+element selected, anything gated behind a device being online, the detail pane
+of any screen not named in DETAIL_ROWS, and the contents of any screen that
+needs data this seed project does not have. Those are worth adding; the absence
+of a screen from the fixture is not evidence that screen is safe.
 """
 
 from __future__ import annotations
@@ -61,7 +66,13 @@ SETTLE_MS = 1_200
 #: Rail entries that DO something rather than going somewhere. Recorded in the
 #: rail inventory, never clicked: starting the simulator spawns a subprocess
 #: this test has no business owning.
-RAIL_ACTIONS = {"Start Simulation", "Stop Simulation"}
+#:
+#: All three spellings, because the button relabels itself by state and the
+#: idle one is "Simulate Devices" -- which the first version of this list did
+#: not have. So the walk clicked it, started a simulator, went nowhere, and
+#: filed the Settings screen it was still looking at under the name
+#: "Simulate Devices". The hash check below is what caught that.
+RAIL_ACTIONS = {"Simulate Devices", "Starting...", "Stop Simulation"}
 
 
 # ---------------------------------------------------------------------------
@@ -233,40 +244,34 @@ def _open_subtab(page: Page, label: str) -> bool:
     return bool(clicked)
 
 
-#: Click the first row of a left-hand list, so list-and-detail screens record
-#: their detail pane too. Returns the row's name, or "" when the screen has no
-#: such list.
+#: Screens whose left column is a LIST, and the selector that opens its first
+#: row, so the detail pane behind it is recorded too. It matters: the first
+#: inventory taken here recorded six controls on Macros, because nothing had
+#: opened one -- so the step rows and the five actions on each were not covered
+#: at all.
 #:
-#: This matters more than it looks. The first inventory taken here recorded six
-#: controls on Macros, because nothing had opened a macro -- so the step rows,
-#: and the five actions on each of them, were not covered at all. A guard whose
-#: gaps are invisible is the thing it was built to prevent.
-_OPEN_FIRST_ROW_JS = r"""
-() => {
-  const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const main = document.querySelector('nav')?.getBoundingClientRect().width || 0;
-  const candidates = [...document.querySelectorAll('[role="option"],button,[role="button"]')]
-    .filter((el) => !el.closest('nav'))
-    .filter((el) => {
-      const r = el.getBoundingClientRect();
-      // Left column, below the header bar, and tall enough to be a row rather
-      // than a toolbar button.
-      return r.x > main && r.x < main + 340 && r.y > 60 && r.height >= 28 && r.width > 90;
-    });
-  if (!candidates.length) return '';
-  const row = candidates[0];
-  const label = clean(row.textContent).slice(0, 40);
-  row.click();
-  return label;
+#: Named per screen rather than found by shape, and that is the whole point. A
+#: first version guessed at "the topmost control in the left column", which on
+#: the UI Builder is the element palette -- so the walk ADDED a button to the
+#: page, eleven times over a run, and eventually wedged the app it was supposed
+#: to be reading. A test that takes an inventory must not change what it is
+#: counting. Anything not listed here simply is not row-opened.
+DETAIL_ROWS: dict[str, str] = {
+    "Macros": '[role="option"]',
+    "Devices": 'button:has-text("Test Controller")',
 }
-"""
 
 
-def _open_first_row(page: Page) -> str:
-    label = page.evaluate(_OPEN_FIRST_ROW_JS)
-    if label:
-        page.wait_for_timeout(SETTLE_MS)
-    return str(label)
+def _open_first_row(page: Page, screen: str) -> bool:
+    selector = DETAIL_ROWS.get(screen)
+    if not selector:
+        return False
+    row = page.locator(selector).first
+    if row.count() == 0:
+        return False
+    row.click()
+    page.wait_for_timeout(SETTLE_MS)
+    return True
 
 
 def _walk(page: Page, base_url: str) -> dict[str, list[str]]:
@@ -276,6 +281,7 @@ def _walk(page: Page, base_url: str) -> dict[str, list[str]]:
     page.wait_for_timeout(SETTLE_MS)
 
     inventory: dict[str, list[str]] = {"(rail)": _collect(page, in_rail=True)}
+    previous_hash = ""
 
     for label in _rail_labels(page):
         if label in RAIL_ACTIONS:
@@ -292,10 +298,26 @@ def _walk(page: Page, base_url: str) -> dict[str, list[str]]:
             label,
         )
         page.wait_for_timeout(SETTLE_MS)
+
+        # The IDE routes on the URL hash, so the hash is the honest answer to
+        # "did we actually leave the last screen?". Without this check a walk
+        # that stops navigating -- a dialog in the way, a click that lands on
+        # nothing -- records the SAME screen under every later name and calls
+        # it an inventory. That happened, and the numbers looked plausible
+        # enough to believe: 2,668 controls across 33 screens, most of them
+        # the UI Builder wearing another screen's name.
+        current_hash = str(page.evaluate("() => location.hash"))
+        if current_hash and current_hash == previous_hash:
+            raise AssertionError(
+                f"Clicking {label!r} in the rail did not leave the previous "
+                f"screen (hash stayed {current_hash!r}). The walk is not "
+                f"reading what it thinks it is; the inventory would be wrong."
+            )
+        previous_hash = current_hash
+
         inventory[label] = _collect(page)
 
-        opened = _open_first_row(page)
-        if opened:
+        if _open_first_row(page, label):
             # Keyed by the screen, not by the row's name: the row is whatever
             # the seed project put first, and renaming it must not read as a
             # whole screen appearing and another disappearing.
