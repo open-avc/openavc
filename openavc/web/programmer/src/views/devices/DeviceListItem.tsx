@@ -59,7 +59,7 @@ export function DeviceListItem({
         height: 38,
         paddingRight: "var(--space-sm)",
         background: selected ? "var(--accent-dim)" : "transparent",
-        borderBottom: "1px solid var(--bg-elevated)",
+        borderBottom: "1px solid var(--border-color)",
         textAlign: "left",
         transition: "background var(--transition-fast)",
       }}
