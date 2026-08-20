@@ -1546,6 +1546,8 @@ theoretically matchable and never actually found.
 
 When you bump a driver to use a new schema field your platform target may lack, set `min_platform_version` so older OpenAVC instances grey out the driver instead of trying to parse fields they don't understand.
 
+The floor holds however the driver arrives. Browse Community greys the driver out, and importing the file by hand — an upload, a `.zip` bundle, or saving it in the Driver Builder — is refused with the version it needs and the version you are on. So a driver you download from a manufacturer's own site behaves the same as one installed from the catalog, which matters because the systems the floor protects are the ones that have not updated.
+
 You don't have to work that version out by hand. Every field that arrived in a particular release says so in its description — "Requires platform 0.23.0" — and the checks read the same annotation, so the floor is computed from the driver rather than remembered:
 
 ```bash

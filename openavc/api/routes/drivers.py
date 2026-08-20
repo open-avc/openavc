@@ -4,9 +4,13 @@ Two halves of one job, which is why they share a module:
 
 * **Install / import / update / uninstall** — the community catalog
   (`/drivers/install`), file upload (`/drivers/upload`, `/drivers/upload-bundle`),
-  and the installed-driver lifecycle. Everything downloaded is hashed against
-  the catalog before it is written (`openavc/utils/community_integrity.py`) and
-  gated on `min_platform_version`.
+  and the installed-driver lifecycle. Everything *downloaded* is hashed
+  against the catalog before it is written
+  (`openavc/utils/community_integrity.py`); a hand-imported file has no catalog
+  entry to hash against, so that guard is the catalog's alone. The
+  `min_platform_version` floor is not — every door here refuses a driver this
+  platform is too old to run, because the file is the same file whichever way
+  it arrives.
 * **Driver-definition CRUD** — list / get / validate / create / update / patch
   / delete / reload for the ``.avcdriver`` definitions the Driver Builder edits.
 
@@ -87,7 +91,7 @@ def _enforce_min_platform_version(required: str) -> None:
         )
 
 
-def _peek_min_platform_version(yaml_text: str) -> str | None:
+def _peek_min_platform_version(yaml_text: str | bytes) -> str | None:
     """Best-effort extract ``min_platform_version`` from raw driver YAML."""
     try:
         import yaml as _yaml
@@ -99,6 +103,53 @@ def _peek_min_platform_version(yaml_text: str) -> str | None:
         if isinstance(value, str) and value:
             return value
     return None
+
+
+def _declared_min_platform_version(filename: str, content: bytes) -> str | None:
+    """The platform floor a driver file declares, read without running it.
+
+    Asked before anything is written, which is why it works from the bytes in
+    hand rather than from a path: importing a ``.py`` to find out would run the
+    very code the floor exists to keep off this box, and a refusal that had
+    already overwritten the driver on disk would be worse than no gate at all.
+
+    Unreadable is not the same as absent, and both answer ``None`` on purpose —
+    a file whose floor can't be read is a file that is about to fail to load
+    anyway, and that message is the useful one.
+    """
+    if filename.endswith(".py"):
+        import tempfile
+
+        from openavc.drivers.python_info import (
+            ExtractError,
+            extract_python_driver_info_full,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp) / filename
+            try:
+                probe.write_bytes(content)
+                info, _unevaluated = extract_python_driver_info_full(probe)
+            # ValueError covers both ways the source can be unreadable: a
+            # decode failure, and null bytes that ast.parse refuses outright.
+            except (ExtractError, OSError, ValueError):
+                return None
+        value = info.get("min_platform_version")
+        return value if isinstance(value, str) and value else None
+    return _peek_min_platform_version(content)
+
+
+def _enforce_declared_floor(declared: object) -> None:
+    """Refuse a driver this platform is too old to run, whatever door it came in.
+
+    Every door that puts a driver on this box asks this one question, so a
+    hand-import and a Browse Community install answer it the same way. The
+    import doors are the ones with *less* context — no catalog entry, no
+    version column, nothing on screen saying what the file needs — so they are
+    the last place that should have been the permissive one.
+    """
+    if isinstance(declared, str) and declared:
+        _enforce_min_platform_version(declared)
 
 
 def _enforce_driver_id_match(
@@ -703,6 +754,13 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     content = await upload.read()
+
+    # The same gate Browse Community applies, before the file lands: a driver
+    # hand-imported from a partner's website is the same file the catalog
+    # install would have refused, and the systems this protects are exactly the
+    # ones that have not updated.
+    _enforce_declared_floor(_declared_min_platform_version(filename, content))
+
     filepath = driver_repo / filename
     filepath.write_bytes(content)
 
@@ -863,6 +921,12 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
             ),
         )
     main_name = mains[0]
+
+    # Same gate as the single-file door, and for the same reason — asked
+    # before the write loop so a refused bundle leaves the tree untouched.
+    _enforce_declared_floor(
+        _declared_min_platform_version(main_name, entries[main_name])
+    )
 
     # Write everything, then load the main. Roll back only the files this call
     # created, so re-importing over an existing driver that fails to load
@@ -1408,6 +1472,15 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     if errors:
         raise _definition_invalid(errors)
 
+    # Last gate before it is stored and registered. This door is an import
+    # door as much as an authoring one — the Driver Builder's "import a
+    # definition" lands here — so a file that names a floor above this
+    # platform is refused in the catalog door's own words. Run after the
+    # contract check so an author holding a broken draft still gets the
+    # errors that describe the draft; the way out of this one is to update
+    # OpenAVC, or to lower the floor and save again.
+    _enforce_declared_floor(driver_def.get("min_platform_version"))
+
     # Save to driver_repo (user/community directory)
     save_dir = dirs[1]  # driver_repo/
     save_driver_definition(driver_def, save_dir)
@@ -1470,6 +1543,13 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     errors = validate_driver_definition(driver_def, strict=True)
     if errors:
         raise _definition_invalid(errors)
+
+    # Same gate as create: a save is what registers the driver, so raising a
+    # driver's floor past this platform is refused here too — otherwise the
+    # create gate is a two-step walk around. Checked against the body in hand,
+    # never the stored copy, so lowering a floor that already blocks the save
+    # is always possible.
+    _enforce_declared_floor(driver_def.get("min_platform_version"))
 
     # Delete old and save new
     delete_driver_definition(driver_id, dirs)
@@ -1553,6 +1633,11 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     errors = validate_driver_definition(merged, strict=True)
     if errors:
         raise _definition_invalid(errors)
+
+    # Same gate as create/replace, on the merged result — a patch that leaves
+    # a too-high floor in place is still a save. A patch carrying a lower
+    # floor (or clearing it) merges first and passes, which is the way out.
+    _enforce_declared_floor(merged.get("min_platform_version"))
 
     # Delete old and save merged
     delete_driver_definition(driver_id, dirs)
