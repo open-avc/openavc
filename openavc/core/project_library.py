@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc import config
+from openavc.core import asset_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.core.project_loader import (
     ISCConfig,
@@ -214,14 +215,9 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
                     dest.mkdir(exist_ok=True)
                     (dest / script_name).write_bytes(zf.read(name))
 
-        # Extract assets
-        for name in zf.namelist():
-            if name.startswith("assets/") and not name.endswith("/"):
-                asset_name = Path(name).name
-                if asset_name and not asset_name.startswith("."):
-                    dest = project_dir / "assets"
-                    dest.mkdir(exist_ok=True)
-                    (dest / asset_name).write_bytes(zf.read(name))
+        # Extract assets, folders intact — the rules are core/asset_tree.py's,
+        # the same ones backup restore and bundle import write under.
+        asset_tree.extract_from_zip(zf, project_dir / "assets")
 
         # Extract custom UI files (a starter template may ship a control)
         extract_from_zip(zf, project_dir / "ui")
@@ -707,13 +703,7 @@ def _bundle_bytes(data: dict[str, Any], scripts: dict[str, str], project_dir: Pa
     driver_files = _find_driver_files(data.get("driver_dependencies", []))
     plugin_files = _find_plugin_files(data.get("plugin_dependencies", []))
 
-    assets_dir = project_dir / "assets"
-    asset_files: list[tuple[str, Path]] = []
-    if assets_dir.exists():
-        for f in assets_dir.rglob("*"):
-            if f.is_file():
-                rel = f.relative_to(assets_dir)
-                asset_files.append((f"assets/{rel.as_posix()}", f))
+    asset_files = asset_tree.zip_entries(project_dir / "assets")
 
     # Hand-written custom controls travel with the project: an export that
     # left them behind would open on the other machine with empty boxes.
@@ -1078,14 +1068,8 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
                         dest.mkdir(exist_ok=True)
                         (dest / script_name).write_bytes(zf.read(name))
 
-            # Extract bundled assets
-            for name in zf.namelist():
-                if name.startswith("assets/") and not name.endswith("/"):
-                    asset_name = Path(name).name
-                    if asset_name and not asset_name.startswith("."):
-                        assets_dest = project_dir / "assets"
-                        assets_dest.mkdir(exist_ok=True)
-                        (assets_dest / asset_name).write_bytes(zf.read(name))
+            # Extract bundled assets, folders intact (see core/asset_tree.py).
+            asset_tree.extract_from_zip(zf, project_dir / "assets")
 
             # Extract custom UI files, folders intact — a control is a folder,
             # and a flattened one does not run. The path rules, file types and

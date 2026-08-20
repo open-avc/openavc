@@ -446,3 +446,92 @@ def test_reload_persisted_state_applies_restore(tmp_path: Path):
 
     assert engine.state.get("var.vol") == 77          # restored value applied
     assert engine.state.get("var.bright") == 10       # absent -> variable default
+
+
+# ---------------------------------------------------------------------------
+# A nested asset survives the round trip
+#
+# The tree is flat in practice — every door that writes an asset sanitizes to
+# a bare filename — but "flat in practice" is not "flat", and the paths that
+# MOVE it did not agree. Backup creation used a non-recursive iterdir(), so a
+# nested asset was not flattened, it was silently absent from the backup;
+# restore then flattened whatever it did find onto the basename. Save,
+# duplicate and export carried folders the whole time, so the tree could hold
+# one and the backup could not.
+# ---------------------------------------------------------------------------
+
+class TestNestedAssets:
+    def _nest(self, project_dir: Path) -> None:
+        rooms = project_dir / "assets" / "rooms"
+        floors = project_dir / "assets" / "floors"
+        rooms.mkdir(parents=True)
+        floors.mkdir(parents=True)
+        # Same basename in two folders: flattening doesn't just move these, it
+        # destroys one of them.
+        (rooms / "plan.png").write_bytes(b"rooms plan")
+        (floors / "plan.png").write_bytes(b"floors plan")
+
+    def test_backup_carries_a_nested_asset(self, project_dir: Path):
+        self._nest(project_dir)
+        backup_path = create_backup(project_dir, "Manual backup")
+        with zipfile.ZipFile(backup_path) as zf:
+            names = set(zf.namelist())
+            assert "assets/rooms/plan.png" in names
+            assert "assets/floors/plan.png" in names
+            # The flat ones still ride along.
+            assert "assets/logo.png" in names
+            assert zf.read("assets/rooms/plan.png") == b"rooms plan"
+
+    def test_restore_puts_a_nested_asset_back_where_it_was(self, project_dir: Path):
+        self._nest(project_dir)
+        backup_path = create_backup(project_dir, "Manual backup")
+
+        # Wipe the tree, then restore it.
+        (project_dir / "assets" / "rooms" / "plan.png").unlink()
+        (project_dir / "assets" / "floors" / "plan.png").unlink()
+        (project_dir / "assets" / "logo.png").unlink()
+
+        restore_from_backup(backup_path, project_dir)
+
+        assert (project_dir / "assets" / "rooms" / "plan.png").read_bytes() == b"rooms plan"
+        assert (project_dir / "assets" / "floors" / "plan.png").read_bytes() == b"floors plan"
+        assert (project_dir / "assets" / "logo.png").is_file()
+        # Flattened, these two would have landed on each other at the top.
+        assert not (project_dir / "assets" / "plan.png").exists()
+
+    def test_restore_still_clears_what_the_backup_does_not_carry(self, project_dir: Path):
+        # The replace-don't-merge promise the flat restore already made: an
+        # asset added after the backup is gone once the backup is restored.
+        backup_path = create_backup(project_dir, "Manual backup")
+        later = project_dir / "assets" / "rooms" / "added-later.png"
+        later.parent.mkdir(parents=True)
+        later.write_bytes(b"later")
+
+        restore_from_backup(backup_path, project_dir)
+
+        assert not later.exists()
+        assert (project_dir / "assets" / "logo.png").is_file()
+
+    def test_restore_skips_an_asset_that_would_escape_the_tree(self, project_dir: Path, tmp_path: Path):
+        # A hand-crafted archive cannot write outside assets/. It is skipped
+        # rather than fatal, matching how ui/ treats an archive it dislikes.
+        backup_path = create_backup(project_dir, "Manual backup")
+        with zipfile.ZipFile(backup_path, "a") as zf:
+            zf.writestr("assets/../../escaped.png", b"nope")
+
+        restore_from_backup(backup_path, project_dir)
+
+        assert not (tmp_path.parent / "escaped.png").exists()
+        assert not (project_dir / "escaped.png").exists()
+        assert (project_dir / "assets" / "logo.png").is_file()
+
+    def test_backup_skips_the_noise_a_file_manager_leaves(self, project_dir: Path):
+        (project_dir / "assets" / ".DS_Store").write_bytes(b"junk")
+        backup_path = create_backup(project_dir, "Manual backup")
+        with zipfile.ZipFile(backup_path) as zf:
+            written = [n for n in zf.namelist() if n.startswith("assets/")]
+        # It rides along in the archive (the walk is not a filter), but restore
+        # is where it must not land.
+        restore_from_backup(backup_path, project_dir)
+        assert not (project_dir / "assets" / ".DS_Store").exists()
+        assert any(n.endswith("logo.png") for n in written)

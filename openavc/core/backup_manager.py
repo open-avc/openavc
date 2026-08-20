@@ -5,7 +5,7 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
   - project.avc          (the project file)
   - backup_meta.json     (reason, timestamp, project name, version)
   - scripts/             (all .py script files)
-  - assets/              (all asset files)
+  - assets/              (uploaded images, folders intact)
   - ui/                  (custom controls, folders intact)
   - state.json           (persisted variable state, if present)
 
@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from openavc.core import asset_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -99,6 +100,22 @@ def _restore_subdir(
     _swap_dir(staging, target_dir)
 
 
+def _restore_asset_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    """Restore the ``assets/`` tree, folders intact.
+
+    Same staged-extract-then-swap as the flat restore below it, and it needs
+    its own function for the same reason ``ui/`` does: ``_restore_subdir``
+    keeps each entry's basename, which would collapse ``rooms/plan.png`` and
+    ``floors/plan.png`` onto each other.
+    """
+    staging = target_dir.with_name(target_dir.name + ".restore-new")
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    asset_tree.extract_from_zip(zf, staging)
+    _swap_dir(staging, target_dir)
+
+
 def _restore_ui_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
     """Restore the ``ui/`` tree the same way ``_restore_subdir`` restores the
     flat ones: staged extract, atomic swap, old content replaced rather than
@@ -106,8 +123,8 @@ def _restore_ui_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
 
     It needs its own function because a custom control is a *folder* —
     ``_restore_subdir`` keeps only each entry's basename, which is right for
-    ``scripts/`` and ``assets/`` and would collapse ``room_map/index.html`` and
-    ``lights/index.html`` onto each other here.
+    ``scripts/`` (flat by design, and written flat) and would collapse
+    ``room_map/index.html`` and ``lights/index.html`` onto each other here.
 
     The replace-don't-merge half is the point: every other tree is swapped
     whole on restore, so a ``ui/`` tree that merely gained the backup's files
@@ -197,11 +214,12 @@ def create_backup(
             if scripts_dir.is_dir():
                 for f in scripts_dir.glob("*.py"):
                     zf.write(f, f"scripts/{f.name}")
-            assets_dir = project_dir / "assets"
-            if assets_dir.is_dir():
-                for f in assets_dir.iterdir():
-                    if f.is_file():
-                        zf.write(f, f"assets/{f.name}")
+            # Uploaded images, folders intact. This used to be a
+            # non-recursive iterdir(), so a nested asset was not flattened —
+            # it was absent from the backup, which is the one failure a backup
+            # must not have.
+            for archive_path, f in asset_tree.zip_entries(project_dir / "assets"):
+                zf.write(f, archive_path)
             # Custom controls, folders intact — one control is a folder, so this
             # tree is the one that cannot be flattened on the way in or out.
             for archive_path, f in zip_entries(project_dir / "ui"):
@@ -340,10 +358,11 @@ def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
                 # room's single source of truth (the recovery path then loads it).
                 _atomic_write_bytes(project_file, zf.read("project.avc"))
 
-                # scripts/ and assets/ — staged extract + atomic swap (clears
-                # orphans without a half-cleared window).
+                # Every tree: staged extract + atomic swap (clears orphans
+                # without a half-cleared window). scripts/ is flat by design;
+                # assets/ and ui/ keep their folders.
                 _restore_subdir(zf, names, "scripts/", project_dir / "scripts")
-                _restore_subdir(zf, names, "assets/", project_dir / "assets")
+                _restore_asset_tree(zf, project_dir / "assets")
                 _restore_ui_tree(zf, project_dir / "ui")
 
                 # Persisted state — restore it, or clear a stale newer state.json

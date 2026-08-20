@@ -863,3 +863,68 @@ class TestABadBodyIsARequestError:
             json={"new_id": "copy", "new_name": "Copy"},
         )
         assert response.status_code == 404, response.text
+
+
+class TestNestedAssetsSurviveEveryPath:
+    """A nested asset is carried, not flattened, however the project moves.
+
+    Save, duplicate and export always kept the folders; a template seed and a
+    bundle import flattened onto the basename, so two assets with the same
+    name in different folders landed on each other and one was lost. The rules
+    now live in ``core/asset_tree.py``, one place, the way ``ui/`` has one.
+    """
+
+    NESTED = {
+        "assets/rooms/plan.png": b"rooms plan",
+        "assets/floors/plan.png": b"floors plan",
+        "assets/logo.png": b"top level",
+    }
+
+    def test_bundle_import_keeps_the_folders(self, tmp_lib):
+        files = {"project.avc": _valid_avc("nested"), **self.NESTED}
+        import_project(_zip_bytes(files), "nested.zip")
+
+        assets = tmp_lib / "nested" / "assets"
+        assert (assets / "rooms" / "plan.png").read_bytes() == b"rooms plan"
+        assert (assets / "floors" / "plan.png").read_bytes() == b"floors plan"
+        assert (assets / "logo.png").read_bytes() == b"top level"
+        # Flattened, these two would have collided at the top of the tree.
+        assert not (assets / "plan.png").exists()
+
+    def test_bundle_import_skips_an_asset_that_would_escape(self, tmp_lib, tmp_path):
+        files = {
+            "project.avc": _valid_avc("escapee"),
+            "assets/../../escaped.png": b"nope",
+            "assets/logo.png": b"fine",
+        }
+        import_project(_zip_bytes(files), "escapee.zip")
+
+        assert (tmp_lib / "escapee" / "assets" / "logo.png").is_file()
+        assert not (tmp_path / "escaped.png").exists()
+        assert not (tmp_lib / "escaped.png").exists()
+
+    def test_template_seed_keeps_the_folders(self, tmp_lib, tmp_path):
+        bundle = tmp_path / "starter.zip"
+        bundle.write_bytes(_zip_bytes({"project.avc": _valid_avc("starter"), **self.NESTED}))
+
+        plib._seed_zip_to_library(bundle, "starter", tmp_lib)
+
+        assets = tmp_lib / "starter" / "assets"
+        assert (assets / "rooms" / "plan.png").read_bytes() == b"rooms plan"
+        assert (assets / "floors" / "plan.png").read_bytes() == b"floors plan"
+        assert not (assets / "plan.png").exists()
+
+    def test_export_then_import_is_a_round_trip(self, tmp_lib, sample_project_data):
+        _seed_project(tmp_lib, "src", sample_project_data)
+        for rel, content in self.NESTED.items():
+            target = tmp_lib / "src" / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+
+        content, _filename, _mime = plib.export_project("src")
+        import_project(content, "src.zip", override_id="round_trip")
+
+        assets = tmp_lib / "round_trip" / "assets"
+        assert (assets / "rooms" / "plan.png").read_bytes() == b"rooms plan"
+        assert (assets / "floors" / "plan.png").read_bytes() == b"floors plan"
+        assert (assets / "logo.png").read_bytes() == b"top level"
