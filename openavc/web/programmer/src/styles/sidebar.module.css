@@ -90,3 +90,10 @@
   transition: background var(--transition-fast);
 }
 
+/* The logo wordmark is black on one artwork and white on the other, so the
+   theme picks the file rather than recolouring it. Both are transparent --
+   there is no plate behind the mark, so nothing here rounds a corner. */
+.logoDark { display: block; }
+.logoLight { display: none; }
+:global([data-theme="light"]) .logoDark { display: none; }
+:global([data-theme="light"]) .logoLight { display: block; }

@@ -195,7 +195,23 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
     <nav className={styles.sidebar}>
       <div className={styles.logo} style={{ position: "relative" }}>
-        <img src={`${import.meta.env.BASE_URL}logo-square.png`} alt="OpenAVC" style={{ width: 28, height: 28, borderRadius: 4 }} />
+        {/* Two marks, one per theme. The wordmark is black in one and white in the
+            other, so a single file cannot serve both; CSS picks which is shown. */}
+        <img
+          className={styles.logoDark}
+          src={`${import.meta.env.BASE_URL}logo-square-light.png`}
+          alt="OpenAVC"
+          width={28}
+          height={28}
+        />
+        <img
+          className={styles.logoLight}
+          src={`${import.meta.env.BASE_URL}logo-square.png`}
+          alt=""
+          aria-hidden="true"
+          width={28}
+          height={28}
+        />
         {dirty && (
           <div
             title="Unsaved changes"

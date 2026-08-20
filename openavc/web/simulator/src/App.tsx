@@ -69,7 +69,7 @@ export default function App() {
       {/* Header */}
       <div className="header">
         <div className="header-title">
-          <img src="/logo-square.png" alt="OpenAVC" style={{ width: 22, height: 22, borderRadius: 3 }} />
+          <img src="/logo-square-light.png" alt="OpenAVC" width={22} height={22} />
           OpenAVC Simulator
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>
             {devices.length} device{devices.length !== 1 ? "s" : ""}
