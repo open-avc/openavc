@@ -235,3 +235,64 @@ describe("the type tab", () => {
     expect(screen.queryByTestId("child-type-down-decoder")).toBeNull();
   });
 });
+
+describe("the column fallback", () => {
+  /** A type declaring nothing of its own -- what the docs tell dynamic-type
+   *  authors to write. The schema the panel reads is the EFFECTIVE one, so
+   *  the platform's reserved keys are in it, and the fallback used to pick
+   *  them: `online` and `label` when there were two, and `offline_reason`
+   *  once there were four. All three are drawn by the row itself now. */
+  function bareTypePayload() {
+    const p = payload(["a", "b"]);
+    p.child_entity_types.decoder.state_variables = {
+      online: { type: "boolean" },
+      label: { type: "string" },
+      offline_reason: { type: "string" },
+      offline_detail: { type: "string" },
+    } as never;
+    p.child_entity_types.decoder.summary_fields = undefined as never;
+    return p;
+  }
+
+  it("draws no columns of its own rather than repeating the row", async () => {
+    mocks.listChildEntities.mockResolvedValue(bareTypePayload());
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    // Not `offline_reason`, and not `online` beside the dot that says it.
+    expect(screen.queryByText("offline_reason")).toBeNull();
+    expect(screen.queryByText("online")).toBeNull();
+    // The row still carries everything that matters.
+    expect(screen.getAllByTestId("child-presence-dot")).toHaveLength(2);
+  });
+
+  it("still falls back to the type's own fields when it declares some", async () => {
+    const p = bareTypePayload();
+    p.child_entity_types.decoder.state_variables = {
+      resolution: { type: "string" },
+      online: { type: "boolean" },
+      label: { type: "string" },
+      offline_reason: { type: "string" },
+      offline_detail: { type: "string" },
+    } as never;
+    mocks.listChildEntities.mockResolvedValue(p);
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    expect(screen.getByText("resolution")).toBeTruthy();
+    expect(screen.queryByText("offline_reason")).toBeNull();
+  });
+
+  it("honours an explicit summary_fields even when it names a reserved key", async () => {
+    // The author picked it. Two shipped drivers list `online` first, and
+    // silently dropping a column somebody asked for is worse than one that
+    // repeats the dot.
+    const p = payload(["a"]);
+    p.child_entity_types.decoder.summary_fields = ["online"] as never;
+    mocks.listChildEntities.mockResolvedValue(p);
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    expect(screen.getByText("online")).toBeTruthy();
+  });
+});

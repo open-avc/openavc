@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-react";
 import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
+import { CHILD_RESERVED_PROPS } from "../../api/types";
 import { childPresence, childStateFor, countNotOk } from "./childPresence";
 import type {
   ChildEntitiesListResponse,
@@ -609,8 +610,25 @@ function ChildEntityList({
     setTroubleOnly(false);
   }, [childType]);
 
+  // Columns. An explicit `summary_fields` is honoured as authored -- the
+  // driver author picked those, and second-guessing them would silently drop
+  // a column somebody asked for.
+  //
+  // The FALLBACK skips the platform's reserved keys, which it did not used to
+  // have to: the schema it reads is the EFFECTIVE one, so the reserved keys
+  // are in it, and a type declaring nothing of its own used to fall back to
+  // `online` + `label`. Both are now drawn by the row itself -- `online` as
+  // the presence mark, `label` as its own column -- so picking them here
+  // renders the same fact twice and, with the two fault keys added, would
+  // have started drawing a mostly-empty `offline_reason` column on any type
+  // declaring fewer than three fields of its own. No shipped driver is in
+  // that position today; the docs tell dynamic-type authors to leave
+  // `state_variables` empty, so the next one written would have been.
   const summaryFields = useMemo(
-    () => schema.summary_fields ?? Object.keys(schema.state_variables).slice(0, 3),
+    () => schema.summary_fields
+      ?? Object.keys(schema.state_variables).filter(
+        (k) => !CHILD_RESERVED_PROPS.has(k),
+      ).slice(0, 3),
     [schema],
   );
 
