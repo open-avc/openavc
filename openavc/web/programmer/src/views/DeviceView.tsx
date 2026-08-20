@@ -249,7 +249,7 @@ export function DeviceView() {
   return (
     <ViewContainer
       title={
-        <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }} role="tablist">
+        <div style={{ display: "flex", gap: "var(--space-xl)", alignItems: "stretch", alignSelf: "stretch" }} role="tablist">
           {([
             { id: "devices" as const, label: "Devices" },
             { id: "groups" as const, label: "Groups" },
@@ -262,13 +262,15 @@ export function DeviceView() {
               aria-selected={subTab === tab.id}
               onClick={() => setSubTab(tab.id)}
               style={{
-                padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: subTab === tab.id ? "var(--accent-bg)" : "var(--bg-hover)",
-                color: subTab === tab.id ? "var(--text-on-accent)" : "var(--text-secondary)",
+                padding: "0 2px",
+                background: "none",
+                color: subTab === tab.id ? "var(--text-primary)" : "var(--text-secondary)",
                 fontSize: "var(--font-size-sm)",
-                fontWeight: subTab === tab.id ? 600 : 400,
+                fontWeight: 500,
                 border: "none",
+                // The mark sits on the edge of the bar rather than filling a
+                // pill, so the accent stays reserved for the primary action.
+                boxShadow: subTab === tab.id ? "inset 0 -2px 0 var(--accent)" : "none",
                 cursor: "pointer",
               }}
             >
