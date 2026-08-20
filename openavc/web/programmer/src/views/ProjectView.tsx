@@ -513,7 +513,7 @@ export function ProjectView() {
                   <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {lib.name}
                   </div>
-                  <div style={{ fontSize: "var(--font-size-xs, 11px)", color: "var(--text-muted)", marginTop: 2 }}>
+                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 2 }}>
                     {lib.device_count} device{lib.device_count !== 1 ? "s" : ""} · {lib.page_count} page
                     {lib.page_count !== 1 ? "s" : ""} · {lib.macro_count} macro
                     {lib.macro_count !== 1 ? "s" : ""}
@@ -668,7 +668,7 @@ export function ProjectView() {
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--accent-text)",
+              color: "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
               opacity: creatingBackup ? 0.6 : 1,

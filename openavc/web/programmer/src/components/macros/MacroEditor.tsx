@@ -595,7 +595,7 @@ export function MacroEditor({
               border: "1px solid var(--border-color)",
               background: "var(--bg-primary)",
               color: "var(--text-primary)",
-              fontSize: "var(--font-size-md)",
+              fontSize: "var(--font-size-base)",
               fontWeight: 600,
             }}
           />
@@ -861,7 +861,7 @@ export function MacroEditor({
               lineHeight: 1.6,
             }}
           >
-            <div style={{ fontSize: "var(--font-size-md)", marginBottom: "var(--space-sm)" }}>
+            <div style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
               This macro has no steps yet
             </div>
             <div style={{ fontSize: "var(--font-size-sm)" }}>

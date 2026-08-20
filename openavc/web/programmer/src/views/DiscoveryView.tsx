@@ -545,7 +545,7 @@ export function DiscoveryPanel() {
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border-color)",
-            borderRadius: "var(--radius)",
+            borderRadius: "var(--border-radius)",
             padding: "var(--space-md)",
             marginBottom: "var(--space-md)",
           }}
@@ -683,7 +683,7 @@ export function DiscoveryPanel() {
             alignItems: "center",
             gap: "var(--space-sm)",
             fontSize: "var(--font-size-xs)",
-            color: "var(--warning, #d9a648)",
+            color: "var(--color-warning)",
             marginTop: "var(--space-xs)",
           }}
         >
@@ -718,7 +718,7 @@ export function DiscoveryPanel() {
           <div
             style={{
               height: 6,
-              background: "var(--bg-input)",
+              background: "var(--bg-base)",
               borderRadius: 3,
               overflow: "hidden",
             }}
@@ -744,7 +744,7 @@ export function DiscoveryPanel() {
             alignItems: "flex-start",
             background: "var(--color-warning-bg)",
             border: "1px solid var(--color-warning)",
-            borderRadius: "var(--radius-md, 6px)",
+            borderRadius: "var(--border-radius)",
             padding: "var(--space-sm) var(--space-md)",
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
@@ -946,7 +946,7 @@ function DeviceCard({
       style={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border-color)",
-        borderRadius: "var(--radius)",
+        borderRadius: "var(--border-radius)",
         overflow: "hidden",
         opacity: hidden ? 0.5 : 1,
       }}
@@ -985,8 +985,8 @@ function DeviceCard({
             style={{
               fontSize: "var(--font-size-xs)",
               padding: "2px 6px",
-              borderRadius: "var(--radius)",
-              background: "var(--bg-input)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--bg-base)",
             }}
           >
             {device.manufacturer}
@@ -998,8 +998,8 @@ function DeviceCard({
             style={{
               fontSize: "var(--font-size-xs)",
               padding: "2px 6px",
-              borderRadius: "var(--radius)",
-              background: "var(--bg-input)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--bg-base)",
             }}
           >
             {categoryLabel(device.category)}
@@ -1011,9 +1011,9 @@ function DeviceCard({
             style={{
               fontSize: "var(--font-size-xs)",
               padding: "2px 6px",
-              borderRadius: "var(--radius)",
+              borderRadius: "var(--border-radius)",
               background: "var(--accent-bg)",
-              color: "var(--bg-main)",
+              color: "var(--bg-base)",
             }}
           >
             {protocolTag}
@@ -1034,7 +1034,7 @@ function DeviceCard({
         </button>
 
         {device.alive ? (
-          <Wifi size={14} style={{ color: "var(--success)" }} />
+          <Wifi size={14} style={{ color: "var(--color-success)" }} />
         ) : (
           <WifiOff size={14} style={{ color: "var(--text-muted)" }} />
         )}
@@ -1054,7 +1054,7 @@ function DeviceCard({
         >
           {/* Identification block (state-specific) */}
           {addedDevice ? (
-            <div style={{ color: "var(--success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+            <div style={{ color: "var(--color-success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
               <span>Added "{addedDevice.name}" to project.</span>
               {addedDevice.deviceId && (
                 <button className="btn btn-sm btn-primary" onClick={() => {
@@ -1336,8 +1336,8 @@ function DriverAddRow({
     <div
       style={{
         padding: "var(--space-sm)",
-        background: "var(--bg-input)",
-        borderRadius: "var(--radius)",
+        background: "var(--bg-base)",
+        borderRadius: "var(--border-radius)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
@@ -1376,7 +1376,7 @@ function DriverAddRow({
             marginTop: "var(--space-sm)",
             padding: "var(--space-sm)",
             background: "var(--bg-surface)",
-            borderRadius: "var(--radius)",
+            borderRadius: "var(--border-radius)",
             fontSize: "var(--font-size-xs)",
             whiteSpace: "pre-line",
           }}
@@ -1387,7 +1387,7 @@ function DriverAddRow({
       )}
 
       {error && (
-        <div style={{ color: "var(--danger)", fontSize: "var(--font-size-xs)", marginTop: 4 }}>
+        <div style={{ color: "var(--color-error)", fontSize: "var(--font-size-xs)", marginTop: 4 }}>
           {error}
         </div>
       )}
@@ -1479,8 +1479,8 @@ function DriverChoiceCard({
   if (overrideOpen) {
     return (
       <div style={{
-        padding: "var(--space-sm)", background: "var(--bg-input)",
-        borderRadius: "var(--radius)", display: "flex", flexDirection: "column",
+        padding: "var(--space-sm)", background: "var(--bg-base)",
+        borderRadius: "var(--border-radius)", display: "flex", flexDirection: "column",
         gap: "var(--space-sm)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
@@ -1544,7 +1544,7 @@ function DriverChoiceCard({
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {likelyVendor && (
         <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-          Likely <strong style={{ color: "var(--text)" }}>{likelyVendor}</strong> &mdash; {sourceLabel}
+          Likely <strong style={{ color: "var(--text-primary)" }}>{likelyVendor}</strong> &mdash; {sourceLabel}
           {extraNote ? ` (probe also matches ${extraNote})` : ""}
         </div>
       )}
@@ -1615,8 +1615,8 @@ function ManualDriverPicker({
   if (!picking) {
     return (
       <div style={{
-        padding: "var(--space-sm)", background: "var(--bg-input)",
-        borderRadius: "var(--radius)", display: "flex", alignItems: "center",
+        padding: "var(--space-sm)", background: "var(--bg-base)",
+        borderRadius: "var(--border-radius)", display: "flex", alignItems: "center",
         gap: "var(--space-sm)", flexWrap: "wrap",
       }}>
         <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
@@ -1635,8 +1635,8 @@ function ManualDriverPicker({
 
   return (
     <div style={{
-      padding: "var(--space-sm)", background: "var(--bg-input)",
-      borderRadius: "var(--radius)", display: "flex", flexDirection: "column",
+      padding: "var(--space-sm)", background: "var(--bg-base)",
+      borderRadius: "var(--border-radius)", display: "flex", flexDirection: "column",
       gap: "var(--space-sm)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
@@ -1834,14 +1834,14 @@ function EvidenceList({ evidence }: { evidence: DiscoveryEvidence[] }) {
   return (
     <div style={{
       marginTop: 4, padding: "var(--space-sm)",
-      background: "var(--bg-input)", borderRadius: "var(--radius)",
+      background: "var(--bg-base)", borderRadius: "var(--border-radius)",
       fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
     }}>
       {evidence.map((e, i) => {
         const { headline, detail } = describeEvidence(e);
         return (
           <div key={i} style={{ marginBottom: 4 }}>
-            <span style={{ color: "var(--text)" }}>{headline}</span>
+            <span style={{ color: "var(--text-primary)" }}>{headline}</span>
             {detail && (
               <span style={{ marginLeft: 8, fontStyle: "italic" }}>{detail}</span>
             )}

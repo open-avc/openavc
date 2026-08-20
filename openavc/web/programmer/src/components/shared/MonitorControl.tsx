@@ -413,7 +413,7 @@ function Field({ label, width, children }: { label: string; width?: number; chil
 
 const inputStyle: React.CSSProperties = {
   padding: "6px 8px",
-  background: "var(--bg-input, var(--bg-hover))",
+  background: "var(--bg-base)",
   border: "1px solid var(--border-color)",
   borderRadius: "var(--border-radius)",
   color: "var(--text-primary)",

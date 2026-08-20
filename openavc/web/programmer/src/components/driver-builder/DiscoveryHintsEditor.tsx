@@ -21,7 +21,7 @@ const SECTION: React.CSSProperties = {
   borderBottom: "1px solid var(--border-color)",
 };
 const H2: React.CSSProperties = {
-  fontSize: "var(--font-size-md)",
+  fontSize: "var(--font-size-base)",
   fontWeight: 700,
   marginBottom: "var(--space-xs)",
 };
@@ -52,7 +52,7 @@ const ROW: React.CSSProperties = {
 const CARD: React.CSSProperties = {
   padding: "var(--space-sm)",
   border: "1px solid var(--border-color)",
-  borderRadius: "var(--radius)",
+  borderRadius: "var(--border-radius)",
   marginBottom: "var(--space-sm)",
   display: "flex",
   flexDirection: "column",
@@ -898,9 +898,9 @@ function HelpSection() {
       </div>
       <pre
         style={{
-          background: "var(--bg-secondary)",
+          background: "var(--bg-surface)",
           border: "1px solid var(--border-color)",
-          borderRadius: "var(--radius)",
+          borderRadius: "var(--border-radius)",
           padding: "var(--space-sm)",
           fontSize: "var(--font-size-sm)",
           marginBottom: "var(--space-md)",
@@ -1088,11 +1088,11 @@ function PortList({
               placeholder="2202"
               style={{
                 ...MONO,
-                borderColor: err ? "var(--danger)" : undefined,
+                borderColor: err ? "var(--color-error)" : undefined,
               }}
             />
             {err && (
-              <span style={{ color: "var(--danger)", fontSize: 11 }}>
+              <span style={{ color: "var(--color-error)", fontSize: 11 }}>
                 {err}
               </span>
             )}

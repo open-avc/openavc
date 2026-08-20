@@ -353,7 +353,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
       <div className={styles.connectionStatus} role="status" aria-label={connected ? "Server connected" : "Server disconnected"}>
         <div
           className={styles.statusDot}
-          style={{ background: connected ? "var(--success, #4caf50)" : "var(--error, #f44336)" }}
+          style={{ background: connected ? "var(--color-success)" : "var(--color-error)" }}
           aria-hidden="true"
         />
         <span className={styles.tooltip}>

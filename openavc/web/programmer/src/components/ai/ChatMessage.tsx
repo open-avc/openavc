@@ -64,7 +64,7 @@ const smallButton: React.CSSProperties = {
   padding: "1px 6px",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
-  background: "var(--bg-secondary)",
+  background: "var(--bg-surface)",
   color: "var(--text-secondary)",
   fontSize: 10,
   cursor: "pointer",
@@ -99,7 +99,7 @@ function FailedFooter({ message, onRetry }: { message: Message; onRetry?: () => 
           alignItems: "center",
           gap: 4,
           fontSize: 10,
-          color: "var(--color-danger, #9b2c2c)",
+          color: "var(--color-error)",
           textAlign: "right",
         }}
       >
@@ -157,7 +157,7 @@ export function ChatMessage({ message, canUndo, onUndo, onRetry }: ChatMessagePr
           <div
             style={
               failed
-                ? { ...userBubble, opacity: 0.75, border: "1px solid var(--color-danger, #9b2c2c)" }
+                ? { ...userBubble, opacity: 0.75, border: "1px solid var(--color-error)" }
                 : isUser
                   ? userBubble
                   : assistantBubble

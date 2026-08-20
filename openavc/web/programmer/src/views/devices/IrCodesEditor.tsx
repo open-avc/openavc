@@ -442,12 +442,12 @@ export function IrCodesEditor({
           marginBottom: "var(--space-sm)",
         }}
       >
-        <h3 style={{ margin: 0, fontSize: "var(--font-size-md)" }}>IR Codes</h3>
+        <h3 style={{ margin: 0, fontSize: "var(--font-size-base)" }}>IR Codes</h3>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
           {saveError && (
             <span
               style={{
-                color: "var(--color-danger)",
+                color: "var(--color-error)",
                 fontSize: "var(--font-size-sm)",
                 display: "inline-flex",
                 alignItems: "center",
@@ -553,7 +553,7 @@ export function IrCodesEditor({
 
       {/* Learn panel */}
       {learnOpen && (
-        <div style={{ ...card, borderColor: "var(--color-accent, #3182ce)" }}>
+        <div style={{ ...card, borderColor: "var(--accent)" }}>
           <div
             style={{
               display: "flex",
@@ -577,7 +577,7 @@ export function IrCodesEditor({
           </div>
           <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
             {learnErr ? (
-              <span style={{ color: "var(--color-danger)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "var(--color-error)", display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <AlertCircle size={14} /> {learnErr}
               </span>
             ) : (
@@ -680,7 +680,7 @@ export function IrCodesEditor({
                         onChange={(e) => setEditText(e.target.value)}
                       />
                       {editErr && (
-                        <div style={{ color: "var(--color-danger)", fontSize: 11, marginTop: 2 }}>
+                        <div style={{ color: "var(--color-error)", fontSize: 11, marginTop: 2 }}>
                           {editErr}
                         </div>
                       )}

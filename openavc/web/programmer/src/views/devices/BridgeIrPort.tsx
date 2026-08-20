@@ -116,7 +116,7 @@ export function BridgeIrPort({
         </div>
       )}
       {error && (
-        <div style={{ color: "var(--color-danger)", fontSize: 11, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <div style={{ color: "var(--color-error)", fontSize: 11, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4 }}>
           <AlertCircle size={12} /> {error}
         </div>
       )}

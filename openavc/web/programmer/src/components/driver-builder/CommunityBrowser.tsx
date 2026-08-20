@@ -950,7 +950,7 @@ function CommunityDriverDetail({
               padding: "var(--space-sm) var(--space-md)",
               background: "rgba(239, 68, 68, 0.1)",
               border: "1px solid rgba(239, 68, 68, 0.3)",
-              borderRadius: "var(--radius)",
+              borderRadius: "var(--border-radius)",
               color: "var(--color-error)",
               fontSize: "var(--font-size-sm)",
             }}
@@ -1139,7 +1139,7 @@ function CommunityDriverDetail({
                   marginTop: idx === 0 ? 0 : "var(--space-sm)",
                   padding: "var(--space-sm) var(--space-md)",
                   background: "rgba(255,255,255,0.03)",
-                  borderRadius: "var(--radius)",
+                  borderRadius: "var(--border-radius)",
                   border: "1px solid var(--border-color)",
                 }}
               >
@@ -1180,7 +1180,7 @@ function CommunityDriverDetail({
             marginTop: "var(--space-lg)",
             padding: "var(--space-sm) var(--space-md)",
             background: "rgba(255,255,255,0.03)",
-            borderRadius: "var(--radius)",
+            borderRadius: "var(--border-radius)",
             border: "1px solid var(--border-color)",
             fontSize: "var(--font-size-xs)",
             color: "var(--text-muted)",

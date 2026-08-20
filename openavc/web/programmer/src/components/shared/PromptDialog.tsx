@@ -61,9 +61,9 @@ export function PromptDialog({
           padding: "var(--space-sm) var(--space-md)",
           borderRadius: "var(--border-radius)",
           border: "1px solid var(--border-color)",
-          background: "var(--bg-input)",
+          background: "var(--bg-base)",
           color: "var(--text-primary)",
-          fontSize: "var(--font-size-md)",
+          fontSize: "var(--font-size-base)",
           marginBottom: "var(--space-xl)",
           boxSizing: "border-box",
         }}

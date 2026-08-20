@@ -59,7 +59,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
       panelStyle={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border-color)",
-        borderRadius: "var(--border-radius-lg, 8px)",
+        borderRadius: "var(--radius-lg)",
         padding: "var(--space-lg)",
         width: 520,
         maxHeight: "85vh",
@@ -95,7 +95,7 @@ export function CreateDriverDialog({ onSubmit, onCancel, existingIds = [] }: Cre
               </span>
             )}
             {isDuplicate && (
-              <span style={{ fontSize: 11, color: "var(--danger, #ef4444)" }}>
+              <span style={{ fontSize: 11, color: "var(--color-error)" }}>
                 Driver ID already exists
               </span>
             )}

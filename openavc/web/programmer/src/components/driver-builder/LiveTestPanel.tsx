@@ -880,10 +880,10 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
               fontSize: "10px",
               padding: "1px 6px",
               borderRadius: 8,
-              background: "var(--bg-warning, #4a3a1a)",
+              background: "var(--color-warning-bg)",
               color: "var(--color-warning, #e8b250)",
               border: "1px solid var(--color-warning, #e8b250)",
-              fontFamily: "var(--font-sans)",
+              fontFamily: "var(--font-family)",
             }}
             title="Blocked by the test panel's 2-second rate limit, not the device."
           >
@@ -991,8 +991,8 @@ function ConflictBanner({
   const allPaused = conflicts.every(isPausedConflict);
   const allResolved = allPaused || acknowledged;
   const tone = allResolved
-    ? { bg: "var(--bg-info, #1a2a3a)", fg: "var(--color-info, #6aa3d6)" }
-    : { bg: "var(--bg-warning, #4a3a1a)", fg: "var(--color-warning, #e8b250)" };
+    ? { bg: "var(--color-info-bg)", fg: "var(--color-info, #6aa3d6)" }
+    : { bg: "var(--color-warning-bg)", fg: "var(--color-warning, #e8b250)" };
   return (
     <div
       style={{

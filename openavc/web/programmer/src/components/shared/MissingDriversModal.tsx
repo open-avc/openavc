@@ -240,7 +240,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
           style={{
             padding: "var(--space-xs) var(--space-md)",
             borderRadius: "var(--border-radius)",
-            background: selected.size === 0 ? "var(--bg-hover)" : "var(--color-accent, #4f8cff)",
+            background: selected.size === 0 ? "var(--bg-hover)" : "var(--accent)",
             color: selected.size === 0 ? "var(--text-muted)" : "#fff",
             fontSize: "var(--font-size-sm)",
             fontWeight: 500,

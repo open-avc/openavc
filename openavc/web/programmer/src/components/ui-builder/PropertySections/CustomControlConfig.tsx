@@ -123,7 +123,7 @@ export function CustomControlConfig({
           onDrop={(e) => { void handleDrop(e); }}
           style={{
             flex: 1, fontSize: 11, cursor: busy ? "wait" : "pointer",
-            border: `1px dashed ${dragOver ? "var(--accent)" : "var(--border)"}`,
+            border: `1px dashed ${dragOver ? "var(--accent)" : "var(--border-color)"}`,
             borderRadius: 4,
             background: dragOver ? "var(--bg-hover)" : "transparent",
             padding: "6px 8px", textAlign: "center", color: "var(--text-muted)",
@@ -146,7 +146,7 @@ export function CustomControlConfig({
       </div>
 
       {error && (
-        <div style={{ fontSize: 10, color: "var(--danger)", padding: "2px 0" }}>{error}</div>
+        <div style={{ fontSize: 10, color: "var(--color-error)", padding: "2px 0" }}>{error}</div>
       )}
       {note && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>{note}</div>

@@ -854,7 +854,7 @@ export function VariablesSubTab() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center" }}>
-            <div style={{ fontSize: "var(--font-size-md)" }}>
+            <div style={{ fontSize: "var(--font-size-base)" }}>
               {variables.length === 0 ? "Create your first variable" : "Select a variable to see details"}
             </div>
             <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>
@@ -883,7 +883,7 @@ export function VariablesSubTab() {
           overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
           panelStyle={{ background: "var(--bg-surface)", border: "1px solid var(--border-color)", padding: "var(--space-lg)", width: "min(440px, 90vw)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}
         >
-            <div style={{ fontWeight: 600, fontSize: "var(--font-size-md)", color: "var(--text-primary)", marginBottom: "var(--space-md)" }}>
+            <div style={{ fontWeight: 600, fontSize: "var(--font-size-base)", color: "var(--text-primary)", marginBottom: "var(--space-md)" }}>
               Rename Variable
             </div>
             <div style={{ marginBottom: "var(--space-md)" }}>

@@ -18,10 +18,10 @@ export function InlineError({ message, onDismiss, style }: InlineErrorProps) {
       role="alert"
       style={{
         padding: "var(--space-sm) var(--space-md)",
-        background: "var(--danger-dim, rgba(220,38,38,0.1))",
-        border: "1px solid var(--danger, rgba(220,38,38,0.4))",
-        borderRadius: "var(--radius, var(--border-radius))",
-        color: "var(--danger, var(--color-error))",
+        background: "var(--color-error-bg)",
+        border: "1px solid var(--color-error)",
+        borderRadius: "var(--border-radius)",
+        color: "var(--color-error)",
         fontSize: "var(--font-size-sm)",
         display: "flex",
         justifyContent: "space-between",

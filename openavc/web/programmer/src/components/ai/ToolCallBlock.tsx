@@ -31,8 +31,8 @@ export function ToolCallBlock({ toolCall }: ToolCallBlockProps) {
     status === "running"
       ? "var(--text-secondary)"
       : status === "error"
-        ? "var(--status-error, #f44336)"
-        : "var(--status-success, #4caf50)";
+        ? "var(--color-error)"
+        : "var(--color-success)";
 
   return (
     <div

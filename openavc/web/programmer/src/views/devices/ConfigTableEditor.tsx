@@ -234,7 +234,7 @@ export function ConfigTableEditor({
               padding: "var(--space-xs) var(--space-md)",
               borderRadius: "var(--border-radius)",
               background: dirty ? "var(--accent)" : "var(--bg-hover)",
-              color: dirty ? "var(--accent-contrast, #fff)" : "var(--text-muted)",
+              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
               fontSize: "var(--font-size-sm)",
               cursor: dirty && !saving ? "pointer" : "default",
             }}
@@ -254,7 +254,7 @@ export function ConfigTableEditor({
         <div
           style={{
             fontSize: "var(--font-size-sm)",
-            color: "var(--error, #f44336)",
+            color: "var(--color-error)",
             marginBottom: "var(--space-sm)",
           }}
         >
@@ -279,7 +279,7 @@ export function ConfigTableEditor({
               <span key={k} title={columns[k].help ? String(columns[k].help) : undefined}>
                 {String(columns[k].label || k)}
                 {columns[k].required && (
-                  <span style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
+                  <span style={{ color: "var(--color-error)", marginLeft: 2 }}>*</span>
                 )}
               </span>
             ))}

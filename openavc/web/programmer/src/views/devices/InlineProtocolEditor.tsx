@@ -455,7 +455,7 @@ export function InlineProtocolEditor({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
-                color: "var(--danger, #d9534f)",
+                color: "var(--color-error)",
                 fontSize: 12,
               }}
             >
@@ -468,7 +468,7 @@ export function InlineProtocolEditor({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
-                color: "var(--success, #5cb85c)",
+                color: "var(--color-success)",
                 fontSize: 12,
               }}
             >

@@ -943,7 +943,7 @@ export function ScriptView() {
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: "var(--font-size-md)" }}>
+              <div style={{ fontSize: "var(--font-size-base)" }}>
                 {scripts.length === 0 && pythonDrivers.length === 0 && uiFiles.length === 0
                   ? "Create your first script, driver or control"
                   : "Select a file to edit"}

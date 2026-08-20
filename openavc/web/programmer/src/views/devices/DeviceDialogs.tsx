@@ -72,7 +72,7 @@ function ConfigFieldInputs({
             >
               {label}
               {isRequired && (
-                <span style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
+                <span style={{ color: "var(--color-error)", marginLeft: 2 }}>*</span>
               )}
             </label>
             {kind === "boolean" ? (

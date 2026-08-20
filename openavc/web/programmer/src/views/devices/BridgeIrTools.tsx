@@ -148,7 +148,7 @@ export function BridgeIrTools({
           <Zap size={14} /> Test emit
         </button>
         {err ? (
-          <span style={{ color: "var(--color-danger)", fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span style={{ color: "var(--color-error)", fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
             <AlertCircle size={12} /> {err}
           </span>
         ) : (

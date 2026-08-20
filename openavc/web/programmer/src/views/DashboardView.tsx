@@ -78,7 +78,7 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 22mm 18mm;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: var(--ink);
+    color: var(--text-primary);
   }
   .accent { position: absolute; width: 105mm; height: 105mm; opacity: 0.22; pointer-events: none; }
   .accent svg { width: 100%; height: 100%; display: block; }
@@ -87,14 +87,14 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
   .content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
   .brand { height: 8mm; width: auto; opacity: 0.75; margin-bottom: 13mm; }
   .headline { font-size: 30pt; font-weight: 700; line-height: 1.22; margin: 0; letter-spacing: -0.01em; }
-  .headline .room { color: var(--sage-deep); }
+  .headline .room { color: var(--accent-bg); }
   .qr-wrap { margin: 12mm 0 8mm; padding: 6mm; background: #fff; border: 1px solid #e6ece8; border-radius: 4mm; }
   .qr { width: 92mm; height: 92mm; }
   .qr svg { width: 100%; height: 100%; display: block; }
-  .steps { font-size: 13pt; color: var(--muted); line-height: 1.7; margin: 0; }
-  .steps b { color: var(--ink); font-weight: 600; }
+  .steps { font-size: 13pt; color: var(--text-muted); line-height: 1.7; margin: 0; }
+  .steps b { color: var(--text-primary); font-weight: 600; }
   .url { margin-top: 6mm; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-         font-size: 12pt; color: var(--sage-deep); word-break: break-all; }
+         font-size: 12pt; color: var(--accent-bg); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -372,7 +372,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 display: "flex",
                 alignItems: "center",
                 gap: "var(--space-xs)",
-                background: "var(--bg-elevated, var(--bg-hover))",
+                background: "var(--bg-elevated)",
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
                 marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-xs)" : 0,
@@ -393,7 +393,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
               </div>
             )}
             {certifiedBase && panelUrl && (
-              <div style={{ color: "var(--color-success, var(--accent))", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
+              <div style={{ color: "var(--color-success)", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
                 Trusted address: opens with no browser warnings.
               </div>
             )}
@@ -406,7 +406,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                   display: "flex",
                   alignItems: "center",
                   gap: "var(--space-xs)",
-                  background: "var(--bg-elevated, var(--bg-hover))",
+                  background: "var(--bg-elevated)",
                   borderRadius: "var(--border-radius)",
                   padding: "var(--space-sm) var(--space-md)",
                   marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
@@ -423,7 +423,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 display: "flex",
                 alignItems: "center",
                 gap: "var(--space-xs)",
-                background: "var(--bg-elevated, var(--bg-hover))",
+                background: "var(--bg-elevated)",
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
               }}>
@@ -480,7 +480,7 @@ function MonitorRow({ monitor, value, first }: {
   first: boolean;
 }) {
   const status = monitorStatus(monitor, value);
-  const tone = status === ABNORMAL ? "var(--status-error, #ef4444)"
+  const tone = status === ABNORMAL ? "var(--color-error)"
     : status === NORMAL ? "var(--accent)"
     : value === undefined || value === null ? "var(--text-muted)"
     : "var(--text-primary)";
@@ -637,7 +637,7 @@ export function DashboardView() {
   return (
     <ViewContainer title="Dashboard">
       {fetchError && (
-        <div style={{ background: "var(--status-error-bg, #3a1a1a)", color: "var(--status-error, #ff6b6b)", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--radius-md)", marginBottom: "var(--space-md)", fontSize: "var(--font-sm)" }}>
+        <div style={{ background: "var(--color-error-bg)", color: "var(--color-error)", padding: "var(--space-sm) var(--space-md)", borderRadius: "var(--border-radius)", marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
           {fetchError}
         </div>
       )}
@@ -734,7 +734,7 @@ export function DashboardView() {
           {/* Getting Started — shown when project is empty */}
           {devices.length === 0 && macros.length === 0 && (
             <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--accent-bg)", background: "var(--color-info-bg)" }}>
-              <div style={{ fontSize: "var(--font-size-md)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
+              <div style={{ fontSize: "var(--font-size-base)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
                 Getting Started
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>

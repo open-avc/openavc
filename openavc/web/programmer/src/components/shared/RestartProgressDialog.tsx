@@ -181,7 +181,7 @@ export function RestartProgressDialog({
         )}
 
         {phase === "success" && (
-          <div style={{ color: "var(--accent-color, #8AB493)" }}>
+          <div style={{ color: "var(--accent)" }}>
             Reconnected. Loading the new page...
           </div>
         )}
@@ -265,7 +265,7 @@ const btnPrimary: React.CSSProperties = {
   alignItems: "center",
   gap: "var(--space-xs)",
   padding: "var(--space-sm) var(--space-md)",
-  background: "var(--accent-color, #8AB493)",
+  background: "var(--accent)",
   color: "#fff",
   border: "none",
   borderRadius: "var(--border-radius)",

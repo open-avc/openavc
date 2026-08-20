@@ -423,7 +423,7 @@ export function ButtonBindingEditor({
             {isExpanded && (
               <div style={{
                 padding: "var(--space-sm)",
-                background: "var(--bg-base, var(--bg-primary))",
+                background: "var(--bg-base)",
                 borderTop: "1px solid var(--border-color)",
               }}>
                 {section.type === "feedback" ? (

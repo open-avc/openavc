@@ -1081,7 +1081,7 @@ function HelpFieldsSection({
 
   return (
     <div style={{ marginTop: "var(--space-xl)" }}>
-      <h3 style={{ fontSize: "var(--font-size-md)", marginBottom: "var(--space-xs)" }}>
+      <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-xs)" }}>
         Help &amp; Setup
       </h3>
       <p
@@ -1193,7 +1193,7 @@ function PublishingSection({
 
   return (
     <div style={{ marginTop: "var(--space-xl)" }}>
-      <h3 style={{ fontSize: "var(--font-size-md)", marginBottom: "var(--space-xs)" }}>
+      <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-xs)" }}>
         Publishing
       </h3>
       <p

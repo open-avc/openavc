@@ -2296,7 +2296,7 @@ function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
         )}
       </div>
       {element.image_blend_mode === "mask" && !element.frameless && (
-        <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
+        <div style={{ fontSize: 10, color: "var(--color-warning)", lineHeight: 1.4 }}>
           Recolor shape reuses the button's background color to fill the image, so the logo blends into the button rectangle. Turn on Frameless to see the shape clearly.
         </div>
       )}
@@ -2306,7 +2306,7 @@ function TintSourceStrip({ element, onChange }: TintSourceStripProps) {
         </div>
       )}
       {hasBinding && fb?.states && Object.keys(fb.states).length > 0 && !((element.bindings as { show?: { look?: { key?: string } } })?.show?.look)?.key && (
-        <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
+        <div style={{ fontSize: 10, color: "var(--color-warning)", lineHeight: 1.4 }}>
           Pick a state key in the Bindings panel to wire this up.
         </div>
       )}

@@ -207,7 +207,7 @@ export function AssetBrowser({
                   padding: "4px 10px",
                   borderRadius: 999,
                   fontSize: 12,
-                  background: active ? "var(--accent-bg, var(--accent))" : "var(--bg-base)",
+                  background: active ? "var(--accent-bg)" : "var(--bg-base)",
                   color: active ? "#fff" : "var(--text-secondary)",
                   border: `1px solid ${active ? "var(--accent)" : "var(--border-color)"}`,
                   cursor: "pointer",

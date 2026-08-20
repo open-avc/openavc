@@ -147,7 +147,7 @@ export function MacroView() {
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: "var(--font-size-md)" }}>
+              <div style={{ fontSize: "var(--font-size-base)" }}>
                 {macros.length === 0
                   ? "Create your first macro"
                   : "Select a macro to edit"}
@@ -195,7 +195,7 @@ export function MacroView() {
               alignItems: "center",
             }}>
               <div>
-                <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "var(--font-size-md)" }}>
+                <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "var(--font-size-base)" }}>
                   Convert to Script
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>

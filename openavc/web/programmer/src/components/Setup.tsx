@@ -84,7 +84,7 @@ export function Setup({ onComplete }: SetupProps) {
           width: 340,
           padding: 32,
           borderRadius: 8,
-          background: "var(--bg-secondary, #232342)",
+          background: "var(--bg-surface)",
           boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
           display: "flex",
           flexDirection: "column",

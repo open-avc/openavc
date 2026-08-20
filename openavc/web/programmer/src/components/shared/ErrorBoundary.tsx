@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<Props, State> {
           style={{
             padding: 32,
             color: "var(--text-primary, #f44336)",
-            fontFamily: "var(--font-sans, sans-serif)",
+            fontFamily: "var(--font-family)",
             fontSize: 14,
           }}
         >

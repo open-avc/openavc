@@ -424,7 +424,7 @@ export function ISCView() {
               </button>
             </div>
             {peerError && (
-              <div style={{ fontSize: 11, color: "var(--danger, #ef4444)", marginTop: "var(--space-xs)" }}>
+              <div style={{ fontSize: 11, color: "var(--color-error)", marginTop: "var(--space-xs)" }}>
                 {peerError}
               </div>
             )}
@@ -576,7 +576,7 @@ const statLabel: React.CSSProperties = {
 };
 
 const statValue: React.CSSProperties = {
-  fontSize: "var(--font-size-md)",
+  fontSize: "var(--font-size-base)",
   fontWeight: 600,
   fontFamily: "var(--font-mono)",
 };

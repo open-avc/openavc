@@ -20,7 +20,7 @@ const cardStyle: React.CSSProperties = {
 };
 
 const subTitle: React.CSSProperties = {
-  fontSize: "var(--font-size-md)",
+  fontSize: "var(--font-size-base)",
   fontWeight: 600,
   color: "var(--text-primary)",
   margin: 0,
@@ -50,7 +50,7 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "var(--space-sm) var(--space-md)",
-  background: "var(--bg-input, var(--bg-elevated))",
+  background: "var(--bg-base)",
   border: "1px solid var(--border-color)",
   borderRadius: "var(--border-radius)",
   color: "var(--text-primary)",

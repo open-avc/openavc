@@ -312,7 +312,7 @@ export function AIChatView() {
                     fontSize: "var(--font-size-xs)",
                     borderRadius: "var(--border-radius)",
                     border: "1px solid var(--border-color)",
-                    background: "var(--bg-secondary)",
+                    background: "var(--bg-surface)",
                     color: "var(--text-primary)",
                     outline: "none",
                     boxSizing: "border-box",

@@ -50,7 +50,7 @@ export function CustomUiEditor({ path, source, onChange, warnings }: CustomUiEdi
           color: "var(--text-muted)",
         }}
       >
-        <div style={{ fontSize: "var(--font-size-md)", color: "var(--text-primary)" }}>
+        <div style={{ fontSize: "var(--font-size-base)", color: "var(--text-primary)" }}>
           {path}
         </div>
         <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>

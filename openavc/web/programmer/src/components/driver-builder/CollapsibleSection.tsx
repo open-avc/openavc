@@ -66,7 +66,7 @@ export function CollapsibleSection({
         >
           <span
             style={{
-              fontSize: "var(--font-size-md)",
+              fontSize: "var(--font-size-base)",
               fontWeight: 600,
               color: "var(--text-primary)",
             }}

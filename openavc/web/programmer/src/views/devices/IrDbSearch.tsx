@@ -179,7 +179,7 @@ export function IrDbSearch({
       style={{
         background: "var(--bg-surface)",
         borderRadius: "var(--border-radius)",
-        border: "1px solid var(--color-accent, #3182ce)",
+        border: "1px solid var(--accent)",
         padding: "var(--space-md)",
         marginBottom: "var(--space-md)",
       }}
@@ -232,7 +232,7 @@ export function IrDbSearch({
       {loadErr && (
         <div
           style={{
-            color: "var(--color-danger)",
+            color: "var(--color-error)",
             fontSize: "var(--font-size-sm)",
             display: "flex",
             alignItems: "center",

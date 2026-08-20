@@ -89,7 +89,7 @@ export function DeviceGroupsPanel() {
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
               placeholder="Group name (e.g., All Projectors)"
-              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-input)", color: "var(--text-primary)" }}
+              style={{ fontSize: "var(--font-size-sm)", padding: "var(--space-xs) var(--space-sm)", borderRadius: "var(--border-radius)", border: "1px solid var(--border-color)", background: "var(--bg-base)", color: "var(--text-primary)" }}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
@@ -221,7 +221,7 @@ export function DeviceGroupsPanel() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", textAlign: "center" }}>
             <Layers size={32} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: "var(--font-size-md)" }}>
+            <div style={{ fontSize: "var(--font-size-base)" }}>
               {groups.length === 0 ? "Create your first device group" : "Select a group to manage its devices"}
             </div>
             <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 420, lineHeight: 1.5 }}>

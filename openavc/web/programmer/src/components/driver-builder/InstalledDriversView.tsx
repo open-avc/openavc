@@ -20,7 +20,7 @@ const headerBtnStyle: React.CSSProperties = {
   alignItems: "center",
   gap: "var(--space-xs)",
   padding: "var(--space-xs) var(--space-md)",
-  borderRadius: "var(--border-radius, var(--radius))",
+  borderRadius: "var(--border-radius)",
   background: "var(--bg-hover)",
   fontSize: "var(--font-size-sm)",
   cursor: "pointer",
@@ -192,7 +192,7 @@ export function InstalledDriversView({
                         style={{
                           marginTop: "var(--space-sm)",
                           padding: "var(--space-xs) var(--space-md)",
-                          borderRadius: "var(--border-radius, var(--radius))",
+                          borderRadius: "var(--border-radius)",
                           background: "var(--accent-bg)",
                           color: "var(--text-on-accent)",
                           fontSize: "var(--font-size-sm)",
@@ -433,7 +433,7 @@ export function DriverDetailPanel({
           {canUninstall && (
             confirmUninstall ? (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error, var(--danger))" }}>
+                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>
                   Uninstall this driver?
                 </span>
                 <button
@@ -441,8 +441,8 @@ export function DriverDetailPanel({
                   disabled={uninstalling}
                   style={{
                     padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius, var(--radius))",
-                    background: "var(--color-error, var(--danger))",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--color-error)",
                     color: "#fff",
                     fontSize: "var(--font-size-sm)",
                     opacity: uninstalling ? 0.6 : 1,
@@ -455,7 +455,7 @@ export function DriverDetailPanel({
                   disabled={uninstalling}
                   style={{
                     padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius, var(--radius))",
+                    borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
                   }}
@@ -477,9 +477,9 @@ export function DriverDetailPanel({
                   alignItems: "center",
                   gap: "var(--space-xs)",
                   padding: "var(--space-xs) var(--space-md)",
-                  borderRadius: "var(--border-radius, var(--radius))",
+                  borderRadius: "var(--border-radius)",
                   background: "var(--bg-hover)",
-                  color: inUse ? "var(--text-muted)" : "var(--color-error, var(--danger))",
+                  color: inUse ? "var(--text-muted)" : "var(--color-error)",
                   fontSize: "var(--font-size-sm)",
                   cursor: inUse ? "not-allowed" : "pointer",
                   opacity: inUse ? 0.6 : 1,
@@ -515,7 +515,7 @@ export function DriverDetailPanel({
               style={{
                 fontSize: "var(--font-size-xs)",
                 padding: "2px 8px",
-                borderRadius: "var(--radius)",
+                borderRadius: "var(--border-radius)",
                 background: CATEGORY_COLORS[driver.category] || "#95a5a6",
                 color: "#fff",
               }}
@@ -537,7 +537,7 @@ export function DriverDetailPanel({
               marginTop: "var(--space-sm)",
               padding: "var(--space-sm) var(--space-md)",
               background: "rgba(244,67,54,0.08)",
-              borderRadius: "var(--radius)",
+              borderRadius: "var(--border-radius)",
               fontSize: 12,
               color: "var(--text-secondary)",
             }}

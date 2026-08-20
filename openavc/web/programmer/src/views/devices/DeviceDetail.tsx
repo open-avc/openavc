@@ -513,7 +513,7 @@ export function DeviceDetail({
             borderRadius: "var(--border-radius)",
             marginBottom: "var(--space-md)",
             fontSize: "var(--font-size-sm)",
-            background: "var(--bg-info, #1a2a3a)",
+            background: "var(--color-info-bg)",
             border: "1px solid var(--color-info, #6aa3d6)",
             color: "var(--color-info, #6aa3d6)",
           }}
@@ -1613,7 +1613,7 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
-            fontFamily: "var(--font-primary, inherit)",
+            fontFamily: "var(--font-family)",
           }}
         >
           No log entries for this device yet.
@@ -1734,7 +1734,7 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
             color: "var(--text-muted)",
             fontSize: "var(--font-size-sm)",
             textAlign: "center",
-            fontFamily: "var(--font-primary, inherit)",
+            fontFamily: "var(--font-family)",
           }}
         >
           No state changes yet. Interact with the device to see live updates.
@@ -1867,7 +1867,7 @@ function OfflineBanner({
     >
       <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
       <div>
-        <div style={{ fontWeight: 600, color: accent, fontSize: "var(--font-size-md)" }}>
+        <div style={{ fontWeight: 600, color: accent, fontSize: "var(--font-size-base)" }}>
           Offline
         </div>
         <div style={{ fontSize: "var(--font-size-sm)", marginTop: 2 }}>{detail}</div>
@@ -1983,7 +1983,7 @@ function OrphanBanner({
         border: "2px solid rgba(239, 68, 68, 0.4)",
       }}
     >
-      <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-md)" }}>
+      <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-base)" }}>
         Driver Not Installed
       </div>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>

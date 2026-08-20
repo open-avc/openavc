@@ -240,7 +240,7 @@ export function ScriptFileTree({
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
                       {loadErrors[s.id] ? (
                         <span title={`Load error: ${loadErrors[s.id]}`}>
-                          <AlertTriangle size={14} style={{ color: "var(--danger, #ef4444)", flexShrink: 0 }} />
+                          <AlertTriangle size={14} style={{ color: "var(--color-error)", flexShrink: 0 }} />
                         </span>
                       ) : (
                         <FileText
@@ -355,7 +355,7 @@ export function ScriptFileTree({
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
                       {d.load_error ? (
                         <span title={`Load error: ${d.load_error}`}>
-                          <AlertTriangle size={14} style={{ color: "var(--danger, #ef4444)", flexShrink: 0 }} />
+                          <AlertTriangle size={14} style={{ color: "var(--color-error)", flexShrink: 0 }} />
                         </span>
                       ) : (
                         <Cpu
@@ -656,7 +656,7 @@ const emptyStyle: React.CSSProperties = {
 function itemNameStyle(error: string | null | undefined, active: boolean, selected: boolean): React.CSSProperties {
   return {
     fontSize: "var(--font-size-sm)",
-    color: error ? "var(--danger, #ef4444)" : active ? "var(--text-primary)" : "var(--text-muted)",
+    color: error ? "var(--color-error)" : active ? "var(--text-primary)" : "var(--text-muted)",
     fontWeight: selected ? 600 : 400,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -674,7 +674,7 @@ const descStyle: React.CSSProperties = {
 
 const errorDescStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "var(--danger, #ef4444)",
+  color: "var(--color-error)",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",

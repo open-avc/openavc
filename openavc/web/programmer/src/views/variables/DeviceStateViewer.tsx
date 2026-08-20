@@ -317,7 +317,7 @@ export function DeviceStatesSubTab() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", gap: "var(--space-sm)", padding: "var(--space-xl)", textAlign: "center" }}>
             <Cpu size={32} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: "var(--font-size-md)" }}>Select a device</div>
+            <div style={{ fontSize: "var(--font-size-base)" }}>Select a device</div>
             <div style={{ fontSize: "var(--font-size-sm)", maxWidth: 360, lineHeight: 1.5 }}>
               Choose a device from the list to browse its live state properties.
               You can copy state keys for use in macros, UI bindings, and scripts.

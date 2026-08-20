@@ -75,14 +75,14 @@ export function PromptCards({ onSelect }: { onSelect: (prompt: string) => void }
               padding: "var(--space-sm) var(--space-md)",
               borderRadius: "var(--border-radius)",
               border: "1px solid var(--border-color)",
-              background: "var(--bg-secondary)",
+              background: "var(--bg-surface)",
               color: "var(--text-primary)",
               fontSize: "var(--font-size-sm)",
               cursor: "pointer",
               transition: "background 0.15s",
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-secondary)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
           >
             <span style={{ color: "var(--accent)", flexShrink: 0 }}>{card.icon}</span>
             {card.title}
@@ -120,7 +120,7 @@ export function SuggestionChips({
             padding: "2px var(--space-sm)",
             borderRadius: 12,
             border: "1px solid var(--border-color)",
-            background: "var(--bg-secondary)",
+            background: "var(--bg-surface)",
             color: "var(--text-secondary)",
             fontSize: "var(--font-size-xs)",
             cursor: "pointer",
@@ -128,7 +128,7 @@ export function SuggestionChips({
             flexShrink: 0,
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-secondary)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
         >
           {s}
         </button>
