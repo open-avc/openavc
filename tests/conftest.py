@@ -100,6 +100,19 @@ def e2e_availability_note() -> str | None:
     )
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--regen-inventory",
+        action="store_true",
+        default=False,
+        help=(
+            "Re-record tests/e2e/fixtures/ide_affordances.json from the running "
+            "IDE. A re-record claims every difference in it was intended, so "
+            "read the diff before committing."
+        ),
+    )
+
+
 def pytest_terminal_summary(terminalreporter):
     note = e2e_availability_note()
     if note:
