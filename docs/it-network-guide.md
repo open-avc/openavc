@@ -67,6 +67,8 @@ OpenAVC runs on an existing server, VM, or Docker host. It controls AV equipment
 
 **Port 19872** is used only when multiple OpenAVC instances need to discover each other on the same LAN (inter-system communication). It can be disabled entirely.
 
+**Port 5353** carries the mDNS advertiser, which is on by default. OpenAVC announces itself as `_openavc._tcp.local.` so the OpenAVC Panel apps can find the instance without being given its address. It sends three announcements at startup, re-announces every 60 seconds for as long as the service runs, answers queries for its own record, and sends goodbye records when it stops. It carries no control surface. One thing to note on a multi-homed host: unlike the discovery scanners, the advertiser is not confined by the control-adapter setting, so it announces on every non-loopback interface the machine has. Disable it with `discovery.advertise: false` in `system.json` if the panel apps are not used or the site suppresses mDNS.
+
 **Port 8189** is opened only when the optional Video Panel plugin is installed. That plugin displays live IP camera and RTSP streams on the touch panel, and it delivers video to the browser over WebRTC. The browser sends its media to UDP 8189 on the OpenAVC host. For a panel on the same subnet as the host this often works without any change, because consumer firewalls tend to allow same-subnet UDP. If panels are on a different VLAN or subnet, or video tiles stay black while the rest of the panel works, allow inbound UDP 8189 to the OpenAVC host from the panel devices' subnet. OpenAVC does not add this firewall rule for you, so on a managed network you should add it explicitly. The port is only active while the plugin is running. If the Video Panel plugin is not installed, this port is never opened.
 
 The Video Panel plugin can also show the built-in preview stream of an AV-over-IP encoder (for example a TurtleAV Chazy encoder), which appears on the panel automatically once its controller is connected. These preview streams usually live on the AV/video network, which is commonly a separate VLAN from the control network. The OpenAVC **host** fetches the preview and passes it to the panel over the host's normal web port, so no extra inbound port is needed on the panel side. What is required is that the OpenAVC host can route to the encoder's video network. A host with a second network interface on the AV fabric is the typical arrangement. The panel browser never connects to the video network directly.
@@ -181,9 +183,9 @@ OpenAVC includes a network discovery feature to help AV integrators find devices
 During a discovery scan, OpenAVC will:
 
 1. **Ping sweep** the local subnet(s) using ICMP echo requests. The server prefers an unprivileged ICMP datagram socket where the OS allows it, uses a raw ICMP socket where one is available (the packaged Linux service and Docker image are granted the `CAP_NET_RAW` capability for this), and falls back to the system `ping` command otherwise. Firewalls on the AV VLAN must permit ICMP echo request/reply for discovery to see hosts; a host that drops echo can still be found by the mDNS / SSDP listeners or driver probes, but will not be port-scanned.
-2. **TCP port scan** responding hosts on the AV ports listed above
+2. **TCP port scan** each responding host, on a list of about 50 TCP ports assembled at scan time. It is the sum of three things: a five-port baseline (22, 23, 80, 443, 8080) for banner reading and web management, every port declared by the drivers installed on this instance, and every port declared by the community driver catalog. The third source is worth noting, because it is not what most people assume: the catalog contributes the ports of drivers you have **not** installed, so the list does not narrow to the equipment in your project, and it grows as the catalog grows. Thorough depth adds eight generic alternate web, RTSP and management ports (554, 3000, 4000, 5060, 8443, 8888, 9000, 10000), for about 57 in total.
 3. **SNMP query** (v2c, community string `public`, read-only) on port 161
-4. **mDNS / DNS-SD query** on multicast group 224.0.0.251:5353
+4. **mDNS / DNS-SD query** on multicast group 224.0.0.251:5353. Alongside the service types that installed drivers declare, the scan sends the standard DNS-SD meta-query (`_services._dns-sd._udp.local.`), which asks the segment to name every service type advertised on it rather than only the AV ones.
 5. **SSDP M-SEARCH** on multicast group 239.255.255.250:1900
 6. **AMX DDP listen** on multicast group 239.255.250.250:9131 (passive — receive only)
 7. **NetBIOS name query** on UDP 137 to live hosts (Standard / Thorough scan only)
@@ -194,6 +196,50 @@ All discovery traffic is confined to the local subnet(s) detected on the host's 
 
 Driver-declared UDP probes are rate-limited to 10 per second across the whole scan; TCP probes are spread with a short per-probe stagger instead. All probes bind to the configured control adapter and are one-shot per scan, with no retries.
 
+The three multicast groups above are joined per interface. With a control adapter pinned in Settings > Network, they are joined and queried on that adapter only. With none pinned, they are joined on every non-loopback IPv4 interface the host has, so a machine with a foot on two segments (an AV VLAN and the campus LAN, say) queries both. Pinning the control adapter is what confines them.
+
+A scan also makes one outbound HTTPS request to `raw.githubusercontent.com` to refresh the community driver catalog, which is what supplies most of the port numbers in step 2. If outbound HTTPS is blocked the scan still runs, using the cached catalog, or the baseline and installed-driver ports if nothing is cached.
+
+### Discovery scan intensity
+
+How hard a scan hits the network is set by two controls in Discovery Settings: the scan depth, and the Gentle mode toggle.
+
+| | Quick | Standard | Thorough | With Gentle mode |
+|---|---|---|---|---|
+| Time cap | 120 s | 300 s | 600 s | unchanged |
+| Concurrent pings | 50 | 50 | 50 | 10 |
+| Hosts port-scanned at once | 24 | 16 | 12 | 3 |
+| TCP ports per host | ~50 | ~50 | ~57 | unchanged |
+| NetBIOS sweep | no | yes | yes | unchanged |
+| SNMP ENTITY-MIB detail | no | yes | yes | unchanged |
+
+Within a single host, port connections are started 20 ms apart, so one host under scan produces about 50 TCP SYNs per second. Multiplied by the concurrent-host figure above, peak SYN rate is roughly 1200/s at Quick depth, 800/s at Standard, 600/s at Thorough, and about 150/s with Gentle mode on.
+
+Gentle mode lowers the rate, not the scope. The time caps are unchanged, so a gentle scan of a large range may not get all the way through it; when that happens the scan reports what it skipped rather than running longer.
+
+### How a discovery scan looks to network monitoring
+
+Stated plainly, because it is better read here than met for the first time in an alert: several discovery steps match detection signatures that intrusion-detection systems and network access control platforms ship enabled. The traffic is benign, but reconnaissance is what discovery is, and that tooling matches on behavior rather than intent.
+
+The steps most likely to raise an alert, in order:
+
+- **The TCP port scan.** Many ports across many hosts is a horizontal scan, and it is the most widely deployed signature there is.
+- **The NetBIOS sweep.** Querying UDP 137 across a subnet is the pattern the Windows network worms used, and it is watched closely for that reason. It runs at Standard and Thorough depth only.
+- **The SNMP query.** Sending the default community string `public` to every live host reads as credential testing at scale. Some sites also prohibit SNMP v2c outright, because it is unauthenticated and sent in the clear.
+- **The ping sweep.** Host enumeration, and the mildest of the four, but a full /20 is still several thousand echo requests.
+
+The multicast and broadcast steps rarely trigger security alerts. mDNS and SSDP are what printers, phones and laptops on the same segment already do continuously. Where those steps cause trouble it is usually plumbing or policy rather than security: many sites suppress multicast between segments, and directed broadcast, which the driver-declared UDP probes depend on, is commonly disabled on campus and enterprise routers.
+
+If a scan needs approval, the practical request is a scoped exception for one host on the AV VLAN during commissioning. To make that request smaller:
+
+- Name a specific subnet or range in Discovery Settings instead of letting the scan use every subnet it detects.
+- Use Quick depth, which drops the NetBIOS sweep entirely.
+- Turn SNMP off if the site has no SNMP-managed AV equipment.
+- Turn on Gentle mode.
+- Pin the control adapter in Settings > Network, so no scan traffic leaves the AV VLAN.
+
+There is no setting that disables the ping sweep or the port scan on their own; between them, they are what a scan is. Where a site will not permit them at all, discovery can be skipped entirely: devices are added by IP address in the Programmer, which needs no scanning and is a normal way to build a project.
+
 ### Internet access (optional)
 
 OpenAVC does not require internet access for normal operation. All device control, automation, and UI serving works entirely offline.
@@ -203,7 +249,7 @@ The following features require outbound internet access if enabled:
 | Destination | Port | Protocol | Purpose | Can be disabled? |
 |-------------|------|----------|---------|-----------------|
 | `api.github.com` | 443 | HTTPS | Check for software updates | Yes (`updates.check_enabled: false`) |
-| `github.com` | 443 | HTTPS | Download updates and community drivers | Yes (manual install alternative) |
+| `github.com`, `raw.githubusercontent.com` | 443 | HTTPS | Download updates, community drivers and plugins, and the driver catalog a discovery scan refreshes | Yes (manual install alternative; a scan falls back to its cached catalog) |
 | `cdn.jsdelivr.net` | 443 | HTTPS | IR code database search (only while searching in the IR Codes editor) | Yes (feature is only used on demand) |
 | `cloud.openavc.com` | 443 | WSS | Cloud management platform (see below) | Yes (disabled by default) |
 
@@ -226,7 +272,7 @@ Installing from a file rather than the catalog (Upload Driver, or dropping a fil
 
 ## Inter-System Communication (ISC)
 
-When deploying multiple OpenAVC instances (e.g., one per room), ISC allows them to share state and coordinate. ISC is optional and can be disabled entirely.
+When deploying multiple OpenAVC instances (e.g., one per room), ISC allows them to share state and coordinate. ISC is off by default. It is enabled per project, so an instance sends and receives no ISC traffic at all until someone turns it on, and it can also be disabled instance-wide.
 
 | Parameter | Value |
 |-----------|-------|
@@ -474,6 +520,7 @@ Add to the minimum rules:
 | Rule | Direction | Source | Destination | Port | Protocol |
 |------|-----------|--------|-------------|------|----------|
 | ICMP (discovery) | Outbound | OpenAVC host | Local subnet | ICMP | Echo request |
+| TCP port scan (discovery) | Outbound | OpenAVC host | Responding hosts on local subnet | ~50 ports per host | TCP SYN. The baseline 22, 23, 80, 443, 8080 plus every port declared by the installed drivers and by the community driver catalog; Thorough depth adds eight more |
 | NetBIOS (discovery) | Outbound | OpenAVC host | Local subnet | 137/udp | NetBIOS name query (Standard / Thorough only) |
 | SNMP (discovery) | Outbound | OpenAVC host | Local subnet | 161/udp | SNMP v2c |
 | mDNS (discovery) | Outbound + Inbound | OpenAVC host | 224.0.0.251 | 5353/udp | mDNS |
@@ -490,6 +537,7 @@ Add to the minimum rules:
 | Device push notifications (event stream) | Outbound | OpenAVC host | Device | Device's API port | Drivers that declare an SSE push channel hold the device's existing HTTP(S) control connection open — no new port, no inbound listener |
 | Device push notifications (HTTP callback) | Inbound | AV device IPs | OpenAVC host | 8080/tcp (the web port) | Drivers that declare an HTTP-listener push channel register a callback URL on the device; the device posts to `/api/push/` on the existing web port — no new port, accepted only from the device's own address |
 | Update checks | Outbound | OpenAVC host | api.github.com | 443/tcp | HTTPS |
+| Driver catalog refresh (discovery) | Outbound | OpenAVC host | raw.githubusercontent.com | 443/tcp | HTTPS, once per scan; falls back to the cached catalog when blocked |
 
 ### With media plugins (Video Panel / Present)
 
@@ -548,8 +596,8 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 | OpenAVC staff access | None, ever, until granted | Nobody at OpenAVC can reach a paired system by default. Access comes only from a support session your own account creates: one named system, one support request, one to twenty-four hours, visible while live, revocable instantly, and every action recorded against the named staff member in your portal. See Remote access tunnels. |
 | Privileged access | None required | Runs as standard user, no root/admin |
 | External dependencies at runtime | None | No external database, message broker, or third-party service required |
-| Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). |
-| Background multicast/broadcast | mDNS advertising; ISC beacons if enabled | mDNS on 5353 (disable with `discovery.advertise: false`); ISC UDP broadcast on 19872 (disable with `isc.enabled: false`). |
+| Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). A scan performs a ping sweep, a ~50-port TCP scan of responding hosts, SNMP and NetBIOS queries, multicast queries and directed-broadcast probes. See Discovery scan intensity and How a discovery scan looks to network monitoring. |
+| Background multicast/broadcast | mDNS advertising only | mDNS on 5353, on by default, re-announcing every 60 s (disable with `discovery.advertise: false`). ISC UDP broadcast on 19872 is off unless ISC is enabled in the project. |
 | Data exfiltration risk | Low | No data leaves the site unless cloud is explicitly paired. When paired: automatic telemetry plus on-demand config pulls (both itemized above). |
 
 ---
@@ -589,4 +637,4 @@ Yes. OpenAVC is MIT-licensed open source. The full source code, including the cl
 
 ---
 
-*Document version: 1.3. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*
+*Document version: 1.4. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*
