@@ -2704,6 +2704,23 @@ Four things about it that decide how you write a driver, and none of them are gu
 - **Concurrent callers are already serialized for you.** TCP, serial and UDP hold the send lock across the whole send-and-wait, so a poll and a command can't interleave on one connection, and the response queue is drained before the send so a stale unsolicited frame can't be mistaken for your reply. You do not need a lock of your own. The flip side: an *unsolicited* message that arrives between your send and the device's answer is returned as the answer, so check the reply's shape before trusting it.
 - **A timeout raises `asyncio.TimeoutError`; a link that drops mid-wait raises `ConnectionError`.** Neither returns `b""`, so `if not reply:` is not how you detect either one. See "Declaring the offline reason" above for typing these into a `no_response` the device card can show.
 
+### If you declare `last_error`, the platform clears it
+
+Plenty of drivers keep a `last_error` string for the things a device says
+about itself: a rejected command, a response the driver could not parse. If
+you declare one in `state_variables`, you write it and the platform clears
+it — a poll that finishes cleanly, and that writes nothing to `last_error`
+itself, resets it to the value the variable starts at.
+
+That means you do not need a clearing rule of your own, and you should not
+add one. Rewrite the value each time the fault recurs and it stays on screen;
+stop rewriting it and it goes away on the next good poll.
+
+The reason for the rule is what the field is worth without it. Nothing used
+to clear these, so a failure from three weeks ago and one happening right now
+looked identical for as long as the device stayed connected — and a field
+that cannot tell those apart is one people learn to skip past.
+
 ### Declare every state variable you write
 
 `set_state()` accepts any name, but only the ones you list in
