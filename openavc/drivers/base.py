@@ -450,6 +450,17 @@ class BaseDriver(ABC):
         "Connected, but the device stopped answering keep-alive probes."
     )
 
+    #: The state variable a driver writes when the device reports a problem
+    #: it can still describe — a rejected command, a response it could not
+    #: parse. A convention rather than a platform field: drivers declare it in
+    #: ``DRIVER_INFO["state_variables"]`` and write it themselves. What the
+    #: platform owns is the *clearing*, because nothing was clearing it: one
+    #: transient failure stayed on screen for as long as the device stayed
+    #: connected, so "once, three weeks ago" and "happening now" looked
+    #: identical. A field that cannot tell those apart teaches people to
+    #: ignore it, and then the real one is ignored too.
+    LAST_ERROR_PROPERTY = "last_error"
+
     def __init__(
         self,
         device_id: str,
@@ -465,6 +476,12 @@ class BaseDriver(ABC):
         self._poll_task: asyncio.Task | None = None
         self._connected = False
         self._last_poll_success: float = 0.0
+        # Bumped every time this driver writes LAST_ERROR_PROPERTY. The poll
+        # loop compares it across a poll to tell "the poll reported nothing"
+        # from "the poll reported the same thing again" — a value comparison
+        # cannot, because a fault that persists writes the identical string
+        # every cycle and would look untouched.
+        self._last_error_writes: int = 0
         # For a device that routes its commands through a bridge (e.g. an IR
         # device bound to a bridge's emitter port): a callable the DeviceManager
         # injects to reach the live bridge instance. None for a direct device.
@@ -2157,6 +2174,31 @@ class BaseDriver(ABC):
             self._poll_task = None
             log.debug(f"[{self.device_id}] Polling stopped")
 
+    def _clear_stale_last_error(self) -> None:
+        """Drop a ``last_error`` the device has stopped reporting.
+
+        Called after a poll that finished cleanly **and** wrote nothing to the
+        property: a fault that is still happening rewrites it on the way past,
+        so what survives to here is an error from before — and an error from
+        before, sitting under a device that is answering normally, is the thing
+        that made the field unreadable.
+
+        Only for a driver that declares the property. The platform does not
+        invent the convention for a driver that never opted into it, and
+        clearing to the declared default (rather than to ``""`` or ``None``)
+        keeps the value the same shape the driver's own seeding produced.
+        """
+        var_def = self.DRIVER_INFO.get("state_variables", {}).get(
+            self.LAST_ERROR_PROPERTY
+        )
+        if var_def is None:
+            return
+        current = self.get_state(self.LAST_ERROR_PROPERTY)
+        cleared = state_var_default(var_def)
+        if current == cleared or current in (None, ""):
+            return
+        self.set_state(self.LAST_ERROR_PROPERTY, cleared)
+
     async def _poll_loop(self, interval: float) -> None:
         """Background loop that calls self.poll() periodically.
 
@@ -2195,10 +2237,13 @@ class BaseDriver(ABC):
         try:
             while True:
                 try:
+                    errors_before = self._last_error_writes
                     await self.poll()
                     self._last_poll_success = time.monotonic()
                     dry_polls = 0
                     last_poll_exc = None
+                    if self._last_error_writes == errors_before:
+                        self._clear_stale_last_error()
                 except (ConnectionError, TimeoutError, OSError) as exc:
                     log.warning(
                         f"[{self.device_id}] Poll failed (connection): {exc}"
@@ -2291,6 +2336,8 @@ class BaseDriver(ABC):
         if var_def is None:
             self._check_undeclared_state(property_name)
         self._warn_on_type_mismatch(property_name, value, var_def)
+        if property_name == self.LAST_ERROR_PROPERTY:
+            self._last_error_writes += 1
         self.state.set(
             f"device.{self.device_id}.{property_name}",
             value,
@@ -2410,6 +2457,8 @@ class BaseDriver(ABC):
         for k in updates:
             if k not in declared:
                 self._check_undeclared_state(k)
+        if self.LAST_ERROR_PROPERTY in updates:
+            self._last_error_writes += 1
         namespaced = {
             f"device.{self.device_id}.{k}": v for k, v in updates.items()
         }
