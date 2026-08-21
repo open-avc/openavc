@@ -524,6 +524,64 @@ function MonitorRow({ monitor, value, first }: {
   );
 }
 
+/** One tile in the dashboard's summary row.
+ *
+ *  Every tile is a door now: the figure on it is a question, and the view it
+ *  opens is where you answer it. The Cloud tile is what prompted that. On a
+ *  fresh install it drew a grey dash, which reads as "not applicable" rather
+ *  than "you could turn this on", and it led nowhere -- so a system that had
+ *  never heard of the cloud had nothing anywhere telling it the cloud existed.
+ */
+function StatCard({ icon, label, value, valueColor, hint, hintTitle, onClick }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  valueColor?: string;
+  /** Second line under the figure, when there is more to say than a number. */
+  hint?: string;
+  /** Full text for a hint the tile is too narrow to show whole. */
+  hintTitle?: string;
+  onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: hover ? "var(--bg-hover)" : "var(--bg-surface)",
+        border: "1px solid " + (hover ? "var(--accent)" : "var(--border-color)"),
+        borderRadius: "var(--border-radius)",
+        padding: "var(--space-lg)",
+        cursor: "pointer",
+        transition: "background 120ms, border-color 120ms",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
+        {icon}
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>{label}</span>
+      </div>
+      <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700, color: valueColor }}>
+        {value}
+      </div>
+      {!!hint && (
+        <div title={hintTitle} style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DashboardView() {
   const projectName = useProjectStore((s) => s.project?.project?.name);
   const devices = useProjectStore((s) => s.project?.devices);
@@ -662,44 +720,43 @@ export function DashboardView() {
 
           {/* Summary row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-md)", marginBottom: "var(--space-xl)" }}>
-            <div style={cardStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
-                <Cpu size={14} style={{ color: "var(--accent)" }} />
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Devices</span>
-              </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(connectedCount) + "/" + String(enabledCount)}</div>
-            </div>
-            <div style={cardStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
-                <Zap size={14} style={{ color: "#f59e0b" }} />
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Triggers</span>
-              </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(triggerCount)}</div>
-            </div>
-            <div style={cardStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
-                <FileCode size={14} style={{ color: "#8b5cf6" }} />
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Scripts</span>
-              </div>
-              <div style={{ fontSize: "var(--font-size-xl)", fontWeight: 700 }}>{String(scriptCount)}</div>
-            </div>
-            <div style={cardStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginBottom: "var(--space-xs)" }}>
-                <Cloud size={14} style={{ color: isCloudConnected ? "var(--color-success)" : "var(--text-muted)" }} />
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>Cloud</span>
-              </div>
-              <div
-                title={cloudStopDetail || undefined}
-                style={{ fontSize: "var(--font-size-xl)", fontWeight: 700, color: !isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)" }}
-              >
-                {!isCloudEnabled ? "—" : isCloudConnected ? "Online" : cloudOfflineLabel}
-              </div>
-              {!!cloudStopDetail && (
-                <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
-                  {cloudStopDetail}
-                </div>
-              )}
-            </div>
+            <StatCard
+              icon={<Cpu size={14} style={{ color: "var(--accent)" }} />}
+              label="Devices"
+              value={String(connectedCount) + "/" + String(enabledCount)}
+              onClick={() => useNavigationStore.getState().navigateTo("devices")}
+            />
+            {/* Macros, not triggers. The tile counted triggers while the
+                sidebar item it now opens is called Macros, so the figure and
+                the destination disagreed. Macros is the peer of Devices and
+                Scripts here -- a thing you author -- and the trigger count is
+                a property of them, so it rides underneath. */}
+            <StatCard
+              icon={<Zap size={14} style={{ color: "#f59e0b" }} />}
+              label="Macros"
+              value={String(macros.length)}
+              hint={macros.length > 0
+                ? String(triggerCount) + " trigger" + (triggerCount === 1 ? "" : "s")
+                : undefined}
+              onClick={() => useNavigationStore.getState().navigateTo("macros")}
+            />
+            <StatCard
+              icon={<FileCode size={14} style={{ color: "#8b5cf6" }} />}
+              label="Scripts"
+              value={String(scriptCount)}
+              onClick={() => useNavigationStore.getState().navigateTo("scripts")}
+            />
+            <StatCard
+              icon={<Cloud size={14} style={{ color: isCloudConnected ? "var(--color-success)" : "var(--text-muted)" }} />}
+              label="Cloud"
+              value={!isCloudEnabled ? "Not set up" : isCloudConnected ? "Online" : cloudOfflineLabel}
+              // Grey, not red. Nobody has said this system belongs on the
+              // cloud, so an unmade choice must not wear the colour of a fault.
+              valueColor={!isCloudEnabled ? "var(--text-muted)" : isCloudConnected ? "var(--color-success)" : "var(--color-error)"}
+              hint={!isCloudEnabled ? "Remote access and alerts" : cloudStopDetail || undefined}
+              hintTitle={cloudStopDetail || undefined}
+              onClick={() => useNavigationStore.getState().navigateTo("cloud")}
+            />
           </div>
 
           {/* Update available card */}

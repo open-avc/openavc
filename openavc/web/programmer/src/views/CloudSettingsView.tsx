@@ -67,12 +67,19 @@ const btnDangerStyle: React.CSSProperties = {
   borderColor: "#c0392b",
 };
 
-const statusDotStyle = (connected: boolean): React.CSSProperties => ({
+/** Green connected, red broken, grey never asked for.
+ *
+ *  The third one used to wear the second one's colour: a system nobody had
+ *  ever paired opened this page to a red dot reading "Not Configured", which
+ *  is the look of something that has gone wrong rather than something not yet
+ *  chosen. The dashboard tile says "Not set up" in grey; this is the same
+ *  state and says the same thing. */
+const statusDotStyle = (state: "connected" | "faulted" | "unset"): React.CSSProperties => ({
   display: "inline-block",
   width: 10,
   height: 10,
   borderRadius: "50%",
-  background: connected ? "#2ecc71" : "#e74c3c",
+  background: state === "connected" ? "#2ecc71" : state === "faulted" ? "#e74c3c" : "var(--text-muted)",
   marginRight: "var(--space-sm)",
 });
 
@@ -169,9 +176,9 @@ export function CloudSettingsView() {
         <div style={cardStyle}>
           <div style={labelStyle}>Status</div>
           <div style={{ ...valueStyle, display: "flex", alignItems: "center" }}>
-            <span style={statusDotStyle(status?.connected ?? false)} />
+            <span style={statusDotStyle(!isPaired ? "unset" : status?.connected ? "connected" : "faulted")} />
             {!isPaired
-              ? "Not Configured"
+              ? "Not set up"
               : status?.connected
                 ? "Connected"
                 : status?.stop_reason === "version_mismatch"
