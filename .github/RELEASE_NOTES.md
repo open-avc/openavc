@@ -1,42 +1,56 @@
-# OpenAVC v0.28.0
+# OpenAVC v0.29.0
 
-OpenAVC v0.28.0 adds monitored readings: state values flagged in the project, with optional limits for what normal is, shown on the Programmer Dashboard and the cloud system health card and raising alerts when they go out of range. Alerts can now also be resolved from the portal, and service reports can be printed with the integrator's branding.
+OpenAVC v0.29.0 shows why a child entity is offline instead of only that it is, shows an error on the panel when a command fails, and stores the admin password as a hash. Driver version requirements are now checked wherever you install a driver.
 
-## Monitored readings
+## Child entities
 
-Add one from the State tab's Variables or Device States view, or from a row of a device's Live State list. The label, unit, type and range are filled in from the driver.
+Child entities show why they are offline:
 
-* Limits are optional. A reading with no limits is displayed without a status colour.
-* Numeric readings take a minimum, a maximum, or both. Other readings take a list of values, each with a label and a normal or not-normal setting.
-* A limit can require the value to stay out of range for a set duration before an alert is raised.
+* **Not responding.** The device lists the endpoint and it is not answering.
+* **Service fault.** The endpoint answers, but the function it performs is not running.
 
-Alert rules take a duration as well, and add `in` and `not_in` operators.
+* Offline endpoints sort to the top of the list and can be filtered to.
+* The type tab shows how many are down, and the device page lists them.
+* A child's own values, such as a port's input and volume, are shown on the device page.
+* Each list is titled with the driver's name for it, such as Displays or Outputs.
+* YAML drivers can set `online` on a child.
 
-## Alerts and service reports
+## Panels
 
-* Alerts can be resolved from the portal, individually or as all open alerts for a space at once.
-* Systems report their firing alerts when they connect, so alerts left open by a restart are cleared.
-* Alert charts plot the reading against its limits, and history can be shown over seven days.
-* **Printable report** on the Reports page renders the report with the integrator's logo, company name and accent colour.
-* Spaces with less than an hour of connection history show Not measured instead of an uptime percentage. Dismissals, reboots and deleted rules are excluded from repair-time figures.
+* When a command fails, the panel shows why instead of doing nothing.
+* Repeated presses on the same control leave one message, and it does not cover the control that was pressed.
+* Messages can be turned off per room.
 
-## Custom controls
+## The admin password
 
-* Panels reload a custom control or page when its file is saved.
-* A page can be switched between built-in controls and a custom file in either direction, and its render mode, file, config and access grant can be changed after it is created.
-* An element's custom config can no longer reach devices outside its access grant.
-* The AI assistant can read and write custom UI files and the project stylesheet. This needs a cloud account.
+* The admin password is stored as a scrypt hash instead of plain text. Anything able to read `system.json` previously had a working credential, including scripts and plugins.
+* Existing installs convert on first start. Your password does not change.
+* The password can no longer be read back from `system.json`. To replace one nobody knows, clear the field and run first-run setup again.
+* Linux and Raspberry Pi: the privileged helper is now in the release archive and updates with the system, instead of shipping only in the Pi image.
+
+## Drivers and updates
+
+* Driver version requirements are checked when you install from the catalog, upload a file, import a `.zip` bundle, or save in the Driver Builder. Only catalog installs checked before.
+* An empty release list from GitHub now fails the update check instead of reporting the system up to date.
+* A device's last error clears when it stops reporting one.
+
+## Programmer
+
+* Dashboard tiles open the view they count. The Cloud tile shows Not set up and opens Cloud Connection. Triggers is now Macros.
+* Macro steps and triggers that will not run are marked in the editor and in the macro list. They still save.
+* Scanned devices show their banner as text instead of raw bytes.
+* Portrait pages are checked against a portrait screen.
 
 ## Also in this release
 
-* **Set up from a device** sizes a matrix from the device's configured port count, for example Output Count, instead of the driver's full addressable ID range.
-* Sign-in errors report the actual failure instead of showing an invalid email or password for every case. The per-IP rate limit no longer counts successful sign-ins, so users behind one public address do not lock each other out.
-* Invite User shows the role being granted and can invite a Viewer into a single organization. Previously every invite from the account Users page created an account admin.
-* The Child Entities screen refreshes when the child roster changes, and notifies connected panels.
+* Assets in subfolders are kept in backups, exports, duplicates and imports.
+* `isc.` state keys are read-only. Use a `var.` key and the Shared State Pattern to send a value to peers. Reading and binding are unchanged.
+* The Simulator UI responds while a control is being dragged.
+* Control minimums went up slightly for the fader, slider, list, level meter, keypad, select and text input.
 
 ## Before you update
 
-* Staff support requires v0.27.0 or newer. Systems on v0.26.0 or older use the previous remote-session protocol, and staff support will stop at the system's sign-in screen.
-* Project format 0.11.0. Existing projects migrate automatically.
-* The per-variable `dashboard` flag is converted to a monitored reading with no limits. Variable validation rules are not converted into monitor limits.
-* Community drivers that declare routing information require this version.
+* Staff support needs v0.27.0 or newer. Systems on v0.26.0 or older will stop at the system's sign-in screen.
+* The admin password converts to a hash on first start. Rolling back below v0.29.0 means setting it again.
+* Community drivers that report child faults need this version.
+* No project format change.
