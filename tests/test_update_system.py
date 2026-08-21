@@ -102,7 +102,9 @@ def _build_fake_install(
 
     Includes a venv/bin/python3 by default. The integrity check in
     update-helper.sh executes this interpreter (not just stats it), so the
-    stub is a wrapper that runs the real python3. Set ``with_venv=False`` to
+    stub has to be executable and exit zero -- but it does not have to BE
+    Python, and making it one cost a CPython start inside the helper's
+    timeout for every case that swaps or rolls back. Set ``with_venv=False`` to
     simulate a partial install (no interpreter at all), or
     ``runnable_venv=False`` to simulate a dangling interpreter — present but
     unable to run, as an OS Python minor upgrade can leave it. Both must be
@@ -135,8 +137,14 @@ def _build_fake_install(
         (target_dir / "venv" / "bin").mkdir(parents=True, exist_ok=True)
         py = target_dir / "venv" / "bin" / "python3"
         if runnable_venv:
-            # Runs the real interpreter so `python3 -c 'import sys'` succeeds.
-            py.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+            # An interpreter that runs. The helper only ever asks whether this
+            # exits zero (`venv/bin/python3 -c 'import sys'`), so a shell stub
+            # answers exactly the question it asks, and answers it without
+            # paying a CPython start inside the timeout. Spawning the real
+            # interpreter here was one of the three process starts that
+            # timeout measured; on Windows, where each one goes through Git
+            # Bash and a scanner, it is what put these cases near the cap.
+            py.write_text("#!/bin/sh\nexit 0\n")
         else:
             # Present but dangling: a bad shebang so executing it fails, like a
             # venv interpreter orphaned by an apt python minor bump.
@@ -719,7 +727,18 @@ class TestHelperScriptNoOp:
 class TestHelperScriptApplyUpdate:
     """Simulate ExecStartPre running after the server wrote apply-update.json."""
 
-    def test_full_update_apply(self, tmp_path):
+    @pytest.fixture(scope="class")
+    def update_tarball(self, tmp_path_factory) -> Path:
+        """The v2.0.0 artifact, built once for the whole class.
+
+        The helper only reads it (``tar xzf``) and never consumes it, so one
+        copy serves every case that needs one. The fake INSTALL deliberately
+        stays per-case and cannot be shared the same way: the helper deletes
+        and replaces app_dir, which is the thing these cases exist to verify.
+        """
+        return _build_update_tarball(tmp_path_factory.mktemp("staging"), "2.0.0")
+
+    def test_full_update_apply(self, tmp_path, update_tarball):
         """The script must:
         1. Read apply-update.json
         2. Back up the app dir to .previous
@@ -732,10 +751,8 @@ class TestHelperScriptApplyUpdate:
         data_dir.mkdir()
         _build_fake_install(app_dir, "1.0.0")
 
-        tarball = _build_update_tarball(tmp_path / "staging", "2.0.0")
-
         instruction = {
-            "artifact": str(tarball),
+            "artifact": str(update_tarball),
             "from_version": "1.0.0",
             "to_version": "2.0.0",
         }
@@ -758,7 +775,7 @@ class TestHelperScriptApplyUpdate:
         prev_version_content = (previous / "openavc" / "version.py").read_text()
         assert "1.0.0" in prev_version_content
 
-    def test_preserves_files_not_in_tarball(self, tmp_path):
+    def test_preserves_files_not_in_tarball(self, tmp_path, update_tarball):
         """Preserved dirs (venv, driver_repo, plugin_repo) survive the swap
         even though the tarball never ships them."""
         data_dir = tmp_path / "data"
@@ -776,9 +793,8 @@ class TestHelperScriptApplyUpdate:
             '{"id": "my_plugin"}'
         )
 
-        tarball = _build_update_tarball(tmp_path / "staging", "2.0.0")
         instruction = {
-            "artifact": str(tarball),
+            "artifact": str(update_tarball),
             "from_version": "1.0.0",
             "to_version": "2.0.0",
         }
