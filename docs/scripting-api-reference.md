@@ -283,7 +283,8 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `macro.started.<macro_id>` | `macro_id`, `name`, `total_steps` | Macro began executing |
 | `macro.completed.<macro_id>` | `macro_id`, `name` | Macro finished executing |
 | `macro.cancelled.<macro_id>` | `macro_id`, `name` | Macro was cancelled |
-| `macro.error.<macro_id>` | `macro_id`, `name`, `error` | Macro failed |
+| `macro.step_error.<macro_id>` | `macro_id`, `call_chain`, `step_index`, `total_steps`, `action`, `device`, `group`, `command`, `error`, `message`, `description` | A step failed. Fires whether or not the macro stops there — subscribe to this, not `macro.error`, to react to a failure |
+| `macro.error.<macro_id>` | `macro_id`, `name`, `error` | The macro stopped because a step failed. Only fires when the macro has **Stop on Error** set; without it the run continues and ends on `macro.completed` |
 | `system.started` | (none) | System startup complete |
 | `system.stopping` | (none) | System shutting down |
 | `system.project.reloaded` | (none) | Project reloaded |

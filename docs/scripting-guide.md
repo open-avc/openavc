@@ -378,7 +378,8 @@ log.info(f"Cancelled {count} timers")
 | `macro.started.<macro_id>` | Macro began executing |
 | `macro.completed.<macro_id>` | Macro finished executing |
 | `macro.cancelled.<macro_id>` | Macro was cancelled |
-| `macro.error.<macro_id>` | Macro failed (payload includes `error`) |
+| `macro.step_error.<macro_id>` | A step failed (payload includes `error` and a readable `message`). Fires whether or not the macro stops there, so this is the one to listen for |
+| `macro.error.<macro_id>` | The macro stopped because a step failed (payload includes `error`). Only fires on a macro with **Stop on Error** set — otherwise the run continues past the failure and ends on `macro.completed` |
 | `system.started` | System startup complete |
 | `system.stopping` | System shutting down |
 | `system.project.reloaded` | Project reloaded (after save, import, or cloud push) |
