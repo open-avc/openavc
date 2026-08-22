@@ -228,7 +228,12 @@ export function UpdatesView() {
     try {
       const result = await api.checkForUpdates();
       setCheckResult(result);
-      if (!result.update_available) {
+      if (result.error) {
+        // A check that couldn't reach GitHub returns 200 with an error, and
+        // "no update available" is not the same claim as "you're up to date".
+        // An isolated system would otherwise be told it was current forever.
+        showError("Could not check for updates: " + result.error);
+      } else if (!result.update_available) {
         showSuccess("You're up to date.");
       }
       // Refresh status
@@ -353,6 +358,24 @@ export function UpdatesView() {
               <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>Update error</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{updateError}</div>
             </div>
+          </div>
+        )}
+
+        {/* Check failed: say so, and say that a file-based update is possible */}
+        {checkResult?.error && (
+          <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "rgba(239,68,68,0.3)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+              <XCircle size={20} style={{ color: "var(--color-error)", flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>Could not check for updates</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{checkResult.error}</div>
+              </div>
+            </div>
+            {checkResult.offline_instructions && (
+              <div style={{ fontSize: "var(--font-size-sm)", marginTop: "var(--space-md)", lineHeight: 1.6 }}>
+                {checkResult.offline_instructions}
+              </div>
+            )}
           </div>
         )}
 

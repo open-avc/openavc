@@ -139,10 +139,77 @@ def can_self_update(deployment_type: DeploymentType) -> bool:
     )
 
 
+# Where the full per-deployment procedures live. Both instruction helpers below
+# stay short enough to read in a card and point here for the steps.
+OFFLINE_GUIDE_URL = "https://docs.openavc.com/updates#updating-a-system-with-no-internet-access"
+
+
 def update_instructions(deployment_type: DeploymentType, version: str) -> str:
-    """Human-readable update instructions for notification-only deployments."""
+    """Human-readable update instructions for a deployment that won't self-update.
+
+    Every deployment has an answer, so every branch names one. The four that
+    normally self-update reach this only when the in-app path is unavailable,
+    and for them the answer is to run the installer again: it upgrades in place
+    and the data directory sits outside the install, so nothing is lost.
+    """
     if deployment_type == DeploymentType.DOCKER:
         return f"Run `docker compose pull && docker compose up -d` to update to v{version}."
     if deployment_type == DeploymentType.GIT_DEV:
         return f"Run `git pull` and rebuild to update to v{version}."
-    return f"Update to v{version} is available."
+    if deployment_type == DeploymentType.WINDOWS_INSTALLER:
+        return (
+            f"Download OpenAVC-Setup-{version}.exe and run it. It upgrades this "
+            "installation in place and leaves your projects, drivers and settings untouched."
+        )
+    if deployment_type == DeploymentType.MACOS_APP:
+        return (
+            f"Download OpenAVC-{version}-macos-<arch>.pkg (arm64 for Apple Silicon, "
+            "x86_64 for Intel) and run it. It upgrades this installation in place and "
+            "leaves your projects, drivers and settings untouched."
+        )
+    if deployment_type == DeploymentType.LINUX_PACKAGE:
+        return (
+            f"Download openavc-{version}-linux-<arch>.tar.gz and its .sig, copy both to "
+            f"/var/lib/openavc, then stage and restart. Steps: {OFFLINE_GUIDE_URL}"
+        )
+    if deployment_type == DeploymentType.ANDROID_APPLIANCE:
+        return (
+            "Appliance updates are applied by the device supervisor. Connect the appliance "
+            "to a network with internet access to update it."
+        )
+    return f"Update to v{version} is available. See {OFFLINE_GUIDE_URL}"
+
+
+def offline_update_instructions(deployment_type: DeploymentType) -> str:
+    """What to do when the update check itself can't reach the internet.
+
+    An isolated system never gets as far as "an update is available", so the
+    guidance can't name a version and can't hang off an update record. It is
+    shown next to the failed check instead, because that error is the only
+    place an integrator on an air-gapped network ever looks.
+    """
+    if deployment_type == DeploymentType.WINDOWS_INSTALLER:
+        step = "download OpenAVC-Setup-<version>.exe on a machine that has internet, copy it here and run it"
+    elif deployment_type == DeploymentType.MACOS_APP:
+        step = "download the macOS .pkg on a machine that has internet, copy it here and run it"
+    elif deployment_type == DeploymentType.LINUX_PACKAGE:
+        step = (
+            "download the Linux archive and its .sig on a machine that has internet, "
+            "copy both to /var/lib/openavc and stage the update"
+        )
+    elif deployment_type == DeploymentType.DOCKER:
+        step = "save the image on a machine that has internet, copy it here and load it"
+    elif deployment_type == DeploymentType.ANDROID_APPLIANCE:
+        return (
+            "This system has no internet access. Appliance updates are applied by the "
+            "device supervisor, so connect it to a network with internet access to "
+            f"update it. More: {OFFLINE_GUIDE_URL}"
+        )
+    elif deployment_type == DeploymentType.GIT_DEV:
+        step = "update the source with your normal git workflow"
+    else:
+        step = "download the release files on a machine that has internet and copy them here"
+    return (
+        f"This system can be updated without an internet connection: {step}. "
+        f"Full steps: {OFFLINE_GUIDE_URL}"
+    )

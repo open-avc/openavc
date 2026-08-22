@@ -56,6 +56,82 @@ How updates are applied depends on how OpenAVC was installed:
 
 Docker and Git deployments still check for updates and show notifications, but you apply them manually using your normal workflow.
 
+Every deployment above can also be updated without an internet connection. See [Updating a System With No Internet Access](#updating-a-system-with-no-internet-access).
+
+## Updating a System With No Internet Access
+
+OpenAVC needs an internet connection to *find* and *download* a new version, not to install one. A system on an isolated network can be updated from files you carry to it.
+
+Download the files on any machine that has internet, from the Assets list of the release at `https://github.com/open-avc/openavc/releases`. Take the file for your deployment, and take the matching `.sig` file listed next to it. The `.sig` is a signature the system uses to confirm the file is genuine before it installs anything.
+
+### Windows
+
+Copy `OpenAVC-Setup-<version>.exe` to the system and run it. It upgrades the existing installation in place. Projects, drivers, plugins and settings live in `C:\ProgramData\OpenAVC` and are not touched.
+
+### macOS
+
+Copy `OpenAVC-<version>-macos-<arch>.pkg` to the system and run it. Use `arm64` for Apple Silicon and `x86_64` for Intel. It upgrades in place. Data lives in `/Library/Application Support/OpenAVC` and is not touched.
+
+### Linux and Raspberry Pi
+
+Copy the archive and its signature into the data directory, keeping the two files next to each other, then stage the update and restart the service:
+
+```bash
+sudo cp openavc-0.29.0-linux-arm64.tar.gz openavc-0.29.0-linux-arm64.tar.gz.sig /var/lib/openavc/
+
+sudo tee /var/lib/openavc/apply-update.json >/dev/null <<'JSON'
+{"artifact": "/var/lib/openavc/openavc-0.29.0-linux-arm64.tar.gz",
+ "from_version": "0.28.0",
+ "to_version": "0.29.0"}
+JSON
+
+sudo systemctl restart openavc
+```
+
+Use `arm64` on a Raspberry Pi and `amd64` on a standard PC or server. Set `from_version` to the version currently running and `to_version` to the one you are installing.
+
+A privileged step that runs just before the server starts picks the file up and applies it. This is the same step the in-app update uses. Watch it work with:
+
+```bash
+journalctl -u openavc -b | grep update-helper
+```
+
+Do not use `install.sh` for this. That script always fetches the release from GitHub and cannot install a file you already have.
+
+Two things to know before you start:
+
+- **Make a backup first.** In the Programmer IDE, open the **Project** view and click **Create Backup**. An update staged by hand does not create the automatic pre-update backup, so this is your copy of the projects and settings. Rolling the application code back afterwards still works normally from the Updates view.
+- **Dependencies.** After swapping in the new version, the system re-checks its Python packages. Almost every release uses the packages already installed and needs no internet for this. If a release does change one, the system cannot fetch it, so it rolls itself back and keeps running the version you had. The journal line above names the package it wanted. Install that release with internet available.
+
+### Docker
+
+On a machine with internet, pull the image and write it to a file:
+
+```bash
+docker pull ghcr.io/open-avc/openavc:latest
+docker save ghcr.io/open-avc/openavc:latest -o openavc.tar
+```
+
+Copy `openavc.tar` to the isolated system, then load and restart:
+
+```bash
+docker load -i openavc.tar
+docker compose up -d
+```
+
+### Raspberry Pi image file
+
+The `.img.xz` image writes a fresh card and is for setting up a new system, not for updating one that is already running. A Pi already running OpenAVC updates with the Linux procedure above.
+
+### Appliance hardware
+
+The all-in-one appliance applies updates through its device supervisor, and has no manual file-based procedure. To update one on an isolated network, connect it temporarily to a network that has internet access.
+
+### Development checkouts
+
+Update the source with your normal git workflow and restart the server.
+
+
 ## Rollback
 
 If an update causes problems, you can roll back to the previous version.

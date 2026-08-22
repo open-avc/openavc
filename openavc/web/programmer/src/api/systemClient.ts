@@ -83,6 +83,9 @@ export interface UpdateCheckResult {
   deployment_type?: string;
   instructions?: string;
   error?: string;
+  /** How to update this deployment without internet access. Set only when
+   *  the check itself failed, which is all an isolated system ever sees. */
+  offline_instructions?: string;
 }
 
 export interface UpdateHistoryEntry {

@@ -23,6 +23,7 @@ from openavc.updater.platform import (
     DeploymentType,
     detect_deployment_type,
     can_self_update,
+    offline_update_instructions,
     update_instructions,
 )
 from openavc.version import __version__
@@ -401,12 +402,21 @@ class UpdateManager:
             error = self._checker.last_error
             if error and touch_status:
                 self._set_state("system.update_error", error)
-            return {
+            response: dict[str, Any] = {
                 "update_available": False,
                 "current_version": self._checker.current_version,
                 "channel": channel,
                 "error": error,
             }
+            # A failed check is the whole experience on an isolated network: the
+            # box never learns a version exists, so there is no update record to
+            # attach guidance to. Say here that a file-based update is possible,
+            # otherwise the only thing on screen is a network error.
+            if error:
+                response["offline_instructions"] = offline_update_instructions(
+                    self._deployment_type
+                )
+            return response
 
         self._set_state("system.update_available", result.version)
         can_update = can_self_update(self._deployment_type)

@@ -13,6 +13,7 @@ from openavc.updater.platform import (
     DeploymentType,
     detect_deployment_type,
     can_self_update,
+    offline_update_instructions,
     update_instructions,
 )
 from openavc.updater.backup import create_backup, list_backups, cleanup_old_backups
@@ -385,6 +386,46 @@ class TestPlatformDetection:
         msg = update_instructions(DeploymentType.GIT_DEV, "1.0.0")
         assert "git pull" in msg
 
+    def test_every_deployment_type_gets_a_real_instruction(self):
+        """No deployment may be told only that an update "is available".
+
+        Reinstalling with the downloaded artifact is the answer on every
+        desktop deployment, so the bare announcement was the one answer that
+        helped nobody -- least of all somebody on an isolated network.
+        """
+        for dt in DeploymentType:
+            msg = update_instructions(dt, "1.2.3")
+            assert msg != "Update to v1.2.3 is available.", dt
+            assert len(msg) > 40, dt
+
+    def test_reinstallable_deployments_name_their_artifact(self):
+        assert "OpenAVC-Setup-1.2.3.exe" in update_instructions(
+            DeploymentType.WINDOWS_INSTALLER, "1.2.3"
+        )
+        assert ".pkg" in update_instructions(DeploymentType.MACOS_APP, "1.2.3")
+        linux = update_instructions(DeploymentType.LINUX_PACKAGE, "1.2.3")
+        assert "openavc-1.2.3-linux-<arch>.tar.gz" in linux
+        # The signature sidecar has to travel with the artifact or the update
+        # stops applying the day release signing is armed.
+        assert ".sig" in linux
+
+    def test_offline_instructions_exist_for_every_deployment_type(self):
+        for dt in DeploymentType:
+            msg = offline_update_instructions(dt)
+            assert "docs.openavc.com/updates" in msg, dt
+            assert len(msg) > 40, dt
+
+    def test_offline_instructions_for_linux_carry_the_signature(self):
+        msg = offline_update_instructions(DeploymentType.LINUX_PACKAGE)
+        assert ".sig" in msg
+        assert "/var/lib/openavc" in msg
+
+    def test_appliance_offline_instructions_do_not_promise_a_file_procedure(self):
+        """The appliance is the one deployment with no customer-side answer."""
+        msg = offline_update_instructions(DeploymentType.ANDROID_APPLIANCE)
+        assert "device supervisor" in msg
+        assert "internet access" in msg
+
 
 class TestMacosRollbackBundle:
     def test_previous_bundle_resolves_app_sibling(self):
@@ -720,6 +761,29 @@ class TestUpdateManager:
             result = await mgr.check_for_updates(channel="stable")
 
         assert result["update_available"] is False
+        # No error means the check reached GitHub and there was nothing new.
+        assert "offline_instructions" not in result
+
+    async def test_failed_check_carries_offline_instructions(self, tmp_path):
+        """The failed check is the only screen an isolated system ever reaches.
+
+        Without this the box shows a bare network error, and the operator has
+        no way to learn that carrying the artifact over already works.
+        """
+        mock_state = MagicMock()
+        mock_state.set = MagicMock()
+
+        mgr = UpdateManager(state_store=mock_state, data_dir=tmp_path)
+        mgr._deployment_type = DeploymentType.LINUX_PACKAGE
+
+        with patch.object(mgr._checker, "check", new_callable=AsyncMock, return_value=None):
+            mgr._checker._last_check_error = "Network error: [Errno -3] Temporary failure in name resolution"
+            result = await mgr.check_for_updates(channel="stable")
+
+        assert result["update_available"] is False
+        assert result["error"]
+        assert "docs.openavc.com/updates" in result["offline_instructions"]
+        assert ".sig" in result["offline_instructions"]
 
     async def test_apply_without_check_fails(self, tmp_path):
         mgr = UpdateManager(state_store=None, data_dir=tmp_path)
