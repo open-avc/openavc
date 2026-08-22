@@ -225,6 +225,24 @@ When a macro is running, the panel provides two forms of feedback:
 
 **Progress label (opt-in).** You can bind a label's text to "Macro Progress" in its **Shows > Text** card. Select the macro to track and set the idle text (what shows when the macro is not running). While the macro runs, the label shows the current step's description. Add descriptions to each macro step in the step editor to control what users see (e.g., "Powering on projector", "Waiting for warmup"). If no description is set, the system generates one from the action type.
 
+## When a Step Fails
+
+By default a macro runs every step even if one of them fails, so a projector
+that is not on the network does not stop the screen coming down. Turn on
+**Stop on Error** in the macro header to halt the run at the first failure
+instead.
+
+Either way, the panel the macro was started from shows what went wrong: a band
+naming the device and the reason, the same message a button pressed directly
+would give. One run shows one message, the first, since a macro that cannot
+reach a device on one step usually cannot reach it on the next. A macro started
+by a schedule or a trigger shows nothing on any panel.
+
+A **Group Command** step is a fan-out, so one unreachable device out of eight
+is not treated as a failed step. The **Test** view lists every member with a
+success or fail icon. It counts as a failed step only when the command reached
+no device at all.
+
 ## Variables in Macros
 
 The **Set Variable** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **true / false** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.

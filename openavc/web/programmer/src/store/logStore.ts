@@ -29,7 +29,10 @@ export interface StepError {
   device: string;
   group: string;
   command: string;
+  /** What the exception said. Kept for the hover, where the raw text helps. */
   error: string;
+  /** The same failure written for a person, as the panel shows it. */
+  message: string;
   description: string;
 }
 
@@ -51,6 +54,7 @@ export interface GroupCommandResult {
     name: string;
     success: boolean;
     error?: string;
+    message?: string;
   }>;
 }
 

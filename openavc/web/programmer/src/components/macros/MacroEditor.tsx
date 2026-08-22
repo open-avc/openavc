@@ -309,7 +309,7 @@ function SortableStepItem({
           }}
         >
           <AlertTriangle size={12} style={{ flexShrink: 0 }} />
-          {stepError.error}
+          <span title={stepError.error}>{stepError.message}</span>
         </div>
       )}
 
@@ -363,7 +363,7 @@ function SortableStepItem({
                 background: dr.success ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
                 color: dr.success ? "#10b981" : "#ef4444",
               }}
-              title={dr.success ? "Success" : dr.error ?? "Failed"}
+              title={dr.success ? "Success" : dr.message || dr.error || "Failed"}
             >
               {dr.success ? <CheckCircle size={10} /> : <XCircle size={10} />}
               {dr.name}
@@ -1242,7 +1242,7 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
         >
           <XCircle size={11} style={{ flexShrink: 0 }} />
           <span style={{ fontWeight: 500 }}>Step {err.stepIndex + 1}:</span>
-          <span>{err.error}</span>
+          <span title={err.error}>{err.message}</span>
           {err.device && <span style={{ color: "var(--text-muted)" }}>({err.device})</span>}
         </div>
       ))}

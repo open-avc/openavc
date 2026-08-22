@@ -30,7 +30,7 @@ import json
 import re as _re
 import time
 from typing import Any
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -449,6 +449,252 @@ def test_a_room_that_turned_the_message_off_never_sees_one(
                 "the press never reached the instance, so nothing is proved")
     panel.page.wait_for_timeout(1500)
     expect(panel.page.locator("#panel-failure-message")).to_have_count(0)
+
+
+# ---------------------------------------------------------------------------
+# A macro that failed mid-run says why, on the panel that started it (Q-104)
+# ---------------------------------------------------------------------------
+
+#: A second absent device, so a macro can fail twice in one run.
+DEAD_HOST_2 = "192.0.2.14"
+DEAD_NAME_2 = "Rear Projector"
+
+
+def _macro_project() -> dict[str, Any]:
+    """A room whose two projectors are absent, and a preset button for them.
+
+    The macro's last step writes a variable, which is what proves the run
+    carried on past the failure and ended on ``completed``: the message
+    therefore cannot have come from the run's outcome, because the outcome is
+    indistinguishable from a clean run. Same reason the press tests above give
+    every button a second action.
+    """
+    def _device(device_id: str, name: str) -> dict[str, Any]:
+        return {
+            "id": device_id, "driver": "generic_tcp", "name": name,
+            "config": {}, "enabled": True,
+            "pending_settings": {}, "child_entities": {},
+        }
+
+    def _button(element_id: str, macro_id: str) -> dict[str, Any]:
+        return {
+            "id": element_id, "type": "button", "label": "Start",
+            "parent": None,
+            "bindings": {"do": {"press": [{"action": "macro", "macro": macro_id}]}},
+        }
+
+    return {
+        "openavc_version": "0.11.0",
+        "devices": [
+            _device("projector", DEAD_NAME),
+            _device("projector2", DEAD_NAME_2),
+        ],
+        "connections": {
+            "projector": {"host": DEAD_HOST, "port": 4352},
+            "projector2": {"host": DEAD_HOST_2, "port": 4352},
+        },
+        "variables": [
+            {"id": "macro_ran", "type": "string", "default": "no",
+             "label": "Did the macro reach its last step"},
+            {"id": "routed", "type": "integer", "default": 0,
+             "label": "Source routed to the display"},
+        ],
+        "macros": [
+            {
+                "id": "system_on", "name": "System On",
+                "steps": [
+                    {"action": "device.command", "device": "projector",
+                     "command": "power_on"},
+                    {"action": "state.set", "key": "var.macro_ran", "value": "yes"},
+                ],
+            },
+            {
+                "id": "outer", "name": "Start Everything",
+                "steps": [
+                    {"action": "macro", "macro": "system_on"},
+                ],
+            },
+            {
+                "id": "both_projectors", "name": "Both Projectors",
+                "steps": [
+                    {"action": "device.command", "device": "projector",
+                     "command": "power_on"},
+                    {"action": "device.command", "device": "projector2",
+                     "command": "power_on"},
+                    {"action": "state.set", "key": "var.macro_ran", "value": "yes"},
+                ],
+            },
+        ],
+        "ui": {
+            "settings": {"theme": "dark-default"},
+            "pages": [{
+                "id": "main", "name": "Main", "page_type": "page",
+                "layouts": [{
+                    "id": "landscape", "orientation": "landscape",
+                    "primary": True, "inherits": None,
+                    "placements": {
+                        "btn_on": {"x": 4.0, "y": 6.0, "w": 30.0, "h": 14.0},
+                        "btn_both": {"x": 40.0, "y": 6.0, "w": 30.0, "h": 14.0},
+                        "btn_outer": {"x": 4.0, "y": 76.0, "w": 30.0, "h": 14.0},
+                        "mx_presets": {"x": 4.0, "y": 30.0, "w": 60.0, "h": 40.0},
+                    },
+                    "hidden": [],
+                }],
+                "elements": [
+                    _button("btn_on", "system_on"),
+                    _button("btn_both", "both_projectors"),
+                    _button("btn_outer", "outer"),
+                    {
+                        "id": "mx_presets",
+                        "type": "matrix",
+                        "label": "Routing",
+                        "parent": None,
+                        "matrix_config": {
+                            "style": "crosspoint",
+                            "sources": [{"value": 1, "label": "Laptop"}],
+                            # The destination carries its OWN route action list,
+                            # which runs instead of the element's for this row.
+                            # That list is not under `bindings.do` at all, which
+                            # is the whole reason this element is here.
+                            "destinations": [{
+                                "value": "out1", "label": "Display",
+                                "route_key": "var.routed",
+                                "route": [{"action": "macro", "macro": "system_on"}],
+                            }],
+                        },
+                        "bindings": {"do": {"route": [
+                            {"action": "state.set", "key": "var.macro_ran",
+                             "value": "the element default ran"},
+                        ]}},
+                    },
+                ],
+                "master_elements": [],
+            }],
+            "master_elements": [],
+            "page_groups": [],
+        },
+    }
+
+
+@pytest.fixture
+def macro_panel(server_factory, page: Page):
+    """A panel whose preset buttons run macros that cannot succeed."""
+    handle = server_factory(project_overrides=_macro_project())
+    page.goto(f"{handle.base_url}/panel/", wait_until="domcontentloaded")
+    page.locator('[data-element-id="btn_on"]').wait_for(
+        state="visible", timeout=READY_TIMEOUT,
+    )
+    return _ServedPanel(page, handle.base_url, [])
+
+
+def test_a_macro_that_failed_mid_run_says_so_on_the_panel_that_started_it(
+    macro_panel,
+) -> None:
+    """The item, end to end.
+
+    Nothing comes back on the press itself -- starting a macro succeeds, and
+    the engine acks it as accepted -- so this message can only have come from
+    the step frame that arrives afterwards, and only because the panel knew
+    the press was its own.
+    """
+    band = macro_panel.page.locator("#panel-failure-message")
+    expect(band).to_have_count(0)
+
+    macro_panel.element("btn_on").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_text(
+        f"{DEAD_NAME} is not connected.", timeout=EXPECT_TIMEOUT,
+    )
+    # And the run finished, which is the half that makes the failure invisible
+    # to anything watching the outcome.
+    _eventually(lambda: macro_panel.state("var.macro_ran") == "yes",
+                "the macro never reached its last step, so nothing is proved")
+
+
+def test_only_the_first_failure_of_a_macro_run_draws_a_message(
+    macro_panel,
+) -> None:
+    """Two dead devices in one run, one message, and it names the first.
+
+    A macro that cannot reach a device on step 1 usually cannot reach the next
+    one either. Three sentences swapping through one band inside a tenth of a
+    second is unreadable, and the first one names the thing to go and fix.
+    """
+    band = macro_panel.page.locator("#panel-failure-message")
+
+    macro_panel.element("btn_both").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_text(
+        f"{DEAD_NAME} is not connected.", timeout=EXPECT_TIMEOUT,
+    )
+    _eventually(lambda: macro_panel.state("var.macro_ran") == "yes",
+                "the macro never reached its last step, so the second failure "
+                "had not happened yet and this proves nothing")
+    # The second failure has been and gone by now. The band still reads the
+    # first, rather than having been overwritten.
+    expect(band).to_have_text(f"{DEAD_NAME} is not connected.")
+    expect(band).to_have_count(1)
+
+
+def test_a_failure_inside_a_sub_macro_still_reaches_the_panel(macro_panel) -> None:
+    """The button ran "Start Everything"; the step that failed belongs to
+    "System On", which it calls. A panel matching on the failing macro's own
+    id alone would go quiet on the composition the docs recommend."""
+    band = macro_panel.page.locator("#panel-failure-message")
+
+    macro_panel.element("btn_outer").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_text(
+        f"{DEAD_NAME} is not connected.", timeout=EXPECT_TIMEOUT,
+    )
+
+
+def test_a_macro_run_from_a_matrix_row_is_this_panel_s_too(macro_panel) -> None:
+    """A destination's own route override is not under `bindings.do`.
+
+    It replaces the element's route list for that one row, so a panel that
+    only looked at `bindings.do` would tap this crosspoint, run the macro,
+    watch it fail and say nothing -- the exact silence this item is about,
+    one level in.
+    """
+    band = macro_panel.page.locator("#panel-failure-message")
+
+    macro_panel.crosspoint(1, "out1").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_text(
+        f"{DEAD_NAME} is not connected.", timeout=EXPECT_TIMEOUT,
+    )
+    # The override ran, not the element's default -- otherwise the macro never
+    # started and the message came from somewhere this test does not know.
+    _eventually(lambda: macro_panel.state("var.macro_ran") == "yes",
+                "the row's own route list never ran, so this proves nothing")
+
+
+def test_a_macro_this_panel_did_not_start_says_nothing(macro_panel) -> None:
+    """Aaron's call, proved: the message belongs to whoever pressed something.
+
+    Run from the instance's own REST API instead of from this panel -- which
+    is what a schedule, a trigger, a script or another panel looks like from
+    here. The same failure happens, the same frame is broadcast to every
+    connected panel, and this one stays quiet because nobody standing at it
+    asked for anything.
+    """
+    with urlopen(
+        Request(f"{macro_panel.base_url}/api/macros/system_on/execute", method="POST"),
+        timeout=10.0,
+    ) as resp:
+        assert json.loads(resp.read().decode("utf-8"))["status"] == "executed"
+
+    _eventually(lambda: macro_panel.state("var.macro_ran") == "yes",
+                "the macro never ran, so a silent panel proves nothing")
+    # "Nothing appeared" needs time to be wrong in. The band is up in well
+    # under a tenth of a second in the test above.
+    macro_panel.page.wait_for_timeout(1500)
+    expect(macro_panel.page.locator("#panel-failure-message")).to_have_count(0)
 
 
 # ---------------------------------------------------------------------------

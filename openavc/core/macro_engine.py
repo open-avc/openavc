@@ -485,7 +485,7 @@ class MacroEngine:
                 )
 
             try:
-                await self._execute_step(
+                unreported = await self._execute_step(
                     step, context, _conditional_depth, macro_id, stop_on_error,
                     _call_chain, _step_path=step_path,
                 )
@@ -496,23 +496,34 @@ class MacroEngine:
                 if macro_id:
                     await self.events.emit(
                         f"macro.step_error.{macro_id}",
-                        {
-                            "macro_id": macro_id,
-                            "step_index": i,
-                            "total_steps": total,
-                            "action": action,
-                            "device": step.get("device", ""),
-                            "group": step.get("group", ""),
-                            "command": step.get("command", ""),
-                            "error": str(e),
-                            "description": step.get("description") or self._auto_description(step),
-                        },
+                        self._step_error_payload(
+                            macro_id, step, i, total,
+                            error=str(e),
+                            message=self._step_error_message(step, e),
+                            call_chain=_call_chain,
+                        ),
                     )
                 if stop_on_error:
-                    raise RuntimeError(
-                        f"Step {i + 1}/{total} failed ({step_detail}): {e}"
-                    ) from e
+                    raise RuntimeError(f"{step_detail}: {e}") from e
                 # Continue to next step (don't halt the macro)
+            else:
+                # A step that handled its own failure and carried on. Only
+                # group.command does this: it fans out and reports per device
+                # rather than raising, so a group that reached nobody used to
+                # end the macro on `completed` with nothing said anywhere.
+                # It still does not raise, so stop_on_error is unchanged.
+                if unreported is not None and macro_id:
+                    error, message = unreported
+                    log.error(
+                        f"Macro step failed: {self._step_error_detail(step, i, total)} — {error}"
+                    )
+                    await self.events.emit(
+                        f"macro.step_error.{macro_id}",
+                        self._step_error_payload(
+                            macro_id, step, i, total, error=error, message=message,
+                            call_chain=_call_chain,
+                        ),
+                    )
 
     def _condition_actual(
         self, key: str, context: dict[str, Any] | None = None
@@ -558,6 +569,68 @@ class MacroEngine:
     ) -> dict[str, Any]:
         """Resolve $-references in parameter values."""
         return {k: self._resolve_value(v, context) for k, v in params.items()}
+
+    def _step_error_payload(
+        self, macro_id: str, step: dict[str, Any], index: int, total: int,
+        *, error: str, message: str, call_chain: frozenset[str] | None = None,
+    ) -> dict[str, Any]:
+        """One frame for a failed step, whoever noticed it.
+
+        Two renderings of the failure, deliberately: ``error`` is what the
+        exception said, which is what a log and the Programmer's run history
+        are for, and ``message`` is the same failure written for somebody
+        standing at a panel. The panel has no way to translate the first into
+        the second -- it holds no device names, no host and no exception type
+        -- so the sentence is built here, where all three still exist.
+
+        ``call_chain`` is every macro this failure happened inside, this one
+        included. A panel deciding whether the failure belongs to something
+        somebody there pressed needs it: press "System On", which calls
+        "Projector On", and ``macro_id`` names the sub-macro nobody has heard
+        of. Sorted for a stable frame -- the engine tracks the chain as a set
+        (concurrent chains, not one stack), so it answers "was this inside X"
+        and cannot be read back as the order they were called in.
+        """
+        chain = set(call_chain or ()) | {macro_id}
+        return {
+            "macro_id": macro_id,
+            "call_chain": sorted(chain),
+            "step_index": index,
+            "total_steps": total,
+            "action": step.get("action", ""),
+            "device": step.get("device", ""),
+            "group": step.get("group", ""),
+            "command": step.get("command", ""),
+            "error": error,
+            "message": message,
+            "description": step.get("description") or self._auto_description(step),
+        }
+
+    def _step_error_message(self, step: dict[str, Any], exc: Exception) -> str:
+        """Why the step did not do what it says, in words somebody can act on.
+
+        The same translation, with the same device context, that a panel press
+        already gets (``ui_events._command_error``) -- a macro failure and a
+        direct press failure are the same failure and must not read two
+        different ways because of which control ran them.
+        """
+        return self._device_error_message(str(step.get("device") or ""), exc)
+
+    def _device_error_message(self, device_id: str, exc: Exception) -> str:
+        """``friendly_error`` with this device's name and host filled in.
+
+        The name matters more here than anywhere else: a macro step names the
+        device by id, and the id is the one label nobody in the room has ever
+        seen. Deferred import to keep this module free of API imports at load
+        time, matching ``ui_events`` and the project loader.
+        """
+        from openavc.api.error_messages import friendly_error
+
+        if not device_id:
+            return friendly_error(exc)
+        name = self.state.get(f"device.{device_id}.name") or device_id
+        host = self.state.get(f"device.{device_id}.host") or ""
+        return friendly_error(exc, device=str(name), host=str(host))
 
     def _step_error_detail(self, step: dict[str, Any], index: int, total: int) -> str:
         """Build a descriptive error context string for a failed macro step."""
@@ -631,10 +704,16 @@ class MacroEngine:
         stop_on_error: bool = False,
         _call_chain: frozenset[str] | None = None,
         _step_path: list[int | str] | None = None,
-    ) -> None:
+    ) -> tuple[str, str] | None:
         """Execute a single macro step. ``_step_path`` is this step's tree
         location (``[*parent_path, index]``); a conditional uses it to build the
-        branch prefix for its then/else sub-steps."""
+        branch prefix for its then/else sub-steps.
+
+        Returns ``None``, or ``(error, message)`` for a failure the step
+        handled itself instead of raising -- only ``group.command`` does that,
+        and only when the command reached no device at all. The caller turns it
+        into the same ``macro.step_error`` frame a raise would have produced.
+        """
         action = step.get("action", "")
 
         # Step-level skip_if guard
@@ -668,7 +747,7 @@ class MacroEngine:
 
             if not device_ids:
                 log.debug(f"  Macro step: group '{group_id}' is empty, skipping")
-                return
+                return None
             # Send to all online devices concurrently
             sent_ids = []
             tasks = []
@@ -681,34 +760,62 @@ class MacroEngine:
                     continue
                 sent_ids.append(did)
                 tasks.append(self.devices.send_command(did, command, params))
+            results: list[Any] = []
             if tasks:
                 log.debug(f"  Macro step: group '{group_id}'.{command} -> {len(tasks)} device(s)")
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                # Build per-device result list for the progress event
-                device_results = []
-                for j, result in enumerate(results):
-                    did = sent_ids[j] if j < len(sent_ids) else "unknown"
-                    device_name = self.state.get(f"device.{did}.name") or did
-                    if isinstance(result, Exception):
-                        log.error(f"  Group command error on '{device_name}': {result}")
-                        device_results.append({"device_id": did, "name": device_name, "success": False, "error": str(result)})
-                    else:
-                        device_results.append({"device_id": did, "name": device_name, "success": True})
-                for did in skipped_ids:
-                    device_name = self.state.get(f"device.{did}.name") or did
-                    device_results.append({"device_id": did, "name": device_name, "success": False, "error": "Device offline"})
-                if macro_id:
-                    await self.events.emit(
-                        f"macro.progress.{macro_id}",
-                        {
-                            "macro_id": macro_id,
-                            "action": "group.command",
-                            "group": group_id,
-                            "command": command,
-                            "device_results": device_results,
-                            "status": "group_complete",
-                        },
-                    )
+            # Per-device outcome, in the order the group declares its members
+            # rather than attempted-then-skipped: that is the order somebody
+            # wrote them in and the order the group reads in the IDE.
+            outcome: dict[str, dict[str, Any]] = {}
+            for j, result in enumerate(results):
+                did = sent_ids[j] if j < len(sent_ids) else "unknown"
+                device_name = self.state.get(f"device.{did}.name") or did
+                if isinstance(result, Exception):
+                    log.error(f"  Group command error on '{device_name}': {result}")
+                    outcome[did] = {
+                        "device_id": did, "name": device_name, "success": False,
+                        "error": str(result),
+                        "message": self._device_error_message(did, result),
+                    }
+                else:
+                    outcome[did] = {"device_id": did, "name": device_name, "success": True}
+            for did in skipped_ids:
+                device_name = self.state.get(f"device.{did}.name") or did
+                # Synthesised so an offline member reads the same way it would
+                # from a device.command step -- the panel must not learn a
+                # second sentence for the same fact.
+                offline = ConnectionError(f"Device '{did}' is not connected")
+                outcome[did] = {
+                    "device_id": did, "name": device_name, "success": False,
+                    "error": "Device offline",
+                    "message": self._device_error_message(did, offline),
+                }
+            device_results = [outcome[did] for did in device_ids if did in outcome]
+            if macro_id:
+                await self.events.emit(
+                    f"macro.progress.{macro_id}",
+                    {
+                        "macro_id": macro_id,
+                        "action": "group.command",
+                        "group": group_id,
+                        "command": command,
+                        "device_results": device_results,
+                        "status": "group_complete",
+                    },
+                )
+            # A group step is a fan-out, so one dead member out of eight is not
+            # a failed step -- the room did most of what was asked, and saying
+            # so mid-sequence is noise at the moment somebody is starting a
+            # class. Reaching NOBODY is a different thing: nothing happened,
+            # and until now that was indistinguishable from success. Reported
+            # as the first member's own reason, because a name somebody can go
+            # and look at beats a count.
+            failures = [r for r in device_results if not r["success"]]
+            if failures and len(failures) == len(device_results):
+                first = failures[0]
+                return (str(first.get("error") or ""), str(first.get("message") or ""))
+            return None
 
         elif action == "delay":
             seconds = max(0, step.get("seconds", 0))

@@ -91,6 +91,12 @@
 // <old px> / REM_BASE_PX so they still land on the pixel they always did.
 const REM_BASE_PX = 14;
 
+// How long a macro this panel started stays this panel's to report a failure
+// for, when nothing ever tells us its run ended. Matches the macro engine's own
+// ceiling for a queued start, which is the longest a press can legitimately sit
+// before it runs.
+const MACRO_CLAIM_MAX_AGE_MS = 5 * 60 * 1000;
+
 // How far a finger may travel on a matrix crosspoint before the gesture stops
 // being a tap and becomes a drag-to-route. Deliberately generous: a wall panel
 // is touched with a thumb, and a few pixels of travel on the way down is a tap
@@ -227,6 +233,7 @@ class PanelApp {
         this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
         this._runningMacros = {};    // macro_id -> { description, step_index, total_steps }
+        this._startedMacros = {};    // macro_id -> { at, reported } for macros THIS panel started
         this.reconnectDelay = 1000;
         this.maxReconnectDelay = 30000; // matches the backoff cap used in onclose
         this.reconnectAttempts = 0;
@@ -515,6 +522,7 @@ class PanelApp {
         // to: one finger presses one thing at a time, and the only thing this
         // is used for is keeping the message off the control just pressed.
         if (msg && msg.element_id) this._lastTouchedElementId = msg.element_id;
+        this._claimMacros(msg);
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(msg));
         }
@@ -670,10 +678,15 @@ class PanelApp {
                 this._updateMacroProgressBindings(msg.macro_id);
                 break;
 
+            case 'macro.step_error':
+                this._reportMacroFailure(msg);
+                break;
+
             case 'macro.completed':
             case 'macro.error':
             case 'macro.cancelled':
                 delete this._runningMacros[msg.macro_id];
+                delete this._startedMacros[msg.macro_id];
                 this._updateMacroBusyState(msg.macro_id);
                 this._updateMacroProgressBindings(msg.macro_id);
                 break;
@@ -699,6 +712,105 @@ class PanelApp {
                 if (msg.success === false) this.showFailureMessage(msg.error);
                 break;
         }
+    }
+
+    /**
+     * Remember that a macro was started FROM THIS PANEL.
+     *
+     * A macro failure is broadcast to every panel on the instance, because a
+     * running macro is a fact about the room rather than about one screen.
+     * That is right for the busy state on a button and wrong for a message:
+     * a band in a space where nobody touched anything is about somebody
+     * else's press, and the only panel that can act on it is the one it was
+     * made from. There is nothing on the wire that says who started a macro,
+     * and nothing needs to be -- the panel that sent it already knows.
+     *
+     * Both doors go through send(), so this is one hook rather than one per
+     * interaction: a preset and a custom control send `macro.execute`
+     * themselves, and a binding sends `ui.<interaction>` and lets the server
+     * look up what that control runs.
+     */
+    _claimMacros(msg) {
+        if (!msg || typeof msg.type !== 'string') return;
+        if (msg.type === 'macro.execute' && msg.macro_id) {
+            this._claimMacro(String(msg.macro_id));
+            return;
+        }
+        if (!msg.type.startsWith('ui.') || !msg.element_id) return;
+        const def = this.elementMap[msg.element_id]?.elementDef;
+        if (!def) return;
+        // Every macro this control can run, not just the one this interaction
+        // would have reached: a finger landed on it, so a failure from any
+        // macro it runs is that person's. Which slot fired is the server's
+        // business and it is not worth a second copy of the dispatch rules
+        // here -- an off_action, a hold and a value_map entry are all
+        // reachable and all theirs.
+        //
+        // matrix_config as well as the do bindings, because a destination row
+        // may carry its OWN route action list that runs instead of the
+        // element's. Nothing under `show` is walked: a label bound to a
+        // macro's progress is WATCHING it, which is not the same as having
+        // started it.
+        for (const macroId of this._macrosReachableFrom([
+            def.bindings?.do, def.matrix_config,
+        ])) {
+            this._claimMacro(macroId);
+        }
+    }
+
+    _claimMacro(macroId) {
+        // A fresh press re-arms the report: pressing again after a failure is
+        // somebody asking again, and silence would read as having fixed it.
+        this._startedMacros[macroId] = { at: Date.now(), reported: false };
+    }
+
+    _macrosReachableFrom(node, found) {
+        found = found || new Set();
+        if (Array.isArray(node)) {
+            for (const entry of node) this._macrosReachableFrom(entry, found);
+            return found;
+        }
+        if (!node || typeof node !== 'object') return found;
+        if (node.action === 'macro' && node.macro) found.add(String(node.macro));
+        for (const value of Object.values(node)) {
+            if (value && typeof value === 'object') this._macrosReachableFrom(value, found);
+        }
+        return found;
+    }
+
+    /**
+     * A step of a macro this panel started failed. Say so, once.
+     *
+     * ONE message per run, the first: a macro that cannot reach a device on
+     * step 2 usually cannot reach it on step 3 either, and three sentences
+     * swapping through one band in a tenth of a second is unreadable. The
+     * first names the thing to go and fix.
+     */
+    _reportMacroFailure(msg) {
+        // Anything this failure happened INSIDE, not just the macro the step
+        // belongs to: press "System On", which calls "Projector On", and the
+        // frame names the sub-macro nobody at the panel has heard of.
+        const chain = Array.isArray(msg.call_chain) && msg.call_chain.length
+            ? msg.call_chain
+            : [msg.macro_id];
+        const claims = [];
+        for (const macroId of chain) {
+            const claim = this._startedMacros[macroId];
+            if (!claim) continue;
+            // A claim is normally cleared when its run ends. This covers the
+            // one that never sees an end -- the start was throttled, or the
+            // socket dropped mid-run -- so a schedule firing the same macro
+            // hours later cannot draw a message nobody asked for.
+            if (Date.now() - claim.at > MACRO_CLAIM_MAX_AGE_MS) {
+                delete this._startedMacros[macroId];
+                continue;
+            }
+            claims.push(claim);
+        }
+        if (!claims.length) return;
+        if (claims.some(claim => claim.reported)) return;
+        for (const claim of claims) claim.reported = true;
+        this.showFailureMessage(msg.message || msg.error);
     }
 
     /**

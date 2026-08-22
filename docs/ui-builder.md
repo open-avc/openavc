@@ -520,6 +520,14 @@ It only appears when something failed. A control that works is silent, and the
 rest of a press still runs when one action in it fails, so a button that turns
 on a projector and dims the lights still dims the lights.
 
+A preset button that runs a macro works the same way, and the message arrives
+a moment later rather than on the press: starting a macro always succeeds, and
+the failure happens partway through it. Only the panel the macro was started
+from shows it, so a message never appears in a space where nobody touched
+anything, and one run shows one message even when several of its steps fail. A
+macro started by a schedule or a trigger shows nothing on any panel: use a
+monitored reading for the readings a space should watch when nobody is in it.
+
 Turn it off in Panel Settings for a space that shows its own status, using a
 label or an indicator bound to a device's connection state. Most spaces should
 leave it on: without it, a control that reaches nothing looks exactly like a

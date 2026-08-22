@@ -458,3 +458,226 @@ async def test_skip_if_honors_trigger_field(macro_engine, core):
     assert state.get("var.ran") is None  # step skipped
     await macro_engine.execute("m", context={"event": "other"})
     assert state.get("var.ran") is True  # step ran
+
+
+# --- What a failed step REPORTS (Q-104) ---
+#
+# A macro that dies mid-run used to look, from a panel, exactly like one that
+# worked. These pin the two halves of the frame that fixes that: the sentence
+# it carries, and the cases where the frame is emitted at all.
+
+
+@pytest.fixture
+def failing_engine(core):
+    """An engine whose 'projector' is not there and whose 'screen' is."""
+    state, events = core
+    devices = DeviceManager(state, events)
+
+    async def _send(device_id, command, params=None):
+        if device_id in _ABSENT:
+            raise ConnectionError(f"Device '{device_id}' is not connected")
+        return True
+
+    devices.send_command = _send
+    state.set("device.projector.name", "Ceiling Projector")
+    state.set("device.projector.connected", True)
+    state.set("device.screen.name", "Screen")
+    state.set("device.screen.connected", True)
+    return MacroEngine(state, events, devices)
+
+
+_ABSENT = {"projector"}
+
+
+def _collect(events, pattern="macro.*"):
+    seen: list[tuple[str, dict]] = []
+    events.on(pattern, lambda e, p: seen.append((e, p)))
+    return seen
+
+
+async def test_a_failed_step_says_why_in_words_somebody_can_read(failing_engine, core):
+    """The reason, translated where the exception still exists.
+
+    ``error`` keeps what was raised, because a log and the IDE's run history
+    want it. ``message`` is the same failure written for whoever is standing
+    at the panel -- and the panel cannot derive it, holding no device names,
+    no host and no exception type.
+    """
+    _, events = core
+    seen = _collect(events, "macro.step_error.*")
+    failing_engine.load_macros([{
+        "id": "on", "name": "System On",
+        "steps": [{"action": "device.command", "device": "projector",
+                   "command": "power_on"}],
+    }])
+
+    await failing_engine.execute("on")
+
+    assert len(seen) == 1
+    payload = seen[0][1]
+    assert payload["error"] == "Device 'projector' is not connected"
+    assert payload["call_chain"] == ["on"]
+    # The device is named the way the room names it, and the sentence is the
+    # one a direct press already produces -- one failure, one wording.
+    assert payload["message"] == "Ceiling Projector is not connected."
+
+
+async def test_a_macro_that_fails_mid_run_still_reports_completed(failing_engine, core):
+    """Why the message has to ride the step, not the end of the run.
+
+    ``stop_on_error`` is off by default, so the steps after a failure still
+    run and the macro ends on ``macro.completed`` -- the identical frame a
+    clean run sends. Anything watching only the outcome cannot tell the two
+    apart, which is exactly how this failure stayed silent.
+    """
+    _, events = core
+    seen = _collect(events)
+    failing_engine.load_macros([{
+        "id": "on", "name": "System On",
+        "steps": [
+            {"action": "device.command", "device": "projector", "command": "power_on"},
+            {"action": "state.set", "key": "var.phase", "value": "done"},
+        ],
+    }])
+
+    await failing_engine.execute("on")
+
+    kinds = [e.rsplit(".", 1)[0] for e, _ in seen]
+    assert "macro.step_error" in kinds
+    assert kinds[-1] == "macro.completed"
+    assert "macro.error" not in kinds
+    assert failing_engine.state.get("var.phase") == "done"
+
+
+async def test_a_failure_inside_a_sub_macro_names_what_it_happened_inside(
+    failing_engine, core,
+):
+    """``macro_id`` is the sub-macro, which nobody at a panel has heard of.
+
+    A panel deciding whether a failure belongs to something somebody there
+    pressed has to be able to ask "was this inside the macro I started", and
+    the button they pressed ran the OUTER one.
+    """
+    _, events = core
+    seen = _collect(events, "macro.step_error.*")
+    failing_engine.load_macros([
+        {"id": "system_on", "name": "System On",
+         "steps": [{"action": "macro", "macro": "projector_on"}]},
+        {"id": "projector_on", "name": "Projector On",
+         "steps": [{"action": "device.command", "device": "projector",
+                    "command": "power_on"}]},
+    ])
+
+    await failing_engine.execute("system_on")
+
+    assert len(seen) == 1
+    payload = seen[0][1]
+    assert payload["macro_id"] == "projector_on"
+    assert payload["call_chain"] == ["projector_on", "system_on"]
+
+
+async def test_the_stop_on_error_reason_does_not_number_the_step_twice(
+    failing_engine, core,
+):
+    """One step number in the sentence, not two.
+
+    The detail string already opens with ``step N/T``, so wrapping it in
+    "Step N/T failed (...)" said it twice before saying the reason.
+    """
+    _, events = core
+    seen = _collect(events, "macro.error.*")
+    failing_engine.load_macros([{
+        "id": "on", "name": "System On", "stop_on_error": True,
+        "steps": [{"action": "device.command", "device": "projector",
+                   "command": "power_on"}],
+    }])
+
+    await failing_engine.execute("on")
+
+    assert len(seen) == 1
+    assert seen[0][1]["error"].count("1/1") == 1
+
+
+async def test_a_group_command_that_reached_nobody_reports_a_failed_step(
+    macro_engine, core,
+):
+    """Nothing happened, and until now that looked like success.
+
+    Every member offline means no send was even attempted, so nothing raised
+    and no step error existed -- and with no attempt there was no
+    ``group_complete`` progress event either, leaving the run silent on every
+    surface at once.
+    """
+    state, events = core
+    state.set("device.dsp.connected", False)
+    state.set("device.dsp.name", "Rack DSP")
+    state.set("device.amp.connected", False)
+    state.set("device.amp.name", "Zone Amp")
+    seen = _collect(events, "macro.step_error.*")
+
+    macro_engine.load_groups([{"id": "audio", "device_ids": ["dsp", "amp"]}])
+    macro_engine.load_macros([{
+        "id": "m", "name": "Mute", "steps": [
+            {"action": "group.command", "group": "audio", "command": "mute"},
+        ],
+    }])
+
+    await macro_engine.execute("m")
+
+    assert len(seen) == 1
+    # The first member, by the order the group declares them: a name somebody
+    # can go and look at beats a count of how many were unreachable.
+    assert seen[0][1]["message"] == "Rack DSP is not connected."
+    assert seen[0][1]["group"] == "audio"
+    assert macro_engine.devices.send_command.call_count == 0
+
+
+async def test_a_group_command_that_reached_somebody_reports_nothing(
+    macro_engine, core,
+):
+    """One dead member out of three is not a failed step.
+
+    A group step is a fan-out. The room did most of what was asked, and a
+    message about it lands mid-sequence on somebody starting a class.
+    """
+    state, events = core
+    for did, connected in (("d1", True), ("d2", False), ("d3", True)):
+        state.set(f"device.{did}.connected", connected)
+    seen = _collect(events, "macro.step_error.*")
+
+    macro_engine.load_groups([{"id": "displays", "device_ids": ["d1", "d2", "d3"]}])
+    macro_engine.load_macros([{
+        "id": "m", "name": "Off", "steps": [
+            {"action": "group.command", "group": "displays", "command": "power_off"},
+        ],
+    }])
+
+    await macro_engine.execute("m")
+
+    assert seen == []
+
+
+async def test_every_member_of_a_group_reports_in_the_order_it_was_declared(
+    macro_engine, core,
+):
+    """Attempted-then-skipped is our bookkeeping; declared order is the room's."""
+    state, events = core
+    for did, connected in (("d1", False), ("d2", True), ("d3", False)):
+        state.set(f"device.{did}.connected", connected)
+    seen = _collect(events, "macro.progress.*")
+
+    macro_engine.load_groups([{"id": "displays", "device_ids": ["d1", "d2", "d3"]}])
+    macro_engine.load_macros([{
+        "id": "m", "name": "Off", "steps": [
+            {"action": "group.command", "group": "displays", "command": "power_off"},
+        ],
+    }])
+
+    await macro_engine.execute("m")
+
+    group_events = [p for _, p in seen if p.get("status") == "group_complete"]
+    assert len(group_events) == 1
+    assert [r["device_id"] for r in group_events[0]["device_results"]] == ["d1", "d2", "d3"]
+    # An offline member reads the same way it would from a device.command
+    # step: the panel must not learn a second sentence for the same fact.
+    assert group_events[0]["device_results"][0]["message"] == "d1 is not connected."

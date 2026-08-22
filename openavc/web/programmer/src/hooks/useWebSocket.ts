@@ -258,6 +258,7 @@ export function useWebSocket() {
           group: (msg.group as string) ?? "",
           command: (msg.command as string) ?? "",
           error: msg.error as string,
+          message: (msg.message as string) || (msg.error as string),
           description: (msg.description as string) ?? "",
         });
       }
