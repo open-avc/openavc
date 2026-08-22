@@ -4,13 +4,16 @@ OpenAVC v0.29.0 shows why a child entity is offline instead of only that it is, 
 
 ## Child entities
 
-* Child entities show Not responding when the device lists an endpoint that is not answering.
-* Child entities show Service fault when an endpoint answers but the function it performs is not running.
+Child entities show why they are offline:
+
+* **Not responding.** The device lists the endpoint and it is not answering.
+* **Service fault.** The endpoint answers, but the function it performs is not running.
+
 * Offline endpoints sort to the top of the list and can be filtered to.
 * The type tab shows how many are down, and the device page lists them.
 * A child's own values, such as a port's input and volume, are shown on the device page.
 * Each list is titled with the driver's name for it, such as Displays or Outputs.
-* YAML drivers can set a child's online state.
+* YAML drivers can set `online` on a child.
 
 ## Panels
 
@@ -41,7 +44,7 @@ OpenAVC v0.29.0 shows why a child entity is offline instead of only that it is, 
 ## Also in this release
 
 * Assets in subfolders are kept in backups, exports, duplicates and imports.
-* State keys in the isc namespace are read-only. To send a value to peers, use a variable key and the Shared State Pattern. Reading and binding are unchanged.
+* `isc.` state keys are read-only. Use a `var.` key and the Shared State Pattern to send a value to peers. Reading and binding are unchanged.
 * The Simulator UI responds while a control is being dragged.
 * Control minimums went up slightly for the fader, slider, list, level meter, keypad, select and text input.
 
