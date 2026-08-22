@@ -207,3 +207,73 @@ def test_hardware_firing_device_routes_share_the_command_budget():
         ("POST", "/api/isc/command"),
     ]:
         assert _tier(method, path) == "control", f"{method} {path} should be control"
+
+
+# The panel's static render path — exempt entirely (see rate_limit.py). Listed
+# here so that widening the exemption has to be a deliberate edit: an exemption
+# is a bigger claim than a tier, because nothing downstream catches it.
+EXPECTED_RENDER_PATH_EXEMPT = {
+    ("GET", "/api/projects/{project_id}/assets/{filename:path}"),
+    ("GET", "/api/projects/{project_id}/ui/{file_path:path}"),
+    ("GET", "/api/plugins/{plugin_id}/panel/{file_path:path}"),
+    ("GET", "/api/plugins/{plugin_id}/files/{file_path:path}"),
+}
+
+
+def test_only_the_static_render_path_is_exempt_from_rate_limiting():
+    """No /api/ route escapes the limiter except the four file-serving families.
+
+    /api/push/ is excluded from the comparison because it is exempt for its own
+    reason (device event bursts) and is pinned by its own prefix.
+    """
+    actual = {
+        (m, p) for m, p in _registered_routes()
+        if p.startswith("/api/") and not p.startswith("/api/push/")
+        and _tier(m, p) == "skip"
+    }
+    assert actual == EXPECTED_RENDER_PATH_EXEMPT, _diff_message(
+        "rate-limit-exempt", EXPECTED_RENDER_PATH_EXEMPT, actual
+    )
+
+
+def test_writing_to_a_render_path_is_still_rate_limited():
+    """The open GET and an authenticated DELETE share a path shape.
+
+    Exempting by path alone would have handed the delete an unlimited budget,
+    which is why the exemption is GET/HEAD-only.
+    """
+    assert _classify("DELETE", "/api/projects/default/assets/logo.png") == "standard"
+    assert _classify("POST", "/api/projects/default/assets") == "standard"
+    assert _classify("PUT", "/api/projects/default/ui/control/index.html") == "standard"
+
+
+def test_render_path_collection_endpoints_keep_their_budget():
+    """Only per-file reads are exempt; listing is a normal authenticated read."""
+    assert _classify("GET", "/api/projects/default/assets") == "standard"
+    assert _classify("GET", "/api/projects/default/ui") == "standard"
+
+
+def test_credential_and_theme_routes_are_not_swept_in():
+    """The two §106 edges that made this a decision rather than a sweep."""
+    assert _classify("GET", "/api/plugins/audio_player/ext-token") == "standard"
+    assert _classify("GET", "/api/themes/dark-default") == "standard"
+    assert _classify("GET", "/api/themes/dark-default/export") == "standard"
+
+
+def test_a_heavy_cold_panel_load_no_longer_spends_the_standard_budget():
+    """The measured Q-101 load: 46 assets + 7 custom-control fetches.
+
+    Measured at 59 requests against a 60/min limit on a real remote tablet.
+    Only the two per-start fetches should still count.
+    """
+    cold_load = [f"/api/projects/default/assets/tile-{i}.png" for i in range(46)]
+    cold_load += [f"/api/projects/default/ui/control-{i}/index.html" for i in range(7)]
+    still_counted = [p for p in cold_load if _classify("GET", p) == "standard"]
+    assert still_counted == []
+
+
+def test_the_exemption_is_segment_bounded():
+    """A future sibling route must not inherit the exemption by prefix."""
+    assert _classify("GET", "/api/projects/default/assets-export/all.zip") == "standard"
+    assert _classify("GET", "/api/plugins/x/files-index") == "standard"
+    assert _classify("GET", "/api/projects/default/uix/thing") == "standard"

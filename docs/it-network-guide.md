@@ -359,7 +359,7 @@ Notes for network administrators:
 
 ### Rate limiting
 
-Rate limiting is enabled by default on the HTTP REST API for remote clients. Requests from localhost (127.0.0.1, ::1) are exempt, since the primary use case is a single user on the same machine. Remote clients are subject to the limits below. These tiers do not apply to the touch panel UI (which uses WebSocket) or to the command pipeline between the server and AV hardware — commands are sent to devices the instant they are received. The WebSocket channel has its own guards: each connection is limited to 200 messages per second, and the server accepts at most 100 simultaneous WebSocket connections.
+Rate limiting is enabled by default on the HTTP REST API for remote clients. Requests from localhost (127.0.0.1, ::1) are exempt, since the primary use case is a single user on the same machine. Remote clients are subject to the limits below. A touch panel's control traffic runs over WebSocket and is not subject to these tiers, though the images, custom controls and theme it loads over HTTP are (see the exempt row below). These tiers also do not apply to the command pipeline between the server and AV hardware — commands are sent to devices the instant they are received. The WebSocket channel has its own guards: each connection is limited to 200 messages per second, and the server accepts at most 100 simultaneous WebSocket connections.
 
 | Tier | Limit | Applies to |
 |------|-------|-----------|
@@ -367,6 +367,7 @@ Rate limiting is enabled by default on the HTTP REST API for remote clients. Req
 | Standard | 60 requests/min per IP | General API operations (including library/catalog reads) |
 | Control | 120 requests/min per IP | Commissioning operations: anything that changes a device, driver, or discovery scan, plus project save. That covers device commands and tests, raw sends, IR emit, device settings and lifecycle, driver install/upload/edit, and inter-system commands. These all require authentication; the higher budget keeps normal setup work (command bursts, volume ramps) from being throttled. |
 | Strict | 10 requests/min per IP | Security-sensitive operations: sign-in, cloud pairing, and backup restore |
+| Exempt | no limit | Inbound device push (`/api/push/`), and the files a touch panel loads to draw itself: project images and audio, a project's custom controls, and plugin panel files. These are reads of static files that require no credential. A wall panel loading a large layout can request several dozen in a few seconds, and a throttled response there would leave part of the panel blank. Uploading, replacing or deleting any of these files is a separate authenticated operation and is limited normally. |
 
 Failed authentication attempts are throttled at the strict (10/min) rate on every endpoint, not just strict-tier ones, so credential probing is capped wherever it is aimed. Successful control traffic is tracked separately: volume ramps, rapid command sequences, and multi-room control from the touch panel are unaffected by the brute-force limit.
 

@@ -53,6 +53,51 @@ STALE_THRESHOLD = 300.0  # 5 minutes
 # delivery failures). Same trusted-VLAN posture as UDP device control.
 _SKIP_PREFIXES = ("/panel", "/programmer", "/docs", "/openapi.json", "/ws", "/isc/ws", "/api/push/")
 
+# The panel's static render path, matched on whole leading SEGMENTS with one
+# wildcard for the id in the middle. Exempt from rate limiting entirely, for the
+# same reason /api/push/ is: the budget is spent by a machine doing something
+# ordinary, and the 429 is silent.
+#
+# Measured on a real remote tablet (v1-readiness Q-101): a cold load of a
+# realistic seven-page room panel — 46 distinct image assets, two custom
+# controls — spends 59 of the standard tier's 60/min, one request short of a
+# 429. Loopback is exempt, so a kiosk on the host never sees it and the dev box
+# cannot reproduce it; a remote wall tablet is the only place it shows up, and
+# the failure is a panel that draws half its tiles with nothing said. Raising
+# the tier was the obvious answer and is the wrong one: open is only 120/min,
+# and a panel that reaches 59 reaches 120 with a few more sources.
+#
+# GET (and HEAD) ONLY, which is the whole subtlety. The open serving route and
+# an authenticated DELETE share the path shape --
+# `/api/projects/{id}/assets/{filename}` is served open and deleted with a
+# credential -- so exempting by path alone would hand the delete an unlimited
+# budget. Nothing here mints or checks a credential; `/api/plugins/{id}/ext-token`
+# is deliberately NOT in this list, and neither is `/api/themes/{id}`, whose
+# authenticated `/export` sibling shares its prefix and which costs a panel one
+# request per start anyway.
+_STATIC_RENDER_FAMILIES = (
+    ("api", "projects", "*", "assets"),
+    ("api", "projects", "*", "ui"),
+    ("api", "plugins", "*", "panel"),
+    ("api", "plugins", "*", "files"),
+)
+
+
+def _is_static_render_path(path: str) -> bool:
+    """True for a GET of a file under one of the render-path families.
+
+    Requires at least one segment past the family root, so the collection
+    endpoints (`/api/projects/X/assets`, which lists, and `/api/projects/X/ui`)
+    keep their own budget -- only the per-file reads are exempt.
+    """
+    segments = [s for s in path.split("/") if s]
+    for family in _STATIC_RENDER_FAMILIES:
+        if len(segments) <= len(family):
+            continue
+        if all(pat == "*" or pat == seg for pat, seg in zip(family, segments)):
+            return True
+    return False
+
 # Open tier paths (high limit, no auth needed). Every entry here is also on the
 # unauthenticated open router — tests/test_rate_limit_tiers.py holds that line,
 # because an open-tier path that *does* require auth would be handing an
@@ -123,6 +168,8 @@ def _classify(method: str, path: str) -> str:
     if any(path == p or path.startswith(p + "/") for p in _extra_standard_prefixes):
         return "standard"
     if any(path.startswith(p) for p in _SKIP_PREFIXES):
+        return "skip"
+    if method in ("GET", "HEAD") and _is_static_render_path(path):
         return "skip"
     if not path.startswith("/api/"):
         return "skip"
