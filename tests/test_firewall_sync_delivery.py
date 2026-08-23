@@ -182,3 +182,48 @@ def test_the_helper_runs_after_the_update_helper(unit: str) -> None:
         f"the {unit} unit runs firewall-sync.sh before update-helper.sh, so on the boot that "
         f"applies an update the ports are synced by the outgoing release's helper"
     )
+
+
+# --- the Pi image gets the unit by copying this one, and that must stay true ---
+
+# The image installs its own copy of the unit rather than taking one from the
+# release archive, so the ExecStartPre above only reaches a Pi while these keep
+# staging the repo's file verbatim. If one ever forks, the image ships a unit
+# without this line -- and without any other unit change -- while every check
+# above still passes, which is the exact shape of the bug this module exists for.
+PI_UNIT_STAGERS = {
+    "pi image (CI, the published one)":
+        REPO_ROOT / ".github" / "workflows" / "release-pi.yml",
+    "pi image (local build script)":
+        REPO_ROOT / "installer" / "pi-image" / "build.sh",
+}
+
+_STAGES_THE_UNIT = re.compile(
+    r"""installer/openavc\.service["']?\s+["']?[^"'\s]*files/openavc\.service"""
+)
+
+
+@pytest.mark.parametrize("label", sorted(PI_UNIT_STAGERS))
+def test_the_pi_image_stages_this_repos_unit_and_not_a_fork(label: str) -> None:
+    path = PI_UNIT_STAGERS[label]
+    assert path.is_file(), f"{path} is missing -- this test points at the wrong file"
+    assert _STAGES_THE_UNIT.search(path.read_text(encoding="utf-8")), (
+        f"{path.name} no longer stages installer/openavc.service into the pi-gen files "
+        f"directory, so {label} would ship a unit that is not the one checked above"
+    )
+
+
+def test_the_pi_gen_stage_installs_the_staged_unit() -> None:
+    """Closes the chain: repo file -> staged file -> the image's systemd dir."""
+    stage = (
+        REPO_ROOT / "installer" / "pi-image" / "stage-openavc"
+        / "01-install-openavc" / "00-run.sh"
+    )
+    source = stage.read_text(encoding="utf-8")
+    assert re.search(
+        r"""\$FILES_DIR["']?/openavc\.service["']?[^\n]*\n?[^\n]*etc/systemd/system/openavc\.service""",
+        source,
+    ), (
+        "the pi-gen stage no longer installs files/openavc.service into "
+        "/etc/systemd/system, so the staged unit never reaches the image"
+    )
