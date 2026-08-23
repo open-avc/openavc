@@ -102,7 +102,7 @@ OpenAVC separates two surfaces with different access rules:
 
 **Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m openavc.main` from source) binds to `127.0.0.1` (localhost only). To force localhost-only on a packaged deployment, set `OPENAVC_BIND=127.0.0.1` (e.g. `sudo systemctl edit openavc` on Linux, or the `network.bind_address` field in `system.json`).
 
-**Credentials.** The admin password set during first-run setup is stored in `system.json` on the host, as a salted scrypt hash rather than the password itself, in a file readable only by the account the service runs as. It can be changed later in **Settings > Security**. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`) or an `OPENAVC_API_KEY` for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen. A password written into `system.json` by hand is converted to a hash the next time the service starts.
+**Credentials.** The admin password set during first-run setup is stored in `system.json` on the host, as a salted scrypt hash rather than the password itself, in a file readable only by the account the service runs as. It can be changed later in **Settings > Security**. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`) or an `OPENAVC_API_KEY` for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen. A password or API key written into `system.json` by hand is converted to a hash the next time the service starts, and both keep working across that conversion.
 
 **If the admin password is lost.** It cannot be read back out of `system.json`. With filesystem access to the host, set `auth.programmer_password` to `""` in `system.json` and restart OpenAVC: the instance returns to the unclaimed state and the next visit to the Programmer offers the "create admin password" screen again. Projects, devices and settings are untouched. On a Raspberry Pi appliance the `openavc` operating-system login keeps its current password until a new admin password is set, at which point the two are back in step.
 
@@ -305,7 +305,7 @@ The admin credential is one of the following, set during first-run setup or prov
 | Method | Configuration | When to use |
 |--------|--------------|-------------|
 | HTTP Basic (username + password) | `OPENAVC_PROGRAMMER_USERNAME` and `OPENAVC_PROGRAMMER_PASSWORD` env vars, or `auth.programmer_username` and `auth.programmer_password` in `system.json` | The standard admin login, and what the first-run setup screen creates. The browser prompts for both username and password. This is for humans logging in via a browser. |
-| API key (token) | `OPENAVC_API_KEY` env var or `auth.api_key` in `system.json` | Set this if you have third-party integrations (control scripts, middleware, or external software) that connect to the REST API or WebSocket. Provide the key via the `X-API-Key` header. Not needed unless you are building custom integrations. |
+| API key (token) | `OPENAVC_API_KEY` env var or `auth.api_key` in `system.json` | Set this if you have third-party integrations (control scripts, middleware, or external software) that connect to the REST API or WebSocket. Provide the key via the `X-API-Key` header. Not needed unless you are building custom integrations. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
 
 Either one protects the Programmer IDE and API endpoints. The username/password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
 
@@ -380,7 +380,7 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 | Data | Location | Sensitive? |
 |------|----------|-----------|
 | Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low. Contains device IP addresses and connection parameters. |
-| System configuration | `system.json` | Medium. May contain auth passwords and API keys in plaintext. Protect with filesystem permissions. |
+| System configuration | `system.json` | Medium. The admin password and API key are stored as salted hashes, not as typed. The cloud and inter-system keys are stored as-is, because the instance has to present them. The file is readable only by the account the service runs as. |
 | Persistent variables | `state.json` | Low. Key-value pairs for automation state. |
 | Application logs | `logs/` directory | Low. Standard application logs at INFO level. Device protocol traffic (which can include device credentials) is never written to disk — it is held in a fixed-size in-memory buffer, visible only in the live log view behind an authenticated Programmer login. Configurable rotation (default: 50 MB, 5 files). |
 | Cloud pairing data | `cloud.json` | High. Contains system key for cloud authentication. Protect with filesystem permissions. |

@@ -11,6 +11,19 @@ import type { SystemConfig, NetworkAdapter, TlsStatus, TlsUploadResult, SshStatu
 
 const REDACTED = "***";
 
+/** A new API key: 32 random bytes, url-safe, the same shape the server would
+ *  produce. The server stores only a digest of whatever is saved here, so this
+ *  is the one moment the key exists in readable form -- and its length is what
+ *  makes a key safe to store that way. */
+function generateApiKey(): string {
+  const raw = new Uint8Array(32);
+  crypto.getRandomValues(raw);
+  return btoa(String.fromCharCode(...raw))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 /** Friendly text for the typed error codes a failed certificate issuance
  *  reports through tls-status. Unknown codes fall back to the raw code. */
 const CLOUD_CERT_ERROR_LABELS: Record<string, string> = {
@@ -1587,13 +1600,35 @@ export function SystemSettingsView() {
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>API key</label>
-            <PasswordField
-              value={auth.api_key}
-              placeholder="No API key set"
-              onChange={(v) => update("auth", "api_key", v)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <PasswordField
+                  value={auth.api_key}
+                  placeholder="No API key set"
+                  onChange={(v) => update("auth", "api_key", v)}
+                />
+              </div>
+              {auth.api_key && auth.api_key !== REDACTED && (
+                <button
+                  type="button"
+                  title="Copy API key"
+                  onClick={() => { copyToClipboard(auth.api_key).then((ok) => { if (ok) showSuccess("Copied."); }); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 2, display: "inline-flex" }}
+                >
+                  <Copy size={14} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => update("auth", "api_key", generateApiKey())}
+                style={{ ...btnStyle, background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)", flexShrink: 0 }}
+              >
+                Generate
+              </button>
+            </div>
             <span style={helpText}>
               Provide this to external systems via the <code>X-API-Key</code> header.
+              Copy it before you save. It is not shown again afterwards.
             </span>
           </div>
         </div>

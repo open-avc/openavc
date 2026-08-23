@@ -17,9 +17,9 @@ frictionless dev (see `anonymous_access_allowed`). Code-writing endpoints
   admin surface openly, "false" requires setup. Unset = auto (dev-only open).
 - OPENAVC_PANEL_LOCK_CODE — reserved for future panel lock screen
 
-The password is stored as a `hashlib.scrypt` digest, never as typed — see
-`openavc/utils/password_hash.py`. Nothing reads it back; every consumer here
-either checks presence or verifies a supplied value against it.
+Neither the password nor the API key is stored as typed — both are digests,
+see `openavc/utils/password_hash.py`. Nothing reads either back; every consumer
+here checks presence or verifies a supplied value against it.
 
 Browser sessions don't hold the password: the Programmer SPA exchanges it for
 a short-lived session token (POST /api/auth/session) and sends
@@ -42,7 +42,12 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from openavc.system_config import get_system_config
 from openavc.utils.logger import get_logger
-from openavc.utils.password_hash import hash_password, verify_password
+from openavc.utils.password_hash import (
+    hash_api_key,
+    hash_password,
+    verify_api_key,
+    verify_password,
+)
 from openavc.utils.request_origin import (
     cloud_session_secret,
     is_local_console_request,
@@ -65,6 +70,9 @@ def _get_password() -> str:
 
 
 def _get_api_key() -> str:
+    """The stored key: normally a digest, a plaintext when it came from
+    `OPENAVC_API_KEY`. Only `_check_api_key` cares which — every other caller
+    reads it for presence or hashes it into a fingerprint."""
     return get_system_config().get("auth", "api_key", "")
 
 
@@ -86,8 +94,8 @@ def _check_username(provided: str) -> bool:
 
 
 def _check_api_key(provided: str) -> bool:
-    """Timing-safe comparison against the configured API key."""
-    return secrets.compare_digest(provided, _get_api_key())
+    """Timing-safe check against the configured API key."""
+    return verify_api_key(provided, _get_api_key())
 
 
 def _check_credentials(provided_user: str, provided_pass: str) -> bool:
@@ -213,6 +221,17 @@ def store_admin_password(password: str) -> None:
     how an instance goes back to unclaimed.
     """
     get_system_config().set("auth", "programmer_password", hash_password(password))
+
+
+def store_api_key(api_key: str) -> None:
+    """Write the API key to the config in its stored form (in memory — the
+    caller saves).
+
+    The only place the key is written, for the same reason `store_admin_password`
+    is: with the generic Settings loop no longer allowed near this field, there
+    is nowhere left that could persist one as typed. An empty key clears it.
+    """
+    get_system_config().set("auth", "api_key", hash_api_key(api_key))
 
 
 def claim_instance(password: str, username: str = "") -> None:

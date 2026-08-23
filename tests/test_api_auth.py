@@ -14,6 +14,7 @@ from openavc.api.auth import (
     require_programmer_auth,
 )
 import openavc.api.auth as auth_mod
+from openavc.utils.password_hash import hash_api_key
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +160,55 @@ class TestApiKeyAuth:
         with pytest.raises(HTTPException) as exc_info:
             await require_programmer_auth(request, credentials=None)
         assert exc_info.value.status_code == 401
+
+
+class TestApiKeyAuthAgainstTheStoredDigest:
+    """The key is stored as a digest, so every door has to verify rather than
+    compare. The class above sets a plaintext, which is the shape the env
+    override and a hand-provisioned file still have — these set what an
+    ordinary instance actually holds."""
+
+    @pytest.mark.asyncio
+    async def test_the_key_behind_a_digest_still_opens_the_door(self, monkeypatch):
+        _set_auth(monkeypatch, api_key=hash_api_key("my-api-key"))
+
+        request = _make_request({"x-api-key": "my-api-key"})
+        assert await require_programmer_auth(request, credentials=None) is None
+
+    @pytest.mark.asyncio
+    async def test_a_wrong_key_against_a_digest_is_still_401(self, monkeypatch):
+        _set_auth(monkeypatch, api_key=hash_api_key("my-api-key"))
+
+        request = _make_request({"x-api-key": "bad-key"})
+        with pytest.raises(HTTPException) as exc_info:
+            await require_programmer_auth(request, credentials=None)
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_presenting_the_stored_record_itself_opens_nothing(self, monkeypatch):
+        """What an attacker who read `system.json` now holds. If this ever
+        passes, the change bought nothing at all."""
+        stored = hash_api_key("my-api-key")
+        _set_auth(monkeypatch, api_key=stored)
+
+        request = _make_request({"x-api-key": stored})
+        with pytest.raises(HTTPException) as exc_info:
+            await require_programmer_auth(request, credentials=None)
+        assert exc_info.value.status_code == 401
+
+    def test_the_websocket_door_verifies_the_digest_too(self, monkeypatch):
+        """The WS handshake is its own credential check — no rate limiter sees
+        it, and it is a separate call site from the HTTP one."""
+        _set_auth(monkeypatch, api_key=hash_api_key("ws-key"))
+
+        assert check_ws_auth({}, {"x-api-key": "ws-key"}) is True
+        assert check_ws_auth({}, {"x-api-key": "wrong"}) is False
+
+    def test_the_websocket_subprotocol_verifies_the_digest_too(self, monkeypatch):
+        _set_auth(monkeypatch, api_key=hash_api_key("ws-key"))
+
+        assert check_ws_auth({}, {"sec-websocket-protocol": "auth.ws-key"}) is True
+        assert check_ws_auth({}, {"sec-websocket-protocol": "auth.wrong"}) is False
 
 
 # ---------------------------------------------------------------------------

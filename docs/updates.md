@@ -155,6 +155,12 @@ Two ways to get back in, both needing access to the host's files:
 
 This applies only when crossing back over v0.29.0. Rollbacks between v0.29.0 and later versions are not affected.
 
+### Rolling back across the API key change
+
+The release after v0.29.0 does the same thing to the API key: it is stored as a hash instead of the key itself. Rolling back to a version before that one leaves integrations getting 401 responses, because the older version compares the key literally against a value that is now a hash. The Programmer sign-in and the room panel are unaffected.
+
+The same two routes apply. Restore `system.json` from the pre-update backup, which brings back the key your integrations are already using. Or set `auth.api_key` to a key of your choosing in `system.json`, restart, and update the integrations to match.
+
 ## Update Channels
 
 OpenAVC supports two update channels:

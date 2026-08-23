@@ -18,6 +18,12 @@ from openavc.api.auth import _basic, programmer_auth_satisfied
 router = APIRouter()
 open_router = APIRouter()
 
+# What a secret reads as on the way out, and the value a PATCH must never
+# take literally on the way back in. One constant so the two halves of that
+# round trip cannot drift; the Programmer's copy of it is in
+# SystemSettingsView.tsx, which strips these before saving.
+REDACTED = "***"
+
 # Strong references to fire-and-forget tasks. asyncio only holds a weak
 # reference to a bare create_task(), so an unreferenced task can be garbage
 # collected mid-flight; keep it alive until it finishes.
@@ -105,15 +111,15 @@ async def get_system_config_endpoint() -> dict[str, Any]:
     # a digest is offline-crackable, and handing one to every authenticated
     # caller of this endpoint would put it somewhere system.json's 0600 isn't.
     if data.get("auth", {}).get("programmer_password"):
-        data["auth"]["programmer_password"] = "***"
+        data["auth"]["programmer_password"] = REDACTED
     if data.get("auth", {}).get("api_key"):
-        data["auth"]["api_key"] = "***"
+        data["auth"]["api_key"] = REDACTED
     if data.get("auth", {}).get("panel_lock_code"):
-        data["auth"]["panel_lock_code"] = "***"
+        data["auth"]["panel_lock_code"] = REDACTED
     if data.get("cloud", {}).get("system_key"):
-        data["cloud"]["system_key"] = "***"
+        data["cloud"]["system_key"] = REDACTED
     if data.get("isc", {}).get("auth_key"):
-        data["isc"]["auth_key"] = "***"
+        data["isc"]["auth_key"] = REDACTED
     return data
 
 
@@ -153,6 +159,20 @@ async def update_system_config(request: Request) -> dict[str, Any]:
                 ),
             )
 
+    # A caller that GETs this config and PATCHes it back sends the redaction
+    # marker in place of every secret it never saw. Dropping those is what
+    # keeps that round trip from setting each one to a literal `***` — which,
+    # now that two of them are hashed, would be an unrecoverable lockout rather
+    # than a visible mistake. The Programmer strips them client-side already;
+    # this is the same rule where every other client meets it.
+    if isinstance(body.get("auth"), dict):
+        body["auth"] = {k: v for k, v in body["auth"].items() if v != REDACTED}
+    for section in ("cloud", "isc"):
+        if isinstance(body.get(section), dict):
+            body[section] = {
+                k: v for k, v in body[section].items() if v != REDACTED
+            }
+
     # The admin password never goes through the generic loop below: it is
     # stored as a digest, so the typed value has exactly two destinations —
     # the hash, and the one-shot OS-sync request. Taken out here so no future
@@ -162,6 +182,13 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     if isinstance(body.get("auth"), dict) and "programmer_password" in body["auth"]:
         raw = body["auth"].pop("programmer_password")
         new_password = "" if raw is None else str(raw)
+
+    # Same for the API key, for the same reason: it is a digest now, so the
+    # typed value's only destination is the hash.
+    new_api_key: str | None = None
+    if isinstance(body.get("auth"), dict) and "api_key" in body["auth"]:
+        raw = body["auth"].pop("api_key")
+        new_api_key = "" if raw is None else str(raw)
 
     updated_sections = []
     for section_name, section_data in body.items():
@@ -178,6 +205,12 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     if new_password is not None:
         from openavc.api.auth import store_admin_password
         store_admin_password(new_password)
+        if "auth" not in updated_sections:
+            updated_sections.append("auth")
+
+    if new_api_key is not None:
+        from openavc.api.auth import store_api_key
+        store_api_key(new_api_key)
         if "auth" not in updated_sections:
             updated_sections.append("auth")
 

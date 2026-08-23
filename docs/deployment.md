@@ -466,10 +466,12 @@ The Panel UI is never password-protected. End users can always open the touch pa
 | Setting | Environment Variable | When to use it |
 |---------|---------------------|----------------|
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. Stored as a salted scrypt hash, so it cannot be read back out of `system.json`; a plain password written into that file by hand still works and is converted to a hash on the next start. |
-| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. |
+| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
 | `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | **Set this if the panel runs on a public-facing display** and you want to prevent users from navigating away from the touch panel UI. |
 
 If the admin password is lost, set `auth.programmer_password` to `""` in `system.json` and restart. The instance returns to unclaimed and offers the "create admin password" screen again; nothing else is affected.
+
+If the API key is lost, generate a new one in **Settings > Security** and update whatever integrations use it. It cannot be read back out of `system.json` either.
 
 You do not need to set both programmer password and API key. Either one protects the Programmer IDE and API. The password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
 

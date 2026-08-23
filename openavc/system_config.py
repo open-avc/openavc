@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -241,6 +242,13 @@ DEFAULTS: dict[str, Any] = {
         "programmer_username": "",
         "programmer_password": "",
         "api_key": "",
+        # Reserved: nothing reads this yet. It is deliberately NOT converted to
+        # a digest alongside the password and the api_key, because hashing is
+        # one-way and the shape belongs to the feature that will check it — a
+        # short panel PIN needs the slow hash the password uses, not the fast
+        # one the API key uses, and how many tries a panel allows is part of
+        # the same decision. Whoever builds the lock screen: hash it then,
+        # through openavc/utils/password_hash.py, before anything writes one.
         "panel_lock_code": "",
         # No-credential posture: "auto" = open only on a dev checkout, require
         # setup on shipped deployments; "true"/"false" force it. See
@@ -660,26 +668,66 @@ class SystemConfig:
         server is where the conversion has to happen — and it happens before
         either is loaded.
         """
-        from openavc.utils.password_hash import hash_password, looks_hashed
+        from openavc.utils.password_hash import hash_password
+
+        return self._convert_stored_secret(
+            "programmer_password",
+            hash_password,
+            "OPENAVC_PROGRAMMER_PASSWORD",
+            "admin password",
+        )
+
+    def migrate_api_key(self) -> bool:
+        """Rewrite a cleartext ``auth.api_key`` in system.json as a digest, and
+        save. Returns True when something was converted.
+
+        Same conversion as the password one above and called from the same
+        place, because the key sits in the same file and is the more direct way
+        in: presented in ``X-API-Key`` it satisfies the admin check outright,
+        with no password involved.
+
+        **The key itself keeps working.** Whatever automation holds it goes on
+        presenting the same string; only the stored side changes shape. That is
+        the whole requirement here — a key that quietly stopped authenticating
+        would be a lockout nobody gets an error for.
+        """
+        from openavc.utils.password_hash import hash_api_key
+
+        return self._convert_stored_secret(
+            "api_key", hash_api_key, "OPENAVC_API_KEY", "API key"
+        )
+
+    def _convert_stored_secret(
+        self,
+        key: str,
+        hasher: Callable[[str], str],
+        env_var: str,
+        description: str,
+    ) -> bool:
+        """The shared body of the two conversions above: hash a plaintext in
+        the ``auth`` section of the file, keep the runtime view in step, save.
+
+        ``auth.panel_lock_code`` deliberately does not come through here — see
+        the note beside it in DEFAULTS.
+        """
+        from openavc.utils.password_hash import looks_hashed
 
         auth = self._file_data.get("auth")
         if not isinstance(auth, dict):
             return False
-        stored = auth.get("programmer_password", "")
+        stored = auth.get(key, "")
         if not isinstance(stored, str) or not stored or looks_hashed(stored):
             return False
-        hashed = hash_password(stored)
-        auth["programmer_password"] = hashed
+        hashed = hasher(stored)
+        auth[key] = hashed
         # Keep the runtime view in step. An env override still wins where it is
         # set: load() layered it onto _data, and this only rewrites the key
         # when the FILE holds a plaintext.
         runtime_auth = self._data.get("auth")
-        if isinstance(runtime_auth, dict) and not os.environ.get(
-            "OPENAVC_PROGRAMMER_PASSWORD"
-        ):
-            runtime_auth["programmer_password"] = hashed
+        if isinstance(runtime_auth, dict) and not os.environ.get(env_var):
+            runtime_auth[key] = hashed
         self.save()
-        log.info("Converted the stored admin password in %s to a hash", self._file_path)
+        log.info("Converted the stored %s in %s to a hash", description, self._file_path)
         return True
 
     def save(self) -> None:
