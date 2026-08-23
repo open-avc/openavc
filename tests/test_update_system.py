@@ -218,6 +218,65 @@ def _to_msys2_path(win_path: str) -> str:
     return path
 
 
+def _as_bash_path(path: Path | str) -> str:
+    """Render a path the way the bash under test will read it (MSYS2 on
+    Windows, unchanged elsewhere)."""
+    return _to_msys2_path(str(path)) if sys.platform == "win32" else str(path)
+
+
+def _write_python_stub(
+    path: Path, log: Path, *, venv_exit: int = 0, pip_exit: int = 0,
+) -> None:
+    """Write a stand-in for the system python3 the helper calls as ``$PYTHON``.
+
+    It appends every invocation to ``log``, answers ``-m venv <dir>`` itself
+    with ``venv_exit``, and hands everything else -- the two JSON parses of
+    apply-update.json -- to the real interpreter unchanged.
+
+    Why a stub rather than a real ``python -m venv``: a real venv carries a
+    real pip, and the branch immediately after recreation runs
+    ``venv/bin/pip install -r requirements.txt``, so recreating for real
+    installs fastapi and httpx from PyPI inside HELPER_TIMEOUT. Measured, that
+    case ran 3.1s against a 0.2s baseline for the same apply -- and only that
+    fast because the machine had a warm pip cache. On a cold runner it is a
+    download, and offline it fails, which would quietly turn the success case
+    into the abort case: a test that changes what it asserts depending on the
+    network. The branch under test is the DECISION (does the migrated
+    interpreter run, and what happens when the rebuild fails), not venv
+    creation, so the stub answers exactly that question and records being
+    asked. On success it leaves the two files the next branch looks for: a
+    runnable interpreter and a pip.
+    """
+    real = _as_bash_path(sys.executable)
+    log_path = _as_bash_path(log)
+    if venv_exit:
+        # python3-venv missing, or the rebuild failed for any other reason.
+        venv_body = (
+            '    echo "stub: refusing to build a venv" >&2\n'
+            f"    exit {venv_exit}\n"
+        )
+    else:
+        # A freshly built venv, reduced to what the helper looks at next: an
+        # interpreter that runs, and a pip for the dependency sync.
+        venv_body = (
+            '    mkdir -p "$3/bin" || exit 1\n'
+            "    printf '#!/bin/sh\\nexit 0\\n' > \"$3/bin/python3\"\n"
+            f"    printf '#!/bin/sh\\necho \"pip $@\" >> \"{log_path}\"\\n"
+            f"exit {pip_exit}\\n' > \"$3/bin/pip\"\n"
+            '    chmod 755 "$3/bin/python3" "$3/bin/pip"\n'
+            "    exit 0\n"
+        )
+    path.write_text(
+        "#!/bin/sh\n"
+        f'echo "python $@" >> "{log_path}"\n'
+        'if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then\n'
+        f"{venv_body}"
+        "fi\n"
+        f'exec "{real}" "$@"\n'
+    )
+    path.chmod(0o755)
+
+
 def _fixup_instruction_paths(data_dir: Path) -> None:
     """On Windows, convert paths in apply-update.json to MSYS2 format
     so Git Bash's tar can process them. No-op on Linux.
@@ -236,18 +295,21 @@ def _fixup_instruction_paths(data_dir: Path) -> None:
             instruction_path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def _run_helper(data_dir: Path, app_dir: Path) -> subprocess.CompletedProcess:
+def _run_helper(
+    data_dir: Path, app_dir: Path, *, python: Path | str | None = None,
+) -> subprocess.CompletedProcess:
     """Run the actual update-helper.sh. Returns the completed process.
 
     On Windows, converts all paths to MSYS2 format (/c/Users/...) because
     Git Bash can't handle Windows backslash paths or drive letters in tar.
-    Sets PYTHON env var so the script can find the interpreter.
+    Sets PYTHON env var so the script can find the interpreter; pass ``python``
+    to point it at a stub instead (see ``_write_python_stub``).
     """
     assert _BASH_PATH is not None, "bash not found"
     _fixup_instruction_paths(data_dir)
-    env = {**os.environ, "PYTHON": sys.executable}
-    data_arg = _to_msys2_path(str(data_dir)) if sys.platform == "win32" else str(data_dir)
-    app_arg = _to_msys2_path(str(app_dir)) if sys.platform == "win32" else str(app_dir)
+    env = {**os.environ, "PYTHON": _as_bash_path(python) if python else sys.executable}
+    data_arg = _as_bash_path(data_dir)
+    app_arg = _as_bash_path(app_dir)
     return subprocess.run(
         [_BASH_PATH, str(HELPER_SCRIPT), data_arg, app_arg],
         capture_output=True,
@@ -694,6 +756,18 @@ class TestWindowsInstallerCaching:
 # ===========================================================================
 
 
+@pytest.fixture(scope="module")
+def update_tarball(tmp_path_factory) -> Path:
+    """The v2.0.0 artifact, built once for every helper case that needs one.
+
+    The helper only reads it (``tar xzf``) and never consumes it, so one copy
+    serves every case in this module. The fake INSTALL deliberately stays
+    per-case and cannot be shared the same way: the helper deletes and replaces
+    app_dir, which is the thing these cases exist to verify.
+    """
+    return _build_update_tarball(tmp_path_factory.mktemp("staging"), "2.0.0")
+
+
 @gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestHelperScriptNoOp:
     """When no instruction files exist, the script must exit 0 and touch nothing."""
@@ -726,17 +800,6 @@ class TestHelperScriptNoOp:
 @gates.skipif_missing(gates.BASH, _BASH_MISSING)
 class TestHelperScriptApplyUpdate:
     """Simulate ExecStartPre running after the server wrote apply-update.json."""
-
-    @pytest.fixture(scope="class")
-    def update_tarball(self, tmp_path_factory) -> Path:
-        """The v2.0.0 artifact, built once for the whole class.
-
-        The helper only reads it (``tar xzf``) and never consumes it, so one
-        copy serves every case that needs one. The fake INSTALL deliberately
-        stays per-case and cannot be shared the same way: the helper deletes
-        and replaces app_dir, which is the thing these cases exist to verify.
-        """
-        return _build_update_tarball(tmp_path_factory.mktemp("staging"), "2.0.0")
 
     def test_full_update_apply(self, tmp_path, update_tarball):
         """The script must:
@@ -865,6 +928,172 @@ class TestHelperScriptApplyUpdate:
         assert result.returncode == 0
         assert not (data_dir / "apply-update.json").exists()
         assert _read_version(app_dir) == "1.0.0"
+
+
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
+class TestHelperScriptVenvRecovery:
+    """Step 7 of handle_update: make the migrated venv functional, or abort.
+
+    The venv comes across from the OLD release, and an OS Python minor bump
+    (apt moving 3.11 -> 3.12) can leave its interpreter dangling. So after the
+    swap the helper runs the migrated interpreter, rebuilds the venv with the
+    system python3 when it cannot run, and syncs dependencies into it. Both
+    failures abort the update and roll back in place, because coming up live on
+    a venv that cannot import its packages crash-loops the service with no
+    rollback armed.
+
+    This runs as root during a real update, on exactly the boxes an apt python
+    bump touched. It is also the branch a test cannot reach with a real
+    interpreter without turning itself into a PyPI install -- see
+    ``_write_python_stub`` for the measurement behind that.
+
+    Note what is NOT covered by the dangling-interpreter cases elsewhere in this
+    file: those drive ``is_app_dir_valid``, the ROLLBACK target check, which
+    asks whether a snapshot may be promoted. This asks whether the install just
+    promoted can be repaired. Different branch, different question.
+    """
+
+    def test_dangling_interpreter_is_rebuilt_then_repopulated(
+        self, tmp_path, update_tarball
+    ):
+        """The interpreter migrated from the old release cannot run, so the
+        helper rebuilds the venv and the dependency sync repopulates it. The
+        update goes through: a box whose python was bumped under it still lands
+        on the new version."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        # runnable_venv=False is the apt bump: venv/bin/python3 is present (so
+        # it migrates across the swap like any other file) but cannot execute.
+        _build_fake_install(app_dir, "1.0.0", runnable_venv=False)
+        calls = tmp_path / "python-calls.log"
+        calls.write_text("")
+        stub = tmp_path / "python-stub"
+        _write_python_stub(stub, calls)
+
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(update_tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+
+        result = _run_helper(data_dir, app_dir, python=stub)
+
+        assert result.returncode == 0
+        assert "recreating" in result.stdout
+
+        # The venv was rebuilt at the install's own path, and only after that
+        # were dependencies synced -- a rebuilt venv is empty, so the order is
+        # the whole point.
+        logged = calls.read_text().splitlines()
+        venv_calls = [i for i, c in enumerate(logged) if c.startswith("python -m venv ")]
+        pip_calls = [i for i, c in enumerate(logged) if c.startswith("pip install ")]
+        assert venv_calls, f"helper never rebuilt the venv; $PYTHON saw only {logged}"
+        rebuilt = logged[venv_calls[0]].removeprefix("python -m venv ")
+        assert rebuilt == _as_bash_path(app_dir / "venv")
+        assert pip_calls, f"dependencies were never synced into the new venv: {logged}"
+        assert pip_calls[0] > venv_calls[0], (
+            "dependency sync ran BEFORE the rebuild, which would install into "
+            f"the venv about to be deleted: {logged}"
+        )
+        assert _as_bash_path(app_dir / "requirements.txt") in logged[pip_calls[0]], (
+            "the sync must install the NEW release's requirements.txt"
+        )
+
+        # Update completed, on an install that can now start.
+        assert _read_version(app_dir) == "2.0.0"
+        assert (app_dir / "venv" / "bin" / "python3").exists()
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_failed_rebuild_aborts_and_restores_the_previous_install(
+        self, tmp_path, update_tarball
+    ):
+        """python3-venv missing (or the rebuild failing for any other reason)
+        must not leave the box live on an install with no interpreter: the
+        update aborts and the snapshot is restored in place."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        _build_fake_install(app_dir, "1.0.0", runnable_venv=False)
+        # User content in a preserved dir: an aborted update must not eat it.
+        (app_dir / "driver_repo").mkdir(exist_ok=True)
+        (app_dir / "driver_repo" / "my_driver.avcdriver").write_text("id: my_driver\n")
+        calls = tmp_path / "python-calls.log"
+        calls.write_text("")
+        stub = tmp_path / "python-stub"
+        _write_python_stub(stub, calls, venv_exit=1)
+
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(update_tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+
+        result = _run_helper(data_dir, app_dir, python=stub)
+
+        # ExecStartPre: a non-zero exit permanently stops the service.
+        assert result.returncode == 0
+        logged = calls.read_text().splitlines()
+        assert any(c.startswith("python -m venv ") for c in logged), (
+            f"the rebuild was never attempted: {logged}"
+        )
+        assert "failed to recreate venv" in result.stdout
+        assert not any(c.startswith("pip install ") for c in logged), (
+            "dependencies were synced into a venv that failed to build"
+        )
+
+        # Rolled back in place: the previous version is live again, and the
+        # snapshot was consumed doing it.
+        assert _read_version(app_dir) == "1.0.0"
+        assert not Path(str(app_dir) + ".previous").exists()
+        assert (app_dir / "driver_repo" / "my_driver.avcdriver").exists(), (
+            "the aborted update lost user content that was in the snapshot"
+        )
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_failed_dependency_sync_aborts_and_restores_the_previous_install(
+        self, tmp_path, update_tarball
+    ):
+        """The other half of the same abort: the interpreter is fine but pip
+        fails (no network on a locked-down site, a yanked wheel). Going live
+        would crash-loop on ImportError, so the update rolls back in place.
+
+        The pip that fails is the one already inside the migrated venv, which
+        is where it comes from in production. $PYTHON is still a stub, for two
+        reasons: it pins that a WORKING interpreter is left alone (the other
+        side of the branch above), and it means no edit to that branch can ever
+        quietly turn this case into a real venv build with a real PyPI install.
+        """
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        _build_fake_install(app_dir, "1.0.0")
+        # A pip in the old release's venv, which migrates across the swap.
+        pip = app_dir / "venv" / "bin" / "pip"
+        pip.write_text("#!/bin/sh\nexit 1\n")
+        pip.chmod(0o755)
+        calls = tmp_path / "python-calls.log"
+        calls.write_text("")
+        stub = tmp_path / "python-stub"
+        _write_python_stub(stub, calls, pip_exit=1)
+
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(update_tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+
+        result = _run_helper(data_dir, app_dir, python=stub)
+
+        assert result.returncode == 0
+        logged = calls.read_text().splitlines()
+        assert not any(c.startswith("python -m venv ") for c in logged), (
+            f"a venv whose interpreter runs was rebuilt anyway: {logged}"
+        )
+        assert "dependency sync failed" in result.stdout
+        assert _read_version(app_dir) == "1.0.0"
+        assert not Path(str(app_dir) + ".previous").exists()
+        assert not (data_dir / "apply-update.json").exists()
 
 
 @gates.skipif_missing(gates.BASH, _BASH_MISSING)
