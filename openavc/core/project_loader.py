@@ -697,7 +697,7 @@ class ProjectConfig(_ForwardCompatModel):
     # A stale default here is not cosmetic: a project written with it gets the
     # whole 0.7->0.8 migration re-run over an already-0.8 body on its next
     # save, which collapses every placement and re-divides every rem value.
-    openavc_version: str = "0.11.0"
+    openavc_version: str = "0.12.0"
     project: ProjectMeta
     devices: list[DeviceConfig] = Field(default_factory=list)
     device_groups: list[DeviceGroup] = Field(default_factory=list)

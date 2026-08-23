@@ -1,5 +1,5 @@
 {
-    "openavc_version": "0.8.0",
+    "openavc_version": "0.12.0",
     "project": {
         "id": "advanced_av_suite",
         "name": "Advanced AV Suite",
@@ -177,65 +177,6 @@
                     "command": "power_off"
                 }
             ]
-        },
-        {
-            "id": "select_laptop",
-            "name": "Select Laptop",
-            "steps": [
-                {
-                    "action": "event.emit",
-                    "event": "custom.select_source",
-                    "payload": {
-                        "source": "laptop"
-                    }
-                }
-            ]
-        },
-        {
-            "id": "select_wireless",
-            "name": "Select Wireless",
-            "steps": [
-                {
-                    "action": "event.emit",
-                    "event": "custom.select_source",
-                    "payload": {
-                        "source": "wireless"
-                    }
-                }
-            ]
-        },
-        {
-            "id": "select_bluray",
-            "name": "Select Blu-ray",
-            "steps": [
-                {
-                    "action": "event.emit",
-                    "event": "custom.select_source",
-                    "payload": {
-                        "source": "bluray"
-                    }
-                }
-            ]
-        },
-        {
-            "id": "toggle_mic_mute",
-            "name": "Toggle Mic Mute",
-            "steps": [
-                {
-                    "action": "event.emit",
-                    "event": "custom.toggle_mic_mute"
-                }
-            ]
-        },
-        {
-            "id": "apply_mode",
-            "name": "Apply Mode",
-            "steps": [
-                {
-                    "action": "event.emit",
-                    "event": "custom.mode_change"
-                }
-            ]
         }
     ],
     "ui": {
@@ -357,8 +298,12 @@
                             "do": {
                                 "press": [
                                     {
-                                        "action": "macro",
-                                        "macro": "select_laptop"
+                                        "action": "script.call",
+                                        "script": "room_automation",
+                                        "function": "select_source",
+                                        "params": {
+                                            "source": "laptop"
+                                        }
                                     }
                                 ]
                             }
@@ -387,8 +332,12 @@
                             "do": {
                                 "press": [
                                     {
-                                        "action": "macro",
-                                        "macro": "select_wireless"
+                                        "action": "script.call",
+                                        "script": "room_automation",
+                                        "function": "select_source",
+                                        "params": {
+                                            "source": "wireless"
+                                        }
                                     }
                                 ]
                             }
@@ -417,8 +366,12 @@
                             "do": {
                                 "press": [
                                     {
-                                        "action": "macro",
-                                        "macro": "select_bluray"
+                                        "action": "script.call",
+                                        "script": "room_automation",
+                                        "function": "select_source",
+                                        "params": {
+                                            "source": "bluray"
+                                        }
                                     }
                                 ]
                             }
@@ -467,8 +420,10 @@
                             "do": {
                                 "press": [
                                     {
-                                        "action": "macro",
-                                        "macro": "toggle_mic_mute"
+                                        "action": "script.call",
+                                        "script": "room_automation",
+                                        "function": "toggle_mic_mute",
+                                        "params": {}
                                     }
                                 ]
                             }
@@ -571,8 +526,12 @@
                             "do": {
                                 "change": [
                                     {
-                                        "action": "macro",
-                                        "macro": "apply_mode"
+                                        "action": "script.call",
+                                        "script": "room_automation",
+                                        "function": "apply_mode",
+                                        "params": {
+                                            "mode": "$value"
+                                        }
                                     }
                                 ]
                             }

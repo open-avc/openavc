@@ -835,7 +835,12 @@ class MacroEngine:
 
         elif action == "event.emit":
             event_name = step.get("event", "")
-            payload = step.get("payload") or {}
+            # Resolved, like every other value a step carries. It used to emit
+            # the payload verbatim, so a `$var.` reference in one arrived at the
+            # handler as the literal string "$var.source" -- and the same step
+            # written as a binding action resolves, which would have made one
+            # spelling mean two things.
+            payload = self._resolve_params(step.get("payload") or {}, context)
             log.debug(f"  Macro step: emit '{event_name}'")
             await self.events.emit(event_name, payload)
 

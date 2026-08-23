@@ -157,7 +157,15 @@ export function ButtonBindingEditor({
       if (/^\d+$/.test(p)) return `Go to page ${Number(p) + 1}`;
       return p ? `Go to ${p}` : "Incomplete";
     }
-    if (action.action === "script.call") return action.function ? `Call ${action.function}` : "Incomplete";
+    if (action.action === "script.call") {
+      if (!action.function) return "Incomplete";
+      const params = action.params as Record<string, unknown> | undefined;
+      const named = params ? Object.keys(params) : [];
+      return named.length
+        ? `Call ${action.function}(${named.join(", ")})`
+        : `Call ${action.function}`;
+    }
+    if (action.action === "event.emit") return action.event ? `Emit ${action.event}` : "Incomplete";
     return String(action.action || "Configured");
   };
 

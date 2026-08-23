@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from openavc.core.script_engine import ScriptCallError
 from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
 from openavc.ui.matrix_model import destination_for
@@ -40,8 +41,8 @@ log = get_logger(__name__)
 #: interaction, the runtime walks the list, and nothing happens -- which is
 #: indistinguishable, from the room, from a dead device.
 DISPATCHED_ACTIONS = frozenset({
-    "device.command", "macro", "script.call", "state.set", "ui.navigate",
-    "value_map",
+    "device.command", "event.emit", "macro", "script.call", "state.set",
+    "ui.navigate", "value_map",
 })
 
 
@@ -399,11 +400,60 @@ class UIEventRuntime:
                 record(page=page_id)
 
         elif action == "script.call":
+            # Calls the function. It used to emit `script.call.<name>` and
+            # nothing subscribed it to the function of that name, so a control
+            # naming one ran it only if the script had also written
+            # `@on_event("script.call.<name>")` -- a spelling no document
+            # mentions. The Builder offered every function in every script, so
+            # picking one off that list produced a dead button.
             func_name = action_def.get("function", "")
+            # Which script, where the name is not unique. Written by the
+            # Builder, which knows it; absent on anything hand-authored, and
+            # then the name has to stand alone.
+            script_id = str(action_def.get("script", "") or "")
+            params = dict(action_def.get("params", {}))
+            for k, v in params.items():
+                params[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
             if func_name:
+                if dry_run:
+                    # Same half worth previewing as device.command: what the
+                    # arguments RESOLVE to. A $value that resolves to None is
+                    # the mistake, and it is invisible until the press.
+                    record(function=func_name, params=params, called=False)
+                    return
+                if engine.scripts is None:
+                    record(
+                        function=func_name, params=params, called=False,
+                        error=f"No script function named '{func_name}'.",
+                    )
+                    return
+                try:
+                    await engine.scripts.call_function(func_name, params, script_id)
+                    record(function=func_name, params=params, called=True)
+                except ScriptCallError as exc:
+                    # Caught, not raised: the rest of the press still runs, the
+                    # same way a device.command that never reached its device
+                    # does. The sentence rides the record to the glass.
+                    log.warning(f"Binding script call failed: {func_name}: {exc}")
+                    record(
+                        function=func_name, params=params, called=False,
+                        error=str(exc),
+                    )
+
+        elif action == "event.emit":
+            # The macro step, reachable from a control. The event NAME comes
+            # from the project rather than the panel, so this grants a panel
+            # exactly the authority running a macro already did -- and it
+            # reaches the two things a script call cannot: a trigger, and a
+            # plugin.
+            event_name = action_def.get("event", "")
+            payload = dict(action_def.get("payload") or {})
+            for k, v in payload.items():
+                payload[k] = resolve_ref(v, state=engine.state, event_ctx=event_ctx)
+            if event_name:
                 if not dry_run:
-                    await engine.events.emit(f"script.call.{func_name}", data)
-                record(function=func_name)
+                    await engine.events.emit(event_name, payload)
+                record(event=event_name, payload=payload)
 
         else:
             # Everything above is a name this runtime knows. Anything else used

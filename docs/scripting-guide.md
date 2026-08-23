@@ -83,6 +83,54 @@ The `Event` object (available via `from openavc import Event`) wraps the event n
 | `event.get(key, default)` | Safe access to payload fields |
 | `event.<key>` | Attribute access to payload fields (raises `AttributeError` if missing) |
 
+### Called from a control
+
+A button, slider or list row can call one of your functions directly. Write an
+ordinary function, with whatever arguments make sense:
+
+```python
+from openavc import devices, state, log
+
+async def select_source(source, level=50):
+    """Route a source and set the program volume."""
+    await devices.send("switcher", "route", {"input": source, "output": 1})
+    await devices.send("dsp", "set_fader", {"channel": "program", "level": level})
+    state.set("var.current_source", source)
+```
+
+In the UI Builder, give the control a **Script Function** action, pick
+`select_source`, and fill in its parameters. The Builder reads them from the
+function itself, so the names always match. One function then serves every
+button that calls it:
+
+| Button | source | level |
+|---|---|---|
+| Laptop | `laptop` | `50` |
+| Wireless | `wireless` | `50` |
+| Blu-ray | `bluray` | `70` |
+
+A parameter can also carry what the control itself is doing. Press the **$**
+button beside it and pick `$value`, and a slider hands the function its own
+position:
+
+```python
+def set_volume(level):
+    log.info(f"Fader moved to {level}")
+```
+
+Notes:
+
+- The function has to be a plain function in an enabled script. A handler
+  decorated with `@on_event` is called by the system with an `Event` when its
+  pattern fires, so it is not offered as a control target and naming one does
+  nothing.
+- A `def` runs inline and an `async def` is awaited, the same as a handler, so
+  use `async def` for anything that talks to equipment or waits.
+- If two enabled scripts define the same function name, a control that names it
+  refuses rather than guessing, and says so on the panel. Rename one.
+- Anything the function raises reaches the panel as a message and the
+  Programmer as a script error, so a failed press is not silent.
+
 ### @on_state_change(pattern)
 
 Register a function to run when a state key changes.

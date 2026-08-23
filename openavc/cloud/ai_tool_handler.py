@@ -18,6 +18,7 @@ from typing import Any, TYPE_CHECKING
 from openavc.cloud.protocol import (
     AI_TOOL_RESULT, build_ai_tool_result_payload, extract_payload,
 )
+from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -236,14 +237,14 @@ def _normalize_bindings(bindings: dict) -> dict:
 _VALID_VISIBLE_WHEN_OPS = frozenset((
     "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy",
 ))
-# Panel UI element `do` bindings. The page move is "ui.navigate" here, matching
+# Panel UI element `do` bindings -- the runtime's own set, not a copy of it.
+# A second list here went stale the moment the runtime learned a name, and
+# refusing an action the runtime dispatches is a write door lying about the
+# platform. The page move is "ui.navigate" here, matching
 # the macro step and the WS frame — one spelling for one concept. A control
 # surface's deck-page action is a separate thing (see SURFACE_BUTTONS_FORMAT)
 # and is still "navigate": it moves the deck's own pages, not a panel page.
-_VALID_ACTION_TYPES = frozenset((
-    "macro", "device.command", "state.set", "ui.navigate",
-    "script.call", "value_map",
-))
+_VALID_ACTION_TYPES = DISPATCHED_ACTIONS
 _VALID_MODES = frozenset(("tap", "toggle", "hold_repeat", "tap_hold"))
 
 # Required fields per action type (beyond "action" itself)
@@ -253,6 +254,7 @@ _ACTION_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "state.set": ("key",),
     "ui.navigate": ("page",),
     "script.call": ("function",),
+    "event.emit": ("event",),
     "value_map": ("map",),
 }
 
@@ -279,7 +281,7 @@ def _validate_action(action: dict, path: str) -> str | None:
     if action_type not in _VALID_ACTION_TYPES:
         return (
             f"{path}: action type '{action_type}' is not valid. "
-            f"Use: macro, device.command, state.set, ui.navigate, script.call, value_map"
+            f"Use: {', '.join(sorted(_VALID_ACTION_TYPES))}"
         )
     required = _ACTION_REQUIRED_FIELDS.get(action_type, ())
     for field in required:

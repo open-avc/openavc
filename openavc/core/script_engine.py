@@ -42,6 +42,7 @@ log = get_logger(__name__)
 # signature at import time. Only its arity matters, never its value.
 _EVENT_ARITY_PROBE = object()
 
+
 # Tracks how deep a state-change -> @on_state_change -> (macro/state.set) ->
 # state-change chain has recursed. Async state handlers fire as fresh
 # fire-and-forget tasks, so a toggling value (a bool flip, a counter) slips
@@ -49,6 +50,64 @@ _EVENT_ARITY_PROBE = object()
 # tasks without bound. Propagated through the task hops via contextvars so the
 # chain — not just one synchronous call stack — is what gets capped.
 _state_handler_depth: ContextVar[int] = ContextVar("openavc_state_handler_depth", default=0)
+
+
+def describe_parameters(fn: Callable) -> dict[str, Any]:
+    """What a script function takes, in the shape the Builder draws.
+
+    Keyword arguments only, because that is how a control calls one -- a
+    binding stores parameters by name, so nothing about it is positional.
+    A ``**kwargs`` function reports ``accepts_extra``, which is what lets the
+    Builder offer a free-form row for a function that deliberately takes
+    anything.
+
+    ``type`` is reported only where the script actually says something: the
+    author's annotation, or failing that the type of a non-None default. A
+    guess would be worse than silence here -- the Builder picks a number input
+    or a text input off this field, and the wrong one is a control that will
+    not accept the value the device needs.
+    """
+    params: list[dict[str, Any]] = []
+    accepts_extra = False
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):  # builtins and C functions have no signature
+        return {"params": params, "accepts_extra": accepts_extra}
+
+    for name, param in sig.parameters.items():
+        if param.kind is inspect.Parameter.VAR_KEYWORD:
+            accepts_extra = True
+            continue
+        if param.kind in (
+            inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.POSITIONAL_ONLY,
+        ):
+            continue
+        entry: dict[str, Any] = {
+            "name": name, "required": param.default is inspect.Parameter.empty,
+        }
+        if param.default is not inspect.Parameter.empty:
+            entry["default"] = param.default
+        annotation = param.annotation
+        if annotation is not inspect.Parameter.empty:
+            entry["type"] = getattr(annotation, "__name__", None) or str(annotation)
+        elif param.default not in (inspect.Parameter.empty, None):
+            entry["type"] = type(param.default).__name__
+        params.append(entry)
+
+    return {"params": params, "accepts_extra": accepts_extra}
+
+
+class ScriptCallError(Exception):
+    """A control named a script function and it could not be run.
+
+    Carries a sentence for the glass, because the person who pressed the button
+    is standing in the room: the name does not exist, two scripts define it, or
+    the arguments do not fit its signature. An exception raised *inside* a
+    function that ran is a different thing and keeps the handler treatment --
+    logged, and a ``script.error`` event for the IDE -- with this raised on top
+    so the press does not report success.
+    """
+
 
 
 class ScriptEngine:
@@ -75,6 +134,11 @@ class ScriptEngine:
         self._state_sub_ids: dict[str, list[str]] = {}      # script_id -> sub ids
         self._loaded_modules: dict[str, str] = {}  # script_id -> module_name
         self._load_errors: dict[str, str] = {}  # script_id -> error message
+        # script_id -> names this script registered as an event/state handler.
+        # Kept because a handler is exactly what a button must NOT be offered:
+        # it takes an Event the bus supplies, so a control calling it by name
+        # could only ever get the arguments wrong.
+        self._handler_names: dict[str, set[str]] = {}
 
     def install(self) -> None:
         """Wire the script-API proxies to the real subsystems.
@@ -306,6 +370,11 @@ class ScriptEngine:
         self._loaded_modules[script_id] = module.__name__
         event_ids = self._event_handler_ids.setdefault(script_id, [])
         state_ids = self._state_sub_ids.setdefault(script_id, [])
+        names = self._handler_names.setdefault(script_id, set())
+        for _pattern, handler in (*event_handlers, *state_handlers):
+            handler_name = getattr(handler, "__name__", "")
+            if handler_name:
+                names.add(handler_name)
         count = 0
 
         for pattern, handler in event_handlers:
@@ -344,6 +413,7 @@ class ScriptEngine:
         self._event_handler_ids.clear()
         self._state_sub_ids.clear()
         self._loaded_modules.clear()
+        self._handler_names.clear()
 
         # Cancel all dynamic timers
         timer_count = script_api.cancel_all_timers()
@@ -368,6 +438,7 @@ class ScriptEngine:
         module_name = self._loaded_modules.pop(script_id, None)
         if module_name:
             sys.modules.pop(module_name, None)
+        self._handler_names.pop(script_id, None)
 
         timer_count = script_api.cancel_script_timers(script_id)
         if count or timer_count:
@@ -377,31 +448,161 @@ class ScriptEngine:
             )
         return count
 
-    def get_callable_functions(self) -> list[dict[str, str]]:
-        """Return all callable functions from loaded scripts.
+    def get_callable_functions(self) -> list[dict[str, Any]]:
+        """Return the functions a control can call, and what each one takes.
 
-        Returns a list of dicts: {"script": script_id, "function": name, "doc": docstring}.
-        Excludes private functions (starting with _) and decorated event/state handlers.
+        A callable function is a plain function the script defines: not
+        private, not imported from somewhere else, and **not one of its own
+        decorated handlers**. That last exclusion is the one worth saying out
+        loud. A handler takes the ``Event`` the bus hands it when its pattern
+        fires; a control calling it by name has no Event to give, so offering
+        one here would put a name in the Builder's dropdown that can only ever
+        be called wrong. The exclusion was claimed in this docstring long
+        before anything did it, which is how every function in the shipped
+        starter project came to be offered as a button target.
+
+        Each entry carries the parameters the Builder draws an editor for --
+        name, whether it is required, its default, and its annotation where the
+        author wrote one -- so a control's parameters are picked from the
+        signature rather than typed from memory, the same way a device
+        command's are picked from the driver.
         """
-        import inspect
-
-        results: list[dict[str, str]] = []
+        results: list[dict[str, Any]] = []
         for script_id, module_name in self._loaded_modules.items():
             module = sys.modules.get(module_name)
             if not module:
                 continue
+            handlers = self._handler_names.get(script_id, set())
             for name, obj in inspect.getmembers(module, inspect.isfunction):
                 # Skip private, dunder, and imported stdlib functions
                 if name.startswith("_"):
                     continue
                 if getattr(obj, "__module__", "") != module_name:
                     continue
+                if name in handlers:
+                    continue
                 results.append({
                     "script": script_id,
                     "function": name,
                     "doc": (inspect.getdoc(obj) or "")[:200],
+                    **describe_parameters(obj),
                 })
         return results
+
+    def find_callable(self, name: str, script: str = "") -> list[tuple[str, Callable]]:
+        """Every loaded function of this name, as (script_id, function).
+
+        More than one is possible and is not an error here: two scripts may
+        each define ``set_lights``. Which one a control meant is the caller's
+        problem, and ``script`` narrows it when the control recorded one.
+        """
+        found: list[tuple[str, Callable]] = []
+        for script_id, module_name in self._loaded_modules.items():
+            if script and script_id != script:
+                continue
+            module = sys.modules.get(module_name)
+            if not module:
+                continue
+            if name in self._handler_names.get(script_id, set()):
+                continue
+            fn = getattr(module, name, None)
+            if (
+                inspect.isfunction(fn)
+                and not name.startswith("_")
+                and getattr(fn, "__module__", "") == module_name
+            ):
+                found.append((script_id, fn))
+        return found
+
+    async def call_function(
+        self, name: str, params: dict[str, Any] | None = None, script: str = "",
+    ) -> None:
+        """Call a script function by name, the way a control asks for it.
+
+        This is the other door into a script. A handler is called BY the bus
+        when its pattern fires and reads an ``Event``; this is called by a
+        person pressing a control, and reads ordinary arguments -- so a button,
+        a slider and a list row can all reach one function and tell it which
+        one they were.
+
+        Everything that goes wrong raises ``ScriptCallError`` carrying a
+        sentence, because the press path turns one into a message on the glass.
+        The three that are the author's to fix -- no such function, two scripts
+        defining it, arguments that do not fit the signature -- are caught
+        BEFORE anything runs, so a mistyped name never half-runs a room. What
+        happens once the function is running gets the handler treatment as
+        well: logged, and a ``script.error`` event so the IDE's script surface
+        shows it beside every other script failure.
+
+        Timeout and inline-sync behaviour deliberately match
+        ``_wrap_event_handler``: an emit already awaits its handlers, so
+        nothing here waits on a press for longer than the event path did.
+        """
+        params = params or {}
+        matches = self.find_callable(name, script)
+        if not matches:
+            where = f" in script '{script}'" if script else ""
+            raise ScriptCallError(
+                f"No script function named '{name}'{where}. Check the function "
+                f"is defined in an enabled script and is not an event handler."
+            )
+        if len(matches) > 1:
+            scripts = ", ".join(sorted(script_id for script_id, _fn in matches))
+            raise ScriptCallError(
+                f"More than one script defines '{name}' ({scripts}). Rename one "
+                f"of them so this control can only mean one function."
+            )
+
+        script_id, fn = matches[0]
+        try:
+            inspect.signature(fn).bind(**params)
+        except TypeError as exc:
+            wanted = describe_parameters(fn)["params"]
+            takes = ", ".join(str(entry["name"]) for entry in wanted) or "no arguments"
+            given = ", ".join(sorted(params)) or "none"
+            raise ScriptCallError(
+                f"'{name}' cannot be called with those parameters: {exc}. "
+                f"It takes {takes}; this control passed {given}."
+            ) from exc
+
+        with script_api.current_script_context(script_id):
+            try:
+                result = fn(**params)
+                if asyncio.iscoroutine(result):
+                    await asyncio.wait_for(result, timeout=self.HANDLER_TIMEOUT)
+                # A plain `def` has already run inline by this point, for the
+                # same reason a sync handler does: the state/devices/events
+                # proxies must run on the loop thread.
+            except asyncio.TimeoutError as exc:
+                msg = (
+                    f"Script '{script_id}' function '{name}' timed out after "
+                    f"{self.HANDLER_TIMEOUT}s"
+                )
+                log.error(msg)
+                await self._emit_script_error(script_id, name, f"script.call.{name}", msg, "")
+                raise ScriptCallError(msg) from exc
+            except Exception as exc:  # Catch-all: isolates user script errors from engine
+                log.exception(f"Error in script '{script_id}' function '{name}'")
+                await self._emit_script_error(
+                    script_id, name, f"script.call.{name}", str(exc),
+                    traceback.format_exc(),
+                )
+                raise ScriptCallError(f"'{name}' failed: {exc}") from exc
+
+    async def _emit_script_error(
+        self, script_id: str, handler: str, event: str, error: str, tb: str,
+    ) -> None:
+        """Report a script failure on the bus, and never fail doing it."""
+        try:
+            await self.events.emit("script.error", {
+                "script_id": script_id,
+                "handler": handler,
+                "event": event,
+                "error": error,
+                "traceback": tb,
+            })
+        except Exception:  # Catch-all: error event emission must not raise
+            pass
 
     def reload_scripts(self, scripts: list[dict[str, Any]]) -> int:
         """Hot-reload the whole project: unload everything, then re-load."""

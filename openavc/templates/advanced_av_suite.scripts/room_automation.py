@@ -4,7 +4,7 @@ Advanced AV Suite — Room Automation Scripts
 Demonstrates the full scripting API:
 - Source routing with matrix switcher control
 - Volume mapping (UI 0-100 -> DSP dB)
-- Mic mute toggle via custom events
+- Mic mute toggle called straight from a button
 - Display status tracking via state change handlers
 - Occupancy-based auto-shutdown with warning timer
 - Presentation mode presets (adjusts DSP and routing per mode)
@@ -18,10 +18,9 @@ from openavc import (
 )
 
 # --- Source Routing ---
-# Each source button runs a one-step macro that emits custom.select_source with
-# the source in its payload. A macro is what carries an event: `event.emit` is a
-# macro step, and a button binding can only run the six actions the panel
-# dispatches -- of which `macro` is one. This script does the routing.
+# One function, three buttons. Each source button has a Script Function action
+# calling select_source with its own source, so adding a fourth source is a
+# button and a row in the table below.
 
 SOURCE_ROUTES = {
     "laptop":   {"input": 1, "output": 1},
@@ -29,9 +28,8 @@ SOURCE_ROUTES = {
     "bluray":   {"input": 3, "output": 1},
 }
 
-@on_event("custom.select_source")
-async def handle_source_select(event):
-    source = event.get("source", "")
+async def select_source(source):
+    """Route a source to the display and the confidence monitor."""
     route = SOURCE_ROUTES.get(source)
     if not route:
         log.warning(f"Unknown source: {source}")
@@ -60,8 +58,8 @@ async def volume_changed(event):
 
 # --- Mic Mute Toggle ---
 
-@on_event("custom.toggle_mic_mute")
-async def toggle_mic_mute(event):
+async def toggle_mic_mute():
+    """Flip the mic mute. The button calls this directly."""
     current = state.get("var.mic_mute", True)
     new_mute = not current
     state.set("var.mic_mute", new_mute)
@@ -121,13 +119,10 @@ async def _auto_shutdown():
 # --- Presentation Mode Presets ---
 # When the user selects a mode from the dropdown, adjust DSP and routing.
 
-# Reached through the dropdown's do.change macro rather than the raw
-# ui.change event, and that is load-bearing: the raw event is emitted BEFORE
-# the two-way write_back stores the new value, so a handler on it would read
-# var.mode as whatever was selected last time.
-@on_event("custom.mode_change")
-async def mode_changed(event):
-    mode = state.get("var.mode", "standard")
+async def apply_mode(mode):
+    """Apply a presentation mode. The Mode select passes $value, which is the
+    option just chosen -- reading var.mode here instead would give the PREVIOUS
+    one, because the raw UI event happens before the two-way write_back."""
     log.info(f"Switching to mode: {mode}")
 
     if mode == "standard":
@@ -155,7 +150,7 @@ async def mode_changed(event):
 async def on_system_ready(event):
     log.info("System ready — applying defaults")
     # Set default source
-    await handle_source_select(type("E", (), {"get": lambda self, k, d=None: {"source": "laptop"}.get(k, d)})())
+    await select_source("laptop")
     # Unmute program audio at default level
     await devices.send("dsp1", "mute", {"channel": "program", "muted": False})
     # Mute mics by default

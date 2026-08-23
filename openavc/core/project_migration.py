@@ -9,7 +9,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.11.0"
+CURRENT_VERSION = "0.12.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -926,6 +926,25 @@ def migrate_0_10_to_0_11(data: dict) -> dict:
     return data
 
 
+def migrate_0_11_to_0_12(data: dict) -> dict:
+    """
+    Migrate from 0.11.0 to 0.12.0 -- a control can call a function and emit an
+    event.
+
+    Nothing in an existing project moves, and the stamp is the whole point. A
+    UI binding gains `event.emit` (the macro step, written directly on a
+    control) and `script.call` gains `params`, which changes what an existing
+    `script.call` MEANS: on 0.11.0 it emitted `script.call.<function>` and only
+    a script subscribing to that name by hand ever heard it, while from 0.12.0
+    it calls the function itself. An older platform opening a 0.12.0 project
+    would emit where the author expected a call, and would reach no branch at
+    all for `event.emit` -- so the version has to say which meaning the project
+    was written against, exactly as 0.9.0 does for a `custom` element.
+    """
+    data["openavc_version"] = "0.12.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -938,6 +957,7 @@ MIGRATIONS = [
     ("0.8.0", "0.9.0", migrate_0_8_to_0_9),
     ("0.9.0", "0.10.0", migrate_0_9_to_0_10),
     ("0.10.0", "0.11.0", migrate_0_10_to_0_11),
+    ("0.11.0", "0.12.0", migrate_0_11_to_0_12),
 ]
 
 

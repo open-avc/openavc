@@ -387,6 +387,20 @@ To reach one of those, put it in a macro and call that macro with
 The same list applies wherever an action can be nested: a toggle's `off_action`,
 a `tap_hold`'s `hold_action`, each entry of a `value_map`'s `map`, and a matrix
 destination's own `route` override.
+
+Two of them carry values the control chooses, and both resolve `$` references
+the same way a `device.command`'s `params` do:
+
+- `script.call` calls a Python function a script defines and passes `params` as
+  its keyword arguments -- `{"action": "script.call", "function": "select_source",
+  "params": {"source": "laptop", "level": "$value"}}`. The names must match the
+  function's own parameters. A decorated `@on_event` handler is not callable
+  this way: it is called by the bus with an `Event`, and naming one here fails.
+  Add `"script": "<script id>"` when two scripts define the same name.
+- `event.emit` fires a named event with an optional `payload` --
+  `{"action": "event.emit", "event": "custom.select_source", "payload":
+  {"source": "laptop"}}`. Use it to reach a trigger, a plugin, or an
+  `@on_event` handler.
 """
 
 PROPERTIES_INTRO = """\

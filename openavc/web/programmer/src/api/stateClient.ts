@@ -152,10 +152,24 @@ export async function getScriptReferences(): Promise<ScriptReference[]> {
   return data.references;
 }
 
+/** One parameter of a script function, as the script itself declares it. */
+export interface ScriptFunctionParam {
+  name: string;
+  required: boolean;
+  default?: unknown;
+  /** Only present where the script says something: an annotation, or the
+   *  type of a non-None default. Absent means the Builder guesses nothing. */
+  type?: string;
+}
+
 export interface ScriptFunction {
   script: string;
   function: string;
   doc: string;
+  /** What a control must pass, picked from the signature rather than typed. */
+  params: ScriptFunctionParam[];
+  /** The function takes **kwargs, so extra named values are allowed. */
+  accepts_extra: boolean;
 }
 
 export async function getScriptFunctions(): Promise<ScriptFunction[]> {

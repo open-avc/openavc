@@ -35,6 +35,20 @@ async def handle(event):
 The handler takes one argument, the `Event` object. A handler that cannot
 accept it is refused when the script loads, with an error naming the handler.
 
+### Plain functions (called from a control)
+
+A function that is not decorated can be called by a UI control's **Script
+Function** action, which passes its parameters by name.
+
+```python
+async def select_source(source, level=50):
+    ...
+```
+
+The Builder reads the parameters from the signature. A decorated handler is not
+callable this way. A duplicate name across two enabled scripts refuses rather
+than guessing, and the panel says so.
+
 ### @on_state_change(pattern)
 
 Register an async function to run when a state key matching `pattern` changes. Supports glob wildcards.
@@ -289,7 +303,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `system.stopping` | (none) | System shutting down |
 | `system.project.reloaded` | (none) | Project reloaded |
 | `isc.*.<event>` | `source_instance`, ... | Event from a remote instance |
-| `custom.<anything>` | (user-defined) | User-defined events |
+| `custom.<anything>` | (user-defined) | User-defined events. Fired by a macro's **Emit Event** step, by the same action on a control, or by `events.emit()` |
 
 > **Note on schedules:** Scheduled actions are handled by triggers that directly execute macros, not by events. To run a script on a schedule, create a macro with an "Emit Event" step that fires a custom event, handle that event in your script with `@on_event`, and add a schedule trigger to the macro.
 

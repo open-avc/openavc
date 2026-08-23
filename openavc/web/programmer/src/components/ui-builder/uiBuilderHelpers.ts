@@ -1330,6 +1330,7 @@ export function actionIncompleteCheck(a: Record<string, unknown>): boolean {
   if (act === "state.set") return !a.key;
   if (act === "ui.navigate") return !a.page;
   if (act === "script.call") return !a.function;
+  if (act === "event.emit") return !a.event;
   if (act === "value_map") {
     const map = a.map as Record<string, unknown> | undefined;
     if (!map || Object.keys(map).length === 0) return true;

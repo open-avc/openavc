@@ -293,7 +293,7 @@ export const NAVIGATION_SENTINELS = new Set(["$back", "$dismiss"]);
  * runs at all. Which is why it is generated rather than typed here: a fifth
  * copy of a closed set is how `navigate` outlived `ui.navigate`.
  */
-export const DISPATCHED_ACTIONS: string[] = ["device.command", "macro", "script.call", "state.set", "ui.navigate", "value_map"];
+export const DISPATCHED_ACTIONS: string[] = ["device.command", "event.emit", "macro", "script.call", "state.set", "ui.navigate", "value_map"];
 
 /**
  * Macro steps that are NOT binding actions.
@@ -302,4 +302,4 @@ export const DISPATCHED_ACTIONS: string[] = ["device.command", "macro", "script.
  * natural wrong guess. Worth naming separately because "that is a macro step,
  * put it in a macro" is a fix and "no such action" is not.
  */
-export const MACRO_ONLY_ACTIONS: string[] = ["conditional", "delay", "event.emit", "group.command", "help.request", "wait_until"];
+export const MACRO_ONLY_ACTIONS: string[] = ["conditional", "delay", "group.command", "help.request", "wait_until"];

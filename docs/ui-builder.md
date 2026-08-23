@@ -358,13 +358,20 @@ Routing itself is a **Does** action, not a setting: the Video route interaction 
 
 ### Does: actions
 
-The **Does** bucket is one or more **actions**, grouped by the interaction that triggers them. Every action is one of five types:
+The **Does** bucket is one or more **actions**, grouped by the interaction that triggers them. Every action is one of six types:
 
 - **Run Macro**: execute a named macro (best for multi-step sequences).
 - **Device Command**: send a command directly (pick device, command, params).
 - **Set Variable**: set a user variable value.
 - **Navigate to Page**: switch to another page (or `$back` / `$dismiss` for overlays).
-- **Script Function**: call a Python function (the dropdown lists every function from enabled scripts).
+- **Script Function**: call a Python function in one of your scripts, and pass it values.
+- **Emit Event**: fire a named event, with an optional payload.
+
+**Script Function** lists the plain functions your enabled scripts define, with each one's parameters filled in from the function itself. Fill those in and one function serves every button that calls it: three source buttons can all call `select_source`, each passing its own source, instead of needing a function apiece. Handlers written with `@on_event` are not listed, because the system calls those itself when their event fires.
+
+**Emit Event** is the same step the Macros view offers, written straight onto a control. Use it to reach something that is listening rather than something you can name: a trigger, a plugin, or a script handler subscribed to that event.
+
+Both types take values the same way a Device Command takes params, so the **$** button hands them what the control itself is doing: a slider's position, a matrix row's input and output. See [Macros and Triggers](macros-and-triggers.md) for the full list of what each interaction delivers.
 
 An interaction's action list can hold **multiple actions**, run in order. For example, a "Laptop" source button can set `var.current_source` to "laptop" *and* run the `apply_source` macro in one press, without a wrapper macro.
 

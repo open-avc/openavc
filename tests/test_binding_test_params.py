@@ -125,6 +125,13 @@ def test_no_binding_editor_sends_unresolved_params() -> None:
     guards against a new caller sending ``action.params`` straight to the
     device, which is the actual defect -- it would put a literal "$value" on
     the wire and no test above would notice.
+
+    A file that READS ``action.params`` without sending anything is not that
+    defect: an editor summarising "Call select_source(source, level)" names the
+    parameters and touches no device. So the rule is params-plus-a-send, not
+    params at all -- the previous spelling made a label look like a
+    transmission, and the obvious way past it (aliasing the field) would have
+    hidden a real send from this scan for good.
     """
     roots = [
         BINDING_EDITOR_DIR,
@@ -134,7 +141,9 @@ def test_no_binding_editor_sends_unresolved_params() -> None:
     for root in roots:
         for path in sorted(root.rglob("*.tsx")):
             text = path.read_text(encoding="utf-8")
-            if "action.params" in text and "resolveTestParams(" not in text:
+            if "action.params" not in text or "sendCommand(" not in text:
+                continue
+            if "resolveTestParams(" not in text:
                 offenders.append(path.relative_to(OPENAVC_ROOT).as_posix())
     assert not offenders, (
         "these send a test command without resolving $-refs first: " + ", ".join(offenders)

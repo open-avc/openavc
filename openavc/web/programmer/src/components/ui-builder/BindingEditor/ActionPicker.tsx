@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Info } from "lucide-react";
+import { Info, Plus, X } from "lucide-react";
 import type { ProjectConfig, DeviceInfo, DriverParamDef } from "../../../api/types";
 import { ParamInput, isDynamicParamValue } from "../../shared/ParamInput";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
@@ -36,6 +36,7 @@ const ACTION_TYPES = (navigateAction: string) => [
   { value: "state.set", label: "Set Variable" },
   { value: navigateAction, label: "Navigate Page" },
   { value: "script.call", label: "Script Function" },
+  { value: "event.emit", label: "Emit Event" },
 ];
 
 export function ActionPicker({ value, project, onChange, forChangeBinding, allowedActions, navigateOptions, eventTokens }: ActionPickerProps) {
@@ -100,7 +101,10 @@ export function ActionPicker({ value, project, onChange, forChangeBinding, allow
         />
       )}
       {actionType === "script.call" && (
-        <ScriptCallConfig value={value} onChange={onChange} />
+        <ScriptCallConfig value={value} onChange={onChange} eventTokens={eventTokens} />
+      )}
+      {actionType === "event.emit" && (
+        <EmitEventConfig value={value} onChange={onChange} eventTokens={eventTokens} />
       )}
     </div>
   );
@@ -544,12 +548,171 @@ function NavigateConfig({
   );
 }
 
-function ScriptCallConfig({
+/** A script parameter's declared type, in the vocabulary ParamInput draws.
+ *  Only what the script itself said: an annotation, or the type of a default.
+ *  Anything else is a text box, which is what "we were not told" looks like. */
+function scriptParamDef(param: api.ScriptFunctionParam): Partial<DriverParamDef> {
+  const byAnnotation: Record<string, string> = {
+    int: "integer", float: "number", bool: "boolean", str: "string",
+  };
+  const type = param.type ? byAnnotation[param.type] : undefined;
+  const def: Record<string, unknown> = { required: param.required };
+  if (type) def.type = type;
+  if (param.default !== undefined) def.default = param.default;
+  return def as Partial<DriverParamDef>;
+}
+
+/** Store what the author typed as the JSON type the parameter asked for.
+ *  A function taking a level wants 7, not "7" -- a driver coerces its own
+ *  params by declared type and a Python function does not.
+ *  A "$" reference is left alone by falling through: it parses as no number
+ *  and matches no boolean, and its type comes from whatever it resolves to at
+ *  press time. */
+function coerceForParam(raw: string, param: api.ScriptFunctionParam | undefined): unknown {
+  if (raw === "") return raw;
+  if (param?.type === "int" || param?.type === "float") {
+    const n = Number(raw);
+    return Number.isNaN(n) ? raw : n;
+  }
+  if (param?.type === "bool") {
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  }
+  return raw;
+}
+
+/** Key/value rows the author names themselves.
+ *  Used where nothing declares the names: an emitted event's payload, and a
+ *  function that takes **kwargs. */
+function NamedValueRows({
+  values,
+  onChange,
+  eventTokens,
+  keyPlaceholder,
+  addLabel,
+}: {
+  values: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  eventTokens?: { key: string; label: string }[];
+  keyPlaceholder: string;
+  addLabel: string;
+}) {
+  const entries = Object.entries(values);
+
+  const rename = (from: string, to: string) => {
+    // Rebuilt in order so a rename doesn't reshuffle the rows under the cursor.
+    const next: Record<string, unknown> = {};
+    for (const [k, v] of entries) next[k === from ? to : k] = v;
+    onChange(next);
+  };
+
+  return (
+    <div>
+      {entries.map(([key, val]) => (
+        <div key={key} style={{ display: "flex", alignItems: "center", gap: 3, marginBottom: 4 }}>
+          <input
+            value={key}
+            onChange={(e) => rename(key, e.target.value)}
+            placeholder={keyPlaceholder}
+            style={{ width: 110, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+          />
+          <ParamInput
+            def={{}}
+            value={String(val ?? "")}
+            onChange={(v) => onChange({ ...values, [key]: v })}
+            allowDynamic
+            eventContext={eventTokens}
+            placeholder="Value"
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const next = { ...values };
+              delete next[key];
+              onChange(next);
+            }}
+            title="Remove"
+            style={{
+              padding: "3px 6px", fontSize: 11, lineHeight: 1,
+              background: "transparent", color: "var(--text-muted)",
+              border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)",
+              cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          let name = "value";
+          let n = 2;
+          while (name in values) name = `value${n++}`;
+          onChange({ ...values, [name]: "" });
+        }}
+        style={{
+          display: "flex", alignItems: "center", gap: 4, padding: "3px 8px",
+          fontSize: 11, background: "transparent", color: "var(--text-secondary)",
+          border: "1px dashed var(--border-color)", borderRadius: "var(--border-radius)",
+          cursor: "pointer",
+        }}
+      >
+        <Plus size={12} /> {addLabel}
+      </button>
+    </div>
+  );
+}
+
+function EmitEventConfig({
   value,
   onChange,
+  eventTokens,
 }: {
   value: Record<string, unknown> | null;
   onChange: (v: Record<string, unknown>) => void;
+  eventTokens?: { key: string; label: string }[];
+}) {
+  const eventName = String(value?.event || "");
+  const payload = (value?.payload as Record<string, unknown>) ?? {};
+
+  return (
+    <>
+      <div>
+        <label style={labelStyle}>Event Name</label>
+        <input
+          value={eventName}
+          onChange={(e) => onChange({ ...(value ?? {}), action: "event.emit", event: e.target.value })}
+          placeholder="custom.select_source"
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        />
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, paddingLeft: 2 }}>
+          Scripts listen with <code>@on_event</code>, and a trigger or a plugin can listen too.
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Payload</label>
+        <NamedValueRows
+          values={payload}
+          onChange={(next) => onChange({ ...(value ?? {}), action: "event.emit", event: eventName, payload: next })}
+          eventTokens={eventTokens}
+          keyPlaceholder="name"
+          addLabel="Add value"
+        />
+      </div>
+    </>
+  );
+}
+
+function ScriptCallConfig({
+  value,
+  onChange,
+  eventTokens,
+}: {
+  value: Record<string, unknown> | null;
+  onChange: (v: Record<string, unknown>) => void;
+  eventTokens?: { key: string; label: string }[];
 }) {
   const [functions, setFunctions] = useState<api.ScriptFunction[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -568,46 +731,166 @@ function ScriptCallConfig({
   }
 
   const currentValue = String(value?.function || "");
+  const currentScript = String(value?.script || "");
+  const currentParams = (value?.params as Record<string, unknown>) ?? {};
+  // The script id is written alongside the name so two scripts defining one
+  // name stay distinguishable; matching on it first is what makes that work.
+  const selected =
+    functions.find((f) => f.function === currentValue && f.script === currentScript)
+    ?? functions.find((f) => f.function === currentValue);
+  const declared = selected?.params ?? [];
+
+  const write = (fields: Record<string, unknown>) =>
+    onChange({
+      action: "script.call",
+      function: currentValue,
+      ...(currentScript ? { script: currentScript } : {}),
+      params: currentParams,
+      ...fields,
+    });
+
+  const pickFunction = (fn: api.ScriptFunction | undefined, name: string) => {
+    // Parameters belong to the function that declared them, so CHOOSING a
+    // different one drops them rather than carrying names the new one refuses.
+    const next: Record<string, unknown> = { action: "script.call", function: name, params: {} };
+    if (fn) next.script = fn.script;
+    onChange(next);
+  };
+
+  // Typing a name is not choosing a different function: the fallback field
+  // fires on every keystroke, so clearing there would empty the parameters
+  // letter by letter while somebody fixes a typo.
+  const typeFunctionName = (name: string) =>
+    onChange({ action: "script.call", function: name, params: currentParams });
+
+  const paramRows = (
+    <>
+      {declared.length > 0 && (
+        <div>
+          <label style={labelStyle}>Parameters</label>
+          {declared.map((param) => (
+            <div key={param.name} style={{ marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 500 }}>
+                  {param.name}
+                </span>
+                {param.type && (
+                  <span style={{
+                    fontSize: 10, padding: "0 4px", borderRadius: 3,
+                    background: "var(--bg-hover)", color: "var(--text-muted)",
+                  }}>
+                    {param.type}
+                  </span>
+                )}
+                {param.required && (
+                  <span style={{ fontSize: 10, color: "#ef4444" }}>required</span>
+                )}
+                {param.default !== undefined && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                    default: {String(param.default)}
+                  </span>
+                )}
+              </div>
+              <ParamInput
+                def={scriptParamDef(param)}
+                value={String(currentParams[param.name] ?? "")}
+                onChange={(val) =>
+                  write({ params: { ...currentParams, [param.name]: coerceForParam(val, param) } })
+                }
+                values={currentParams}
+                allowDynamic
+                eventContext={eventTokens}
+                placeholder={`Enter ${param.name}...`}
+                style={{ flex: 1 }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {(selected?.accepts_extra || (!selected && currentValue)) && (
+        <div>
+          <label style={labelStyle}>
+            {declared.length > 0 ? "Other parameters" : "Parameters"}
+          </label>
+          <NamedValueRows
+            values={Object.fromEntries(
+              Object.entries(currentParams).filter(
+                ([k]) => !declared.some((p) => p.name === k),
+              ),
+            )}
+            onChange={(extra) => {
+              const kept: Record<string, unknown> = {};
+              for (const p of declared) {
+                if (p.name in currentParams) kept[p.name] = currentParams[p.name];
+              }
+              write({ params: { ...kept, ...extra } });
+            }}
+            eventTokens={eventTokens}
+            keyPlaceholder="name"
+            addLabel="Add parameter"
+          />
+        </div>
+      )}
+    </>
+  );
 
   // Use dropdown if we have functions, text input as fallback
   if (loaded && functions.length > 0) {
     return (
-      <div>
-        <label style={labelStyle}>Function</label>
-        <select
-          value={currentValue}
-          onChange={(e) =>
-            onChange({ action: "script.call", function: e.target.value })
-          }
-          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-        >
-          <option value="">Select function...</option>
-          {[...grouped.entries()].map(([scriptId, fns]) => (
-            <optgroup key={scriptId} label={scriptId}>
-              {fns.map((fn) => (
-                <option key={`${fn.script}.${fn.function}`} value={fn.function}>
-                  {fn.function}{fn.doc ? `: ${fn.doc}` : ""}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
+      <>
+        <div>
+          <label style={labelStyle}>Function</label>
+          <select
+            value={selected ? `${selected.script}.${selected.function}` : ""}
+            onChange={(e) => {
+              const fn = functions.find(
+                (f) => `${f.script}.${f.function}` === e.target.value,
+              );
+              pickFunction(fn, fn?.function ?? "");
+            }}
+            style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+          >
+            <option value="">Select function...</option>
+            {[...grouped.entries()].map(([scriptId, fns]) => (
+              <optgroup key={scriptId} label={scriptId}>
+                {fns.map((fn) => (
+                  <option key={`${fn.script}.${fn.function}`} value={`${fn.script}.${fn.function}`}>
+                    {fn.function}{fn.doc ? `: ${fn.doc}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {currentValue && !selected && (
+            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 3, paddingLeft: 2 }}>
+              No enabled script defines <code>{currentValue}</code>. Pressing this does nothing.
+            </div>
+          )}
+        </div>
+        {paramRows}
+      </>
     );
   }
 
   return (
-    <div>
-      <label style={labelStyle}>Function Name</label>
-      <input
-        value={currentValue}
-        onChange={(e) =>
-          onChange({ action: "script.call", function: e.target.value })
-        }
-        placeholder="my_function"
-        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-      />
-    </div>
+    <>
+      <div>
+        <label style={labelStyle}>Function Name</label>
+        <input
+          value={currentValue}
+          onChange={(e) => typeFunctionName(e.target.value)}
+          placeholder="my_function"
+          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+        />
+        {loaded && (
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, paddingLeft: 2 }}>
+            No callable functions found. A control calls a plain function in an
+            enabled script, not an <code>@on_event</code> handler.
+          </div>
+        )}
+      </div>
+      {paramRows}
+    </>
   );
 }
 
