@@ -46,6 +46,7 @@ import stat
 import sys
 import tempfile
 
+from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
@@ -182,7 +183,38 @@ class SSHTransport:
         return "accept-new", self._known_hosts_path
 
     def build_argv(self) -> list[str]:
-        """Build the full ``ssh`` argument vector for this connection."""
+        """Build the full ``ssh`` argument vector for this connection.
+
+        The destination is checked first, because the two fields that go into
+        it are the two a person fills in by hand, and OpenSSH's answer to
+        either being blank points at the network rather than at the field. A
+        blank username makes the destination a bare ``@host``, which ssh
+        refuses by printing its **usage message** and exiting -- the transport
+        then sees a process that died without connecting, and the device card
+        says the device is not responding. A blank host is worse for being
+        quieter: ``ssh admin@`` reports ``connect to host  port 22: Connection
+        refused``, which is a network verdict about an address nobody entered.
+        Both are stated as ``invalid_config`` so the card names the field to
+        fill in instead.
+
+        Whitespace counts as blank. It cannot be a real account or address, and
+        the alternative is an authentication failure that reads like a wrong
+        password. Neither value is otherwise altered: what the integrator typed
+        is what gets sent.
+        """
+        if not (self.username or "").strip():
+            raise ConnectionFaultError(
+                "SSH needs a username. Set this device's Username to the "
+                "account it logs in with (many devices ship with a documented "
+                "default, often 'admin').",
+                code=INVALID_CONFIG,
+            )
+        if not (self.host or "").strip():
+            raise ConnectionFaultError(
+                "SSH needs an address. Set this device's Host to the device's "
+                "IP address or hostname.",
+                code=INVALID_CONFIG,
+            )
         binary = self._resolve_binary()
         strict, known_hosts = self._known_hosts_option()
         argv = [

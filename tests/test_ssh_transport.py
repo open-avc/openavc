@@ -13,6 +13,7 @@ import os
 
 import pytest
 
+from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
 from openavc.transport.ssh import SSHTransport, _write_askpass_helper
 
 HOST = "acme-switch.invalid"
@@ -77,6 +78,52 @@ def test_host_key_policy(policy, expect_strict, expect_devnull):
 def test_extra_ssh_options_are_appended():
     argv = _make(extra_ssh_options=["Ciphers=aes256-ctr"]).build_argv()
     assert "Ciphers=aes256-ctr" in argv
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_blank_username_is_refused_as_config_not_network(blank):
+    """A blank username makes the destination a bare ``@host``, which OpenSSH
+    answers with its usage message and a non-zero exit -- so the transport sees
+    a process that died without connecting and the device reads as unreachable.
+    Refuse before spawning, typed so the card names the field."""
+    t = SSHTransport(HOST, 22, blank, _noop, _noop, ssh_binary="/usr/bin/ssh")
+    with pytest.raises(ConnectionFaultError, match="needs a username") as exc:
+        t.build_argv()
+    assert exc.value.fault_code == INVALID_CONFIG
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_blank_host_is_refused_as_config_not_network(blank):
+    """The quieter half: ``ssh admin@`` does not print usage, it reports
+    ``Connection refused`` -- a network verdict about an address nobody
+    entered, which sends the integrator to check cabling."""
+    t = SSHTransport(blank, 22, USER, _noop, _noop, ssh_binary="/usr/bin/ssh")
+    with pytest.raises(ConnectionFaultError, match="needs an address") as exc:
+        t.build_argv()
+    assert exc.value.fault_code == INVALID_CONFIG
+
+
+def test_destination_is_checked_before_the_ssh_binary(monkeypatch):
+    """Order matters for the message: a box with no ssh installed AND a blank
+    username should be told about the field it can fix, not sent hunting for
+    OpenSSH.
+
+    ``which`` is patched to None deliberately -- without it this test passes on
+    any machine that HAS ssh no matter which check runs first, so it would
+    assert nothing about ordering on every developer box and most CI runners.
+    """
+    monkeypatch.setattr("openavc.transport.ssh.shutil.which", lambda _x: None)
+    t = SSHTransport(HOST, 22, "", _noop, _noop, ssh_binary=None)
+    with pytest.raises(ConnectionFaultError, match="needs a username"):
+        t.build_argv()
+
+
+def test_a_username_that_is_merely_unusual_still_builds():
+    """The guard rejects blank, not odd. Values that are real are passed
+    through exactly as typed -- no trimming, no rewriting."""
+    argv = SSHTransport(HOST, 22, "admin.svc-01", _noop, _noop,
+                        ssh_binary="/usr/bin/ssh").build_argv()
+    assert argv[-1] == f"admin.svc-01@{HOST}"
 
 
 def test_resolve_binary_missing(monkeypatch):
