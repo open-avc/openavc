@@ -9,6 +9,14 @@ User=openavc
 Group=openavc
 WorkingDirectory=/opt/openavc
 ExecStartPre=-+/opt/openavc/update-helper.sh /var/lib/openavc
+# Keeps ufw/firewalld in step with the ports Settings has enabled (HTTPS,
+# the port-80 redirect). Those settings only take effect on a restart, so
+# this runs at exactly the moment they change. Second, because an in-app
+# update refreshes firewall-sync.sh itself in the step above. Both prefixes
+# are load-bearing: "+" runs it as root (ufw needs it), "-" keeps a failure
+# from stopping the service for good (Restart=always does not retry
+# ExecStartPre). No active firewall -> it does nothing.
+ExecStartPre=-+/opt/openavc/firewall-sync.sh /var/lib/openavc
 ExecStart=/opt/openavc/venv/bin/python -m openavc.main
 Restart=always
 RestartSec=5
