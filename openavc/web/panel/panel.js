@@ -179,6 +179,13 @@ const OVERLAY_DEFAULTS = {
 // The snap increment a page falls back to: the old 12x8 grid's spacing.
 const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
 
+// How long the first draw waits for the theme before going ahead without it.
+// The fetch is same-origin and answers in milliseconds; this only exists so a
+// server that accepts the request and never answers cannot leave a panel with
+// nothing on it. Past this the page draws unthemed -- what it used to draw
+// first anyway -- and repaints when the theme finally lands.
+const FIRST_THEME_WAIT_MS = 1000;
+
 class PanelApp {
     constructor() {
         const params = new URLSearchParams(window.location.search);
@@ -245,6 +252,9 @@ class PanelApp {
         this.themeElementDefaults = {};
         this.currentTheme = null;
         this._themeApplyInProgress = false;
+        // The first draw waits for the theme -- see _drawWhenThemeArrives.
+        this._firstThemeSettled = false;
+        this._awaitingFirstTheme = false;
         // Audio playback (driven by plugin.audio_player.* state)
         this._audioUnlocked = false;
         this._lastAudioRequestId = null;
@@ -254,6 +264,108 @@ class PanelApp {
         // iframe sandbox / allow attributes can apply the plugin's declared
         // permissions instead of always defaulting to allow-scripts only.
         this._pluginExtensions = {};
+        // Frames waiting to hear what their own request answered: absolute url
+        // -> Set of callbacks. See _watchIframeStatuses.
+        this._iframeStatusWaiters = new Map();
+        this._iframeStatusWatch = false;
+        this._watchIframeStatuses();
+    }
+
+    /** Watch what every iframe's OWN request answered, so nothing has to ask twice.
+     *
+     *  A frame pointed at a missing file has to say so. The server does its own
+     *  half -- api/static_files.py answers a missing page with a small HTML
+     *  document rather than a JSON error, because the body of that response is
+     *  what the room sees -- but that only reaches whoever is looking at the
+     *  frame. The strip out here is what names the FILE, and what tells the
+     *  Builder which element failed (openavc:element-error), which is the half
+     *  an author needs. Finding out used to cost a second request per frame, on
+     *  the one path in the panel that never caches (the ui/ route is no-cache by
+     *  design, so an author saving a file sees it), which meant every custom
+     *  control was two round trips forever.
+     *
+     *  The parent's own resource timeline already carries the answer: it reports
+     *  responseStatus for the frame's navigation even though the frame is
+     *  sandboxed into an opaque origin. The frame's `load` event does NOT --
+     *  it fires for a 404 exactly as it does for a 200, so the status is the
+     *  whole signal and the event is worthless on its own.
+     *
+     *  An observer rather than a read of performance.getEntriesByName(): the
+     *  timeline stops recording at 250 entries, which a wall panel reaches in
+     *  days, and past that the lookup finds nothing while an observer still
+     *  gets delivered. The lookup would have silently stopped working in the
+     *  field, which is the failure this is here to remove. The cost is that the
+     *  observer fires just after `load`, so it has to be the trigger.
+     */
+    _watchIframeStatuses() {
+        // Old WebViews have no responseStatus, and there the second request is
+        // still the only way to know. Detect it rather than assume it.
+        const readable = typeof PerformanceObserver !== 'undefined'
+            && typeof PerformanceResourceTiming !== 'undefined'
+            && 'responseStatus' in PerformanceResourceTiming.prototype;
+        if (!readable) return;
+        try {
+            new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    if (entry.initiatorType !== 'iframe') continue;
+                    const waiting = this._iframeStatusWaiters.get(entry.name);
+                    if (!waiting) continue;
+                    this._iframeStatusWaiters.delete(entry.name);
+                    for (const fn of waiting) {
+                        try { fn(entry.responseStatus); } catch (_) { /* one frame */ }
+                    }
+                }
+            }).observe({ type: 'resource', buffered: true });
+            this._iframeStatusWatch = true;
+        } catch (_) {
+            // Nothing to read -- the fallback in _reportIframeFileFailure asks.
+        }
+    }
+
+    /** Say so in the element's box if the control's file never arrived.
+     *
+     *  Reads the status off the frame's own request where the browser will tell
+     *  us (no extra traffic), and only asks for it where it will not.
+     */
+    _reportIframeFileFailure(el, iframe, opts) {
+        const failed = (status) => this._showIframeFault(
+            el,
+            status
+                ? `${opts.fileLabel} could not be loaded (${status})`
+                : `${opts.fileLabel} could not be loaded`,
+        );
+        // The second request, kept for the cases where the frame's own status
+        // is not knowable. `no-store` because its whole purpose is to find out
+        // what is there right now.
+        const ask = () => {
+            fetch(opts.src, { cache: 'no-store' }).then(res => {
+                if (!res.ok) failed(res.status);
+            }).catch(() => failed(0));
+        };
+
+        if (this._iframeStatusWatch) {
+            // The timeline names resources absolutely; `iframe.src` reflects
+            // the resolved URL, which is the same string.
+            const url = iframe.src;
+            let waiting = this._iframeStatusWaiters.get(url);
+            if (!waiting) {
+                waiting = new Set();
+                this._iframeStatusWaiters.set(url, waiting);
+            }
+            waiting.add((status) => {
+                // A status of 0 is not a verdict -- it is the browser declining
+                // to give one. A request that never got an answer reads that
+                // way, and so does one the browser will not report on. Asking
+                // is right for both: the frame either really is broken, in
+                // which case the round trip is the least of it, or it drew fine
+                // and an accusation would have been wrong.
+                if (status === 0) ask();
+                else if (status >= 400) failed(status);
+            });
+            return;
+        }
+
+        ask();
     }
 
     async _loadPluginExtensions() {
@@ -630,7 +742,18 @@ class PanelApp {
                 this.uiSettings = msg.ui?.settings || {};
                 this._setupViewportListener();
                 if (this.snapshotReceived) {
-                    this.renderCurrentPage();
+                    // The first definition is the cold start, and the theme
+                    // that decides what every element looks like is still one
+                    // fetch away -- so wait for it here rather than draw the
+                    // whole page and draw it again when it lands. Only here:
+                    // renderCurrentPage() itself still draws when called, which
+                    // is what every other caller (and every test) expects.
+                    if (this._firstThemeSettled) {
+                        this.renderCurrentPage();
+                    } else if (!this._awaitingFirstTheme) {
+                        this._awaitingFirstTheme = true;
+                        this._drawWhenThemeArrives();
+                    }
                 }
                 this._reconcileLockOnDefinition();
                 this.resetIdleTimer();
@@ -1743,6 +1866,11 @@ class PanelApp {
 
         this.bindings = [];
         this.elementMap = {};
+        // Frames from the page being replaced are about to be discarded, so
+        // drop what they were waiting to hear -- a callback held here keeps the
+        // element it draws into alive. Every frame this render builds registers
+        // again below.
+        this._iframeStatusWaiters.clear();
 
         // Apply theme
         this.applyTheme(this.uiDef.settings || {});
@@ -5177,23 +5305,21 @@ class PanelApp {
             iframe.setAttribute('allow', opts.allowFeatures.join('; '));
         }
         iframe.style.cssText = 'width:100%; height:100%; border:none; border-radius:inherit;';
-        iframe.setAttribute('loading', 'lazy');
+        // NOT loading="lazy". A panel page is sized to fill the screen, so
+        // every frame on it is in the viewport already and lazy defers nothing
+        // -- it only delays the fetch behind a layout pass, on the path a
+        // person is waiting at. It also costs the one thing that makes the
+        // second request below unnecessary: Chromium zeroes responseStatus and
+        // transferSize on a lazily-loaded frame's timing entry, so the parent
+        // could no longer tell a 404 from a control that drew perfectly well.
         el.style.overflow = 'hidden';
         el.appendChild(iframe);
 
-        // Is the page actually there? An iframe pointed at a 404 renders the
-        // server's JSON error as text, which reads as "my control is broken in
-        // some unknowable way" rather than "that file is not in the project".
-        // Asking first costs one conditional request (the ui/ route is
-        // no-cache with an etag, so the iframe's own fetch revalidates).
+        // Is the page actually there? Registered before the frame is in the
+        // document, so the answer cannot arrive before something is listening
+        // for it.
         if (opts.fileLabel) {
-            fetch(opts.src, { cache: 'no-store' }).then(res => {
-                if (!res.ok) {
-                    this._showIframeFault(el, `${opts.fileLabel} could not be loaded (${res.status})`);
-                }
-            }).catch(() => {
-                this._showIframeFault(el, `${opts.fileLabel} could not be loaded`);
-            });
+            this._reportIframeFileFailure(el, iframe, opts);
         }
 
         // Loading indicator
@@ -6267,13 +6393,33 @@ class PanelApp {
 
     // --- Helpers ---
 
-    applyTheme(settings) {
+    /** Put a theme on the page, and redraw it if that changed how elements look.
+     *
+     *  Returns a promise that settles once a theme (or the fallback) has been
+     *  applied, so the first draw can wait for it rather than drawing the whole
+     *  page twice. `repaint: false` is for exactly that caller: it is about to
+     *  draw the page itself, so there is nothing yet to repaint.
+     */
+    applyTheme(settings, { repaint = true } = {}) {
         const themeId = settings.theme_id || (settings.theme === 'light' ? 'light-modern' : 'dark-default');
         const overrides = settings.theme_overrides || {};
 
-        if (this._themeApplyInProgress) return;
+        if (this._themeApplyInProgress) return Promise.resolve();
 
         const prevDefaults = JSON.stringify(this.themeElementDefaults || {});
+
+        // The same question at the end of all three branches: element defaults
+        // are merged into what each renderer draws, so a theme that moved them
+        // only takes effect on a redraw. Written once -- it was three copies,
+        // and a rule that decides whether the panel repaints should not be able
+        // to disagree with itself.
+        const repaintIfLookChanged = () => {
+            const newDefaults = JSON.stringify(this.themeElementDefaults || {});
+            if (!repaint || prevDefaults === newDefaults || !this.snapshotReceived) return;
+            this._themeApplyInProgress = true;
+            this.renderCurrentPage();
+            this._themeApplyInProgress = false;
+        };
 
         // Theme Studio path: parent supplied a working-copy theme. Apply it
         // synchronously without hitting the network so picker drags reflect
@@ -6281,30 +6427,20 @@ class PanelApp {
         if (this.inlineTheme && this.inlineTheme.id === themeId) {
             this._applyThemeData(this.inlineTheme, overrides, settings);
             this.currentTheme = this.inlineTheme;
-            const newDefaults = JSON.stringify(this.themeElementDefaults || {});
-            if (prevDefaults !== newDefaults && this.snapshotReceived) {
-                this._themeApplyInProgress = true;
-                this.renderCurrentPage();
-                this._themeApplyInProgress = false;
-            }
-            return;
+            repaintIfLookChanged();
+            return Promise.resolve();
         }
 
         if (this.currentTheme && this.currentTheme.id === themeId) {
             this._applyThemeData(this.currentTheme, overrides, settings);
-            const newDefaults = JSON.stringify(this.themeElementDefaults || {});
-            if (prevDefaults !== newDefaults && this.snapshotReceived) {
-                this._themeApplyInProgress = true;
-                this.renderCurrentPage();
-                this._themeApplyInProgress = false;
-            }
-            return;
+            repaintIfLookChanged();
+            return Promise.resolve();
         }
 
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
 
-        fetch(`${basePath}/api/themes/${encodeURIComponent(themeId)}`)
+        return fetch(`${basePath}/api/themes/${encodeURIComponent(themeId)}`)
             .then(res => {
                 if (!res.ok) return null;
                 return res.json().catch(() => null);
@@ -6317,15 +6453,37 @@ class PanelApp {
                 } else {
                     this._applyFallbackTheme(settings);
                 }
-                // Re-render if element defaults changed
-                const newDefaults = JSON.stringify(this.themeElementDefaults || {});
-                if (prevDefaults !== newDefaults && this.snapshotReceived) {
-                    this._themeApplyInProgress = true;
-                    this.renderCurrentPage();
-                    this._themeApplyInProgress = false;
-                }
+                repaintIfLookChanged();
             })
             .catch(() => this._applyFallbackTheme(settings));
+    }
+
+    /** Draw the first page once the theme is in hand -- but draw it regardless.
+     *
+     *  Everything an element looks like comes from a theme that is one fetch
+     *  away, and `applyTheme` returns before it lands. Drawing first and again
+     *  when it arrives is what made a custom control cost two frame loads
+     *  instead of one, and rebuilding every frame on a page is the most
+     *  expensive thing the panel does.
+     *
+     *  A theme that never answers must not leave a blank panel, so the wait is
+     *  capped: past it the page draws with no theme -- which is what the
+     *  discarded first pass used to draw -- and repaints when the theme lands.
+     */
+    _drawWhenThemeArrives() {
+        const drawFirst = () => {
+            if (this._firstThemeSettled) return;
+            this._firstThemeSettled = true;
+            this.renderCurrentPage();
+        };
+        const giveUpWaiting = setTimeout(drawFirst, FIRST_THEME_WAIT_MS);
+        this.applyTheme(this.uiDef?.settings || {}, { repaint: false }).then(() => {
+            clearTimeout(giveUpWaiting);
+            // Already drew without it: this is now an ordinary theme change to
+            // a page that is up, which is the repaint applyTheme normally does.
+            if (this._firstThemeSettled) this.renderCurrentPage();
+            else drawFirst();
+        });
     }
 
     _applyThemeData(theme, overrides, settings) {
