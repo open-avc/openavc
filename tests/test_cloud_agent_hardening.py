@@ -492,3 +492,58 @@ async def test_replay_retains_buffer_until_acked():
     # The ack is what clears them.
     seq.handle_ack({"payload": {"last_seq": seq.next_seq - 1}})
     assert seq.buffer_count == 0
+
+
+# === X-066 — a global throttle must not silence the room's proof of life ====
+
+
+def _throttled_agent(limit_type: str) -> tuple[CloudAgent, list]:
+    """A connected agent under ``limit_type`` throttle, recording what it sends."""
+    agent = _bare_agent()
+    agent._session = object()
+    agent._ws = object()
+
+    event = asyncio.Event()
+    event.clear()
+    agent._throttles[limit_type] = event
+
+    sent: list = []
+
+    async def _record(msg_type, payload):
+        sent.append(msg_type)
+
+    agent._send_signed = _record
+    return agent, sent
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_rides_through_a_global_throttle():
+    """The cloud marks a system offline after two minutes without a heartbeat.
+
+    Dropping heartbeats for the backoff therefore reports a working room as
+    offline — the room is fine, its panel is working, and the portal says it
+    is gone. A heartbeat is not a payload the room wants to send; it is how
+    we know the room is there, so it goes through the global gate the way
+    pong and gap_report do.
+    """
+    agent, sent = _throttled_agent("global")
+
+    await agent.send_message("state_batch", {})
+    await agent.send_message("heartbeat", {})
+
+    assert sent == ["heartbeat"]
+
+
+@pytest.mark.asyncio
+async def test_a_heartbeat_throttle_still_stops_heartbeats():
+    """The global gate is bypassed; the per-type bound is not.
+
+    The cloud allows ten heartbeats a minute against an interval of one every
+    thirty seconds, so a per-type heartbeat throttle means something is
+    genuinely wrong and backing off is right.
+    """
+    agent, sent = _throttled_agent("heartbeat")
+
+    await agent.send_message("heartbeat", {})
+
+    assert sent == []

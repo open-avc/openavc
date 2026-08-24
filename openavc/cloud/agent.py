@@ -712,9 +712,20 @@ class CloudAgent:
         if not self._connected or not self._session or not self._ws:
             return
 
-        # Check global and per-type throttle
+        # Check global and per-type throttle.
+        #
+        # A heartbeat rides through the GLOBAL gate. It is not something the
+        # room wants to say — it is how the cloud knows the room is there, and
+        # the cloud marks a system offline after two minutes without one. So
+        # dropping heartbeats for the backoff tells the portal a working room
+        # is offline, which is the one thing it exists to be right about; a
+        # chatty room throttled repeatedly reaches that in three misses. Same
+        # reasoning as the pong and gap_report bypass in _send_signed. The
+        # per-type heartbeat limit still applies below (the cloud allows 10 a
+        # minute against an interval of one every 30 seconds), so this is a
+        # bypass of the ceiling, not of the bound.
         global_throttle = self._throttles.get("global")
-        if global_throttle and not global_throttle.is_set():
+        if global_throttle and not global_throttle.is_set() and msg_type != HEARTBEAT:
             log.debug("Cloud agent: global throttle active, dropping message")
             return
         throttle_event = self._throttles.get(msg_type)
