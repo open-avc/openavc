@@ -21,6 +21,12 @@ Neither the password nor the API key is stored as typed — both are digests,
 see `openavc/utils/password_hash.py`. Nothing reads either back; every consumer
 here checks presence or verifies a supplied value against it.
 
+The API key is a machine credential, not a second way to sign in: it is only
+accepted in `X-API-Key`, which a browser cannot attach to a page it is opening.
+So it may not be a system's ONLY credential — see
+`api_key_would_be_sole_credential`, which the config-save door asks before it
+writes.
+
 Browser sessions don't hold the password: the Programmer SPA exchanges it for
 a short-lived session token (POST /api/auth/session) and sends
 `Authorization: Bearer <token>` / the `auth.bearer.<token>` WebSocket
@@ -232,6 +238,64 @@ def store_api_key(api_key: str) -> None:
     is nowhere left that could persist one as typed. An empty key clears it.
     """
     get_system_config().set("auth", "api_key", hash_api_key(api_key))
+
+
+API_KEY_NEEDS_PASSWORD = (
+    "An API key can't sign in to the Programmer — it is only accepted in the "
+    "X-API-Key header, which a browser can't send. Set a Programmer password "
+    "as well, or clear the API key, so this system can still be opened in a "
+    "browser."
+)
+
+
+def api_key_would_be_sole_credential(
+    *, api_key: str | None = None, password: str | None = None
+) -> bool:
+    """Whether a save would leave the API key as the instance's only credential.
+
+    That state is a lockout, not a posture. Either credential claims the
+    instance, so a key on its own closes the admin surface to anonymous
+    callers — but a key is only ever accepted in `X-API-Key`, which a browser
+    cannot attach to a navigation, and the sign-in screen mints its session
+    from a password that does not exist. The Programmer becomes unreachable
+    from every browser and the only way back is the filesystem, which is the
+    one surface the integrator is supposed to be able to fix things from.
+    `auth.allow_anonymous` does not rescue it either: that is consulted only
+    when NO credential is set.
+
+    Pass the values a save proposes; `None` means "not changing this one", so
+    the answer is about the state the instance would be left in rather than
+    about one field. That is what catches the quieter direction — clearing the
+    password on a box that already has a key gets there just as surely as
+    adding a key to a box with no password.
+
+    Presence is plain truthiness, deliberately the same test the auth checks
+    themselves apply to the stored value, so this cannot refuse a save that
+    would in fact have left a working password behind.
+    """
+    proposed_key = _get_api_key() if api_key is None else api_key
+    proposed_password = _get_password() if password is None else password
+    return bool(proposed_key) and not proposed_password
+
+
+def warn_if_api_key_is_sole_credential() -> bool:
+    """Log a line when this instance is claimed by an API key and nothing else.
+
+    For the two doors no refusal reaches: `OPENAVC_API_KEY`, supplied fresh each
+    boot and deliberately never persisted, and a `system.json` somebody
+    provisioned by hand. Both are out-of-band deployment decisions rather than a
+    click, so they stand — but the box is then unopenable in any browser, and
+    without this nothing anywhere says so. Called from `Engine.start`; returns
+    whether it warned so the behaviour can be tested without starting a server.
+    """
+    if not api_key_would_be_sole_credential():
+        return False
+    log.warning(
+        "An API key is set with no Programmer password. The API is reachable "
+        "with the X-API-Key header, but the Programmer cannot be opened in a "
+        "browser until a password is set. Set one in Settings > Security."
+    )
+    return True
 
 
 def claim_instance(password: str, username: str = "") -> None:

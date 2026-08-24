@@ -466,14 +466,26 @@ The Panel UI is never password-protected. End users can always open the touch pa
 | Setting | Environment Variable | When to use it |
 |---------|---------------------|----------------|
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. Stored as a salted scrypt hash, so it cannot be read back out of `system.json`; a plain password written into that file by hand still works and is converted to a hash on the next start. |
-| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
+| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. Set a programmer password alongside it — a key on its own cannot open the Programmer in a browser. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
 | `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | **Set this if the panel runs on a public-facing display** and you want to prevent users from navigating away from the touch panel UI. |
 
 If the admin password is lost, set `auth.programmer_password` to `""` in `system.json` and restart. The instance returns to unclaimed and offers the "create admin password" screen again; nothing else is affected.
 
 If the API key is lost, generate a new one in **Settings > Security** and update whatever integrations use it. It cannot be read back out of `system.json` either.
 
-You do not need to set both programmer password and API key. Either one protects the Programmer IDE and API. The password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
+If a system ends up with an API key and no password — from `OPENAVC_API_KEY`, or a hand-written `system.json` — the Programmer will not open in a browser. Set a password using the key you still hold:
+
+```bash
+curl -X PATCH http://<host>:8080/api/system/config \
+  -H "X-API-Key: <your key>" -H "Content-Type: application/json" \
+  -d '{"auth": {"programmer_password": "<new password>"}}'
+```
+
+Or set `auth.programmer_password` in `system.json` and restart; it is converted to a hash on that start.
+
+The password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
+
+**An API key is not a substitute for the password.** It is only accepted in the `X-API-Key` header, which a browser cannot send when you open a page, and the Programmer's sign-in screen only takes a password. So a system with a key and no password answers integrations normally and cannot be opened in any browser. Settings refuses to save a key unless a password is set as well, and refuses to clear the password while a key is set. A key supplied through `OPENAVC_API_KEY`, or written into `system.json` by hand, is not stopped that way, so the server writes a warning to the log at startup instead.
 
 ### What gets protected
 
@@ -591,7 +603,7 @@ Platform notes:
 - Communication is HTTP by default, suitable for isolated AV VLANs.
 - HTTPS is available as a built-in opt-in (see the HTTPS section above). Auto-generated self-signed cert by default, or supply your own cert/key for environments with an internal CA. Reverse-proxy TLS is still supported for deployments that prefer it.
 - ISC (inter-system communication) uses a shared auth key for system-to-system traffic, and switches to `wss://` automatically when peers advertise HTTPS.
-- Packaged installs bind to all interfaces (`0.0.0.0`) so panels on other devices can connect; set a Programmer password (the first-run prompt) or an API key on any networked deployment. A from-source install binds to localhost only until you change it.
+- Packaged installs bind to all interfaces (`0.0.0.0`) so panels on other devices can connect; set a Programmer password (the first-run prompt) on any networked deployment, and an API key as well if you have integrations. A from-source install binds to localhost only until you change it.
 
 ## See Also
 

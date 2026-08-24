@@ -201,6 +201,16 @@ class Engine:
         except Exception:  # never block startup on the conversion
             log.exception("Could not convert the stored API key to a hash")
 
+        # An API key with no password beside it leaves this box unopenable in
+        # any browser. PATCH /api/system/config refuses to create that state,
+        # but OPENAVC_API_KEY and a hand-provisioned system.json both reach it
+        # without a save, so those get a line in the log instead.
+        try:
+            from openavc.api.auth import warn_if_api_key_is_sole_credential
+            warn_if_api_key_is_sole_credential()
+        except Exception:  # never block startup on a warning
+            log.exception("Could not check the admin credential posture")
+
         # One-shot migration of plugin_repo/driver_repo from the pre-data_dir
         # layout (APP_DIR/{plugin,driver}_repo). Runs before driver and plugin
         # loading so the moved content is picked up on the same startup. No-op

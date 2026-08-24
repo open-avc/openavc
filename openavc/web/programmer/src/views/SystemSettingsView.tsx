@@ -642,6 +642,20 @@ export function SystemSettingsView() {
   const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
   const publicBind = net.bind_address === "0.0.0.0";
 
+  // An API key claims the system but is only ever accepted in the X-API-Key
+  // header, which a browser can't attach to a page it is opening. So a key with
+  // no password leaves the Programmer unreachable from every browser, with only
+  // the filesystem to undo it. A stored value reads back as REDACTED, which
+  // counts as set.
+  const apiKeyNeedsPassword = !!auth.api_key && !auth.programmer_password;
+  // Block the save only when this edit is what puts it there. A system already
+  // in that state (its key came from OPENAVC_API_KEY, or from a hand-written
+  // system.json) still has to be able to change its log level -- the server
+  // draws the same line.
+  const credentialEdited =
+    !!dirty.auth && ("api_key" in dirty.auth || "programmer_password" in dirty.auth);
+  const apiKeySaveBlocked = apiKeyNeedsPassword && credentialEdited;
+
   // Validation for TLS fields. The cert mode is driven by tls.auto_generate
   // (true => auto self-sign, false => user-supplied paths), not by whether the
   // path fields happen to be populated.
@@ -657,7 +671,8 @@ export function SystemSettingsView() {
     tlsCertMode === "provided" &&
     tls?.enabled &&
     (!tls?.cert_file?.trim() || !tls?.key_file?.trim());
-  const saveBlocked = !!(tls?.enabled && (tlsPortInvalid || tlsProvidedBlank));
+  const saveBlocked =
+    !!(tls?.enabled && (tlsPortInvalid || tlsProvidedBlank)) || apiKeySaveBlocked;
 
   // Cross-protocol switch warning (page loaded over one scheme, switching to the other)
   const pageIsHttps = typeof window !== "undefined" && window.location.protocol === "https:";
@@ -1630,6 +1645,13 @@ export function SystemSettingsView() {
               Provide this to external systems via the <code>X-API-Key</code> header.
               Copy it before you save. It is not shown again afterwards.
             </span>
+            {apiKeyNeedsPassword && (
+              <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
+                An API key can't sign in to the Programmer. Set a Programmer
+                password as well, or clear the API key, so this system can still
+                be opened in a browser.
+              </span>
+            )}
           </div>
         </div>
 

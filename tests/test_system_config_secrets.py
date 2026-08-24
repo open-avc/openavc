@@ -396,13 +396,25 @@ class TestTheServerDoesItAtStartup:
 
 
 _KEY_HEADER = {"X-API-Key": "integration-key-1"}
+# A key never travels alone through this door: one with no password beside it
+# is refused, because it would claim the instance and leave no way into the
+# Programmer from a browser.
+_KEY_AND_PASSWORD = {
+    "api_key": "integration-key-1",
+    "programmer_password": "commission123",
+}
 
 
 class TestTheSettingsWriteDoor:
     """`PATCH /api/system/config` is the only door that sets an API key, so it
     is the only place a plaintext could still be written. It is taken out of
     the generic section loop for exactly that reason — the loop copies whatever
-    it is handed."""
+    it is handed.
+
+    Every save here carries a password beside the key because the door refuses
+    a key that would be the only credential — see
+    `tests/test_api_key_needs_a_password.py`. That is posture, not storage;
+    what these tests are about is the form the key lands in."""
 
     @pytest.fixture
     def client(self, tmp_path):
@@ -433,9 +445,7 @@ class TestTheSettingsWriteDoor:
 
     def test_a_saved_key_is_stored_as_a_digest(self, client, tmp_path):
         c, cfg = client
-        resp = c.patch(
-            "/api/system/config", json={"auth": {"api_key": "integration-key-1"}}
-        )
+        resp = c.patch("/api/system/config", json={"auth": _KEY_AND_PASSWORD})
         assert resp.status_code == 200
 
         saved = json.loads((tmp_path / "system.json").read_text())
@@ -446,7 +456,7 @@ class TestTheSettingsWriteDoor:
         """Without a restart: the same request that stores it has to leave the
         runtime layer holding something the door accepts."""
         c, cfg = client
-        c.patch("/api/system/config", json={"auth": {"api_key": "integration-key-1"}})
+        c.patch("/api/system/config", json={"auth": _KEY_AND_PASSWORD})
 
         from openavc.api.auth import _check_api_key
 
@@ -455,7 +465,7 @@ class TestTheSettingsWriteDoor:
 
     def test_clearing_the_key_clears_it(self, client, tmp_path):
         c, cfg = client
-        c.patch("/api/system/config", json={"auth": {"api_key": "integration-key-1"}})
+        c.patch("/api/system/config", json={"auth": _KEY_AND_PASSWORD})
         resp = c.patch(
             "/api/system/config",
             json={"auth": {"api_key": ""}},
@@ -471,7 +481,7 @@ class TestTheSettingsWriteDoor:
         request from here on carries the key that was just saved, which is the
         end-to-end proof that a digest in the file authenticates over HTTP."""
         c, cfg = client
-        c.patch("/api/system/config", json={"auth": {"api_key": "integration-key-1"}})
+        c.patch("/api/system/config", json={"auth": _KEY_AND_PASSWORD})
 
         resp = c.get("/api/system/config", headers=_KEY_HEADER)
         assert resp.status_code == 200
@@ -483,7 +493,7 @@ class TestTheSettingsWriteDoor:
         the digest of `***` — an instant lockout of whatever holds the real
         one, with nothing to read back to find out what happened."""
         c, cfg = client
-        c.patch("/api/system/config", json={"auth": {"api_key": "integration-key-1"}})
+        c.patch("/api/system/config", json={"auth": _KEY_AND_PASSWORD})
         before = json.loads((tmp_path / "system.json").read_text())["auth"]["api_key"]
 
         body = c.get("/api/system/config", headers=_KEY_HEADER).json()

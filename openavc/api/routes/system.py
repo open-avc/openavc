@@ -190,6 +190,26 @@ async def update_system_config(request: Request) -> dict[str, Any]:
         raw = body["auth"].pop("api_key")
         new_api_key = "" if raw is None else str(raw)
 
+    # Refuse a save that would leave the API key as the only credential, before
+    # anything is written. Same shape and the same reason as the TLS check
+    # above: a partial save that locks the user out with no UI path back is
+    # worth refusing at the door, because afterwards there is no door. The rule
+    # itself lives beside the credential it is about, in `openavc/api/auth.py`.
+    #
+    # Only when this save actually touches one of the two credentials. A box
+    # already in that state — OPENAVC_API_KEY, or a system.json provisioned by
+    # hand — must still be able to change its log level, and refusing every
+    # unrelated save would widen the lockout instead of closing it. What covers
+    # that box is the startup warning in `Engine.start`.
+    from openavc.api.auth import (
+        API_KEY_NEEDS_PASSWORD,
+        api_key_would_be_sole_credential,
+    )
+    if (new_api_key is not None or new_password is not None) and (
+        api_key_would_be_sole_credential(api_key=new_api_key, password=new_password)
+    ):
+        raise HTTPException(status_code=400, detail=API_KEY_NEEDS_PASSWORD)
+
     updated_sections = []
     for section_name, section_data in body.items():
         if not isinstance(section_data, dict):
