@@ -43,6 +43,12 @@ def _repo_root() -> str:
     return str(Path(__file__).resolve().parent.parent)
 
 
+# Every source file read below passes `encoding="utf-8"` explicitly. Without it
+# `read_text` uses the locale encoding, which on Windows is cp1252 -- and
+# `engine.py` holds an em dash, so these tests passed everywhere except the one
+# runner nobody develops on. Same reason the subprocess below pins its decoding.
+
+
 def _store(*, password: str | None = None, api_key: str | None = None) -> None:
     if password is not None:
         auth.store_admin_password(password)
@@ -289,6 +295,8 @@ class TestTheDoorCensus:
             ["git", "grep", "-n", "store_api_key", "--", "openavc/"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=_repo_root(),
         ).stdout
         callers = {
@@ -334,7 +342,9 @@ class TestTheStartupWarning:
         call site — re-running `Engine.start` here would cost a server."""
         from pathlib import Path
 
-        source = (Path(_repo_root()) / "openavc/core/engine.py").read_text()
+        source = (Path(_repo_root()) / "openavc/core/engine.py").read_text(
+            encoding="utf-8"
+        )
         assert "warn_if_api_key_is_sole_credential()" in source
 
 
@@ -431,7 +441,7 @@ class TestTheSettingsCardMirrorsIt:
         return (
             Path(_repo_root())
             / "openavc/web/programmer/src/views/SystemSettingsView.tsx"
-        ).read_text()
+        ).read_text(encoding="utf-8")
 
     def test_the_card_computes_the_same_condition(self):
         card = self._card()
