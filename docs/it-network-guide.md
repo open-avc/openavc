@@ -130,6 +130,28 @@ OpenAVC initiates outbound TCP and UDP connections to AV equipment. The specific
 
 The table below lists common AV control ports. This is not exhaustive. AV manufacturers use a wide range of proprietary and standard ports, and new drivers may use ports not listed here.
 
+**Pulling video from a device (RTSP, MJPEG, SRT).** When the optional Video
+Panel plugin shows a camera, encoder or production switcher on a panel, the
+OpenAVC host is the one that connects to that device and fetches the video. The
+panel never talks to the AV equipment itself. That means only the OpenAVC host
+needs a route to wherever the video lives, which is often a separate AV or
+video VLAN, and a host with a second network connection onto that fabric is the
+usual arrangement.
+
+These connections are **outbound only and open nothing new on the OpenAVC
+host** — including SRT, which is how a software or hardware production switcher
+is normally pulled in. OpenAVC dials out to the device's SRT port rather than
+listening for it, so no inbound firewall rule is needed for the ingest side.
+The one port that does have to be reachable *inbound* is the WebRTC media port
+above, and that is between the panel and the OpenAVC host, not the AV network.
+
+The ports involved are whatever the device serves on: commonly TCP 554 for
+RTSP, the device's own HTTP port for an MJPEG preview, and a UDP port chosen
+per output for SRT (vMix offers 10000 by default). On a managed network, allow
+the OpenAVC host outbound to those ports on the AV VLAN. If a video tile shows
+an error rather than a picture, this route is the first thing to check — the
+server log names the address it could not reach.
+
 | Port | Protocol | Device type | Example |
 |------|----------|-------------|---------|
 | 22 | TCP (SSH) | Embedded devices, AV processors | SSH-managed gear |
