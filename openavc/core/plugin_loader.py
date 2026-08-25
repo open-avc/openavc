@@ -444,11 +444,15 @@ class PluginLoader:
     and started based on the project file's plugins configuration.
     """
 
-    def __init__(self, state_store, event_bus, macro_engine, device_manager):
+    def __init__(self, state_store, event_bus, macro_engine, device_manager,
+                 cloud_agent_provider=None):
         self._state = state_store
         self._events = event_bus
         self._macros = macro_engine
         self._devices = device_manager
+        # A callable rather than the agent itself — the engine builds the agent
+        # after the loader exists, and replaces it when cloud config changes.
+        self._cloud_agent_provider = cloud_agent_provider
         self._platform_id = get_platform_id()
 
         # Running plugin instances: plugin_id -> instance
@@ -907,6 +911,7 @@ class PluginLoader:
             log_fn=self._plugin_log,
             failure_reporter=_on_callback_failure,
             success_reporter=_on_callback_success,
+            cloud_agent_provider=self._cloud_agent_provider,
         )
 
         # Instantiate and start

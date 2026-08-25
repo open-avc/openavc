@@ -95,7 +95,10 @@ class Engine:
         )
         self.triggers = TriggerEngine(self.state, self.events, self.macros)
         self.scripts: ScriptEngine | None = None
-        self.plugin_loader = PluginLoader(self.state, self.events, self.macros, self.devices)
+        self.plugin_loader = PluginLoader(
+            self.state, self.events, self.macros, self.devices,
+            cloud_agent_provider=lambda: self.cloud_agent,
+        )
         self.persister: StatePersister | None = None
         self.isc = None  # ISCManager, initialized in start() if enabled
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled

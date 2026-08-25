@@ -76,6 +76,10 @@ THROTTLE_MAX_SECONDS = 3600
 MAX_CONSECUTIVE_SIG_FAILURES = 5
 
 # Default capabilities the agent reports
+#
+# This is what the instance says it CAN do; the cloud answers with the subset
+# it grants (`enabled_capabilities` in session_start). So adding a name here
+# does not switch anything on — it makes the capability askable.
 DEFAULT_CAPABILITIES = [
     "monitoring",
     "remote_access",
@@ -83,6 +87,11 @@ DEFAULT_CAPABILITIES = [
     "diagnostics",
     "tunnel",
     "trusted_certs",
+    # Video across the tunnel spends the cloud's bandwidth, so it is sold per
+    # space rather than included. Local viewing is never gated by it — see
+    # PluginAPI.viewer_access, where a viewer on the LAN is answered without
+    # the capability being consulted at all.
+    "tunnel_video",
 ]
 
 # Downstream messages that require a specific capability before the agent will

@@ -30,6 +30,12 @@ _HOP_BY_HOP = frozenset({
     "te", "trailers", "transfer-encoding", "upgrade",
 })
 
+# The three answers `viewer_access` gives. Plain strings because a plugin
+# imports nothing from `openavc` — it compares the value it gets back.
+VIEWER_LOCAL = "local"
+VIEWER_REMOTE = "remote"
+VIEWER_REMOTE_BLOCKED = "remote_blocked"
+
 
 class PluginPermissionError(Exception):
     """Raised when a plugin attempts an action it hasn't declared."""
@@ -59,6 +65,7 @@ class PluginAPI:
         log_fn: Callable | None = None,
         failure_reporter: Callable | None = None,
         success_reporter: Callable | None = None,
+        cloud_agent_provider: Callable[[], Any] | None = None,
     ):
         self._plugin_id = plugin_id
         self._capabilities = set(capabilities)
@@ -73,6 +80,11 @@ class PluginAPI:
         self._log_fn = log_fn
         self._failure_reporter = failure_reporter
         self._success_reporter = success_reporter
+        # Called, not stored: the agent is built after plugins may already be
+        # running, is replaced on a cloud reconfigure, and its capabilities
+        # change mid-session on a plan change. A snapshot would be stale in all
+        # three cases.
+        self._cloud_agent_provider = cloud_agent_provider
         self._periodic_tasks: dict[str, asyncio.Task] = {}
         self._data_dir: Path | None = None
 
@@ -452,6 +464,54 @@ class PluginAPI:
             status_code=upstream.status_code,
             headers=resp_headers,
         )
+
+    def viewer_access(self, request, capability: str) -> str:
+        """Where this viewer is, and whether a cloud-gated feature may reach them.
+
+        Requires: http_endpoints.
+
+        Answers one of three strings:
+
+        - ``"local"`` — the caller is on the LAN (or the box itself). **The
+          capability is not consulted to reach this answer**, so an entitlement
+          that is missing, stale, or plain wrong cannot take down a panel on
+          the customer's own network. That is the whole reason this is one
+          method rather than two booleans a caller has to combine correctly.
+        - ``"remote"`` — the caller came in over the cloud remote-UI tunnel and
+          the account's plan grants ``capability`` for this space.
+        - ``"remote_blocked"`` — tunnelled, but the capability is not granted.
+          Say so and offer what still works locally; do not fail the request
+          silently, and do not leave the panel spinning.
+
+        Tunnelled is decided by ``openavc.utils.request_origin``, which is the
+        one authority on it — a plugin reading the header itself would be
+        duplicating a rule the platform owns and would drift the day it
+        changes.
+
+        ``capability`` must be a name the platform knows
+        (``cloud.agent.DEFAULT_CAPABILITIES``); a typo raises rather than
+        quietly blocking every remote viewer forever.
+        """
+        self._require("http_endpoints")
+        from openavc.cloud.agent import DEFAULT_CAPABILITIES
+        from openavc.utils.request_origin import is_tunneled_request
+
+        if capability not in DEFAULT_CAPABILITIES:
+            raise ValueError(
+                f"Unknown capability '{capability}'. Known capabilities: "
+                f"{', '.join(sorted(DEFAULT_CAPABILITIES))}"
+            )
+
+        if not is_tunneled_request(request):
+            return VIEWER_LOCAL
+
+        agent = self._cloud_agent_provider() if self._cloud_agent_provider else None
+        # No agent means no tunnel, so in practice this is unreachable — but a
+        # request that says it is tunnelled while the agent is gone is not
+        # evidence of a grant, and "blocked" is the answer that fails safe.
+        if agent is None or not agent.has_capability(capability):
+            return VIEWER_REMOTE_BLOCKED
+        return VIEWER_REMOTE
 
     # ──── Background Tasks ────
 
