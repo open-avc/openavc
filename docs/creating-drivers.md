@@ -818,9 +818,9 @@ If a device — or a child entity — offers a video stream a browser can show (
 | Property | Type | Value |
 |----------|------|-------|
 | `preview_url` | string | The stream URL, reachable **from the OpenAVC server** (the server proxies it to the panel; the panel never connects to the AV network directly). Set it to `""` when no stream is available right now. |
-| `preview_format` | string | `mjpeg` for multipart MJPEG over HTTP (rendered as a live image), or `rtsp` (played through the same WebRTC pipeline as a camera). |
+| `preview_format` | string | `mjpeg` for multipart MJPEG over HTTP (rendered as a live image), `rtsp`, or `srt` (both played through the same WebRTC pipeline as a camera). Optional: with it left out, the URL's scheme is used. |
 
-Declare them like any other `state_variables` entry and set them as the device reports. The plugin reuses the device's or child's `label` (or `name`) for the dropdown entry, so there's nothing extra to name. Device-level keys are `device.<id>.preview_url`; child-level keys follow the child-entity convention (`device.<id>.<type>.<padded>.preview_url`). A worked example is the `chazy_control_pro` encoder child, which derives these from its secondary-stream URLs.
+Declare them like any other `state_variables` entry and set them as the device reports. The plugin reuses the device's or child's `label` (or `name`) for the dropdown entry, so there's nothing extra to name. Device-level keys are `device.<id>.preview_url`; child-level keys follow the child-entity convention (`device.<id>.<type>.<padded>.preview_url`). A worked example is the `chazy_control_pro` encoder child, which derives these from its secondary-stream URLs; `vmix` publishes them per output for its SRT streams. Whether the stream needs transcoding is not your problem — the consumer reads that back from the stream itself.
 
 #### `commands` entry
 
