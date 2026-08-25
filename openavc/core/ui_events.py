@@ -437,7 +437,7 @@ class UIEventRuntime:
                     log.warning(f"Binding script call failed: {func_name}: {exc}")
                     record(
                         function=func_name, params=params, called=False,
-                        error=str(exc),
+                        error=self._script_call_error(exc),
                     )
 
         elif action == "event.emit":
@@ -522,6 +522,28 @@ class UIEventRuntime:
         name = state.get(f"device.{device_id}.name") or device_id
         host = state.get(f"device.{device_id}.host") or ""
         return friendly_error(exc, device=str(name), host=str(host))
+
+    def _script_call_error(self, exc: ScriptCallError) -> str:
+        """Why the script the control named did not do its job.
+
+        A script call that died on a dead device is the same failure as
+        pressing a button wired straight to that device, and the room must not
+        be told it twice in two different ways -- so where the failure names a
+        device, it reads exactly as ``device.command`` would: the device's own
+        name, and what to check. What is dropped in that case is the function
+        name, which belongs to whoever wrote the script rather than to whoever
+        is standing at the panel; it is still on the record, in the log, and in
+        the ``script.error`` event the IDE shows.
+
+        Anything else -- a name that does not exist, two scripts defining it,
+        arguments that do not fit, a mistake inside the function -- keeps the
+        sentence ``ScriptCallError`` already carries, because there is no
+        device in it to name and the author is the only one who can fix it.
+        """
+        device_id = getattr(exc.__cause__, "device_id", "")
+        if device_id:
+            return self._command_error(str(device_id), exc.__cause__)
+        return str(exc)
 
     @staticmethod
     def scale_value_forward(element: Any, raw_value: Any) -> Any:

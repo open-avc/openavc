@@ -46,6 +46,24 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
+
+def not_connected(device_id: str) -> ConnectionError:
+    """The "this device is offline" error, carrying which device it is about.
+
+    The id is in the message because that is what a log reader needs. The
+    attribute is for the surfaces that turn the failure into a sentence
+    somebody standing in the room reads, and they need the device's NAME: a
+    macro step and a panel press both look it up and hand it to
+    ``friendly_error``, and a script a control called has to be able to do the
+    same. Without the attribute the only route back to the device is parsing
+    the message, so the script path did not try -- and put the id on the glass
+    instead, where "switcher1" is the one label nobody in the room has seen.
+    """
+    exc = ConnectionError(f"Device '{device_id}' is not connected")
+    exc.device_id = device_id
+    return exc
+
+
 # How many reconnect attempts a permanent fault gets before the loop stops.
 # One retry past the first classification: enough to shrug off a device that
 # was mid-reboot when we read its certificate or host key, few enough that a
@@ -423,7 +441,7 @@ class DeviceManager:
             # who send it are standing at a panel with no access to the IDE —
             # so retry now instead of leaving them to wait out the interval.
             self.kick_reconnect(device_id)
-            raise ConnectionError(f"Device '{device_id}' is not connected")
+            raise not_connected(device_id)
         try:
             params = self._coerce_child_id_params(driver, command, params)
             params = self._validate_command_params(driver, command, params)
@@ -770,7 +788,7 @@ class DeviceManager:
         if driver is None:
             raise ValueError(f"Device '{device_id}' not found")
         if not driver.get_state("connected"):
-            raise ConnectionError(f"Device '{device_id}' is not connected")
+            raise not_connected(device_id)
 
         # Validate the setting exists
         settings = driver.DRIVER_INFO.get("device_settings", {})

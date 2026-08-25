@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from openavc.core.device_manager import not_connected
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
 from openavc.core.script_engine import ScriptEngine, describe_parameters
@@ -346,6 +347,75 @@ async def test_a_function_that_raises_reports_to_the_glass_and_the_script_surfac
     assert errors[0]["script_id"] == "room"
     assert errors[0]["handler"] == "boom"
     assert "RuntimeError" in errors[0]["traceback"]
+
+
+@pytest.mark.asyncio
+async def test_a_dead_device_reads_the_same_whether_a_button_or_a_script_reached_it(tmp_path):
+    """One failure, one sentence, whichever control ran into it.
+
+    The same rule ``macro_engine`` states for a macro step: a device that is
+    not answering is the same fact whether the button was wired straight to it
+    or to a script that talks to it, and the room must not be told it two ways.
+    What the script path used to put on the glass was the exception as Python
+    wrote it -- function name, colon, and the device's *id*, which is the one
+    label nobody in the room has ever seen.
+    """
+    _write_script(tmp_path, "room.py", """\
+        from openavc import devices
+
+        async def route():
+            await devices.send("switcher1", "route", {"input": 1})
+    """)
+    engine = _engine(tmp_path, [
+        {
+            "id": "btn_direct", "type": "button",
+            "bindings": {"do": {"press": [
+                {"action": "device.command", "device": "switcher1", "command": "route"},
+            ]}},
+        },
+        {
+            "id": "btn_script", "type": "button",
+            "bindings": {"do": {"press": [
+                {"action": "script.call", "function": "route"},
+            ]}},
+        },
+    ], _ROOM)
+    engine.state.set("device.switcher1.name", "Matrix Switcher", source="test")
+
+    async def send(device_id, command, params=None):
+        raise not_connected(device_id)
+
+    engine.devices.send_command = send
+
+    direct = await engine.handle_ui_event("press", "btn_direct")
+    through_script = await engine.handle_ui_event("press", "btn_script")
+
+    assert direct[0]["error"] == "Matrix Switcher is not connected."
+    assert through_script[0]["error"] == direct[0]["error"]
+    # The function is still on the record for whoever wrote the script.
+    assert through_script[0]["function"] == "route"
+
+
+@pytest.mark.asyncio
+async def test_a_failure_with_no_device_in_it_still_names_the_function(tmp_path):
+    """The other half of the rule. Nothing here is about a device, so nothing
+    can be said about one -- and the author's own name for the thing that broke
+    is the most useful thing left."""
+    _write_script(tmp_path, "room.py", """\
+        def apply_preset(number):
+            raise ValueError(f"no preset {number}")
+    """)
+    engine = _engine(tmp_path, [{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": [{
+            "action": "script.call", "function": "apply_preset",
+            "params": {"number": 3},
+        }]}},
+    }], _ROOM)
+
+    dispatched = await engine.handle_ui_event("press", "btn")
+
+    assert dispatched[0]["error"] == "'apply_preset' failed: no preset 3"
 
 
 @pytest.mark.asyncio
