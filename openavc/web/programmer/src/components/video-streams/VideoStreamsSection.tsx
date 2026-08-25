@@ -41,6 +41,13 @@ const labelStyle: CSSProperties = {
   marginBottom: 4,
 };
 
+const hintStyle: CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-muted)",
+  marginTop: 4,
+  lineHeight: 1.4,
+};
+
 const inputStyle: CSSProperties = {
   width: "100%",
   padding: "5px 8px",
@@ -100,11 +107,12 @@ function codecHintFromProbe(result: ProbeResult | null): string {
   return "auto";
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <label style={labelStyle}>{label}</label>
       {children}
+      {hint ? <div style={hintStyle}>{hint}</div> : null}
     </div>
   );
 }
@@ -230,11 +238,14 @@ function StreamForm({
             }}
           />
         </Field>
-        <Field label="Source URL">
+        <Field
+          label="Source URL"
+          hint="RTSP, SRT, RTMP or an HLS playlist. The OpenAVC server connects to this address, so it has to be reachable from the server rather than from the panel."
+        >
           <input
             style={inputStyle}
             value={rtspUrl}
-            placeholder="rtsp://192.168.1.50:554/stream1"
+            placeholder="rtsp://192.168.1.50:554/stream1  or  srt://192.168.1.60:10000"
             onChange={(e) => setRtspUrl(e.target.value)}
           />
         </Field>
