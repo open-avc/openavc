@@ -131,8 +131,9 @@ OpenAVC initiates outbound TCP and UDP connections to AV equipment. The specific
 The table below lists common AV control ports. This is not exhaustive. AV manufacturers use a wide range of proprietary and standard ports, and new drivers may use ports not listed here.
 
 **Pulling video from a device (RTSP, MJPEG, SRT).** When the optional Video
-Panel plugin shows a camera, encoder or production switcher on a panel, the
-OpenAVC host is the one that connects to that device and fetches the video. The
+Panel plugin shows a video source on a panel — an AV-over-IP encoder, a
+production switcher, an IP camera — the OpenAVC host is the one that connects
+to that device and fetches the video. The
 panel never talks to the AV equipment itself. That means only the OpenAVC host
 needs a route to wherever the video lives, which is often a separate AV or
 video VLAN, and a host with a second network connection onto that fabric is the
