@@ -1,36 +1,35 @@
-# OpenAVC v0.30.0
+# OpenAVC v0.31.0
 
-OpenAVC v0.30.0 lets a control on a touch panel page call a function in one of your scripts and pass it values, and lets a control fire an event. A macro that fails partway through now reports which device failed, on the panel that started it. The API key in Settings is generated for you and stored as a hash.
+Long dropdown lists in the Programmer now have a search box, so picking a command on a device that has two hundred of them no longer means scrolling. The Video Panel plugin, which shows live video from a camera or a switcher on a touch panel, gets a setup screen of its own, accepts more kinds of video address, and plays on panels in the room as well as over the cloud connection.
 
-## Touch panel controls and scripts
+## Search boxes in the Programmer
 
-* A control can call a function in one of your scripts and pass it values. In the UI Builder it is the **Script Function** action, in the Does section of the control's bindings. One function can serve many controls, each passing its own values, and a slider or fader can pass its own position.
-* The parameter fields come from the function itself, so the names always match what the script expects. Handlers written with `@on_event` are not offered, because the system calls those itself when their event fires.
-* A control can fire an event with the new **Emit Event** action, reaching a trigger, a plugin, or a script handler subscribed to that event. It is the same step the Macros view offers, written straight onto a control.
-* The Emit Event macro step fills in `$` values in its payload, the same as every other macro step.
+Anywhere the Programmer asks you to pick from a list, that list has a search box at the top: the UI Builder, macro steps, plugin settings, the Driver Builder. Only the device page had one before.
 
-## Panels
+* Type to narrow the list, arrow keys to move through it, Enter to choose. Escape closes the list without closing the dialog behind it.
+* A command shows its friendly name with the command id underneath, on every screen.
+* A command from a driver you have since removed is shown rather than leaving the field blank.
 
-* When a macro fails partway through, the panel that started it shows which device failed and why, in the same words a button that talks to a device directly already used.
-* A device group command that reached no device at all reports a failed step, instead of the macro finishing with nothing said anywhere.
-* Panel pages load with fewer requests, and the files a panel loads to draw itself are no longer counted against the rate limit. A large panel opening on a tablet could come close to it.
+## Video on a touch panel
 
-## Security
+The Video Panel plugin shows live video on a panel page, from an IP camera, a video switcher output, an encoder, or anything else that publishes a stream. Install it from **Plugins** in the Programmer.
 
-* The API key in **Settings > Security** is stored as a salted hash instead of the key itself. Settings generates one on request and shows it once, because it cannot be read back afterwards. Existing systems convert their key on first start, and an integration already using that key keeps working.
-* Settings will not save an API key unless a Programmer password is also set, and will not clear the password while a key is set. A key on its own left the Programmer unreachable from any browser. A system already in that state, set through `OPENAVC_API_KEY` or a hand-edited `system.json`, still starts and gets a warning in the log instead.
+* **Video sources are set up on a Video Streams page**, which appears in the Programmer's left sidebar below Settings once the plugin is installed. Sources your devices already publish are listed for you under Found on your devices, so you do not have to track down an address. Anything else you add by hand.
+* **The source list says why a source is unavailable.** Picking a source for a Video Stream element names the device setting that is missing and gives you the field to fill in. Sources are grouped by device, and a device that is powered off can still be picked, so you can build a page before the room is live.
+* **An address can be RTSP, SRT, RTMP or HLS.** The OpenAVC server connects to it, not the tablet, so it has to be reachable from the server. Pulling a stream needs nothing opened on your firewall.
+* **Video plays on panels in the room and over the cloud connection.** On the local network it arrives over WebRTC, and OpenAVC opens the UDP port the plugin needs for it. Everyone watching from outside the building shares one allowance, so there is a limit on how many can watch remotely at once. Panels in the room do not use it.
 
-## Devices and deployment
+## Devices
 
-* A device connecting over SSH with a blank username or host now says which field to fill in, instead of reporting the device as unreachable.
-* Linux: an update recovers when an operating system Python upgrade has left the installed environment unusable, and rolls itself back if it cannot.
-* Linux and Raspberry Pi: the firewall helper is now in the release archive and runs when the service starts, so turning HTTPS on in Settings opens its port in ufw or firewalld without a manual firewall edit.
-* Updating a system with no internet access is documented for each deployment type, and the Updates view shows that procedure when it cannot reach GitHub. A check that fails no longer reports the system as up to date.
-* A busy system no longer shows as offline in the OpenAVC Cloud portal.
+* **A driver can mark settings as Advanced**, and Add Device and Edit Device put those in a collapsed group with their defaults filled in, so the fields you need to get a device talking are not buried among them. The vMix driver is the first to use it, for its four SRT ports.
+* **A driver can say why a video preview is not showing**, naming the setting that is missing and where to find it.
+
+## Plugins
+
+* **Updating a plugin reaches panels that are already open**, without anyone reloading the tablet by hand.
+* If you write plugins: a plugin can declare the network ports it needs and which of its addresses carry video. Both are in the plugin developer guide.
 
 ## Before you update
 
-* **Script Function changed meaning.** It previously fired an event named `script.call.<function>`, which ran the function only if the script also subscribed to that event by name. It calls the function now. A script written around the old behaviour needs updating.
-* Rolling back to a version below v0.30.0 leaves integrations getting 401 responses, because the older version compares the API key literally against what is now a hash. Restore `system.json` from the backup taken just before the update, or set a fresh key and update your integrations to match.
-* OpenAVC Cloud support sessions, where you grant OpenAVC staff temporary access to one system from the portal, need that system on v0.27.0 or newer. A system on v0.26.0 or older stops at its own sign-in screen.
-* Project files are updated to format 0.12.0 when opened. Nothing in an existing project moves, but a system on an older version cannot run a control that calls a script function or emits an event.
+* Linux and Raspberry Pi: a firewall port that a plugin asks for opens at the next restart of the OpenAVC service, not the moment you enable the plugin.
+* OpenAVC Cloud support sessions, where you give OpenAVC staff temporary access to one system from the portal, need that system on v0.27.0 or newer. A system on v0.26.0 or older stops at its own sign-in screen.
