@@ -365,12 +365,16 @@ def _unpack_zip(ui_dir: Path, content: bytes, folder: str) -> dict[str, Any]:
 
 
 @open_router.get("/projects/{project_id}/ui/{file_path:path}")
-async def serve_ui_file(project_id: str, file_path: str):
+async def serve_ui_file(project_id: str, file_path: str, request: Request):
     """Serve a custom UI file to the panel.
 
     Same guards as a plugin's ``panel/`` directory, and the same reason for
     being open: this is what an iframe's ``src`` fetches, and a browser
     resource load carries no credential. ``no_cache`` so an author's save
-    shows up on the next render instead of a stale copy.
+    shows up on the next render instead of a stale copy -- and the request is
+    handed down so an unchanged file can answer 304 rather than resending
+    itself on every render.
     """
-    return serve_static_file(_ui_dir_for(project_id), file_path, no_cache=True)
+    return serve_static_file(
+        _ui_dir_for(project_id), file_path, no_cache=True, request=request,
+    )

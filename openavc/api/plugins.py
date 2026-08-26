@@ -138,12 +138,14 @@ async def get_all_script_api() -> dict[str, Any]:
 # ──── Plugin Static Files ────
 
 
-def _serve_plugin_file(plugin_id: str, subdir: str, file_path: str):
+def _serve_plugin_file(plugin_id: str, subdir: str, file_path: str, request: Request):
     """Shared helper: serve a static file from a plugin directory subtree.
 
     The guards and the content-type table live in ``api/static_files.py`` —
     the project's ``ui/`` tree serves author-supplied files the same way and
-    the two must not drift.
+    the two must not drift. That includes the revalidate header: a plugin
+    update replaces these files at the same URLs, and a panel that is already
+    open must not go on running the version it loaded before the update.
     """
     from openavc.config import get_config
 
@@ -151,17 +153,17 @@ def _serve_plugin_file(plugin_id: str, subdir: str, file_path: str):
     base_dir = Path(config.plugin_repo_path) / plugin_id
     if subdir:
         base_dir = base_dir / subdir
-    return serve_static_file(base_dir, file_path)
+    return serve_static_file(base_dir, file_path, no_cache=True, request=request)
 
 
 @open_router.get("/plugins/{plugin_id}/panel/{file_path:path}")
-async def serve_plugin_panel_file(plugin_id: str, file_path: str):
+async def serve_plugin_panel_file(plugin_id: str, file_path: str, request: Request):
     """Serve static files from a plugin's panel/ directory for iframe rendering."""
-    return _serve_plugin_file(plugin_id, "panel", file_path)
+    return _serve_plugin_file(plugin_id, "panel", file_path, request)
 
 
 @open_router.get("/plugins/{plugin_id}/files/{file_path:path}")
-async def serve_plugin_file(plugin_id: str, file_path: str):
+async def serve_plugin_file(plugin_id: str, file_path: str, request: Request):
     """Serve any static file from inside a plugin's directory.
 
     Used for plugin-bundled assets (sound libraries, images, fonts,
@@ -170,7 +172,7 @@ async def serve_plugin_file(plugin_id: str, file_path: str):
     served as application/octet-stream so browsers won't auto-execute
     unexpected file types.
     """
-    return _serve_plugin_file(plugin_id, "", file_path)
+    return _serve_plugin_file(plugin_id, "", file_path, request)
 
 
 # ──── Detail (dynamic path — must come after all static /plugins/* routes) ────

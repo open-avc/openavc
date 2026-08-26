@@ -27,8 +27,9 @@ unchanged -- the panel checks it and draws its own message over the frame.
 
 from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
+from starlette.staticfiles import NotModifiedResponse
 
 #: Extension -> content type for files the panel fetches from a plugin or a
 #: project's ``ui/`` tree. Anything absent is served as
@@ -106,12 +107,46 @@ def _fault_document(status_code: int, title: str, message: str) -> HTMLResponse:
     )
 
 
-def serve_static_file(base_dir: Path, file_path: str, *, no_cache: bool = False):
+def _unchanged_since_last_fetch(response_headers, request_headers) -> bool:
+    """Whether the caller already holds this exact file.
+
+    ``FileResponse`` sends an ETag and a Last-Modified but never acts on the
+    conditional request that comes back -- Starlette keeps that logic in
+    ``StaticFiles``, which these routes do not use because the guards above are
+    theirs. So the comparison is done here, borrowing Starlette's own rule so
+    the two cannot disagree about what a weak tag means.
+    """
+    from email.utils import parsedate
+
+    if_none_match = request_headers.get("if-none-match")
+    etag = response_headers.get("etag")
+    if if_none_match and etag:
+        if etag in [tag.strip(' W/') for tag in if_none_match.split(",")]:
+            return True
+    since = parsedate(request_headers.get("if-modified-since") or "")
+    modified = parsedate(response_headers.get("last-modified") or "")
+    return since is not None and modified is not None and since >= modified
+
+
+def serve_static_file(
+    base_dir: Path,
+    file_path: str,
+    *,
+    no_cache: bool = False,
+    request: Request | None = None,
+):
     """Serve ``file_path`` from under ``base_dir``, or refuse with 403/404.
 
     ``no_cache`` adds a revalidate header -- used for the project's ``ui/``
     tree, where somebody is editing the file and expects a save to show up on
-    the panel rather than a cached copy from ten minutes ago.
+    the panel rather than a cached copy from ten minutes ago, and for a
+    plugin's ``panel/`` tree, where updating the plugin rewrites those files
+    under panels that are already open. Both are code a panel runs, both are
+    replaced in place under a stable URL, and neither carries a version in its
+    name -- so without this a browser applies heuristic freshness (a fraction
+    of the file's age, which for a file shipped months ago is a long time) and
+    never asks again. The header costs a conditional request, not a download:
+    ``FileResponse`` already sends an ETag, so an unchanged file answers 304.
 
     A refusal for a page comes back as a small HTML document rather than a JSON
     error, because this is an iframe ``src`` and the body is what the room sees.
@@ -141,4 +176,23 @@ def serve_static_file(base_dir: Path, file_path: str, *, no_cache: bool = False)
         raise HTTPException(status_code=404, detail="File not found")
 
     headers = {"Cache-Control": "no-cache"} if no_cache else None
-    return FileResponse(resolved, media_type=content_type_for(resolved), headers=headers)
+    # The stat is handed in rather than left to the send phase, because that is
+    # what puts the ETag on the response object while we can still read it --
+    # without it the comparison below has nothing to compare.
+    response = FileResponse(
+        resolved,
+        media_type=content_type_for(resolved),
+        headers=headers,
+        stat_result=resolved.stat(),
+    )
+    # "Ask every time" is only affordable if the answer can be "you already have
+    # it". A panel's assets include a 385 KB media library, and a tunnelled
+    # viewer pays for every byte twice -- once across the internet and once
+    # through the relay -- so a re-download on each page load is not a rounding
+    # error. Only on the no_cache paths: everything else is still allowed to sit
+    # in the browser cache untouched.
+    if no_cache and request is not None and _unchanged_since_last_fetch(
+        response.headers, request.headers
+    ):
+        return NotModifiedResponse(response.headers)
+    return response
