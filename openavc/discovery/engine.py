@@ -131,6 +131,11 @@ PHASE_WEIGHTS: dict[str, dict[str, float]] = {
 _PASSIVE_COLLECT_TICK_SECONDS: float = 1.0
 _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS: float = 15.0
 
+# Minimum spacing between intra-phase progress pushes. The sweep phases tick
+# once per host; the bar only needs to look alive, so one message a second is
+# plenty and keeps a 1022-host sweep off the WS send queue.
+_INTRA_EMIT_INTERVAL: float = 1.0
+
 
 async def _resolve_hostnames(
     ips: list[str],
@@ -291,6 +296,10 @@ class DiscoveryEngine:
         self._scan_task: asyncio.Task | None = None
         self._scan_lock = asyncio.Lock()
         self._on_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+        # Last time intra-phase progress was pushed. The sweep phases update
+        # progress per host, which is far too often to put on the wire, so
+        # the push is throttled and the timestamp lives here.
+        self._last_intra_emit: float = 0.0
         self._scan_counter = 0
         # Discovery settings (persisted in project)
         self.config: dict[str, Any] = {
@@ -1909,14 +1918,36 @@ class DiscoveryEngine:
         await self._emit_progress(phase, message)
 
     async def _update_intra_progress(self, fraction: float) -> None:
-        """Update progress within the current phase (fraction 0.0 – 1.0)."""
+        """Update progress within the current phase, and push it.
+
+        The push is what makes the bar move while a phase is still running.
+        Without it the only progress the client sees inside a phase rides on
+        ``discovery.update`` — so the bar advances when a host is FOUND and
+        stalls across dead address space, which is backwards: it goes quiet
+        exactly when a scan is finding nothing and the user most needs to
+        know the sweep is still alive.
+
+        Throttled to _INTRA_EMIT_INTERVAL because the callers tick per host
+        (1022 of them on a /22), and one WS message each would flood a
+        client's send queue for no extra information.
+        """
         phase = self.scan_status.phase
         base = self._phase_base_progress(phase)
         weight = self._phase_weight(phase)
         self.scan_status.progress = base + weight * min(fraction, 1.0)
 
+        if time.monotonic() - self._last_intra_emit < _INTRA_EMIT_INTERVAL:
+            return
+        await self._emit_progress(phase, self.scan_status.message)
+
     async def _emit_progress(self, phase: str, message: str) -> None:
-        """Emit a discovery_phase event with current progress."""
+        """Emit a discovery_phase event with current progress.
+
+        Restarts the intra-phase throttle: any progress push counts, so a
+        phase change or a caller with a better message (the passive-collect
+        countdown) suppresses the next generic tick instead of doubling it.
+        """
+        self._last_intra_emit = time.monotonic()
         await self._emit({
             "type": "discovery.phase",
             "phase": phase,
