@@ -12,6 +12,7 @@ and is exercised separately by its own shell dry-run.
 """
 
 import json
+import sys
 
 import pytest
 
@@ -166,13 +167,98 @@ def test_the_file_says_what_it_is_for(tmp_path):
 
 
 # ── The Windows half ─────────────────────────────────────────────────────────
+#
+# NOTHING below may call the real `sync()` on Windows without stubbing the netsh
+# layer first. It changes the host firewall, and it succeeds whenever the test
+# runner happens to be elevated -- which a developer's shell usually is not and
+# CI usually is. That asymmetry is exactly how the first version of this file
+# passed here and then opened UDP 8189 on a GitHub runner.
 
 
-def test_the_windows_sync_is_a_no_op_off_windows():
+@pytest.fixture
+def fake_netsh(monkeypatch):
+    """Record what would be run, and let the test say what netsh replies.
+
+    Also the only way to reach the success path at all: it needs elevation,
+    so on an ordinary developer machine the real thing can only ever fail.
+    """
+    from openavc.system import firewall
+
+    calls = []
+    replies = {"show": (True, ""), "add": (True, ""), "delete": (True, "")}
+
+    def _fake(args):
+        calls.append(args)
+        verb = next((a for a in args if a in ("show", "add", "delete")), "")
+        return replies.get(verb, (True, ""))
+
+    monkeypatch.setattr(firewall, "_netsh", _fake)
+    monkeypatch.setattr(firewall.sys, "platform", "win32")
+    return calls, replies
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="tests the non-Windows branch")
+def test_off_windows_nothing_is_touched():
+    """Linux and macOS get their ports from the helper that runs as root before
+    the server; this module must do nothing at all there."""
     from openavc.system import firewall
 
     report = firewall.sync([{"port": 8189, "protocol": "udp"}])
     assert report["opened"] == [] and report["closed"] == []
+
+
+def test_a_declared_port_is_added(fake_netsh):
+    from openavc.system import firewall
+
+    calls, _ = fake_netsh
+    report = firewall.sync([{"port": 8189, "protocol": "udp"}])
+    assert report["opened"] == ["8189/udp"]
+    add = next(c for c in calls if "add" in c)
+    assert "protocol=UDP" in add and "localport=8189" in add
+    assert f"name={firewall.rule_name(8189, 'udp')}" in add
+
+
+def test_a_port_nobody_asks_for_any_more_is_removed(fake_netsh):
+    """The half that makes the declaration honest."""
+    from openavc.system import firewall
+
+    calls, replies = fake_netsh
+    replies["show"] = (True, f"Rule Name:  {firewall.rule_name(8189, 'udp')}\n")
+    report = firewall.sync([])
+    assert report["closed"] == ["8189/udp"]
+    assert any("delete" in c for c in calls)
+
+
+def test_a_rule_already_present_is_not_added_twice(fake_netsh):
+    from openavc.system import firewall
+
+    calls, replies = fake_netsh
+    replies["show"] = (True, f"Rule Name:  {firewall.rule_name(8189, 'udp')}\n")
+    report = firewall.sync([{"port": 8189, "protocol": "udp"}])
+    assert report["opened"] == [] and report["closed"] == []
+    assert not any("add" in c for c in calls)
+
+
+def test_rules_that_are_not_ours_are_left_alone(fake_netsh):
+    """An administrator's own rule for the same port must never be removed."""
+    from openavc.system import firewall
+
+    calls, replies = fake_netsh
+    replies["show"] = (True, "Rule Name:  Some other thing UDP 8189\n")
+    firewall.sync([])
+    assert not any("delete" in c for c in calls)
+
+
+def test_a_refusal_is_reported_rather_than_raised(fake_netsh):
+    """Running unelevated is the normal developer case and must not look like
+    a crash -- the caller degrades, it does not fail."""
+    from openavc.system import firewall
+
+    _, replies = fake_netsh
+    replies["add"] = (False, "The requested operation requires elevation")
+    report = firewall.sync([{"port": 8189, "protocol": "udp"}])
+    assert report["refused"] == ["8189/udp"]
+    assert report["opened"] == []
 
 
 def test_the_manual_command_is_one_a_person_can_paste():
