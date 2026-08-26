@@ -7,6 +7,32 @@ export interface ParamOption {
   label: string;
 }
 
+/**
+ * A row in a state-published option list that says more than "here is a
+ * choice". Every field past `label` is optional, and every consumer written
+ * before them ignores them, so a publisher can add them freely.
+ *
+ * The important one is `value` being OPTIONAL. A row with no value cannot be
+ * chosen: it is on screen to say why something that ought to be here is not.
+ * `normalizeOptionList` drops those rows entirely, which is what makes the
+ * whole convention safe to publish at a picker that predates it.
+ */
+export interface OptionRow {
+  /** Absent = this row cannot be picked. */
+  value?: string;
+  /** Stable identity for a row with no value (a value-bearing row has one). */
+  id?: string;
+  label: string;
+  /** Heading to list this row under, e.g. the device it belongs to. */
+  group?: string;
+  /** "" or absent = nothing to say. Anything else is marked against the row. */
+  status?: string;
+  /** One sentence about that status, written by whoever published the row. */
+  detail?: string;
+  /** A device config field that would make this row usable. */
+  setup?: { device: string; field: string };
+}
+
 /** Find a child by a sibling param's chosen value — matches the numeric/string
  *  local_id or its zero-padded form (a `child_id` param stores `String(local_id)`).
  *  Used by both the option cascade and the value-type cascade. */
@@ -88,6 +114,58 @@ export function parseStateOptionList(raw: unknown): ParamOption[] {
   }
   if (!Array.isArray(parsed)) return [];
   return normalizeOptionList(parsed);
+}
+
+/**
+ * The same list, read whole: rows that cannot be picked included.
+ *
+ * `parseStateOptionList` answers "what can I choose", which is all a plain
+ * dropdown needs. This answers "what is there", which is what a picker needs
+ * to say that a source exists and is one setting away from working instead of
+ * showing an empty list. A row with neither a `value` nor an `id` is skipped —
+ * there would be nothing to key it by.
+ */
+export function parseStateOptionRows(raw: unknown): OptionRow[] {
+  if (typeof raw !== "string" || !raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: OptionRow[] = [];
+  for (const item of parsed) {
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+      out.push({ value: String(item), label: String(item) });
+      continue;
+    }
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Record<string, unknown>;
+    const value = raw.value;
+    const hasValue =
+      typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+    const id = typeof raw.id === "string" ? raw.id : undefined;
+    if (!hasValue && !id) continue;
+    const setup = raw.setup as { device?: unknown; field?: unknown } | undefined;
+    out.push({
+      ...(hasValue ? { value: String(value) } : {}),
+      ...(id ? { id } : {}),
+      label:
+        typeof raw.label === "string" && raw.label
+          ? raw.label
+          : hasValue
+            ? String(value)
+            : (id as string),
+      ...(typeof raw.group === "string" && raw.group ? { group: raw.group } : {}),
+      ...(typeof raw.status === "string" && raw.status ? { status: raw.status } : {}),
+      ...(typeof raw.detail === "string" && raw.detail ? { detail: raw.detail } : {}),
+      ...(setup && typeof setup.device === "string" && typeof setup.field === "string"
+        ? { setup: { device: setup.device, field: setup.field } }
+        : {}),
+    });
+  }
+  return out;
 }
 
 // Platform-managed child state vars — never offered as selectable controls in

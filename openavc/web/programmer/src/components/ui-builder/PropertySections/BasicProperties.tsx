@@ -9,7 +9,7 @@ import { pxToRem, remToPx, resolveMatrixAxis } from "../uiBuilderHelpers";
 import { HONORED_PROPERTIES, MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
-import { parseStateOptionList } from "../../shared/paramOptions";
+import { OptionSourcePicker } from "../../shared/OptionSourcePicker";
 import { MacroRefPicker, DeviceRefPicker } from "../../shared/RefPickers";
 import { MatchDriverRangeRow } from "../BindingEditor/DeviceValuePicker";
 import { MatrixSetupDialog } from "../MatrixSetupDialog";
@@ -19,7 +19,6 @@ import { GrantEditor } from "./GrantEditor";
 import { panelElementFieldKind } from "./panelElementConfig";
 import { numOrUndefined, intOrUndefined } from "./numericField";
 import { usePluginStore } from "../../../store/pluginStore";
-import { useConnectionStore } from "../../../store/connectionStore";
 import { showInfo } from "../../../store/toastStore";
 
 /**
@@ -1928,11 +1927,16 @@ function PanelFieldControl({
       );
     case "select":
       return (
-        <PluginConfigSelect
+        <OptionSourcePicker
           value={strVal}
           staticOptions={field.options}
           optionsSource={field.options_source}
           onChange={set}
+          emptyHint={
+            field.options_source
+              ? "Nothing has offered a source yet. A device whose driver publishes a preview shows up here on its own; anything else is added by hand under Video Streams."
+              : undefined
+          }
         />
       );
     case "number":
@@ -2042,70 +2046,6 @@ function PluginElementConfig({
     </>
   );
 }
-
-/**
- * Dropdown for a plugin panel-element config field whose options come from
- * either a static list (`options`) or a plugin state key (`options_source`).
- * State-sourced lists are JSON-encoded strings of `[{value, label}, ...]`
- * (state values are flat primitives so the array can't be stored directly).
- * Mirrors the macro builder's `resolveOptionsSource` contract.
- */
-function PluginConfigSelect({
-  value,
-  staticOptions,
-  optionsSource,
-  onChange,
-}: {
-  value: string;
-  staticOptions?: string[];
-  optionsSource?: string;
-  onChange: (v: string) => void;
-}) {
-  const rawStateValue = useConnectionStore((s) =>
-    optionsSource ? s.liveState[optionsSource] : undefined,
-  );
-
-  let options: Array<{ value: string; label: string }> = [];
-  if (staticOptions && staticOptions.length > 0) {
-    options = staticOptions.map((o) => ({ value: o, label: o }));
-  } else if (optionsSource) {
-    options = parseStateOptionList(rawStateValue);
-  }
-
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ flex: 1 }}
-    >
-      {/* Placeholder shown whenever nothing is selected yet. This is required,
-          not cosmetic: a controlled <select value=""> with no option whose
-          value is "" visually falls back to displaying the first option while
-          the committed value stays "" — so picking that lone option fires no
-          change event and never persists. A disabled empty option makes
-          "nothing selected" a distinct state, so choosing a real stream is a
-          genuine change that calls onChange. */}
-      {value === "" && (
-        <option value="" disabled>
-          {options.length === 0
-            ? (optionsSource ? "(no options published yet)" : "(no options)")
-            : "Select a stream…"}
-        </option>
-      )}
-      {/* Keep an unknown current value visible (plugin not started, or the
-          stream was renamed) rather than silently switching to another. */}
-      {value !== "" && !options.some((o) => o.value === value) && (
-        <option value={value}>{value}</option>
-      )}
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
-      ))}
-    </select>
-  );
-}
-
-// State-published select options share one contract across surfaces; see
-// parseStateOptionList in components/shared/paramOptions.
 
 function GaugeZonesEditor({
   zones,

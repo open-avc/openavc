@@ -225,16 +225,13 @@ RUNTIME_BLIND_SPOTS = {
         "and that function names none of them.",
 }
 
-FRONTEND_BLIND_SPOTS = {
-    "configSchemaEntry.secret":
-        "Edited by ConfigSchemaEditor (the 'Secret' checkbox writes "
-        "field.secret). That file names no distinctive sibling of "
-        "configSchemaEntry -- its anchors are `columns` and `row_label`, "
-        "both of which live in ConfigTableEditor instead -- so the scoped "
-        "search cannot see it. It read as implemented until 2026-08-01 only "
-        "because api/types.ts happened to declare `secret` beside the UI "
-        "page grid's `columns`.",
-}
+# Empty since 2026-08-25. configSchemaEntry.secret sat here because the file
+# that edits it named no distinctive sibling; the setup field the stream picker
+# offers reads `secret` beside `row_label` in the same file, so the scoped
+# search finds it again on its own. An entry here has to be deleted the moment
+# the check can see the field, or it sits excusing something that needs no
+# excuse.
+FRONTEND_BLIND_SPOTS: dict[str, str] = {}
 
 # Fields with no editor in the Programmer IDE. An entry here is a statement
 # that an author has to write this field by hand in YAML, so keep it short
