@@ -1819,6 +1819,7 @@ class DiscoveryEngine:
         """Get existing device record or create a new one."""
         if ip not in self.results:
             self.results[ip] = DiscoveredDevice(ip=ip)
+            self.scan_status.devices_found = len(self.results)
         return self.results[ip]
 
     def _get_or_create_passive(self, ip: str) -> DiscoveredDevice | None:
