@@ -8,6 +8,20 @@
 # effect, and this runs at exactly that moment — so enabling a feature in
 # Settings opens its port, and disabling it closes the port again.
 #
+# It ALSO opens ports a plugin declared, read from plugin_ports.json (written
+# by the server; see openavc/core/plugin_ports.py). A plugin that bundles a
+# sidecar listens on a port nothing else here knows about — the Video Panel's
+# MediaMTX binds UDP 8189 for WebRTC — and until it is open a panel on the
+# network gets no picture and no explanation.
+#
+# Ports are `port/proto` throughout, because a plugin port may be UDP and the
+# configured listeners never are. A state file from an older version holds
+# bare numbers; those are read as /tcp, which is what they were.
+#
+# TIMING, worth knowing: this runs BEFORE the server, so it acts on what the
+# previous run left behind. Enabling a plugin opens its port at the next
+# service start, not immediately. The server says so at the time.
+#
 # - The "+" prefix runs this script as root (ufw/firewall-cmd need it)
 # - The "-" prefix ensures non-zero exit doesn't block service startup
 # - Environment= variables are NOT available to ExecStartPre (systemd #2545),
@@ -25,6 +39,7 @@
 
 DATA_DIR="${1:-/var/lib/openavc}"
 CONFIG_FILE="$DATA_DIR/system.json"
+PLUGIN_PORTS_FILE="$DATA_DIR/plugin_ports.json"
 STATE_FILE="$DATA_DIR/.firewall_ports"
 LOG_TAG="firewall-sync"
 PYTHON="${PYTHON:-/usr/bin/python3}"
@@ -45,7 +60,7 @@ log() {
 # --- Desired ports from system.json (defaults match openavc/system_config.py) ---
 
 desired_ports() {
-    "$PYTHON" - "$CONFIG_FILE" <<'PYEOF'
+    "$PYTHON" - "$CONFIG_FILE" "$PLUGIN_PORTS_FILE" <<'PYEOF'
 import json, sys
 
 cfg = {}
@@ -58,13 +73,30 @@ except Exception:
 network = cfg.get("network", {}) if isinstance(cfg, dict) else {}
 tls = cfg.get("tls", {}) if isinstance(cfg, dict) else {}
 
-ports = {int(network.get("http_port", 8080))}
+# The instance's own listeners. All TCP; none of these is ever UDP.
+ports = {(int(network.get("http_port", 8080)), "tcp")}
 if tls.get("enabled", False):
-    ports.add(int(tls.get("port", 8443)))
+    ports.add((int(tls.get("port", 8443)), "tcp"))
 if network.get("port80_redirect", False):
-    ports.add(80)
+    ports.add((80, "tcp"))
 
-print(" ".join(str(p) for p in sorted(ports)))
+# Ports a plugin declared. A malformed entry is skipped rather than failing the
+# whole sync: one bad plugin manifest must not close the HTTP port.
+try:
+    with open(sys.argv[2]) as f:
+        declared = json.load(f).get("ports") or []
+except Exception:
+    declared = []
+for entry in declared:
+    try:
+        port = int(entry["port"])
+        proto = str(entry.get("protocol", "tcp")).lower()
+    except (TypeError, ValueError, KeyError):
+        continue
+    if 1 <= port <= 65535 and proto in ("tcp", "udp"):
+        ports.add((port, proto))
+
+print(" ".join(f"{p}/{proto}" for p, proto in sorted(ports)))
 PYEOF
 }
 
@@ -108,7 +140,19 @@ main() {
     fi
 
     MANAGED=""
-    [ -f "$STATE_FILE" ] && MANAGED="$(cat "$STATE_FILE" 2>/dev/null)"
+    if [ -f "$STATE_FILE" ]; then
+        # A state file written before UDP existed holds bare port numbers.
+        # Those were all TCP, so read them as such -- otherwise every one of
+        # them looks unmanaged, and the next run re-adds rules that are already
+        # there and never closes the ones that should go.
+        for _p in $(cat "$STATE_FILE" 2>/dev/null); do
+            case "$_p" in
+                */tcp|*/udp) MANAGED="$MANAGED $_p" ;;
+                *) MANAGED="$MANAGED $_p/tcp" ;;
+            esac
+        done
+        MANAGED="${MANAGED# }"
+    fi
 
     # Ports to add: desired but not yet managed. Ports to remove: managed
     # but no longer desired. Everything else is left exactly as it is.
@@ -129,17 +173,17 @@ main() {
     RELOAD=0
     for p in $ADD; do
         case "$BACKEND" in
-            ufw) run_or_print ufw allow "$p/tcp" comment "OpenAVC (managed)" ;;
-            firewalld) run_or_print firewall-cmd --permanent --add-port="$p/tcp"; RELOAD=1 ;;
+            ufw) run_or_print ufw allow "$p" comment "OpenAVC (managed)" ;;
+            firewalld) run_or_print firewall-cmd --permanent --add-port="$p"; RELOAD=1 ;;
         esac
-        log "opened port $p/tcp ($BACKEND)"
+        log "opened port $p ($BACKEND)"
     done
     for p in $REMOVE; do
         case "$BACKEND" in
-            ufw) run_or_print ufw delete allow "$p/tcp" ;;
-            firewalld) run_or_print firewall-cmd --permanent --remove-port="$p/tcp"; RELOAD=1 ;;
+            ufw) run_or_print ufw delete allow "$p" ;;
+            firewalld) run_or_print firewall-cmd --permanent --remove-port="$p"; RELOAD=1 ;;
         esac
-        log "closed port $p/tcp ($BACKEND)"
+        log "closed port $p ($BACKEND)"
     done
     [ "$RELOAD" = "1" ] && run_or_print firewall-cmd --reload
 

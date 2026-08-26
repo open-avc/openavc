@@ -465,6 +465,10 @@ class PluginLoader:
         self._missing_plugins: dict[str, dict] = {}
         # Incompatible plugins: plugin_id -> info dict
         self._incompatible_plugins: dict[str, dict] = {}
+        # What sync_declared_ports last acted on, so it can be called freely.
+        # None rather than () so the first call always runs, including the one
+        # that finds nothing and writes the empty list that closes stale rules.
+        self._synced_ports: tuple | None = None
         # Plugin status: plugin_id -> status string
         self._status: dict[str, str] = {}
         # Error messages: plugin_id -> error string
@@ -497,6 +501,33 @@ class PluginLoader:
         self._unmount_router_fn = None
         self._mount_guest_router_fn = None
         self._unmount_guest_router_fn = None
+
+    def sync_declared_ports(self) -> None:
+        """Write out what the running plugins need open, and act on it.
+
+        Called after any change to the running set. Cheap, idempotent, and
+        never fatal: a firewall that could not be updated is a degraded system,
+        not a broken one, and a plugin whose port stays shut still runs.
+        """
+        from openavc.core.plugin_ports import collect, write
+        from openavc.system_config import get_data_dir
+
+        try:
+            entries = collect(dict(self._instances))
+            # Cheap when nothing moved, which is what lets this be called from
+            # every lifecycle path without anyone having to reason about how
+            # often it fires. Shelling out to a firewall per plugin at boot
+            # would otherwise be the cost of that convenience.
+            fingerprint = tuple((e["port"], e["protocol"]) for e in entries)
+            if fingerprint == self._synced_ports:
+                return
+            self._synced_ports = fingerprint
+            write(get_data_dir(), entries)
+            from openavc.system import firewall
+
+            firewall.sync(entries)
+        except Exception:
+            log.exception("Could not sync plugin-declared firewall ports")
 
     def set_save_config_fn(self, fn):
         """Set the callback for saving plugin config to the project file."""
@@ -679,6 +710,19 @@ class PluginLoader:
             if "guest_endpoints" not in capabilities:
                 return False, "guest_alias requires the guest_endpoints capability"
 
+        # network_ports check. A port a plugin needs open in the HOST firewall,
+        # which is a request about the machine rather than about the plugin --
+        # so it is refused outright rather than trimmed, and it requires the
+        # capability that says this plugin listens on the network at all.
+        if "network_ports" in info:
+            from openavc.core.plugin_ports import validate_declaration
+
+            ports_ok, ports_err = validate_declaration(info["network_ports"])
+            if not ports_ok:
+                return False, ports_err
+            if info["network_ports"] and "network_listen" not in capabilities:
+                return False, "network_ports requires the network_listen capability"
+
         # Platform check
         platforms = info.get("platforms", ["all"])
         if "all" not in platforms and self._platform_id not in platforms:
@@ -781,6 +825,10 @@ class PluginLoader:
 
             if enabled:
                 await self.start_plugin(plugin_id, config)
+
+        # The running set is final for this sweep. Guarded, so the per-plugin
+        # calls below have already collapsed into at most one firewall change.
+        self.sync_declared_ports()
 
     def _get_lock(self, plugin_id: str) -> asyncio.Lock:
         """Return the per-plugin lifecycle lock, creating it on first use."""
@@ -957,6 +1005,9 @@ class PluginLoader:
 
             await self._events.emit("plugin.started", {"plugin_id": plugin_id})
             log.info(f"Plugin '{plugin_id}' started (v{info.get('version', '?')})")
+            # A plugin that bundles a sidecar may need a port open in the host
+            # firewall. Guarded, so this is free unless the set actually moved.
+            self.sync_declared_ports()
             return True
 
         except Exception as e:  # Catch-all: plugin start() runs arbitrary code
@@ -1049,6 +1100,10 @@ class PluginLoader:
         self._state.delete(f"plugin.{plugin_id}.auto_disabled")
         await self._events.emit("plugin.stopped", {"plugin_id": plugin_id})
         log.info(f"Plugin '{plugin_id}' stopped")
+        # Close a rule nobody asks for any more. This is the half that makes
+        # the declaration honest: a port that opened on install and stayed open
+        # after uninstall would be worse than never opening it.
+        self.sync_declared_ports()
 
     async def stop_all(self) -> None:
         """Stop all running plugins."""
