@@ -11,6 +11,9 @@ export interface ConfigFieldDef {
   description?: string;
   secret?: boolean;
   required?: boolean;
+  /** Collapse behind "Advanced" in the Add / Edit Device form. For a setting
+   *  whose answer is not known at the moment the device is added. */
+  advanced?: boolean;
   min?: number;
   max?: number;
   values?: string[];

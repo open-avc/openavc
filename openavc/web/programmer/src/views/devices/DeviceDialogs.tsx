@@ -28,11 +28,18 @@ function ConfigFieldInputs({
   configValues: Record<string, string>;
   setConfigValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) {
-  return (
-    <>
-      {configKeys.map((key) => {
-        const schema =
-          (driverInfo?.config_schema as Record<string, Record<string, unknown>>)?.[key] ?? {};
+  const schemaFor = (key: string) =>
+    (driverInfo?.config_schema as Record<string, Record<string, unknown>>)?.[key] ?? {};
+  // A driver marks a field `advanced` when its answer is not known at the
+  // moment the device is added: it depends on something configured later, or
+  // on a decision nobody has made yet. Asking anyway trains people to skim
+  // past the whole form, and the field they DO need is in there too. Still
+  // present, one click away, and pre-filled with its default.
+  const plainKeys = configKeys.filter((k) => schemaFor(k).advanced !== true);
+  const advancedKeys = configKeys.filter((k) => schemaFor(k).advanced === true);
+
+  const renderKey = (key: string) => {
+        const schema = schemaFor(key);
         const label = String(schema.label || key);
         const description = schema.description ? String(schema.description) : "";
         const fieldType = String(schema.type || "string");
@@ -180,7 +187,28 @@ function ConfigFieldInputs({
             )}
           </div>
         );
-      })}
+  };
+
+  return (
+    <>
+      {plainKeys.map(renderKey)}
+      {advancedKeys.length > 0 && (
+        <details style={{ marginBottom: "var(--space-sm)" }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-muted)",
+              userSelect: "none",
+            }}
+          >
+            Advanced ({advancedKeys.length})
+          </summary>
+          <div style={{ marginTop: "var(--space-sm)" }}>
+            {advancedKeys.map(renderKey)}
+          </div>
+        </details>
+      )}
     </>
   );
 }

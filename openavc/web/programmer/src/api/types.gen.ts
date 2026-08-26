@@ -136,7 +136,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   livenessBlock: new Set(["args", "expect", "interval", "max_failures", "send", "timeout"]),
   frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
   sendFrame: new Set(["after_length", "header", "length_endian", "length_size", "type"]),
-  configSchemaEntry: new Set(["columns", "default", "description", "help", "label", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
+  configSchemaEntry: new Set(["advanced", "columns", "default", "description", "help", "label", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
   deviceSettingEntry: new Set(["default", "help", "label", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
   deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
   simulatorSection: new Set(["command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),

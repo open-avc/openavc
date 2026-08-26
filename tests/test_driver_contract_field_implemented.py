@@ -172,6 +172,10 @@ RUNTIME_OPT_OUT = {
     "configSchemaEntry.secret":
         "Connection-form presentation: render masked "
         "(configFieldKind -> password). The value is stored as typed.",
+    "configSchemaEntry.advanced":
+        "Connection-form presentation: collapse the field behind Advanced "
+        "when the device is added or edited (DeviceDialogs). Nothing on the "
+        "wire changes; the value is read exactly as it always was.",
     # These four were passing on a coincidence until 2026-08-01. The scoped
     # search wants `columns` -- configSchemaEntry's distinctive sibling -- in
     # the same file as the field, and the only `columns` in reach was

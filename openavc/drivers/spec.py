@@ -1852,6 +1852,18 @@ DEFS = {
                     'publishes -- never a real site password.'
                 ),
             },
+            'advanced': {
+                'type': 'boolean',
+                'doc': (
+                    'Collapse this field behind "Advanced" when adding or '
+                    'editing the device. For a setting whose answer is not '
+                    'known at the moment the device is added -- it depends on '
+                    'something that gets configured later, or on a decision '
+                    'nobody has made yet. It stays editable; it just stops '
+                    'being a question asked before it can be answered. Default '
+                    'false.'
+                ),
+            },
             'min': {
                 'type': 'number',
             },

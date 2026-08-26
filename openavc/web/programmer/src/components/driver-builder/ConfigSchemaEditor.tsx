@@ -368,6 +368,24 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                       />
                       Secret
                     </label>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "var(--space-xs)",
+                        fontSize: "var(--font-size-sm)",
+                      }}
+                      title="Collapse this field behind Advanced when the device is added. For a setting whose answer depends on something configured later."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={field.advanced ?? false}
+                        onChange={(e) =>
+                          updateField(name, { advanced: e.target.checked || undefined })
+                        }
+                      />
+                      Advanced
+                    </label>
                   </div>
                 </div>
 
