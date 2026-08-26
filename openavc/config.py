@@ -119,6 +119,13 @@ RATE_LIMIT_OPEN_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_OPEN", 120)
 RATE_LIMIT_STANDARD_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_STANDARD", 60)
 RATE_LIMIT_CONTROL_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_CONTROL", 120)
 RATE_LIMIT_STRICT_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_STRICT", 10)
+# A route a plugin declared as a media stream. Sized from a measurement, not
+# a guess: one low-latency HLS tile spends about 390 requests a minute (the
+# playlist is re-asked per part, and every part is a fetch), so the standard
+# 60 stops the first tile within seconds. 3000 carries roughly seven tiles and
+# is still a ceiling -- it is what stops a runaway player, not what decides
+# who may watch. That is the entitlement check on the route itself.
+RATE_LIMIT_MEDIA_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_MEDIA", 3000)
 
 # Cloud agent timing
 CLOUD_HEARTBEAT_INTERVAL = _safe_int("OPENAVC_CLOUD_HEARTBEAT_INTERVAL", 30)

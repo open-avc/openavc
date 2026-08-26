@@ -36,6 +36,7 @@ class PluginRegistry:
         # Panel-reachable ext path patterns from register_router(panel_paths=)
         # — routes a standalone panel's token may reach on a claimed instance.
         self.panel_ext_paths: list[str] = []
+        self.media_ext_paths: list[str] = []
         # FastAPI APIRouter registered via api.register_guest_router().
         # Mounted under /api/plugins/<id>/guest/* with NO platform auth —
         # the plugin gates these routes itself. Same lifecycle as http_router.

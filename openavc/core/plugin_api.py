@@ -305,7 +305,12 @@ class PluginAPI:
 
     # ──── HTTP Endpoints ────
 
-    def register_router(self, router, panel_paths: list[str] | None = None) -> None:
+    def register_router(
+        self,
+        router,
+        panel_paths: list[str] | None = None,
+        media_paths: list[str] | None = None,
+    ) -> None:
         """Mount a FastAPI ``APIRouter`` under ``/api/plugins/<id>/ext/*``.
 
         Requires: http_endpoints.
@@ -332,6 +337,16 @@ class PluginAPI:
         anything that can load the panel. Keep configuration CRUD routes
         undeclared; they stay programmer-only.
 
+        ``media_paths`` marks routes that carry a continuous media stream,
+        putting them on the rate limiter's media budget instead of its
+        standard one. Same pattern shape as ``panel_paths``. Declare it for
+        anything a player pulls repeatedly — an HLS playlist and its
+        segments, an MJPEG frame stream — because the standard tier is
+        sized for a person clicking, and one video tile spends it in
+        seconds. It is not a way to get a bigger budget for ordinary calls:
+        the media tier is large but finite, and nothing about declaring a
+        route here changes who may reach it.
+
         Define routes relative to the mount point — a handler decorated
         ``@router.post("/whep/{stream_id}")`` is served at
         ``/api/plugins/<id>/ext/whep/{stream_id}``.
@@ -346,12 +361,15 @@ class PluginAPI:
                 "register_router expects a fastapi.APIRouter, "
                 f"got {type(router).__name__}"
             )
+        # Validate eagerly so a malformed pattern fails the plugin's start()
+        # with a clear error instead of surfacing at mount time.
         if panel_paths is not None:
-            # Validate eagerly so a malformed pattern fails the plugin's
-            # start() with a clear error instead of surfacing at mount time.
             parse_panel_paths(panel_paths)
+        if media_paths is not None:
+            parse_panel_paths(media_paths)
         self._registry.http_router = router
         self._registry.panel_ext_paths = list(panel_paths or [])
+        self._registry.media_ext_paths = list(media_paths or [])
 
     def register_guest_router(self, router) -> None:
         """Mount a FastAPI ``APIRouter`` under ``/api/plugins/<id>/guest/*``.

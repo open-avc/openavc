@@ -316,7 +316,8 @@ class TestLoaderGuestRouterHooks:
         mount_calls = []
         guest_mount_calls = []
         loader.set_router_hooks(
-            lambda pid, router, panel_paths=None: mount_calls.append(pid),
+            lambda pid, router, panel_paths=None, media_paths=None:
+                mount_calls.append(pid),
             lambda pid: None,
             lambda pid, router, alias=None: guest_mount_calls.append(pid),
             lambda pid: None,
@@ -334,7 +335,10 @@ class TestLoaderGuestRouterHooks:
         loader = _make_loader()
         register_plugin_class(GuestRouterPlugin)
 
-        loader.set_router_hooks(lambda pid, router: None, lambda pid: None)
+        loader.set_router_hooks(
+            lambda pid, router, panel_paths=None, media_paths=None: None,
+            lambda pid: None,
+        )
 
         assert await loader.start_plugin("acme_guest", {}) is True
         await loader.stop_plugin("acme_guest")

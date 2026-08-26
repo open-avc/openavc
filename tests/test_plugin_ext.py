@@ -555,7 +555,8 @@ class TestLoaderRouterHooks:
         mount_calls = []
         unmount_calls = []
         loader.set_router_hooks(
-            lambda pid, router, panel_paths=None: mount_calls.append((pid, router)),
+            lambda pid, router, panel_paths=None, media_paths=None:
+                mount_calls.append((pid, router)),
             lambda pid: unmount_calls.append(pid),
         )
 
@@ -987,10 +988,87 @@ class TestLoaderPanelPaths:
 
         mount_calls = []
         loader.set_router_hooks(
-            lambda pid, router, panel_paths=None: mount_calls.append((pid, panel_paths)),
+            lambda pid, router, panel_paths=None, media_paths=None:
+                mount_calls.append((pid, panel_paths, media_paths)),
             lambda pid: None,
         )
 
         assert await loader.start_plugin("panel_paths_plugin", {}) is True
-        assert mount_calls == [("panel_paths_plugin", ["GET /ping"])]
+        assert mount_calls == [("panel_paths_plugin", ["GET /ping"], None)]
         await loader.stop_plugin("panel_paths_plugin")
+
+
+class TestMediaPathsReachTheRateLimiter:
+    """A plugin's media declaration has to survive the whole way down.
+
+    It is written in the plugin, stored on the registry, carried by the loader's
+    mount hook, and finally registered with the limiter. Four handoffs, and a
+    drop at any one of them looks identical from the plugin's side: the route
+    still works, and then 429s the moment somebody actually watches it.
+    """
+
+    async def test_a_declaration_lands_on_the_limiter_and_leaves_on_unmount(self):
+        from fastapi import APIRouter, FastAPI
+
+        from openavc.api.plugin_ext import mount_plugin_router, unmount_plugin_router
+        from openavc.middleware.rate_limit import _classify
+
+        app = FastAPI()
+        router = APIRouter()
+
+        @router.get("/hls/{stream_id}/{filename}")
+        async def hls(stream_id: str, filename: str):
+            return {}
+
+        @router.get("/streams")
+        async def streams():
+            return {}
+
+        ext = "/api/plugins/demo_video/ext"
+        try:
+            mount_plugin_router(
+                app, "demo_video", router,
+                panel_paths=["GET /hls/*", "GET /streams"],
+                media_paths=["GET /hls/*"],
+            )
+            assert _classify("GET", f"{ext}/hls/cam1/index.m3u8") == "media"
+            # Declared panel-reachable but NOT media: reaching a route and
+            # streaming from it are different claims.
+            assert _classify("GET", f"{ext}/streams") == "standard"
+        finally:
+            unmount_plugin_router(app, "demo_video")
+        assert _classify("GET", f"{ext}/hls/cam1/index.m3u8") == "standard"
+
+    async def test_registering_without_media_paths_changes_nothing(self):
+        """Every plugin that predates this keeps the budget it always had."""
+        from fastapi import APIRouter, FastAPI
+
+        from openavc.api.plugin_ext import mount_plugin_router, unmount_plugin_router
+        from openavc.middleware.rate_limit import _classify
+
+        app = FastAPI()
+        router = APIRouter()
+
+        @router.get("/hls/{stream_id}")
+        async def hls(stream_id: str):
+            return {}
+
+        try:
+            mount_plugin_router(app, "demo_video", router, panel_paths=["GET /hls/*"])
+            assert _classify("GET", "/api/plugins/demo_video/ext/hls/cam1") == "standard"
+        finally:
+            unmount_plugin_router(app, "demo_video")
+
+    async def test_a_malformed_media_pattern_fails_the_mount_atomically(self):
+        """Same rule the panel patterns already follow: fail loudly at
+        registration rather than silently exposing nothing."""
+        import pytest as _pytest
+        from fastapi import APIRouter, FastAPI
+
+        from openavc.api.plugin_ext import mount_plugin_router
+
+        app = FastAPI()
+        router = APIRouter()
+        with _pytest.raises(ValueError):
+            mount_plugin_router(app, "demo_video", router, media_paths=["NOTAVERB /x"])
+

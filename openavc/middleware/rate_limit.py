@@ -14,6 +14,11 @@ Four tiers based on request path:
             reachable with valid credentials.
 - Strict:   low limit for security-sensitive ops     (default 10/min) —
             login, cloud pairing, backup restore.
+- Media:    a continuous stream of small GETs (default 3000/min) — a
+            plugin route carrying video. Opted into per route by the
+            plugin that owns it (`register_router(media_paths=...)`),
+            never by path shape, so no route gets the large budget
+            without somebody saying it should.
 
 Auth failures (401 responses) feed a dedicated brute-force counter that is
 checked on every request at the strict rate, regardless of the endpoint's tier
@@ -23,6 +28,7 @@ endpoint, and even when auth is opt-in.
 Disabled entirely with OPENAVC_RATE_LIMIT_ENABLED=false.
 """
 
+import fnmatch
 import json
 import math
 import time
@@ -147,6 +153,46 @@ def _under(path: str, root: str) -> bool:
     """
     return path == root or path.startswith(root + "/")
 
+# Media routes, keyed by the mount prefix that owns them, each holding the
+# (method, glob) pairs a plugin declared. Registration is the whole gate:
+# a path is only ever media because the plugin that serves it said so.
+#
+# Why a tier rather than an exemption. The static render path is exempt
+# because a panel load is a bounded burst that ends; a stream does not end,
+# and something has to stop a player that has gone into a loop. So the
+# budget is large and finite, and a 429 here means a real fault rather than
+# an ordinary viewer.
+_media_patterns: dict[str, tuple[tuple[str | None, str], ...]] = {}
+
+
+def register_media_patterns(prefix: str, patterns) -> None:
+    """Classify ``patterns`` under ``prefix`` as the media tier.
+
+    ``patterns`` are (method-or-None, glob) pairs matched against the path
+    BELOW the prefix -- the same shape, and the same parser, as the panel
+    paths a plugin already declares, so an author writes one kind of thing.
+    """
+    if patterns:
+        _media_patterns[prefix] = tuple(patterns)
+
+
+def unregister_media_patterns(prefix: str) -> None:
+    _media_patterns.pop(prefix, None)
+
+
+def _is_media_path(method: str, path: str) -> bool:
+    for prefix, patterns in _media_patterns.items():
+        if not (path == prefix or path.startswith(prefix + "/")):
+            continue
+        suffix = path[len(prefix):] or "/"
+        for pat_method, pat_path in patterns:
+            if pat_method is not None and pat_method != method.upper():
+                continue
+            if fnmatch.fnmatchcase(suffix, pat_path):
+                return True
+    return False
+
+
 # Registered prefixes outside /api/ that classify as the standard tier.
 # Plugin guest aliases (api/plugin_ext.py) register here when mounted so
 # their traffic is rate-limited and their 401s feed the brute-force counter
@@ -165,6 +211,10 @@ def unregister_standard_prefix(prefix: str) -> None:
 
 def _classify(method: str, path: str) -> str:
     """Classify a request into a rate-limit tier."""
+    # Media first: a plugin's guest alias can serve one too, and that alias
+    # is registered as standard below.
+    if _is_media_path(method, path):
+        return "media"
     if any(path == p or path.startswith(p + "/") for p in _extra_standard_prefixes):
         return "standard"
     if any(path.startswith(p) for p in _SKIP_PREFIXES):
@@ -260,13 +310,16 @@ class _SlidingWindow:
 
 
 class _IPBuckets:
-    __slots__ = ("open", "standard", "control", "strict", "auth_fail", "last_seen")
+    __slots__ = (
+        "open", "standard", "control", "strict", "media", "auth_fail", "last_seen",
+    )
 
     def __init__(self) -> None:
         self.open = _SlidingWindow(config.RATE_LIMIT_OPEN_PER_MINUTE)
         self.standard = _SlidingWindow(config.RATE_LIMIT_STANDARD_PER_MINUTE)
         self.control = _SlidingWindow(config.RATE_LIMIT_CONTROL_PER_MINUTE)
         self.strict = _SlidingWindow(config.RATE_LIMIT_STRICT_PER_MINUTE)
+        self.media = _SlidingWindow(config.RATE_LIMIT_MEDIA_PER_MINUTE)
         # 401 brute-force counter: the strict rate, but checked on EVERY request
         # regardless of tier. Kept separate from the strict-tier endpoint window
         # so legitimate sensitive-op traffic (which fills ``strict``) doesn't
@@ -281,6 +334,8 @@ class _IPBuckets:
             return self.control
         if tier == "strict":
             return self.strict
+        if tier == "media":
+            return self.media
         return self.standard
 
 

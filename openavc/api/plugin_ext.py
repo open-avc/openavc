@@ -383,16 +383,26 @@ def _ext_prefix(plugin_id: str) -> str:
     return f"/api/plugins/{plugin_id}/ext"
 
 
-def mount_plugin_router(app, plugin_id: str, router, panel_paths=None) -> None:
+def mount_plugin_router(
+    app, plugin_id: str, router, panel_paths=None, media_paths=None,
+) -> None:
     """Mount a plugin's APIRouter under ``/api/plugins/{id}/ext/*`` (idempotent).
 
     ``panel_paths``: optional patterns (see :func:`parse_panel_paths`) marking
     routes reachable with a panel token from a standalone, unauthenticated
     room panel on a claimed instance.
+
+    ``media_paths``: optional patterns, same shape, marking routes that
+    carry a continuous media stream and so belong on the rate limiter's
+    media tier rather than its standard one. Answers a different question
+    from ``panel_paths`` -- who may reach it, versus how much of it is
+    normal -- so the two lists are separate even where they name the same
+    routes.
     """
     prefix = _ext_prefix(plugin_id)
     # Parse before touching the app so a malformed pattern fails atomically.
     parsed_panel = parse_panel_paths(panel_paths) if panel_paths else ()
+    parsed_media = parse_panel_paths(media_paths) if media_paths else ()
     # Drop any previously-mounted routes for this plugin first so a
     # stop→start (e.g. config change) doesn't leave stale duplicates.
     unmount_plugin_router(app, plugin_id)
@@ -401,6 +411,8 @@ def mount_plugin_router(app, plugin_id: str, router, panel_paths=None) -> None:
         prefix=prefix,
         dependencies=[Depends(require_plugin_access(plugin_id))],
     )
+    if parsed_media:
+        _rate_limit.register_media_patterns(prefix, parsed_media)
     if parsed_panel:
         _panel_reachable[plugin_id] = parsed_panel
         log.info(
@@ -414,6 +426,7 @@ def mount_plugin_router(app, plugin_id: str, router, panel_paths=None) -> None:
 def unmount_plugin_router(app, plugin_id: str) -> None:
     """Remove all routes previously mounted under this plugin's ``/ext`` prefix."""
     _panel_reachable.pop(plugin_id, None)
+    _rate_limit.unregister_media_patterns(_ext_prefix(plugin_id))
     _unmount_prefix(app, plugin_id, _ext_prefix(plugin_id))
 
 

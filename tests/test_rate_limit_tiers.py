@@ -277,3 +277,112 @@ def test_the_exemption_is_segment_bounded():
     assert _classify("GET", "/api/projects/default/assets-export/all.zip") == "standard"
     assert _classify("GET", "/api/plugins/x/files-index") == "standard"
     assert _classify("GET", "/api/projects/default/uix/thing") == "standard"
+
+
+# --- The media tier ----------------------------------------------------------
+#
+# A video tile is not a person clicking. One low-latency HLS stream re-asks its
+# playlist per part and fetches every part, which measured at about 390 requests
+# a minute on the bench -- so the standard 60 stops the first tile within
+# seconds, and the panel shows a connection error where the picture should be.
+#
+# The budget is opted into per route by the plugin that serves it, never
+# inferred from the path, so these pin BOTH halves: that a declared route gets
+# it, and that nothing else does.
+
+
+class _MediaPatterns:
+    """Register media patterns for one prefix and take them away again."""
+
+    def __init__(self, prefix, patterns):
+        self.prefix, self.patterns = prefix, patterns
+
+    def __enter__(self):
+        from openavc.api.plugin_ext import parse_panel_paths
+        from openavc.middleware import rate_limit
+
+        rate_limit.register_media_patterns(self.prefix, parse_panel_paths(self.patterns))
+        return self
+
+    def __exit__(self, *exc):
+        from openavc.middleware import rate_limit
+
+        rate_limit.unregister_media_patterns(self.prefix)
+
+
+_VIDEO_EXT = "/api/plugins/video_panel/ext"
+
+
+def test_a_declared_media_route_gets_the_media_budget():
+    with _MediaPatterns(_VIDEO_EXT, ["GET /hls/*", "/whep/*"]):
+        assert _classify("GET", f"{_VIDEO_EXT}/hls/cam1/index.m3u8") == "media"
+        assert _classify("GET", f"{_VIDEO_EXT}/hls/cam1/seg0.mp4") == "media"
+        # No method on the pattern means any method.
+        assert _classify("POST", f"{_VIDEO_EXT}/whep/cam1") == "media"
+        assert _classify("DELETE", f"{_VIDEO_EXT}/whep/cam1/abc") == "media"
+
+
+def test_an_undeclared_sibling_stays_on_the_standard_budget():
+    """The point of declaring routes one at a time. Stream CRUD sits under the
+    same mount and must not inherit a video stream's allowance."""
+    with _MediaPatterns(_VIDEO_EXT, ["GET /hls/*"]):
+        assert _classify("GET", f"{_VIDEO_EXT}/streams") == "standard"
+        assert _classify("POST", f"{_VIDEO_EXT}/streams") == "standard"
+        # And the method scope is honoured.
+        assert _classify("DELETE", f"{_VIDEO_EXT}/hls/cam1/index.m3u8") == "standard"
+
+
+def test_another_plugins_mount_is_untouched():
+    with _MediaPatterns(_VIDEO_EXT, ["GET /hls/*"]):
+        assert _classify("GET", "/api/plugins/other/ext/hls/cam1/index.m3u8") == "standard"
+
+
+def test_the_prefix_is_segment_bounded():
+    """`/api/plugins/video_panel/ext` must not match a sibling mount whose name
+    merely starts with it."""
+    with _MediaPatterns(_VIDEO_EXT, ["GET /hls/*"]):
+        assert _classify("GET", "/api/plugins/video_panel/extra/hls/x.m3u8") == "standard"
+
+
+def test_unregistering_puts_the_route_back_on_standard():
+    """A plugin that stops must not leave its allowance behind."""
+    with _MediaPatterns(_VIDEO_EXT, ["GET /hls/*"]):
+        pass
+    assert _classify("GET", f"{_VIDEO_EXT}/hls/cam1/index.m3u8") == "standard"
+
+
+def test_no_route_is_media_by_default():
+    """Nothing gets this budget from its path shape alone. If this fails,
+    something started classifying by convention instead of by declaration."""
+    from openavc.middleware import rate_limit
+
+    assert not rate_limit._media_patterns, (
+        "a media pattern leaked from another test; the budget must only exist "
+        "while a plugin that declared it is running"
+    )
+    for method, path in (
+        ("GET", "/api/plugins/video_panel/ext/hls/cam1/index.m3u8"),
+        ("GET", "/api/project"),
+        ("POST", "/api/devices/x/command"),
+    ):
+        assert _classify(method, path) != "media"
+
+
+def test_the_media_budget_is_large_but_finite():
+    """A ceiling, not an exemption: it is what stops a player stuck in a loop.
+    The static render path is exempt because a panel load ends; a stream does
+    not."""
+    from openavc import config
+
+    assert config.RATE_LIMIT_MEDIA_PER_MINUTE > config.RATE_LIMIT_STANDARD_PER_MINUTE
+    assert config.RATE_LIMIT_MEDIA_PER_MINUTE < 100000
+
+
+def test_a_media_route_has_its_own_window():
+    """Sharing the standard window would let one tile 429 the panel's own
+    ordinary calls, which is the failure this whole tier exists to stop."""
+    from openavc.middleware.rate_limit import _IPBuckets
+
+    buckets = _IPBuckets()
+    assert buckets.get_window("media") is buckets.media
+    assert buckets.get_window("media") is not buckets.get_window("standard")
