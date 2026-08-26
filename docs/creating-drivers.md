@@ -502,6 +502,18 @@ The tables below document each field in detail.
 
 Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`, `table`. For `enum`, add a `"values"` array; for `table`, add a `"columns"` map (see below).
 
+`advanced: true` collapses a field behind an **Advanced** group in the Add Device
+and Edit Device dialogs. Nothing changes about how the value is stored or read;
+it is purely where the field sits on screen. Use it for a setting that already
+has a working default and only gets touched when something needs tuning (a poll
+interval, an inter-command delay), or for one whose answer is not knowable at
+the moment the device is added — `vmix` marks its four SRT ports this way,
+because SRT gets enabled on the vMix PC later and the port has no answer before
+that. Do not mark a field the driver cannot work without.
+
+An older platform that predates this flag ignores it and draws the field
+normally, so it needs no `min_platform_version`.
+
 `text` renders as a multi-line monospace textarea in the Add Device dialog. Use it for config that doesn't fit in a single line — zone definitions for room combiners, channel-name maps, custom command translation tables, anything the integrator pastes from manufacturer software. The raw string is preserved on save (no JSON parsing or number coercion); your driver parses it at `__init__` time.
 
 `table` renders a friendly row editor **on the device page** (not the Add Device dialog — the dialog just points the user to it). Use it for a repeatable list of typed rows the integrator declares — a Modbus register map, a DSP block list, a point/channel table. You declare the columns; the platform renders one input per column (dropdowns for `enum`, number inputs for numeric types, a checkbox for `boolean`) with Add/Remove rows and per-cell validation. The stored value is a **list of row objects** keyed by column id, so your driver reads `self.config.get("<field>", [])` as a list of dicts (no string parsing). Each column is a normal scalar field spec:
