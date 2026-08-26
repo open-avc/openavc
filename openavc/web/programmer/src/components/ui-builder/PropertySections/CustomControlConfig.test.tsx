@@ -118,6 +118,7 @@ describe("dropping a control onto the element", () => {
     render(<CustomControlConfig file="" config={{}} onChange={vi.fn()} />);
 
     // Pages are entry points; the CSS beside one is fetched by the page.
+    fireEvent.click(await screen.findByRole("button", { name: "Choose a page..." }));
     expect(await screen.findByRole("option", { name: "room_map/index.html" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "room_map/map.css" })).not.toBeInTheDocument();
   });

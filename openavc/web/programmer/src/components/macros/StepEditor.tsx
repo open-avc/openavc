@@ -2,6 +2,15 @@ import { useState, useEffect, useRef, useId } from "react";
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../shared/ParamInput";
 import { useProjectStore } from "../../store/projectStore";
+import { SearchableSelect } from "../shared/SearchableSelect";
+import {
+  commandOptions,
+  deviceOptions,
+  macroOptions,
+  pageGroups,
+  NAVIGATE_SPECIAL_GROUP,
+} from "../shared/pickerOptions";
+import { connectedDot } from "../shared/ConnectedDot";
 import type { StepPathSegment } from "../../store/logStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { ConditionEditor } from "./ConditionEditor";
@@ -103,20 +112,17 @@ export function StepEditor({ step, macros, currentMacroId, onChange, activeStepP
           <HelpText>Execute another macro as a sub-routine. The steps will run in order before continuing.</HelpText>
           <div style={rowStyle}>
             <label style={labelStyle}>Macro</label>
-            <select
+            <SearchableSelect
               value={step.macro ?? ""}
-              onChange={(e) => update({ macro: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="">Select macro...</option>
-              {macros
-                .filter((m) => m.id !== currentMacroId)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.steps.length} steps)
-                  </option>
-                ))}
-            </select>
+              onChange={(macro) => update({ macro })}
+              options={macroOptions(
+                macros.filter((m) => m.id !== currentMacroId),
+                { showStepCount: true },
+              )}
+              placeholder="Select macro..."
+              searchPlaceholder="Search macros..."
+              style={pickerStyle}
+            />
           </div>
           {macros.filter((m) => m.id !== currentMacroId).length === 0 && (
             <div style={hintStyle}>No other macros available. Create another macro first.</div>
@@ -257,18 +263,15 @@ function DeviceCommandEditor({
       {/* Device picker */}
       <div style={rowStyle}>
         <label style={labelStyle}>Device</label>
-        <select
+        <SearchableSelect
           value={step.device ?? ""}
-          onChange={(e) => handleDeviceChange(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">Select device...</option>
-          {devices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+          onChange={handleDeviceChange}
+          options={deviceOptions(devices, { prefix: connectedDot })}
+          placeholder="Select device..."
+          searchPlaceholder="Search devices..."
+          emptyHint="No devices yet. Add one in the Devices view."
+          style={pickerStyle}
+        />
       </div>
 
       {/* Command picker (dropdown, not text) */}
@@ -281,22 +284,13 @@ function DeviceCommandEditor({
             </span>
           ) : commandNames.length > 0 ? (
             <div style={{ flex: 1 }}>
-            <select
+            <SearchableSelect
               value={step.command ?? ""}
-              onChange={(e) => handleCommandChange(e.target.value)}
-              style={{ ...inputStyle, width: "100%" }}
-            >
-              <option value="">Select command...</option>
-              {commandNames.map((cmd) => {
-                const def = commands[cmd];
-                const label = def?.label ?? cmd;
-                return (
-                  <option key={cmd} value={cmd}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
+              onChange={handleCommandChange}
+              options={commandOptions(commands)}
+              placeholder="Select command..."
+              searchPlaceholder="Search commands..."
+            />
             {step.command && commands[step.command]?.help && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {commands[step.command].help}
@@ -433,18 +427,20 @@ function GroupCommandEditor({
       {/* Group picker */}
       <div style={rowStyle}>
         <label style={labelStyle}>Group</label>
-        <select
+        <SearchableSelect
           value={step.group ?? ""}
-          onChange={(e) => handleGroupChange(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">Select group...</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name} ({g.device_ids.length} devices)
-            </option>
-          ))}
-        </select>
+          onChange={handleGroupChange}
+          options={groups.map((g) => ({
+            value: g.id,
+            label: g.name || g.id,
+            hint: g.id,
+            badge: `${g.device_ids.length} ${g.device_ids.length === 1 ? "device" : "devices"}`,
+          }))}
+          placeholder="Select group..."
+          searchPlaceholder="Search groups..."
+          emptyHint="No device groups yet. Create one in the Devices view."
+          style={pickerStyle}
+        />
       </div>
 
       {/* Command picker */}
@@ -457,20 +453,13 @@ function GroupCommandEditor({
             </span>
           ) : commandNames.length > 0 ? (
             <div style={{ flex: 1 }}>
-              <select
+              <SearchableSelect
                 value={step.command ?? ""}
-                onChange={(e) => handleCommandChange(e.target.value)}
-                style={{ ...inputStyle, width: "100%" }}
-              >
-                <option value="">Select command...</option>
-                {commandNames.map((cmd) => {
-                  const def = sharedCommands[cmd];
-                  const label = def?.label ?? cmd;
-                  return (
-                    <option key={cmd} value={cmd}>{label}</option>
-                  );
-                })}
-              </select>
+                onChange={handleCommandChange}
+                options={commandOptions(sharedCommands)}
+                placeholder="Select command..."
+                searchPlaceholder="Search commands..."
+              />
               {step.command && sharedCommands[step.command]?.help && (
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                   {sharedCommands[step.command].help}
@@ -995,11 +984,6 @@ function UINavigateEditor({
   onChange: (patch: Partial<MacroStep>) => void;
 }) {
   const pages = useProjectStore((s) => s.project?.ui?.pages) ?? [];
-  const regularPages = pages.filter((p) => (p.page_type ?? "page") === "page");
-  const overlayPages = pages.filter((p) => {
-    const t = p.page_type ?? "page";
-    return t === "overlay" || t === "sidebar";
-  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
@@ -1010,35 +994,14 @@ function UINavigateEditor({
       </HelpText>
       <div style={rowStyle}>
         <label style={labelStyle}>Page</label>
-        <select
+        <SearchableSelect
           value={step.page ?? ""}
-          onChange={(e) => onChange({ page: e.target.value })}
-          style={inputStyle}
-        >
-          <option value="">Select page...</option>
-          {regularPages.length > 0 && (
-            <optgroup label="Pages">
-              {regularPages.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.id}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {overlayPages.length > 0 && (
-            <optgroup label="Overlays / Sidebars">
-              {overlayPages.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.id}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          <optgroup label="Special">
-            <option value="$back">$back: previous page (or close overlay if one is open)</option>
-            <option value="$dismiss">$dismiss: close topmost overlay only</option>
-          </optgroup>
-        </select>
+          onChange={(page) => onChange({ page })}
+          groups={[...pageGroups(pages), NAVIGATE_SPECIAL_GROUP]}
+          placeholder="Select page..."
+          searchPlaceholder="Search pages..."
+          style={pickerStyle}
+        />
       </div>
       {pages.length === 0 && (
         <div style={hintStyle}>This project has no pages yet. Add pages in the UI Builder first.</div>
@@ -1614,34 +1577,28 @@ function PluginParamField({
         break;
       case "device_ref":
         input = (
-          <select
+          <SearchableSelect
             value={typeof value === "string" ? value : ""}
-            onChange={(e) => onChange(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Select device...</option>
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+            onChange={onChange}
+            options={deviceOptions(devices, { prefix: connectedDot })}
+            placeholder="Select device..."
+            searchPlaceholder="Search devices..."
+            emptyHint="No devices yet. Add one in the Devices view."
+            style={pickerStyle}
+          />
         );
         break;
       case "macro_ref":
         input = (
-          <select
+          <SearchableSelect
             value={typeof value === "string" ? value : ""}
-            onChange={(e) => onChange(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="">Select macro...</option>
-            {macros.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+            onChange={onChange}
+            options={macroOptions(macros)}
+            placeholder="Select macro..."
+            searchPlaceholder="Search macros..."
+            emptyHint="No macros yet. Create one in the Macros view."
+            style={pickerStyle}
+          />
         );
         break;
       case "text":
@@ -1844,6 +1801,10 @@ const inputStyle: React.CSSProperties = {
   color: "var(--text-primary)",
   fontSize: "var(--font-size-sm)",
 };
+
+/** A picker draws its own trigger, so it takes the row's LAYOUT and none of
+ *  the text-field skin `inputStyle` carries -- otherwise a box inside a box. */
+const pickerStyle: React.CSSProperties = { flex: 1, minWidth: 0 };
 
 const hintStyle: React.CSSProperties = {
   fontSize: 11,

@@ -1,5 +1,7 @@
 import type { ProjectConfig } from "../../../api/types";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
+import { SearchableSelect } from "../../shared/SearchableSelect";
+import { macroOptions } from "../../shared/pickerOptions";
 
 interface TextBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -192,20 +194,16 @@ export function TextBindingEditor({
           </div>
           <div>
             <label style={labelStyle}>Macro</label>
-            <select
+            <SearchableSelect
               value={String(value?.macro || "")}
-              onChange={(e) =>
-                onChange({ source: "macro_progress", macro: e.target.value, idle_text: value?.idle_text || "Ready" })
+              onChange={(macro) =>
+                onChange({ source: "macro_progress", macro, idle_text: value?.idle_text || "Ready" })
               }
-              style={inputStyle}
-            >
-              <option value="">Select macro...</option>
-              {project.macros.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              options={macroOptions(project.macros)}
+              placeholder="Select macro..."
+              searchPlaceholder="Search macros..."
+              emptyHint="No macros yet: create one in the Macros view"
+            />
           </div>
           <div>
             <label style={labelStyle}>Idle Text</label>

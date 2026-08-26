@@ -3,6 +3,8 @@ import type {
   DriverRoutingDef,
   DriverRoutingPlane,
 } from "../../api/types";
+import { SearchableSelect } from "../shared/SearchableSelect";
+import { commandOptions } from "../shared/pickerOptions";
 
 interface RoutingEditorProps {
   draft: DriverDefinition;
@@ -68,7 +70,6 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
   const planes: DriverRoutingPlane[] = routing?.planes ?? [];
 
   const childTypes = Object.keys(draft.child_entity_types ?? {});
-  const commandNames = Object.keys(draft.commands ?? {});
 
   const setEnabled = (next: boolean) => {
     onUpdate(
@@ -221,20 +222,13 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
               </div>
               <div>
                 <label style={labelStyle}>Routing command</label>
-                <select
+                <SearchableSelect
                   value={inherited("command")}
-                  onChange={(e) =>
-                    update({ command: e.target.value || undefined })
-                  }
-                  style={{ width: "100%" }}
-                >
-                  <option value="">None (each plane names its own)</option>
-                  {commandNames.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(c) => update({ command: c || undefined })}
+                  options={commandOptions(draft.commands)}
+                  placeholder="None (each plane names its own)"
+                  searchPlaceholder="Search commands..."
+                />
                 <div style={helpStyle}>
                   The command that performs a route, when every plane uses the
                   same one.
@@ -444,24 +438,15 @@ export function RoutingEditor({ draft, onUpdate }: RoutingEditorProps) {
                     </div>
                     <div>
                       <label style={labelStyle}>Command (override)</label>
-                      <select
+                      <SearchableSelect
                         value={plane.command ?? ""}
-                        onChange={(e) =>
-                          updatePlane(index, {
-                            command: e.target.value || undefined,
-                          })
+                        onChange={(c) =>
+                          updatePlane(index, { command: c || undefined })
                         }
-                        style={{ width: "100%" }}
-                      >
-                        <option value="">
-                          Shared ({inherited("command") || "none"})
-                        </option>
-                        {commandNames.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
+                        options={commandOptions(draft.commands)}
+                        placeholder={`Shared (${inherited("command") || "none"})`}
+                        searchPlaceholder="Search commands..."
+                      />
                     </div>
                   </div>
 

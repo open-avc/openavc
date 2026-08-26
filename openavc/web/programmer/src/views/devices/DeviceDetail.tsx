@@ -1,8 +1,10 @@
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ChevronDown, Pause, Play, AlertTriangle } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
+import { SearchableSelect } from "../../components/shared/SearchableSelect";
+import { commandOptions } from "../../components/shared/pickerOptions";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
@@ -1044,9 +1046,15 @@ export function DeviceDetail({
 
 // --- Command Picker ---
 
-// Searchable command dropdown. Devices like the Chazy Control Pro expose
-// 200+ commands; a native <select> is unusable at that size. Filters by
-// command id and human label, shows both, and closes on outside click.
+/**
+ * The device page's command dropdown, which is where a searchable one was
+ * first needed and for a long time the only place there was one. It is now
+ * `SearchableSelect` like every other command dropdown in the product, so a
+ * command reads the same here as it does in a macro step or a panel binding.
+ *
+ * Kept as a named wrapper rather than inlined: the call site cares about
+ * commands, not about option shapes.
+ */
 function CommandPicker({
   commands,
   value,
@@ -1056,155 +1064,19 @@ function CommandPicker({
   value: string;
   onChange: (cmd: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  const names = useMemo(() => Object.keys(commands), [commands]);
-  const labelOf = useCallback(
-    (cmd: string): string => {
-      const lbl = (commands[cmd] as Record<string, unknown> | undefined)?.label;
-      return typeof lbl === "string" ? lbl : "";
-    },
-    [commands],
-  );
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return names;
-    return names.filter(
-      (n) => n.toLowerCase().includes(q) || labelOf(n).toLowerCase().includes(q),
-    );
-  }, [names, query, labelOf]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  const selectedDisplay = value
-    ? labelOf(value)
-      ? `${labelOf(value)} (${value})`
-      : value
-    : "";
-
+  const options = useMemo(() => commandOptions(commands), [commands]);
   return (
-    <div ref={ref} style={{ position: "relative", flex: 1 }}>
-      <div style={{ position: "relative" }}>
-        <Search
-          size={14}
-          style={{
-            position: "absolute",
-            left: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--text-muted)",
-            pointerEvents: "none",
-          }}
-        />
-        <input
-          value={open ? query : selectedDisplay}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => {
-            setOpen(true);
-            setQuery("");
-          }}
-          placeholder="Search commands..."
-          data-testid="command-search"
-          style={{ width: "100%", padding: "var(--space-xs) 28px" }}
-        />
-        <ChevronDown
-          size={14}
-          style={{
-            position: "absolute",
-            right: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--text-muted)",
-            pointerEvents: "none",
-          }}
-        />
-      </div>
-      {open && (
-        <div
-          data-testid="command-options"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            zIndex: 30,
-            marginTop: 2,
-            maxHeight: 280,
-            overflowY: "auto",
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border-color)",
-            borderRadius: "var(--border-radius)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
-          }}
-        >
-          {filtered.length === 0 ? (
-            <div
-              style={{
-                padding: "var(--space-sm) var(--space-md)",
-                color: "var(--text-muted)",
-                fontSize: "var(--font-size-sm)",
-              }}
-            >
-              No commands match "{query}"
-            </div>
-          ) : (
-            filtered.map((cmd) => {
-              const lbl = labelOf(cmd);
-              const isSelected = cmd === value;
-              return (
-                <button
-                  key={cmd}
-                  onClick={() => {
-                    onChange(cmd);
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                  data-testid={`command-option-${cmd}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: "var(--space-sm)",
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "var(--space-xs) var(--space-md)",
-                    background: isSelected ? "var(--accent-bg)" : "transparent",
-                    color: isSelected ? "var(--text-on-accent)" : "var(--text-primary)",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "var(--font-size-sm)",
-                  }}
-                >
-                  {lbl && <span>{lbl}</span>}
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      color: isSelected ? "var(--text-on-accent)" : "var(--text-muted)",
-                      opacity: lbl ? 0.8 : 1,
-                    }}
-                  >
-                    {cmd}
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={options}
+      allowEmpty={false}
+      placeholder="Select a command..."
+      searchPlaceholder="Search commands..."
+      emptyHint="This driver declares no commands."
+      testId="command-picker"
+      style={{ flex: 1 }}
+    />
   );
 }
 

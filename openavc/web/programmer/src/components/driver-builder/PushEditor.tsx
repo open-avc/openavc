@@ -1,4 +1,6 @@
 import type { DriverDefinition, DriverPushDef } from "../../api/types";
+import { SearchableSelect } from "../shared/SearchableSelect";
+import { commandOptions } from "../shared/pickerOptions";
 
 interface PushEditorProps {
   draft: DriverDefinition;
@@ -64,7 +66,6 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
     }
   };
 
-  const commandNames = Object.keys(draft.commands ?? {});
 
   const setPushCommand = (key: "register" | "unregister", value: string) => {
     const next: DriverPushDef = { ...(push ?? {}) };
@@ -360,18 +361,13 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
                 <div>
                   <label style={labelStyle}>Register Command</label>
-                  <select
+                  <SearchableSelect
                     value={push?.register ?? ""}
-                    onChange={(e) => setPushCommand("register", e.target.value)}
-                    style={{ width: "100%" }}
-                  >
-                    <option value="">(none)</option>
-                    {commandNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(name) => setPushCommand("register", name)}
+                    options={commandOptions(draft.commands)}
+                    placeholder="(none)"
+                    searchPlaceholder="Search commands..."
+                  />
                   <div style={helpStyle}>
                     Command that tells the device where to dial back. Use{" "}
                     <code>{"{listener_port}"}</code> in its path or send
@@ -381,20 +377,13 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
                 </div>
                 <div>
                   <label style={labelStyle}>Unregister Command</label>
-                  <select
+                  <SearchableSelect
                     value={push?.unregister ?? ""}
-                    onChange={(e) =>
-                      setPushCommand("unregister", e.target.value)
-                    }
-                    style={{ width: "100%" }}
-                  >
-                    <option value="">(none)</option>
-                    {commandNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(name) => setPushCommand("unregister", name)}
+                    options={commandOptions(draft.commands)}
+                    placeholder="(none)"
+                    searchPlaceholder="Search commands..."
+                  />
                   <div style={helpStyle}>
                     Command that cancels the registration. Runs best-effort
                     when the device is disconnected on purpose, freeing the

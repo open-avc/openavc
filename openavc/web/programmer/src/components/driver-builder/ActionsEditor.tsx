@@ -20,6 +20,8 @@ import {
   coerceConditionValue,
   type VisibleWhenMode,
 } from "./actionsEditorHelpers";
+import { SearchableSelect } from "../shared/SearchableSelect";
+import { commandOptions } from "../shared/pickerOptions";
 
 interface ActionsEditorProps {
   draft: DriverDefinition;
@@ -299,7 +301,6 @@ function ActionCard({
   onRemove: () => void;
 }) {
   const commands = draft.commands ?? {};
-  const commandIds = Object.keys(commands);
   const kind = action.kind ?? "command";
   const isLink = kind === "link";
 
@@ -462,20 +463,13 @@ function ActionCard({
           {!isLink && (
             <div style={{ marginBottom: "var(--space-md)" }}>
               <label style={labelStyle}>Command</label>
-              <select
+              <SearchableSelect
                 value={action.command ?? ""}
-                onChange={(e) =>
-                  onUpdate({ command: e.target.value || undefined })
-                }
-                style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-              >
-                <option value="">(same as id)</option>
-                {commandIds.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={(c) => onUpdate({ command: c || undefined })}
+                options={commandOptions(commands)}
+                placeholder="(same as id)"
+                searchPlaceholder="Search commands..."
+              />
               <div style={helpStyle}>
                 The declared command this button sends. Leave on &quot;same as
                 id&quot; when the action id matches a command id.

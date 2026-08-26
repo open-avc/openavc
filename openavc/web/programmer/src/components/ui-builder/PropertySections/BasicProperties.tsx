@@ -11,6 +11,8 @@ import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { OptionSourcePicker } from "../../shared/OptionSourcePicker";
 import { MacroRefPicker, DeviceRefPicker } from "../../shared/RefPickers";
+import { SearchableSelect } from "../../shared/SearchableSelect";
+import { pageGroups } from "../../shared/pickerOptions";
 import { MatchDriverRangeRow } from "../BindingEditor/DeviceValuePicker";
 import { MatrixSetupDialog } from "../MatrixSetupDialog";
 import { CustomControlConfig } from "./CustomControlConfig";
@@ -267,19 +269,17 @@ export function BasicProperties({
       {/* Target page (for page_nav) */}
       {element.type === "page_nav" && (
         <FieldRow label="Target Page">
-          <select
+          <SearchableSelect
             value={element.target_page || ""}
-            onChange={(e) => onChange({ target_page: e.target.value })}
+            onChange={(target_page) => onChange({ target_page })}
+            groups={[
+              { options: [{ value: "$back", label: "$back (dismiss overlay)", hint: "$back" }] },
+              ...pageGroups(pages),
+            ]}
+            placeholder="Select page..."
+            searchPlaceholder="Search pages..."
             style={{ flex: 1 }}
-          >
-            <option value="">Select page...</option>
-            <option value="$back">$back (dismiss overlay)</option>
-            {pages.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}{p.page_type === "overlay" ? " (overlay)" : p.page_type === "sidebar" ? " (sidebar)" : ""}
-              </option>
-            ))}
-          </select>
+          />
         </FieldRow>
       )}
 

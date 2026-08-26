@@ -3,7 +3,15 @@ import { Info, Plus, X } from "lucide-react";
 import type { ProjectConfig, DeviceInfo, DriverParamDef } from "../../../api/types";
 import { ParamInput, isDynamicParamValue } from "../../shared/ParamInput";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
-import { useConnectionStore } from "../../../store/connectionStore";
+import { SearchableSelect } from "../../shared/SearchableSelect";
+import {
+  commandOptions,
+  deviceOptions,
+  macroOptions,
+  pageGroups,
+  NAVIGATE_SPECIAL_GROUP,
+} from "../../shared/pickerOptions";
+import { connectedDot } from "../../shared/ConnectedDot";
 import * as api from "../../../api/restClient";
 
 interface ActionPickerProps {
@@ -122,23 +130,14 @@ function MacroConfig({
   return (
     <div>
       <label style={labelStyle}>Macro</label>
-      <select
+      <SearchableSelect
         value={String(value?.macro || "")}
-        onChange={(e) =>
-          onChange({ action: "macro", macro: e.target.value })
-        }
-        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-      >
-        <option value="">Select macro...</option>
-        {project.macros.length === 0 && (
-          <option disabled>No macros yet: create one in the Macros view</option>
-        )}
-        {project.macros.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
-      </select>
+        onChange={(macro) => onChange({ action: "macro", macro })}
+        options={macroOptions(project.macros)}
+        placeholder="Select macro..."
+        searchPlaceholder="Search macros..."
+        emptyHint="No macros yet: create one in the Macros view"
+      />
     </div>
   );
 }
@@ -174,7 +173,6 @@ function DeviceCommandConfig({
   }, [selectedDevice]);
 
   const commands = deviceInfo?.commands ?? {};
-  const commandNames = Object.keys(commands);
   const commandDef = commands[selectedCommand] as
     | Record<string, unknown>
     | undefined;
@@ -188,28 +186,16 @@ function DeviceCommandConfig({
     <>
       <div>
         <label style={labelStyle}>Device</label>
-        <select
+        <SearchableSelect
           value={selectedDevice}
-          onChange={(e) =>
-            onChange({
-              action: "device.command",
-              device: e.target.value,
-              command: "",
-              params: {},
-            })
+          onChange={(device) =>
+            onChange({ action: "device.command", device, command: "", params: {} })
           }
-          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-        >
-          <option value="">Select device...</option>
-          {project.devices.map((d) => {
-            const connected = useConnectionStore.getState().liveState[`device.${d.id}.connected`];
-            return (
-              <option key={d.id} value={d.id}>
-                {connected ? "\u25CF " : "\u25CB "}{d.name} ({d.driver})
-              </option>
-            );
-          })}
-        </select>
+          options={deviceOptions(project.devices, { prefix: connectedDot })}
+          placeholder="Select device..."
+          searchPlaceholder="Search devices..."
+          emptyHint="No devices yet: add one in the Devices view"
+        />
         {/* Device info tooltip */}
         {selectedDevice && deviceInfo && (
           <div style={{
@@ -235,25 +221,21 @@ function DeviceCommandConfig({
       {selectedDevice && (
         <div>
           <label style={labelStyle}>Command</label>
-          <select
+          <SearchableSelect
             value={selectedCommand}
-            onChange={(e) =>
+            onChange={(command) =>
               onChange({
                 action: "device.command",
                 device: selectedDevice,
-                command: e.target.value,
+                command,
                 params: {},
               })
             }
-            style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-          >
-            <option value="">Select command...</option>
-            {commandNames.map((cmd) => (
-              <option key={cmd} value={cmd}>
-                {cmd}
-              </option>
-            ))}
-          </select>
+            options={commandOptions(commands)}
+            placeholder="Select command..."
+            searchPlaceholder="Search commands..."
+            emptyHint="This device's driver declares no commands."
+          />
           {/* Command help text — prominent info box */}
           {selectedCommand && (() => {
             const cmdDef = commands[selectedCommand] as Record<string, unknown> | undefined;
@@ -486,64 +468,27 @@ function NavigateConfig({
     return (
       <div>
         <label style={labelStyle}>Go To</label>
-        <select
+        <SearchableSelect
           value={String(value?.page || "")}
-          onChange={(e) => onChange({ action: navigateAction, page: e.target.value })}
-          style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-        >
-          <option value="">Select...</option>
-          {navigateOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+          onChange={(page) => onChange({ action: navigateAction, page })}
+          options={navigateOptions.map((o) => ({ value: o.value, label: o.label }))}
+          placeholder="Select..."
+          searchPlaceholder="Search targets..."
+        />
       </div>
     );
   }
 
-  const pages = project.ui.pages;
-  const regularPages = pages.filter((p) => (p.page_type ?? "page") === "page");
-  const overlayPages = pages.filter((p) => {
-    const t = p.page_type ?? "page";
-    return t === "overlay" || t === "sidebar";
-  });
-
   return (
     <div>
       <label style={labelStyle}>Page</label>
-      <select
+      <SearchableSelect
         value={String(value?.page || "")}
-        onChange={(e) =>
-          onChange({ action: navigateAction, page: e.target.value })
-        }
-        style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-      >
-        <option value="">Select page...</option>
-        {regularPages.length > 0 && (
-          <optgroup label="Pages">
-            {regularPages.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </optgroup>
-        )}
-        {overlayPages.length > 0 && (
-          <optgroup label="Overlays / Sidebars">
-            {overlayPages.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </optgroup>
-        )}
-        {/* Not pages, and that is the point: a Cancel button pointed at one of
-            these works from wherever the dialog was opened, so the dialog stays
-            reusable instead of always landing the operator on one page. */}
-        <optgroup label="Go back">
-          <option value="$back">Back (close overlay, or previous page)</option>
-          <option value="$dismiss">Close this overlay</option>
-        </optgroup>
-        <optgroup label="Special">
-          <option value="$back">$back: previous page (or close overlay if one is open)</option>
-          <option value="$dismiss">$dismiss: close topmost overlay only</option>
-        </optgroup>
-      </select>
+        onChange={(page) => onChange({ action: navigateAction, page })}
+        groups={[...pageGroups(project.ui.pages), NAVIGATE_SPECIAL_GROUP]}
+        placeholder="Select page..."
+        searchPlaceholder="Search pages..."
+      />
     </div>
   );
 }
@@ -840,27 +785,29 @@ function ScriptCallConfig({
       <>
         <div>
           <label style={labelStyle}>Function</label>
-          <select
+          <SearchableSelect
             value={selected ? `${selected.script}.${selected.function}` : ""}
-            onChange={(e) => {
+            onChange={(qualified) => {
               const fn = functions.find(
-                (f) => `${f.script}.${f.function}` === e.target.value,
+                (f) => `${f.script}.${f.function}` === qualified,
               );
               pickFunction(fn, fn?.function ?? "");
             }}
-            style={{ width: "100%", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
-          >
-            <option value="">Select function...</option>
-            {[...grouped.entries()].map(([scriptId, fns]) => (
-              <optgroup key={scriptId} label={scriptId}>
-                {fns.map((fn) => (
-                  <option key={`${fn.script}.${fn.function}`} value={`${fn.script}.${fn.function}`}>
-                    {fn.function}{fn.doc ? `: ${fn.doc}` : ""}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            groups={[...grouped.entries()].map(([scriptId, fns]) => ({
+              label: scriptId,
+              options: fns.map((fn) => ({
+                value: `${fn.script}.${fn.function}`,
+                // The name a person reads, and its script underneath -- two
+                // scripts may define one name, which is why the value carries
+                // both and why the row has to say which one this is.
+                label: `${fn.function}${fn.doc ? `: ${fn.doc}` : ""}`,
+                hint: `${fn.script}.${fn.function}`,
+              })),
+            }))}
+            placeholder="Select function..."
+            searchPlaceholder="Search functions..."
+            testId="script-function-picker"
+          />
           {currentValue && !selected && (
             <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 3, paddingLeft: 2 }}>
               No enabled script defines <code>{currentValue}</code>. Pressing this does nothing.

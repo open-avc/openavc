@@ -8,6 +8,8 @@ import {
 } from "../../api/matrixProposals";
 import { Modal } from "../shared/Modal";
 import { InlineError } from "../shared/InlineError";
+import { SearchableSelect } from "../shared/SearchableSelect";
+import { deviceOptions } from "../shared/pickerOptions";
 
 /**
  * Set a matrix up from the device, instead of from the manual.
@@ -353,21 +355,21 @@ export function MatrixSetupDialog({
 
       <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
       <div style={{ display: "flex", gap: "var(--space-md)", alignItems: "flex-end", flexWrap: "wrap" }}>
-        <label style={{ flex: "1 1 220px" }}>
+        {/* A div, not a label: the picker's trigger is a button, and a label
+            wrapping one turns every click on the caption into a second click
+            on the control. */}
+        <div style={{ flex: "1 1 220px" }}>
           <div style={fieldLabelStyle}>Device</div>
-          <select
+          <SearchableSelect
             value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-            style={{ width: "100%" }}
-          >
-            {routingDevices.length === 0 && <option value="">No devices in this project</option>}
-            {routingDevices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name} ({d.driver})
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={setDeviceId}
+            options={deviceOptions(routingDevices)}
+            allowEmpty={false}
+            placeholder="Select device..."
+            searchPlaceholder="Search devices..."
+            emptyHint="No devices in this project"
+          />
+        </div>
         {proposals !== null && proposals.length > 1 && (
           <label style={{ flex: "2 1 300px" }}>
             <div style={fieldLabelStyle}>What to route</div>

@@ -9,6 +9,7 @@ import type {
 import { useConnectionStore } from "../../store/connectionStore";
 import { InlineError } from "./InlineError";
 import { ParamCombobox } from "./ParamCombobox";
+import { SearchableSelect } from "./SearchableSelect";
 import {
   childSchemaOptions,
   findChildByValue,
@@ -267,18 +268,16 @@ export function ParamInput({
     // send the wire value (the runtime also maps a label back to its value).
     const enumOptions = normalizeOptionList(effValues);
     widget = (
-      <select
+      <SearchableSelect
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
+        options={enumOptions.map((o) => ({ value: o.value, label: o.label, hint: o.value }))}
+        // A required param had no "(none)" row and must not gain one.
+        allowEmpty={!def.required}
+        placeholder={def.required ? "Select..." : "(none)"}
+        searchPlaceholder="Search values..."
         style={{ flex: 1 }}
-      >
-        {!def.required && <option value="">(none)</option>}
-        {enumOptions.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
     );
   } else if (comboOptions !== undefined) {
     widget = (

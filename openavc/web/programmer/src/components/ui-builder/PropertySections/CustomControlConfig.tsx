@@ -12,6 +12,7 @@
  * that differs is what the first row is called.
  */
 import { useCallback, useEffect, useState } from "react";
+import { SearchableSelect } from "../../shared/SearchableSelect";
 import {
   listCustomUiFiles,
   uploadCustomUiFiles,
@@ -98,21 +99,22 @@ export function CustomControlConfig({
   return (
     <>
       <FieldRow label={label}>
-        <select
+        <SearchableSelect
           value={file}
-          onChange={(e) => onChange({ custom_file: e.target.value })}
+          onChange={(custom_file) => onChange({ custom_file })}
+          options={[
+            // Keep a file the project already names visible even if it is gone,
+            // so choosing something else is a decision and not a surprise.
+            ...(file && !pages.some((p) => p.path === file)
+              ? [{ value: file, label: `${file} (missing)` }]
+              : []),
+            ...pages.map((f) => ({ value: f.path, label: f.path })),
+          ]}
+          placeholder="Choose a page..."
+          searchPlaceholder="Search pages..."
+          emptyHint="No pages in this project's ui/ folder yet."
           style={{ flex: 1 }}
-        >
-          <option value="">Choose a page...</option>
-          {/* Keep a file the project already names visible even if it is gone,
-              so choosing something else is a decision and not a surprise. */}
-          {file && !pages.some((p) => p.path === file) && (
-            <option value={file}>{file} (missing)</option>
-          )}
-          {pages.map((f) => (
-            <option key={f.path} value={f.path}>{f.path}</option>
-          ))}
-        </select>
+        />
       </FieldRow>
 
       <FieldRow label="Add files">

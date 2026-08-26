@@ -27,10 +27,21 @@ const FUNCTIONS = [
   },
 ];
 
-/** The function dropdown, once its list has actually arrived. */
-async function functionSelect(): Promise<HTMLSelectElement> {
-  const option = await screen.findByRole("option", { name: "select_source: Route a source." });
-  return option.closest("select") as HTMLSelectElement;
+/**
+ * Choose a function the way a person does: open the picker, type enough to
+ * find the one you want, click it. Both scripts define `select_source`, so
+ * the search text is the qualified id -- which is exactly the ambiguity the
+ * tests below exist to pin.
+ */
+async function pickFunction(qualified: string): Promise<void> {
+  // The list arrives asynchronously; the trigger is there from the start.
+  await screen.findByTestId("script-function-picker");
+  fireEvent.click(screen.getByTestId("script-function-picker"));
+  fireEvent.change(screen.getByPlaceholderText("Search functions..."), {
+    target: { value: qualified },
+  });
+  const row = await screen.findByText(qualified);
+  fireEvent.click(row);
 }
 
 beforeEach(() => {
@@ -47,7 +58,7 @@ describe("Script Function action", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.change(await functionSelect(), { target: { value: "lights.select_source" } });
+    await pickFunction("lights.select_source");
     expect(onChange).toHaveBeenCalledWith({
       action: "script.call", function: "select_source", params: {}, script: "lights",
     });
@@ -124,7 +135,7 @@ describe("Script Function action", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.change(await functionSelect(), { target: { value: "lights.select_source" } });
+    await pickFunction("lights.select_source");
     expect(onChange).toHaveBeenLastCalledWith({
       action: "script.call", function: "select_source", params: {}, script: "lights",
     });

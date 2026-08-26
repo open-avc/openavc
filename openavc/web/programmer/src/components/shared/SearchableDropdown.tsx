@@ -17,7 +17,7 @@
  * `useAnchoredPanel`, which the three dropdowns without a search box share too.
  */
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { useAnchoredPanel } from "./AnchoredPanel";
 
@@ -33,10 +33,25 @@ export interface SearchableDropdownProps {
   footer?: (ctx: { close: () => void }) => ReactNode;
   /** Reset caller-owned panel state as the panel closes. */
   onClose?: () => void;
+  /**
+   * Controlled search text. Omit and the dropdown owns it, which is all the
+   * two grouped pickers need. A picker that also drives a keyboard highlight
+   * has to reset that highlight the moment the text changes, and it cannot do
+   * that from inside `children` -- that runs during THIS component's render, so
+   * a setState there is an update to a different component mid-render. Owning
+   * the text moves the reset into an ordinary event handler.
+   */
+  search?: string;
+  onSearchChange?: (text: string) => void;
+  /** Keys typed in the search box, for a caller that draws a highlight.
+   *  Escape is handled here first and never forwarded. */
+  onSearchKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
   /** Told when the panel opens and closes, for work a picker defers until then. */
   onOpenChange?: (open: boolean) => void;
   /** Style for the outer container. */
   style?: CSSProperties;
+  /** Set as `data-testid` on the collapsed trigger. */
+  testId?: string;
 }
 
 export function SearchableDropdown({
@@ -47,9 +62,18 @@ export function SearchableDropdown({
   footer,
   onClose,
   onOpenChange,
+  search: controlledSearch,
+  onSearchChange,
+  onSearchKeyDown,
   style,
+  testId,
 }: SearchableDropdownProps) {
-  const [search, setSearch] = useState("");
+  const [uncontrolledSearch, setUncontrolledSearch] = useState("");
+  const search = controlledSearch ?? uncontrolledSearch;
+  const setSearch = (text: string) => {
+    setUncontrolledSearch(text);
+    onSearchChange?.(text);
+  };
   const searchRef = useRef<HTMLInputElement>(null);
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
@@ -73,6 +97,7 @@ export function SearchableDropdown({
       <button
         ref={panel.triggerRef}
         type="button"
+        data-testid={testId}
         onClick={panel.toggle}
         style={{
           ...triggerStyle,
@@ -102,6 +127,18 @@ export function SearchableDropdown({
               ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                // Escape closes the list, and stops there: these panels open
+                // inside dialogs whose Modal listens for Escape on `document`,
+                // and one keypress must not both close the list and dismiss
+                // the dialog behind it.
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  panel.close();
+                  return;
+                }
+                onSearchKeyDown?.(e);
+              }}
               placeholder={searchPlaceholder}
               style={searchInputStyle}
             />

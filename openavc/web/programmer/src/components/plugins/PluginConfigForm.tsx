@@ -9,6 +9,7 @@ import { useState } from "react";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
 import { MacroRefPicker, DeviceRefPicker, CommandRefPicker } from "../shared/RefPickers";
+import { SearchableSelect } from "../shared/SearchableSelect";
 import type { SchemaField } from "../../api/types";
 
 export function SchemaFormRenderer({
@@ -173,6 +174,10 @@ function SchemaFieldMappingList({
     boxSizing: "border-box",
   };
 
+  // A picker draws its own trigger, so it takes the cell's LAYOUT and none of
+  // its skin -- handing it cellInputStyle put a border around a border.
+  const cellPickerStyle: React.CSSProperties = { width: "100%", boxSizing: "border-box" };
+
   const renderCell = (col: SchemaField, value: unknown, rowIndex: number, key: string) => {
     switch (col.type) {
       case "boolean":
@@ -186,15 +191,18 @@ function SchemaFieldMappingList({
         );
       case "select":
         return (
-          <select
+          <SearchableSelect
             value={String(value ?? col.default ?? "")}
-            onChange={(e) => updateCell(rowIndex, key, e.target.value)}
-            style={cellInputStyle}
-          >
-            {col.options?.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+            onChange={(v) => updateCell(rowIndex, key, v)}
+            options={(col.options ?? []).map((opt) => ({
+              value: String(opt.value),
+              label: opt.label,
+            }))}
+            allowEmpty={false}
+            placeholder="Select..."
+            searchPlaceholder="Search..."
+            style={cellPickerStyle}
+          />
         );
       case "integer":
       case "float":
@@ -234,7 +242,7 @@ function SchemaFieldMappingList({
           <MacroRefPicker
             value={String(value ?? "")}
             onChange={(v) => updateCell(rowIndex, key, v)}
-            style={cellInputStyle}
+            style={cellPickerStyle}
           />
         );
       case "device_ref":
@@ -242,7 +250,7 @@ function SchemaFieldMappingList({
           <DeviceRefPicker
             value={String(value ?? "")}
             onChange={(v) => updateCell(rowIndex, key, v)}
-            style={cellInputStyle}
+            style={cellPickerStyle}
           />
         );
       case "command_ref":
@@ -251,7 +259,7 @@ function SchemaFieldMappingList({
             value={String(value ?? "")}
             deviceId={String(items[rowIndex]?.[col.device_field ?? "device_id"] ?? "")}
             onChange={(v) => updateCell(rowIndex, key, v)}
-            style={cellInputStyle}
+            style={cellPickerStyle}
           />
         );
       default:
@@ -426,17 +434,17 @@ function SchemaFieldInput({
 
     case "select":
       input = (
-        <select
+        <SearchableSelect
           value={String(value ?? field.default ?? "")}
-          onChange={(e) => onChange(e.target.value)}
-          style={inputStyle}
-        >
-          {field.options?.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onChange={onChange}
+          options={(field.options ?? []).map((opt) => ({
+            value: String(opt.value),
+            label: opt.label,
+          }))}
+          allowEmpty={false}
+          placeholder="Select..."
+          searchPlaceholder="Search..."
+        />
       );
       break;
 
