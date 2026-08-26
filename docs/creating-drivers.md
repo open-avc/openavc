@@ -822,6 +822,48 @@ If a device — or a child entity — offers a video stream a browser can show (
 
 Declare them like any other `state_variables` entry and set them as the device reports. The plugin reuses the device's or child's `label` (or `name`) for the dropdown entry, so there's nothing extra to name. Device-level keys are `device.<id>.preview_url`; child-level keys follow the child-entity convention (`device.<id>.<type>.<padded>.preview_url`). A worked example is the `chazy_control_pro` encoder child, which derives these from its secondary-stream URLs; `vmix` publishes them per output for its SRT streams. Whether the stream needs transcoding is not your problem — the consumer reads that back from the stream itself.
 
+##### When there is no stream, and something could be done about it
+
+Most devices never need this. Publish these three only where a stream *would*
+exist but something is missing, so the picker can say so instead of showing an
+empty list:
+
+| Property | Type | Value |
+|----------|------|-------|
+| `preview_status` | string | `""` (or not published) means there is a stream. That is the normal case and nothing else needs setting. `needs_setup` means there is a preview here and a setting is missing. `unavailable` means this scope has no preview at all right now. |
+| `preview_setup_field` | string | For `needs_setup`: the **device config** field that would give it a stream. Empty otherwise. |
+| `preview_status_detail` | string | One sentence, in your own words, telling the user what to do. Shown beside the source in the picker. |
+
+The field named in `preview_setup_field` is a **device** config field even when
+the status is published on a child entity, because that is where a driver's
+configuration lives. The picker looks it up in your `config_schema`, so it is
+shown with your label and help text, and writes the value into the device's
+config.
+
+`vmix` is the case this exists for: vMix reports that an output has SRT running
+and never reports which port it is on, so the driver knows there is a picture
+and cannot build a URL for it.
+
+```python
+self.set_child_state_batch("output", number, {
+    "preview_url": "",
+    "preview_format": "",
+    "preview_status": "needs_setup",
+    "preview_setup_field": f"srt_port_{number}",
+    "preview_status_detail": (
+        f"SRT is running on Output {number}, but vMix does not report which "
+        f"port. Enter the SRT Port shown beside it in vMix: Settings > Outputs."
+    ),
+})
+```
+
+Write the sentence as an instruction, not an explanation. The person reading it
+is trying to get a picture onto a panel.
+
+Sources marked `needs_setup` or `unavailable` are listed with their sentence
+rather than hidden. A device that is offline is marked by the picker itself, so
+that is not something to report here.
+
 #### `commands` entry
 
 ```yaml
