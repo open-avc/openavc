@@ -136,6 +136,21 @@ _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS: float = 15.0
 # plenty and keeps a 1022-host sweep off the WS send queue.
 _INTRA_EMIT_INTERVAL: float = 1.0
 
+# Second look at addresses the ARP table named and the sweep missed. Narrow
+# and unhurried where the sweep is wide and fast: the list is short and its
+# addresses are already resolved, so this costs little and is the whole
+# difference between a cold-cache scan and a warm one.
+_REPING_CONCURRENCY: int = 16
+_REPING_ATTEMPTS: int = 2
+_REPING_TIMEOUT: float = 1.5
+# Hard ceilings. Phase 4's budget was set from the sweep's host count, before
+# this pass existed, and its primary job -- a MAC, an OUI and a name for every
+# host -- must not be starved by it. So the second look is best-effort: past
+# these limits an address simply stays unproven, gets port-scanned like the
+# rest, and earns its place or is dropped.
+_REPING_MAX_HOSTS: int = 128
+_REPING_MAX_SECONDS: float = 6.0
+
 
 async def _resolve_hostnames(
     ips: list[str],
@@ -300,6 +315,14 @@ class DiscoveryEngine:
         # progress per host, which is far too often to put on the wire, so
         # the push is throttled and the timestamp lives here.
         self._last_intra_emit: float = 0.0
+        # Ping method + source this scan settled on, kept so the ARP phase
+        # can re-ping a short list without re-running the selection probe.
+        self._ping_method: str = ""
+        self._scan_source_ip: str = ""
+        # Hosts the ARP table vouched for that answered no ping. They are
+        # scanned like any other host but must EARN their place; anything
+        # still mute at the end is dropped in _finalize_scan.
+        self._arp_provisional: set[str] = set()
         self._scan_counter = 0
         # Discovery settings (persisted in project)
         self.config: dict[str, Any] = {
@@ -602,6 +625,7 @@ class DiscoveryEngine:
             self._passive_scanners = None
             self._passive_merged.clear()
             self._budget = ScanBudget(policy, total_seconds)
+            self._arp_provisional = set()
             self._narrowed = False
 
             self._scan_task = asyncio.create_task(
@@ -868,6 +892,9 @@ class DiscoveryEngine:
             # Environment failures must be loud: a sweep where pings
             # ERRORED (no ICMP permission, no ping binary, exec failures)
             # is not an empty network, and the UI must say so.
+            self._ping_method = ping_stats.method
+            self._scan_source_ip = control_ip
+
             if ping_stats.method == icmp.METHOD_NONE:
                 self.scan_status.warnings.append(
                     "Host scan could not run: this system has no permission "
@@ -1102,6 +1129,62 @@ class DiscoveryEngine:
         than dropping.
         """
         arp_table = await harvest_arp_table()
+
+        # The ARP table is a HINT about where to look, never a discovery on
+        # its own: an entry proves an address replied at layer 2 once, which
+        # is not a piece of equipment anyone can control. So the addresses it
+        # names get a second look, and they are only kept if they answer
+        # something.
+        #
+        # The second look matters because a sweep drops hosts that are
+        # perfectly willing to answer. Each echo waits on an address lookup
+        # first, the kernel queues only a couple of packets per unresolved
+        # neighbour, and a /22 sits on its neighbour-table ceiling -- so on a
+        # COLD cache a real share of live hosts never get pinged at all.
+        # Measured here: of 18 addresses the ARP table held and the sweep did
+        # not, 5 answered immediately when asked again unhurried. That is the
+        # whole reason the first scan on a freshly provisioned box found about
+        # half what the next one found -- the first scan's real work was
+        # filling the cache.
+        edges: set[str] = set()
+        for subnet in self.scan_status.subnets:
+            try:
+                net = ipaddress.IPv4Network(subnet, strict=False)
+            except ValueError:
+                continue
+            edges.add(str(net.network_address))
+            edges.add(str(net.broadcast_address))
+
+        candidates = [
+            ip for ip in arp_table
+            if ip not in self.results
+            and ip not in edges
+            and _ip_in_subnets(ip, self.scan_status.subnets)
+        ]
+        if candidates and self._ping_method not in ("", icmp.METHOD_NONE):
+            recovered: set[str] = set()
+            try:
+                await asyncio.wait_for(
+                    self._reping(candidates[:_REPING_MAX_HOSTS], recovered),
+                    timeout=_REPING_MAX_SECONDS,
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                log.debug("Second ping pass hit its ceiling; keeping what replied")
+            for ip in recovered:
+                self._get_or_create(ip).alive = True
+            still_quiet = [ip for ip in candidates if ip not in recovered]
+            log.info(
+                "ARP named %d host(s) the sweep missed: %d answered a second "
+                "ping, %d carried on to the port scan unproven",
+                len(candidates), len(recovered), len(still_quiet),
+            )
+            for ip in still_quiet:
+                self._get_or_create(ip).alive = True
+                self._arp_provisional.add(ip)
+            self._refresh_device_count()
+            # In place: the phases after this one take the same list, so a
+            # host found here is port-scanned and probed like any other.
+            alive_ips.extend(candidates)
 
         named = (
             alive_ips
@@ -1398,6 +1481,31 @@ class DiscoveryEngine:
             log.info(
                 "Removed %d stale devices not found in this scan", len(stale_ips)
             )
+
+        # An ARP hint that never answered anything is not a device. It got a
+        # sweep, a second ping, a port scan and the passive listeners to show
+        # itself; with nothing to show, listing it would be inventing
+        # equipment out of a cache entry that nobody can act on.
+        unproven = [
+            ip for ip in self._arp_provisional
+            if ip in self.results
+            and not self._answered_for_itself(self.results[ip])
+        ]
+        for ip in unproven:
+            del self.results[ip]
+        if unproven:
+            log.info(
+                "Dropped %d ARP-named host(s) that answered nothing",
+                len(unproven),
+            )
+
+        # Whatever is left has earned its place, so announce it now -- this
+        # is the first the panel hears of these.
+        for ip in sorted(self._arp_provisional):
+            self._arp_provisional.discard(ip)
+            earned = self.results.get(ip)
+            if earned is not None:
+                await self._emit_device_update(earned, "finalize")
 
         self.scan_status.devices_found = len(self.results)
 
@@ -1815,11 +1923,67 @@ class DiscoveryEngine:
                             cid, outcome,
                         )
 
+    async def _reping(self, ips: list[str], alive: set[str]) -> None:
+        """Ping a short list again, unhurried, recording what answers.
+
+        A host that lost its first echo to a cold address cache is not a
+        dead host, and asking once more is the cheapest way to tell the two
+        apart.
+
+        Answers go into the caller's ``alive`` set as they arrive rather than
+        being returned, so that cancelling this pass on its ceiling keeps
+        every host that had already replied.
+        """
+        semaphore = asyncio.Semaphore(_REPING_CONCURRENCY)
+
+        async def one(ip: str) -> None:
+            async with semaphore:
+                for _ in range(_REPING_ATTEMPTS):
+                    result = await icmp.ping_host(
+                        ip,
+                        timeout=_REPING_TIMEOUT,
+                        source_ip=self._scan_source_ip,
+                        method=self._ping_method,
+                    )
+                    if result == icmp.RESULT_ALIVE:
+                        alive.add(ip)
+                        return
+
+        await asyncio.gather(*(one(ip) for ip in ips), return_exceptions=True)
+
+    @staticmethod
+    def _answered_for_itself(device: DiscoveredDevice) -> bool:
+        """Did the DEVICE answer something, rather than a cache or a DNS?
+
+        Reverse DNS is deliberately not on this list: that is the name
+        server talking, not the equipment.
+        """
+        return bool(
+            device.open_ports
+            or device.mdns_services
+            or device.ssdp_info
+            or device.snmp_info
+            or device.protocols
+            or device.device_name
+        )
+
+    def _refresh_device_count(self) -> None:
+        """Publish the count of devices actually being shown.
+
+        Hosts the ARP table only named are excluded: they are held off the
+        wire until they earn their place, so counting them would report
+        more devices than the panel is displaying and then tick DOWN when
+        the unproven ones are dropped.
+        """
+        self.scan_status.devices_found = len(self.results) - len(
+            self._arp_provisional
+        )
+
     def _get_or_create(self, ip: str) -> DiscoveredDevice:
         """Get existing device record or create a new one."""
         if ip not in self.results:
             self.results[ip] = DiscoveredDevice(ip=ip)
-            self.scan_status.devices_found = len(self.results)
+            self._refresh_device_count()
         return self.results[ip]
 
     def _get_or_create_passive(self, ip: str) -> DiscoveredDevice | None:
@@ -1960,7 +2124,16 @@ class DiscoveryEngine:
         })
 
     async def _emit_device_update(self, device: DiscoveredDevice, phase: str) -> None:
-        """Emit a device update event."""
+        """Emit a device update event.
+
+        A host the ARP table merely NAMED is held back until it has earned
+        its place. A panel has no way to un-see a device -- results arrive
+        over the wire and are never reconciled against a final list -- so
+        announcing one that may be dropped at the end would leave it on
+        screen for good. _finalize_scan announces the ones that survive.
+        """
+        if device.ip in self._arp_provisional:
+            return
         await self._emit({
             "type": "discovery.update",
             "device": device.to_dict(),
