@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Plus, Trash2, Pencil, RefreshCw, Image as ImageIcon } from "lucide-react";
 import { Dialog } from "../shared/Dialog";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { showError, showSuccess } from "../../store/toastStore";
 import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
+import { parseStateOptionRows } from "../shared/paramOptions";
+import { byGroup, chipStyle, groupHeadingStyle, OptionRowCard } from "../shared/optionRowUi";
 import * as streamsApi from "../../api/streamsClient";
 import type { Stream, ProbeResult } from "../../api/streamsClient";
 
@@ -361,7 +364,53 @@ function PreviewDialog({ stream, onClose }: { stream: Stream; onClose: () => voi
   );
 }
 
-export function VideoStreamsSection() {
+/**
+ * Sources the devices in this project offered on their own.
+ *
+ * Nothing is typed to get one of these: a driver publishes a preview and the
+ * plugin lists it. They are read-only here and that is the point -- what this
+ * block is for is the ones that are NOT ready, because a source one setting
+ * away from working is otherwise invisible everywhere.
+ */
+function DeviceSources() {
+  const raw = useConnectionStore((s) => s.liveState["plugin.video_panel.stream_ids"]);
+  const rows = useMemo(
+    () => parseStateOptionRows(raw).filter((r) => r.group || r.status || r.setup),
+    [raw],
+  );
+  if (rows.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: "var(--space-xl)" }}>
+      <h3 style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", margin: 0, marginBottom: "var(--space-sm)" }}>
+        Found on your devices
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+        {byGroup(rows).map(([group, groupRows]) => (
+          <div key={group || "_"} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {group && <div style={groupHeadingStyle}>{group}</div>}
+            {groupRows.map((row) => (
+              <OptionRowCard
+                key={row.id ?? row.value ?? row.label}
+                row={row}
+                trailing={
+                  row.value && !row.status ? (
+                    <span style={{ ...chipStyle, color: "var(--text-secondary)" }}>Ready</span>
+                  ) : null
+                }
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <p style={{ marginTop: "var(--space-sm)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)", lineHeight: 1.5 }}>
+        These appear in the UI Builder's Video Stream picker on their own. Nothing to add here.
+      </p>
+    </div>
+  );
+}
+
+export function VideoStreamsSection({ embedded = false }: { embedded?: boolean } = {}) {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Stream | "new" | null>(null);
@@ -398,9 +447,13 @@ export function VideoStreamsSection() {
   }
 
   return (
-    <div style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>
+    <div style={{ marginTop: embedded ? 0 : "var(--space-2xl)", maxWidth: 600 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-md)" }}>
-        <h3 style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", margin: 0 }}>Video Streams</h3>
+        {/* The page already carries this name in its own heading; a second one
+            directly under it just reads as a mistake. */}
+        <h3 style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", margin: 0 }}>
+          {embedded ? "Added by hand" : "Video Streams"}
+        </h3>
         <div style={{ display: "flex", gap: "var(--space-sm)" }}>
           <button
             onClick={refresh}
@@ -472,6 +525,8 @@ export function VideoStreamsSection() {
         Video streams play on panels through the Video Stream element in the UI Builder. Use Test to check that a source
         is reachable and whether it needs transcoding before you save it.
       </p>
+
+      <DeviceSources />
 
       {editing && (
         <StreamForm

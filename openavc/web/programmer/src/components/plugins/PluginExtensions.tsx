@@ -17,6 +17,7 @@ import * as api from "../../api/restClient";
 import { SurfaceConfigurator } from "./SurfaceConfigurator";
 import { SchemaFormRenderer } from "./PluginConfigForm";
 import { CollapsibleSection } from "../driver-builder/CollapsibleSection";
+import { VideoStreamsSection } from "../video-streams/VideoStreamsSection";
 import type { SchemaField } from "../../api/types";
 import {
   compileStatePattern,
@@ -464,6 +465,15 @@ export function PluginViewRenderer({ ext }: { ext: PluginExtension }) {
       return (
         <div style={{ padding: "var(--space-lg)" }}>
           <PluginLogRenderer pluginId={ext.plugin_id} />
+        </div>
+      );
+    case "video_streams":
+      // The IDE ships this screen rather than the plugin drawing it, because
+      // the streams REST client is already part of the IDE. What the plugin
+      // owns is whether it appears at all: no declaration, no nav entry.
+      return (
+        <div style={{ padding: "var(--space-lg)" }}>
+          <VideoStreamsSection embedded />
         </div>
       );
     default:

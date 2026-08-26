@@ -14,7 +14,6 @@ import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Dialog } from "../components/shared/Dialog";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
-import { VideoStreamsSection } from "../components/video-streams/VideoStreamsSection";
 import { useProjectStore } from "../store/projectStore";
 import { importParsedProject } from "./projectImport";
 import * as api from "../api/restClient";
@@ -25,7 +24,6 @@ import { showError, showInfo, showSuccess } from "../store/toastStore";
 export function ProjectView() {
   const meta = useProjectStore((s) => s.project?.project);
   const openavcVersion = useProjectStore((s) => s.project?.openavc_version);
-  const videoPanelEnabled = useProjectStore((s) => s.project?.plugins?.video_panel?.enabled);
   const dirty = useProjectStore((s) => s.dirty);
   const saving = useProjectStore((s) => s.saving);
   const save = useProjectStore((s) => s.save);
@@ -640,9 +638,6 @@ export function ProjectView() {
           Images and audio used by panels, macros, and plugins. Drop files to upload, or click an audio file's player to preview it.
         </p>
       </div>
-
-      {/* Video Streams (only when the Video Panel plugin is enabled for this project) */}
-      {videoPanelEnabled && <VideoStreamsSection />}
 
       {/* Backups */}
       <div style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>
