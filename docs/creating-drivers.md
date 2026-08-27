@@ -1128,6 +1128,23 @@ Responses are checked in order. The first matching pattern wins.
 
 Don't throttle ordinary command replies or state-change notices — a dropped frame there means stale state until the next poll. Works on regex, `json: true`, and OSC address rules alike.
 
+**Ignoring a reading the device's current mode isn't using.** Some devices keep reporting a table that only one of their modes actually acts on. An HDMI matrix with an extracted-audio matrix is the usual case: it answers `GET OUT1 AS IN` with a stored assignment whether or not the audio ports are taking from it, so when the frame is set to keep audio with the video, that number describes nothing anyone can hear. Publish it anyway and every reader believes it — the panel names a source, an alert fires on it, a script branches on it.
+
+A response entry may declare `only_when:` to gate the whole rule on a state condition:
+
+```yaml
+- match: '(?i:^OUT0*([1-9]\d*)\s+AS\s+IN0*([1-9]\d*)\s*$)'
+  only_when: { key: examx_mode, operator: equals, value: "2" }   # 2 = independent audio matrix
+  child_set:
+    - { type: output, id: "$1", state: { audio_input: "$2" } }
+```
+
+A bare `key` is one of this driver's own state variables. Write a full state key (`device.$id.…`, `var.…`) to read anything else; `$id` expands to the device's own id, the same as in an action's `visible_when`. The operators are `visible_when`'s, and a `{ any: [...] }` / `{ all: [...] }` group works the same way.
+
+The condition is checked when the frame arrives, so **the value it reads has to be one this driver keeps current** — poll the mode, or parse it from the same status dump. A mode read once at connect leaves the gate stuck wherever it was.
+
+A rule that doesn't apply is skipped whole: the state variable keeps whatever it last held rather than being cleared, and the frame falls through to any later rule that matches it. Works on regex, `json: true`, and OSC address rules alike.
+
 **Reading many fields from one JSON reply.** A regex response stops at the first match, so it can't fill several state variables from a single JSON body. When a reply is a JSON object (common with HTTP/REST devices), use a `json: true` response instead — it parses the body once and applies every mapping:
 
 ```yaml

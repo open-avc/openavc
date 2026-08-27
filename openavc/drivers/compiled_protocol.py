@@ -857,6 +857,11 @@ class CompiledProtocol:
     (drop-style; built for continuous push telemetry like audio level meters,
     where every skipped frame is superseded by the next).
 
+    Every entry also carries its optional ``only_when:`` condition as authored
+    (or None). It is not evaluated here — this module is stdlib-only so the
+    simulator and the validator can share it, and a condition needs the state
+    store, so the runtime is what asks.
+
     Compiled per driver INSTANCE, not per driver class: the tables embed the
     instance's config substitutions, and their mapping lists are mutable
     per-instance copies — sharing them across instances would let one
@@ -869,6 +874,7 @@ class CompiledProtocol:
             list[dict[str, Any]],
             list[dict[str, Any]],
             dict[str, Any] | None,
+            dict[str, Any] | None,
         ]
     ] = field(default_factory=list)
     osc_responses: list[
@@ -877,11 +883,31 @@ class CompiledProtocol:
             list[dict[str, Any]],
             list[dict[str, Any]],
             dict[str, Any] | None,
+            dict[str, Any] | None,
         ]
     ] = field(default_factory=list)
     json_responses: list[
-        tuple[list[dict[str, Any]], dict[str, Any] | None, tuple[str, ...]]
+        tuple[
+            list[dict[str, Any]],
+            dict[str, Any] | None,
+            tuple[str, ...],
+            dict[str, Any] | None,
+        ]
     ] = field(default_factory=list)
+
+
+def rule_condition(resp: dict[str, Any]) -> dict[str, Any] | None:
+    """A response entry's optional ``only_when:`` gate, carried through as
+    authored.
+
+    Nothing is evaluated here. This module is held to stdlib so the simulator
+    and the driver validator can share it, and a condition needs the state
+    store; the runtime reads this back and asks the shared evaluator. Anything
+    that is not an object is dropped rather than raised on, matching how the
+    rest of the compile step treats a hand-installed file: the loader is where
+    a malformed driver is reported."""
+    raw = resp.get("only_when")
+    return raw if isinstance(raw, dict) and raw else None
 
 
 def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
@@ -1199,6 +1225,7 @@ def compile_driver(
                     mappings,
                     compile_osc_child_set(resp, child_types, device_id),
                     build_throttle(resp),
+                    rule_condition(resp),
                 )
             )
             continue
@@ -1222,6 +1249,7 @@ def compile_driver(
                     build_json_mappings(resp, definition.get("state_variables", {})),
                     build_throttle(resp),
                     require,
+                    rule_condition(resp),
                 )
             )
             continue
@@ -1292,7 +1320,13 @@ def compile_driver(
 
             child_mappings = compile_child_set(resp, child_types, device_id)
             compiled.responses.append(
-                (pattern, mappings, child_mappings, build_throttle(resp))
+                (
+                    pattern,
+                    mappings,
+                    child_mappings,
+                    build_throttle(resp),
+                    rule_condition(resp),
+                )
             )
         except re.error as e:
             log.warning(

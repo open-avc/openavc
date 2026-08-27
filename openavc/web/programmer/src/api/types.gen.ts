@@ -131,7 +131,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "group", "json_path", "map", "state", "type", "value"]),
-  responseEntry: new Set(["address", "child_set", "json", "mappings", "match", "require", "set", "throttle"]),
+  responseEntry: new Set(["address", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
   authBlock: new Set(["failure_pattern", "line_ending", "password_field", "password_prompt", "skip_if_empty", "success_pattern", "timeout_seconds", "type", "username_field", "username_prompt"]),
   livenessBlock: new Set(["args", "expect", "interval", "max_failures", "send", "timeout"]),
   frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
@@ -169,9 +169,8 @@ export type DriverChildSetIdSpec = { group?: number | string; segment?: number; 
 export type DriverDiscoveryExtractRule = string | { regex: string; group?: number };
 
 /**
- * Show the action only when a state condition holds. A single {key, operator,
- * value} condition, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may
- * use $id for the device's own id.
+ * A state condition: a single {key, operator, value}, or an {any:[...]} (OR) /
+ * {all:[...]} (AND) group. key may use $id for the device's own id.
  */
 export type DriverVisibleWhen = DriverVisibleWhenCondition | { any: DriverVisibleWhenCondition[] } | { all: DriverVisibleWhenCondition[] };
 
@@ -468,6 +467,20 @@ export interface DriverResponseDef {
    */
   throttle?: number;
   /**
+   * Apply this rule only while this state condition holds. For a device that
+   * keeps reporting a table which is only in effect in one of its modes: an
+   * HDMI matrix with an extracted-audio matrix reports its audio assignments
+   * whether or not the ports are taking from them, so without a gate the
+   * platform publishes a routed source that is not what anybody can hear.
+   * Evaluated against the state store at the moment the frame arrives, so the
+   * mode has to be a state variable this driver reads — poll it, or the gate
+   * is stuck at whatever it was on connect. A rule that does not apply is
+   * skipped whole, leaving the value it would have written untouched rather
+   * than clearing it. Works on regex, json and OSC rules; the condition shape
+   * is the one visible_when uses. Requires platform 0.32.0.
+   */
+  only_when?: DriverVisibleWhen;
+  /**
    * json: true rules only. Apply this rule only to bodies carrying the named
    * JSON key (or every key in the list). Scopes a rule when different
    * endpoints on one device reuse a field name with different meanings.
@@ -594,6 +607,7 @@ export interface DriverActionDef {
    * command's params.
    */
   params?: Record<string, DriverParamDef>;
+  /** Show the action only while this condition holds. */
   visible_when?: DriverVisibleWhen;
 }
 

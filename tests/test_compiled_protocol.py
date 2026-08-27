@@ -285,7 +285,7 @@ def test_compile_driver_builds_all_three_tables():
     compiled = compile_driver(definition, {"unit": "A"}, device_id="acme_1")
 
     assert len(compiled.responses) == 2
-    pattern, mappings, child_mappings, throttle = compiled.responses[0]
+    pattern, mappings, child_mappings, throttle, _gate = compiled.responses[0]
     assert pattern.pattern == "PWR(0|1) A"  # config substituted at compile time
     assert mappings == [{"group": 1, "state": "power", "type": "boolean"}]
     assert child_mappings == []
@@ -300,11 +300,11 @@ def test_compile_driver_builds_all_three_tables():
         }
     ]
 
-    addr, osc_mappings, _osc_children, _throttle = compiled.osc_responses[0]
+    addr, osc_mappings, _osc_children, _throttle, _osc_gate = compiled.osc_responses[0]
     assert addr == "/dev/A/level"
     assert osc_mappings == [{"arg": 0, "state": "volume"}]
 
-    json_mappings, _throttle2, require = compiled.json_responses[0]
+    json_mappings, _throttle2, require, _json_gate = compiled.json_responses[0]
     assert require == ("serial",)
     assert json_mappings == [{"state": "volume", "key": "vol", "type": "integer"}]
 
@@ -332,7 +332,7 @@ def test_compile_driver_skips_invalid_regex_and_keeps_rule_order():
         ],
     }
     compiled = compile_driver(definition, {})
-    assert [p.pattern for p, _m, _c, _t in compiled.responses] == ["OK(\\d+)"]
+    assert [p.pattern for p, *_rest in compiled.responses] == ["OK(\\d+)"]
 
 
 # ── send_param_groups ──

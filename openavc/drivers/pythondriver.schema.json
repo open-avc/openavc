@@ -1248,13 +1248,14 @@
           }
         },
         "visible_when": {
-          "$ref": "#/$defs/visibleWhen"
+          "$ref": "#/$defs/visibleWhen",
+          "description": "Show the action only while this condition holds."
         }
       },
       "additionalProperties": false
     },
     "visibleWhen": {
-      "description": "Show the action only when a state condition holds. A single {key, operator, value} condition, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
+      "description": "A state condition: a single {key, operator, value}, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
       "anyOf": [
         {
           "$ref": "#/$defs/visibleWhenCondition"
@@ -1409,6 +1410,10 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "description": "Optional. After this rule matches and applies, further matches of the same rule are dropped for this many seconds (drop-style; each skipped frame is superseded by the next). For continuous push telemetry like audio level meters — do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules. Requires platform 0.23.0."
+        },
+        "only_when": {
+          "$ref": "#/$defs/visibleWhen",
+          "description": "Apply this rule only while this state condition holds. For a device that keeps reporting a table which is only in effect in one of its modes: an HDMI matrix with an extracted-audio matrix reports its audio assignments whether or not the ports are taking from them, so without a gate the platform publishes a routed source that is not what anybody can hear. Evaluated against the state store at the moment the frame arrives, so the mode has to be a state variable this driver reads — poll it, or the gate is stuck at whatever it was on connect. A rule that does not apply is skipped whole, leaving the value it would have written untouched rather than clearing it. Works on regex, json and OSC rules; the condition shape is the one visible_when uses. Requires platform 0.32.0."
         },
         "require": {
           "type": [

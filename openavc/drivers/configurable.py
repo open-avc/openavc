@@ -20,7 +20,8 @@ import re
 import time
 from typing import Any
 
-from openavc.core.condition_eval import _coerce_bool
+from openavc.core.condition_eval import _coerce_bool, eval_operator
+from openavc.core.state_store import VALID_KEY_PREFIXES
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
     BaseDriver,
@@ -232,6 +233,53 @@ class ConfigurableDriver(BaseDriver):
         self._compiled_responses = compiled.responses
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
+
+    def _condition_key(self, key: str) -> str:
+        """One condition key, as a state-store key.
+
+        A bare name is this device's own state variable, which is what a driver
+        author writing ``key: examx_mode`` means and saves them spelling out an
+        id they do not know at authoring time. Anything already carrying a
+        namespace is passed through, so a gate can read a variable or another
+        device, and ``$id`` still expands the way it does in ``visible_when``.
+        """
+        resolved = key.replace("$id", self.device_id)
+        if resolved.startswith(VALID_KEY_PREFIXES):
+            return resolved
+        return f"device.{self.device_id}.{resolved}"
+
+    def _condition_holds(self, cond: dict[str, Any]) -> bool:
+        """One ``{key, operator, value}`` leaf."""
+        key = cond.get("key")
+        if not isinstance(key, str) or not key:
+            return True
+        actual = self.state.get(self._condition_key(key))
+        return eval_operator(
+            str(cond.get("operator") or "eq"), actual, cond.get("value")
+        )
+
+    def _rule_applies(self, condition: dict[str, Any] | None) -> bool:
+        """Whether a response rule's ``only_when:`` gate is open right now.
+
+        No gate is the overwhelming case and answers first. A malformed gate
+        opens rather than closes: a driver whose condition is nonsense should
+        report what it always reported, not go silent on the one state variable
+        somebody was watching.
+        """
+        if not condition:
+            return True
+        for group_key, require_all in (("all", True), ("any", False)):
+            group = condition.get(group_key)
+            if isinstance(group, list) and group:
+                results = [
+                    self._condition_holds(c)
+                    for c in group
+                    if isinstance(c, dict)
+                ]
+                if not results:
+                    return True
+                return all(results) if require_all else any(results)
+        return self._condition_holds(condition)
 
     @staticmethod
     def _throttle_skip(tstate: dict[str, Any] | None, scope: str = "") -> bool:
@@ -532,7 +580,7 @@ class ConfigurableDriver(BaseDriver):
                 # OSC convention: sending an address with no args returns the
                 # current value. This populates state immediately on connect.
                 query_delay = max(delay, 0.005)
-                for addr_pattern, _mappings, _cmaps, _tstate in self._osc_responses:
+                for addr_pattern, *_rest in self._osc_responses:
                     # A response address with fnmatch wildcards (e.g. QLab's
                     # push-only "/update/workspace/*/...") is a match pattern,
                     # not a queryable address — sending it literally is
@@ -1636,9 +1684,16 @@ class ConfigurableDriver(BaseDriver):
         if self._json_responses and self._apply_json_responses(text):
             return
 
-        for pattern, mappings, child_mappings, tstate in self._compiled_responses:
+        for (
+            pattern, mappings, child_mappings, tstate, condition,
+        ) in self._compiled_responses:
             match = pattern.search(text)
             if match:
+                # Before anything is written, and before the throttle: a rule
+                # that does not apply right now has not consumed this frame,
+                # and a later rule may still want it.
+                if not self._rule_applies(condition):
+                    continue
                 # A throttled rule consumes its frame without applying it —
                 # falling through would let a later rule match the same frame.
                 # Scoped per routed child so one rule can serve N children.
@@ -1786,8 +1841,12 @@ class ConfigurableDriver(BaseDriver):
 
         for address, args in messages:
             matched = False
-            for addr_pattern, mappings, child_mappings, tstate in self._osc_responses:
+            for (
+                addr_pattern, mappings, child_mappings, tstate, condition,
+            ) in self._osc_responses:
                 if not fnmatch.fnmatch(address, addr_pattern):
+                    continue
+                if not self._rule_applies(condition):
                     continue
                 matched = True
                 # An OSC child_set rule matches a wildcard address pattern
@@ -1981,7 +2040,9 @@ class ConfigurableDriver(BaseDriver):
             return False
         applied = False
         throttled = False
-        for mappings, tstate, require in self._json_responses:
+        for mappings, tstate, require, condition in self._json_responses:
+            if not self._rule_applies(condition):
+                continue
             # A rule scoped by `require:` applies only to bodies carrying all
             # of the named keys — without the scope, endpoints that reuse a
             # field name (a paired peripheral's `status` vs the main unit's)

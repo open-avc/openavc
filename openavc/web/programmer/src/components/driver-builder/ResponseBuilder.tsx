@@ -6,7 +6,11 @@ import type {
   DriverDefinition,
   DriverResponseDef,
   DriverResponseMapping,
+  DriverStateVarDef,
+  DriverVisibleWhen,
+  DriverVisibleWhenCondition,
 } from "../../api/types";
+import { VISIBLE_WHEN_OPERATORS } from "../../api/types.gen";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import {
   addValueMapEntry,
@@ -628,6 +632,16 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               telemetry frames (meters). Leave blank for normal responses.
             </span>
           </div>
+          <OnlyWhenEditor
+            value={resp.only_when}
+            stateVars={draft.state_variables ?? {}}
+            onChange={(only_when) => {
+              const next = { ...resp };
+              if (only_when) next.only_when = only_when;
+              else delete next.only_when;
+              updateResponse(i, next);
+            }}
+          />
           {!isJson && Object.keys(draft.child_entity_types ?? {}).length > 0 && (
             <ChildSetEditor
               mode={draft.transport === "osc" ? "osc" : "regex"}
@@ -1186,6 +1200,116 @@ function WireIdMapRows({
       >
         + Add
       </button>
+    </div>
+  );
+}
+
+/**
+ * A response rule's `only_when:` gate.
+ *
+ * The single {key, operator, value} condition, which is what the case this
+ * exists for needs: a device that keeps reporting a table only one of its modes
+ * is actually using. An `any`/`all` group is valid and rarer, so it is shown
+ * read-only with a pointer at the YAML view rather than given a nested builder
+ * -- the same call the simulator blocks make.
+ *
+ * The key defaults to this driver's own state variables because that is what a
+ * gate reads: the mode has to be something this driver polls, or the gate sits
+ * at whatever it was when the device connected.
+ */
+function OnlyWhenEditor({
+  value,
+  stateVars,
+  onChange,
+}: {
+  value: DriverVisibleWhen | undefined;
+  stateVars: Record<string, DriverStateVarDef>;
+  onChange: (next: DriverVisibleWhen | undefined) => void;
+}) {
+  const isGroup =
+    !!value && typeof value === "object" && ("any" in value || "all" in value);
+  const condition = isGroup ? null : (value as DriverVisibleWhenCondition | undefined);
+  const names = Object.keys(stateVars);
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: "var(--font-size-sm)",
+    color: "var(--text-muted)",
+    whiteSpace: "nowrap",
+  };
+
+  if (isGroup) {
+    const group = value as { any?: unknown[]; all?: unknown[] };
+    const kind = group.any ? "any" : "all";
+    const count = (group.any ?? group.all ?? []).length;
+    return (
+      <div style={{ marginTop: "var(--space-sm)", fontSize: "11px", color: "var(--text-muted)" }}>
+        Only when: {count} condition{count === 1 ? "" : "s"}, {kind} of which must
+        hold. Edit grouped conditions in the YAML view.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "var(--space-sm)",
+        alignItems: "center",
+        marginTop: "var(--space-sm)",
+        flexWrap: "wrap",
+      }}
+    >
+      <label style={labelStyle}>Only when</label>
+      <input
+        list="only-when-state-vars"
+        value={condition?.key ?? ""}
+        onChange={(e) => {
+          const key = e.target.value;
+          if (!key) {
+            onChange(undefined);
+            return;
+          }
+          onChange({ ...(condition ?? {}), key });
+        }}
+        placeholder="state variable"
+        style={{ width: 150, fontSize: "var(--font-size-sm)" }}
+      />
+      <datalist id="only-when-state-vars">
+        {names.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <select
+        value={condition?.operator ?? "eq"}
+        disabled={!condition?.key}
+        onChange={(e) =>
+          onChange({
+            ...(condition ?? { key: "" }),
+            operator: e.target.value as DriverVisibleWhenCondition["operator"],
+          })
+        }
+        style={{ fontSize: "var(--font-size-sm)" }}
+      >
+        {[...VISIBLE_WHEN_OPERATORS].sort().map((op) => (
+          <option key={op} value={op}>
+            {op}
+          </option>
+        ))}
+      </select>
+      <input
+        value={String(condition?.value ?? "")}
+        disabled={!condition?.key}
+        onChange={(e) =>
+          onChange({ ...(condition ?? { key: "" }), value: e.target.value })
+        }
+        placeholder="value"
+        style={{ width: 90, fontSize: "var(--font-size-sm)" }}
+      />
+      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+        Skip this rule unless the condition holds — for a device that keeps
+        reporting a table only one of its modes is using. Leave blank to always
+        apply.
+      </span>
     </div>
   );
 }

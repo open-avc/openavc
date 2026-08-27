@@ -1363,13 +1363,14 @@ DEFS = {
             },
             'visible_when': {
                 'ref': 'visibleWhen',
+                'doc': 'Show the action only while this condition holds.',
             },
         },
         'required': ('id',),
         'extra': False,
     },
     'visibleWhen': {
-        'doc': "Show the action only when a state condition holds. A single {key, operator, value} condition, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
+        'doc': "A state condition: a single {key, operator, value}, or an {any:[...]} (OR) / {all:[...]} (AND) group. key may use $id for the device's own id.",
         'any_of': (
             {
                 'ref': 'visibleWhenCondition',
@@ -1497,6 +1498,11 @@ DEFS = {
                 'emin': 0,
                 'doc': 'Optional. After this rule matches and applies, further matches of the same rule are dropped for this many seconds (drop-style; each skipped frame is superseded by the next). For continuous push telemetry like audio level meters — do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules.',
                 'since': '0.23.0',
+            },
+            'only_when': {
+                'ref': 'visibleWhen',
+                'doc': "Apply this rule only while this state condition holds. For a device that keeps reporting a table which is only in effect in one of its modes: an HDMI matrix with an extracted-audio matrix reports its audio assignments whether or not the ports are taking from them, so without a gate the platform publishes a routed source that is not what anybody can hear. Evaluated against the state store at the moment the frame arrives, so the mode has to be a state variable this driver reads — poll it, or the gate is stuck at whatever it was on connect. A rule that does not apply is skipped whole, leaving the value it would have written untouched rather than clearing it. Works on regex, json and OSC rules; the condition shape is the one visible_when uses.",
+                'since': '0.32.0',
             },
             'require': {
                 'type': ['string', 'array'],

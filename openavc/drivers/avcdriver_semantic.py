@@ -709,6 +709,15 @@ def validate_driver_definition(
             errors.append(
                 f"Response {i}: throttle must be a positive number of seconds"
             )
+        # Optional `only_when:` gate (any response kind). A malformed one opens
+        # at runtime rather than closing, so a typo here would silently leave
+        # the rule ungated -- which is exactly the value this rule exists to
+        # stop being published.
+        errors.extend(
+            _validate_visible_when(
+                f"Response {i}", resp.get("only_when"), field="only_when"
+            )
+        )
         # Optional `require:` scope on json rules — a misdeclared value would
         # silently disable the rule (never matches) or leave it unscoped.
         require = resp.get("require")
@@ -2719,15 +2728,20 @@ def _validate_action_entry(
     return errors
 
 
-def _validate_visible_when(where: str, vw: Any) -> list[str]:
-    """Validate a visible_when block: a single {key, operator, value} condition,
-    or a {any: [...]} / {all: [...]} group of them. Light-touch — unknown extra
-    keys are tolerated, only the recognized shapes are checked.
+def _validate_visible_when(
+    where: str, vw: Any, field: str = "visible_when"
+) -> list[str]:
+    """Validate a state-condition block: a single {key, operator, value}
+    condition, or a {any: [...]} / {all: [...]} group of them. Light-touch —
+    unknown extra keys are tolerated, only the recognized shapes are checked.
+
+    ``field`` names the block in the message, because two fields carry this
+    shape now: an action's ``visible_when`` and a response's ``only_when``.
     """
     if vw is None:
         return []
     if not isinstance(vw, dict):
-        return [f"{where}: 'visible_when' must be a mapping"]
+        return [f"{where}: '{field}' must be a mapping"]
 
     errors: list[str] = []
     if "any" in vw or "all" in vw:
@@ -2737,15 +2751,15 @@ def _validate_visible_when(where: str, vw: Any) -> list[str]:
             group = vw[group_key]
             if not isinstance(group, list) or not group:
                 errors.append(
-                    f"{where}: visible_when.{group_key} must be a non-empty list"
+                    f"{where}: {field}.{group_key} must be a non-empty list"
                 )
                 continue
             for j, cond in enumerate(group):
                 errors.extend(
-                    _validate_condition(f"{where}: visible_when.{group_key}[{j}]", cond)
+                    _validate_condition(f"{where}: {field}.{group_key}[{j}]", cond)
                 )
     else:
-        errors.extend(_validate_condition(f"{where}: visible_when", vw))
+        errors.extend(_validate_condition(f"{where}: {field}", vw))
     return errors
 
 
