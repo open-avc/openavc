@@ -874,10 +874,34 @@ export function BasicProperties({
             </FieldRow>
           )}
           {matrixAxisIsList(element.matrix_config, "destinations") ? (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-              Destinations are set as a list of {matrixList(element.matrix_config, "destinations").length} entries,
-              each with its own value and route key. The count and key fields do not apply.
-            </div>
+            <>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                Destinations are set as a list of {matrixList(element.matrix_config, "destinations").length} entries,
+                each with its own value and route key. The count and key fields do not apply.
+              </div>
+              {matrixListHasAudio(element.matrix_config) && (
+                <>
+                  <FieldRow label="Audio Readout">
+                    <input
+                      type="checkbox"
+                      checked
+                      onChange={() => onChange({
+                        matrix_config: matrixDropListAudio(element.matrix_config),
+                      })}
+                    />
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      Name the audio source when it differs from the video
+                    </span>
+                  </FieldRow>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                    Read from the device, per destination. Turn it off when the device
+                    keeps audio with the video: what it reports then is left over from
+                    the last time audio was switched separately, and naming it on the
+                    panel is wrong. Matrix Setup puts it back.
+                  </div>
+                </>
+              )}
+            </>
           ) : (
             <>
               <FieldRow label="Destinations">
@@ -918,7 +942,9 @@ export function BasicProperties({
                 />
               </FieldRow>
               <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                Optional. When set, an "A≠V" badge appears on any destination whose audio route differs from its video route.
+                Optional. When set, a destination whose audio is on a different
+                source names it on the panel. Leave it empty when the device keeps
+                audio with the video.
               </div>
             </>
           )}
@@ -1299,6 +1325,30 @@ function matrixList(config: MatrixConfig, axis: MatrixAxis): unknown[] {
 
 function matrixAxisIsList(config: MatrixConfig, axis: MatrixAxis): boolean {
   return Array.isArray(config?.[axis]);
+}
+
+/** Whether any written-out destination carries an audio-route key.
+ *
+ *  The generator's key has a field of its own above; a list has one per entry
+ *  and had nowhere at all, so a matrix set up with the readout on could not have
+ *  it taken off from here -- and the setup dialog copied the keys back out on
+ *  Apply, so it could not be taken off from there either. */
+function matrixListHasAudio(config: MatrixConfig): boolean {
+  return matrixList(config, "destinations").some(
+    (entry) =>
+      !!entry && typeof entry === "object" &&
+      !!(entry as Record<string, unknown>).audio_route_key,
+  );
+}
+
+/** The same list with every entry's audio-route key dropped. */
+function matrixDropListAudio(config: MatrixConfig): Record<string, unknown> {
+  const destinations = matrixList(config, "destinations").map((entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const { audio_route_key: _dropped, ...rest } = entry as Record<string, unknown>;
+    return rest;
+  });
+  return { ...config, destinations };
 }
 
 /** Whether any destination's lock would be this panel's own memory.

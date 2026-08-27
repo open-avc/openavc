@@ -171,7 +171,6 @@ function toEntry(row: Row, axis: Axis): Record<string, unknown> {
   }
   if (axis === "destinations") {
     if (row.route_key) entry.route_key = row.route_key;
-    if (row.audio_route_key) entry.audio_route_key = row.audio_route_key;
     if (row.route) entry.route = row.route;
   }
   return entry;
@@ -201,10 +200,19 @@ export function MatrixSetupDialog({
   const [sources, setSources] = useState<Row[]>([]);
   const [destinations, setDestinations] = useState<Row[]>([]);
   const [setRoute, setSetRoute] = useState(true);
-  // On by default where the device offers it. A destination showing one source
-  // with another source's sound is the failure this prevents, and nobody can see
-  // it from the panel; breakaway is the case somebody asks for deliberately.
-  const [followAudio, setFollowAudio] = useState(true);
+  // What this matrix already does, not a default opinion. Most frames that can
+  // switch audio separately still ship bound to the video, so ticking this for
+  // everybody turned the ordinary case into the break-away one: the first tap
+  // put the unit into its independent-audio mode, the outputs nobody tapped kept
+  // whatever assignments the table happened to hold, and each of those drew a
+  // readout naming a source their video was not on. Off unless this matrix is
+  // already set up for break-away, so re-running the picker on one that is does
+  // not quietly undo it.
+  const [followAudio, setFollowAudio] = useState(() =>
+    existingRows(element.matrix_config, "destinations").some(
+      (entry) => !!entry.audio_route_key,
+    ),
+  );
   // Off by default, like the lock itself. It costs a column and a variable per
   // destination, and most matrices do not want one.
   const [setLocks, setSetLocks] = useState(false);
@@ -286,18 +294,34 @@ export function MatrixSetupDialog({
   const apply = () => {
     const keptSources = sources.filter((r) => r.include);
     const keptDestinations = destinations.filter((r) => r.include);
-    const withAudio = !!audioPlane && followAudio;
+    // The checkbox is the author's answer, both ways round. It is only on
+    // screen when the device declares an audio plane, so that is also the only
+    // time this dialog has an opinion: with a plane, what the box says goes and
+    // unticking it REMOVES the keys; with no plane there is no box, nothing was
+    // asked, and a key somebody hand-authored is left where it is.
+    //
+    // Adding on tick but never removing on untick is what stranded the readout:
+    // toEntry copied each row's existing audio_route_key straight back out, so
+    // Apply rewrote the very keys the untick was meant to clear, and the
+    // properties panel hides those fields on a written-out list. Between the two
+    // there was no way to take the readout off a matrix that had one.
+    const audioDecided = !!audioPlane;
+    const withAudio = audioDecided && followAudio;
     // Each destination's audio key comes from the audio plane's own entry for the
     // same port, so a matrix built over a subset gets only the rows it kept.
     const audioKeys = new Map(
       (audioPlane?.destinations ?? []).map((d) => [String(d.value), d.route_key]),
     );
+    const audioKeyFor = (row: Row): string | undefined => {
+      if (!audioDecided) return row.audio_route_key;
+      return withAudio ? audioKeys.get(String(row.value)) : undefined;
+    };
     const patch: Partial<UIElement> = {
       matrix_config: {
         ...(element.matrix_config as Record<string, unknown> | undefined),
         sources: keptSources.map((r) => toEntry(r, "sources")),
         destinations: keptDestinations.map((r) => {
-          const audioKey = withAudio ? audioKeys.get(String(r.value)) : undefined;
+          const audioKey = audioKeyFor(r);
           return {
             ...toEntry(r, "destinations"),
             ...(audioKey ? { audio_route_key: audioKey } : {}),
@@ -307,7 +331,10 @@ export function MatrixSetupDialog({
           };
         }),
         ...(setLocks ? { show_lock: true } : {}),
-        ...(withAudio ? { audio_follow_video: true } : {}),
+        // Same bargain as the keys: with a plane on screen the box decides, so
+        // an untick turns the sending off rather than leaving a previous tick
+        // standing.
+        ...(audioDecided ? { audio_follow_video: withAudio } : {}),
       },
     };
     if (setRoute && chosen?.route) {
@@ -470,8 +497,9 @@ export function MatrixSetupDialog({
                 checked={followAudio}
                 onChange={(e) => setFollowAudio(e.target.checked)}
               />
-              Move the audio with it &mdash; this device switches audio separately, with{" "}
+              Switch audio separately, with{" "}
               <strong>{audioPlane.command_label || audioPlane.command}</strong>
+              . Leave this off if the device is set to keep audio with the video.
             </label>
           )}
 
