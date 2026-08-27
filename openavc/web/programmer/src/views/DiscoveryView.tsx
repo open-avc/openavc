@@ -284,6 +284,35 @@ export function DiscoveryPanel() {
     api.fetchCommunityDrivers().then(setCommunityDrivers).catch(console.error);
   }, [setDevices, setStatus, setPortLabels, setWarnings]);
 
+  // Reconcile with the server when a scan finishes. Devices arrive over the
+  // WebSocket one at a time, but the engine's final pass can REMOVE records:
+  // a host that has left the network since the last scan, or an address the
+  // ARP table named that then answered nothing. No socket message says
+  // "forget this one", so without this the list keeps showing devices the
+  // server has already discarded until someone reloads the page.
+  //
+  // Gated on having actually watched a scan run, so returning to a tab that
+  // still holds a finished scan's results doesn't refetch what it just read.
+  const sawScanRunning = useRef(false);
+  useEffect(() => {
+    if (status === "running") {
+      sawScanRunning.current = true;
+      return;
+    }
+    if (!sawScanRunning.current) return;
+    if (status !== "complete" && status !== "partial") return;
+    sawScanRunning.current = false;
+
+    let dropped = false;
+    api.discoveryGetResults().then((r) => {
+      if (dropped) return;
+      setDevices(r.devices);
+      if (r.port_labels) setPortLabels(r.port_labels);
+      if (r.warnings) setWarnings(r.warnings);
+    }).catch(console.error);
+    return () => { dropped = true; };
+  }, [status, setDevices, setPortLabels, setWarnings]);
+
   const driverNameLookup = useMemo(() => {
     const map = new Map<string, { name: string; manufacturer: string; source: "installed" | "community"; community?: CommunityDriver }>();
     for (const d of installedDrivers) {
