@@ -87,8 +87,12 @@ const WITH_AUDIO = {
   },
 } as unknown as UIElement;
 
-const audioTick = () =>
-  screen.getByRole("checkbox", { name: /switch audio separately/i });
+// Found by the audio command's own label rather than the surrounding prose: the
+// wording is copy and may be rewritten, the command it wires up is the thing
+// this tick IS.
+const AUDIO_TICK = /Route Ex-Audio Input to Output/i;
+
+const audioTick = () => screen.getByRole("checkbox", { name: AUDIO_TICK });
 
 const destinationsOf = (patch: Partial<UIElement>) =>
   (patch.matrix_config as { destinations: Record<string, unknown>[] }).destinations;
@@ -103,7 +107,7 @@ async function open(element: UIElement, onApply: ReturnType<typeof vi.fn>) {
     />,
   );
   // The dialog reads the device before it can show anything about audio.
-  await screen.findByRole("checkbox", { name: /switch audio separately/i });
+  await screen.findByRole("checkbox", { name: AUDIO_TICK });
 }
 
 beforeEach(() => {
@@ -198,7 +202,7 @@ describe("the matrix picker's break-away audio tick", () => {
     const applyButton = await screen.findByRole("button", { name: "Apply" });
     await waitFor(() =>
       expect(
-        screen.queryByRole("checkbox", { name: /switch audio separately/i }),
+        screen.queryByRole("checkbox", { name: AUDIO_TICK }),
       ).toBeNull(),
     );
 
