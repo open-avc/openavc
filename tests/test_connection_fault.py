@@ -26,6 +26,7 @@ from openavc.core.connection_fault import (
     UNREACHABLE,
     ConnectionFaultError,
     classify_connection_fault,
+    is_permanent_fault,
 )
 
 
@@ -486,3 +487,73 @@ def test_a_simulated_device_is_left_to_the_normal_classifier():
     manager.unsimulated_driver = lambda device_id: None
     exc = ConnectionRefusedError(errno.ECONNREFUSED, "Connection refused")
     assert manager._set_offline_reason("dev1", None, exc=exc) == CONNECTION_REFUSED
+
+
+# --- transport/port disagreement ---------------------------------------------
+#
+# A driver offering both ssh and telnet declares Connection and Port as
+# independent fields, so changing one leaves the other behind. The device then
+# speaks the wrong protocol at a live port, times out, and the generic wording
+# sends the reader off checking subnets and cabling. Found on real hardware
+# (an MXnet switch left on port 22 after Connection was moved to tcp).
+
+def test_telnet_on_the_ssh_port_names_both_fields():
+    fault = classify_connection_fault(
+        last_error="", exc=TimeoutError(), host="10.0.0.5", port=22,
+        transport="tcp",
+    )
+    assert fault.code == INVALID_CONFIG
+    assert "22" in fault.message
+    assert "23" in fault.message
+    # The point of the check: it must name the SETTINGS, not the network.
+    assert "Connection" in fault.message
+    assert "Port" in fault.message
+
+
+def test_ssh_on_the_telnet_port_names_both_fields():
+    fault = classify_connection_fault(
+        last_error="", exc=TimeoutError(), host="10.0.0.5", port=23,
+        transport="ssh",
+    )
+    assert fault.code == INVALID_CONFIG
+    assert "23" in fault.message
+    assert "22" in fault.message
+
+
+def test_the_mismatch_is_permanent_so_the_retry_loop_stops():
+    """Retrying cannot fix two fields that disagree; only a person can."""
+    assert is_permanent_fault(INVALID_CONFIG)
+
+
+@pytest.mark.parametrize("transport,port", [
+    ("ssh", 22),
+    ("tcp", 23),
+    ("telnet", 23),
+])
+def test_matching_pairs_are_left_alone(transport, port):
+    fault = classify_connection_fault(
+        last_error="", exc=TimeoutError(), host="10.0.0.5", port=port,
+        transport=transport,
+    )
+    assert fault.code != INVALID_CONFIG
+
+
+@pytest.mark.parametrize("port", [80, 443, 4999, 24, None, "COM3"])
+def test_ports_whose_protocol_is_not_universal_are_never_guessed_at(port):
+    """Only 22 and 23 are safe to assume. A tcp driver may use any other port,
+    and inventing a mismatch there would replace a true message with a wrong
+    one."""
+    fault = classify_connection_fault(
+        last_error="", exc=TimeoutError(), host="10.0.0.5", port=port,
+        transport="tcp",
+    )
+    assert fault.code != INVALID_CONFIG
+
+
+def test_a_specific_failure_still_wins_over_the_mismatch_hint():
+    """A refused port or a rejected login is its own story, even on port 22."""
+    fault = classify_connection_fault(
+        last_error="Connection refused", exc=ConnectionRefusedError(),
+        host="10.0.0.5", port=22, transport="tcp",
+    )
+    assert fault.code == CONNECTION_REFUSED

@@ -453,6 +453,50 @@ def _endpoint(host: str, port: object) -> str:
     return "the device"
 
 
+# Transport/port pairings that are almost certainly a mis-set field rather
+# than a network problem. Only 22 and 23 are here, because they are the two
+# ports whose protocol is genuinely universal -- a "tcp" driver may legitimately
+# use any other port, so guessing beyond these would put words in the author's
+# mouth. Checked only AFTER a connection has already failed with nothing more
+# specific to say, so a device that really does run telnet on 22 and works is
+# never touched by this.
+_WELL_KNOWN_TRANSPORT_PORTS = {22: "ssh", 23: "tcp"}
+
+
+def _transport_port_mismatch(transport: str, port: object) -> str | None:
+    """A sentence naming the two fields that disagree, or None.
+
+    The failure this catches reads exactly like dead hardware: changing
+    Connection does not change Port, so a driver offering both ends up
+    speaking telnet at an SSH port, timing out, and being told to go check
+    its cabling.
+    """
+    try:
+        port_num = int(port)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    expected = _WELL_KNOWN_TRANSPORT_PORTS.get(port_num)
+    if expected is None:
+        return None
+    actual = (transport or "").lower()
+    if actual in ("", expected):
+        return None
+    # telnet is spelled "tcp" in driver config; treat the alias as the same.
+    if expected == "tcp" and actual in ("telnet", "tcp"):
+        return None
+    if expected == "ssh" and actual == "ssh":
+        return None
+    names = {"ssh": "ssh", "tcp": "telnet"}
+    wants = names.get(expected, expected)
+    has = names.get(actual, actual)
+    other_port = 22 if expected == "tcp" else 23
+    return (
+        f"Port {port_num} is the {wants} port, but this device's Connection is "
+        f"set to '{actual}' ({has}). Set Port to {other_port}, or change "
+        f"Connection to '{expected}'."
+    )
+
+
 def classify_connection_fault(
     *,
     last_error: str | None,
@@ -568,6 +612,16 @@ def classify_connection_fault(
             UNREACHABLE,
             f"Can't reach {where}. Check the IP address and network.",
         )
+
+    # 6b. Two config fields disagreeing, which the generic wording below reads
+    #     as a network fault and sends the reader off checking cables. Sits
+    #     after every specific signal (a refused port or a rejected login is
+    #     its own story) and before the fallbacks, which are the ones that
+    #     mislead. INVALID_CONFIG because that is exactly what this is -- and
+    #     being a permanent code, it also stops a retry loop that cannot win.
+    mismatch = _transport_port_mismatch(transport, port)
+    if mismatch is not None:
+        return ConnectionFault(INVALID_CONFIG, mismatch)
 
     # 7. Authed/opened but no usable response (wrong transport or protocol).
     if _has_any(hay, _NO_RESPONSE_SIGS):
