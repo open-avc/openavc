@@ -606,14 +606,57 @@ class DeviceToolsMixin:
         return {"drivers": installed}
 
     async def _get_driver_definition(self, input: dict) -> Any:
+        """The driver's surface, from its .avcdriver file where it has one.
+
+        Two formats reach this door and only one of them is a *file*. A
+        declarative driver is YAML on disk, so the whole point of the tool is
+        the raw protocol strings, response parsers and polling block that
+        never survive into ``DRIVER_INFO`` — and it round-trips through
+        ``update_driver_definition``. A Python driver has no such file at all,
+        so the file lookup misses for a driver that is installed, loaded,
+        connected and serving devices. Answering that with "not found" reads
+        as "not installed", which has sent callers off to reinstall, install
+        something else, or author a duplicate for hardware that already works.
+
+        So the miss falls back to the loaded class: same projection
+        ``list_drivers`` returns, marked ``editable: false`` because there is
+        no definition file to edit and no shape to save back. Only an id that
+        is genuinely not registered gets an error, and it says so.
+        """
         from openavc.drivers.driver_loader import list_driver_definitions
         driver_id = input.get("driver_id", "")
         dirs = self._get_driver_dirs()
         for d in list_driver_definitions(dirs):
             if d.get("id") == driver_id:
                 d.pop("_source_file", None)
+                d["format"] = "avcdriver"
+                d["editable"] = True
                 return d
-        return {"error": f"Driver definition '{driver_id}' not found"}
+
+        introspected = next(
+            (d for d in list_registered_drivers() if d.get("id") == driver_id),
+            None,
+        )
+        if introspected is not None:
+            introspected["format"] = "python"
+            introspected["editable"] = False
+            introspected["note"] = (
+                f"'{driver_id}' is a Python-format driver, so it has no declarative "
+                ".avcdriver definition file and no raw protocol strings, response "
+                "parsers or polling block to read. Everything below is introspected "
+                "from the loaded driver class and is the same surface list_drivers "
+                "returns. It cannot be edited with update_driver_definition, and it "
+                "must not be re-authored as a YAML definition; a definition sharing "
+                "this id would shadow the working driver."
+            )
+            return introspected
+
+        return {
+            "error": (
+                f"No driver '{driver_id}' is installed. Use get_installed_drivers to see "
+                "what is on this system, or search_community_drivers to find one to install."
+            )
+        }
 
     async def _install_community_driver(self, input: dict) -> Any:
         """Install a community driver through the canonical REST install path.
@@ -662,6 +705,18 @@ class DeviceToolsMixin:
         existing = list_driver_definitions(dirs)
         if any(d.get("id") == definition["id"] for d in existing):
             return {"error": f"Driver definition '{definition['id']}' already exists"}
+
+        # No YAML file for the id but something is registered under it means a
+        # Python driver already owns it. Writing a definition here would load
+        # over the top of working hardware, and the usual reason to try is
+        # having read the introspected surface get_driver_definition returns
+        # for a Python driver and mistaken it for something to save back.
+        if is_driver_registered(definition["id"]):
+            return {"error": (
+                f"Driver '{definition['id']}' is already installed as a Python-format "
+                "driver. A YAML definition sharing its id would shadow it. Pick a "
+                "different id, or use the driver that is already there."
+            )}
 
         # strict: the AI is authoring here, and an undeclared key it invented
         # would otherwise land in a saved driver and silently do nothing.
