@@ -93,6 +93,25 @@ class CommandParamError(ValueError):
     """
 
 
+class CommandPartialError(RuntimeError):
+    """The command changed the device and then could not finish or confirm it.
+
+    Distinct from an outright failure because the two ask different things of
+    whoever reads them: a failed command left nothing behind, while this one
+    did something and stopped partway, so a person has to go and look.
+
+    The case that named it: a PoE power-cycle cuts a port, waits, and restores
+    it. When the port being cycled is the one carrying the control session,
+    the restore has no path left to travel down -- the endpoint stays dark
+    while the operator is told the command failed, which reads as "nothing
+    happened" and is the opposite of what is true.
+
+    Subclasses RuntimeError rather than ValueError so it cannot land in the
+    device-not-found branch. The message is user-facing and actionable --
+    surface it verbatim, including what was left in what state.
+    """
+
+
 class UnknownCommandError(ValueError):
     """A caller asked a device for a command name the driver does not declare.
 

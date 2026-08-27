@@ -301,3 +301,64 @@ def test_required_check_runs_before_the_value_checks():
 def test_no_declared_params_means_nothing_to_require():
     assert normalize_and_validate_command_params("power_on", {}, {}) == {}
     assert normalize_and_validate_command_params("power_on", {}, None) is None
+
+
+# --- a command that did something and could not finish -----------------------
+#
+# The generic wrapper says "Failed to send command 'x'", which is right when
+# nothing happened and actively wrong when something did. A PoE power-cycle
+# that cuts the port its own control session runs over restores power from a
+# finally block that now has no transport -- the endpoint stays dark, and the
+# operator who just watched it power down is told the command failed.
+
+def test_partial_error_is_not_a_value_error():
+    """It must not land in the device-not-found branch."""
+    from openavc.drivers.base import CommandPartialError
+
+    assert not issubclass(CommandPartialError, ValueError)
+    assert issubclass(CommandPartialError, RuntimeError)
+
+
+def test_partial_error_is_not_a_connection_error():
+    """503 'not connected' would be wrong too -- the device answered fine
+    right up until the command cut the path."""
+    from openavc.drivers.base import CommandPartialError
+
+    assert not issubclass(CommandPartialError, ConnectionError)
+
+
+@pytest.mark.asyncio
+async def test_the_route_surfaces_the_drivers_own_sentence(monkeypatch):
+    """The message names what was left in what state, so it has to survive.
+
+    Everything else on this path is deliberately replaced with a generic
+    sentence (api_error logs the exception rather than returning it). This one
+    is the exception, so a test has to hold it there.
+    """
+    from fastapi import HTTPException
+
+    from openavc.api.routes import devices as devices_route
+    from openavc.drivers.base import CommandPartialError
+
+    told = ("PoE was cut on Ethernet1/0/7 and the restore could not be "
+            "confirmed. That port may still be disabled.")
+
+    class _Devices:
+        async def send_command(self, *_a, **_k):
+            raise CommandPartialError(told)
+
+    class _Engine:
+        devices = _Devices()
+
+    monkeypatch.setattr(devices_route, "_get_engine", lambda: _Engine())
+
+    body = devices_route.CommandRequest(command="poe_cycle_port", params={})
+    with pytest.raises(HTTPException) as caught:
+        await devices_route.send_command("switch_1", body)
+
+    # 502, not 500: the driver's own sentence is the answer, and the API
+    # convention reserves 500 for wording of ours with the exception logged.
+    assert caught.value.status_code == 502
+    assert caught.value.detail == told
+    # The generic wrapper must NOT be what the operator sees.
+    assert "Failed to send command" not in caught.value.detail

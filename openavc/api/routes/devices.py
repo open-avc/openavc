@@ -23,6 +23,7 @@ from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
 from openavc.drivers.base import (
     CommandParamError,
+    CommandPartialError,
     DeviceSettingValueError,
     UnknownCommandError,
 )
@@ -476,6 +477,19 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         raise _api_error(404, f"Device '{device_id}' not found", e)
     except ConnectionError as e:
         raise _api_error(503, f"Device '{device_id}' is not connected", e)
+    except CommandPartialError as e:
+        # The command DID something and could not confirm the rest, so the
+        # generic wording below would be actively wrong -- it reads as "nothing
+        # happened" to somebody who just watched the device react, and hides
+        # that hardware may have been left in a state needing attention.
+        #
+        # 502 rather than 500 because the driver's sentence IS the answer here
+        # (which is the documented line between the two: a 500 reports a
+        # sentence of ours, a specific 5xx carries what the upstream said, and
+        # the device is the upstream). It also sits right beside the 503 above:
+        # 503 could not reach the device, 502 reached it and the exchange came
+        # apart partway.
+        raise _api_error(502, str(e), e)
     except Exception as e:
         raise _api_error(500, f"Failed to send command '{body.command}' to device '{device_id}'", e)
 
