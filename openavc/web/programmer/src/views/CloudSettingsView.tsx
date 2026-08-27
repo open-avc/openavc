@@ -331,7 +331,7 @@ export function CloudSettingsView() {
               >
                 OpenAVC Cloud
               </a>{" "}
-              account. You can generate one at Settings &gt; Systems &gt; Add System.
+              account. You can generate one at Systems &gt; Add System.
               Don't have an account?{" "}
               <a
                 href="https://cloud.openavc.com"
