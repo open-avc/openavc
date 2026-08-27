@@ -65,6 +65,31 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error("Unhandled exception in SSH on_data task: %s", exc, exc_info=exc)
 
 
+# Algorithms modern OpenSSH has dropped from its defaults but AV gear still
+# ships. Appended with "+", which ADDS to the built-in lists rather than
+# replacing them, so the strongest mutual option still wins and a current
+# device negotiates exactly as it did before. The only sessions whose
+# behaviour changes are the ones that could not connect at all.
+#
+# Measured, not guessed: an AC-MXNET-SW8P (2026-08-27) offers exactly one MAC,
+# hmac-sha1, which OpenSSH removed from its defaults in 8.8. Against
+# OpenSSH_for_Windows_9.5p2 the handshake dies with "no matching MAC found"
+# while KEX (curve25519-sha256), host key (ecdsa-sha2-nistp256) and ciphers
+# (aes128-ctr) all agree -- one absent MAC is the whole failure. The switch
+# ships ssh-server enable, so its own documentation says SSH works.
+#
+# The trade-off is real and deliberate: OpenAVC will speak SHA-1 to a device
+# that offers nothing better. For AV control gear that is the right call --
+# the alternative is not a safer connection, it is no connection -- and a
+# device that supports better is unaffected because "+" never downgrades it.
+LEGACY_SSH_ALGORITHMS: tuple[str, ...] = (
+    "MACs=+hmac-sha1",
+    "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
+    "HostkeyAlgorithms=+ssh-rsa",
+    "PubkeyAcceptedAlgorithms=+ssh-rsa",
+)
+
+
 def default_known_hosts_path() -> str:
     """Per-user managed known_hosts file (kept out of the user's ~/.ssh)."""
     base = os.path.join(os.path.expanduser("~"), ".openavc", "ssh")
@@ -93,6 +118,7 @@ class SSHTransport:
         name: str | None = None,
         ssh_binary: str | None = None,
         extra_ssh_options: list[str] | None = None,
+        legacy_algorithms: bool = True,
     ):
         self.host = host
         self.port = int(port)
@@ -109,6 +135,7 @@ class SSHTransport:
         self._name = name or f"{username}@{host}:{port}"
         self._ssh_binary = ssh_binary
         self._extra_ssh_options = list(extra_ssh_options or [])
+        self._legacy_algorithms = bool(legacy_algorithms)
 
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
@@ -144,6 +171,7 @@ class SSHTransport:
         name: str | None = None,
         ssh_binary: str | None = None,
         extra_ssh_options: list[str] | None = None,
+        legacy_algorithms: bool = True,
     ) -> "SSHTransport":
         """Spawn the ``ssh`` client and return a started transport.
 
@@ -158,6 +186,7 @@ class SSHTransport:
             connect_timeout=connect_timeout,
             inter_command_delay=inter_command_delay, name=name,
             ssh_binary=ssh_binary, extra_ssh_options=extra_ssh_options,
+            legacy_algorithms=legacy_algorithms,
         )
         await transport._spawn()
         return transport
@@ -243,8 +272,14 @@ class SSHTransport:
             ]
             if self._key_path:
                 argv += ["-i", self._key_path, "-o", "IdentitiesOnly=yes"]
+        # Device-supplied options go FIRST on purpose: ssh takes the first
+        # value it sees for a keyword, so anything set per device overrides the
+        # compat list below rather than fighting it.
         for opt in self._extra_ssh_options:
             argv += ["-o", opt]
+        if self._legacy_algorithms:
+            for opt in LEGACY_SSH_ALGORITHMS:
+                argv += ["-o", opt]
         argv.append(f"{self.username}@{self.host}")
         return argv
 

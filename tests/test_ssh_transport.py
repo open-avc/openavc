@@ -14,7 +14,13 @@ import os
 import pytest
 
 from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
-from openavc.transport.ssh import SSHTransport, _write_askpass_helper
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.transport.ssh import (
+    LEGACY_SSH_ALGORITHMS,
+    SSHTransport,
+    _write_askpass_helper,
+)
 
 HOST = "acme-switch.invalid"
 USER = "avc"
@@ -78,6 +84,47 @@ def test_host_key_policy(policy, expect_strict, expect_devnull):
 def test_extra_ssh_options_are_appended():
     argv = _make(extra_ssh_options=["Ciphers=aes256-ctr"]).build_argv()
     assert "Ciphers=aes256-ctr" in argv
+
+
+def test_legacy_algorithms_are_offered_by_default():
+    """Old gear that offers only hmac-sha1 has to be reachable.
+
+    A real AC-MXNET-SW8P offers exactly one MAC, and OpenSSH dropped it in 8.8,
+    so without this the handshake fails before authentication is even tried.
+    """
+    argv = _make().build_argv()
+    for option in LEGACY_SSH_ALGORITHMS:
+        assert option in argv
+
+
+def test_legacy_algorithms_only_add_never_replace():
+    """Every compat entry uses '+', so a modern device still picks its best.
+
+    Dropping the '+' from any of these would silently PIN the connection to the
+    weak algorithm instead of adding it as a fallback, which is the one way this
+    feature could make a good connection worse.
+    """
+    for option in LEGACY_SSH_ALGORITHMS:
+        keyword, _, value = option.partition("=")
+        assert value.startswith("+"), f"{keyword} must add, not replace"
+
+
+def test_legacy_algorithms_can_be_turned_off():
+    argv = _make(legacy_algorithms=False).build_argv()
+    for option in LEGACY_SSH_ALGORITHMS:
+        assert option not in argv
+
+
+def test_device_options_come_before_the_compat_list():
+    """ssh takes the FIRST value for a keyword, so a per-device override wins.
+
+    If the compat list were emitted first, a device that needed a different MAC
+    set could not get one -- the escape hatch would be inert.
+    """
+    argv = _make(extra_ssh_options=["MACs=hmac-sha2-512"]).build_argv()
+    mine = argv.index("MACs=hmac-sha2-512")
+    compat = argv.index("MACs=+hmac-sha1")
+    assert mine < compat
 
 
 @pytest.mark.parametrize("blank", ["", "   ", None])
@@ -228,3 +275,97 @@ async def test_async_on_data_exception_is_logged(caplog):
             await asyncio.sleep(0)
     assert any("on_data task" in r.message for r in caplog.records)
     assert not t._bg_tasks  # self-pruned once settled
+
+
+# --- device config -> transport plumbing -------------------------------------
+#
+# The option list and the legacy flag are only worth anything if a DEVICE can
+# reach them. `extra_ssh_options` shipped as a constructor parameter that
+# nothing ever passed, which is indistinguishable from a parameter that does
+# not work, so these cover the wiring rather than the transport.
+
+@pytest.mark.parametrize("raw,expect", [
+    (None, []),
+    ("", []),
+    ([], []),
+    (["MACs=+hmac-md5"], ["MACs=+hmac-md5"]),
+    (("A=1", " B=2 "), ["A=1", "B=2"]),
+    ("A=1", ["A=1"]),
+    ("A=1,B=2", ["A=1", "B=2"]),
+    ("A=1\nB=2", ["A=1", "B=2"]),
+    ("  A=1 , , B=2  ", ["A=1", "B=2"]),
+])
+def test_ssh_option_list_takes_a_list_or_a_line_of_text(raw, expect):
+    from openavc.drivers.base import _ssh_option_list
+    assert _ssh_option_list(raw) == expect
+
+
+def test_device_config_reaches_the_ssh_transport(monkeypatch):
+    """A device's extra options and legacy flag must arrive at SSHTransport."""
+    import asyncio
+
+    from openavc.drivers import base as base_mod
+
+    seen: dict = {}
+
+    async def _fake_create(**kwargs):
+        seen.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        "openavc.transport.ssh.SSHTransport.create", _fake_create)
+
+    class _Driver(base_mod.BaseDriver):
+        DRIVER_INFO = {"id": "acme_cli", "name": "Acme CLI", "transport": "ssh"}
+
+        async def get_state(self):
+            return {}
+
+        async def send_command(self, command, params=None):
+            return None
+
+    drv = _Driver("acme_1", {
+        "host": "acme-switch.invalid",
+        "port": 22,
+        "username": "avc",
+        "transport": "ssh",
+        "extra_ssh_options": "Ciphers=aes256-ctr",
+        "ssh_legacy_algorithms": False,
+    }, StateStore(), EventBus())
+    asyncio.run(drv.connect())
+
+    assert seen["extra_ssh_options"] == ["Ciphers=aes256-ctr"]
+    assert seen["legacy_algorithms"] is False
+
+
+def test_legacy_algorithms_default_on_when_the_device_says_nothing(monkeypatch):
+    import asyncio
+
+    from openavc.drivers import base as base_mod
+
+    seen: dict = {}
+
+    async def _fake_create(**kwargs):
+        seen.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        "openavc.transport.ssh.SSHTransport.create", _fake_create)
+
+    class _Driver(base_mod.BaseDriver):
+        DRIVER_INFO = {"id": "acme_cli", "name": "Acme CLI", "transport": "ssh"}
+
+        async def get_state(self):
+            return {}
+
+        async def send_command(self, command, params=None):
+            return None
+
+    drv = _Driver("acme_2", {
+        "host": "acme-switch.invalid", "port": 22, "username": "avc",
+        "transport": "ssh",
+    }, StateStore(), EventBus())
+    asyncio.run(drv.connect())
+
+    assert seen["legacy_algorithms"] is True
+    assert seen["extra_ssh_options"] == []

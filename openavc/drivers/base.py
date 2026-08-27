@@ -430,6 +430,28 @@ _CHILD_STRING_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _CHILD_STRING_ID_MAX_LEN = 128
 
 
+def _ssh_option_list(value: object) -> list[str]:
+    """Normalise a device's ``extra_ssh_options`` into ssh ``-o`` arguments.
+
+    A driver can declare a list; a config_schema string field gives one line
+    of text. Both reach here, so both are accepted: a string splits on
+    newlines and commas, and blanks drop out. Nothing is validated beyond
+    that -- an unknown keyword is ssh's error to report, and inventing our
+    own allowlist would just be a second thing to keep current.
+    """
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    newline = chr(10)
+    out: list[str] = []
+    for line in str(value).replace(",", newline).split(newline):
+        opt = line.strip()
+        if opt:
+            out.append(opt)
+    return out
+
+
 class BaseDriver(ABC):
     """Abstract base class for all device drivers."""
 
@@ -1072,6 +1094,10 @@ class BaseDriver(ABC):
                 connect_timeout=float(self.config.get("connect_timeout", 15.0)),
                 inter_command_delay=self.config.get("inter_command_delay", 0.0),
                 name=self.device_id,
+                extra_ssh_options=_ssh_option_list(
+                    self.config.get("extra_ssh_options")),
+                legacy_algorithms=self.config.get(
+                    "ssh_legacy_algorithms", True) is not False,
             )
             self.transport = await SSHTransport.create(
                 **self._transport_kwargs(transport_type, kwargs)
