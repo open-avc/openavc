@@ -3,7 +3,7 @@
 
 # Web framework
 fastapi==0.135.3             # MIT
-python-multipart==0.0.24     # Apache-2.0 (required by FastAPI for file uploads)
+python-multipart==0.0.32     # Apache-2.0 (required by FastAPI for file uploads)
 uvicorn[standard]==0.44.0    # BSD-3-Clause
 websockets==16.0             # BSD-3-Clause
 
@@ -27,7 +27,7 @@ croniter==6.2.2              # MIT
 
 # Security
 defusedxml==0.7.1            # PSF
-cryptography==44.0.2         # Apache-2.0/BSD-3 - X.509 cert generation for HTTPS
+cryptography==50.0.1         # Apache-2.0/BSD-3 - X.509 cert generation for HTTPS
 
 # Network interface detection (discovery subnet auto-detect)
 ifaddr==0.2.0                # MIT
@@ -36,7 +36,7 @@ ifaddr==0.2.0                # MIT
 psutil==7.2.2                # BSD-3-Clause
 
 # Async HTTP server (simulator HTTP device servers)
-aiohttp==3.13.5              # Apache-2.0
+aiohttp==3.14.3              # Apache-2.0
 
 # IANA timezone database for zoneinfo (cloud maintenance-window timezones).
 # Required on Windows, which ships no system tz database for ZoneInfo.

@@ -112,6 +112,50 @@ jobs:
           OPENAVC_REQUIRE_E2E: "1"
         run: pytest tests/e2e -o addopts="" -v --tb=short
 
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit==2.10.1
+
+      # Checks the pinned set against the OSV database. The tool is pinned but
+      # the advisory data is not, so this job can turn red without anything in
+      # this repo changing -- that is the point, and it is how we hear about a
+      # new advisory against a dependency we already ship.
+      #
+      # --strict fails when a dependency cannot be audited at all, so a package
+      # that is silently skipped counts as a failure rather than as a pass.
+      - name: Audit pinned Python dependencies
+        run: pip-audit -r requirements.txt --strict --progress-spinner off
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # --omit=dev on purpose: the Programmer's build chain (vite, postcss,
+      # babel) collects advisories constantly and none of it reaches a browser,
+      # while a flaw in what the bundle actually ships -- monaco, its dompurify,
+      # js-yaml -- runs on the integrator's machine. Gating on the dev tree
+      # would make this job red most weeks and it would stop being read.
+      - name: Audit what the Programmer bundle ships
+        working-directory: openavc/web/programmer
+        run: npm audit --omit=dev
+
+      - name: Audit what the Simulator bundle ships
+        working-directory: openavc/web/simulator
+        run: npm audit --omit=dev
+
   build-frontend:
     name: Build frontends
     runs-on: ubuntu-latest

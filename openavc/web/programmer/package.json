@@ -15,7 +15,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.13.24",
     "immer": "^10.1.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.2",
     "lucide-react": "^0.468.0",
     "monaco-editor": "^0.55.1",
     "qrcode-generator": "^2.0.4",
@@ -28,7 +28,7 @@
     "zustand": "^5.0.0"
   },
   "overrides": {
-    "dompurify": "^3.3.3"
+    "dompurify": "^3.4.14"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
