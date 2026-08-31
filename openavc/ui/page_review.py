@@ -1831,6 +1831,23 @@ def _destination_route_entries(
     return found
 
 
+def do_action_dicts(element: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Every action dict this element can run, nesting included, paths dropped.
+
+    The same two walks ``do_action_findings`` runs, for a caller that wants the
+    actions rather than a verdict on them (``core/event_references`` asks which
+    events a control can emit). It is public so that question is answered by
+    the walk that goes where the runtime goes, rather than by a third copy of
+    the list of places an action nests -- the copy that would be the one not
+    updated the next time a place is added.
+    """
+    bindings = element.get("bindings")
+    do = bindings.get("do") if isinstance(bindings, Mapping) else None
+    entries = _action_entries(do) if isinstance(do, Mapping) else []
+    entries += _destination_route_entries(element)
+    return [action for _path, action in entries]
+
+
 def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
     """Actions the runtime has no branch for, so the interaction does nothing.
 

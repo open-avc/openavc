@@ -90,6 +90,42 @@ export async function validateMacros(
 
 // --- Scripts ---
 
+/** A handler in a script waiting for an event nothing in the project emits.
+ *
+ *  `line` is the `@on_event` decorator's own line -- the handler below it is
+ *  fine and the pattern is what is wrong -- and `event` is that pattern. */
+export interface ScriptIssue {
+  line: number;
+  event: string;
+  message: string;
+}
+
+/**
+ * Ask the platform which handlers in these scripts can never run.
+ *
+ * The script half of the dead-control failure: `@on_event("custom.start")` in
+ * a project where no macro step, no control action and no other script ever
+ * emits that name. Nothing raises and nothing is logged, and the handler
+ * itself can be perfectly correct, so the search goes to the projector and
+ * the cable.
+ *
+ * `source` is an OVERRIDE, not a requirement: the editor holds one file open
+ * and wants a mark on every row of the list beside it, so a script named
+ * without its text is checked as it is on disk. The emitting side -- macros,
+ * controls, the other scripts -- is the server's to read, which is the whole
+ * reason this is not a rule in the browser.
+ */
+export async function validateScripts(
+  scripts: { id: string; source?: string }[],
+): Promise<Record<string, { issues: ScriptIssue[] }>> {
+  const result = await request<{ scripts: Record<string, { issues: ScriptIssue[] }> }>(
+    "/scripts/validate",
+    { method: "POST", body: JSON.stringify({ scripts }) },
+  );
+  return result.scripts;
+}
+
+
 export async function getScriptSource(
   id: string
 ): Promise<{ script_id: string; file: string; source: string }> {

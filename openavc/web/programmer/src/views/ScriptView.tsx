@@ -16,6 +16,7 @@ import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
 import { extractScriptRuntimeErrors, latestScriptErrorId } from "../components/scripts/scriptRuntimeErrors";
+import { useScriptLint } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
 import {
   deleteCustomUiFile,
@@ -124,6 +125,30 @@ export function ScriptView() {
     return extractScriptRuntimeErrors(useLogStore.getState().logEntries, selectedId, scriptFile);
     // scriptErrorId is the reactive trigger: a new script error bumps it, re-running this memo.
   }, [selectedId, selectedType, scripts, driverReloadErrors, scriptErrorId]);
+
+  // Handlers waiting for an event nothing in this project emits. Asked of the
+  // platform rather than worked out here: the answer depends on every macro,
+  // every control binding and every other script, none of which this view is
+  // holding. Only a script can carry one -- a driver and a custom control are
+  // not on the event bus -- so the open file's text is offered only then.
+  const scriptIds = useMemo(() => scripts.map((s) => s.id), [scripts]);
+  const deadListeners = useScriptLint(
+    scriptIds,
+    selectedType === "script" ? selectedId : null,
+    selectedType === "script" ? source : "",
+  );
+  const deadHandlerCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const [id, issues] of Object.entries(deadListeners)) counts[id] = issues.length;
+    return counts;
+  }, [deadListeners]);
+  const lintWarnings = useMemo((): RuntimeError[] => {
+    if (selectedType !== "script" || !selectedId) return [];
+    return (deadListeners[selectedId] ?? []).map((i) => ({
+      line: i.line,
+      message: i.message,
+    }));
+  }, [deadListeners, selectedId, selectedType]);
 
   // --- Selection handlers ---
 
@@ -833,6 +858,7 @@ export function ScriptView() {
             selectedId={selectedId}
             selectedType={selectedType}
             loadErrors={scriptLoadErrors}
+            deadHandlers={deadHandlerCounts}
             onSelectScript={handleSelectScript}
             onSelectDriver={handleSelectDriver}
             onSelectUiFile={handleSelectUiFile}
@@ -888,6 +914,7 @@ export function ScriptView() {
                       source={source}
                       onChange={setSource}
                       runtimeErrors={runtimeErrors}
+                      lintWarnings={lintWarnings}
                       editorMode={selectedType === "driver" ? "driver" : "script"}
                       onEditorReady={(editor) => {
                         editorInstanceRef.current = editor;

@@ -262,6 +262,23 @@ await events.emit(event_name, payload=None)
 await events.emit("custom.room_ready", {"room": "auditorium"})
 ```
 
+#### Handlers that never run
+
+A `custom.` event only ever comes from this project: a macro's **Emit Event**
+step, a control's **Emit Event** action, or another script's `events.emit()`.
+So a handler waiting for one nobody sends can never fire, and nothing about it
+looks wrong — the handler is correct, the script loads, and the room simply
+does not react.
+
+The IDE marks those for you. The `@on_event` line carries a warning, and the
+script list marks the file, so you can see there is something to fix without
+opening it. The mark clears as soon as something emits that name.
+
+Nothing is blocked, and writing the handler before the macro that will fire it
+is a normal way to work. Handlers for events the platform itself sends
+(`ui.`, `device.`, `plugin.`, `isc.`, `cloud.`) are never marked this way —
+those can arrive from anywhere.
+
 ### macros (Macro Engine)
 
 ```python

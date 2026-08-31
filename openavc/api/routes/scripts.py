@@ -4,11 +4,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from openavc.api._engine import _get_engine
 from openavc.api.auth import require_claimed_auth
+from openavc.api.errors import api_error as _api_error
 from openavc.api.models import ScriptCreateRequest
+from openavc.core.event_references import dead_listeners, project_script_sources
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 
@@ -128,6 +130,51 @@ async def get_script_references() -> dict[str, Any]:
                     })
 
     return {"references": references}
+
+
+@router.post("/scripts/validate")
+async def validate_scripts(body: Any = Body(...)) -> dict[str, Any]:
+    """Which handlers in these scripts are waiting for an event nothing sends.
+
+    The script half of the dead-control failure: `@on_event("custom.start")`
+    against a project where no macro step, no control action and no other
+    script ever emits that name. Nothing raises, nothing is logged, and the
+    handler below it can be perfectly correct -- which is exactly why the
+    search goes to the projector and the cable instead.
+
+    Takes the sources the editor is holding, unsaved, for the same reason the
+    macro door takes unsaved macros: the mark has to describe what is on
+    screen. What it does NOT take is the emitting side -- macros, controls and
+    every other script come from the saved project and from disk, so asking
+    about one open script still gets a true answer. A posted `source` is an
+    override of the saved copy; a script named without one is checked as it is
+    on disk, which is how the editor gets a mark for every row of the list
+    while holding only the file that is open.
+
+    Nothing here blocks and nothing 422s (`core/macro_validation` records that
+    policy and this shares it): a handler written before the macro that will
+    fire it is a normal state for somebody halfway through building a room.
+    """
+    engine = _get_engine()
+    if not isinstance(body, dict) or not isinstance(body.get("scripts"), list):
+        raise _api_error(400, 'Expected {"scripts": [{"id": ..., "source": ...}]}')
+
+    sources = project_script_sources(engine.project, _get_scripts_dir())
+
+    posted: list[str] = []
+    for entry in body["scripts"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) or not entry["id"]:
+            raise _api_error(400, "Every script needs a non-empty 'id'")
+        source = entry.get("source")
+        # A source is an override, not a requirement. The editor holds one
+        # script open and wants a mark on every row of the list beside it, so
+        # naming a script without its text means "the copy you have".
+        if isinstance(source, str):
+            sources[entry["id"]] = source
+        posted.append(entry["id"])
+
+    issues = dead_listeners(sources, engine.project)
+    return {"scripts": {script_id: {"issues": issues.get(script_id, [])} for script_id in posted}}
 
 
 @router.post("/scripts", dependencies=[Depends(require_claimed_auth)])

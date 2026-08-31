@@ -20,11 +20,13 @@ interface ScriptEditorProps {
   onEditorReady?: (editor: any) => void;
   /** Runtime errors to display as markers in the editor. */
   runtimeErrors?: RuntimeError[];
+  /** Handlers the platform says nothing can ever reach, marked as warnings. */
+  lintWarnings?: RuntimeError[];
   /** Editor mode — controls IntelliSense and diagnostics. */
   editorMode?: "script" | "driver";
 }
 
-export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, editorMode = "script" }: ScriptEditorProps) {
+export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, lintWarnings, editorMode = "script" }: ScriptEditorProps) {
   const disposablesRef = useRef<{ dispose(): void }[]>([]);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -37,8 +39,8 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
 
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
-    runDiagnostics(editorRef.current, monacoRef.current, varIds, runtimeErrors ?? []);
-  }, [source, varIds.join(","), runtimeErrors]);
+    runDiagnostics(editorRef.current, monacoRef.current, varIds, runtimeErrors ?? [], lintWarnings ?? []);
+  }, [source, varIds.join(","), runtimeErrors, lintWarnings]);
 
   const handleEditorDidMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -575,7 +577,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
 
     // Run initial diagnostics
     const currentVarIds = useProjectStore.getState().project?.variables.map((v) => v.id) ?? [];
-    runDiagnostics(editor, monaco, currentVarIds, runtimeErrors ?? []);
+    runDiagnostics(editor, monaco, currentVarIds, runtimeErrors ?? [], lintWarnings ?? []);
   }, []);
 
   return (
@@ -607,7 +609,13 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, e
  * Scan the editor content for state.get("var.X") and state.set("var.X", ...)
  * calls and flag any var.X where X is not a defined project variable.
  */
-function runDiagnostics(editor: any, monaco: any, knownVarIds: string[], runtimeErrors: RuntimeError[] = []) {
+function runDiagnostics(
+  editor: any,
+  monaco: any,
+  knownVarIds: string[],
+  runtimeErrors: RuntimeError[] = [],
+  lintWarnings: RuntimeError[] = [],
+) {
   const model = editor.getModel();
   if (!model) return;
 
@@ -669,6 +677,23 @@ function runDiagnostics(editor: any, monaco: any, knownVarIds: string[], runtime
         startColumn: 1,
         endLineNumber: err.line,
         endColumn: model.getLineLength(err.line) + 1,
+      });
+    }
+  }
+
+  // Handlers nothing can reach. A warning and not an error on purpose: the
+  // handler is written correctly, and the macro or control that will fire it
+  // may simply not exist yet -- building the listener first is a normal order
+  // to work in. The line is the decorator's, which is the line to change.
+  for (const warning of lintWarnings) {
+    if (warning.line >= 1 && warning.line <= model.getLineCount()) {
+      markers.push({
+        severity: monaco.MarkerSeverity.Warning,
+        message: warning.message,
+        startLineNumber: warning.line,
+        startColumn: 1,
+        endLineNumber: warning.line,
+        endColumn: model.getLineLength(warning.line) + 1,
       });
     }
   }

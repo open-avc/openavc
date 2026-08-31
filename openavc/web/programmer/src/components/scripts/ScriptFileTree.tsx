@@ -13,6 +13,10 @@ interface ScriptFileTreeProps {
   selectedId: string | null;
   selectedType: "script" | "driver" | "ui" | null;
   loadErrors?: Record<string, string>;
+  /** How many handlers in each script are waiting for an event nothing sends.
+   *  On the LIST because a handler that has done nothing for months is in a
+   *  file nobody has opened. */
+  deadHandlers?: Record<string, number>;
   onSelectScript: (id: string) => void;
   onSelectDriver: (id: string) => void;
   onSelectUiFile: (path: string) => void;
@@ -36,6 +40,7 @@ export function ScriptFileTree({
   selectedId,
   selectedType,
   loadErrors = {},
+  deadHandlers = {},
   onSelectScript,
   onSelectDriver,
   onSelectUiFile,
@@ -258,6 +263,13 @@ export function ScriptFileTree({
                         {loadErrors[s.id] ? (
                           <div style={errorDescStyle} title={loadErrors[s.id]}>
                             {loadErrors[s.id].length > 60 ? loadErrors[s.id].slice(0, 60) + "..." : loadErrors[s.id]}
+                          </div>
+                        ) : deadHandlers[s.id] ? (
+                          <div
+                            style={warnDescStyle}
+                            title="Open the script to see which event, and where to emit it."
+                          >
+                            {deadHandlers[s.id] === 1 ? "1 handler never runs" : `${deadHandlers[s.id]} handlers never run`}
                           </div>
                         ) : s.description ? (
                           <div style={descStyle}>{s.description}</div>
@@ -670,6 +682,15 @@ const descStyle: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
+};
+
+const warnDescStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--warning, #f59e0b)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  maxWidth: 180,
 };
 
 const errorDescStyle: React.CSSProperties = {

@@ -5,9 +5,36 @@ from typing import Any
 import httpx
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core.event_references import dead_listeners, project_script_sources
 from openavc.core.state_store import is_flat_primitive
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 from openavc.drivers.registry import is_driver_registered, list_registered_drivers, register_driver
+
+
+#: Said once per reply that carries one, at the moment it is broken rather
+#: than in the standing prompt.
+_DEAD_LISTENER_NOTE = (
+    "The write landed -- these are warnings, not failures. A handler for a custom. event "
+    "nothing sends can never fire, and nothing else will report it. Emit it from a macro "
+    "step, a control action or another script, or listen for the event that does happen."
+)
+
+
+def _dead_listener_warnings(engine: Any, script_id: str, source: str) -> list[str]:
+    """Handlers in the script just written that nothing in the project can reach.
+
+    The same check the IDE's script lint runs, at the other door that writes a
+    script. A generator is told in the reply it is already reading, which is
+    the round trip that would otherwise be spent shipping a handler that never
+    runs -- the exact shape a starter template shipped with for months.
+    """
+    project = getattr(engine, "project", None)
+    if project is None:
+        return []
+    scripts_dir = engine.project_path.parent / "scripts"
+    sources = project_script_sources(project, scripts_dir)
+    sources[script_id] = source
+    return [issue["message"] for issue in dead_listeners(sources, project).get(script_id, [])]
 
 
 class DeviceToolsMixin:
@@ -895,7 +922,12 @@ class DeviceToolsMixin:
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
-        return {"status": "created", "id": script_id}
+        result: dict[str, Any] = {"status": "created", "id": script_id}
+        warnings = _dead_listener_warnings(engine, script_id, source)
+        if warnings:
+            result["warnings"] = warnings
+            result["warning_note"] = _DEAD_LISTENER_NOTE
+        return result
 
     async def _update_script_source(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -920,10 +952,14 @@ class DeviceToolsMixin:
                 # like the IDE reload button. reload_script imports the new
                 # version before unloading the old, so a broken edit leaves
                 # the previous version active (reported in the result).
+                result: dict[str, Any] = {"status": "saved"}
                 if engine.scripts:
-                    reload_result = engine.scripts.reload_script(s.model_dump())
-                    return {"status": "saved", "reload": reload_result}
-                return {"status": "saved"}
+                    result["reload"] = engine.scripts.reload_script(s.model_dump())
+                warnings = _dead_listener_warnings(engine, script_id, source)
+                if warnings:
+                    result["warnings"] = warnings
+                    result["warning_note"] = _DEAD_LISTENER_NOTE
+                return result
         return {"error": f"Script '{script_id}' not found"}
 
     async def _delete_script(self, input: dict) -> Any:
