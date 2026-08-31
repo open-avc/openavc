@@ -543,6 +543,8 @@ If the cert is missing, unreadable, malformed, or expired, OpenAVC refuses to st
 
 When HTTPS is enabled, OpenAVC also runs a tiny HTTP listener on the original port (8080 by default) that redirects every request to the HTTPS URL with a temporary redirect (302/307), so nothing caches a permanent redirect that would outlive a later decision to turn HTTPS back off. This keeps old bookmarks, printed QR codes, and panel apps pointed at `http://` working without any user action. Disable it in Settings > Security if you want to take port 8080 down entirely.
 
+A browser **on the server itself** (`http://localhost:8080`, `http://127.0.0.1:8080`) is served the interface directly instead of being redirected. Two reasons. HTTPS uses a self-signed certificate unless you supply one, and a browser will not open a WebSocket to a certificate it does not trust, so a panel running on the machine's own screen would draw and then sit there offline. And if a certificate ever goes wrong, the machine itself is still a way in without editing files by hand. Nothing is exposed by this: the request has to come from the machine, and anything already on the machine can read the certificate off disk. Everything arriving over the network is redirected to HTTPS exactly as before.
+
 ### Installing the CA on panel devices
 
 Auto-generated certs are signed by an internal CA that no client trusts out of the box. Until you install the CA, browsers and the panel apps show a warning. To install it warning-free:

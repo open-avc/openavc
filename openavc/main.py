@@ -958,6 +958,45 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
     ])
 
 
+def _build_http_listener_app(main_app, redirect_app):
+    """The HTTP port while HTTPS is on: serve this machine, redirect the rest.
+
+    The redirect exists to move *network* clients onto TLS. A client on this
+    same machine has nothing to gain from it and quite a lot to lose, because
+    the certificate is self-signed by default:
+
+    - The appliance panel's own screen is a WebView on 127.0.0.1. Redirected
+      to HTTPS it hits a certificate it does not trust, and its live-state
+      WebSocket has no error hook to answer at all — so the panel draws and
+      then sits there offline. Its supervisor is on the same loopback.
+    - On any deployment, HTTPS with a broken certificate otherwise leaves no
+      way back in except editing system.json by hand. Here the box itself
+      always has one.
+
+    Nothing is exposed by this. The socket peer really is loopback (a header
+    cannot fake it), so anything reaching this branch is already on the
+    machine, where it could read the certificate and the config off disk
+    anyway. The weaker ``scope_peer_is_loopback`` is deliberately the right
+    question: ``is_local_console_request`` subtracts tunneled traffic, which
+    matters when loopback GRANTS something, and this grants nothing — the
+    tunnel connects straight to the TLS port when HTTPS is on
+    (``cloud/tunnel.py`` ``_loopback_origin``), so it never arrives here.
+
+    Lifespan is answered by the redirect app, never forwarded: the main app's
+    lifespan starts the engine, and a second listener running it would start
+    everything twice.
+    """
+    from openavc.utils.request_origin import scope_peer_is_loopback
+
+    async def listener(scope, receive, send):
+        if scope["type"] in ("http", "websocket") and scope_peer_is_loopback(scope):
+            await main_app(scope, receive, send)
+            return
+        await redirect_app(scope, receive, send)
+
+    return listener
+
+
 def _make_aux_redirect_server(app, port: int):
     """Build a best-effort auxiliary redirect listener.
 
@@ -979,6 +1018,11 @@ def _make_aux_redirect_server(app, port: int):
         host=config.BIND_ADDRESS,
         port=port,
         log_level="warning",  # quiet: every redirect logs an info line otherwise
+        # This listener serves the real app to loopback clients, panel
+        # WebSocket included, so it needs the main server's frame ceiling —
+        # uvicorn's default is smaller and would cut a large frame off on
+        # the box's own screen only.
+        ws_max_size=_WS_MAX_SIZE,
     )
     server = uvicorn.Server(aux_config)
 
@@ -1077,7 +1121,8 @@ async def _run_tls() -> None:
 
     if config.TLS_REDIRECT_HTTP:
         redirect_server, redirect_err = _make_aux_redirect_server(
-            _build_redirect_app(config.TLS_PORT), config.HTTP_PORT
+            _build_http_listener_app(app, _build_redirect_app(config.TLS_PORT)),
+            config.HTTP_PORT,
         )
         if redirect_server is not None:
             tasks.append(asyncio.create_task(redirect_server.serve()))

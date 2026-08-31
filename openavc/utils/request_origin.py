@@ -83,6 +83,19 @@ def socket_peer_is_loopback(request: Request) -> bool:
     return client is not None and client.host in LOOPBACK_HOSTS
 
 
+def scope_peer_is_loopback(scope: dict) -> bool:
+    """The same question for a raw ASGI scope, before any app has parsed it.
+
+    The HTTP listener that stands in front of the app while HTTPS is on has
+    to answer it there — it decides whether to serve the request or redirect
+    it, which happens before there is a ``Request`` to ask about. Reads the
+    socket peer only; it grants nothing on its own (see ``_build_http_listener_app``
+    in ``openavc/main.py`` for why the weaker question is the right one there).
+    """
+    client = scope.get("client")
+    return bool(client) and client[0] in LOOPBACK_HOSTS
+
+
 def cloud_session_secret(conn: Any) -> str:
     """The cloud-authorized-session secret this request carries, or "".
 

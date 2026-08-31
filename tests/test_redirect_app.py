@@ -8,6 +8,7 @@ trusted certificate is active.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as _dt
 import ssl
 
@@ -481,3 +482,118 @@ def test_probe_page_flips_live_with_holder(tmp_path):
     after = client.get("/x", headers=headers, follow_redirects=False)
     assert after.status_code == 302
     assert after.headers["location"] == "https://192.168.1.20:8443/x"
+
+
+# --- The HTTP listener in front of the redirect (loopback is served) --------
+#
+# The redirect exists to move network clients onto TLS. A client on this
+# machine gets the real app instead, because the certificate is self-signed by
+# default: the appliance panel's own WebView cannot trust it (and its
+# live-state WebSocket has no error hook at all), and on any deployment a
+# broken certificate would otherwise leave no way in except editing
+# system.json by hand.
+
+from openavc.main import _build_http_listener_app  # noqa: E402
+
+
+class _Recorder:
+    """Stand-in ASGI app that records what it was handed."""
+
+    def __init__(self, name: str, status: int = 200):
+        self.name = name
+        self.status = status
+        self.calls: list[str] = []
+
+    async def __call__(self, scope, receive, send):
+        self.calls.append(scope["type"])
+        if scope["type"] == "http":
+            await send({
+                "type": "http.response.start",
+                "status": self.status,
+                "headers": [(b"x-served-by", self.name.encode())],
+            })
+            await send({"type": "http.response.body", "body": b""})
+
+
+async def _drive(listener, scope):
+    sent: list[dict] = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    await listener(scope, receive, send)
+    return sent
+
+
+def _scope(kind: str, client):
+    return {
+        "type": kind,
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/health",
+        "raw_path": b"/api/health",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"host", b"127.0.0.1:8080")],
+        "client": client,
+        "server": ("127.0.0.1", 8080),
+    }
+
+
+@pytest.mark.parametrize("kind", ["http", "websocket"])
+@pytest.mark.parametrize("peer", [("127.0.0.1", 51234), ("::1", 51234)])
+def test_a_client_on_this_machine_is_served_the_app(kind, peer):
+    main, redirect = _Recorder("main"), _Recorder("redirect", 302)
+    listener = _build_http_listener_app(main, redirect)
+    asyncio.run(_drive(listener, _scope(kind, peer)))
+    assert main.calls == [kind]
+    assert redirect.calls == []
+
+
+@pytest.mark.parametrize("kind", ["http", "websocket"])
+def test_a_client_on_the_network_still_gets_the_redirect(kind):
+    main, redirect = _Recorder("main"), _Recorder("redirect", 302)
+    listener = _build_http_listener_app(main, redirect)
+    asyncio.run(_drive(listener, _scope(kind, ("192.168.1.55", 51234))))
+    assert redirect.calls == [kind]
+    assert main.calls == []
+
+
+def test_an_unknown_peer_is_treated_as_remote():
+    """No client on the scope (a proxy, a test harness) fails to the redirect,
+    never to the app: loopback has to be proven, not assumed."""
+    main, redirect = _Recorder("main"), _Recorder("redirect", 302)
+    listener = _build_http_listener_app(main, redirect)
+    asyncio.run(_drive(listener, _scope("http", None)))
+    assert redirect.calls == ["http"]
+    assert main.calls == []
+
+
+def test_lifespan_never_reaches_the_app():
+    """The single most damaging thing this could get wrong.
+
+    The main app's lifespan starts the engine. This listener is a SECOND
+    uvicorn server over the same app object, so forwarding lifespan would
+    start devices, scripts, schedules and the cloud agent twice in one
+    process.
+    """
+    main, redirect = _Recorder("main"), _Recorder("redirect", 302)
+    listener = _build_http_listener_app(main, redirect)
+    asyncio.run(_drive(listener, {"type": "lifespan", "client": ("127.0.0.1", 1)}))
+    assert main.calls == []
+    assert redirect.calls == ["lifespan"]
+
+
+def test_the_https_listener_is_actually_wired_to_it():
+    """The behaviour above is only real if _run_tls uses it for the HTTP port."""
+    import inspect
+
+    import openavc.main as main_mod
+
+    src = inspect.getsource(main_mod)
+    assert "_build_http_listener_app(app, _build_redirect_app(config.TLS_PORT))" in src
