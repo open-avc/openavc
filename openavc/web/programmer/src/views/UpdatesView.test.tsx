@@ -207,7 +207,8 @@ describe("UpdatesView deferred update", () => {
     expect(
       await screen.findByText("Update to v0.25.0 has not been installed"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/will not be tried again/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing will try again on its own/)).toBeInTheDocument();
+    expect(screen.getByText(/stopped 3 times/)).toBeInTheDocument();
   });
 
   it("does not call the box up to date while an update is sitting undone", async () => {

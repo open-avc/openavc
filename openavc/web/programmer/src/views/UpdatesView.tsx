@@ -355,7 +355,7 @@ export function UpdatesView() {
               <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>{"Update to v" + deferredVersion + " has not been installed"}</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                 {deferredFinal
-                  ? "It stopped " + deferredAttempts + " times because it " + deferredReason + ". It will not be tried again on its own. Install it again once that is sorted out."
+                  ? "It has stopped " + deferredAttempts + " times, most recently because it " + deferredReason + ". Nothing will try again on its own, so install it again once that is sorted out."
                   : "The last attempt stopped because it " + deferredReason + ". It will try again the next time this system restarts."}
               </div>
             </div>
