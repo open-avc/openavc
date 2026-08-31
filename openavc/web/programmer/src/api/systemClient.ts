@@ -67,6 +67,14 @@ export interface UpdateStatus {
   update_error: string;
   /** Version of a cloud-staged update awaiting manual install ("" if none). */
   staged_version?: string;
+  /** Version of an update the pre-start helper could not apply ("" if none). */
+  deferred_version?: string;
+  /** How many times that update has been attempted (0 if none). */
+  deferred_attempts?: number;
+  /** Why the last attempt stopped ("" if none). */
+  deferred_reason?: string;
+  /** True once the helper has stopped retrying that update. */
+  deferred_final?: boolean;
   rollback_available: boolean;
   rollback_version: string;
 }

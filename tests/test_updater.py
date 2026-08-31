@@ -1,5 +1,6 @@
 """Tests for openavc.updater — update system components."""
 
+import json
 import logging
 import os
 import zipfile
@@ -957,3 +958,88 @@ class TestUpdateManager:
         assert captured["checksum_sha256"] == "sha256hex"
         # Staged marker is consumed.
         assert mgr.get_staged_update() is None
+
+
+class TestDeferredUpdateIsVisible:
+    """An update update-helper.sh could not apply and set aside to retry.
+
+    Everything else on a box in that state reads healthy: the install works,
+    the server answers, the version is a real version. The only trace is a line
+    in a boot log nobody reads, which is how an appliance ends up running its
+    months-old golden baseline for good. So the manager reads the helper's
+    record and puts it in the status the Updates page renders.
+    """
+
+    def _write_record(self, data_dir, **fields):
+        record = {
+            "artifact": "/var/lib/openavc/openavc-2.0.0-linux-arm64.tar.gz",
+            "to_version": "2.0.0",
+            "attempts": 1,
+            "reason": "could not download the release's dependencies",
+            "final": False,
+        }
+        record.update(fields)
+        (data_dir / "apply-update.retry").write_text(json.dumps(record))
+
+    def test_no_record_reports_nothing(self, tmp_path):
+        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
+        assert mgr.get_deferred_update() is None
+        status = mgr.get_status()
+        assert status["deferred_version"] == ""
+        assert status["deferred_attempts"] == 0
+        assert status["deferred_final"] is False
+
+    def test_the_record_reaches_the_status_the_ide_renders(self, tmp_path):
+        self._write_record(tmp_path, attempts=2)
+        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
+
+        status = mgr.get_status()
+
+        assert status["deferred_version"] == "2.0.0"
+        assert status["deferred_attempts"] == 2
+        assert status["deferred_reason"] == (
+            "could not download the release's dependencies"
+        )
+        assert status["deferred_final"] is False
+
+    def test_a_record_the_helper_marked_final_says_so(self, tmp_path):
+        """The helper owns the attempt ceiling and records whether it has been
+        reached, so neither this module nor the IDE keeps a second copy of that
+        number."""
+        self._write_record(tmp_path, attempts=3, final=True)
+        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
+        assert mgr.get_status()["deferred_final"] is True
+
+    def test_startup_warns_so_a_box_in_this_state_is_findable_in_the_log(
+        self, tmp_path, caplog
+    ):
+        self._write_record(tmp_path)
+        with caplog.at_level(logging.WARNING, logger="openavc.updater.manager"):
+            UpdateManager(state_store=None, data_dir=tmp_path)
+        assert "has not been applied" in caplog.text
+        assert "v2.0.0" in caplog.text
+        assert "will retry on the next restart" in caplog.text
+
+    def test_a_junk_record_is_ignored_rather_than_crashing_startup(self, tmp_path):
+        """It is read before anything else works, so a truncated write (power
+        cut mid-defer) must not stop the server coming up."""
+        (tmp_path / "apply-update.retry").write_text("{not json")
+        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
+        assert mgr.get_deferred_update() is None
+
+        (tmp_path / "apply-update.retry").write_text(json.dumps({"attempts": 1}))
+        assert mgr.get_deferred_update() is None
+
+        (tmp_path / "apply-update.retry").write_text(
+            json.dumps({"to_version": "2.0.0", "attempts": "lots"})
+        )
+        assert mgr.get_deferred_update()["attempts"] == 0
+
+    def test_reading_it_never_clears_it(self, tmp_path):
+        """The file belongs to the helper: removing it here would cancel the
+        retry it exists to schedule."""
+        self._write_record(tmp_path)
+        mgr = UpdateManager(state_store=None, data_dir=tmp_path)
+        mgr.get_deferred_update()
+        mgr.get_status()
+        assert (tmp_path / "apply-update.retry").exists()

@@ -79,6 +79,22 @@ class UpdateManager:
                 "system.update_staged_version", staged.get("target_version", "")
             )
 
+        # An update update-helper.sh could not apply and set aside to retry.
+        # Say so once per start: this is the only signal that a box which looks
+        # entirely healthy is not running the release somebody installed on it.
+        deferred = self.get_deferred_update()
+        if deferred:
+            log.warning(
+                "Update to v%s has not been applied (%s); %d attempt(s) so far, "
+                "%s",
+                deferred["to_version"],
+                deferred["reason"] or "reason not recorded",
+                deferred["attempts"],
+                "no further attempts will be made"
+                if deferred["final"]
+                else "will retry on the next restart",
+            )
+
     def _set_state(self, key: str, value: Any) -> None:
         """Set a state key if state store is available."""
         if self._state:
@@ -660,6 +676,48 @@ class UpdateManager:
     def _staged_path(self) -> Path:
         return self._data_dir / "staged-update.json"
 
+    def _deferred_path(self) -> Path:
+        return self._data_dir / "apply-update.retry"
+
+    def get_deferred_update(self) -> dict[str, Any] | None:
+        """Return the update update-helper.sh set aside to retry, if any.
+
+        The helper (root, before this process exists) defers an update whose
+        dependency sync or venv rebuild failed, so the next start tries again
+        instead of leaving the box on the version it was trying to leave. That
+        is invisible from here otherwise: the install still works, the server
+        reports healthy, and the only trace is a line in a boot log nobody
+        reads. Surfacing it is what makes an appliance stuck on its golden
+        baseline discoverable from the Updates page.
+
+        Read-only on purpose — the file is the helper's, and clearing it here
+        would cancel the retry it exists to schedule.
+        """
+        path = self._deferred_path()
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            log.warning("Could not read deferred-update record at %s; ignoring", path)
+            return None
+        if not isinstance(data, dict) or not data.get("to_version"):
+            return None
+        try:
+            attempts = int(data.get("attempts", 0) or 0)
+        except (TypeError, ValueError):
+            attempts = 0
+        return {
+            "to_version": str(data.get("to_version", "")),
+            "attempts": attempts,
+            "reason": str(data.get("reason", "")),
+            # The helper owns the attempt ceiling and records whether it has
+            # been reached, so nothing here or in the IDE keeps a second copy
+            # of that number. An older record without the field predates the
+            # ceiling and is still going to be retried.
+            "final": bool(data.get("final", False)),
+        }
+
     def stage_update(
         self, target_version: str, update_url: str,
         checksum_sha256: str | None = None,
@@ -911,6 +969,7 @@ class UpdateManager:
             rollback_version = rollback_target_version(APP_DIR)
 
         staged = self.get_staged_update()
+        deferred = self.get_deferred_update()
 
         return {
             "current_version": __version__,
@@ -922,6 +981,10 @@ class UpdateManager:
             "update_progress": self._state.get("system.update_progress", 0) if self._state else 0,
             "update_error": self._state.get("system.update_error", "") if self._state else "",
             "staged_version": staged.get("target_version", "") if staged else "",
+            "deferred_version": deferred["to_version"] if deferred else "",
+            "deferred_attempts": deferred["attempts"] if deferred else 0,
+            "deferred_reason": deferred["reason"] if deferred else "",
+            "deferred_final": deferred["final"] if deferred else False,
             "rollback_available": has_rollback,
             "rollback_version": rollback_version,
         }

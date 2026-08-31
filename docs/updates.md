@@ -31,6 +31,14 @@ On Linux, the Raspberry Pi appliance, and macOS, updates are also **cryptographi
 
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
+### If an update cannot be installed right now
+
+On Linux, the Raspberry Pi image and appliance hardware, an update is applied by a privileged step that runs just before the server starts. Part of that step downloads the new version's Python dependencies, which needs internet access at that moment. If it cannot get them, or the Python environment cannot be rebuilt, the system is put back exactly as it was and keeps running the version it was on.
+
+That update is not lost. It is set aside and tried again the next time the system restarts, up to three times, so a system that was offline or on a network with blocked DNS at the wrong moment picks it up by itself once the network is working. Until it succeeds, the Updates view says which version has not been installed and what stopped it.
+
+After the third attempt nothing tries again on its own. The Updates view keeps saying so, and installing the update again from that page starts over.
+
 ## What Gets Updated
 
 Only the application code is updated. Your data is never touched:

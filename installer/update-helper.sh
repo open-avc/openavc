@@ -19,6 +19,22 @@ ROLLBACK_FILE="$DATA_DIR/apply-rollback"
 LOG_TAG="update-helper"
 PYTHON="${PYTHON:-/usr/bin/python3}"
 
+# Where an update that failed for a reason a later start could fix is set aside
+# (defer_update). It is deliberately NOT apply-update.json: the server deletes
+# any of those that survives to its startup as defence in depth, so an update
+# kept under that name would be swept away before it could ever be retried.
+RETRY_FILE="$DATA_DIR/apply-update.retry"
+
+# How many times a deferred update may be attempted before it is abandoned.
+# Bounded on purpose rather than retried forever: every attempt costs a full
+# cp -a snapshot, an extract and a rollback, so an update that can never apply
+# would otherwise add minutes to every boot for the life of the box.
+MAX_UPDATE_ATTEMPTS=3
+
+# Failed attempts already spent on the instruction now in $UPDATE_FILE, read
+# back by promote_deferred_update. Zero for a freshly staged one.
+RETRY_ATTEMPTS=0
+
 # Directories inside $APP_DIR that hold content the release tarball never ships
 # and that must survive every swap. venv is a Python virtual environment built
 # at install time. driver_repo and plugin_repo are legacy locations from before
@@ -106,9 +122,10 @@ prepare_legacy_repos() {
 # Abort an in-progress update and restore the snapshot taken at the top of
 # handle_update. Called when the freshly-installed tree can't be made startable
 # (the venv interpreter can't be recreated, or the dependency sync fails), so
-# the service never comes up live on a broken venv. The pending-update marker
-# is left untouched on purpose: the server's post-start confirm then sees the
-# version did NOT change and logs the failure instead of a false success.
+# the service never comes up live on a broken venv. Both callers hand the
+# instruction to defer_update afterwards, so the attempt is retried on the next
+# start rather than thrown away; what this function leaves behind is exactly the
+# install that was running before the attempt.
 recover_from_snapshot() {
     local prev="$APP_DIR.previous"
     if [ ! -d "$prev" ]; then
@@ -123,6 +140,86 @@ recover_from_snapshot() {
         echo "$LOG_TAG: in-place rollback complete; staying on the previous version"
     else
         echo "$LOG_TAG: in-place rollback FAILED; manual intervention required"
+    fi
+}
+
+# Set a failed update aside to be retried on the next start, instead of
+# consuming the instruction the way a malformed or unverifiable one is consumed.
+#
+# The two callers fail for reasons that are about the BOX AT THIS MOMENT rather
+# than about the release: python3-venv missing, and a dependency sync that could
+# not reach the package index. Deleting the instruction there is what turns a
+# first boot with no working DNS into a unit that runs its months-old golden
+# baseline, healthy, forever — the release was staged, the attempt failed once,
+# and nothing ever tried again.
+#
+# $ARTIFACT and $TO_VER are already parsed and validated by handle_update, and
+# every reason string here is a literal, so the printf below cannot produce
+# invalid JSON.
+defer_update() {
+    local reason="$1"
+    local attempts=$((RETRY_ATTEMPTS + 1))
+    # Whether anything will try again. Recorded rather than left for a reader to
+    # work out from the count, so the ceiling stays owned by this script alone
+    # and no second copy of it has to exist in the server or the IDE.
+    local final=false
+    [ "$attempts" -ge "$MAX_UPDATE_ATTEMPTS" ] && final=true
+
+    if printf '{"artifact": "%s", "to_version": "%s", "attempts": %s, "reason": "%s", "final": %s}\n' \
+            "$ARTIFACT" "$TO_VER" "$attempts" "$reason" "$final" > "$RETRY_FILE.tmp" 2>/dev/null &&
+        mv "$RETRY_FILE.tmp" "$RETRY_FILE"; then
+        rm -f "$UPDATE_FILE"
+        if [ "$attempts" -ge "$MAX_UPDATE_ATTEMPTS" ]; then
+            echo "$LOG_TAG: update to v$TO_VER has now failed $attempts times ($reason); no further attempts"
+            echo "$LOG_TAG: fix the cause, then install v$TO_VER again from the Programmer's Updates page"
+        else
+            echo "$LOG_TAG: update to v$TO_VER deferred after attempt $attempts ($reason); will retry on the next start"
+        fi
+    else
+        # The record is what the server reads to say the box is not running the
+        # release somebody installed on it, so losing it is worse than losing
+        # the retry: say so plainly rather than failing quietly.
+        rm -f "$RETRY_FILE.tmp" "$UPDATE_FILE"
+        echo "$LOG_TAG: could not write $RETRY_FILE, so update to v$TO_VER is abandoned with no record ($reason)"
+    fi
+}
+
+# Put a deferred update back in play for this start, and remember how many
+# attempts it has already cost so defer_update can count toward the ceiling.
+#
+# A freshly staged instruction wins: somebody (or the cloud) asked for a
+# specific release just now, and an older deferred one must not resurface
+# behind it.
+promote_deferred_update() {
+    [ -f "$RETRY_FILE" ] || return 0
+
+    if [ -f "$UPDATE_FILE" ]; then
+        echo "$LOG_TAG: a newly staged update supersedes the deferred one; dropping $RETRY_FILE"
+        rm -f "$RETRY_FILE"
+        return 0
+    fi
+
+    RETRY_ATTEMPTS=$("$PYTHON" -c \
+        "import json,sys; print(int(json.load(open(sys.argv[1])).get('attempts', 0)))" \
+        "$RETRY_FILE" 2>/dev/null)
+    # An unreadable count must not read as "no attempts yet" and loop forever;
+    # treat it as one short of the ceiling so this start is the last try.
+    case "$RETRY_ATTEMPTS" in
+        ''|*[!0-9]*) RETRY_ATTEMPTS=$((MAX_UPDATE_ATTEMPTS - 1)) ;;
+    esac
+
+    # Out of attempts. The record STAYS: it is the only thing that tells anyone
+    # this box is still on the version it was trying to leave, and it clears
+    # itself the moment a new update is staged (above).
+    if [ "$RETRY_ATTEMPTS" -ge "$MAX_UPDATE_ATTEMPTS" ]; then
+        echo "$LOG_TAG: an update was abandoned after $RETRY_ATTEMPTS attempts; install it again from the Programmer's Updates page"
+        return 0
+    fi
+
+    if mv "$RETRY_FILE" "$UPDATE_FILE"; then
+        echo "$LOG_TAG: retrying a deferred update (attempt $((RETRY_ATTEMPTS + 1)) of $MAX_UPDATE_ATTEMPTS)"
+    else
+        echo "$LOG_TAG: could not promote $RETRY_FILE; leaving it for the next start"
     fi
 }
 
@@ -360,7 +457,7 @@ handle_update() {
         if ! "$PYTHON" -m venv "$APP_DIR/venv"; then
             echo "$LOG_TAG: failed to recreate venv (is python3-venv installed?); aborting update"
             recover_from_snapshot
-            rm -f "$UPDATE_FILE"
+            defer_update "could not rebuild the Python environment"
             return
         fi
     fi
@@ -375,7 +472,7 @@ handle_update() {
         if ! "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet; then
             echo "$LOG_TAG: venv dependency sync failed; aborting update and rolling back in place"
             recover_from_snapshot
-            rm -f "$UPDATE_FILE"
+            defer_update "could not download the release's dependencies"
             return
         fi
     fi
@@ -560,10 +657,13 @@ sync_privileged_helper() {
 # to immediately revert it. If a rollback is pending, drop the update instruction
 # so it can't resurface on a later start, and roll back directly.
 if [ -f "$ROLLBACK_FILE" ]; then
-    rm -f "$UPDATE_FILE"
+    rm -f "$UPDATE_FILE" "$RETRY_FILE"
     handle_rollback
-elif [ -f "$UPDATE_FILE" ]; then
-    handle_update
+else
+    promote_deferred_update
+    if [ -f "$UPDATE_FILE" ]; then
+        handle_update
+    fi
 fi
 sync_unit
 sync_privileged_helper

@@ -43,6 +43,7 @@ vi.mock("../api/restClient", () => ({
 }));
 
 import { UpdatesView } from "./UpdatesView";
+import * as api from "../api/restClient";
 
 /** Serve /api/health with a given version; everything else 404s. */
 function stubHealth(version: string) {
@@ -143,5 +144,92 @@ describe("UpdatesView progress dialog", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
 
     expect(showSuccess).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+// The other thing this page has to say: update-helper.sh could not apply a
+// staged update and set it aside to retry. Everything else here reads healthy
+// on such a box -- the install works, the server answers, the version is a real
+// version -- so without this card an appliance stuck on its golden baseline
+// looks exactly like one that is up to date.
+describe("UpdatesView deferred update", () => {
+  function statusWith(extra: Record<string, unknown>) {
+    vi.mocked(api.getUpdateStatus).mockResolvedValue({
+      current_version: "0.24.1",
+      deployment_type: "linux_package",
+      can_self_update: true,
+      update_available: "",
+      update_channel: "stable",
+      update_status: "idle",
+      update_progress: 0,
+      update_error: "",
+      rollback_available: false,
+      rollback_version: "",
+      ...extra,
+    } as Awaited<ReturnType<typeof api.getUpdateStatus>>);
+  }
+
+  beforeEach(() => {
+    liveState["system.update_status"] = "idle";
+    stubHealth("0.24.1");
+  });
+
+  it("says which version has not been installed, and why", async () => {
+    statusWith({
+      deferred_version: "0.25.0",
+      deferred_attempts: 1,
+      deferred_reason: "could not download the release's dependencies",
+      deferred_final: false,
+    });
+
+    render(<UpdatesView />);
+
+    expect(
+      await screen.findByText("Update to v0.25.0 has not been installed"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/could not download the release's dependencies/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/try again the next time/)).toBeInTheDocument();
+  });
+
+  it("says so plainly once nothing will retry it", async () => {
+    statusWith({
+      deferred_version: "0.25.0",
+      deferred_attempts: 3,
+      deferred_reason: "could not download the release's dependencies",
+      deferred_final: true,
+    });
+
+    render(<UpdatesView />);
+
+    expect(
+      await screen.findByText("Update to v0.25.0 has not been installed"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/will not be tried again/)).toBeInTheDocument();
+  });
+
+  it("does not call the box up to date while an update is sitting undone", async () => {
+    statusWith({
+      deferred_version: "0.25.0",
+      deferred_attempts: 1,
+      deferred_reason: "could not rebuild the Python environment",
+      deferred_final: false,
+    });
+
+    render(<UpdatesView />);
+
+    await screen.findByText("Update to v0.25.0 has not been installed");
+    expect(screen.queryByText("You're up to date")).not.toBeInTheDocument();
+  });
+
+  it("says nothing when there is nothing deferred", async () => {
+    statusWith({});
+
+    render(<UpdatesView />);
+
+    expect(await screen.findByText("You're up to date")).toBeInTheDocument();
+    expect(screen.queryByText(/has not been installed/)).not.toBeInTheDocument();
   });
 });

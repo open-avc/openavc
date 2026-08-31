@@ -11,6 +11,7 @@ structures with real tarballs — no mocking of the script itself.
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -317,6 +318,11 @@ def _run_helper(
         timeout=HELPER_TIMEOUT,
         env=env,
     )
+
+
+def _read_deferred(data_dir: Path) -> dict:
+    """The record update-helper.sh leaves for an update it means to retry."""
+    return json.loads((data_dir / "apply-update.retry").read_text(encoding="utf-8"))
 
 
 def _read_version(app_dir: Path) -> str:
@@ -1049,7 +1055,10 @@ class TestHelperScriptVenvRecovery:
         assert (app_dir / "driver_repo" / "my_driver.avcdriver").exists(), (
             "the aborted update lost user content that was in the snapshot"
         )
+        # Set aside, not thrown away: the instruction leaves apply-update.json
+        # (which the server sweeps at startup) for the retry record.
         assert not (data_dir / "apply-update.json").exists()
+        assert _read_deferred(data_dir)["to_version"] == "2.0.0"
 
     def test_failed_dependency_sync_aborts_and_restores_the_previous_install(
         self, tmp_path, update_tarball
@@ -1094,6 +1103,192 @@ class TestHelperScriptVenvRecovery:
         assert _read_version(app_dir) == "1.0.0"
         assert not Path(str(app_dir) + ".previous").exists()
         assert not (data_dir / "apply-update.json").exists()
+        assert _read_deferred(data_dir)["to_version"] == "2.0.0"
+
+
+@gates.skipif_missing(gates.BASH, _BASH_MISSING)
+class TestHelperScriptDeferredUpdateRetry:
+    """An update that failed for a reason a later start could fix is retried.
+
+    The two aborts above fail for reasons about the BOX AT THIS MOMENT rather
+    than about the release: python3-venv missing, and a dependency sync that
+    could not reach the package index. Consuming the instruction there is what
+    turns a first boot with no working DNS into an appliance that runs its
+    months-old golden baseline, healthy, forever -- the release was staged, one
+    attempt failed, and nothing ever tried again. So the instruction is set
+    aside as apply-update.retry and promoted back on the next start, with a
+    ceiling because each attempt costs a full snapshot, extract and rollback.
+    """
+
+    def _stage_failing_sync(self, tmp_path, update_tarball, data_dir, app_dir):
+        """An install whose migrated pip fails, with the update staged."""
+        _build_fake_install(app_dir, "1.0.0")
+        pip = app_dir / "venv" / "bin" / "pip"
+        pip.write_text("#!/bin/sh\nexit 1\n")
+        pip.chmod(0o755)
+        stub = tmp_path / "python-stub"
+        calls = tmp_path / "python-calls.log"
+        calls.write_text("")
+        _write_python_stub(stub, calls, pip_exit=1)
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(update_tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+        return stub
+
+    def test_a_failed_sync_records_what_to_retry_and_why(
+        self, tmp_path, update_tarball
+    ):
+        """The record has to carry the artifact (nothing else knows where it
+        is), the target version and the reason -- the reason is what the
+        Updates page shows instead of a healthy-looking box."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        stub = self._stage_failing_sync(tmp_path, update_tarball, data_dir, app_dir)
+
+        result = _run_helper(data_dir, app_dir, python=stub)
+
+        assert result.returncode == 0
+        assert "will retry on the next start" in result.stdout
+        record = _read_deferred(data_dir)
+        assert record["to_version"] == "2.0.0"
+        assert record["attempts"] == 1
+        assert record["final"] is False
+        assert record["reason"]
+        assert Path(record["artifact"]).name == update_tarball.name
+        assert _read_version(app_dir) == "1.0.0"
+
+    def test_the_next_start_retries_it_and_it_lands(
+        self, tmp_path, update_tarball
+    ):
+        """The whole point: the cause clears (the network comes back) and the
+        next start applies the release nobody had to stage again."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        stub = self._stage_failing_sync(tmp_path, update_tarball, data_dir, app_dir)
+        _run_helper(data_dir, app_dir, python=stub)
+        assert _read_version(app_dir) == "1.0.0"
+
+        # Same box, next start, with a pip that now works.
+        pip = app_dir / "venv" / "bin" / "pip"
+        pip.write_text("#!/bin/sh\nexit 0\n")
+        pip.chmod(0o755)
+
+        result = _run_helper(data_dir, app_dir, python=stub)
+
+        assert result.returncode == 0
+        assert "retrying a deferred update (attempt 2" in result.stdout
+        assert _read_version(app_dir) == "2.0.0"
+        assert not (data_dir / "apply-update.retry").exists()
+        assert not (data_dir / "apply-update.json").exists()
+
+    def test_it_stops_after_the_third_attempt_but_keeps_saying_so(
+        self, tmp_path, update_tarball
+    ):
+        """Bounded, because every attempt costs a cp -a snapshot, an extract
+        and a rollback -- an update that can never apply must not add that to
+        every boot for the life of the box. The record STAYS after the last
+        attempt: it is the only thing that says this box is not running the
+        release somebody installed on it."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        stub = self._stage_failing_sync(tmp_path, update_tarball, data_dir, app_dir)
+
+        for _ in range(3):
+            _run_helper(data_dir, app_dir, python=stub)
+
+        record = _read_deferred(data_dir)
+        assert record["attempts"] == 3
+        assert record["final"] is True
+
+        # A fourth start must not spend another snapshot on it.
+        result = _run_helper(data_dir, app_dir, python=stub)
+        assert "abandoned after 3 attempts" in result.stdout
+        assert "retrying a deferred update" not in result.stdout
+        assert not Path(str(app_dir) + ".previous").exists()
+        assert _read_deferred(data_dir)["attempts"] == 3
+        assert _read_version(app_dir) == "1.0.0"
+
+    def test_a_newly_staged_update_supersedes_the_deferred_one(
+        self, tmp_path, update_tarball
+    ):
+        """Somebody (or the cloud) asked for a release just now. The older
+        deferred one must not resurface behind it -- including after it was
+        abandoned, which is how a box gets un-stuck."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        _build_fake_install(app_dir, "1.0.0")
+        (data_dir / "apply-update.retry").write_text(json.dumps({
+            "artifact": str(tmp_path / "gone.tar.gz"),
+            "to_version": "1.9.9",
+            "attempts": 3,
+            "reason": "could not download the release's dependencies",
+            "final": True,
+        }))
+        (data_dir / "apply-update.json").write_text(json.dumps({
+            "artifact": str(update_tarball),
+            "from_version": "1.0.0",
+            "to_version": "2.0.0",
+        }))
+
+        result = _run_helper(data_dir, app_dir)
+
+        assert result.returncode == 0
+        assert "supersedes the deferred one" in result.stdout
+        assert _read_version(app_dir) == "2.0.0"
+        assert not (data_dir / "apply-update.retry").exists()
+
+    def test_a_pending_rollback_drops_the_deferred_update(self, tmp_path):
+        """A rollback already wins over a staged instruction; a deferred one is
+        the same instruction under another name and must go the same way, or it
+        would re-apply the release the rollback exists to escape."""
+        data_dir = tmp_path / "data"
+        app_dir = tmp_path / "app"
+        data_dir.mkdir()
+        _build_fake_install(app_dir, "2.0.0")
+        _build_fake_install(Path(str(app_dir) + ".previous"), "1.0.0")
+        (data_dir / "apply-update.retry").write_text(json.dumps({
+            "artifact": str(tmp_path / "whatever.tar.gz"),
+            "to_version": "2.0.0",
+            "attempts": 1,
+            "reason": "could not download the release's dependencies",
+            "final": False,
+        }))
+        (data_dir / "apply-rollback").write_text("")
+
+        result = _run_helper(data_dir, app_dir)
+
+        assert result.returncode == 0
+        assert _read_version(app_dir) == "1.0.0"
+        assert not (data_dir / "apply-update.retry").exists()
+
+    def test_the_record_is_not_the_file_the_server_sweeps_at_startup(self):
+        """openavc/main.py deletes any apply-update.json that survives to
+        server startup, as defence in depth against a stale one being
+        re-consumed on an unrelated restart. A deferred update kept under that
+        name would be swept away before it could ever be retried, so the two
+        names must stay different -- and the sweep must not learn this one."""
+        helper = HELPER_SCRIPT.read_text(encoding="utf-8")
+        match = re.search(r'^RETRY_FILE="\$DATA_DIR/(\S+)"', helper, re.MULTILINE)
+        assert match, "update-helper.sh no longer defines RETRY_FILE"
+        record_name = match.group(1)
+        assert record_name != "apply-update.json"
+
+        main_py = (HELPER_SCRIPT.parent.parent / "openavc" / "main.py").read_text(
+            encoding="utf-8"
+        )
+        assert 'data_dir / "apply-update.json"' in main_py, (
+            "the startup sweep this test is about has moved or been renamed"
+        )
+        assert record_name not in main_py, (
+            f"the startup sweep now names {record_name}; deleting it there "
+            "cancels the retry it exists to schedule"
+        )
 
 
 @gates.skipif_missing(gates.BASH, _BASH_MISSING)
