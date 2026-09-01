@@ -465,6 +465,10 @@ class PluginLoader:
         self._missing_plugins: dict[str, dict] = {}
         # Incompatible plugins: plugin_id -> info dict
         self._incompatible_plugins: dict[str, dict] = {}
+        # Set once the whole process is stopping, so the declared-port file is
+        # not rewritten to reflect a running set that is only empty because we
+        # are exiting. Never cleared: a loader does not come back.
+        self._shutting_down = False
         # What sync_declared_ports last acted on, so it can be called freely.
         # None rather than () so the first call always runs, including the one
         # that finds nothing and writes the empty list that closes stale rules.
@@ -508,7 +512,20 @@ class PluginLoader:
         Called after any change to the running set. Cheap, idempotent, and
         never fatal: a firewall that could not be updated is a degraded system,
         not a broken one, and a plugin whose port stays shut still runs.
+
+        Does nothing while the process is shutting down. On Linux the server
+        cannot open a port itself -- it runs unprivileged, and
+        `openavc.system.firewall.sync` returns without acting off Windows -- so
+        the only thing that opens one is the root helper `ExecStartPre` runs
+        BEFORE the server starts, reading the file this writes. That makes the
+        file a message to the next boot, and stopping every plugin because the
+        process is exiting says nothing about what the next boot needs. Left
+        unguarded, every clean shutdown wrote an empty list and the port was
+        never open on Linux on any boot.
         """
+        if self._shutting_down:
+            return
+
         from openavc.core.plugin_ports import collect, write
         from openavc.system_config import get_data_dir
 
@@ -1106,7 +1123,14 @@ class PluginLoader:
         self.sync_declared_ports()
 
     async def stop_all(self) -> None:
-        """Stop all running plugins."""
+        """Stop all running plugins, because the process is going away.
+
+        Deliberately leaves the declared-port file alone -- see
+        `sync_declared_ports`. Disabling a plugin and exiting the server both
+        empty the running set, and only the first of them means the port
+        should close.
+        """
+        self._shutting_down = True
         plugin_ids = list(self._instances.keys())
         for plugin_id in plugin_ids:
             await self.stop_plugin(plugin_id)
