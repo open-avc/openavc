@@ -106,6 +106,59 @@ describe("SearchableSelect", () => {
     expect(onChange).toHaveBeenCalledWith("dsp1");
   });
 
+  it("Enter right after opening does not clear the field", () => {
+    // The clear row sits at index 0 and the highlight started there, so the
+    // first Enter after opening chose it. A `<select>` opens on the row it is
+    // already showing, and Enter there commits what is already committed.
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect value="dsp1" onChange={onChange} options={OPTIONS} placeholder="Select device..." />,
+    );
+    open("Room DSP");
+    fireEvent.keyDown(screen.getByPlaceholderText("Search..."), { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("opens on the chosen row, so one ArrowDown moves to the next one", () => {
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect value="proj1" onChange={onChange} options={OPTIONS} placeholder="Select device..." />,
+    );
+    open("Main Projector");
+    const search = screen.getByPlaceholderText("Search...");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("dsp1");
+  });
+
+  it("choosing the row already chosen is not a change", () => {
+    // Every caller that resets a dependent field does it on any onChange, not
+    // on a different value -- picking the same device again wiped the command
+    // and its parameters. A `<select>` fires nothing when the current option
+    // is re-selected.
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect value="dsp1" onChange={onChange} options={OPTIONS} placeholder="Select device..." />,
+    );
+    open("Room DSP");
+    fireEvent.click(screen.getByRole("option", { name: /Room DSP/ }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("still clears when the clear row is the one deliberately chosen", () => {
+    // The keyboard has to be able to reach it: this is the whole reason the
+    // row exists, and starting the highlight elsewhere must not strand it.
+    const onChange = vi.fn();
+    render(
+      <SearchableSelect value="proj1" onChange={onChange} options={OPTIONS} placeholder="Select device..." />,
+    );
+    open("Main Projector");
+    const search = screen.getByPlaceholderText("Search...");
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("");
+  });
+
   it("groups stay separate, and an empty group is not drawn", () => {
     render(
       <SearchableSelect

@@ -121,7 +121,11 @@ export function SearchableSelect({
   testId,
 }: SearchableSelectProps) {
   const [search, setSearch] = useState("");
-  const [highlight, setHighlight] = useState(0);
+  // null means "wherever the current value is". A number is where the person
+  // has since moved it, by typing or with the arrows. Opening on row 0 put the
+  // highlight on the clear row -- which is what `allowEmpty` puts there -- so
+  // the first Enter after opening emptied the field.
+  const [highlight, setHighlight] = useState<number | null>(null);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
   // Only a keyboard move scrolls. Hovering sets the highlight too, and
   // scrolling a partly-visible row under a stationary cursor makes the list
@@ -154,8 +158,14 @@ export function SearchableSelect({
 
   const selected = value ? all.find((o) => o.value === value) : undefined;
 
+  // Where the highlight actually is: where it was moved to, else the row
+  // holding the current value, else the top. A `<select>` opens on the option
+  // it is showing, so Enter straight after opening commits what is already
+  // committed rather than something else.
+  const atValue = flatShown.findIndex((o) => o.value === value);
+  const wanted = highlight ?? (atValue >= 0 ? atValue : 0);
   // Keep the highlight on a row that still exists after a filter narrows.
-  const clamped = flatShown.length === 0 ? 0 : Math.min(highlight, flatShown.length - 1);
+  const clamped = flatShown.length === 0 ? 0 : Math.min(wanted, flatShown.length - 1);
 
   useEffect(() => {
     if (!scrollNext.current) return;
@@ -164,7 +174,11 @@ export function SearchableSelect({
   }, [clamped]);
 
   const choose = (option: SelectOption) => {
-    onChange(option.value);
+    // Re-choosing what is already chosen is not a change, and a `<select>`
+    // reports none. It matters because callers reset a dependent field on any
+    // onChange rather than on a different value -- picking the same device
+    // again wiped the command and its parameters.
+    if (option.value !== value) onChange(option.value);
     closeRef.current();
   };
 
@@ -213,7 +227,7 @@ export function SearchableSelect({
       onSearchKeyDown={onSearchKeyDown}
       onClose={() => {
         setSearch("");
-        setHighlight(0);
+        setHighlight(null);
       }}
       style={style}
       testId={testId}
