@@ -563,10 +563,12 @@ host_has_cap_net_raw() {
 #
 # A daemon-reload during ExecStartPre does NOT re-apply to the already-parsed
 # current job, so a changed unit is activated by a deferred one-shot restart.
-# That restart is scheduled past the 60s post-update confirm window
-# (openavc/core/engine._confirm_startup_after_delay) on purpose: a sub-60s second
-# start would be counted as a failed-start retry by the rollback attempts
-# counter and trip an automatic rollback of a perfectly good update.
+# The delay is deliberate and must stay comfortably longer than a normal
+# engine start: an update is confirmed when the engine finishes starting
+# (openavc/main._initialize_engine -> updater.rollback.confirm_startup), and a
+# restart landing before that leaves the pending-update marker on disk, so the
+# next start counts as a second failed startup and rolls back a perfectly good
+# update.
 sync_unit() {
     local src="$APP_DIR/installer/openavc.service"
     local dst="/etc/systemd/system/openavc.service"
@@ -603,7 +605,7 @@ sync_unit() {
     chmod 644 "$dst" 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
 
-    # Activate the new unit with a deferred restart (>60s, see above). If the
+    # Activate the new unit with a deferred restart (see above). If the
     # timer is lost before it fires (e.g. a reboot first), the next start's
     # sync_unit re-detects the diff and reschedules, so the unit still converges.
     if command -v systemd-run >/dev/null 2>&1; then

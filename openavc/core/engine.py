@@ -141,7 +141,6 @@ class Engine:
         # Tracking
         self._start_time: float = 0
         self._running = False
-        self._marker_confirm_task: asyncio.Task | None = None
 
         # Periodic backup
         self._periodic_backup_task: asyncio.Task | None = None
@@ -422,31 +421,11 @@ class Engine:
             log.exception("Update manager failed to start — continuing without updates")
             self.update_manager = None
 
-        # 60-second startup confirmation — clear pending-update marker
-        self._marker_confirm_task = asyncio.create_task(
-            self._confirm_startup_after_delay()
-        )
-        self._marker_confirm_task.add_done_callback(_log_task_exception)
-
         log.info(
             f'Engine started — project "{self.project.project.name}" '
             f"({len(self.project.devices)} devices, "
             f"{len(self.project.macros)} macros)"
         )
-
-    async def _confirm_startup_after_delay(self) -> None:
-        """Call the update good after 60 seconds of stable running.
-
-        The engine owns only the timer; what the marker means and how it is
-        cleared belongs to the updater (``updater.rollback.confirm_startup``).
-        """
-        try:
-            await asyncio.sleep(60)
-            from openavc.system_config import get_system_config
-            from openavc.updater.rollback import confirm_startup
-            confirm_startup(get_system_config().data_dir)
-        except asyncio.CancelledError:
-            pass
 
     async def stop(self) -> None:
         """Stop the engine gracefully."""
@@ -480,25 +459,6 @@ class Engine:
 
     async def _stop_inner(self) -> None:
         """Tear down all subsystems. Caller holds _reload_lock."""
-        # Cancel startup confirmation timer
-        if self._marker_confirm_task and not self._marker_confirm_task.done():
-            self._marker_confirm_task.cancel()
-            try:
-                await self._marker_confirm_task
-            except asyncio.CancelledError:
-                pass
-
-        # This is a deliberate shutdown, not a crash: zero the pending-update
-        # attempt counter so a restart inside the 60s confirmation window
-        # doesn't read as a failed startup and roll back a good update. A
-        # crashed process never gets here, so crash detection still works.
-        try:
-            from openavc.system_config import get_system_config
-            from openavc.updater.rollback import reset_marker_attempts
-            reset_marker_attempts(get_system_config().data_dir)
-        except Exception:
-            log.exception("Could not reset pending-update attempts on shutdown")
-
         # Stop update manager
         if self.update_manager:
             await self.update_manager.stop_auto_check()

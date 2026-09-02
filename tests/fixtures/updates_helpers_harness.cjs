@@ -70,7 +70,7 @@ const results = {};
 {
   const r = H.historyEntryDisplay({ from_version: "0.14.0", to_version: "0.15.0" });
   results.history_update_label = {
-    pass: eq(r, { label: "v0.14.0 → v0.15.0", isRollback: false }),
+    pass: eq(r, { label: "v0.14.0 → v0.15.0", isRollback: false, succeeded: false, statusLabel: "" }),
     detail: r,
   };
 }
@@ -78,7 +78,7 @@ const results = {};
   // New-style rollback entry: real target version + flag.
   const r = H.historyEntryDisplay({ from_version: "0.13.0", to_version: "0.12.0", rollback: true });
   results.history_rollback_label = {
-    pass: eq(r, { label: "v0.13.0 → v0.12.0", isRollback: true }),
+    pass: eq(r, { label: "v0.13.0 → v0.12.0", isRollback: true, succeeded: false, statusLabel: "" }),
     detail: r,
   };
 }
@@ -86,7 +86,7 @@ const results = {};
   // Legacy entry recorded the literal "rollback" as to_version.
   const r = H.historyEntryDisplay({ from_version: "0.14.0", to_version: "rollback" });
   results.history_legacy_rollback_label = {
-    pass: eq(r, { label: "v0.14.0 → previous version", isRollback: true }),
+    pass: eq(r, { label: "v0.14.0 → previous version", isRollback: true, succeeded: false, statusLabel: "" }),
     detail: r,
   };
 }
@@ -94,7 +94,35 @@ const results = {};
   // Rollback whose target couldn't be resolved.
   const r = H.historyEntryDisplay({ from_version: "0.14.0", to_version: "", rollback: true });
   results.history_rollback_unknown_target = {
-    pass: eq(r, { label: "v0.14.0 → previous version", isRollback: true }),
+    pass: eq(r, { label: "v0.14.0 → previous version", isRollback: true, succeeded: false, statusLabel: "" }),
+    detail: r,
+  };
+}
+{
+  // An update that applied and was then undone. The row used to go on
+  // reporting "success" from a system running the older version -- measured
+  // on an appliance panel, and the only part of that a customer ever saw.
+  const r = H.historyEntryDisplay({
+    from_version: "0.31.0", to_version: "0.32.0", status: "rolled_back",
+  });
+  results.history_reverted_update = {
+    pass: eq(r, {
+      label: "v0.31.0 → v0.32.0", isRollback: false,
+      succeeded: false, statusLabel: "reverted",
+    }),
+    detail: r,
+  };
+}
+{
+  // An update that stuck still reads as a success.
+  const r = H.historyEntryDisplay({
+    from_version: "0.31.0", to_version: "0.32.0", status: "success",
+  });
+  results.history_successful_update = {
+    pass: eq(r, {
+      label: "v0.31.0 → v0.32.0", isRollback: false,
+      succeeded: true, statusLabel: "success",
+    }),
     detail: r,
   };
 }

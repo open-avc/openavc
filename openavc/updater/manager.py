@@ -139,6 +139,49 @@ class UpdateManager:
                 )
                 log.warning("Update to v%s failed — still running v%s", expected, __version__)
             self._save_history()
+            return
+
+        self._reconcile_reverted_update()
+
+    def _reconcile_reverted_update(self) -> None:
+        """Stop the newest history row claiming an update that was undone.
+
+        An automatic rollback restores the previous version and exits; nothing
+        goes back to correct the row for the update it just reverted, so the
+        Updates page went on reporting "v0.31.0 -> v0.32.0  success" on a panel
+        sitting at v0.31.0. That is the only part of this a customer sees, and
+        it is why "it says it updated but it didn't" was the report.
+
+        The correction is made from the end state — we are running the version
+        the update started from, so it did not stick — rather than announced by
+        the rollback path on its way out. A rollback that is initiated may
+        still not apply (a missing snapshot, an aborted helper), and a row
+        claiming a revert that never happened is the same lie pointed the other
+        way. Only the newest row is looked at: older ones describe versions
+        long gone, about which the running version says nothing.
+        """
+        if not self._history:
+            return
+        row = self._history[0]
+        if row.get("status") not in ("success", "applied") or row.get("rollback"):
+            return
+        from_version = row.get("from_version", "")
+        to_version = row.get("to_version", "")
+        # Strictly back where we started. Not merely "not on the target": a
+        # release tag and the bundled pyproject version are allowed to differ,
+        # and treating that skew as a revert would invent one on every restart.
+        if not from_version or not to_version or from_version == to_version:
+            return
+        if __version__ != from_version:
+            return
+
+        row["status"] = "rolled_back"
+        row["error"] = f"Update was reverted; running v{__version__}"
+        log.warning(
+            "Update to v%s was reverted — running v%s; correcting update history",
+            to_version, __version__,
+        )
+        self._save_history()
 
     def _save_history(self) -> None:
         """Save update history to disk."""

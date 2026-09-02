@@ -10,7 +10,8 @@ Covers the audit findings fixed in the UpdatesView.tsx group: the completion
 toast distinguishes rollback from update (in-flight action, semver-direction
 fallback); a restart that changes nothing is detected instead of hanging the
 progress modal; history labels render rollbacks with the real target version
-(legacy literal-"rollback" entries included).
+(legacy literal-"rollback" entries included), and a row whose update was
+applied and then reverted reads as reverted rather than as a success.
 """
 from __future__ import annotations
 
@@ -81,6 +82,8 @@ SCENARIOS = [
     "history_rollback_label",
     "history_legacy_rollback_label",
     "history_rollback_unknown_target",
+    "history_reverted_update",
+    "history_successful_update",
 ]
 
 

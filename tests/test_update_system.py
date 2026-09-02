@@ -29,12 +29,10 @@ from openavc.updater.rollback import (
     confirm_startup,
     write_pending_marker,
     read_pending_marker,
-    increment_marker_attempts,
-    clear_pending_marker,
+    record_startup_attempt,
     clear_stale_rollback_marker,
     check_rollback_needed,
     perform_rollback,
-    reset_marker_attempts,
     _rollback_linux,
 )
 
@@ -466,42 +464,41 @@ class TestStaleRollbackMarkerCleanup:
         assert list(tmp_path.iterdir()) == []
 
 
-class TestCleanShutdownResetsAttempts:
-    """reset_marker_attempts() — a deliberate restart inside the 60s
-    confirmation window must not count as a crashed startup.
+class TestAFailedStartupIsWhatAccumulates:
+    """check_rollback_needed() — the attempt counter counts startups that
+    never got the engine up, not restarts.
 
-    Before the fix, check_rollback_needed() treated any second boot in the
-    window as a crash: a good update followed by an operator/cloud restart
-    within 60s was rolled back."""
+    The marker is cleared the moment the engine finishes starting
+    (confirm_startup), so one still on disk at the next boot is evidence that
+    the previous boot never got that far. Before Q-158 the marker instead
+    survived for 60 seconds and the counter caught every restart inside that
+    window; on an appliance, whose supervisor kills the server and whose users
+    power-cycle it, that reverted good updates as a matter of course. The
+    boot-scoped counting lives in tests/test_update_confirmation.py."""
 
-    def test_clean_restart_in_window_does_not_trigger_rollback(self, tmp_path):
+    def test_a_restart_after_a_confirmed_start_counts_nothing(self, tmp_path):
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         # Boot 1 after the update: attempt 1, no rollback
         assert check_rollback_needed(tmp_path) is False
-        # Operator restarts inside the 60s window: graceful shutdown resets
-        reset_marker_attempts(tmp_path)
-        # Boot 2 is a fresh first attempt, not a crash
+        # The engine came up, so the update is confirmed and the marker goes
+        with patch("openavc.version.__version__", "2.0.0"):
+            confirm_startup(tmp_path)
+        # Whatever restarts the server after that finds nothing to trip over,
+        # graceful or not
         assert check_rollback_needed(tmp_path) is False
-        assert read_pending_marker(tmp_path)["attempts"] == 1
+        assert read_pending_marker(tmp_path) is None
 
-    def test_crash_loop_still_triggers_rollback(self, tmp_path):
-        """A crashed process never runs the reset, so two boots without a
-        clean shutdown between them still trigger rollback."""
+    def test_two_startups_that_never_confirmed_still_roll_back(self, tmp_path):
+        """The case automatic rollback exists for: the new version cannot get
+        the engine up, so the marker survives every boot."""
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         assert check_rollback_needed(tmp_path) is False
-        # (crash: no reset_marker_attempts call)
+        # (crash during startup: confirm_startup never runs)
         assert check_rollback_needed(tmp_path) is True
 
-    def test_reset_is_noop_without_marker(self, tmp_path):
-        reset_marker_attempts(tmp_path)
+    def test_recording_an_attempt_without_a_marker_is_a_noop(self, tmp_path):
+        assert record_startup_attempt(tmp_path) == 0
         assert list(tmp_path.iterdir()) == []
-
-    def test_reset_is_noop_at_zero_attempts(self, tmp_path):
-        write_pending_marker(tmp_path, "1.0.0", "2.0.0")
-        reset_marker_attempts(tmp_path)
-        marker = read_pending_marker(tmp_path)
-        assert marker["attempts"] == 0
-        assert marker["from_version"] == "1.0.0"
 
 
 class TestConfirmStartup:
@@ -608,7 +605,7 @@ class TestStartupRollbackExitsProcess:
         # --- Setup: an update was applied and the server crashed ---
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
         # First crash: attempts goes from 0 to 1
-        increment_marker_attempts(tmp_path)
+        record_startup_attempt(tmp_path)
 
         # --- Second startup (the one that triggers rollback) ---
         # check_rollback_needed increments to 2, returns True
@@ -629,7 +626,7 @@ class TestStartupRollbackExitsProcess:
         """Verify that os._exit() prevents engine.start() from running.
         This is the core of the UP-1 fix."""
         write_pending_marker(tmp_path, "1.0.0", "2.0.0")
-        increment_marker_attempts(tmp_path)
+        record_startup_attempt(tmp_path)
         assert check_rollback_needed(tmp_path) is True
 
         engine_started = False
@@ -1642,10 +1639,11 @@ class TestFullLinuxUpdateLifecycle:
         # --- Step 6: Server starts, check_rollback_needed (attempt 1) ---
         assert check_rollback_needed(data_dir) is False
 
-        # --- Step 7: After 60 seconds, engine clears the marker ---
+        # --- Step 7: the engine finishes starting, which confirms it ---
         marker = read_pending_marker(data_dir)
-        assert marker is not None  # still present until 60s timer
-        clear_pending_marker(data_dir)
+        assert marker is not None  # still present until the engine is up
+        with patch("openavc.version.__version__", "2.0.0"):
+            confirm_startup(data_dir)
         assert read_pending_marker(data_dir) is None
 
         # --- Update complete. v2.0.0 running, no markers, clean state. ---

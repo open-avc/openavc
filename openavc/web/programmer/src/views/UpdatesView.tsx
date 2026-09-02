@@ -463,7 +463,7 @@ export function UpdatesView() {
                       fontSize: "var(--font-size-sm)",
                     }}
                   >
-                    {entry.status === "success" || entry.status === "applied" ? (
+                    {display.succeeded ? (
                       <CheckCircle size={14} style={{ color: "var(--color-success)", flexShrink: 0 }} />
                     ) : (
                       <XCircle size={14} style={{ color: "var(--color-error)", flexShrink: 0 }} />
@@ -495,14 +495,14 @@ export function UpdatesView() {
                       borderRadius: 3,
                       textTransform: "uppercase",
                       letterSpacing: "0.5px",
-                      background: entry.status === "success" || entry.status === "applied"
+                      background: display.succeeded
                         ? "rgba(76,175,80,0.15)"
                         : "rgba(239,68,68,0.15)",
-                      color: entry.status === "success" || entry.status === "applied"
+                      color: display.succeeded
                         ? "var(--color-success)"
                         : "var(--color-error)",
                     }}>
-                      {entry.status}
+                      {display.statusLabel}
                     </span>
                   </div>
                 );

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { healthProbeOutcome, updateCompletionOutcome, semverLt } from "./updatesHelpers";
+import {
+  healthProbeOutcome,
+  historyEntryDisplay,
+  updateCompletionOutcome,
+  semverLt,
+} from "./updatesHelpers";
 
 // The health probe is the completion signal that survives a restart. The
 // WebSocket one does not: session tokens live in server memory, so the restart
@@ -54,5 +59,58 @@ describe("semverLt", () => {
 
   it("claims no ordering for non-numeric parts", () => {
     expect(semverLt("0.25.0", "abc")).toBe(false);
+  });
+});
+
+// A row whose update was applied and then reverted used to go on saying
+// "success" from a system sitting on the older version -- measured on an
+// appliance panel, and the only part of that defect a customer ever saw. The
+// server now writes `rolled_back`; this is what the page makes of it.
+describe("historyEntryDisplay", () => {
+  it("shows a reverted update as failed, in words", () => {
+    const d = historyEntryDisplay({
+      from_version: "0.31.0",
+      to_version: "0.32.0",
+      status: "rolled_back",
+    });
+    expect(d.label).toBe("v0.31.0 → v0.32.0");
+    expect(d.succeeded).toBe(false);
+    expect(d.statusLabel).toBe("reverted");
+    expect(d.isRollback).toBe(false);
+  });
+
+  it("keeps an update that stuck", () => {
+    const d = historyEntryDisplay({
+      from_version: "0.31.0",
+      to_version: "0.32.0",
+      status: "success",
+    });
+    expect(d.succeeded).toBe(true);
+    expect(d.statusLabel).toBe("success");
+  });
+
+  it("passes through a status it has no better word for", () => {
+    // The set is open: the server may add one, and an unknown status must
+    // still be shown rather than swallowed.
+    expect(historyEntryDisplay({ from_version: "1.0.0", to_version: "2.0.0", status: "pending" }).statusLabel)
+      .toBe("pending");
+  });
+
+  it("still labels a rollback entry by what it restored", () => {
+    const d = historyEntryDisplay({
+      from_version: "0.32.0",
+      to_version: "0.31.0",
+      status: "success",
+      rollback: true,
+    });
+    expect(d.isRollback).toBe(true);
+    expect(d.label).toBe("v0.32.0 → v0.31.0");
+    expect(d.succeeded).toBe(true);
+  });
+
+  it("still reads a legacy rollback row with no target version", () => {
+    const d = historyEntryDisplay({ from_version: "0.32.0", to_version: "rollback" });
+    expect(d.isRollback).toBe(true);
+    expect(d.label).toBe("v0.32.0 → previous version");
   });
 });

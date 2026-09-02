@@ -21,7 +21,7 @@ from openavc.updater.backup import create_backup, list_backups, cleanup_old_back
 from openavc.updater.rollback import (
     write_pending_marker,
     read_pending_marker,
-    increment_marker_attempts,
+    record_startup_attempt,
     clear_pending_marker,
     check_rollback_needed,
     can_rollback,
@@ -577,7 +577,7 @@ class TestRollback:
         assert marker["attempts"] == 0
 
         # Increment
-        count = increment_marker_attempts(tmp_path)
+        count = record_startup_attempt(tmp_path)
         assert count == 1
 
         # Clear
@@ -598,7 +598,7 @@ class TestRollback:
     def test_check_rollback_second_attempt(self, tmp_path):
         write_pending_marker(tmp_path, "0.1.0", "0.2.0")
         # Simulate first failed start
-        increment_marker_attempts(tmp_path)
+        record_startup_attempt(tmp_path)
         # Second check (attempt 2) triggers rollback
         assert check_rollback_needed(tmp_path) is True
 

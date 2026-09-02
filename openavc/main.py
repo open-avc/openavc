@@ -152,6 +152,15 @@ async def _initialize_engine(app: FastAPI) -> None:
 
         await engine.start()
 
+        # The engine is up on this version, which is the only evidence that an
+        # update worked: the code imported, the project loaded, devices and
+        # plugins came up, and the HTTP listener was already serving before
+        # any of it. Confirm here rather than on a timer — a timer measures
+        # whether anybody restarted the box, and an appliance is restarted by
+        # its own supervisor and power-cycled in the room it lives in.
+        from openavc.updater.rollback import confirm_startup
+        confirm_startup(data_dir)
+
         # Load driver hints into discovery engine after drivers are registered
         discovery_engine.load_driver_hints_from_registry(list_registered_drivers())
 

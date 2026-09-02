@@ -22,6 +22,26 @@ log = logging.getLogger(__name__)
 PENDING_UPDATE_MARKER = "pending-update"
 ROLLBACK_MARKER = "apply-rollback"
 
+# Where the kernel publishes an identity for the running boot. Linux-only,
+# which covers the Linux package, the Pi image, Docker and the Android
+# appliance — every deployment that gets power-cycled as a matter of course.
+BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
+
+
+def _current_boot_id() -> str | None:
+    """Identity of the OS boot this process belongs to, or None.
+
+    Used to tell a startup that crashed from one the machine cut short. There
+    is no portable way to ask, and Windows and macOS have no answer here at
+    all; None means "can't tell", and every caller must stay correct without
+    it rather than assume anything.
+    """
+    try:
+        with open(BOOT_ID_PATH, encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except OSError:
+        return None
+
 
 def clear_stale_rollback_marker(data_dir: Path) -> bool:
     """Drop a leftover apply-rollback marker at server startup.
@@ -127,9 +147,12 @@ def write_pending_marker(
 ) -> None:
     """Write a marker file before applying an update.
 
-    If the server crashes after update, the marker's presence on next
-    startup triggers automatic rollback. ``backup_path`` records the
-    pre-update backup zip so that rollback can restore user data from it.
+    The marker is the question "did the new version get itself running?" left
+    on disk. It is cleared the moment the engine finishes starting, so one
+    still present at startup says the previous boot never got that far.
+    ``backup_path`` records the pre-update backup zip so that rollback can
+    restore user data from it, and ``boot`` records which OS boot the attempt
+    counter belongs to (see ``record_startup_attempt``).
     """
     marker_path = data_dir / PENDING_UPDATE_MARKER
     marker_data = {
@@ -137,6 +160,9 @@ def write_pending_marker(
         "to_version": to_version,
         "attempts": 0,
     }
+    boot = _current_boot_id()
+    if boot is not None:
+        marker_data["boot"] = boot
     if backup_path is not None:
         marker_data["backup"] = str(backup_path)
     marker_path.write_text(json.dumps(marker_data), encoding="utf-8")
@@ -156,41 +182,45 @@ def read_pending_marker(data_dir: Path) -> dict | None:
         return None
 
 
-def increment_marker_attempts(data_dir: Path) -> int:
-    """Increment the attempt counter on the pending marker.
+def record_startup_attempt(data_dir: Path) -> int:
+    """Count this boot as one attempt at starting the updated version.
 
-    Returns the new attempt count. If count >= 2, automatic rollback
-    should be triggered.
+    Returns the number of consecutive startups **within the current OS boot**
+    that failed to get the engine up; at 2 the caller rolls back.
+
+    Scoping the count to one boot is what keeps a power cut from being read as
+    a crash. A version that genuinely cannot run is relaunched immediately by
+    whatever supervises it — systemd, NSSM, the appliance shell — so it fails
+    twice inside the same boot within seconds, which is the signal rollback
+    exists for. A panel that loses power mid-startup, or is rebooted by the
+    person who just installed the update, comes back on a NEW boot, and that
+    tells us nothing about the version, so the count starts again.
+
+    Where the boot cannot be identified (Windows, macOS: no /proc) every
+    startup counts, which is what this did everywhere before. That is safe now
+    only because the marker is cleared the moment the engine starts: a restart
+    after a successful start no longer finds a marker to count against.
     """
     marker_path = data_dir / PENDING_UPDATE_MARKER
     data = read_pending_marker(data_dir)
     if data is None:
         return 0
-    data["attempts"] = data.get("attempts", 0) + 1
+
+    boot = _current_boot_id()
+    recorded = data.get("boot")
+    same_boot = boot is None or recorded is None or boot == recorded
+    if same_boot:
+        data["attempts"] = data.get("attempts", 0) + 1
+    else:
+        log.info(
+            "Machine restarted since the last startup attempt on this update; "
+            "counting it as the first attempt rather than a crash",
+        )
+        data["attempts"] = 1
+        data["boot"] = boot
+
     marker_path.write_text(json.dumps(data), encoding="utf-8")
     return data["attempts"]
-
-
-def reset_marker_attempts(data_dir: Path) -> None:
-    """Zero the attempt counter on the pending marker (clean shutdown).
-
-    Called from graceful engine shutdown. A deliberate restart inside the
-    60-second confirmation window (operator, API, cloud command) is not a
-    crash, so the boot that follows it must count as a fresh first attempt —
-    otherwise the attempts>=2 check reads any second boot in the window as
-    a failed startup and rolls back a good update. A real crash never runs
-    this, so crash-loop detection is unaffected.
-    """
-    marker_path = data_dir / PENDING_UPDATE_MARKER
-    data = read_pending_marker(data_dir)
-    if data is None or data.get("attempts", 0) == 0:
-        return
-    data["attempts"] = 0
-    try:
-        marker_path.write_text(json.dumps(data), encoding="utf-8")
-        log.info("Reset pending-update attempt counter (clean shutdown)")
-    except OSError as e:
-        log.warning("Could not reset pending-update marker attempts: %s", e)
 
 
 def clear_pending_marker(data_dir: Path) -> None:
@@ -202,14 +232,22 @@ def clear_pending_marker(data_dir: Path) -> None:
 
 
 def confirm_startup(data_dir: Path) -> None:
-    """Clear the pending-update marker after a stable run.
+    """Clear the pending-update marker once the engine is running.
 
-    Called once the server has stayed up long enough to call the update good.
-    The marker is always cleared (so the rollback attempts counter can't trip
-    on a later restart), but only an update that actually changed the running
-    version is logged as a success. A marker that survived a *failed* apply
-    (e.g. the helper aborted, version unchanged) must not log "confirmed
-    successful" against the target it never reached.
+    Called from ``main._initialize_engine`` the moment ``engine.start()``
+    returns: the new version imported, loaded the project, brought up devices
+    and plugins, and the HTTP listener was already serving before any of that.
+    That is a direct observation that the update can run, and it is the whole
+    test — this used to be a 60-second timer instead, which measured whether
+    anybody touched the box rather than whether the new version worked, and on
+    an appliance (restarted by its supervisor, power-cycled in a room) it
+    reverted good updates as a matter of course.
+
+    The marker is always cleared (so the attempt counter can't trip on a later
+    restart), but only an update that actually changed the running version is
+    logged as a success. A marker that survived a *failed* apply (e.g. the
+    helper aborted, version unchanged) must not log "confirmed successful"
+    against the target it never reached.
     """
     from openavc.version import __version__
 
@@ -242,17 +280,17 @@ def confirm_startup(data_dir: Path) -> None:
 def check_rollback_needed(data_dir: Path) -> bool:
     """Check if automatic rollback should be triggered.
 
-    Called early in server startup. Returns True if the marker exists
-    and attempts >= 2 (meaning the server has crashed at least once
-    after applying the update — graceful shutdowns reset the counter
-    via reset_marker_attempts, so only boots that follow a non-clean
-    exit accumulate).
+    Called early in server startup. A marker still on disk means the previous
+    startup never got the engine running (``confirm_startup`` clears it as
+    soon as it does), so the count here is a count of failed startups, not of
+    restarts. Returns True at 2 within one OS boot — see
+    ``record_startup_attempt`` for why the boot matters.
     """
     marker = read_pending_marker(data_dir)
     if marker is None:
         return False
 
-    attempts = increment_marker_attempts(data_dir)
+    attempts = record_startup_attempt(data_dir)
     if attempts >= 2:
         log.error(
             "Server has failed to start after update (%s -> %s). "
@@ -264,7 +302,7 @@ def check_rollback_needed(data_dir: Path) -> bool:
 
     log.info(
         "Pending update marker found (attempt %d). "
-        "Server must stay running for 60 seconds to confirm success.",
+        "The update is confirmed once the engine finishes starting.",
         attempts,
     )
     return False

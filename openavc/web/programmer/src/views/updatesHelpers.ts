@@ -73,22 +73,44 @@ export function healthProbeOutcome(
 export interface HistoryEntryLike {
   from_version: string;
   to_version: string;
+  status?: string;
   rollback?: boolean;
 }
+
+/** Statuses that mean the version in this row is the one now running. */
+const SUCCEEDED = new Set(["success", "applied"]);
+
+/**
+ * How a status reads on screen. The server writes machine words; only
+ * `rolled_back` needs help, and it is the one that matters most — it is what
+ * a row says after an update was applied and then undone, which used to go on
+ * reporting "success" from a system sitting on the older version.
+ */
+const STATUS_LABELS: Record<string, string> = {
+  rolled_back: "reverted",
+};
 
 /**
  * Display label for an update-history entry. Rollback entries record the
  * real target version plus a rollback flag; legacy entries carried the
  * literal string "rollback" in to_version.
  */
-export function historyEntryDisplay(entry: HistoryEntryLike): { label: string; isRollback: boolean } {
+export function historyEntryDisplay(entry: HistoryEntryLike): {
+  label: string;
+  isRollback: boolean;
+  succeeded: boolean;
+  statusLabel: string;
+} {
   const legacy = entry.to_version === "rollback";
   const isRollback = !!entry.rollback || legacy;
   const target = legacy || !entry.to_version
     ? "previous version"
     : "v" + entry.to_version;
+  const status = entry.status || "";
   return {
     label: "v" + entry.from_version + " → " + (isRollback ? target : "v" + entry.to_version),
     isRollback,
+    succeeded: SUCCEEDED.has(status),
+    statusLabel: STATUS_LABELS[status] ?? status,
   };
 }
