@@ -147,6 +147,27 @@ class ExtractRule:
 
 
 @dataclass(frozen=True)
+class ProbeFollowUp:
+    """A second exchange on the same connection, after the first one matched.
+
+    It exists for identification by ABSENCE. Some product families are nested
+    -- the smaller model's parameter set is a strict subset of the larger
+    one's -- so no question the small one answers is unique to it, and the only
+    thing that separates them is a question the LARGER model answers and the
+    smaller does not. A single send/expect pair cannot say that.
+
+    ``expect_silence`` inverts the step: the probe matches only when the device
+    does NOT answer. Otherwise the step carries its own matcher and both halves
+    must pass.
+    """
+
+    send: bytes
+    expect_silence: bool
+    response_match: ResponseMatch
+    timeout_ms: int
+
+
+@dataclass(frozen=True)
 class CustomProbeSpec:
     """A driver-declared TCP or UDP probe.
 
@@ -179,6 +200,8 @@ class CustomProbeSpec:
     # string, so the model can be pulled from the CN.
     cert_subject: re.Pattern | None = None
     cert_subject_source: str = ""
+    # A second exchange on the same connection (tcp only). See ProbeFollowUp.
+    follow_up: "ProbeFollowUp | None" = None
 
     @property
     def probe_id(self) -> str:
@@ -565,6 +588,89 @@ def _parse_extract(
     return rules
 
 
+def _parse_follow_up(
+    driver_id: str,
+    where: str,
+    kind: str,
+    raw: Any,
+    *,
+    default_timeout_ms: int,
+) -> "ProbeFollowUp | None":
+    """Parse a probe's optional ``then:`` block.
+
+    Schema:
+
+        then:
+          send_hex: "B0 63 00 B0 62 27 B0 60 7F"   # or send_ascii
+          expect_silence: true                      # this device must NOT answer
+          timeout_ms: 1000                          # optional; how long silence
+                                                    # has to hold to count
+
+    ...or, for a second POSITIVE step, ``expect`` / ``expect_regex`` /
+    ``expect_hex`` in place of ``expect_silence``.
+    """
+    if raw is None:
+        return None
+
+    at = f"{where}.then"
+    if kind != "tcp":
+        # A follow-up is a second exchange on an established connection. UDP
+        # probes are fire-and-forget broadcasts with no connection to reuse.
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{at} is only valid on a tcp_probe"
+        )
+
+    block = _ensure_dict(driver_id, at, raw)
+    send = _parse_send(driver_id, at, block)
+    if not send:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{at} must declare send_ascii or send_hex "
+            "(a follow-up step has to ask something)"
+        )
+
+    expect_silence = _ensure_bool(driver_id, f"{at}.expect_silence",
+                                  block.get("expect_silence"))
+    has_match = any(
+        block.get(k) is not None
+        for k in ("expect", "expect_regex", "expect_hex")
+    )
+    if expect_silence and has_match:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{at} declares both expect_silence and a "
+            "matcher — a step that expects no answer cannot also match one"
+        )
+    if not expect_silence and not has_match:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{at} declares no expectation — add "
+            "expect_silence: true, or expect / expect_regex / expect_hex"
+        )
+
+    response_match = _parse_response_match(
+        driver_id, at, block, require_match=not expect_silence,
+    )
+
+    timeout_ms = block.get("timeout_ms", default_timeout_ms)
+    timeout_ms = _ensure_int(
+        driver_id, f"{at}.timeout_ms", timeout_ms,
+        minimum=1, maximum=MAX_PROBE_TIMEOUT_MS,
+    )
+
+    known = {"send_hex", "send_ascii", "expect_silence",
+             "expect", "expect_regex", "expect_hex", "timeout_ms"}
+    unknown = set(block.keys()) - known
+    if unknown:
+        raise DiscoveryHintError(
+            f"{driver_id}: discovery.{at} has unknown keys: {sorted(unknown)}"
+        )
+
+    return ProbeFollowUp(
+        send=send,
+        expect_silence=expect_silence,
+        response_match=response_match,
+        timeout_ms=timeout_ms,
+    )
+
+
 def _parse_probe(
     driver_id: str,
     kind: str,                       # "udp" | "tcp"
@@ -677,12 +783,15 @@ def _parse_probe(
             )
         extract.append(ExtractRule(field_name="manufacturer", value=mfg))
 
+    follow_up = _parse_follow_up(driver_id, where, kind, block.get("then"),
+                                 default_timeout_ms=timeout_ms)
+
     # Reject keys the parser doesn't understand, so typos surface.
     known = {
         "port", "send_hex", "send_ascii",
         "expect", "expect_regex", "expect_hex",
         "cross_vendor", "timeout_ms", "tls", "cert_subject",
-        "extract", "extract_manufacturer",
+        "extract", "extract_manufacturer", "then",
     }
     unknown = set(block.keys()) - known
     if unknown:
@@ -697,6 +806,7 @@ def _parse_probe(
         send=send,
         response_match=response_match,
         timeout_ms=timeout_ms,
+        follow_up=follow_up,
         cross_vendor=cross_vendor,
         extract=tuple(extract),
         tls=tls,

@@ -34,6 +34,7 @@ from typing import Sequence
 from openavc.discovery.hints import (
     CustomProbeSpec,
     ExtractRule,
+    ProbeFollowUp,
     RESERVED_EXTRACT_KEYS,
     ResponseMatch,
     describe_response_match,
@@ -364,6 +365,67 @@ async def run_udp_broadcast_probe(
 # ---------------------------------------------------------------------------
 
 
+async def _run_follow_up(
+    step: "ProbeFollowUp",
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    probe_id: str,
+    target: str,
+    port: int,
+) -> bool:
+    """Run a probe's second exchange on the established connection.
+
+    Returns True when the step's expectation held.
+
+    For ``expect_silence`` the whole timeout is spent proving a negative, so it
+    cannot short-circuit the way a matcher can: the device gets the full window
+    to answer, and only an empty read counts as a pass. That is the price of
+    identifying by absence, and it is why the step carries its own (usually
+    shorter) ``timeout_ms``.
+    """
+    timeout = step.timeout_ms / 1000.0
+    writer.write(step.send)
+    try:
+        await asyncio.wait_for(writer.drain(), timeout=timeout)
+    except (TimeoutError, asyncio.TimeoutError):
+        pass
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    acc = bytearray()
+    while loop.time() < deadline and len(acc) < _MAX_RESPONSE_BYTES:
+        remaining = deadline - loop.time()
+        # A silence step waits out the full window; a matching step may stop
+        # early once its pattern lands.
+        read_timeout = (
+            remaining if step.expect_silence or not acc
+            else min(_PROBE_READ_QUIET_SECONDS, remaining)
+        )
+        try:
+            chunk = await asyncio.wait_for(
+                reader.read(_MAX_RESPONSE_BYTES - len(acc)),
+                timeout=read_timeout,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            break
+        if not chunk:
+            break  # peer closed
+        acc += chunk
+        if step.expect_silence:
+            break  # it spoke; that is the answer, no need to read more
+        if _matches(bytes(acc), step.response_match):
+            break
+
+    if step.expect_silence:
+        ok = not acc
+        log.debug(
+            "probe_runner: %s follow-up silence check on %s:%d -> %s (%d bytes)",
+            probe_id, target, port, "silent" if ok else "answered", len(acc),
+        )
+        return ok
+    return _matches(bytes(acc), step.response_match)
+
+
 async def run_tcp_active_probe(
     spec: CustomProbeSpec,
     *,
@@ -434,6 +496,10 @@ async def run_tcp_active_probe(
 
     cert_subject_str = ""
     payload = b""
+    # None = no follow-up declared; True/False = it ran and passed/failed. A
+    # declared follow-up that never ran (connection died first) stays None and
+    # is treated as a miss below -- an unanswered question is not a pass.
+    follow_up_ok: bool | None = None
     try:
         # Self-signed identity certs carry the model (NVX: CN=DM-NVX-E20-<mac>).
         if spec.tls and (spec.cert_subject is not None or spec.extract):
@@ -480,6 +546,13 @@ async def run_tcp_active_probe(
                 if _matches(bytes(acc), match):
                     break  # fingerprint satisfied — return immediately
             payload = bytes(acc)
+
+        # Follow-up step, on the SAME connection. Only worth running when the
+        # first exchange already matched — otherwise this is not the device.
+        if spec.follow_up is not None and _matches(payload, spec.response_match):
+            follow_up_ok = await _run_follow_up(
+                spec.follow_up, reader, writer, spec.probe_id, target, spec.port,
+            )
     except (ConnectionResetError, BrokenPipeError, OSError) as exc:
         log.debug(
             "probe_runner: %s read from %s:%d failed: %s",
@@ -501,6 +574,12 @@ async def run_tcp_active_probe(
         return None
     # The payload matcher (if any) must still pass; an empty matcher passes.
     if not _matches(payload, spec.response_match):
+        return None
+    if spec.follow_up is not None and follow_up_ok is not True:
+        log.debug(
+            "probe_runner: %s follow-up not satisfied for %s:%d",
+            spec.probe_id, target, spec.port,
+        )
         return None
 
     reserved, extracted = _apply_extract(payload, spec.extract)

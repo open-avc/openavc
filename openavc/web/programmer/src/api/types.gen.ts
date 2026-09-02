@@ -659,6 +659,19 @@ export interface DriverDiscoveryProbe {
   timeout_ms?: number;
   extract?: Record<string, DriverDiscoveryExtractRule>;
   extract_manufacturer?: string;
+  /**
+   * A second exchange on the same connection, run only after the first one
+   * matched. Exists for identification by ABSENCE: where one model's parameter
+   * set is a strict subset of a bigger sibling's, nothing the small one
+   * answers is unique to it, and the only discriminator is a question the BIG
+   * one answers and the small one does not. Declare send_ascii/send_hex plus
+   * either expect_silence: true (this device must NOT answer) or a matcher
+   * (expect / expect_regex / expect_hex) for a second positive step. tcp_probe
+   * only -- a UDP probe has no connection to reuse. Optional timeout_ms; a
+   * silence step spends the whole window proving the negative, so keep it
+   * short. Platform >= 0.32.0. Requires platform 0.32.0.
+   */
+  then?: { send_ascii?: string; send_hex?: string; expect_silence?: boolean; expect?: string; expect_regex?: string; expect_hex?: string; timeout_ms?: number };
 }
 
 export interface DriverDiscoveryPython {

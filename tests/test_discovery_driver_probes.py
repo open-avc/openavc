@@ -1349,3 +1349,185 @@ class TestCertSubjectProbe:
             await server.wait_closed()
 
         assert ev is None, "non-matching cert subject must not identify the device"
+
+
+# ---------------------------------------------------------------------------
+# Follow-up step (`then:`) — identification by absence
+# ---------------------------------------------------------------------------
+
+
+class TestProbeFollowUpParsing:
+    """The `then:` block's schema rules."""
+
+    def _hint(self, then_block, kind="tcp"):
+        return parse_driver_discovery({
+            "id": "acme_console",
+            "discovery": {f"{kind}_probe": {
+                "port": 4321,
+                "send_hex": "01 02",
+                "expect_hex": "01 02",
+                "then": then_block,
+            }},
+        })
+
+    def test_a_silence_step_parses(self):
+        hint = self._hint({"send_hex": "0A 0B", "expect_silence": True})
+        step = hint.tcp_probe.follow_up
+        assert step is not None
+        assert step.send == b"\x0a\x0b"
+        assert step.expect_silence is True
+
+    def test_a_second_positive_step_parses(self):
+        hint = self._hint({"send_ascii": "PING\r", "expect": "PONG"})
+        step = hint.tcp_probe.follow_up
+        assert step.expect_silence is False
+        assert step.response_match.contains == "PONG"
+
+    def test_a_probe_without_then_has_no_follow_up(self):
+        hint = parse_driver_discovery({
+            "id": "acme", "discovery": {"tcp_probe": {
+                "port": 1, "send_hex": "01", "expect_hex": "01"}}})
+        assert hint.tcp_probe.follow_up is None
+
+    def test_silence_and_a_matcher_together_are_rejected(self):
+        """A step that expects no answer cannot also describe one."""
+        with pytest.raises(DiscoveryHintError, match="cannot also match"):
+            self._hint({"send_hex": "0A", "expect_silence": True,
+                        "expect_hex": "0B"})
+
+    def test_a_step_with_no_expectation_is_rejected(self):
+        with pytest.raises(DiscoveryHintError, match="declares no expectation"):
+            self._hint({"send_hex": "0A"})
+
+    def test_a_step_that_asks_nothing_is_rejected(self):
+        with pytest.raises(DiscoveryHintError, match="has to ask something"):
+            self._hint({"expect_silence": True})
+
+    def test_unknown_keys_are_rejected(self):
+        with pytest.raises(DiscoveryHintError, match="unknown keys"):
+            self._hint({"send_hex": "0A", "expect_silence": True, "wat": 1})
+
+    def test_a_udp_probe_cannot_declare_one(self):
+        """A follow-up reuses an established connection; UDP has none."""
+        with pytest.raises(DiscoveryHintError, match="only valid on a tcp_probe"):
+            self._hint({"send_hex": "0A", "expect_silence": True}, kind="udp")
+
+    def test_the_step_timeout_defaults_to_the_probe_timeout(self):
+        hint = self._hint({"send_hex": "0A", "expect_silence": True})
+        assert hint.tcp_probe.follow_up.timeout_ms == hint.tcp_probe.timeout_ms
+
+    def test_the_step_timeout_can_be_shortened(self):
+        hint = self._hint({"send_hex": "0A", "expect_silence": True,
+                           "timeout_ms": 400})
+        assert hint.tcp_probe.follow_up.timeout_ms == 400
+
+
+class TestProbeFollowUpRunner:
+    """Running a follow-up against a real socket.
+
+    The shape under test is the real one that motivated the feature: two
+    consoles share a protocol, the smaller one's address space is a strict
+    SUBSET of the larger one's, and the only thing that separates them is an
+    address the LARGER one answers and the smaller does not.
+    """
+
+    SHARED = "B0 63 00 B0 62 44 B0 60 7F"     # both models answer
+    BIG_ONLY = "B0 63 00 B0 62 27 B0 60 7F"   # only the larger model answers
+
+    @staticmethod
+    def _reply(msb, lsb):
+        return bytes([0xB0, 0x63, msb, 0xB0, 0x62, lsb,
+                      0xB0, 0x06, 0x00, 0xB0, 0x26, 0x00])
+
+    async def _serve(self, answers):
+        async def handle(reader, writer):
+            try:
+                while True:
+                    data = await asyncio.wait_for(reader.read(64), timeout=3.0)
+                    if not data:
+                        break
+                    i = 0
+                    while i + 9 <= len(data):
+                        if data[i + 1] == 0x63 and data[i + 7] == 0x60:
+                            msb, lsb = data[i + 2], data[i + 5]
+                            if answers(msb, lsb):
+                                writer.write(self._reply(msb, lsb))
+                                await writer.drain()
+                            i += 9
+                        else:
+                            i += 1
+            except (asyncio.TimeoutError, ConnectionResetError, OSError):
+                pass
+            finally:
+                try:
+                    writer.close()
+                except OSError:
+                    pass
+        return await asyncio.start_server(handle, "127.0.0.1", 0)
+
+    def _spec(self, port, then_block):
+        hint = parse_driver_discovery({
+            "id": "acme_console",
+            "discovery": {"tcp_probe": {
+                "port": port,
+                "send_hex": self.SHARED,
+                "expect_hex": "B0 63 00 B0 62 44",
+                "timeout_ms": 1500,
+                "then": then_block,
+            }},
+        })
+        return hint.tcp_probe
+
+    async def _run(self, answers, then_block):
+        server = await self._serve(answers)
+        port = server.sockets[0].getsockname()[1]
+        try:
+            return await run_tcp_active_probe(
+                self._spec(port, then_block),
+                target="127.0.0.1", source_ip="127.0.0.1",
+            )
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    # The small model: answers the shared address, silent on the big-only one.
+    @staticmethod
+    def _small(msb, lsb):
+        return msb == 0x00 and lsb == 0x44
+
+    # The big model: answers both.
+    @staticmethod
+    def _big(msb, lsb):
+        return msb == 0x00 and lsb in (0x44, 0x27)
+
+    SILENCE_STEP = {"send_hex": BIG_ONLY, "expect_silence": True,
+                    "timeout_ms": 500}
+
+    @pytest.mark.asyncio
+    async def test_the_small_model_matches_because_it_stays_silent(self):
+        assert await self._run(self._small, self.SILENCE_STEP) is not None
+
+    @pytest.mark.asyncio
+    async def test_the_big_model_is_rejected_because_it_answers(self):
+        """Without the follow-up both models match the first exchange, so the
+        bigger one would be confidently mis-identified as the smaller."""
+        assert await self._run(self._big, self.SILENCE_STEP) is None
+
+    @pytest.mark.asyncio
+    async def test_a_device_that_answers_nothing_still_does_not_match(self):
+        """Silence on the second step must not rescue a failed first step."""
+        assert await self._run(lambda msb, lsb: False, self.SILENCE_STEP) is None
+
+    @pytest.mark.asyncio
+    async def test_a_positive_follow_up_matches_only_the_big_model(self):
+        step = {"send_hex": self.BIG_ONLY, "expect_hex": "B0 63 00 B0 62 27",
+                "timeout_ms": 500}
+        assert await self._run(self._big, step) is not None
+        assert await self._run(self._small, step) is None
+
+    @pytest.mark.asyncio
+    async def test_evidence_still_describes_the_first_exchange(self):
+        ev = await self._run(self._small, self.SILENCE_STEP)
+        assert ev is not None
+        assert ev.data["kind"] == "probe"
+        assert ev.data["source_id"] == "custom_acme_console_tcp"

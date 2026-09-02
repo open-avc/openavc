@@ -1566,7 +1566,7 @@ discovery:
 | `mdns` | Fingerprint | mDNS service type the device announces. Bare string or list; list entries can be `{service, txt}` for TXT-record disambiguation when the service type is generic. |
 | `ssdp` | Fingerprint | UPnP device-type URN announced in SSDP `ST` / `NT` headers. Bare string or list; list entries can be `{device_type, model, manufacturer, friendly_name}` — the optional fields match the device's UPnP description exactly (case-insensitive), so several drivers can share a family-wide URN. |
 | `amx_ddp` | Fingerprint | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
-| `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cert_subject` (regex matched against the device's own TLS certificate subject — requires `tls: true`, and a probe carrying only `cert_subject` identifies the device by its certificate with nothing sent), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000). |
+| `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` / `expect_regex` / `expect_hex`. Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cert_subject` (regex matched against the device's own TLS certificate subject — requires `tls: true`, and a probe carrying only `cert_subject` identifies the device by its certificate with nothing sent), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000), `then` (a second exchange on the same connection — see "Identifying a device by what it does NOT answer" below). |
 | `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe`, except `timeout_ms` defaults to 2000 (vs 3000 for `tcp_probe`). |
 | `python` | Fingerprint | Sibling `<driver_id>_discovery.py` with `async def probe(ctx) -> None`. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Sub-fields: `file` (path relative to the driver) and optional `cross_vendor`. May also be written as a bare string — `python: ./my_driver_discovery.py` — when there is nothing to say but the path. **Works the same from a Python driver's `DRIVER_INFO`**, with the path relative to the `.py` file; see the note below. |
 | `oui` | Hint | MAC OUI prefixes (e.g. `["00:05:a6"]`). Drives the *possible* state and the "Unknown device, vendor: …" display. |
@@ -1574,6 +1574,42 @@ discovery:
 | `port_open` | Hint | TCP ports the device leaves open (e.g. `[1710, 4352]`). Generic web/SSH ports (22, 80, 443, 8000, 8080, 8443, 8888) are disallowed. |
 | `manufacturer_alias` | Hint | Manufacturer / make strings the device returns when a scan captures one (probe response, AMX DDP `make`, ONVIF Manufacturer field, etc.). Case-insensitive exact match after whitespace strip. List every variant. Multiple drivers may share an alias. |
 | `snmp_pen` | Hint | IANA Private Enterprise Number. |
+
+**Identifying a device by what it does NOT answer.** Some product families are
+nested: the smaller model's command set is a strict subset of the bigger one's.
+When that happens there is no question only the small model answers, so a
+single send/expect pair cannot tell them apart — and a fingerprint that matches
+both will confidently label every big console as the small one, which is worse
+than not identifying it at all.
+
+The discriminator in that situation runs backwards: there is a question the BIG
+model answers and the small one ignores. A `then:` block expresses exactly
+that. It runs as a second exchange on the same connection, only after the first
+one matched:
+
+```yaml
+discovery:
+  tcp_probe:
+    port: 51325
+    send_hex: "B0 63 00 B0 62 44 B0 60 7F"   # both models answer this
+    expect_hex: "B0 63 00 B0 62 44"
+    then:
+      send_hex: "B0 63 00 B0 62 27 B0 60 7F" # only the bigger model has this
+      expect_silence: true                    # so ours must stay quiet
+      timeout_ms: 600
+```
+
+`expect_silence: true` inverts the step — the probe matches only when the
+device sends nothing back. A `then:` block can instead carry its own `expect` /
+`expect_regex` / `expect_hex` for a second *positive* step, in which case both
+halves must match. It is `tcp_probe` only: a UDP probe is a fire-and-forget
+broadcast with no connection to reuse.
+
+Two things to keep in mind. A silence step has to spend its whole timeout
+proving the negative — it cannot stop early the way a matcher can — so give it
+a short `timeout_ms` rather than inheriting the probe's. And silence on the
+second step never rescues a failed first step: the device still has to identify
+itself positively before the absence means anything.
 
 #### Validation rules
 

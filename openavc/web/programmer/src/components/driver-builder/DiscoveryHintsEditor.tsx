@@ -535,6 +535,62 @@ function ProbeBlock({
     onChange(rest);
   };
 
+  // The follow-up step. It exists for a device whose parameter set is a strict
+  // subset of a bigger sibling's: nothing it answers is unique to it, so the
+  // only discriminator is a question the BIG one answers and this one ignores.
+  const follow = probe.then;
+  const followMode: "silence" | "expect" | "expect_regex" | "expect_hex" =
+    !follow || follow.expect_silence
+      ? "silence"
+      : follow.expect_regex !== undefined
+        ? "expect_regex"
+        : follow.expect_hex !== undefined
+          ? "expect_hex"
+          : "expect";
+
+  const setFollowEnabled = (next: boolean) => {
+    if (next) {
+      onChange({
+        ...probe,
+        then: { send_hex: "", expect_silence: true, timeout_ms: 600 },
+      });
+      return;
+    }
+    const { then: _t, ...rest } = probe;
+    onChange(rest);
+  };
+
+  const patchFollow = (patch: Record<string, unknown>) => {
+    if (!follow) return;
+    onChange({ ...probe, then: { ...follow, ...patch } });
+  };
+
+  const setFollowSend = (val: string) => {
+    if (!follow) return;
+    const { send_ascii: _a, send_hex: _h, ...rest } = follow;
+    onChange({ ...probe, then: { ...rest, send_hex: val } });
+  };
+
+  const setFollowMode = (mode: typeof followMode) => {
+    if (!follow) return;
+    const carry =
+      follow.expect ?? follow.expect_regex ?? follow.expect_hex ?? "";
+    const {
+      expect_silence: _s,
+      expect: _e,
+      expect_regex: _r,
+      expect_hex: _h,
+      ...rest
+    } = follow;
+    // Silence and a matcher are mutually exclusive — the loader refuses a step
+    // that declares both, so the editor cannot produce that combination.
+    if (mode === "silence") {
+      onChange({ ...probe, then: { ...rest, expect_silence: true } });
+    } else {
+      onChange({ ...probe, then: { ...rest, [mode]: carry } });
+    }
+  };
+
   const expectPlaceholder =
     expectMode === "expect_regex"
       ? "^NS-([A-Z0-9]+)"
@@ -670,6 +726,90 @@ function ProbeBlock({
               certificate subject and no send/expect matches on the
               certificate alone.
             </div>
+
+            <div style={ROW}>
+              <span style={FIELD_W}>Second question</span>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!follow}
+                  onChange={(e) => setFollowEnabled(e.target.checked)}
+                />
+                ask something else on the same connection
+              </label>
+            </div>
+            {follow && (
+              <>
+                <div style={ROW}>
+                  <span style={FIELD_W}>Send</span>
+                  <input
+                    type="text"
+                    placeholder="B0 63 00 B0 62 27 B0 60 7F"
+                    value={follow.send_hex ?? follow.send_ascii ?? ""}
+                    onChange={(e) => setFollowSend(e.target.value)}
+                    style={MONO}
+                  />
+                </div>
+                <div style={ROW}>
+                  <span style={FIELD_W}>Expect</span>
+                  <select
+                    value={followMode}
+                    onChange={(e) =>
+                      setFollowMode(e.target.value as typeof followMode)
+                    }
+                  >
+                    <option value="silence">no answer</option>
+                    <option value="expect">substring</option>
+                    <option value="expect_regex">regex</option>
+                    <option value="expect_hex">hex prefix</option>
+                  </select>
+                  {followMode !== "silence" && (
+                    <input
+                      type="text"
+                      value={follow[followMode] ?? ""}
+                      onChange={(e) =>
+                        patchFollow({ [followMode]: e.target.value })
+                      }
+                      style={MONO}
+                    />
+                  )}
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    within
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={follow.timeout_ms ?? 600}
+                    onChange={(e) =>
+                      patchFollow({
+                        timeout_ms: parseInt(e.target.value) || 600,
+                      })
+                    }
+                    style={{ width: 80 }}
+                  />
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    ms
+                  </span>
+                </div>
+                <div style={{ ...HELP, marginTop: 0 }}>
+                  Use this when your device shares a protocol with a bigger
+                  model and answers nothing the bigger one doesn't. Ask for
+                  something only the bigger model has and set Expect to
+                  &ldquo;no answer&rdquo; &mdash; staying quiet is then what
+                  identifies yours. Proving silence costs the whole timeout,
+                  so keep it short.
+                </div>
+              </>
+            )}
           </>
         )}
 
