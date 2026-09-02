@@ -669,7 +669,7 @@ export interface DriverDiscoveryProbe {
    * (expect / expect_regex / expect_hex) for a second positive step. tcp_probe
    * only -- a UDP probe has no connection to reuse. Optional timeout_ms; a
    * silence step spends the whole window proving the negative, so keep it
-   * short. Platform >= 0.32.0. Requires platform 0.32.0.
+   * short. Platform >= 0.32.0.
    */
   then?: { send_ascii?: string; send_hex?: string; expect_silence?: boolean; expect?: string; expect_regex?: string; expect_hex?: string; timeout_ms?: number };
 }

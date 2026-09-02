@@ -2402,7 +2402,12 @@ DEFS = {
             },
             'then': {
                 'type': 'object',
-                'since': '0.32.0',
+                # Deliberately no `since`: that would raise the DRIVER's
+                # min_platform_version and make it uninstallable on every
+                # older platform for the sake of a discovery hint. Discovery
+                # features gate through the catalog's `requires:` key instead,
+                # which makes an old parser skip just the block -- the same
+                # way cert_subject does. The version lives in the doc string.
                 'doc': (
                     'A second exchange on the same connection, run only after '
                     'the first one matched. Exists for identification by '
