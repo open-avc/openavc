@@ -12,7 +12,7 @@
   /* Text */
   --text-primary: #e0e0e0;
   --text-secondary: #a0a8b0;
-  --text-muted: #6b7f89;
+  --text-muted: #8fa0a8;
   --text-on-accent: #ffffff;
 
   /* Accent — bright green for text/icons (7.5:1 on dark bg) */
@@ -24,9 +24,9 @@
   --accent-bg-hover: #5f9a73;
 
   /* Status */
-  --color-success: #4caf50;
+  --color-success: #4db251;
   --color-warning: #ff9800;
-  --color-error: #f44336;
+  --color-error: #f7766c;
   --color-info: #8AB493;
 
   /* Status backgrounds (15% opacity) */
@@ -83,7 +83,7 @@
 
   --text-primary: #1a1d21;
   --text-secondary: #555b65;
-  --text-muted: #7d838d;
+  --text-muted: #60656e;
   --text-on-accent: #ffffff;
 
   --accent: #3d654b;
@@ -92,9 +92,9 @@
   --accent-bg: #4a7d5c;
   --accent-bg-hover: #3d654b;
 
-  --color-success: #2e7d32;
-  --color-warning: #e65100;
-  --color-error: #c62828;
+  --color-success: #2a732e;
+  --color-warning: #b23f00;
+  --color-error: #c22727;
   --color-info: #3d654b;
 
   --color-success-bg: rgba(46, 125, 50, 0.10);
@@ -107,4 +107,58 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* Aliases for names the components actually ask for.
+ *
+ * These were not defined anywhere, and CSS fails a var() quietly: with a
+ * fallback the component got that literal -- several of which were colours
+ * picked for the dark theme, so `var(--accent-color, #8AB493)` in
+ * RestartProgressDialog drew sage-on-white at 2.33:1 -- and with no fallback
+ * the declaration is dropped, which is why some "extra small" text renders at
+ * the inherited size and some corners are square.
+ *
+ * Aliasing rather than renaming 158 references across 40 files: each one points
+ * at a canonical token, so every alias follows the theme and inherits whatever
+ * contrast the real token is held to by tests/test_theme_contrast.py. Prefer the
+ * canonical name in new code; that test's companion check fails the build if a
+ * name lands here that nothing defines.
+ */
+:root {
+  /* Status -- every one of these is the canonical status colour */
+  --danger: var(--color-error);
+  --color-danger: var(--color-error);
+  --error: var(--color-error);
+  --status-error: var(--color-error);
+  --status-error-bg: var(--color-error-bg);
+  --danger-dim: var(--color-error-bg);
+  --success: var(--color-success);
+  --status-success: var(--color-success);
+  --warning: var(--color-warning);
+  --bg-warning: var(--color-warning-bg);
+  --bg-info: var(--color-info-bg);
+
+  /* Accent */
+  --accent-color: var(--accent);
+  --color-accent: var(--accent);
+  --accent-text: var(--text-on-accent);
+  --accent-contrast: var(--text-on-accent);
+
+  /* Surfaces and text */
+  --text: var(--text-primary);
+  --border: var(--border-color);
+  --bg-input: var(--bg-elevated);
+  --bg-secondary: var(--bg-elevated);
+  --bg-main: var(--bg-primary);
+
+  /* Type and radius */
+  --font-size-xs: 11px;
+  --font-size-md: var(--font-size-base);
+  --font-sm: var(--font-size-sm);
+  --font-primary: var(--font-family);
+  --font-sans: var(--font-family);
+  --radius: var(--border-radius);
+  --radius-sm: 4px;
+  --radius-md: var(--border-radius);
+  --border-radius-lg: 8px;
 }
