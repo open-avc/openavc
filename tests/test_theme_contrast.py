@@ -124,74 +124,7 @@ def test_text_is_readable_on_every_surface(theme_name: str, text_token: str) -> 
     )
 
 
-# --- the other half: a token nothing defines ---------------------------------
-#
-# CSS fails a var() quietly. `var(--accent-color, #8AB493)` drew sage-on-white
-# at 2.33:1 in a dialog because --accent-color was defined nowhere and the
-# hardcoded fallback -- a dark-theme colour -- won; `font-size: var(--font-size-xs)`
-# with no fallback is dropped entirely and the text renders at the inherited
-# size. Neither shows up as an error anywhere, which is why both survived.
-#
-# So the contrast checks above are only worth as much as this one: they hold the
-# canonical tokens to AA, and this makes sure the components are actually using
-# them.
-
-SRC = TOKENS.parent.parent
-
-# The panel theme system defines these on the panel document at runtime, from
-# the user's chosen theme. They are legitimately absent from the IDE palette.
-RUNTIME_PREFIXES = ("--panel-",)
-
-
-def _defined_anywhere() -> set[str]:
-    """Every custom property this frontend defines.
-
-    Definitions are NOT only in .css: the Dashboard's QR page carries its own
-    ``:root`` inside a template literal, so a scan of stylesheets alone reports
-    its --ink / --sage-deep / --muted as undefined. They are not.
-    """
-    names: set[str] = set()
-    for path in _source_files():
-        names |= set(re.findall(r"(--[a-z0-9-]+)\s*:\s*[^;{]+;", _read(path)))
-    return names
-
-
-def _source_files() -> list[Path]:
-    return [
-        p
-        for pattern in ("*.ts", "*.tsx", "*.css")
-        for p in SRC.rglob(pattern)
-        if ".test." not in p.name and "node_modules" not in p.parts and "dist" not in p.parts
-    ]
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="ignore")
-
-
-def test_every_referenced_token_is_defined() -> None:
-    defined = _defined_anywhere()
-    missing: dict[str, set[str]] = {}
-    for path in _source_files():
-        for match in re.finditer(r"var\((--[a-z0-9-]+)", _read(path)):
-            name = match.group(1)
-            if name in defined or name.startswith(RUNTIME_PREFIXES):
-                continue
-            missing.setdefault(name, set()).add(path.relative_to(SRC).as_posix())
-
-    assert not missing, "custom properties referenced but never defined:\n" + "\n".join(
-        f"  {name}  <- {', '.join(sorted(files))}" for name, files in sorted(missing.items())
-    ) + (
-        "\nDefine it in styles/tokens.css (alias it to the canonical token) or use the "
-        "canonical name. A var() that resolves to nothing fails silently: with a hardcoded "
-        "fallback it ignores the theme, without one the declaration is dropped."
-    )
-
-
-def test_the_undefined_check_can_see_definitions_in_tsx() -> None:
-    # Guarding the guard: if _defined_anywhere only scanned .css, the Dashboard's
-    # in-template :root would be invisible and the check above would fail loudly
-    # on tokens that are perfectly fine. Pin that it reads those too.
-    assert "--sage-deep" in _defined_anywhere(), (
-        "definitions inside TSX template literals are not being seen"
-    )
+# Whether every var(--x) the IDE reads is a token that EXISTS is the other half
+# of this, and it already has a home: tests/test_ide_tokens.py. It is not
+# duplicated here. The split is that this file asks whether the palette is
+# readable, and that one asks whether the components are actually using it.
