@@ -30,6 +30,28 @@ def _mk(cls, *, device_id="dev", config=None):
     )
 
 
+async def _wait_until(predicate, *, timeout=5.0):
+    """Wait for `predicate` to hold, up to `timeout` seconds.
+
+    The polling tests below drive a real poll loop at a 10ms interval, so how
+    many polls land inside a fixed sleep is a fact about the machine rather
+    than about the code under test. Windows schedules on a ~15.6ms tick and a
+    loaded runner starves the loop further, which is enough to fail a sleep
+    sized on a developer box -- and it did, on the v0.32.0 release build.
+
+    Waiting on the condition instead is both faster when the machine is quick
+    and correct when it is not. The generous ceiling only decides how long a
+    genuine failure takes to report.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not predicate():
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(0.005)
+    return True
+
+
 class _FakeTransport:
     def __init__(self):
         self.closed = False
@@ -137,7 +159,16 @@ class TestDisconnectCleanup:
         drv.should_fail = True
 
         await drv.start_polling(0.01)
-        await asyncio.sleep(0.2)
+        # The watchdog tears down in a background task, and it nulls the live
+        # ref before awaiting the transport's own close(), so `closed` is the
+        # last effect to land. Wait for the whole teardown rather than for the
+        # first sign of it, then let the asserts below name what is missing.
+        await _wait_until(
+            lambda: fake.closed
+            and drv.transport is None
+            and drv.get_state("connected") is False
+        )
+        await drv.stop_polling()
 
         assert drv.get_state("connected") is False
         # M-094: the watchdog path closed + released the transport.
@@ -204,11 +235,13 @@ class TestMaxMissedPollsClamp:
         drv.set_state("connected", True)
 
         await drv.start_polling(0.01)
-        await asyncio.sleep(0.08)
+        # Wait for the polls themselves rather than for a wall-clock window:
+        # the claim is that two clean polls do not disconnect the device, so
+        # the two polls have to have happened before it means anything.
+        assert await _wait_until(lambda: drv.poll_count >= 2)
         await drv.stop_polling()
 
         assert drv.get_state("connected") is True
-        assert drv.poll_count >= 2
 
     async def test_non_numeric_falls_back_to_default(self):
         drv = _mk(_PollDriver, config={"max_missed_polls": "bogus"})
@@ -217,11 +250,11 @@ class TestMaxMissedPollsClamp:
         drv.should_fail = True
 
         await drv.start_polling(0.01)
-        await asyncio.sleep(0.25)
 
         # Falls back to the default of 3 and the watchdog still fires (rather
         # than crashing the poll loop on `0 >= "bogus"`).
-        assert drv.get_state("connected") is False
+        assert await _wait_until(lambda: drv.get_state("connected") is False)
+        await drv.stop_polling()
 
 
 # ── M-092 / M-093: numeric state-var defaults ──
