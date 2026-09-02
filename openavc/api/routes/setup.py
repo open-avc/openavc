@@ -305,7 +305,7 @@ _PAGE = """<!DOCTYPE html>
   </div>
 
   <div class="card" id="access-card" hidden>
-    <h2>Access From Another Computer</h2>
+    <h2>Access Over the Network</h2>
     <div class="field"><span class="label">Programmer</span><span class="value" id="url-programmer"></span></div>
     <div class="field"><span class="label">Panel</span><span class="value" id="url-panel"></span></div>
     <div class="field" id="row-other-urls" hidden><span class="label">Or Try</span><span class="value multiline" id="url-others"></span></div>
@@ -393,11 +393,11 @@ _PAGE = """<!DOCTYPE html>
         ? ' This controller is on more than one network -- if that address does not open, try the others listed below.'
         : '';
       if (s.state === 'setup') {
-        lede.innerHTML = 'From a laptop on the same network, open <strong></strong> and create the admin password to claim this controller.';
+        lede.innerHTML = 'From a browser on the same network, open <strong></strong> and create the admin password to claim this controller.';
         lede.querySelector('strong').textContent = url;
         lede.appendChild(document.createTextNode(tail));
       } else if (!s.panel_has_content) {
-        lede.innerHTML = 'From a laptop on the same network, open <strong></strong> and sign in to program this controller.';
+        lede.innerHTML = 'From a browser on the same network, open <strong></strong> and sign in to program this controller.';
         lede.querySelector('strong').textContent = url;
         lede.appendChild(document.createTextNode(tail));
       } else {

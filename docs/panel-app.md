@@ -12,7 +12,7 @@ The OpenAVC Panel app turns an Android or iOS tablet into a dedicated touch pane
 | Employee's personal phone, occasional use | No | Yes |
 | Dedicated panel that must survive end-user tampering | Yes | No |
 | Tablet that auto-launches the panel on power-up | Yes | No |
-| Quick check of room state from your laptop | No | Yes |
+| Quick check of room state from your desk | No | Yes |
 
 The app is free and open-source (MIT). The web panel inside it is identical to what a browser would show, so if the UI works for you in a browser it will work in the app.
 

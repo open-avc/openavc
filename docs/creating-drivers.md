@@ -263,7 +263,7 @@ This downloads an `.avcdriver` file you can share with other OpenAVC users, comm
 
 Click **Import from File** in the left panel. You have two options:
 
-- **Choose a file**: Click "Choose a .avcdriver file" to pick a driver definition file from your computer.
+- **Choose a file**: Click "Choose a .avcdriver file" to pick a driver definition file.
 - **Paste JSON/YAML**: Paste the definition text directly into the text area and click Import.
 
 The driver is validated, saved to `driver_repo/`, and immediately available for use.

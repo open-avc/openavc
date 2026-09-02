@@ -113,7 +113,7 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
       <img id="brand-logo" class="brand" src="${logoSrc}" alt="OpenAVC">
       <h1 class="headline">To control <span class="room">${room}</span>,<br>scan this QR code</h1>
       <div class="qr-wrap"><div class="qr">${qrSvg}</div></div>
-      <p class="steps"><b>1.</b> Open your phone or tablet camera &nbsp;&nbsp; <b>2.</b> Tap the link that appears</p>
+      <p class="steps"><b>1.</b> Open your camera &nbsp;&nbsp; <b>2.</b> Tap the link that appears</p>
       <div class="url">${safeUrl}</div>
     </div>
   </div>
@@ -178,7 +178,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
     <Dialog title="Scan to connect" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-md)" }}>
         <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center" }}>
-          Scan with a phone or tablet camera to open this OpenAVC system.
+          Scan this code to open this OpenAVC system.
         </div>
         <div
           style={{ width: 260, height: 260, background: "#fff", padding: "var(--space-sm)", borderRadius: "var(--border-radius)" }}
@@ -352,7 +352,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
         {isLocalOnly ? (
           <div style={{ fontSize: "var(--font-size-sm)" }}>
             <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-              The server is set to local-only access. To open the panel on a tablet or phone, go to{" "}
+              The server is set to local-only access. To open the panel from anywhere else on the network, go to{" "}
               <strong
                 onClick={() => useNavigationStore.getState().navigateTo("settings")}
                 style={{ color: "var(--accent)", cursor: "pointer" }}
@@ -365,7 +365,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
         ) : (
           <div style={{ fontSize: "var(--font-size-sm)" }}>
             <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-              Open this URL on a tablet, phone, or any device on the same network:
+              Open this URL from anywhere on the same network:
             </div>
             {panelUrl && (
               <div style={{
