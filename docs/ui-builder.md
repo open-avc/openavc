@@ -540,6 +540,30 @@ label or an indicator bound to a device's connection state. Most spaces should
 leave it on: without it, a control that reaches nothing looks exactly like a
 control that worked.
 
+### While a device is unreachable
+
+A control bound to a device the system cannot reach stops showing a value. It
+draws dimmed with a dashed edge, and where it would print a number it prints
+`--` instead: a fader loses its handle, a gauge empties its arc, a meter goes
+dark, a dropdown shows nothing, and a button bound to a device state goes back
+to its own label and colour rather than claiming the device is on or muted.
+
+This matters most on the controls that carry a number somebody acts on. A fader
+sitting at the top of its travel over `0.0 dB`, for an amplifier nobody can
+reach, is not a neutral wrong answer.
+
+The control still works. Pressing it sends the command and shows the failure
+band above, which is usually how somebody finds out. Nothing is disabled.
+
+Two things deliberately keep working: anything bound to a device's connection
+state (`connected`, `offline_reason`, `offline_detail`, the device's name) and
+anything bound to a variable. Those are the parts of the page that are still
+telling the truth, so put an indicator and a reason label on any page where
+knowing which device is out matters.
+
+A matrix is marked one destination at a time, so a matrix spanning two
+switchers keeps drawing the routes of the one that is still there.
+
 ## Themes
 
 The Theme Picker in Panel Settings shows visual cards with color swatches for each available theme. OpenAVC ships with 8 built-in themes:
