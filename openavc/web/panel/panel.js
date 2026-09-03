@@ -5928,22 +5928,36 @@ class PanelApp {
      * The same unavailable mark, one destination at a time.
      *
      * A matrix is the one control that can be half true, so it is marked per
-     * row rather than per element. Each style already tags its destination
-     * label with `data-output-idx`; the row that holds it is the container the
-     * mark belongs on, so nothing about the three renderers had to change.
+     * row rather than per element. Each style tags its destination label with
+     * `data-output-idx`, and two of the three hang that label inside a real
+     * row container the mark can go on.
+     *
+     * The crosspoint does not. It is a flat CSS grid -- a corner, one header
+     * per source, then for each destination its name followed by one cell per
+     * source -- with no element standing for a row and no `data-` on a cell.
+     * So its row is the header plus the siblings up to the next header, and it
+     * is marked node by node. Marking only the name would leave a row of live-
+     * looking crosspoints beside it, which is the thing this exists to stop.
      */
     _markMatrixAvailability(el, destOffline) {
-        const rows = [
+        const off = (i) => !!destOffline[i];
+        for (const [labelSel, rowSel] of [
             ['.matrix-tile-dest[data-output-idx]', '.matrix-tile'],
             ['.matrix-list-label[data-output-idx]', '.matrix-list-row'],
-            ['.matrix-output-header[data-output-idx]', 'tr'],
-        ];
-        for (const [labelSel, rowSel] of rows) {
+        ]) {
             el.querySelectorAll(labelSel).forEach(node => {
                 const row = node.closest(rowSel);
-                if (row) row.classList.toggle('device-offline', !!destOffline[parseInt(node.dataset.outputIdx)]);
+                if (row) row.classList.toggle('device-offline', off(parseInt(node.dataset.outputIdx)));
             });
         }
+        el.querySelectorAll('.matrix-output-header[data-output-idx]').forEach(header => {
+            const offline = off(parseInt(header.dataset.outputIdx));
+            let node = header;
+            do {
+                node.classList.toggle('device-offline', offline);
+                node = node.nextElementSibling;
+            } while (node && !node.classList.contains('matrix-output-header'));
+        });
     }
 
     /**

@@ -1173,9 +1173,22 @@
 /* A matrix is marked a row at a time, because one matrix can span several
    switchers and only some of them may be gone. */
 .matrix-tile.device-offline,
-.matrix-list-row.device-offline,
-.matrix-grid tr.device-offline {
+.matrix-list-row.device-offline {
     filter: grayscale(0.8) brightness(0.72);
+    outline: 0.1429rem dashed var(--panel-text, #fff);
+    outline-offset: -0.1429rem;
+}
+
+/* The crosspoint has no row element -- it is a flat grid of a destination
+   name followed by one cell per source -- so the whole row is dimmed node by
+   node and the dashed edge goes on the name alone. Boxing each crosspoint
+   would be noise, and dimming the cells is what stops an unlit dot in a dead
+   row reading the same as an unlit dot in a live one. */
+.matrix-grid .matrix-output-header.device-offline,
+.matrix-grid .matrix-cell.device-offline {
+    filter: grayscale(0.8) brightness(0.72);
+}
+.matrix-grid .matrix-output-header.device-offline {
     outline: 0.1429rem dashed var(--panel-text, #fff);
     outline-offset: -0.1429rem;
 }

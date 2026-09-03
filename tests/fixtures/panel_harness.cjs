@@ -2084,11 +2084,16 @@ const tests = {
 
     // A matrix can span several switchers, so going quiet about the live ones
     // because a third is down would be its own lie. It is marked per row.
+    //
+    // ALL THREE STYLES, deliberately: they are three different renderers and
+    // only the tile wall has a row element that looks like a row. Covering the
+    // tile wall alone is what let the crosspoint ship marking nothing at all --
+    // it is a flat CSS grid, so the `closest('tr')` that found a row in a table
+    // found null in a browser, silently, with this scenario green.
     q213_a_matrix_is_marked_one_destination_at_a_time() {
-        const app = mkApp();
-        const proj = project({
+        const proj = (style) => project({
             elements: [{
-                id: 'mx', type: 'matrix', matrix_style: 'tiles',
+                id: 'mx', type: 'matrix', matrix_style: style,
                 matrix_config: {
                     sources: [{ value: 1, label: 'Laptop' }, { value: 2, label: 'Cam' }],
                     destinations: [
@@ -2099,20 +2104,61 @@ const tests = {
             }],
             placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
         });
-        app.state = {
+        const state = () => ({
             'device.sw_a.connected': true, 'device.sw_a.route_1': 1,
             'device.sw_b.connected': false, 'device.sw_b.route_1': 2,
-        };
-        renderProject(app, proj);
-        const tiles = app.root.querySelectorAll('.matrix-tile');
+        });
+
+        // Tiles — one card per destination.
+        const tilesApp = mkApp();
+        tilesApp.state = state();
+        renderProject(tilesApp, proj('tiles'));
+        const tiles = tilesApp.root.querySelectorAll('.matrix-tile');
         assert(tiles.length === 2, `two destination tiles, got ${tiles.length}`);
         assert(!tiles[0].classList.contains('device-offline'),
-            'the live switcher keeps drawing its route');
+            'tiles: the live switcher keeps drawing its route');
         assert(tiles[1].classList.contains('device-offline'),
-            'the unreachable one is marked, and only it');
+            'tiles: the unreachable one is marked, and only it');
         const routed = tiles[1].querySelector('.matrix-tile-source');
         assert(!/Cam/.test(routed ? routed.textContent : ''),
-            `and does not name the source it last reported, got "${routed && routed.textContent}"`);
+            `tiles: and it does not name the source it last reported, got "${routed && routed.textContent}"`);
+
+        // List — one row per destination.
+        const listApp = mkApp();
+        listApp.state = state();
+        renderProject(listApp, proj('list'));
+        const rows = listApp.root.querySelectorAll('.matrix-list-row');
+        assert(rows.length === 2, `two list rows, got ${rows.length}`);
+        assert(!rows[0].classList.contains('device-offline'), 'list: the live row is untouched');
+        assert(rows[1].classList.contains('device-offline'), 'list: the dead row is marked');
+
+        // Crosspoint — a FLAT grid with no row element at all: a destination
+        // name followed by one cell per source. The whole row has to be marked
+        // node by node, or a row of live-looking crosspoints sits beside a
+        // name that says the device is gone.
+        const crossApp = mkApp();
+        crossApp.state = state();
+        renderProject(crossApp, proj('crosspoint'));
+        const headers = crossApp.root.querySelectorAll('.matrix-output-header[data-output-idx]');
+        assert(headers.length === 2, `two destination headers, got ${headers.length}`);
+        assert(!headers[0].closest('tr'),
+            'the crosspoint is a CSS grid, not a table -- if this ever fails, revisit the walk');
+        assert(!headers[0].classList.contains('device-offline'), 'crosspoint: live name untouched');
+        assert(headers[1].classList.contains('device-offline'), 'crosspoint: dead name marked');
+        const rowCells = (header) => {
+            const out = [];
+            let n = header.nextElementSibling;
+            while (n && !n.classList.contains('matrix-output-header')) { out.push(n); n = n.nextElementSibling; }
+            return out;
+        };
+        const live = rowCells(headers[0]);
+        const dead = rowCells(headers[1]);
+        assert(live.length === 2 && dead.length === 2,
+            `one cell per source in each row, got ${live.length} and ${dead.length}`);
+        assert(live.every(c => !c.classList.contains('device-offline')),
+            'crosspoint: not one cell of the live row is marked');
+        assert(dead.every(c => c.classList.contains('device-offline')),
+            'crosspoint: every cell of the dead row is marked, not just its name');
     },
 
     // The absent case is NOT the offline case. A panel drawn before its first
