@@ -1,6 +1,6 @@
 # OpenAVC v0.32.1
 
-Everything you download from a release is now signed, and an update that installs correctly can no longer be undone by a restart.
+Releases are now signed, so a system checks that an update is genuine before it installs it. An update that installs correctly can no longer be undone by a restart.
 
 ## Updates
 
