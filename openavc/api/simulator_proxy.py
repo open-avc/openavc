@@ -1,11 +1,17 @@
 """Serve the simulator UI on the main origin, at ``/simulator/``.
 
-The simulator runs as its own process with its own web server on 19500, and
-for a long time the Programmer simply told the browser to open
+The simulator runs as its own process with its own web server on a loopback
+port, and for a long time the Programmer simply told the browser to open
 ``http://localhost:19500``. That works on exactly one machine: the server's
 own. Open the IDE from a laptop -- which is how anyone actually commissions a
 room -- and ``localhost`` is the laptop, so the button led nowhere. Over the
 cloud tunnel it was worse: nothing was tunneling that port at all.
+
+Which port it is, is now nobody's business but ours: it is the configured one
+when that binds and the next one up when it does not (see
+``core/simulation._choose_ui_port``), so this proxy asks
+``active_simulator_ui_port()`` for the port the simulator actually got rather
+than the one that was requested.
 
 Binding 19500 to the LAN instead would have "fixed" it by putting an
 **unauthenticated** control API on the network. That API can mutate device
@@ -17,7 +23,8 @@ is no longer a second port.
 
 The UI cooperates by resolving its own mount prefix at runtime (``BASE`` in
 ``web/simulator/src/store/api.ts``) and by building with relative asset URLs,
-so one build serves both here and directly on 19500 for driver development.
+so one build serves both here and directly on the simulator's own port for
+driver development.
 """
 
 from __future__ import annotations
@@ -35,7 +42,7 @@ from openavc.api.auth import (
     get_ws_auth_subprotocol,
     require_programmer_auth,
 )
-from openavc.core.simulation import simulator_ui_port
+from openavc.core.simulation import active_simulator_ui_port
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -96,7 +103,7 @@ _UNAVAILABLE = (
 
 def _target(path: str) -> str:
     """The loopback URL for a path below the mount point."""
-    return f"http://127.0.0.1:{simulator_ui_port()}/{path.lstrip('/')}"
+    return f"http://127.0.0.1:{active_simulator_ui_port()}/{path.lstrip('/')}"
 
 
 @open_router.get(MOUNT)
@@ -223,7 +230,7 @@ async def simulator_ws_proxy(ws: WebSocket) -> None:
     # does for the platform's own socket.
     subprotocol = get_ws_auth_subprotocol(dict(ws.headers))
 
-    upstream_url = f"ws://127.0.0.1:{simulator_ui_port()}/ws"
+    upstream_url = f"ws://127.0.0.1:{active_simulator_ui_port()}/ws"
     try:
         upstream = await websockets.connect(upstream_url, open_timeout=5)
     except Exception as e:

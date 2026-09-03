@@ -85,7 +85,7 @@ def test_forwarding_many_requests_uses_one_client(client, monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "request", spy)
     # Port 9 is closed, so each call fails fast and answers 503 -- which is
     # fine: the client is chosen before the connection is attempted.
-    monkeypatch.setattr(simulator_proxy, "simulator_ui_port", lambda: 9)
+    monkeypatch.setattr(simulator_proxy, "active_simulator_ui_port", lambda: 9)
 
     for _ in range(5):
         assert client.get("/simulator/").status_code == 503

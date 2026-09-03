@@ -86,8 +86,22 @@ def test_port_in_use_message_points_at_the_setting():
     assert "simulation" in message
 
 
+@pytest.fixture
+def all_ports_bindable(monkeypatch):
+    """Take the machine's real port availability out of the question.
+
+    The allocator screens candidates by trying to bind them, so on a box that
+    happens to be running a simulator (or anything else) on the bottom of the
+    range, "the first port handed out is the base" is a statement about that
+    box rather than about the allocator. These tests are about the ordering.
+    """
+    monkeypatch.setattr(
+        SimulatorManager, "_port_is_bindable", lambda self, port: True
+    )
+
+
 @pytest.mark.parametrize("base", [19000, 29000])
-def test_device_ports_are_allocated_from_the_configured_base(base):
+def test_device_ports_are_allocated_from_the_configured_base(base, all_ports_bindable):
     manager = SimulatorManager(port_range_start=base)
     first = manager._allocate_port()
     manager._allocated_ports.add(first)
@@ -96,7 +110,7 @@ def test_device_ports_are_allocated_from_the_configured_base(base):
     assert second == base + 1
 
 
-def test_two_managers_on_different_bases_never_hand_out_the_same_port():
+def test_two_managers_on_different_bases_never_hand_out_the_same_port(all_ports_bindable):
     """The whole point: two instances can simulate at once."""
     a = SimulatorManager(port_range_start=19000)
     b = SimulatorManager(port_range_start=29000)

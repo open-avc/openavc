@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import logging
+import socket
 from pathlib import Path
 
 import yaml
@@ -37,6 +38,10 @@ PORT_RANGE_END = 19499
 # second absolute number so moving the base (two OpenAVC instances on one
 # machine need distinct ranges) moves the whole window with it.
 PORT_RANGE_WIDTH = PORT_RANGE_END - PORT_RANGE_START
+# How many ports a single device will try before giving up. Only spent when a
+# port passes the bindability probe and then fails the real bind, so this is a
+# race budget, not a scan — the scan is _allocate_port's job.
+_BIND_RACE_RETRIES = 3
 
 
 class SimulatorInfo:
@@ -224,24 +229,52 @@ class SimulatorManager:
         # state/responses; the BaseSimulator default is an empty dict.
         simulator.set_child_entities(child_entities or {})
 
-        # Allocate port
-        if port == 0:
-            port = self._allocate_port()
-        self._allocated_ports.add(port)
-
         # Inject network conditions layer
         simulator._network_layer = self.network
 
         # Add change listener for broadcasting
         simulator.add_change_listener(self._on_simulator_change)
 
-        # Start it. A bind/startup failure must release the reserved port so a
-        # transient collision doesn't permanently burn a slot from the pool.
+        # Allocate a port and start on it, moving to the next one if the bind
+        # loses a race with something else claiming it in between.
+        #
+        # A bind/startup failure must release the reserved port so a transient
+        # collision doesn't permanently burn a slot from the pool. That release
+        # is why the retry lives here: without it, the caller's next device
+        # asks for the lowest free port and is handed the same one back.
+        # ``_allocate_port`` now screens for bindability, so reaching this
+        # retry at all means the port went bad between the probe and the bind —
+        # rare, and precisely the case a single attempt cannot survive.
+        #
+        # Only an auto-allocated port may be moved: a caller that named one
+        # asked for that port specifically and gets its error.
+        auto = port == 0
+        attempts = _BIND_RACE_RETRIES if auto else 1
+        # A port that just failed to bind stays marked allocated for the rest
+        # of the loop, so the next _allocate_port call steps over it instead of
+        # handing back the number that only just failed. Everything except the
+        # winner is released once we are done either way.
+        tried: set[int] = set()
         try:
-            await simulator.start(port)
+            for attempt in range(attempts):
+                chosen = self._allocate_port() if auto else port
+                tried.add(chosen)
+                self._allocated_ports.add(chosen)
+                try:
+                    await simulator.start(chosen)
+                    break
+                except OSError as e:
+                    if not auto or attempt == attempts - 1:
+                        raise
+                    logger.warning(
+                        "Port %d failed to bind for %s (%s); trying another",
+                        chosen, device_id, e,
+                    )
         except Exception:
-            self._allocated_ports.discard(port)
+            self._allocated_ports -= tried
             raise
+        self._allocated_ports -= tried - {chosen}
+        port = chosen
         self._instances[device_id] = simulator
 
         logger.info(
@@ -321,16 +354,49 @@ class SimulatorManager:
         else:
             raise ValueError(f"Unknown simulator source: {info.source}")
 
+    def _port_is_bindable(self, port: int) -> bool:
+        """Whether this process could actually listen on ``port`` right now.
+
+        A trial bind, not a connect, and the difference is the whole reason
+        this exists. "Is anyone listening?" and "may I listen?" are different
+        questions, and on Windows they routinely disagree: Hyper-V, WSL and
+        Docker reserve blocks of ports at boot, and a reserved port has nobody
+        listening on it *and* refuses to be bound (WSAEACCES / WinError 10013).
+        A connect probe calls that port free, hands it out, and the bind fails
+        a moment later inside the simulator.
+
+        Overridable so tests can decide what is bindable without depending on
+        which ports happen to be free on the machine running them.
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
     def _allocate_port(self) -> int:
-        """Allocate the lowest free port from the range.
+        """Allocate the lowest usable port from the range.
 
         Scans the whole range each call so a port released by a failed start or
         a stopped device is reused, instead of a monotonic cursor that only ever
         advances and shrinks the usable pool until restart.
+
+        "Usable" means unreserved by us *and* actually bindable. Checking only
+        our own set is what turned one unusable port into a whole simulation
+        with no devices in it: a failed start releases its port (deliberately —
+        a transient collision must not burn a slot), so the next device asked
+        for the lowest free port, got the same dead number, and failed the same
+        way. Eleven devices, eleven identical failures, and a simulator that
+        came up reporting no error of its own.
         """
         for port in range(self._port_start, self._port_end + 1):
-            if port not in self._allocated_ports:
-                return port
+            if port in self._allocated_ports:
+                continue
+            if not self._port_is_bindable(port):
+                logger.debug("Port %d is not bindable; trying the next one", port)
+                continue
+            return port
         raise RuntimeError(
             f"No available ports in range {self._port_start}-{self._port_end}"
         )

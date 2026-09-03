@@ -71,6 +71,32 @@ def simulator_ui_port() -> int:
         return SIMULATOR_UI_PORT
 
 
+# The port the RUNNING simulator actually got, which is not always the one
+# that was configured — see _choose_ui_port. Process-global because there is
+# one simulator per server process, and because the proxy in api/simulator_proxy
+# needs it without holding a reference to the engine.
+_running_ui_port: int | None = None
+
+
+def set_running_ui_port(port: int | None) -> None:
+    """Record (or clear) the port the live simulator is actually serving on."""
+    global _running_ui_port
+    _running_ui_port = port
+
+
+def active_simulator_ui_port() -> int:
+    """Where the simulator is reachable *now*.
+
+    The running port when there is one, the configured port otherwise. Anything
+    proxying to or polling the simulator must ask this rather than
+    ``simulator_ui_port()``: the configured value is a preference, and when it
+    is unavailable the simulator is started somewhere else on purpose.
+    """
+    if _running_ui_port is not None:
+        return _running_ui_port
+    return simulator_ui_port()
+
+
 def simulator_device_port_base() -> int:
     """First port of the per-device simulator range.
 
@@ -98,6 +124,26 @@ _ADDRESS_IN_USE_MARKERS = (
     "10048",
 )
 
+# The OTHER way a bind fails, and the one that cost a working simulator a
+# 45-second failure with nothing in it that named the cause. Windows lets
+# Hyper-V, WSL and Docker reserve blocks of ports at boot; a reserved port has
+# nobody listening on it and still refuses to be bound, with WSAEACCES
+# (WinError 10013) rather than "in use". POSIX raises EACCES for the same shape
+# of refusal on a privileged port. Kept apart from the in-use table because the
+# advice differs: nothing is holding this port, so "stop the other instance"
+# is the wrong thing to tell someone.
+# How far above the configured port to look for one that will bind. Wide
+# enough to clear a reserved block (Windows reserves them in hundreds) without
+# wandering somewhere unrecognisable.
+_UI_PORT_SEARCH_SPAN = 200
+
+_PERMISSION_DENIED_MARKERS = (
+    "forbidden by its access permissions",
+    "10013",
+    "errno 13",
+    "permission denied",
+)
+
 
 def _port_is_taken(port: int, host: str = "127.0.0.1") -> bool:
     """True when something is already listening on ``host:port``.
@@ -115,10 +161,39 @@ def _port_is_taken(port: int, host: str = "127.0.0.1") -> bool:
             return False
 
 
+def _port_is_bindable(port: int, host: str = "127.0.0.1") -> bool:
+    """True when this process could actually listen on ``host:port`` now.
+
+    The question ``_port_is_taken`` does not ask. A connect probe answers "is
+    anyone serving here?", which is the right question for "did another
+    instance leave a simulator running" and the wrong one for "may I have this
+    port": a port reserved by Hyper-V/WSL/Docker has nobody listening on it and
+    cannot be bound. That gap is exactly how a reserved 19500 passed the
+    pre-flight, and the failure only surfaced inside uvicorn a moment later.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((host, port))
+        return True
+    except OSError:
+        return False
+
+
 def _is_address_in_use(stderr: str) -> bool:
-    """True when the subprocess said it could not bind its listening socket."""
+    """True when the subprocess said its port was already occupied."""
     lowered = stderr.lower()
     return any(marker in lowered for marker in _ADDRESS_IN_USE_MARKERS)
+
+
+def _is_permission_denied(stderr: str) -> bool:
+    """True when the subprocess was refused its port rather than out-raced."""
+    lowered = stderr.lower()
+    return any(marker in lowered for marker in _PERMISSION_DENIED_MARKERS)
+
+
+def _is_bind_failure(stderr: str) -> bool:
+    """True when the subprocess could not get its listening socket, either way."""
+    return _is_address_in_use(stderr) or _is_permission_denied(stderr)
 
 
 def _port_in_use_message(ui_port: int | None = None) -> str:
@@ -134,6 +209,40 @@ def _port_in_use_message(ui_port: int | None = None) -> str:
         f'ports under "simulation" in system.json, and start simulation '
         f"again."
     )
+
+
+def _port_unavailable_message(preferred: int, tried: int) -> str:
+    """What to tell someone when no port in the search window would bind."""
+    return (
+        f"The simulator could not start: no port between {preferred} and "
+        f"{preferred + tried - 1} could be opened for the Simulator UI. "
+        f"Usually that means another OpenAVC instance is simulating on this "
+        f"machine, or a simulator left running by a previous instance that "
+        f"exited without stopping it. On Windows a range of ports can also be "
+        f"reserved by Hyper-V, WSL or Docker — "
+        f"`netsh interface ipv4 show excludedportrange protocol=tcp` lists "
+        f"them. Stop the other instance's simulation, or give this instance "
+        f'its own ports under "simulation" in system.json, and start '
+        f"simulation again."
+    )
+
+
+def _choose_ui_port(preferred: int, span: int = _UI_PORT_SEARCH_SPAN) -> int:
+    """The port to actually start the Simulator UI on.
+
+    Returns ``preferred`` when it will bind, else the next port above it that
+    will. The number is deliberately allowed to move, because nothing
+    user-facing depends on it any more: the browser reaches the simulator at
+    ``/simulator/`` on this server's own origin (see api/simulator_proxy), so
+    the port is an implementation detail between this process and its child.
+    Holding out for one fixed number turned a recoverable condition — a port
+    reserved by Hyper-V, or a simulator stranded by a previous crash — into a
+    dead feature with no way out from inside the app.
+    """
+    for port in range(preferred, preferred + span):
+        if _port_is_bindable(port):
+            return port
+    raise RuntimeError(_port_unavailable_message(preferred, span))
 
 
 def _startup_failure_message(returncode: int | None, stderr: str) -> str:
@@ -154,6 +263,15 @@ def _startup_failure_message(returncode: int | None, stderr: str) -> str:
     """
     if _is_address_in_use(stderr):
         return _port_in_use_message()
+    if _is_permission_denied(stderr):
+        return (
+            "The simulator could not start: the operating system refused it "
+            "the port it serves the Simulator UI on. On Windows that usually "
+            "means the port sits inside a range reserved by Hyper-V, WSL or "
+            "Docker — `netsh interface ipv4 show excludedportrange "
+            'protocol=tcp` lists them. Set a different "ui_port" under '
+            '"simulation" in system.json and start simulation again.'
+        )
     return (
         f"Simulator exited with code {returncode}. "
         f"stderr: {stderr[:500]} (stdout in simulator.stdout logs)"
@@ -294,7 +412,14 @@ class SimulationManager:
         if not driver_paths:
             raise RuntimeError("No driver paths found")
 
-        ui_port = simulator_ui_port()
+        # Pick a port we have just proved we can bind, rather than asserting
+        # the configured one and finding out inside the child process.
+        ui_port = _choose_ui_port(simulator_ui_port())
+        if ui_port != simulator_ui_port():
+            log.warning(
+                "Simulator UI port %d is unavailable; using %d instead",
+                simulator_ui_port(), ui_port,
+            )
         sim_config = {
             "driver_paths": driver_paths,
             "devices": devices_config,
@@ -317,17 +442,17 @@ class SimulationManager:
         config_path = config_file.name
         self._config_path = config_path
 
-        # Ask before spawning, rather than reading the wreckage afterwards.
-        # Uvicorn reports a failed bind on stderr *after* "Application startup
-        # complete", sometimes in the same read and sometimes in a later one,
-        # so the readiness loop could see the marker, declare success, and go
-        # on to query the UI port — which the other instance's simulator
-        # answered. This instance then reported it was simulating with its
-        # devices redirected to a simulator it did not own. Checking first is
-        # deterministic and needs no guesses about uvicorn's wording.
-        if _port_is_taken(ui_port):
-            raise RuntimeError(_port_in_use_message(ui_port))
-
+        # _choose_ui_port has already proved this port binds, which is the
+        # pre-flight that used to live here. It replaced a connect probe that
+        # asked "is anyone listening?" — the wrong question, and the reason a
+        # port reserved by Hyper-V sailed through it. The check matters at all
+        # because uvicorn reports a failed bind on stderr *after* "Application
+        # startup complete", sometimes in the same read: the readiness loop saw
+        # the marker, declared success, and went on to query the UI port, which
+        # another instance's simulator answered. That instance then believed it
+        # was simulating while its devices pointed at a simulator it did not
+        # own. _await_simulator_ready now confirms the port answers *us* before
+        # returning, so neither half rests on guessing uvicorn's wording.
         log.info("Starting simulator with %d devices...", len(devices_config))
         log.info("Driver paths: %s", driver_paths)
         log.info("Config file: %s", config_path)
@@ -369,7 +494,7 @@ class SimulationManager:
 
         # Wait for the simulator to start up
         try:
-            await self._await_simulator_ready(self._process)
+            await self._await_simulator_ready(self._process, ui_port)
         except RuntimeError:
             raise
         except Exception as e:
@@ -387,7 +512,10 @@ class SimulationManager:
         # Two different addresses, deliberately. The server talks to its own
         # subprocess over loopback; the BROWSER is told a path on this origin,
         # because it may be on another machine entirely (see api/simulator_proxy).
-        self._sim_ui_url = f"http://127.0.0.1:{sim_config['ui_port']}"
+        self._sim_ui_url = f"http://127.0.0.1:{ui_port}"
+        # The proxy and anything else reaching the simulator must follow it to
+        # the port it actually got, not the one that was asked for.
+        set_running_ui_port(ui_port)
 
         # Query the simulator API for actual port assignments instead of
         # assuming sequential allocation (ports may differ if some are busy)
@@ -438,6 +566,15 @@ class SimulationManager:
         # Redirect device connections
         await self._redirect_connections()
 
+        # Say it started only if it is still running. The redirect loop above
+        # takes a couple of seconds per device, which is ample time for a child
+        # that failed its bind to exit — and this line used to be printed
+        # anyway, immediately above "Simulator process exited (code 1)".
+        if self._process is not None and self._process.returncode is not None:
+            raise RuntimeError(
+                _startup_failure_message(self._process.returncode, "")
+            )
+
         log.info(
             "Simulation started: %d devices, UI at %s",
             len(self._sim_ports), self._sim_ui_url,
@@ -459,6 +596,7 @@ class SimulationManager:
     async def _await_simulator_ready(
         self,
         process: asyncio.subprocess.Process,
+        ui_port: int,
     ) -> None:
         """Block until the simulator subprocess reports it's accepting traffic.
 
@@ -512,13 +650,35 @@ class SimulationManager:
                 for line in text.splitlines():
                     if line.strip():
                         log.info("simulator.stderr: %s", line)
-                if _is_address_in_use(text):
+                if _is_bind_failure(text):
                     raise RuntimeError(_startup_failure_message(None, text))
                 if "Uvicorn running" in text or "Application startup complete" in text:
                     ready = True
                     break
 
-        if not ready and process.returncode is None:
+        # The marker is a claim, not proof. Uvicorn prints "Application startup
+        # complete" and *then* discovers it cannot bind, so a process that is
+        # about to exit says the same thing as one that is serving. Confirm by
+        # asking the port itself: if the simulator is up, it answers us.
+        if ready:
+            for _ in range(20):  # up to 2 seconds
+                if _port_is_taken(ui_port):
+                    return
+                if process.returncode is not None:
+                    stderr = ""
+                    if process.stderr:
+                        stderr = (await process.stderr.read()).decode(errors="replace")
+                    raise RuntimeError(
+                        _startup_failure_message(process.returncode, stderr)
+                    )
+                await asyncio.sleep(0.1)
+            log.warning(
+                "Simulator reported ready but port %d is not answering; proceeding",
+                ui_port,
+            )
+            return
+
+        if process.returncode is None:
             # Process is running but didn't report ready — assume it's ok.
             log.warning("Simulator started but readiness not confirmed; proceeding")
 
@@ -599,6 +759,7 @@ class SimulationManager:
         self._sim_tls.clear()
         self._original_configs.clear()
         self._sim_ui_url = None
+        set_running_ui_port(None)
         self._active = False
 
         # Update system state
@@ -623,6 +784,7 @@ class SimulationManager:
                     self._sim_tls.clear()
                     self._original_configs.clear()
                     self._sim_ui_url = None
+                    set_running_ui_port(None)
                     self._active = False
                     self.engine.state.set("system.simulation_active", False, source="simulation")
                     self.engine.state.set("system.simulation_ui_url", None, source="simulation")

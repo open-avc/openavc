@@ -57,7 +57,7 @@ def test_a_stopped_simulator_answers_plainly(client, monkeypatch):
     a developer with a simulator actually running would otherwise reach it and
     watch this fail for no reason.
     """
-    monkeypatch.setattr(simulator_proxy, "simulator_ui_port", lambda: 9)
+    monkeypatch.setattr(simulator_proxy, "active_simulator_ui_port", lambda: 9)
     r = client.get("/simulator/")
     assert r.status_code == 503
     assert "not running" in r.text.lower()
