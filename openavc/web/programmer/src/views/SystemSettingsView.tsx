@@ -109,6 +109,23 @@ const selectStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+// Idle-dim bounds, mirroring what the server clamps to on the way out
+// (openavc/api/routes/system.py). Applied on BLUR, never per keystroke:
+// clamping as the user types makes a field with a floor impossible to fill in,
+// because the first digit of "15" snaps to the minimum and the second lands
+// after it -- typing 15 gets you 55. Blur still shows the corrected number
+// before the save, so the field never claims a value that will not take.
+const DIM_MINUTES_MIN = 1;
+const DIM_MINUTES_MAX = 120;
+const DIM_PERCENT_MIN = 5;
+const DIM_PERCENT_MAX = 90;
+
+const clampMinutes = (n: number) =>
+  Number.isFinite(n) ? Math.min(Math.max(n, DIM_MINUTES_MIN), DIM_MINUTES_MAX) : 5;
+
+const clampPercent = (n: number) =>
+  Number.isFinite(n) ? Math.min(Math.max(n, DIM_PERCENT_MIN), DIM_PERCENT_MAX) : 20;
+
 const toggleRow: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -1769,14 +1786,18 @@ export function SystemSettingsView() {
             <label style={labelStyle}>Dim after</label>
             <input
               type="number"
-              min={1}
-              max={120}
+              min={DIM_MINUTES_MIN}
+              max={DIM_MINUTES_MAX}
               style={{ ...inputStyle, maxWidth: 120 }}
               value={Math.round(display.idle_dim_timeout_seconds / 60)}
-              onChange={(e) => {
-                const mins = Math.min(Math.max(Number(e.target.value) || 1, 1), 120);
-                update("display", "idle_dim_timeout_seconds", mins * 60);
-              }}
+              onChange={(e) => update(
+                "display", "idle_dim_timeout_seconds",
+                (parseInt(e.target.value) || 0) * 60,
+              )}
+              onBlur={(e) => update(
+                "display", "idle_dim_timeout_seconds",
+                clampMinutes(parseInt(e.target.value)) * 60,
+              )}
             />
             <span style={helpText}>Minutes with no touch before the panel dims.</span>
           </div>
@@ -1784,14 +1805,17 @@ export function SystemSettingsView() {
             <label style={labelStyle}>Dim to</label>
             <input
               type="number"
-              min={5}
-              max={90}
+              min={DIM_PERCENT_MIN}
+              max={DIM_PERCENT_MAX}
               style={{ ...inputStyle, maxWidth: 120 }}
               value={display.idle_dim_level_percent}
-              onChange={(e) => {
-                const pct = Math.min(Math.max(Number(e.target.value) || 5, 5), 90);
-                update("display", "idle_dim_level_percent", pct);
-              }}
+              onChange={(e) => update(
+                "display", "idle_dim_level_percent", parseInt(e.target.value) || 0,
+              )}
+              onBlur={(e) => update(
+                "display", "idle_dim_level_percent",
+                clampPercent(parseInt(e.target.value)),
+              )}
             />
             <span style={helpText}>Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening.</span>
           </div>
