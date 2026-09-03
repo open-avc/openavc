@@ -186,6 +186,18 @@ const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
 // first anyway -- and repaints when the theme finally lands.
 const FIRST_THEME_WAIT_MS = 1000;
 
+// The `device.<id>.*` properties the PLATFORM maintains rather than the device
+// reports. They describe the device -- whether it is reachable, what it is
+// called, whether it is enabled -- so they stay true while it is unreachable
+// and must keep rendering. `connected` above all: an LED bound to it IS the
+// offline report, and blanking that would hide the one honest thing on the
+// page. Everything else under `device.` came from the far end of a wire that
+// is no longer there. Kept in step with what core/device_manager.py writes.
+const DEVICE_PLATFORM_PROPS = new Set([
+    'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
+    'orphan_reason', 'orphaned', 'paused', 'reconnect_attempt', 'reconnect_failed',
+]);
+
 class PanelApp {
     constructor() {
         const params = new URLSearchParams(window.location.search);
@@ -2555,6 +2567,7 @@ class PanelApp {
                 outputMax: sOutputMax,
                 scaleToFull: sScaleToFull,
                 steps: STEPS,
+                unit: sUnit,
                 valueToPos,
                 fmtValue,
             });
@@ -2939,15 +2952,25 @@ class PanelApp {
     evaluateListSelected(b) {
         const { scrollArea, itemBg, itemActiveBg, selectedValues } = b._list;
         const value = this.state[b.binding.key];
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        const paint = () => scrollArea.querySelectorAll('.list-item').forEach(item => {
+            const isActive = selectedValues.has(item.dataset.value);
+            item.style.backgroundColor = isActive ? itemActiveBg : itemBg;
+            item.classList.toggle('active', isActive);
+        });
+        if (offline) {
+            // Nothing is selected while the device is unreachable. Left alone
+            // this is the quietest of the wrong answers: the row stays lit and
+            // nothing about it says the selection is a memory.
+            selectedValues.clear();
+            paint();
+            return;
+        }
         if (value !== undefined && value !== null) {
             selectedValues.clear();
             selectedValues.add(String(value));
-            // Update visuals
-            scrollArea.querySelectorAll('.list-item').forEach(item => {
-                const isActive = selectedValues.has(item.dataset.value);
-                item.style.backgroundColor = isActive ? itemActiveBg : itemBg;
-                item.classList.toggle('active', isActive);
-            });
+            paint();
         }
     }
 
@@ -3819,8 +3842,16 @@ class PanelApp {
         // exist. The RAW value is kept: the device decides what a routed source
         // looks like, and _routeMatches decides whether two of them name the
         // same thing.
+        //
+        // A destination whose own device cannot be reached reads as unreported
+        // rather than as whatever it last said. This is per destination, not
+        // per matrix: one matrix can span several switchers, and going quiet
+        // about the live ones because a third is down would be its own lie.
+        const destOffline = destinations.map(
+            d => !!(d.route_key && this._keyDeviceOffline(d.route_key)));
         const routes = destinations.map(
-            d => (d.route_key ? this.state[d.route_key] : undefined));
+            (d, i) => (d.route_key && !destOffline[i] ? this.state[d.route_key] : undefined));
+        this._markMatrixAvailability(el, destOffline);
 
         // The name of what the AUDIO is on, whenever it differs from the video.
         //
@@ -3832,7 +3863,8 @@ class PanelApp {
             const idx = parseInt(node.dataset.audioIdx);
             const dest = destinations[idx];
             const video = this._routeValue(routes[idx]);
-            const raw = dest?.audio_route_key ? this.state[dest.audio_route_key] : undefined;
+            const raw = dest?.audio_route_key && !this._keyDeviceOffline(dest.audio_route_key)
+                ? this.state[dest.audio_route_key] : undefined;
             const audio = this._routeValue(raw);
             // Only when BOTH are routed and they disagree. An unreported or
             // idle audio port is not a disagreement, it is an absence.
@@ -4150,13 +4182,17 @@ class PanelApp {
 
     evaluateGaugeValue(b) {
         const raw = this.state[b.binding.key];
+        const offline = this._bindingOffline(b);
         // Memoize: skip if unchanged (also short-circuits the undefined steady state)
-        if (b._lastGaugeRaw === raw) return;
+        if (b._lastGaugeRaw === raw && b._lastGaugeOffline === offline) return;
         b._lastGaugeRaw = raw;
+        b._lastGaugeOffline = offline;
+        this._markBindingAvailability(b, offline);
         const { fgPath, valueText, startAngle, endAngle, radius, min, max, unit, gaugeColor, zones, showValue, displayDecimals, arcPath: arcPathFn } = b._svg;
-        if (raw === undefined || raw === null) {
-            // Bound key was deleted (device removed/offline) — revert to the
-            // no-data placeholder instead of freezing on the last reading.
+        if (offline || raw === undefined || raw === null) {
+            // Nothing to draw — the key was deleted, or the device it comes
+            // from is unreachable. Either way the no-data placeholder, never a
+            // frozen last reading and never an arc at zero.
             fgPath.setAttribute('d', '');
             if (showValue) valueText.textContent = `--${unit}`;
             return;
@@ -4264,12 +4300,16 @@ class PanelApp {
 
     evaluateLevelMeterValue(b) {
         const raw = this.state[b.binding.key];
-        if (b._lastMeterRaw === raw) return;
+        const offline = this._bindingOffline(b);
+        if (b._lastMeterRaw === raw && b._lastMeterOffline === offline) return;
         b._lastMeterRaw = raw;
+        b._lastMeterOffline = offline;
+        this._markBindingAvailability(b, offline);
         const { segments, min, max, bar, showPeak, peakHoldMs } = b._meter;
         const segs = bar.querySelectorAll('.meter-segment');
-        if (raw === undefined || raw === null) {
-            // Bound key deleted — clear the meter rather than freezing the level.
+        if (offline || raw === undefined || raw === null) {
+            // Key deleted, or the device is unreachable — clear the meter
+            // rather than freezing the level it last reported.
             b._meter.peakValue = -Infinity;
             for (const s of segs) { s.classList.remove('lit'); s.classList.remove('peak'); }
             return;
@@ -4433,6 +4473,9 @@ class PanelApp {
         let dragging = false;
         let debounceTimer = null;
         let currentDragVal = currentValue;
+        // Filled in below when this fader has a value binding; the drag-end
+        // handler needs it to put an unreachable device's readout back.
+        let faderBinding = null;
 
         const getValueFromEvent = (e) => {
             const rect = trackWrap.getBoundingClientRect();
@@ -4499,6 +4542,14 @@ class PanelApp {
             // mode this is the only send; in live mode it just guarantees the
             // stream lands on the end value.
             if (wasDragging) sendChange(currentDragVal, true);
+            // A drag on an unreachable device leaves the readout showing the
+            // number the operator dragged to, which is exactly the confident
+            // wrong value this control is not allowed to draw. Put it straight
+            // back to unknown. (What a *refused* command on a LIVE device
+            // leaves behind is a different fault and is not fixed here.)
+            if (wasDragging && faderBinding && this._bindingOffline(faderBinding)) {
+                this._renderFaderUnknown(faderBinding);
+            }
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onEnd);
             document.removeEventListener('touchmove', onMove);
@@ -4553,13 +4604,14 @@ class PanelApp {
 
         // Value binding for state updates
         if (valueBinding) {
-            this.bindings.push({
+            faderBinding = {
                 type: 'fader_value',
                 element: el,
                 elementDef: element,
                 binding: valueBinding,
                 _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal, outputMin, outputMax, scaleToFull, response, responseDbRange, fmt: fmtFaderValue },
-            });
+            };
+            this.bindings.push(faderBinding);
         }
 
         return el;
@@ -4649,14 +4701,40 @@ class PanelApp {
         return marks;
     }
 
+    /**
+     * The fader with nothing to show, because the device it reads is gone.
+     *
+     * The handle is hidden (CSS, off the element's `device-offline` class)
+     * rather than parked at the floor: a handle at the bottom is a claim of
+     * minimum, and on a -80..0 fader that reads as fully attenuated. What was
+     * photographed for this fault was the opposite claim -- a handle at the
+     * top over "0.0 dB" -- on an amplifier sitting at -6.0 and muted.
+     */
+    _renderFaderUnknown(b) {
+        const { handle, valueDisplay, unit, horizontal } = b._fader;
+        if (horizontal) handle.style.left = '0%';
+        else handle.style.bottom = '0%';
+        handle.removeAttribute('aria-valuenow');
+        if (valueDisplay) valueDisplay.textContent = this._unknownValueText(unit);
+    }
+
     evaluateFaderValue(b) {
         const raw = this.state[b.binding.key];
-        if (b._lastFaderRaw === raw) return;
+        const offline = this._bindingOffline(b);
+        // Connectivity is part of the memo: the value can be identical either
+        // side of a device going away, and what it is worth is not.
+        if (b._lastFaderRaw === raw && b._lastFaderOffline === offline) return;
         b._lastFaderRaw = raw;
+        b._lastFaderOffline = offline;
+        this._markBindingAvailability(b, offline);
         const { handle, valueDisplay, min, max, horizontal, outputMin, outputMax, scaleToFull, response, responseDbRange, fmt } = b._fader;
         // Don't fight the operator while they're dragging the handle.
         if (handle._dragging) return;
         const span = max - min;
+        if (offline) {
+            this._renderFaderUnknown(b);
+            return;
+        }
         if (raw === undefined || raw === null) {
             // Bound key deleted — return the handle to the floor rather than
             // leaving it parked at the last device value.
@@ -5759,11 +5837,135 @@ class PanelApp {
         }
     }
 
+    /**
+     * The device a state key reports FROM, or null when it names none.
+     *
+     * `device.<id>.<prop>` is the whole rule, and a child key carries the same
+     * second segment (`device.<id>.<type>.<local>.<prop>`), so one split covers
+     * both. A key naming one of the platform-maintained props is deliberately
+     * not attributed to the device: those keep telling the truth when it is
+     * gone, and a panel bound to them is reporting the fault, not hiding it.
+     */
+    _deviceIdForKey(key) {
+        if (typeof key !== 'string' || !key.startsWith('device.')) return null;
+        const parts = key.split('.');
+        if (parts.length < 3) return null;
+        if (parts.length === 3 && DEVICE_PLATFORM_PROPS.has(parts[2])) return null;
+        return parts[1] || null;
+    }
+
+    /** Every device a binding reads from, or null. Cached: bindings are rebuilt with the page. */
+    _bindingDeviceIds(b) {
+        if (b._deviceIds !== undefined) return b._deviceIds;
+        const bd = b.binding || {};
+        const keys = [];
+        if (bd.key) keys.push(bd.key);
+        if (Array.isArray(bd._keys)) keys.push(...bd._keys);
+        if (Array.isArray(bd._patterns)) keys.push(...bd._patterns);
+        if (bd.key_pattern) keys.push(bd.key_pattern);
+        const ids = new Set();
+        for (const k of keys) {
+            const id = this._deviceIdForKey(k);
+            if (id) ids.add(id);
+        }
+        b._deviceIds = ids.size ? [...ids] : null;
+        return b._deviceIds;
+    }
+
+    /** True when a key's device is known to be unreachable right now. */
+    _keyDeviceOffline(key) {
+        const id = this._deviceIdForKey(key);
+        return id ? this.state[`device.${id}.connected`] === false : false;
+    }
+
+    /**
+     * Whether this binding's reading can be believed.
+     *
+     * Strictly `=== false`: an absent `connected` key means nobody has said
+     * either way -- a panel drawn before the first snapshot, or the Builder
+     * canvas previewing a page with no device state at all -- and that must
+     * render normally rather than as a page full of dead controls.
+     */
+    _bindingOffline(b) {
+        const ids = this._bindingDeviceIds(b);
+        if (!ids) return false;
+        return ids.some(id => this.state[`device.${id}.connected`] === false);
+    }
+
+    /**
+     * Mark the element a binding draws into as unavailable, or clear it.
+     *
+     * Tallied per element rather than toggled, because one element can carry
+     * several bindings (a select's value and its look) which may name
+     * different devices -- the control is unavailable while ANY of them is.
+     */
+    _markBindingAvailability(b, offline) {
+        const host = this.elementMap[b.elementDef?.id]?.el || b.element;
+        if (!host || !host.classList) return;
+        const tally = host._offlineBindings || (host._offlineBindings = new Set());
+        if (offline) tally.add(b); else tally.delete(b);
+        host.classList.toggle('device-offline', tally.size > 0);
+    }
+
+    /**
+     * The same unavailable mark, one destination at a time.
+     *
+     * A matrix is the one control that can be half true, so it is marked per
+     * row rather than per element. Each style already tags its destination
+     * label with `data-output-idx`; the row that holds it is the container the
+     * mark belongs on, so nothing about the three renderers had to change.
+     */
+    _markMatrixAvailability(el, destOffline) {
+        const rows = [
+            ['.matrix-tile-dest[data-output-idx]', '.matrix-tile'],
+            ['.matrix-list-label[data-output-idx]', '.matrix-list-row'],
+            ['.matrix-output-header[data-output-idx]', 'tr'],
+        ];
+        for (const [labelSel, rowSel] of rows) {
+            el.querySelectorAll(labelSel).forEach(node => {
+                const row = node.closest(rowSel);
+                if (row) row.classList.toggle('device-offline', !!destOffline[parseInt(node.dataset.outputIdx)]);
+            });
+        }
+    }
+
+    /**
+     * Drop the inline colours a state look wrote, where the element's own
+     * style has nothing to put back. applyStyle writes only the properties it
+     * is given, so without this a revert to base leaves the last state's
+     * colours standing.
+     */
+    _clearStateColours(element, baseStyle) {
+        if (!element.style) return;
+        if (!baseStyle.bg_color && !baseStyle.background_gradient) {
+            element.style.backgroundColor = '';
+        }
+        if (!baseStyle.text_color) element.style.color = '';
+    }
+
+    /** What a readout says when there is no reading: "--", with the unit if it carries one. */
+    _unknownValueText(unit) {
+        return unit ? `-- ${unit}` : '--';
+    }
+
     evaluateAllBindings(changedKeys = null) {
+        // Which devices just changed reachability. A binding reading one of
+        // them has to be re-evaluated even though its OWN key did not move:
+        // the value is the same and what it is worth has changed.
+        let flipped = null;
+        if (changedKeys) {
+            for (const k of changedKeys) {
+                if (typeof k === 'string' && k.startsWith('device.') && k.endsWith('.connected')) {
+                    (flipped || (flipped = new Set())).add(k.split('.')[1]);
+                }
+            }
+        }
         for (const b of this.bindings) {
             try {
                 // Skip bindings not affected by changed keys
-                if (changedKeys) {
+                const ids = flipped && this._bindingDeviceIds(b);
+                const reachChanged = ids ? ids.some(id => flipped.has(id)) : false;
+                if (changedKeys && !reachChanged) {
                     const bKey = b.binding?.key;
                     const bKeys = b.binding?._keys;        // visible_when: array of keys
                     // matrix: the concrete keys it reads, one per entry. A concrete
@@ -5967,6 +6169,21 @@ class PanelApp {
         const stateValue = this.state[binding.key];
         const baseStyle = elementDef.style || {};
 
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        if (offline) {
+            // Back to the label's own colours and its own words, asserting no
+            // state. Where a `show.value` binding owns the text instead, it is
+            // left alone: that binding has its own unknown form and writing
+            // here would clobber it a moment after it arrived.
+            this._clearStateColours(element, baseStyle);
+            this.applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
+            if (!elementDef.bindings?.show?.value && elementDef.text !== undefined) {
+                this._setLabelText(element, String(elementDef.text));
+            }
+            return;
+        }
+
         let appearance;
         if (binding.states) {
             const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
@@ -5998,6 +6215,44 @@ class PanelApp {
         const baseStyle = elementDef.style || {};
         const displayMode = elementDef.display_mode || 'text';
         const suppressLabel = displayMode === 'image' || displayMode === 'icon_only';
+
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        if (offline) {
+            // No state is asserted while the device is unreachable: the button
+            // goes back to its own look and its own label. This is the mute
+            // button that was photographed drawing its not-muted face over a
+            // muted amplifier -- a null child key resolves to `default_state`,
+            // so "unknown" was being rendered as whatever state was nominated
+            // as the default.
+            // applyStyle only ever writes a property it has a value for, so a
+            // state colour on an element whose own style names none would
+            // survive the revert -- a MUTED button staying red for an amplifier
+            // nobody can reach is the whole fault, one property further down.
+            this._clearStateColours(element, baseStyle);
+            this.applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
+            if (elementDef.frameless) this.applyFrameless(element);
+            if (baseStyle.bg_color) this.updateImageTint(element, baseStyle.bg_color);
+            if (suppressLabel) {
+                this._removeTextNodes(element);
+            } else {
+                // A state's WORD is a claim as much as its colour. A button
+                // with no name of its own is left blank rather than still
+                // reading MUTED for an amplifier nobody can reach.
+                this._setLabelText(element, elementDef.label || '');
+            }
+            const baseIcon = elementDef.icon || elementDef.style?.icon;
+            if (baseIcon) this.renderElementContent(element, elementDef);
+            if (elementDef.button_image) {
+                this.applyImageEffect(element, elementDef.button_image, {
+                    fit: elementDef.image_fit,
+                    blend: elementDef.image_blend_mode,
+                    opacity: elementDef.image_opacity,
+                    tintColor: baseStyle.bg_color,
+                });
+            }
+            return;
+        }
 
         // Multi-state feedback (new)
         if (binding.states) {
@@ -6129,6 +6384,19 @@ class PanelApp {
             }
         };
 
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        if (offline) {
+            // The label keeps its sentence and loses its number: a format of
+            // "Amp draw: {value} A" reads "Amp draw: -- A". What was
+            // photographed for this fault was "Amp draw: 0.00 A" on an
+            // amplifier drawing 0.076 A through a port that was broken.
+            setText(binding.format
+                ? String(binding.format).split('{value}').join('--')
+                : '--');
+            return;
+        }
+
         if (binding.condition) {
             // Normalized compare (matches feedback/visible_when), so a numeric 1
             // or boolean true matches a condition.equals of '1'/'true' instead of
@@ -6156,10 +6424,15 @@ class PanelApp {
 
     evaluateColor(b) {
         const { element, binding } = b;
-        const value = this.state[binding.key];
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        // An unreachable device lights nothing. A status LED holding its last
+        // colour is the smallest and most persuasive of these lies -- it is the
+        // control an integrator puts on a page precisely to be glanced at.
+        const value = offline ? undefined : this.state[binding.key];
         const colorMap = binding.map || {};
         const defaultColor = binding.default || '#9E9E9E';
-        const color = colorMap[value] || defaultColor;
+        const color = offline ? defaultColor : (colorMap[value] || defaultColor);
 
         element.style.backgroundColor = color;
         element.style.color = color;
@@ -6179,14 +6452,17 @@ class PanelApp {
     }
 
     evaluateSliderValue(b) {
-        const { element, elementDef, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull, steps, valueToPos, fmtValue } = b;
+        const { element, elementDef, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull, steps, unit, valueToPos, fmtValue } = b;
         // Don't yank the thumb out from under an operator who is actively
         // dragging it (or has it focused) when a device echo / another panel's
         // change arrives mid-gesture.
         if (element._dragging || document.activeElement === element) return;
         const rawValue = this.state[binding.key];
-        if (b._lastSliderRaw === rawValue) return;
+        const offline = this._bindingOffline(b);
+        if (b._lastSliderRaw === rawValue && b._lastSliderOffline === offline) return;
         b._lastSliderRaw = rawValue;
+        b._lastSliderOffline = offline;
+        this._markBindingAvailability(b, offline);
         // The input runs in the position domain (0..steps); display min/max come
         // from the element definition, not the input's own min/max.
         const min = parseFloat(elementDef.min ?? 0);
@@ -6196,6 +6472,16 @@ class PanelApp {
             if (isVertical) fill.style.height = pct + '%';
             else fill.style.width = pct + '%';
         };
+        if (offline) {
+            // Nothing to read: the fill is emptied, the thumb is hidden by CSS
+            // (a thumb at the bottom is a claim of minimum) and the readout
+            // says so rather than printing the range's floor as a value.
+            element.value = valueToPos(min);
+            element.removeAttribute('aria-valuetext');
+            setFill(0);
+            if (valueDisplay) valueDisplay.textContent = this._unknownValueText(unit);
+            return;
+        }
         if (rawValue === undefined || rawValue === null) {
             // Bound key deleted — return the slider to its minimum (bottom).
             element.value = valueToPos(min);
@@ -6215,6 +6501,15 @@ class PanelApp {
     evaluateSelectValue(b) {
         const { element, binding } = b;
         const value = this.state[binding.key];
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        if (offline) {
+            // No selection at all rather than a stale one or the first option:
+            // a dropdown reading "HDMI 2" for a switcher nobody can reach is
+            // the same confident wrong answer a fader gives.
+            element.selectedIndex = -1;
+            return;
+        }
         if (value === undefined || value === null) {
             // Bound key deleted — fall back to the first option rather than
             // pinning the last device selection.
@@ -6232,7 +6527,9 @@ class PanelApp {
         const { select, binding } = b;
         const stateValue = this.state[binding.key];
         const styleMap = binding.style_map || {};
-        const matched = stateValue === undefined || stateValue === null
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        const matched = offline || stateValue === undefined || stateValue === null
             ? undefined
             : styleMap[String(stateValue)];
         select.style.backgroundColor = (matched && matched.bg_color) || '';
@@ -6244,8 +6541,11 @@ class PanelApp {
         // Don't overwrite if user is actively editing (prevents cursor loss)
         if (document.activeElement === element) return;
         const value = this.state[binding.key];
-        if (value === undefined || value === null) {
-            // Bound key deleted — clear rather than keeping the stale value.
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+        if (offline || value === undefined || value === null) {
+            // Key deleted, or the device is unreachable — clear rather than
+            // keeping a value that is no longer coming from anywhere.
             element.value = '';
             return;
         }

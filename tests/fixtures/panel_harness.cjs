@@ -1776,6 +1776,377 @@ const tests = {
         assert(!document.getElementById('panel-custom-css'),
             'clearing the field removes the sheet');
     },
+
+    // --- Q-213: a control whose device is unreachable draws no value --------
+    //
+    // Measured on real hardware: an amplifier genuinely at -6.0 dB and muted,
+    // with its port broken. The fader drew "0.0 dB" with the thumb at the top
+    // of its travel, the mute button drew its not-muted look, and a label drew
+    // "Amp draw: 0.00 A". None of those is a neutral wrong answer.
+
+    // The photographed fader, both halves: the value it was drawing before,
+    // and what it must draw once the device is known to be unreachable.
+    q213_fader_draws_no_value_for_an_unreachable_device() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', label: 'Gain',
+                min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        // 0.0 is the value the platform invented on disconnect. It is a real
+        // number in state, so nothing about a null branch reaches this.
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': 0.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const handle = el.querySelector('.fader-handle');
+        const readout = el.querySelector('.fader-value');
+        assert(handle.style.bottom === '100%',
+            `connected: the handle draws the value it was given, got ${handle.style.bottom}`);
+        assert(readout.textContent === '0.0 dB',
+            `connected: and prints it, got ${readout.textContent}`);
+
+        app.state['device.amp.connected'] = false;
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(readout.textContent === '-- dB',
+            `offline: no number, got ${readout.textContent}`);
+        assert(el.classList.contains('device-offline'),
+            'offline: and the control reads as unavailable');
+        assert(window.getComputedStyle(handle).visibility === 'hidden',
+            'offline: the handle is hidden -- a handle at the floor claims minimum');
+        assert(handle.getAttribute('aria-valuenow') === null,
+            'offline: and nothing is announced to a screen reader either');
+
+        app.state['device.amp.connected'] = true;
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(readout.textContent === '0.0 dB' && handle.style.bottom === '100%',
+            'reconnect: the reading comes straight back');
+        assert(!el.classList.contains('device-offline'),
+            'reconnect: and the mark goes');
+    },
+
+    // The flip itself has to reach the binding. Its own key does not move when
+    // a device goes away, so the incremental filter would skip it entirely --
+    // the value is unchanged and what it is worth is not.
+    q213_a_connectivity_flip_reaches_bindings_on_that_device() {
+        const app = mkApp();
+        let ran = 0;
+        app.evaluateFaderValue = () => { ran++; };
+        app.bindings = [{
+            type: 'fader_value', element: document.createElement('div'),
+            binding: { key: 'device.amp.gain' }, _fader: {},
+        }];
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(ran === 1, 'the fader re-evaluates when its device changes reachability');
+        app.evaluateAllBindings(['device.other.connected']);
+        assert(ran === 1, "but not for a device it does not read");
+        app.evaluateAllBindings(['var.unrelated']);
+        assert(ran === 1, 'and not for an unrelated key');
+    },
+
+    // A child key carries the device in the same second segment, so one rule
+    // covers `device.<id>.<prop>` and `device.<id>.<type>.<local>.<prop>`.
+    q213_child_entity_keys_belong_to_their_parent_device() {
+        const app = mkApp();
+        assert(app._deviceIdForKey('device.amp.gain') === 'amp', 'device property');
+        assert(app._deviceIdForKey('device.amp.input.1.mute') === 'amp', 'child property');
+        assert(app._deviceIdForKey('var.volume') === null, 'a variable names no device');
+        assert(app._deviceIdForKey('plugin.x.y') === null, 'nor does a plugin key');
+        // The platform-maintained ones describe the device rather than report
+        // from it, so a panel bound to them is reporting the fault.
+        for (const prop of ['connected', 'name', 'offline_reason', 'offline_detail',
+            'enabled', 'paused', 'orphaned', 'orphan_reason',
+            'reconnect_attempt', 'reconnect_failed']) {
+            assert(app._deviceIdForKey(`device.amp.${prop}`) === null,
+                `device.<id>.${prop} keeps telling the truth when the device is gone`);
+        }
+    },
+
+    // The one thing that must NOT go quiet: the controls that exist to report
+    // the fault. A label bound to offline_detail and an LED bound to connected
+    // are the panel's only honest voice while everything else is unknown.
+    q213_the_controls_that_report_the_fault_keep_working() {
+        const app = mkApp();
+        const proj = project({
+            elements: [
+                { id: 'why', type: 'label', text: '',
+                  bindings: { show: { value: { key: 'device.amp.offline_detail' } } } },
+                { id: 'dot', type: 'status_led',
+                  bindings: { show: { look: { key: 'device.amp.connected',
+                      map: { true: '#0f0', false: '#f00' }, default: '#9E9E9E' } } } },
+            ],
+            placements: { why: { x: 5, y: 5, w: 30, h: 8 }, dot: { x: 40, y: 5, w: 6, h: 6 } },
+        });
+        app.state = {
+            'device.amp.connected': false,
+            'device.amp.offline_detail': 'Connection refused by 192.168.4.75:4321',
+        };
+        renderProject(app, proj);
+        const why = app.root.querySelector('[data-element-id="why"]');
+        assert(why.textContent === 'Connection refused by 192.168.4.75:4321',
+            `the reason still prints, got "${why.textContent}"`);
+        assert(!why.classList.contains('device-offline'),
+            'and is not marked unavailable -- it is the thing that works');
+        const dot = app.root.querySelector('[data-element-id="dot"]');
+        assert(!dot.classList.contains('device-offline'),
+            'the connected LED is not blanked by the state it exists to show');
+    },
+
+    // The mute button. `evaluateFeedback` resolves a null value to
+    // `default_state`, so "unknown" was rendering as whatever state was
+    // nominated as the default -- the not-muted face, over a muted amplifier.
+    q213_a_state_look_asserts_nothing_while_the_device_is_gone() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'mute', type: 'button', label: 'Amp mute',
+                style: { bg_color: '#222222' },
+                bindings: { show: { look: {
+                    key: 'device.amp.input.1.mute', default_state: 'false',
+                    states: {
+                        true: { label: 'MUTED', bg_color: '#cc0000' },
+                        false: { label: 'MUTE', bg_color: '#111111' },
+                    },
+                } } },
+            }],
+            placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        // Connected, with the child key cleared: the default state is drawn,
+        // which is the documented behaviour and stays.
+        app.state = { 'device.amp.connected': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        assert(el.textContent.includes('MUTE') && !el.textContent.includes('MUTED'),
+            `connected: the default state is drawn, got "${el.textContent}"`);
+        assert(el.style.backgroundColor === 'rgb(17, 17, 17)',
+            `connected: with its colour, got ${el.style.backgroundColor}`);
+
+        app.state['device.amp.connected'] = false;
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(el.textContent.includes('Amp mute'),
+            `offline: the button falls back to its own label, got "${el.textContent}"`);
+        assert(el.style.backgroundColor === 'rgb(34, 34, 34)',
+            `offline: and its own colour, asserting no state, got ${el.style.backgroundColor}`);
+        assert(el.classList.contains('device-offline'), 'offline: and reads as unavailable');
+
+        // A state's WORD is a claim too, and a control with no name of its own
+        // has nothing honest to fall back to -- so it says nothing.
+        const app2 = mkApp();
+        const proj2 = project({
+            elements: [
+                { id: 'nameless', type: 'button',
+                  bindings: { show: { look: { key: 'device.amp.mute_state', default_state: 'off',
+                      states: { on: { label: 'MUTED' }, off: { label: 'LIVE' } } } } } },
+                { id: 'lbl', type: 'label', text: 'Amplifier',
+                  bindings: { show: { look: { key: 'device.amp.mute_state', default_state: 'off',
+                      states: { on: { label: 'MUTED', text_color: '#f00' }, off: { label: 'LIVE' } } } } } },
+            ],
+            placements: { nameless: { x: 5, y: 20, w: 20, h: 10 }, lbl: { x: 30, y: 20, w: 20, h: 10 } },
+        });
+        app2.state = { 'device.amp.connected': true, 'device.amp.mute_state': 'on' };
+        renderProject(app2, proj2);
+        const nameless = app2.root.querySelector('[data-element-id="nameless"]');
+        const lbl = app2.root.querySelector('[data-element-id="lbl"]');
+        assert(nameless.textContent === 'MUTED', `connected, got "${nameless.textContent}"`);
+        assert(lbl.textContent === 'MUTED', `connected label, got "${lbl.textContent}"`);
+        app2.state['device.amp.connected'] = false;
+        app2.evaluateAllBindings(['device.amp.connected']);
+        assert(nameless.textContent === '',
+            `offline: a nameless button says nothing, got "${nameless.textContent}"`);
+        assert(lbl.textContent === 'Amplifier',
+            `offline: a label goes back to its own words, got "${lbl.textContent}"`);
+        assert(lbl.style.color === '', `offline: and its own colour, got ${lbl.style.color}`);
+    },
+
+    // The photographed label: "Amp draw: 0.00 A" for an amplifier drawing
+    // 0.076 A through a broken port. The sentence stays, the number goes.
+    q213_a_bound_label_keeps_its_sentence_and_loses_its_number() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'draw', type: 'label', text: '',
+                bindings: { show: { value: {
+                    key: 'device.amp.ac_line_current', format: 'Amp draw: {value} A',
+                } } },
+            }],
+            placements: { draw: { x: 5, y: 5, w: 30, h: 8 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.ac_line_current': 0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="draw"]');
+        assert(el.textContent === 'Amp draw: 0 A', `connected, got "${el.textContent}"`);
+        app.state['device.amp.connected'] = false;
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(el.textContent === 'Amp draw: -- A', `offline, got "${el.textContent}"`);
+    },
+
+    // Every other value renderer. Each of these printed something before: the
+    // slider its range floor, the select its stale option, the list its last
+    // lit row, the meter and gauge their frozen readings.
+    q213_every_value_renderer_has_an_unknown_form() {
+        const app = mkApp();
+        app.state = { 'device.d.v': 42, 'device.d.connected': true };
+        const offline = () => { app.state['device.d.connected'] = false; };
+
+        // Slider
+        const input = document.createElement('input'); input.type = 'range';
+        const fill = document.createElement('div');
+        const sliderOut = document.createElement('div');
+        const sb = {
+            type: 'slider_value', element: input, elementDef: { id: 's', min: 0, max: 100 },
+            binding: { key: 'device.d.v' }, fill, valueDisplay: sliderOut,
+            isVertical: false, outputMin: null, outputMax: null, scaleToFull: true,
+            steps: 100, unit: '%', valueToPos: (v) => v, fmtValue: (v) => `${v} %`,
+        };
+        app.evaluateSliderValue(sb);
+        assert(sliderOut.textContent === '42 %', `slider connected, got ${sliderOut.textContent}`);
+        offline();
+        app.evaluateSliderValue(sb);
+        assert(sliderOut.textContent === '-- %', `slider offline, got ${sliderOut.textContent}`);
+        assert(fill.style.width === '0%', `slider fill emptied, got ${fill.style.width}`);
+
+        // Select — no selection at all, not the first option
+        app.state['device.d.connected'] = true;
+        const sel = document.createElement('select');
+        for (const v of ['a', 'b']) { const o = document.createElement('option'); o.value = v; sel.appendChild(o); }
+        app.state['device.d.input'] = 'b';
+        const selB = { type: 'select_value', element: sel, elementDef: { id: 'sel' }, binding: { key: 'device.d.input' } };
+        app.evaluateSelectValue(selB);
+        assert(sel.value === 'b', 'select connected');
+        offline();
+        app.evaluateSelectValue(selB);
+        assert(sel.selectedIndex === -1, `select offline shows nothing, got index ${sel.selectedIndex}`);
+
+        // Gauge
+        app.state['device.d.connected'] = true;
+        const fgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        const gb = {
+            type: 'gauge_value', element: document.createElement('div'), elementDef: { id: 'g' },
+            binding: { key: 'device.d.v' },
+            _svg: { fgPath, valueText, startAngle: 0, endAngle: 180, radius: 10,
+                min: 0, max: 100, unit: '%', gaugeColor: '#0f0', zones: [], showValue: true,
+                displayDecimals: null, arcPath: () => 'M0 0' },
+        };
+        app.evaluateGaugeValue(gb);
+        assert(valueText.textContent === '42%', `gauge connected, got ${valueText.textContent}`);
+        offline();
+        app.evaluateGaugeValue(gb);
+        assert(valueText.textContent === '--%', `gauge offline, got ${valueText.textContent}`);
+        assert(fgPath.getAttribute('d') === '', 'gauge arc cleared');
+
+        // Level meter
+        app.state['device.d.connected'] = true;
+        const bar = document.createElement('div');
+        for (let i = 0; i < 4; i++) { const s = document.createElement('div'); s.className = 'meter-segment'; bar.appendChild(s); }
+        const mb = {
+            type: 'level_meter_value', element: document.createElement('div'), elementDef: { id: 'm' },
+            binding: { key: 'device.d.v' },
+            _meter: { segments: 4, min: 0, max: 100, bar, showPeak: false, peakValue: -Infinity, peakTime: 0, peakHoldMs: 1500 },
+        };
+        app.evaluateLevelMeterValue(mb);
+        assert(bar.querySelectorAll('.lit').length > 0, 'meter connected lights segments');
+        offline();
+        app.evaluateLevelMeterValue(mb);
+        assert(bar.querySelectorAll('.lit').length === 0, 'meter offline lights nothing');
+
+        // Text input
+        app.state['device.d.connected'] = true;
+        const ti = document.createElement('input'); ti.type = 'text';
+        const tb = { type: 'text_input_value', element: ti, elementDef: { id: 't' }, binding: { key: 'device.d.name_field' } };
+        app.state['device.d.name_field'] = 'Podium';
+        app.evaluateTextInputValue(tb);
+        assert(ti.value === 'Podium', 'text input connected');
+        offline();
+        app.evaluateTextInputValue(tb);
+        assert(ti.value === '', 'text input offline is empty');
+
+        // List selection
+        app.state['device.d.connected'] = true;
+        const scrollArea = document.createElement('div');
+        const row = document.createElement('div');
+        row.className = 'list-item'; row.dataset.value = 'x';
+        scrollArea.appendChild(row);
+        const lb = {
+            type: 'list_selected', element: document.createElement('div'), elementDef: { id: 'l' },
+            binding: { key: 'device.d.sel' },
+            _list: { scrollArea, itemBg: '#111', itemActiveBg: '#0af', selectedValues: new Set() },
+        };
+        app.state['device.d.sel'] = 'x';
+        app.evaluateListSelected(lb);
+        assert(row.classList.contains('active'), 'list connected lights the routed row');
+        offline();
+        app.evaluateListSelected(lb);
+        assert(!row.classList.contains('active'), 'list offline lights nothing');
+    },
+
+    // A matrix can span several switchers, so going quiet about the live ones
+    // because a third is down would be its own lie. It is marked per row.
+    q213_a_matrix_is_marked_one_destination_at_a_time() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'mx', type: 'matrix', matrix_style: 'tiles',
+                matrix_config: {
+                    sources: [{ value: 1, label: 'Laptop' }, { value: 2, label: 'Cam' }],
+                    destinations: [
+                        { value: 1, label: 'Left', route_key: 'device.sw_a.route_1' },
+                        { value: 2, label: 'Right', route_key: 'device.sw_b.route_1' },
+                    ],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        });
+        app.state = {
+            'device.sw_a.connected': true, 'device.sw_a.route_1': 1,
+            'device.sw_b.connected': false, 'device.sw_b.route_1': 2,
+        };
+        renderProject(app, proj);
+        const tiles = app.root.querySelectorAll('.matrix-tile');
+        assert(tiles.length === 2, `two destination tiles, got ${tiles.length}`);
+        assert(!tiles[0].classList.contains('device-offline'),
+            'the live switcher keeps drawing its route');
+        assert(tiles[1].classList.contains('device-offline'),
+            'the unreachable one is marked, and only it');
+        const routed = tiles[1].querySelector('.matrix-tile-source');
+        assert(!/Cam/.test(routed ? routed.textContent : ''),
+            `and does not name the source it last reported, got "${routed && routed.textContent}"`);
+    },
+
+    // The absent case is NOT the offline case. A panel drawn before its first
+    // snapshot, and the Builder canvas previewing a page with no device state
+    // at all, must render normally rather than as a wall of dead controls.
+    q213_no_connected_key_is_not_a_claim_that_the_device_is_down() {
+        const app = mkApp();
+        const b = {
+            type: 'text', element: document.createElement('div'),
+            elementDef: { id: 'x' }, binding: { key: 'device.amp.gain' },
+        };
+        app.state = {};
+        assert(app._bindingOffline(b) === false, 'no key at all');
+        app.state = { 'device.amp.connected': true };
+        assert(app._bindingOffline(b) === false, 'connected');
+        app.state = { 'device.amp.connected': false };
+        assert(app._bindingOffline(b) === true, 'and only an explicit false counts');
+    },
+
+    // One element can carry several bindings naming different devices. It is
+    // unavailable while ANY of them is gone, and only becomes available again
+    // when the last one comes back.
+    q213_an_element_is_unavailable_while_any_of_its_devices_is() {
+        const app = mkApp();
+        const host = document.createElement('div');
+        app.elementMap = { e: { el: host, elementDef: { id: 'e' } } };
+        const a = { elementDef: { id: 'e' }, element: host, binding: { key: 'device.a.v' } };
+        const b = { elementDef: { id: 'e' }, element: host, binding: { key: 'device.b.v' } };
+        app._markBindingAvailability(a, true);
+        app._markBindingAvailability(b, false);
+        assert(host.classList.contains('device-offline'), 'one gone is enough');
+        app._markBindingAvailability(a, false);
+        assert(!host.classList.contains('device-offline'), 'and both back clears it');
+    },
 };
 
 const results = {};

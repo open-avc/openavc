@@ -146,6 +146,17 @@ SCENARIOS = [
     "power_css_class_tolerates_ragged_input",
     "power_custom_css_injected",
     "power_custom_css_replaced_and_cleared",
+    # A control whose device is unreachable draws no value.
+    "q213_fader_draws_no_value_for_an_unreachable_device",
+    "q213_a_connectivity_flip_reaches_bindings_on_that_device",
+    "q213_child_entity_keys_belong_to_their_parent_device",
+    "q213_the_controls_that_report_the_fault_keep_working",
+    "q213_a_state_look_asserts_nothing_while_the_device_is_gone",
+    "q213_a_bound_label_keeps_its_sentence_and_loses_its_number",
+    "q213_every_value_renderer_has_an_unknown_form",
+    "q213_a_matrix_is_marked_one_destination_at_a_time",
+    "q213_no_connected_key_is_not_a_claim_that_the_device_is_down",
+    "q213_an_element_is_unavailable_while_any_of_its_devices_is",
 ]
 
 

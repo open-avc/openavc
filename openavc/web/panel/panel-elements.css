@@ -1124,6 +1124,62 @@
     color: var(--panel-success);
 }
 
+/* ===== A control whose device cannot be reached ===== */
+
+/* The panel has no reading to show, so the control says so instead of drawing
+   a confident number. "--" on its own is not enough: it cannot be told from
+   "nothing has been reported yet", which is a different and much less alarming
+   thing. The mark is language-free because it goes on every control at every
+   size, from a 20px status dot upward.
+
+   The control stays live on purpose. Pressing it produces the "<device> is not
+   connected" band, which is the clearest thing on this surface, and disabling
+   it would take that away.
+
+   `filter` rather than `opacity`: an element can set its own inline opacity
+   (a theme, a style, or a ui.<id>.opacity override from a script), and an
+   inline value beats a class every time. */
+.panel-element.device-offline {
+    filter: grayscale(0.8) brightness(0.72);
+    /* The layout engine places most elements absolutely, but an aspect-locked
+       one sits statically inside a wrapper box -- without this the outline
+       below would anchor to the page and draw across the whole panel. An
+       inline `position: absolute` still wins where there is one. */
+    position: relative;
+}
+.panel-element.device-offline::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border: 0.1429rem dashed var(--panel-text, #fff);
+    border-radius: inherit;
+    opacity: 0.45;
+    z-index: 3;
+}
+
+/* No handle and no thumb: a control parked at the bottom of its travel is
+   claiming minimum, and on a -80..0 fader that reads as fully attenuated. */
+.panel-element.device-offline .fader-handle {
+    visibility: hidden;
+}
+.panel-element.device-offline input[type="range"]::-webkit-slider-thumb {
+    visibility: hidden;
+}
+.panel-element.device-offline input[type="range"]::-moz-range-thumb {
+    visibility: hidden;
+}
+
+/* A matrix is marked a row at a time, because one matrix can span several
+   switchers and only some of them may be gone. */
+.matrix-tile.device-offline,
+.matrix-list-row.device-offline,
+.matrix-grid tr.device-offline {
+    filter: grayscale(0.8) brightness(0.72);
+    outline: 0.1429rem dashed var(--panel-text, #fff);
+    outline-offset: -0.1429rem;
+}
+
 /* ===== Iframe elements: plugin panels and custom controls ===== */
 
 .panel-plugin,
