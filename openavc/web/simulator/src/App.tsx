@@ -1,4 +1,5 @@
-import { Power } from "lucide-react";
+import { useState } from "react";
+import { ChevronsDownUp, ChevronsUpDown, Power } from "lucide-react";
 import { stopSimulator } from "./store/api";
 import { useSimStore } from "./store/useSimStore";
 import { DeviceCard } from "./components/DeviceCard";
@@ -7,6 +8,10 @@ import { NetworkConditions } from "./components/NetworkConditions";
 
 export default function App() {
   const { devices, log, connected, stopped, clearLog } = useSimStore();
+  // Broadcast to every card. The nonce is what makes a repeat press work --
+  // see the prop's note in DeviceCard.
+  const [expandAll, setExpandAll] = useState<{ value: boolean; nonce: number }>();
+  const allOpen = expandAll?.value ?? false;
 
   const handleShutdown = async () => {
     if (!confirm("Stop the simulator and close this window?")) return;
@@ -69,13 +74,42 @@ export default function App() {
       {/* Header */}
       <div className="header">
         <div className="header-title">
-          <img src="/logo-square-light.png" alt="OpenAVC" width={22} height={22} />
+          {/* Base-relative, exactly as the Programmer's sidebar does it. An
+              absolute "/logo-square-light.png" is the server root, which is
+              only where this UI lives when the simulator serves it on its own
+              port; proxied under /simulator/ -- which is how anyone actually
+              opens it -- the mark 404'd. Vite's BASE_URL is "./" here, so it
+              resolves against whatever prefix the page was served from,
+              including the cloud tunnel's. */}
+          <img
+            src={`${import.meta.env.BASE_URL}logo-square-light.png`}
+            alt="OpenAVC"
+            width={22}
+            height={22}
+          />
           OpenAVC Simulator
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>
             {devices.length} device{devices.length !== 1 ? "s" : ""}
           </span>
         </div>
         <div className="header-right">
+          {devices.length > 0 && (
+            <button
+              onClick={() =>
+                setExpandAll({ value: !allOpen, nonce: (expandAll?.nonce ?? 0) + 1 })
+              }
+              title={allOpen ? "Collapse every device" : "Open every device to full height"}
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                padding: "4px 10px", borderRadius: "var(--border-radius)",
+                fontSize: 12, background: "var(--bg-hover)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              {allOpen ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+              {allOpen ? "Collapse all" : "Expand all"}
+            </button>
+          )}
           <NetworkConditions />
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
             <div className={`connection-dot ${connected ? "connected" : "disconnected"}`} />
@@ -112,7 +146,7 @@ export default function App() {
             </div>
           )}
           {devices.map((device) => (
-            <DeviceCard key={device.device_id} device={device} />
+            <DeviceCard key={device.device_id} device={device} expandAll={expandAll} />
           ))}
         </div>
 

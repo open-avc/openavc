@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DeviceInfo } from "../store/api";
 import { setDeviceState, toggleError } from "../store/api";
 import { createThrottledWriter } from "../store/stateWriter";
@@ -19,6 +19,8 @@ import {
   Box,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -37,9 +39,50 @@ const CATEGORY_PANELS: Record<string, React.ComponentType<{ device: DeviceInfo; 
   camera: CameraPanel,
 };
 
-export function DeviceCard({ device }: { device: DeviceInfo }) {
+export function DeviceCard({ device, expandAll }: {
+  device: DeviceInfo;
+  /** Header "expand/collapse all" broadcast. The nonce is what makes a repeat
+   *  press work: the value alone would be unchanged and the effect would not
+   *  run, so pressing "Expand all" after opening one card by hand would do
+   *  nothing to the rest. */
+  expandAll?: { value: boolean; nonce: number };
+}) {
   const [errorsOpen, setErrorsOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  // Whether there is anything below the fold worth offering to open. Measured
+  // rather than guessed: how much a card holds depends on the driver, and the
+  // cheapest wrong answer here is a card that hides content behind no control.
+  const [clipped, setClipped] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const errors = Object.entries(device.available_errors);
+
+  // Runs after every render, which is what we want: state arrives from the
+  // simulator continuously, and a device that grows a new property mid-session
+  // changes the answer. Reading layout in useLayoutEffect keeps the control
+  // from flickering in after paint.
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    // +1 absorbs sub-pixel rounding; without it a card can claim to be clipped
+    // by a fraction of a pixel and offer to expand onto nothing.
+    setClipped(el.scrollHeight > el.clientHeight + 1);
+  });
+
+  // A resize changes column width, which rewraps content and changes the
+  // answer without any re-render of ours.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      if (!expanded) setClipped(el.scrollHeight > el.clientHeight + 1);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [expanded]);
+
+  useEffect(() => {
+    if (expandAll) setExpanded(expandAll.value);
+  }, [expandAll?.nonce]);
 
   // Every control on this card writes through one throttle, so a gesture is a
   // few requests rather than one per pixel. The rejection is swallowed here
@@ -67,7 +110,7 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
   const Panel = CATEGORY_PANELS[device.category] || GenericPanel;
 
   return (
-    <div className="device-card">
+    <div className={`device-card${expanded ? " expanded" : ""}`}>
       {/* Header */}
       <div className="device-card-header">
         <div className="icon">{icon}</div>
@@ -113,7 +156,7 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
       )}
 
       {/* Declarative controls or category-specific panel */}
-      <div className="device-card-body">
+      <div className="device-card-body" ref={bodyRef}>
         {device.controls && device.controls.length > 0 ? (
           <div className="controls-panel">
             <DynamicControls controls={device.controls} state={device.state} onStateChange={handleStateChange} />
@@ -124,6 +167,19 @@ export function DeviceCard({ device }: { device: DeviceInfo }) {
         {/* Per-child state (auto-generated simulators model children) */}
         <ChildEntitiesPanel device={device} onStateChange={handleStateChange} />
       </div>
+
+      {/* Open the card past its height cap. Offered only when something is
+          actually hidden, so a small device carries no dead control. */}
+      {(clipped || expanded) && (
+        <button
+          className="device-card-more"
+          onClick={() => setExpanded(!expanded)}
+          title={expanded ? "Collapse this device" : "Show everything this device has"}
+        >
+          {expanded ? <ChevronsDownUp size={12} /> : <ChevronsUpDown size={12} />}
+          {expanded ? "Show less" : "Show all"}
+        </button>
+      )}
 
       {/* Error injection */}
       {errors.length > 0 && (

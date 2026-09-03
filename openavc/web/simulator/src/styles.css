@@ -111,6 +111,20 @@ input, select {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
   align-content: start;
+  /* Each card is as tall as its own contents, not as tall as the row it
+     landed in. Without this a card stretches to its row and, because the body
+     below may shrink to nothing, every row collapsed to the height of its
+     emptiest card and each one grew a scrollbar. Eleven devices sized by
+     whichever had least to show.
+
+     Both declarations are needed and neither is redundant. `align-items`
+     stops the stretch; `grid-auto-rows` is what makes the row tall enough to
+     hold what it now contains. An implicit `auto` row measured 285px against
+     cards of 462px -- the card's body is a scroll container, so its intrinsic
+     contribution is not its rendered height -- and every row was drawn over
+     the one above it. */
+  align-items: start;
+  grid-auto-rows: max-content;
 }
 
 .empty-state {
@@ -124,6 +138,20 @@ input, select {
 
 /* ── Device Card ── */
 
+/* How much of a device's controls to show before scrolling. Enough for a
+   projector's power, input list, volume and mutes at once -- the point being
+   that it is a reading height somebody chose, not whatever fell out of the
+   layout. Past it, the card says so and offers to open.
+
+   The cap sits on the BODY, not on the card, and that placement is the whole
+   trick. Capping the card and letting a shrinkable body absorb the difference
+   left the grid unable to size its rows: the track came out at the body's
+   min-content contribution (285px) while the card rendered at its cap (420px),
+   so every row drew on top of the one above it. With the cap here the card's
+   height is just the sum of its children, which is a number the grid can
+   agree with. */
+:root { --card-body-cap: 300px; }
+
 .device-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
@@ -131,7 +159,14 @@ input, select {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 160px);
+}
+
+/* Opened by hand: show everything, however long it runs. A few devices carry
+   hundreds of state rows, so this is a deliberate choice rather than the
+   default. */
+.device-card.expanded .device-card-body {
+  max-height: none;
+  overflow-y: visible;
 }
 
 .device-card-header {
@@ -214,9 +249,33 @@ input, select {
 /* ── Device Card Body (scrollable) ── */
 
 .device-card-body {
-  flex: 1;
-  min-height: 0;
+  /* No flex sizing: the body is exactly as tall as its contents up to the cap,
+     and the card is exactly as tall as its children. Nothing here shrinks, so
+     nothing is ambiguous for the grid to guess at. */
+  max-height: var(--card-body-cap);
   overflow-y: auto;
+}
+
+/* ── Card footer: the expand control ── */
+
+.device-card-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 5px 8px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.device-card-more:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 /* ── Controls ── */
