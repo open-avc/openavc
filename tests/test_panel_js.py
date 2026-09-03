@@ -156,6 +156,7 @@ SCENARIOS = [
     "q213_every_value_renderer_has_an_unknown_form",
     "q213_a_matrix_is_marked_one_destination_at_a_time",
     "q213_no_connected_key_is_not_a_claim_that_the_device_is_down",
+    "q213_the_design_canvas_draws_the_live_look",
     "q213_an_element_is_unavailable_while_any_of_its_devices_is",
 ]
 

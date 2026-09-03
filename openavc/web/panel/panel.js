@@ -5872,24 +5872,41 @@ class PanelApp {
         return b._deviceIds;
     }
 
+    /**
+     * Whether a device is known to be unreachable right now.
+     *
+     * Strictly `=== false`: an absent `connected` key means nobody has said
+     * either way -- a panel drawn before its first snapshot -- and that must
+     * render normally rather than as a page full of dead controls.
+     *
+     * NEVER in the design canvas. Everything below this is a RUNTIME
+     * condition, not a property of the page being drawn, and the canvas is fed
+     * the IDE's live state -- so on a bench where the gear is not plugged in
+     * yet, every bound control would draw dimmed and dashed and the author
+     * could not see the colours, the handle or the artwork they are placing.
+     * The treatment REPLACES the design, where a live value merely fills it
+     * in, which is what makes this different from showing real state on the
+     * canvas at all. The Preview button is the honest answer for "what does
+     * the room see": it runs the same renderer over a real WebSocket, so an
+     * author who wants to check how a page reads with a device down has a
+     * place to go, and the runtime panel is untouched either way.
+     */
+    _deviceOffline(deviceId) {
+        if (this.editMode) return false;
+        return this.state[`device.${deviceId}.connected`] === false;
+    }
+
     /** True when a key's device is known to be unreachable right now. */
     _keyDeviceOffline(key) {
         const id = this._deviceIdForKey(key);
-        return id ? this.state[`device.${id}.connected`] === false : false;
+        return id ? this._deviceOffline(id) : false;
     }
 
-    /**
-     * Whether this binding's reading can be believed.
-     *
-     * Strictly `=== false`: an absent `connected` key means nobody has said
-     * either way -- a panel drawn before the first snapshot, or the Builder
-     * canvas previewing a page with no device state at all -- and that must
-     * render normally rather than as a page full of dead controls.
-     */
+    /** Whether this binding's reading can be believed. */
     _bindingOffline(b) {
         const ids = this._bindingDeviceIds(b);
         if (!ids) return false;
-        return ids.some(id => this.state[`device.${id}.connected`] === false);
+        return ids.some(id => this._deviceOffline(id));
     }
 
     /**

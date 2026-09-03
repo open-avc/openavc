@@ -564,6 +564,10 @@ knowing which device is out matters.
 A matrix is marked one destination at a time, so a matrix spanning two
 switchers keeps drawing the routes of the one that is still there.
 
+The design canvas never draws any of this. It shows every control the way you
+built it, whether or not the gear is plugged in yet, so you can judge colours
+and artwork on a bench. **Preview** is where you see what the room sees.
+
 ## Themes
 
 The Theme Picker in Panel Settings shows visual cards with color swatches for each available theme. OpenAVC ships with 8 built-in themes:

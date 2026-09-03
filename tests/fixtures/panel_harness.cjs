@@ -2132,6 +2132,46 @@ const tests = {
         assert(app._bindingOffline(b) === true, 'and only an explicit false counts');
     },
 
+    // The design canvas never draws it. Being unreachable is a runtime
+    // condition, and the treatment REPLACES the design rather than filling it
+    // in -- so on a bench where the gear is not plugged in yet, an author
+    // would be laying out colours and artwork they cannot see. Preview runs
+    // the same renderer over a real socket and is where that question is
+    // answered.
+    q213_the_design_canvas_draws_the_live_look() {
+        const proj = () => project({
+            elements: [{
+                id: 'gain', type: 'fader', label: 'Gain',
+                min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        const state = { 'device.amp.connected': false, 'device.amp.gain': -6.0 };
+
+        const designer = mkApp();
+        designer.editMode = true;
+        designer.state = { ...state };
+        renderProject(designer, proj());
+        const dEl = designer.root.querySelector('[data-element-id="gain"]');
+        assert(!dEl.classList.contains('device-offline'),
+            'the canvas draws the control as designed, not as the room finds it');
+        assert(dEl.querySelector('.fader-value').textContent === '-6.0 dB',
+            `and shows the live value, got ${dEl.querySelector('.fader-value').textContent}`);
+        assert(window.getComputedStyle(dEl.querySelector('.fader-handle')).visibility === 'visible',
+            'with its handle, which is half of what a fader looks like');
+
+        // Preview and the real panel are the same renderer with editMode off.
+        const preview = mkApp();
+        preview.state = { ...state };
+        renderProject(preview, proj());
+        const pEl = preview.root.querySelector('[data-element-id="gain"]');
+        assert(pEl.classList.contains('device-offline'),
+            'preview shows what the room sees');
+        assert(pEl.querySelector('.fader-value').textContent === '-- dB',
+            `including no value, got ${pEl.querySelector('.fader-value').textContent}`);
+    },
+
     // One element can carry several bindings naming different devices. It is
     // unavailable while ANY of them is gone, and only becomes available again
     // when the last one comes back.
