@@ -1,6 +1,6 @@
 # OpenAVC Panel App
 
-> **Status: Android available, iOS in development.** The signed Android APK is on [GitHub Releases](https://github.com/open-avc/openavc-panel-app/releases) now; the Google Play listing is coming soon. The iOS build is still being finalized for the App Store. If you're on iOS today, use **Open Panel** to view the web panel in Safari in the meantime.
+> **Status: Android available, iOS in development.** The signed Android APK is on the [OpenAVC Panel page](https://openavc.com/panel-app/) now; the Google Play listing is coming soon. The iOS build is still being finalized for the App Store. If you're on iOS today, use **Open Panel** to view the web panel in Safari in the meantime.
 
 The OpenAVC Panel app turns an Android or iOS tablet into a dedicated touch panel for an OpenAVC system. It wraps the same web panel you can reach from any browser, but adds the things a browser on a wall-mounted tablet can't do: automatic server discovery, QR pairing, dedicated-panel lockdown, and boot-to-panel auto-start.
 
@@ -18,7 +18,7 @@ The app is free and open-source (MIT). The web panel inside it is identical to w
 
 ## Install
 
-**Android.** Download the signed APK from [GitHub Releases](https://github.com/open-avc/openavc-panel-app/releases) and side-load it (`adb install` or copy-and-tap on the tablet). The Google Play listing is coming soon.
+**Android.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and side-load it (`adb install` or copy-and-tap on the tablet). The Google Play listing is coming soon.
 
 **iOS.** App Store listing coming soon.
 

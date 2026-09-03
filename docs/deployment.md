@@ -21,14 +21,15 @@ All modes are functionally identical. Serial port control (RS-232/485) requires 
 
 ## Installation
 
-See [Getting Started](getting-started.md) for detailed installation steps covering all four methods:
+See [Getting Started](getting-started.md) for detailed installation steps covering every method. Every installer and image is on the [OpenAVC download page](https://openavc.com/download/).
 
 | Method | Install Command / Action |
 |--------|--------------------------|
-| **Windows Installer** | Download from [GitHub Releases](https://github.com/open-avc/openavc/releases) and run the `.exe` |
-| **macOS Installer** | Download the `.pkg` from [GitHub Releases](https://github.com/open-avc/openavc/releases) (Apple Silicon or Intel) and double-click it |
+| **Windows Installer** | Download from the [download page](https://openavc.com/download/#windows) and run the `.exe` |
+| **macOS Installer** | Download the `.pkg` from the [download page](https://openavc.com/download/#macos) (Apple Silicon or Intel) and double-click it |
 | **Docker** | `curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml && docker compose up -d` |
 | **Linux** | `curl -sSL https://get.openavc.com \| sudo bash` |
+| **Raspberry Pi** | Flash the SD card image from the [download page](https://openavc.com/download/#raspberry-pi), then see [First Boot](#first-boot-raspberry-pi-image) |
 | **From Source** | `git clone`, `pip install`, `npm run build`, `python -m openavc.main` |
 
 ## Network Configuration

@@ -1,6 +1,6 @@
 # Android Dedicated Panel Setup
 
-> **Status: Android APK available now, Google Play listing coming soon.** Download the signed APK from [GitHub Releases](https://github.com/open-avc/openavc-panel-app/releases) and follow the steps below. The Google Play build will be a drop-in replacement once it's published.
+> **Status: Android APK available now, Google Play listing coming soon.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and follow the steps below. The Google Play build will be a drop-in replacement once it's published.
 
 This guide walks through locking an Android tablet to the OpenAVC Panel app so end users can't exit to the home screen, open other apps, or pull down the notification shade. It applies to the Android build of the OpenAVC Panel app.
 
@@ -61,7 +61,7 @@ When the tablet restarts after the reset, walk through setup but **do not sign i
 
 ### 4. Install the OpenAVC Panel App
 
-Download the signed APK from [GitHub Releases](https://github.com/open-avc/openavc-panel-app/releases) and push it:
+Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and push it:
 
 ```bash
 adb install OpenAVCPanel-<version>.apk

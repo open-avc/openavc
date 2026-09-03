@@ -4,12 +4,15 @@ OpenAVC is an open-source control platform for AV spaces. Install it on a PC, mi
 
 ## Choose Your Installation Method
 
+Every installer, image, and command below is on the [OpenAVC download page](https://openavc.com/download/), which always points at the current release.
+
 | Method | Best For | Time |
 |--------|----------|------|
 | [Windows Installer](#windows-installer) | AV rack PCs, mini PCs, laptops | 2 minutes |
 | [macOS Installer](#macos-installer) | Macs and Mac minis | 2 minutes |
 | [Docker](#docker) | Servers, multi-room deployments | 2 minutes |
 | [Linux Install Script](#linux-install-script) | Dedicated Linux machines | 3 minutes |
+| [Raspberry Pi Image](#raspberry-pi-image) | Pi 4 or Pi 5, optionally driving a wall panel | 10 minutes |
 | [From Source](#install-from-source) | Development, contributing | 5 minutes |
 
 All methods are functionally identical. Choose whatever fits your environment.
@@ -18,7 +21,7 @@ All methods are functionally identical. Choose whatever fits your environment.
 
 The fastest way to get started on Windows.
 
-1. Download `OpenAVC-Setup-x.x.x.exe` from [GitHub Releases](https://github.com/open-avc/openavc/releases)
+1. Download the installer (`OpenAVC-Setup-x.x.x.exe`) from the [download page](https://openavc.com/download/#windows)
 2. Run the installer and follow the prompts
 3. OpenAVC starts automatically as a Windows service
 
@@ -39,7 +42,7 @@ After installation, open **http://localhost:8080/programmer** in your browser to
 
 The fastest way to get started on a Mac.
 
-1. Download the `.pkg` from [GitHub Releases](https://github.com/open-avc/openavc/releases) — choose **Apple Silicon** (M-series) or **Intel** to match your Mac
+1. Download the `.pkg` from the [download page](https://openavc.com/download/#macos). Choose **Apple Silicon** (M-series) or **Intel** to match your Mac
 2. Double-click it and follow the installer, entering your password once when asked
 3. OpenAVC starts automatically in the background
 
@@ -105,6 +108,18 @@ Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:80
 The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. The room panel at `/panel` stays open so wall tablets work without a login. You can change them later in **Settings > Security**.
 
 To bind to localhost only (no network access) instead, set `Environment=OPENAVC_BIND=127.0.0.1` with `sudo systemctl edit openavc` and restart the service.
+
+## Raspberry Pi Image
+
+A ready-to-run SD card image for the Raspberry Pi 4 and Pi 5, with OpenAVC already installed and set to start on boot.
+
+1. Download the image from the [download page](https://openavc.com/download/#raspberry-pi)
+2. Write it to an SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
+3. Put the card in the Pi, connect a network cable, and power it on
+
+The first boot takes an extra minute while OpenAVC sets itself up. With an HDMI display connected, the Pi shows its IP address and access URLs on screen. On networks with mDNS it is also reachable at **http://openavc.local:8080/programmer**.
+
+Connect an HDMI touchscreen and the same Pi doubles as the room's wall panel. For the full first-boot walkthrough, including the operating system login and SSH, see [First Boot (Raspberry Pi Image)](deployment.md#first-boot-raspberry-pi-image) in the Deployment Guide.
 
 ## Install from Source
 
@@ -227,7 +242,7 @@ In the Device View, select the projector and use the command testing panel. Choo
 
 Navigate to http://localhost:8080/panel in another tab. This is what end users see on a touchscreen. Press the buttons and watch commands flow through the system.
 
-**Accessing from a tablet or phone:** The packaged installs — Windows Installer, macOS Installer, Docker, and the Linux Install Script — accept network connections out of the box, so the panel URL works from any device on the same network. Only an install from source starts bound to the local machine. To open it up on a source install:
+**Accessing from a tablet or phone:** The packaged installs (Windows Installer, macOS Installer, Docker, the Linux Install Script, and the Raspberry Pi image) accept network connections out of the box, so the panel URL works from any device on the same network. Only an install from source starts bound to the local machine. To open it up on a source install:
 
 1. Go to **Settings** in the Programmer IDE sidebar
 2. Change the **bind address** to `0.0.0.0`
