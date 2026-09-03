@@ -15,15 +15,25 @@ Verifiers accept an artifact if **any** `*.pem` here validates its detached
   checksums).
 - `openavc/updater/manager.py` (defense-in-depth pre-check on download).
 
-## Arming state (why an empty dir is safe to ship)
+## Arming state
+
+**Signing is ARMED.** `openavc-release.pem` is the production key, so
+verification is enforced fail-closed: an artifact whose `.sig` is missing or
+does not verify is refused. Every release from here on must be signed — a cut
+that runs without the `RELEASE_SIGNING_KEY` secret produces artifacts that
+installed systems will refuse.
+
+An installed system starts enforcing once it is running a release that carries
+this key. The update that first installs it is still checked by published
+checksum only, because the copy of this directory doing the checking is the one
+already on disk.
 
 **No `*.pem` present = signing not yet armed.** Verifiers log a warning and
-proceed (they do not refuse), so shipping this code before the production key
-exists cannot brick auto-update. The moment a production key is committed here
-and releases are signed, verification is enforced fail-closed: a present key
-with a missing or invalid `.sig` is refused.
+proceed rather than refusing, so this code could ship before the production key
+existed without bricking auto-update. That is no longer the state here; it still
+describes a fork that has not run the ceremony below.
 
-## Production key ceremony (one-time, before the first signed release)
+## Production key ceremony (run 2026-09-03 — kept for forks and for reference)
 
 ```sh
 # Generate the keypair (keep the .key OFFLINE / in a password manager)

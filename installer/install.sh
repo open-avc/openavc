@@ -41,12 +41,15 @@ MIN_PYTHON_MINOR=11
 # is as trusted as the installer itself (standard TOFU). When set, verify_checksum
 # verifies SHA256SUMS.txt.sig against it before trusting the checksums.
 #
-# EMPTY until the production key ceremony (installer/trusted-keys/README.md).
-# Empty = signing not yet armed: the signature check is skipped with a warning
-# and the existing checksum-only verification stands, so this ships without
-# breaking installs. Keep in sync with installer/trusted-keys/*.pem (that copy
+# ARMED: this is the production key. A release whose SHA256SUMS.txt.sig is
+# missing or does not verify against it is refused, so every release from here
+# on must be signed. Keep in sync with installer/trusted-keys/*.pem (that copy
 # ships in the tarball and protects self-updates; this one bootstraps install).
-TRUSTED_SIGNING_PUBKEY=""
+# Empty would mean not-yet-armed: check skipped with a warning, checksum only.
+TRUSTED_SIGNING_PUBKEY="-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELwkfxqFSF0/xYCaKR31l857+cUAF
+0ZP8o9JueEhCxZ2XjBl/NRRLHEfBURbKUk1yJTn6hbhlsWbAt7vvqkm7DQ==
+-----END PUBLIC KEY-----"
 
 # --- Colors ---
 

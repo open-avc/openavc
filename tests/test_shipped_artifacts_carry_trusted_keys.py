@@ -79,3 +79,92 @@ def test_the_helper_still_treats_an_empty_key_set_as_unarmed() -> None:
         "branch. Re-read backlog §43: if it now fails closed on an empty key "
         "set, the silent-failure reasoning in this module needs rewriting."
     )
+
+
+# --- The two copies of the public key ------------------------------------
+#
+# The trust anchor exists twice, on purpose, and the two protect different
+# moments. `installer/trusted-keys/*.pem` ships inside the tarball and is what
+# the root helper checks a SELF-UPDATE against. `install.sh` carries the same
+# key inline, because a FRESH install has no tarball on disk yet to read a key
+# out of -- it verifies SHA256SUMS.txt.sig before trusting any checksum in it.
+#
+# Nothing but a comment asked those two to agree. If they drift, a machine
+# installed today trusts one key and every update it later applies is checked
+# against another, and the failure is invisible until a release signed with the
+# rotated key is refused by installs that never got it -- or, worse, accepted by
+# a bootstrap still trusting a retired one. Rotation is exactly when this
+# happens, because rotation edits one file at a time.
+
+KEYS_DIR = REPO_ROOT / "installer" / "trusted-keys"
+INSTALL_SH = REPO_ROOT / "installer" / "install.sh"
+
+
+def _embedded_bootstrap_key() -> str:
+    """The PEM inlined in install.sh, as install.sh itself would write it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    match = re.search(r'^TRUSTED_SIGNING_PUBKEY="(.*?)"$', text, re.MULTILINE | re.DOTALL)
+    assert match, (
+        "install.sh has no TRUSTED_SIGNING_PUBKEY assignment. It is the "
+        "fresh-install trust anchor — find out what replaced it before "
+        "deleting this test."
+    )
+    return match.group(1).strip()
+
+
+def test_bootstrap_key_matches_a_shipped_trusted_key() -> None:
+    """install.sh's inline key is one of the keys the tarball ships.
+
+    Both states are legitimate and both are pinned: armed (a *.pem exists, and
+    install.sh must carry one of them) and unarmed (no *.pem, and install.sh
+    must be empty). What is never legitimate is one armed and the other not.
+    """
+    shipped = sorted(KEYS_DIR.glob("*.pem"))
+    embedded = _embedded_bootstrap_key()
+
+    if not shipped:
+        assert embedded == "", (
+            "install.sh embeds a signing key but installer/trusted-keys/ holds "
+            "no *.pem. Fresh installs would then verify against a key that "
+            "self-updates know nothing about. Commit the public key to "
+            "installer/trusted-keys/ as well."
+        )
+        return
+
+    assert embedded, (
+        f"installer/trusted-keys/ holds {len(shipped)} key(s) but "
+        f"install.sh's TRUSTED_SIGNING_PUBKEY is empty, so a fresh install "
+        f"skips signature verification while every self-update enforces it. "
+        f"Mirror the public key into install.sh."
+    )
+
+    bodies = {p.name: p.read_text(encoding="utf-8").strip() for p in shipped}
+    assert embedded in bodies.values(), (
+        "install.sh's embedded key is not byte-identical to any key in "
+        f"installer/trusted-keys/ ({', '.join(sorted(bodies))}). The fresh-install "
+        "bootstrap and the self-update gate would trust different keys. If this "
+        "is a rotation, finish it: the new public key goes in both places."
+    )
+
+
+def test_shipped_trusted_keys_are_parseable_public_keys() -> None:
+    """A malformed or truncated PEM disarms the gate it is supposed to arm.
+
+    `openssl dgst -verify` with an unreadable key exits non-zero, which the
+    helper reports as "did not verify against any trusted key" — so a mangled
+    key does not read as 'unarmed', it refuses every update. Catch it here
+    rather than on a panel.
+    """
+    for pem in sorted(KEYS_DIR.glob("*.pem")):
+        body = pem.read_text(encoding="utf-8")
+        assert body.startswith("-----BEGIN PUBLIC KEY-----"), (
+            f"{pem.name} is not a PEM public key. A private key or a "
+            f"certificate here would break verification for every install."
+        )
+        assert body.rstrip().endswith("-----END PUBLIC KEY-----"), (
+            f"{pem.name} is truncated — no END marker."
+        )
+        assert "PRIVATE KEY" not in body, (
+            f"{pem.name} contains a PRIVATE key. This directory is published. "
+            f"Treat the key as compromised and rotate it."
+        )

@@ -29,6 +29,8 @@ Verification is mandatory. If a download cannot be checked against a published S
 
 On Linux, the Raspberry Pi appliance, and macOS, updates are also **cryptographically signed**. Each release artifact carries a detached signature, and a privileged pre-start step verifies that signature against a trusted key shipped with your installation before extracting anything. A tampered or unsigned artifact is refused, so a compromised download or release asset cannot be applied. This is what makes the automatic-update path safe to run unattended.
 
+Signature checking is active on systems running v0.32.1 or later, the first release to carry the trusted key. The update onto v0.32.1 itself is checked against its published checksum, the same way earlier updates were.
+
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
 ### If an update cannot be installed right now
