@@ -53,7 +53,7 @@ import {
   getMacroCallees,
   detectCircularDependency,
 } from "./macroHelpers";
-import { getStepIds, applyStepReorder, adjustExpandedAfterMove } from "./stepDndHelpers";
+import { getStepIds, carryStepId, applyStepReorder, adjustExpandedAfterMove } from "./stepDndHelpers";
 import {
   usePluginMacroActions,
   findPluginAction,
@@ -461,7 +461,17 @@ export function MacroEditor({
     }
   };
 
+  // One id space for everything sortable: SortableContext items, the ids
+  // the step rows register, and the React keys all read from stepIds.
+  const stepIdMapRef = useRef(new WeakMap<object, string>());
+  const stepIdCounterRef = useRef(0);
+  const stepIds = getStepIds(macro.steps, stepIdMapRef.current, stepIdCounterRef);
+
   const updateStep = (index: number, updated: MacroStep) => {
+    // An edit is a new object at the same position, not a new step: it keeps
+    // the id it had, so the row keeps its React key and the field being typed
+    // into is not rebuilt out from under the caret.
+    carryStepId(stepIdMapRef.current, macro.steps[index], updated);
     const steps = [...macro.steps];
     steps[index] = updated;
     onUpdate({ ...macro, steps });
@@ -546,12 +556,6 @@ export function MacroEditor({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
-  // One id space for everything sortable: SortableContext items, the ids
-  // the step rows register, and the React keys all read from stepIds.
-  const stepIdMapRef = useRef(new WeakMap<object, string>());
-  const stepIdCounterRef = useRef(0);
-  const stepIds = getStepIds(macro.steps, stepIdMapRef.current, stepIdCounterRef);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;

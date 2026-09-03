@@ -10,8 +10,9 @@
 /**
  * Returns one stable id per step, parallel to `steps`. Ids are minted from
  * `counter` on first sight of an object and cached in `idMap`, so a step
- * keeps its id across reorders while a replaced (edited) step object gets a
- * fresh one.
+ * keeps its id across reorders. A step object nothing has claimed an id for
+ * is new and gets a fresh one -- an edit hands its id over first, see
+ * `carryStepId`.
  */
 export function getStepIds<T extends object>(
   steps: readonly T[],
@@ -26,6 +27,29 @@ export function getStepIds<T extends object>(
     }
     return id;
   });
+}
+
+/**
+ * Hands `oldStep`'s id to the object replacing it, so an edited step is the
+ * same step as far as the id space is concerned.
+ *
+ * Editing is immutable here -- a keystroke produces a whole new step object at
+ * the same position -- and without this the map has never seen that object, so
+ * it mints a fresh id, the React key changes and the entire step row is torn
+ * down and rebuilt mid-keystroke. That destroys the focused input: the caret
+ * lands on the page body and every character after the first goes nowhere,
+ * leaving a truncated-but-valid-looking value (a "1000" typed into a level
+ * saved as "1"). A genuinely new step -- added, pasted, duplicated -- has no
+ * id to inherit and must not be passed through here.
+ */
+export function carryStepId<T extends object>(
+  idMap: WeakMap<T, string>,
+  oldStep: T | undefined,
+  newStep: T,
+): void {
+  if (!oldStep || oldStep === newStep) return;
+  const id = idMap.get(oldStep);
+  if (id) idMap.set(newStep, id);
 }
 
 /**
