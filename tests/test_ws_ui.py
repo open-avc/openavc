@@ -490,6 +490,11 @@ async def test_a_press_that_never_reached_its_device_comes_back_with_the_reason(
         # failed inside it.
         assert msg["source_type"] == "ui.press"
         assert "ghost_projector" in msg["message"]
+        # And by the control it came from. A panel moves a control the moment
+        # it is touched, so a command that never ran leaves the operator's own
+        # value standing with nothing coming to correct it -- this is what
+        # tells the panel which one to put back.
+        assert msg["element_id"] == "btn_dead"
 
 
 async def test_a_press_that_worked_says_nothing(engine_and_client):

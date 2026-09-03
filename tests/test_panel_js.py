@@ -158,6 +158,17 @@ SCENARIOS = [
     "q213_no_connected_key_is_not_a_claim_that_the_device_is_down",
     "q213_the_design_canvas_draws_the_live_look",
     "q213_an_element_is_unavailable_while_any_of_its_devices_is",
+    # A refused command must not leave the operator's value standing.
+    "q206_a_fader_announces_the_value_it_is_drawing",
+    "q206_a_refused_change_puts_the_fader_back",
+    "q206_the_memo_is_what_kept_the_wrong_value_standing",
+    "q206_the_revert_lands_on_the_control_the_refusal_is_about",
+    "q206_a_refused_slider_goes_back_even_though_it_still_has_focus",
+    "q206_a_control_the_operator_is_still_holding_is_left_alone",
+    "q206_a_refused_selection_goes_back",
+    "q206_a_text_box_being_typed_into_is_not_yanked",
+    "q206_an_accepted_command_leaves_the_control_alone",
+    "q206_a_failed_macro_step_puts_its_control_back",
 ]
 
 

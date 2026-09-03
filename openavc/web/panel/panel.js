@@ -834,6 +834,7 @@ class PanelApp {
                     ? `[WS Error] ${msg.source_type}: ${msg.message}`
                     : `[WS Error] ${msg.message}`);
                 this.showFailureMessage(msg.message);
+                this._revertRefusedInteraction(msg.element_id);
                 break;
 
             case 'command.ack':
@@ -844,7 +845,10 @@ class PanelApp {
                 // than as an error frame. Same sentence either way, and nobody
                 // standing in the room can tell which kind of control they just
                 // pressed.
-                if (msg.success === false) this.showFailureMessage(msg.error);
+                if (msg.success === false) {
+                    this.showFailureMessage(msg.error);
+                    this._revertRefusedInteraction(null);
+                }
                 break;
         }
     }
@@ -946,6 +950,13 @@ class PanelApp {
         if (claims.some(claim => claim.reported)) return;
         for (const claim of claims) claim.reported = true;
         this.showFailureMessage(msg.message || msg.error);
+        // A step that never reached its device is the same failure as a refused
+        // command, arriving on a different frame: the fader that ran the macro
+        // is still showing the number somebody dragged it to. Nothing on a
+        // macro frame says which control started it, so this takes the
+        // last-touched fallback -- which is what claimed the macro in the first
+        // place.
+        this._revertRefusedInteraction(null);
     }
 
     /**
@@ -995,6 +1006,55 @@ class PanelApp {
         this._errorMessageTimer = null;
         const band = document.getElementById('panel-failure-message');
         if (band) band.classList.remove('visible');
+    }
+
+    /**
+     * Put the control a refused command came from back to the value the panel
+     * knows.
+     *
+     * A control moves the instant it is touched, before the server has said
+     * anything -- that is what makes a panel feel like hardware, and it is
+     * right for every command that works. A refused one changes nothing, so
+     * there is no state update coming to overwrite the move: the band
+     * explaining the failure is gone in five seconds and the control is not,
+     * so what survives is the lie. Somebody who walks up afterwards reads a
+     * confident, plausible, wrong number -- and on a fader it is a number they
+     * act on. Only a reload heals it, and a wall tablet is the one browser
+     * that is never reloaded.
+     *
+     * The rule: after a refusal the control shows exactly what it would show
+     * if it had never been touched. That is a re-evaluation against current
+     * state, with the memo forgotten first -- the state did not move, so every
+     * memoised renderer would decide it has nothing to do and leave the
+     * operator's value standing, which is the whole defect.
+     *
+     * `elementId` comes off the error frame when the server knows which
+     * interaction failed. It does not for a connection-level refusal (a rate
+     * limit), on a result ack, or on a macro step error, and those fall back to
+     * the control last touched -- the same correlation the failure band has
+     * always used, and sound for the same reason: every one of them answers a
+     * message this panel has just sent.
+     *
+     * A control the operator still has hold of is left where it is, and there
+     * is deliberately no test for that here: each value renderer already
+     * refuses to overwrite a live gesture (`handle._dragging`, a slider's
+     * `_dragging`, a cursor in a text box) and a second copy of that judgement
+     * in this loop is the one that would drift. `force` says the refusal is of
+     * the operator's OWN command, which lifts exactly one of those guards --
+     * see evaluateSliderValue. Nothing is lost by waiting: the release sends
+     * again, so a refusal of that send is what puts the control back.
+     */
+    _revertRefusedInteraction(elementId) {
+        const id = elementId || this._lastTouchedElementId;
+        if (!id) return;
+        for (const b of this.bindings) {
+            if (b.elementDef?.id !== id) continue;
+            for (const k of Object.keys(b)) {
+                if (k.startsWith('_last')) delete b[k];
+            }
+            try { this._evaluateBinding(b, true); }
+            catch (e) { console.error('Binding error:', e); }
+        }
     }
 
     /**
@@ -4464,10 +4524,6 @@ class PanelApp {
             }
         }
         currentValue = Math.max(min, Math.min(max, currentValue));
-        const initFrac = this._responseCurveInverse((currentValue - min) / (max - min), response, responseDbRange);
-        if (isHorizontal) handle.style.left = `${initFrac * 100}%`;
-        else handle.style.bottom = `${initFrac * 100}%`;
-        if (valueDisplay) valueDisplay.textContent = fmtFaderValue(currentValue);
 
         // Touch/mouse drag interaction
         let dragging = false;
@@ -4502,6 +4558,13 @@ class PanelApp {
             handle.setAttribute('aria-valuenow', String(Math.round(val * 10) / 10));
             if (valueDisplay) valueDisplay.textContent = fmtFaderValue(val);
         };
+        // Draw the starting value through the same function the drag uses. It
+        // used to be an inline copy of these four lines placed above, which is
+        // where the aria value went missing: nothing announced a reading until
+        // somebody dragged the handle, and the arrow keys read their starting
+        // point back out of that attribute -- so the first press of Down on a
+        // freshly-drawn fader jumped it to the floor.
+        updateFader(currentValue);
 
         // Debounced during a live drag; `immediate` sends the final value at once
         // (used on release so send-on-release fires exactly one command).
@@ -4545,8 +4608,9 @@ class PanelApp {
             // A drag on an unreachable device leaves the readout showing the
             // number the operator dragged to, which is exactly the confident
             // wrong value this control is not allowed to draw. Put it straight
-            // back to unknown. (What a *refused* command on a LIVE device
-            // leaves behind is a different fault and is not fixed here.)
+            // back to unknown. (A drag on a LIVE device whose command is then
+            // refused is the other half, and it cannot be answered here: the
+            // refusal has not arrived yet. See _revertRefusedInteraction.)
             if (wasDragging && faderBinding && this._bindingOffline(faderBinding)) {
                 this._renderFaderUnknown(faderBinding);
             }
@@ -4740,6 +4804,7 @@ class PanelApp {
             // leaving it parked at the last device value.
             if (horizontal) handle.style.left = '0%';
             else handle.style.bottom = '0%';
+            handle.setAttribute('aria-valuenow', String(min));
             if (valueDisplay) valueDisplay.textContent = fmt(min);
             return;
         }
@@ -4747,6 +4812,10 @@ class PanelApp {
         const frac = span > 0 ? this._responseCurveInverse((value - min) / span, response, responseDbRange) : 0;
         if (horizontal) handle.style.left = `${frac * 100}%`;
         else handle.style.bottom = `${frac * 100}%`;
+        // The arrow keys read their starting point off this, so a state update
+        // that moved the handle and left it behind would send the operator's
+        // next keystroke off the OLD value.
+        handle.setAttribute('aria-valuenow', String(Math.round(value * 10) / 10));
         if (valueDisplay) valueDisplay.textContent = fmt(value);
     }
 
@@ -6017,53 +6086,7 @@ class PanelApp {
                     }
                     if (!bKey && !bPattern && !bPatterns) { /* safety: evaluate anyway */ }
                 }
-                switch (b.type) {
-                    case 'visible_when':
-                        this.evaluateVisibleWhen(b);
-                        break;
-                    case 'feedback':
-                        this.evaluateFeedback(b);
-                        break;
-                    case 'label_look':
-                        this.evaluateLabelLook(b);
-                        break;
-                    case 'text':
-                        this.evaluateText(b);
-                        break;
-                    case 'color':
-                        this.evaluateColor(b);
-                        break;
-                    case 'slider_value':
-                        this.evaluateSliderValue(b);
-                        break;
-                    case 'select_value':
-                        this.evaluateSelectValue(b);
-                        break;
-                    case 'select_look':
-                        this.evaluateSelectLook(b);
-                        break;
-                    case 'text_input_value':
-                        this.evaluateTextInputValue(b);
-                        break;
-                    case 'gauge_value':
-                        this.evaluateGaugeValue(b);
-                        break;
-                    case 'level_meter_value':
-                        this.evaluateLevelMeterValue(b);
-                        break;
-                    case 'fader_value':
-                        this.evaluateFaderValue(b);
-                        break;
-                    case 'matrix_routes':
-                        this.evaluateMatrixRoutes(b);
-                        break;
-                    case 'list_items':
-                        this.evaluateListItems(b);
-                        break;
-                    case 'list_selected':
-                        this.evaluateListSelected(b);
-                        break;
-                }
+                this._evaluateBinding(b);
             } catch (e) {
                 console.error('Binding error:', e);
             }
@@ -6072,6 +6095,64 @@ class PanelApp {
         // Apply ui.* state overrides (set by macros/scripts)
         // These take priority over feedback bindings for direct control.
         this.evaluateUiOverrides();
+    }
+
+    /**
+     * Draw one binding from current state.
+     *
+     * Shared with the refusal revert, which needs exactly this and none of the
+     * incremental filtering around it. `force` says the operator's own command
+     * was rejected, which is the one time a renderer may overwrite a value
+     * they are still sitting on.
+     */
+    _evaluateBinding(b, force) {
+        switch (b.type) {
+            case 'visible_when':
+                this.evaluateVisibleWhen(b);
+                break;
+            case 'feedback':
+                this.evaluateFeedback(b);
+                break;
+            case 'label_look':
+                this.evaluateLabelLook(b);
+                break;
+            case 'text':
+                this.evaluateText(b);
+                break;
+            case 'color':
+                this.evaluateColor(b);
+                break;
+            case 'slider_value':
+                this.evaluateSliderValue(b, force);
+                break;
+            case 'select_value':
+                this.evaluateSelectValue(b);
+                break;
+            case 'select_look':
+                this.evaluateSelectLook(b);
+                break;
+            case 'text_input_value':
+                this.evaluateTextInputValue(b);
+                break;
+            case 'gauge_value':
+                this.evaluateGaugeValue(b);
+                break;
+            case 'level_meter_value':
+                this.evaluateLevelMeterValue(b);
+                break;
+            case 'fader_value':
+                this.evaluateFaderValue(b);
+                break;
+            case 'matrix_routes':
+                this.evaluateMatrixRoutes(b);
+                break;
+            case 'list_items':
+                this.evaluateListItems(b);
+                break;
+            case 'list_selected':
+                this.evaluateListSelected(b);
+                break;
+        }
     }
 
     evaluateUiOverrides() {
@@ -6482,12 +6563,15 @@ class PanelApp {
         }
     }
 
-    evaluateSliderValue(b) {
+    evaluateSliderValue(b, force) {
         const { element, elementDef, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull, steps, unit, valueToPos, fmtValue } = b;
         // Don't yank the thumb out from under an operator who is actively
         // dragging it (or has it focused) when a device echo / another panel's
-        // change arrives mid-gesture.
-        if (element._dragging || document.activeElement === element) return;
+        // change arrives mid-gesture. `force` is the refusal of this panel's
+        // own command, and there the focus half has to be ignored: a range
+        // input keeps focus after the drag that set it, so honouring it would
+        // mean the rejected value never goes back. The drag half still holds.
+        if (element._dragging || (!force && document.activeElement === element)) return;
         const rawValue = this.state[binding.key];
         const offline = this._bindingOffline(b);
         if (b._lastSliderRaw === rawValue && b._lastSliderOffline === offline) return;

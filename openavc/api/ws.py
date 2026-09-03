@@ -244,7 +244,7 @@ async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
 
 
 async def _send_ws_error(
-    ws: WebSocket, source_type: str | None, message: str
+    ws: WebSocket, source_type: str | None, message: str, element_id: str | None = None
 ) -> None:
     """Send an error frame — THE only producer of ``type: "error"`` on this socket.
 
@@ -259,6 +259,16 @@ async def _send_ws_error(
     device (see ``_run_ui_event``). ``source_type`` still names the interaction,
     because that is what the person pressed.
 
+    ``element_id`` names the control that interaction came from, and is present
+    on exactly those two: a refused interaction, and one whose action did not
+    reach its device. A panel moves a control the moment it is touched, so a
+    command that never ran leaves the operator's own value standing on screen
+    with nothing coming to correct it — the client puts the control back, and
+    this is what tells it which one. Absent for everything a control did not
+    cause (a rate limit, malformed JSON, a bad ``element_id`` in the first
+    place); a client falls back to whatever it last sent, which is the same
+    correlation it already uses to place the message.
+
     Note the two other ways this socket reports a failure, both deliberate:
     a result ack (``command.ack``/``state.set.ack``) carries ``success: false``
     plus the correlation fields a generic error frame has no room for (which
@@ -268,6 +278,8 @@ async def _send_ws_error(
     frame: dict[str, Any] = {"type": "error", "message": message}
     if source_type:
         frame["source_type"] = source_type
+    if element_id:
+        frame["element_id"] = element_id
     await _send_ws(ws, frame)
 
 
@@ -303,12 +315,12 @@ async def _run_ui_event(
     except Exception as e:
         # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
         log.error(f"{msg_type} failed: {e}")
-        await _send_ws_error(ws, msg_type, friendly_error(e))
+        await _send_ws_error(ws, msg_type, friendly_error(e), element_id)
         return
     for action in dispatched or []:
         error = action.get("error")
         if error:
-            await _send_ws_error(ws, msg_type, str(error))
+            await _send_ws_error(ws, msg_type, str(error), element_id)
             return
 
 

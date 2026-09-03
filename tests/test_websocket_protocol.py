@@ -785,6 +785,41 @@ async def test_error_frame_carries_source_type_when_known():
 
 
 @pytest.mark.asyncio
+async def test_a_refused_interaction_names_the_control_it_came_from():
+    """A panel moves a control the moment it is touched, and a refused command
+    changes no state -- so nothing is pushed back and the operator's own value
+    stands. The client puts the control back, and this field is what says which
+    one, rather than leaving it to guess from whatever it last sent.
+    """
+    ws = FakeWS()
+    engine = _make_engine()
+    engine.handle_ui_event = AsyncMock(
+        return_value=[{"action": "device.command", "error": "amp: connection refused"}]
+    )
+    with patch("openavc.api._engine._engine", engine):
+        await _handle_message(
+            ws, {"type": "ui.change", "element_id": "gain", "value": -40.5}, "panel"
+        )
+    assert ws.sent[0] == {
+        "type": "error",
+        "message": "amp: connection refused",
+        "source_type": "ui.change",
+        "element_id": "gain",
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_failure_no_control_caused_carries_no_element():
+    """Omitted rather than guessed, the same rule `source_type` follows: a rate
+    limit is a refusal of whatever was in flight, and inventing a control here
+    would put a real one back for a reason that was never about it.
+    """
+    ws = FakeWS()
+    await ws_module._send_ws_error(ws, None, "Rate limit exceeded")
+    assert "element_id" not in ws.sent[0]
+
+
+@pytest.mark.asyncio
 async def test_error_frame_omits_source_type_when_unknown():
     """Omitted, not a placeholder — a client must be able to tell the
     difference between "this message type failed" and "nothing parsed"."""

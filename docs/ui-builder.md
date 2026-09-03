@@ -540,6 +540,22 @@ label or an indicator bound to a device's connection state. Most spaces should
 leave it on: without it, a control that reaches nothing looks exactly like a
 control that worked.
 
+### After a command that did not work
+
+A control moves the moment somebody touches it, before the device has answered.
+When the command is refused, the control goes back to the value the system
+knows: a fader returns to where the amplifier actually is, a dropdown to the
+input actually routed, a slider to its last reading. The band explains what
+happened; the control stops claiming the change took.
+
+That matters after the band has gone. A fader left at the number somebody
+dragged it to, over an amplifier that never received it, reads as fact to the
+next person in the space, and a wall panel is never reloaded.
+
+A control still being dragged is left alone until it is let go. If the command
+runs, nothing snaps back: the value stays where it was put until the device
+reports its own.
+
 ### While a device is unreachable
 
 A control bound to a device the system cannot reach stops showing a value. It

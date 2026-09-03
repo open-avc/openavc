@@ -2233,6 +2233,331 @@ const tests = {
         app._markBindingAvailability(a, false);
         assert(!host.classList.contains('device-offline'), 'and both back clears it');
     },
+
+    // --- Q-206: a refused command leaves the operator's value standing ------
+    //
+    // Measured on real hardware: the fader was dragged to -40.5 dB, the command
+    // was refused, the band said so and went away, and the wall kept reading
+    // -40.5 dB over an amplifier at 0.0. A refusal changes no state, so there
+    // is no push coming to overwrite the move -- only a reload heals it, and a
+    // wall tablet is the one browser that is never reloaded.
+
+    // Found while writing the scenarios above, and fixed with them: the first
+    // draw of a fader used an inline copy of the drag's update, missing its one
+    // aria line. Nothing announced a reading until somebody dragged the handle,
+    // and the arrow keys read their starting point out of that attribute -- so
+    // the first press of Down on a freshly-drawn fader went to the floor.
+    q206_a_fader_announces_the_value_it_is_drawing() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const handle = el.querySelector('.fader-handle');
+        assert(handle.getAttribute('aria-valuenow') === '-6',
+            `drawn without being touched, got ${handle.getAttribute('aria-valuenow')}`);
+
+        // And a state update keeps it in step, or the next keystroke would step
+        // off the value before last.
+        app.state['device.amp.gain'] = -12.0;
+        app.evaluateAllBindings(['device.amp.gain']);
+        assert(handle.getAttribute('aria-valuenow') === '-12',
+            `after a state update, got ${handle.getAttribute('aria-valuenow')}`);
+        handle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        assert(el.querySelector('.fader-value').textContent === '-13.0 dB',
+            `so an arrow key steps from where the handle is, got ${el.querySelector('.fader-value').textContent}`);
+    },
+
+    // The photographed fader. The optimistic move is the panel working; what
+    // has to change is what is left on screen once the answer is "no".
+    q206_a_refused_change_puts_the_fader_back() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', label: 'Gain',
+                min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const handle = el.querySelector('.fader-handle');
+        const readout = el.querySelector('.fader-value');
+        assert(readout.textContent === '-6.0 dB', `starts at the device value, got ${readout.textContent}`);
+
+        // The press, through the real path: the keyboard arrow moves the handle
+        // and sends, exactly as a drag does, without needing a layout engine.
+        handle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        assert(readout.textContent === '-7.0 dB',
+            `the control moves the moment it is touched, got ${readout.textContent}`);
+
+        app.handleMessage({
+            type: 'error', source_type: 'ui.change', element_id: 'gain',
+            message: "'set_fader': 'channel' is required",
+        });
+        assert(readout.textContent === '-6.0 dB',
+            `refused: back to the value the panel knows, got ${readout.textContent}`);
+        assert(handle.style.bottom === '92.5%',
+            `refused: and the handle with it, got ${handle.style.bottom}`);
+        // The band is the other half and must survive the revert.
+        const band = document.getElementById('panel-failure-message');
+        assert(band && band.classList.contains('visible')
+            && band.textContent === "'set_fader': 'channel' is required",
+            'the reason is still on screen');
+    },
+
+    // Why a plain re-evaluation is not the fix, and must not be substituted for
+    // one later: the state never moved, so every memoised renderer decides it
+    // has nothing to do and leaves the rejected value exactly where it is.
+    q206_the_memo_is_what_kept_the_wrong_value_standing() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const readout = el.querySelector('.fader-value');
+        el.querySelector('.fader-handle')
+            .dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        assert(readout.textContent === '-7.0 dB', 'moved');
+
+        app.evaluateAllBindings();
+        assert(readout.textContent === '-7.0 dB',
+            'a plain re-evaluation is a no-op here -- the memo short-circuits it');
+        app._revertRefusedInteraction('gain');
+        assert(readout.textContent === '-6.0 dB',
+            `the revert forgets the memo first, got ${readout.textContent}`);
+    },
+
+    // The frame names the control it is about, so a slow failure from one press
+    // cannot reach in and rewrite whatever was touched after it. With no name
+    // on the frame -- a rate limit, an ack, a macro step -- the last thing
+    // touched is the answer, which is what the failure band already assumes.
+    q206_the_revert_lands_on_the_control_the_refusal_is_about() {
+        const app = mkApp();
+        const fader = (id, key) => ({
+            id, type: 'fader', min: -80, max: 0, unit: 'dB',
+            bindings: { show: { value: { key } } },
+        });
+        const proj = project({
+            elements: [fader('a', 'device.amp.gain'), fader('b', 'device.amp.aux')],
+            placements: { a: { x: 5, y: 5, w: 20, h: 60 }, b: { x: 30, y: 5, w: 20, h: 60 } },
+        });
+        app.state = {
+            'device.amp.connected': true, 'device.amp.gain': -6.0, 'device.amp.aux': -20.0,
+        };
+        renderProject(app, proj);
+        const readout = (id) => app.root
+            .querySelector(`[data-element-id="${id}"] .fader-value`);
+        const nudge = (id) => app.root.querySelector(`[data-element-id="${id}"] .fader-handle`)
+            .dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        nudge('a');
+        nudge('b');
+        assert(readout('a').textContent === '-7.0 dB' && readout('b').textContent === '-21.0 dB',
+            'both moved');
+
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'a', message: 'no' });
+        assert(readout('a').textContent === '-6.0 dB', 'the named control goes back');
+        assert(readout('b').textContent === '-21.0 dB',
+            `and nothing else does, got ${readout('b').textContent}`);
+
+        // Unnamed: the panel last sent for 'b' (send() records it), so that is
+        // the one a connection-level refusal is about.
+        app.send({ type: 'ui.change', element_id: 'b', value: -21.0 });
+        app.handleMessage({ type: 'error', message: 'Rate limit exceeded' });
+        assert(readout('b').textContent === '-20.0 dB',
+            `an unnamed refusal falls back to the last control touched, got ${readout('b').textContent}`);
+    },
+
+    // A range input keeps focus after the drag that set it, and the renderer
+    // refuses to touch a focused input -- so honouring that guard here would
+    // mean a slider is the one control that never goes back.
+    q206_a_refused_slider_goes_back_even_though_it_still_has_focus() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'vol', type: 'slider', min: 0, max: 100, unit: '%',
+                style: { show_value: true },
+                bindings: { show: { value: { key: 'device.amp.vol' } } },
+            }],
+            placements: { vol: { x: 5, y: 5, w: 40, h: 10 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.vol': 30 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="vol"]');
+        const input = el.querySelector('input[type=range]');
+        const readout = el.querySelector('.slider-value');
+        input.focus();
+        input.value = '80';
+        input.dispatchEvent(new window.Event('input'));
+        assert(readout.textContent === '80 %', `moved, got ${readout.textContent}`);
+        assert(document.activeElement === input, 'and still has focus, as a real drag leaves it');
+
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'vol', message: 'no' });
+        assert(readout.textContent === '30 %', `refused: back to 30, got ${readout.textContent}`);
+        assert(input.value === '30', `and the thumb with it, got ${input.value}`);
+
+        // The drag half of that guard still holds: a finger on the control wins.
+        input.value = '80';
+        input.dispatchEvent(new window.Event('input'));
+        input._dragging = true;
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'vol', message: 'no' });
+        assert(readout.textContent === '80 %',
+            `a control being dragged is left alone, got ${readout.textContent}`);
+    },
+
+    // Same rule on the fader: the release sends again, so a refusal of THAT
+    // send is what puts it back. Yanking the handle away from the finger
+    // holding it would be worse than the stale number.
+    q206_a_control_the_operator_is_still_holding_is_left_alone() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const handle = el.querySelector('.fader-handle');
+        const readout = el.querySelector('.fader-value');
+        handle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        handle._dragging = true;
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'gain', message: 'no' });
+        assert(readout.textContent === '-7.0 dB',
+            `mid-drag the value stands, got ${readout.textContent}`);
+        handle._dragging = false;
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'gain', message: 'no' });
+        assert(readout.textContent === '-6.0 dB',
+            `and the refusal of the released value puts it back, got ${readout.textContent}`);
+    },
+
+    // A dropdown left showing an input the switcher was never told to take is
+    // the same lie with a name instead of a number on it.
+    q206_a_refused_selection_goes_back() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'src', type: 'select',
+                options: [{ value: '1', label: 'Laptop' }, { value: '2', label: 'Room PC' }],
+                bindings: { show: { value: { key: 'device.sw.route_1' } } },
+            }],
+            placements: { src: { x: 5, y: 5, w: 30, h: 10 } },
+        });
+        app.state = { 'device.sw.connected': true, 'device.sw.route_1': '1' };
+        renderProject(app, proj);
+        const select = app.root.querySelector('[data-element-id="src"] select');
+        assert(select.value === '1', `starts on the routed source, got ${select.value}`);
+        select.value = '2';
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'src', message: 'no' });
+        assert(select.value === '1', `refused: back to what is actually routed, got ${select.value}`);
+    },
+
+    // The one control where focus IS the gesture. Pulling characters out from
+    // under a cursor mid-sentence is its own fault, so a text box being typed
+    // into is left alone until the cursor leaves it.
+    q206_a_text_box_being_typed_into_is_not_yanked() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'name', type: 'text_input',
+                bindings: { show: { value: { key: 'device.dsp.preset_name' } } },
+            }],
+            placements: { name: { x: 5, y: 5, w: 30, h: 8 } },
+        });
+        app.state = { 'device.dsp.connected': true, 'device.dsp.preset_name': 'Meeting' };
+        renderProject(app, proj);
+        const input = app.root.querySelector('[data-element-id="name"] input');
+        input.focus();
+        input.value = 'Lecture';
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'name', message: 'no' });
+        assert(input.value === 'Lecture', `typing is not interrupted, got ${input.value}`);
+        input.blur();
+        app.handleMessage({ type: 'error', source_type: 'ui.change', element_id: 'name', message: 'no' });
+        assert(input.value === 'Meeting', `and once the cursor leaves, back it goes, got ${input.value}`);
+    },
+
+    // The must-not-regress half: a command that WORKED leaves the control
+    // where the operator put it. Most devices echo their new value, but a
+    // polled one can take seconds, and snapping back in the meantime would
+    // undo the thing that makes the panel feel like hardware.
+    q206_an_accepted_command_leaves_the_control_alone() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', min: -80, max: 0, unit: 'dB',
+                bindings: { show: { value: { key: 'device.amp.gain' } } },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const readout = el.querySelector('.fader-value');
+        el.querySelector('.fader-handle')
+            .dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        // Everything a working press produces: an ack that succeeded, and
+        // unrelated state moving underneath.
+        app.handleMessage({ type: 'command.ack', success: true });
+        app.handleMessage({ type: 'state.update', changes: { 'var.other': 1 } });
+        assert(readout.textContent === '-7.0 dB',
+            `nothing reverts without a refusal, got ${readout.textContent}`);
+    },
+
+    // A step that never reached its device arrives on macro.step_error rather
+    // than an error frame, and nothing on it names a control -- so the revert
+    // has to ride the same claim that decides whether to draw the band at all.
+    // A macro this panel did not start reaches neither.
+    q206_a_failed_macro_step_puts_its_control_back() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'gain', type: 'fader', min: -80, max: 0, unit: 'dB',
+                bindings: {
+                    show: { value: { key: 'device.amp.gain' } },
+                    do: { change: [{ action: 'macro', macro: 'set_level' }] },
+                },
+            }],
+            placements: { gain: { x: 5, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.gain': -6.0 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="gain"]');
+        const readout = el.querySelector('.fader-value');
+        el.querySelector('.fader-handle')
+            .dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown' }));
+        assert(readout.textContent === '-7.0 dB', 'moved');
+
+        // Somebody else's macro: no claim, no band, and nothing moves here.
+        app.handleMessage({
+            type: 'macro.step_error', macro_id: 'someone_elses', message: 'nope',
+        });
+        assert(readout.textContent === '-7.0 dB',
+            `another panel's macro failing is not this control's business, got ${readout.textContent}`);
+
+        app.send({ type: 'ui.change', element_id: 'gain', value: -7.0 });
+        app.handleMessage({
+            type: 'macro.step_error', macro_id: 'set_level',
+            message: 'amp: connection refused',
+        });
+        assert(readout.textContent === '-6.0 dB',
+            `the failed step puts the control back, got ${readout.textContent}`);
+    },
 };
 
 const results = {};
