@@ -4,6 +4,7 @@ import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
+import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
@@ -366,6 +367,7 @@ export function SystemSettingsView() {
   const certInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
   const [kioskAvailable, setKioskAvailable] = useState(false);
+  const [panelDimAvailable, setPanelDimAvailable] = useState(false);
   const [ssh, setSsh] = useState<SshStatus | null>(null);
   const [sshBusy, setSshBusy] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
@@ -421,7 +423,10 @@ export function SystemSettingsView() {
 
   useEffect(() => {
     api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + e));
-    api.getSystemVersion().then((v) => setKioskAvailable(v.kiosk_available)).catch(() => {});
+    api.getSystemVersion().then((v) => {
+      setKioskAvailable(v.kiosk_available);
+      setPanelDimAvailable(v.panel_dim_available);
+    }).catch(() => {});
     api.getSshStatus().then(setSsh).catch(() => setSsh(null));
     loadAdapters();
     loadTlsStatus();
@@ -636,6 +641,7 @@ export function SystemSettingsView() {
   const log = merged("logging");
   const upd = merged("updates");
   const kiosk = merged("kiosk");
+  const display = merged("display");
   const tls = merged("tls");
 
   // Warning: no auth + public bind
@@ -1746,6 +1752,69 @@ export function SystemSettingsView() {
             <Toggle checked={upd.notify_only} onChange={(v) => update("updates", "notify_only", v)} />
           </div>
         </div>
+
+        {/* Panel display — only where this instance drives a screen it can dim */}
+        {panelDimAvailable && <>
+        <h3 style={sectionTitle}>Panel Display</h3>
+        <div style={cardStyle}>
+          <div style={toggleRow}>
+            <div>
+              <div style={{ fontSize: "var(--font-size-sm)" }}>Dim the panel when idle</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Fades the panel down after a period with no touches. A panel left on the same page all day and night can leave a permanent ghost of it on the screen, and a dimmer picture ages the display more slowly. The screen never switches off.</div>
+            </div>
+            <Toggle checked={display.idle_dim_enabled} onChange={(v) => update("display", "idle_dim_enabled", v)} />
+          </div>
+          {display.idle_dim_enabled && <>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Dim after</label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              style={{ ...inputStyle, maxWidth: 120 }}
+              value={Math.round(display.idle_dim_timeout_seconds / 60)}
+              onChange={(e) => {
+                const mins = Math.min(Math.max(Number(e.target.value) || 1, 1), 120);
+                update("display", "idle_dim_timeout_seconds", mins * 60);
+              }}
+            />
+            <span style={helpText}>Minutes with no touch before the panel dims.</span>
+          </div>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Dim to</label>
+            <input
+              type="number"
+              min={5}
+              max={90}
+              style={{ ...inputStyle, maxWidth: 120 }}
+              value={display.idle_dim_level_percent}
+              onChange={(e) => {
+                const pct = Math.min(Math.max(Number(e.target.value) || 5, 5), 90);
+                update("display", "idle_dim_level_percent", pct);
+              }}
+            />
+            <span style={helpText}>Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening.</span>
+          </div>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Stay bright while</label>
+            <VariableKeyPicker
+              value={display.idle_dim_hold_state_key}
+              onChange={(key) => update("display", "idle_dim_hold_state_key", key)}
+              showDeviceState
+              placeholder="Nothing — dim on the timer alone"
+            />
+            <span style={helpText}>Optional. While this value is on, the panel never dims. A meeting in progress generates no touches, so point this at whatever the project already sets when the space is in use — a system-on variable, or a display's power state.</span>
+          </div>
+          <div style={toggleRow}>
+            <div>
+              <div style={{ fontSize: "var(--font-size-sm)" }}>Waking touch also presses the button</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Off: the touch that wakes a dimmed panel only brings the brightness back, so nobody mutes a live room by tapping a screen they could not read. On: that touch also does whatever it landed on, which is quicker but acts on a control the user could not see.</div>
+            </div>
+            <Toggle checked={display.idle_dim_wake_passes_touch} onChange={(v) => update("display", "idle_dim_wake_passes_touch", v)} />
+          </div>
+          </>}
+        </div>
+        </>}
 
         {/* Kiosk — only shown on Pi/kiosk-capable deployments */}
         {kioskAvailable && <>

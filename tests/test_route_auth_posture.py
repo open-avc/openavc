@@ -33,6 +33,11 @@ from openavc.main import app
 # and network screens (loopback-or-auth, so a fresh appliance can be
 # configured from its own display before a credential exists).
 #
+# The idle-dim policy is open on the same loopback-or-auth terms and for the
+# same reason: the caller is the thing drawing the panel on this very box (the
+# appliance shell), which holds no credential of its own. It is read-only and
+# says nothing a person standing at the panel cannot already see.
+#
 # A project's `ui/` tree (custom controls) is open for the same reason a
 # plugin's panel/ directory is: it is what an iframe's src fetches, and a wall
 # panel holds no credential. Read-only, traversal-proof, and unknown types are
@@ -62,6 +67,7 @@ EXPECTED_OPEN = {
     ("GET", "/api/setup/status"),
     ("GET", "/api/startup-status"),
     ("GET", "/api/status"),
+    ("GET", "/api/system/display-idle"),
     ("GET", "/api/system/network"),
     ("GET", "/api/themes/{theme_id}"),
     ("GET", "/docs"),

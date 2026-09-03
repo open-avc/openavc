@@ -287,6 +287,41 @@ DEFAULTS: dict[str, Any] = {
     "discovery": {
         "advertise": True,
     },
+    # Idle dim for a panel this instance drives on its OWN screen. The
+    # motivation is burn-in: an appliance panel is pinned 24/7 on a mostly
+    # static page, and a dimmed pixel ages slower. It is not power saving,
+    # which is why nothing here ever turns the screen off -- a black panel
+    # reads as broken to somebody walking into the space, and generates the
+    # support call the feature was supposed to avoid.
+    #
+    # The server holds the policy and does NOT do the dimming. Whatever is
+    # showing the panel does: today that is the appliance shell, which reads
+    # this over /api/system/display-idle. Named for the DISPLAY rather than
+    # for the appliance on purpose -- a dedicated tablet running the panel app
+    # against a remote server is the same policy, and should be able to claim
+    # it later without a settings rename on units already in the field.
+    "display": {
+        # Off by default. Fielded panels must not change how they look
+        # because they took an update; provisioning turns it on for units
+        # that ship with a screen.
+        "idle_dim_enabled": False,
+        # Seconds of no touch before the panel dims. Clamped to 30..7200 at
+        # the read site.
+        "idle_dim_timeout_seconds": 300,
+        # Percent OF THE CONFIGURED BRIGHTNESS, not of full scale. A panel
+        # already turned down for a dark room dims further, where an absolute
+        # level could brighten it. Clamped to 5..90.
+        "idle_dim_level_percent": 20,
+        # Whether the touch that wakes the panel also presses what is under
+        # it. Off means the first touch only restores brightness, so a stray
+        # tap on a dimmed panel cannot mute a live room.
+        "idle_dim_wake_passes_touch": False,
+        # Optional state key that holds the panel bright while it is truthy.
+        # A running meeting generates no touches, so a bare timer dims
+        # mid-presentation; point this at whatever the project already sets
+        # when the room is in use. Empty means the timer alone decides.
+        "idle_dim_hold_state_key": "",
+    },
     "devices": {
         # Seconds between reconnect attempts for a device that has gone
         # offline for a network reason. OpenAVC retries for as long as the

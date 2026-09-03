@@ -14,6 +14,7 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api._engine import _get_engine
 from openavc.api.auth import _basic, programmer_auth_satisfied
+from openavc.utils.request_origin import is_local_console_request
 
 router = APIRouter()
 open_router = APIRouter()
@@ -98,6 +99,92 @@ async def get_system_version() -> dict[str, Any]:
         "channel": cfg.get("updates", "channel", "stable"),
         "platform": plat.system().lower(),
         "kiosk_available": Path("/opt/openavc/scripts/panel-kiosk.sh").exists(),
+        "panel_dim_available": _panel_dim_available(),
+    }
+
+
+def _panel_dim_available() -> bool:
+    """Whether this instance drives a screen that can actually be dimmed.
+
+    The all-in-one appliance only, for now. The deployment type describes the
+    SERVER, which on the appliance is the same box as the panel -- so it is a
+    true answer there and nowhere else. A tablet running the panel app against
+    a remote server can dim just as well, but this gate cannot see it; when
+    that client learns to say so, this is the one place that changes.
+    """
+    try:
+        from openavc.updater.platform import DeploymentType, detect_deployment_type
+
+        return detect_deployment_type() == DeploymentType.ANDROID_APPLIANCE
+    except Exception:
+        return False
+
+
+# Bounds on the two numbers, applied where they are READ rather than where
+# they are written -- same shape as the device reconnect interval. A
+# hand-edited system.json goes through no endpoint, so a check at the write
+# door is not the one that holds.
+_DIM_TIMEOUT_MIN, _DIM_TIMEOUT_MAX = 30, 7200
+_DIM_LEVEL_MIN, _DIM_LEVEL_MAX = 5, 90
+
+
+@open_router.get("/system/display-idle")
+async def get_display_idle(
+    request: Request,
+    credentials: HTTPBasicCredentials = Depends(_basic),
+) -> dict[str, Any]:
+    """The idle-dim policy, for whatever is drawing the panel on this screen.
+
+    Open to the local console because the caller is the thing showing the
+    panel on this very box -- the appliance shell, over loopback, with no
+    credential of its own. A remote caller still has to authenticate.
+
+    ``hold`` is resolved HERE rather than handing the shell a state key to
+    evaluate: what counts as truthy is a platform rule (``condition_eval``),
+    and a second implementation of it in Kotlin is a rule that can disagree
+    with itself.
+    """
+    if not (
+        is_local_console_request(request)
+        or programmer_auth_satisfied(request, credentials)
+    ):
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    from openavc.system_config import get_system_config
+
+    cfg = get_system_config()
+
+    def _num(key: str, default: int, lo: int, hi: int) -> int:
+        try:
+            return min(max(int(cfg.get("display", key, default)), lo), hi)
+        except (TypeError, ValueError):
+            return default
+
+    hold_key = str(cfg.get("display", "idle_dim_hold_state_key", "") or "").strip()
+    hold = False
+    if hold_key:
+        try:
+            hold = bool(_get_engine().state.get(hold_key))
+        except Exception:
+            # A key nothing has written yet, or an engine still starting.
+            # Not-held is the safe reading: it dims, which is recoverable by
+            # touching the panel, where a stuck hold silently disables the
+            # whole feature.
+            hold = False
+
+    return {
+        "enabled": bool(cfg.get("display", "idle_dim_enabled", False)),
+        "timeout_seconds": _num(
+            "idle_dim_timeout_seconds", 300, _DIM_TIMEOUT_MIN, _DIM_TIMEOUT_MAX
+        ),
+        "level_percent": _num(
+            "idle_dim_level_percent", 20, _DIM_LEVEL_MIN, _DIM_LEVEL_MAX
+        ),
+        "wake_passes_touch": bool(
+            cfg.get("display", "idle_dim_wake_passes_touch", False)
+        ),
+        "hold_state_key": hold_key,
+        "hold": hold,
     }
 
 

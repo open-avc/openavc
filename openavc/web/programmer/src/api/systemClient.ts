@@ -270,6 +270,13 @@ export interface SystemConfig {
   updates: { check_enabled: boolean; channel: string; auto_check_interval_hours: number; auto_backup_before_update: boolean; notify_only: boolean };
   cloud: { enabled: boolean; endpoint: string; system_key: string; system_id: string };
   kiosk: { enabled: boolean; target_url: string; cursor_visible: boolean };
+  display: {
+    idle_dim_enabled: boolean;
+    idle_dim_timeout_seconds: number;
+    idle_dim_level_percent: number;
+    idle_dim_wake_passes_touch: boolean;
+    idle_dim_hold_state_key: string;
+  };
   tls: { enabled: boolean; port: number; auto_generate: boolean; cert_file: string; key_file: string; redirect_http: boolean; cloud_cert: boolean };
 }
 
@@ -278,6 +285,7 @@ export async function getSystemVersion(): Promise<{
   channel: string;
   platform: string;
   kiosk_available: boolean;
+  panel_dim_available: boolean;
 }> {
   return request("/system/version");
 }

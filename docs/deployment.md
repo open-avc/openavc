@@ -446,6 +446,22 @@ How a change takes effect depends on the hardware. On the Pi appliance and Linux
 
 On the Raspberry Pi image, an `openavc-info.service` also displays the IP address and access URLs on the HDMI console at boot, so you can find the device on the network even without mDNS.
 
+### Dimming the panel when it is idle
+
+A panel that shows the same page all day and all night can leave a faint permanent ghost of that page on the screen. Dimming the picture when nobody is using it slows that down considerably.
+
+On appliance hardware that drives its own touch screen, Programmer > Settings > **Panel Display** offers:
+
+- **Dim the panel when idle**, off until you turn it on.
+- **Dim after** — minutes with no touch before the panel fades down.
+- **Dim to** — a percentage of the panel's normal brightness. It is a percentage rather than a fixed level so a panel already turned down for a dark space dims further instead of getting brighter.
+- **Stay bright while** — an optional state value that holds the panel at full brightness while it is on. A meeting in progress generates no touches, so a plain timer would dim the panel in the middle of a presentation. Point this at whatever your project already sets when the space is in use: a system-on variable, or a display's power state.
+- **Waking touch also presses the button** — off by default, so the first touch on a dimmed panel only brings the brightness back. Nobody mutes a live room by tapping a screen they could not read. Turn it on if you would rather the wake touch act on the control underneath it.
+
+The screen never switches off, only dims. A dark panel looks broken to somebody walking into the space.
+
+The section appears only on hardware where OpenAVC drives the display itself. On a panel running the OpenAVC Panel app against a server elsewhere, screen timeout and brightness are the tablet's own settings.
+
 ### Raspberry Pi: OS login and SSH
 
 The Pi appliance image ships with the operating-system login locked down:
