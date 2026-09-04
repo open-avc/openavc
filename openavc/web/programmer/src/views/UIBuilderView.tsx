@@ -18,6 +18,7 @@ import {
 import type { UIElement, UIPage, UISettings, Placement, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
 import { listThemes, getTunnelPrefix } from "../api/restClient";
+import { commandIssues } from "../api/commandIssues";
 import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
@@ -52,6 +53,7 @@ import {
   renameElement,
   validateElementId,
   validateProject,
+  projectCommandActions,
   autoPlace,
   defaultElementSize,
   absolutePlacements,
@@ -133,6 +135,15 @@ export function UIBuilderView() {
   const [showStylesheet, setShowStylesheet] = useState(false);
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[] | null>(null);
   const [confirmResetStyles, setConfirmResetStyles] = useState(false);
+  // Validate asks the platform one question it cannot answer itself: whether
+  // each chosen command has the parameters its driver requires. Everything
+  // else is derived from the project in hand, so a request that fails still
+  // leaves a full report -- it just cannot speak to that one thing.
+  const runValidation = useCallback(async () => {
+    if (!project) return;
+    const found = await commandIssues(projectCommandActions(project));
+    setValidationIssues(validateProject(project, found));
+  }, [project]);
   const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
   const [themeVariables, setThemeVariables] = useState<Record<string, unknown>>({});
   const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; variables: Record<string, unknown>; source: string }[]>([]);
@@ -1251,7 +1262,7 @@ export function UIBuilderView() {
         <CanvasToolbar
           pages={pages}
           selectedPageId={currentPage?.id || null}
-          onValidate={() => setValidationIssues(validateProject(project))}
+          onValidate={runValidation}
           trailing={
             !previewMode ? (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>

@@ -35,6 +35,8 @@ The **Emit Event** step can attach optional payload fields that travel with the 
 
 The **Set Variable** step stores values with the variable's declared type: a string variable keeps text like `0` or `true` exactly as typed. When the target is a device or system state key instead of a variable, a type selector chooses whether the value is stored as text, a number, or true/false.
 
+A step that will not run as built is marked while you edit it, both inline and on the macro's row in the list. That includes a step that has not been finished (a delay with no seconds, a command step with no device chosen) and a command whose parameters are not filled in: some commands take a parameter they cannot run without, marked **required** in red beside the field, and leaving one empty means the device refuses the step every time with a message like `'set_fader': 'channel' is required`. The mark uses those same words. A step aimed at a device whose driver is not installed yet is left alone, so a macro written ahead of the equipment stays quiet. Nothing here blocks a save: a half-built macro is a normal thing to leave overnight.
+
 Reorder steps by dragging the grip handle on the left side of each step. Toggle **Stop on Error** in the macro header to halt execution if any step fails (by default, macros continue through errors).
 
 **Step Templates:** Click the **Templates** dropdown in the step toolbar to insert pre-built multi-step patterns: Volume Ramp, Source Switch, and Power Sequence. Templates add several coordinated steps at once and are a fast way to build common sequences.

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import api_error as _api_error
+from openavc.core.command_params import missing_params_check
 from openavc.core.macro_validation import macro_issues
 
 router = APIRouter()
@@ -73,14 +74,22 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     Many at once rather than one per call: the macro LIST marks its rows too,
     and a project's worth of macros must not be a project's worth of requests.
 
-    Plugin-registered actions come from the running engine, which is the other
-    reason this cannot be a copy of the rules in the browser: only the engine
-    knows which plugin actions are loaded, and a lint that flags a working
-    step is worse than no lint at all.
+    Plugin-registered actions and the drivers' own required parameters come
+    from the running engine, which is the other reason this cannot be a copy of
+    the rules in the browser: only the engine knows which plugin actions are
+    loaded and what each command needs, and a lint that flags a working step is
+    worse than no lint at all.
     """
     engine = _get_engine()
     extra_actions = (
         engine.macros.plugin_action_types() if getattr(engine, "macros", None) else frozenset()
+    )
+    # The other thing only this side knows: what each driver declares its
+    # commands need. A step whose command is chosen and whose required
+    # parameters are empty used to clear the banner and then be refused by the
+    # device on every run.
+    missing_params = missing_params_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
     )
 
     if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
@@ -95,6 +104,7 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
                 entry.get("steps") or [],
                 entry.get("triggers") or [],
                 extra_actions=extra_actions,
+                missing_params=missing_params,
             )
         }
     return {"macros": results}

@@ -2,8 +2,9 @@
 
 The Pydantic models in ``project_loader`` check a macro's *shape* (field names
 and types). These rules check its *meaning*: that the step action exists, that
-the fields that action needs are filled in, that operator and trigger-type
-names are ones the runtime understands, and that referenced ids resolve.
+the fields that action needs are filled in, that the command it names can
+actually run, that operator and trigger-type names are ones the runtime
+understands, and that referenced ids resolve.
 
 It lives in core, not next to a caller, because more than one door creates
 macros and they must agree on what a valid macro is. Previously these rules
@@ -25,13 +26,18 @@ and it is invisible precisely because nobody reopens a macro that saved.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Mapping
 from typing import Any
 
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+#: What a caller holding the driver registry hands in: given a step, the
+#: parameters its command declares required and it does not supply, or None
+#: when nothing can be said about it.
+MissingParams = Callable[[Mapping[str, Any]], "list[str] | None"]
 
 
 
@@ -75,7 +81,11 @@ VALID_OVERLAP_MODES = frozenset(("skip", "queue", "allow"))
 
 
 def validate_macro_step(
-    step: dict, path: str, *, extra_actions: Collection[str] = ()
+    step: dict,
+    path: str,
+    *,
+    extra_actions: Collection[str] = (),
+    missing_params: MissingParams | None = None,
 ) -> list[str]:
     """Validate a single macro step. Returns list of error strings.
 
@@ -83,6 +93,12 @@ def validate_macro_step(
     the macro engine at runtime. They are as valid as the built-ins, but only
     the engine knows them, so a caller that can reach it must pass them in —
     otherwise a macro using a plugin action reads as malformed.
+
+    ``missing_params`` answers whether a chosen command can actually run — the
+    driver's own required parameters, which nothing here can see. Injected for
+    the same reason ``extra_actions`` is: only a caller holding the driver
+    registry knows, and a caller that does not must produce no finding rather
+    than guess. See ``core/command_params``.
     """
     errors: list[str] = []
     action = step.get("action", "")
@@ -101,6 +117,15 @@ def validate_macro_step(
         val = step.get(field)
         if val is None or val == "":
             errors.append(f"{path}: {action} step requires '{field}'")
+
+    # The step names a command; the command names parameters of its own. The
+    # fields above are all this module can see, and stopping there is what let a
+    # step read as complete while the device refused every run of it. The
+    # sentence is the runtime's own, word for word, so the lint and the failure
+    # somebody eventually sees are the same sentence.
+    if missing_params is not None:
+        for name in missing_params(step) or ():
+            errors.append(f"{path}: '{step.get('command')}': '{name}' is required")
 
     if action == "delay":
         seconds = step.get("seconds")
@@ -122,7 +147,9 @@ def validate_macro_step(
                 for i, sub in enumerate(branch_steps):
                     if isinstance(sub, dict):
                         errors.extend(validate_macro_step(
-                            sub, f"{path}.{branch}[{i}]", extra_actions=extra_actions
+                            sub, f"{path}.{branch}[{i}]",
+                            extra_actions=extra_actions,
+                            missing_params=missing_params,
                         ))
 
     if action == "wait_until":
@@ -212,7 +239,11 @@ def validate_trigger(trigger: dict, path: str) -> list[str]:
 
 
 def macro_issues(
-    steps: Any, triggers: Any, *, extra_actions: Collection[str] = ()
+    steps: Any,
+    triggers: Any,
+    *,
+    extra_actions: Collection[str] = (),
+    missing_params: MissingParams | None = None,
 ) -> list[dict[str, Any]]:
     """Everything wrong with a macro, placed where an editor can draw it.
 
@@ -234,6 +265,12 @@ def macro_issues(
     id that no longer resolves) -- those are logged there rather than raised
     for a reason that still holds, that a macro may legitimately be authored
     before the device it drives exists.
+
+    ``missing_params`` belongs here rather than with those, and the difference
+    is worth being clear about: an unresolved id may resolve tomorrow, but a
+    driver that is loaded and declares a parameter required is telling us about
+    today. When it is not loaded the check says nothing at all, so the
+    authored-in-advance case stays as quiet as it is for the id checks.
     """
     issues: list[dict[str, Any]] = []
 
@@ -241,7 +278,9 @@ def macro_issues(
         for i, step in enumerate(steps):
             if isinstance(step, dict):
                 raw = validate_macro_step(
-                    step, f"steps[{i}]", extra_actions=extra_actions
+                    step, f"steps[{i}]",
+                    extra_actions=extra_actions,
+                    missing_params=missing_params,
                 )
             else:
                 raw = [f"steps[{i}]: expected an object, got {type(step).__name__}"]
@@ -283,19 +322,25 @@ def validate_macro(
     project: Any = None,
     *,
     extra_actions: Collection[str] = (),
+    missing_params: MissingParams | None = None,
 ) -> str | None:
     """Validate macro steps and triggers. Returns error string or None.
 
     ``project`` enables soft reference checks (unknown device/group/macro ids
     are logged as warnings, not errors — a macro may legitimately be authored
-    before the device it drives). ``extra_actions`` see validate_macro_step.
+    before the device it drives). ``extra_actions`` and ``missing_params`` see
+    validate_macro_step.
     """
     # One traversal, shared with the editor's lint door: what refuses a
     # generated macro and what marks a hand-built one are the same findings,
     # rendered two ways.
     errors: list[str] = [
         f"{issue['path']}: {issue['message']}" if issue["path"] else issue["message"]
-        for issue in macro_issues(steps, triggers, extra_actions=extra_actions)
+        for issue in macro_issues(
+            steps, triggers,
+            extra_actions=extra_actions,
+            missing_params=missing_params,
+        )
     ]
     warnings: list[str] = []
 

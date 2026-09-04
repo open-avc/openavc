@@ -57,6 +57,8 @@ Sizes are worked out against a 1280x800 reference panel, which is what the perce
 
 **Validate** in the toolbar lists the same findings for the whole project, alongside the checks for missing devices, macros and pages. These are the same warnings the AI assistant gets back when it builds a page, so a panel it wrote and a panel you dragged are held to the same standard.
 
+Validate also asks the device's driver whether each command you have chosen has everything it needs. Some commands take a parameter they cannot run without, marked **required** in red beside the field. Leave one empty and the control still draws, still takes a press, and the device refuses it every time with a message like `'set_fader': 'channel' is required`. Validate now reports that in the same words before the room is handed over, and the card in the Bindings panel keeps its **Incomplete** badge until the required fields are filled. A device whose driver is not installed yet is left alone, so a panel built ahead of the equipment stays quiet.
+
 ## Element Types
 
 | Type | Purpose | Typical Use |

@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { UIElement, ProjectConfig } from "../../../api/types";
-import { BINDING_CAPABILITIES, type BindingCapability, slotActions, actionsCommandDevice, actionDanglingRef, actionIncompleteCheck } from "../uiBuilderHelpers";
+import { BINDING_CAPABILITIES, type BindingCapability, slotActions, actionsCommandDevice, actionDanglingRef, actionIncompleteCheck, elementCommandActions } from "../uiBuilderHelpers";
+import { commandIssues, type CommandIssues } from "../../../api/commandIssues";
 import { ButtonBindingEditor, type ButtonBindings } from "../../shared/ButtonBindingEditor";
 import { PressBindingEditor } from "../BindingEditor/PressBindingEditor";
 import { TextBindingEditor } from "../BindingEditor/TextBindingEditor";
@@ -91,6 +92,37 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
     commit(show, nextDo);
   };
 
+  // Whether each chosen command has the parameters its driver requires. Only
+  // the platform knows, so it is asked -- and until it was, this badge cleared
+  // the moment a command was picked and said the action was finished while the
+  // required fields two inches below it were still empty and red.
+  //
+  // Keyed on the commands themselves, not on the element: renaming a control or
+  // dragging it cannot change the answer, and this is on the path of somebody
+  // typing. Debounced for the case it CAN change -- typing a parameter value.
+  const [unrunnable, setUnrunnable] = useState<CommandIssues>(new Map());
+  const commandActions = elementCommandActions(element);
+  const commandSignature = JSON.stringify(
+    commandActions.map((a) => [a.device, a.command, a.params ?? null]),
+  );
+  useEffect(() => {
+    if (!commandActions.length) {
+      setUnrunnable(new Map());
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      commandIssues(commandActions).then((found) => {
+        if (!cancelled) setUnrunnable(found);
+      });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandSignature]);
+
   // --- status helpers (inline broken/incomplete badges, matching the old panel) ---
   const refIds = { deviceIds, macroIds, pageIds };
   const actionsStatus = (raw: unknown): CardStatus | null => {
@@ -100,6 +132,12 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
       if (d) return { kind: "broken", text: d };
     }
     if ((actions as Record<string, unknown>[]).some(actionIncompleteCheck)) return { kind: "incomplete", text: "Incomplete" };
+    for (const a of actions as Record<string, unknown>[]) {
+      const missing = unrunnable.get(a);
+      if (missing?.length) {
+        return { kind: "incomplete", text: "Incomplete", detail: missing.join(" ") };
+      }
+    }
     return null;
   };
   const keyStatus = (binding: Record<string, unknown> | undefined): CardStatus | null => {
@@ -505,6 +543,8 @@ function VisibleWhenEditor({
 interface CardStatus {
   kind: "broken" | "incomplete";
   text: string;
+  /** The whole reason, when the chip is too small to carry it. */
+  detail?: string;
 }
 
 function Bucket({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
@@ -536,7 +576,7 @@ function Card({ title, help, status, children }: { title: string; help?: string;
           // The chip is one word; the reason it carries (which device is
           // missing, what is not filled in) was being dropped on the floor.
           <span
-            title={status.text}
+            title={status.detail || status.text}
             style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: status.kind === "broken" ? "var(--color-error)" : "var(--color-warning)" }}
           >
             <AlertTriangle size={12} />

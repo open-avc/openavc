@@ -15,6 +15,7 @@ from openavc.api.models import (
     LibrarySaveRequest,
     LibraryUpdateRequest,
 )
+from openavc.core.command_params import missing_params_check
 from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
@@ -86,6 +87,55 @@ async def resolve_matrix_configs(request: Request) -> dict[str, Any]:
             for element_id, config in configs.items()
         }
     }
+
+
+@router.post("/ui/validate-actions")
+async def validate_ui_actions(request: Request) -> dict[str, Any]:
+    """Which of these bindings name a command the device would refuse.
+
+    The Builder's Validate is the check somebody runs before handing a room
+    over, and until now it could not ask this question at all: it holds the
+    project, not the drivers, so a control bound to a real command with its
+    required parameters left empty passed as "No Issues" while every press was
+    refused with ``'set_fader': 'channel' is required``.
+
+    The rules are not sent to the browser to run, for the reason the macro
+    lint already records: only this side knows what each installed driver
+    declares, and a second copy of the rule in TypeScript is what drifts. So
+    the Builder posts the actions it is holding -- unsaved, keyed by whatever
+    it wants them back under, exactly like ``/ui/resolve-matrix`` above -- and
+    gets sentences.
+
+    A key with nothing wrong is simply absent, and so is one whose device has
+    no driver loaded: a page is very often built before the hardware is on the
+    bench, and a gate that complained then would stop being read.
+    """
+    body = await request.body()
+    if len(body) > 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Too many actions (max 1 MB)")
+    try:
+        payload = json.loads(body or b"{}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
+    actions = payload.get("actions") if isinstance(payload, dict) else None
+    if not isinstance(actions, dict):
+        raise HTTPException(status_code=400, detail='Expected {"actions": {key: action}}')
+
+    engine = _get_engine()
+    check = missing_params_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
+    issues: dict[str, list[str]] = {}
+    for key, action in actions.items():
+        if not isinstance(action, dict):
+            continue
+        # The runtime's own sentence, so the warning here and the refusal on
+        # the panel are word for word the same thing.
+        missing = check(action) or ()
+        if missing:
+            command = action.get("command")
+            issues[str(key)] = [f"'{command}': '{name}' is required" for name in missing]
+    return {"issues": issues}
 
 
 @router.get("/ui/matrix-proposals/{device_id}")

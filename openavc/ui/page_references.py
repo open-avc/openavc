@@ -25,9 +25,13 @@ mirrored byte for byte in ``reviewPage`` and pinned by
 ``tests/test_ui_review_parity.py``; what lives here is answered by
 ``validateProject`` on the other side, in the Validate panel, in its own words.
 
-Two of these the Builder cannot do at all. It has no driver command list in
-``validateProject``, so a command name is unchecked there; and nothing compares
-a ``value_map`` against the select's own options.
+One of these the Builder cannot do at all: nothing there compares a
+``value_map`` against the select's own options. A second one it could not
+either -- it has no driver command list in ``validateProject``, so a command
+name is unchecked there -- and the half of that which matters most, whether a
+named command has the parameters its driver requires, it now ASKS for
+(``POST /api/ui/validate-actions``) rather than answering from a copy of the
+rule it would have to keep in step.
 
 What is deliberately NOT checked
 --------------------------------
@@ -333,6 +337,7 @@ def reference_findings(
     plugin_elements: Callable[[str], set[str] | None] | None = None,
     undeclared_property: Callable[[str], set[str] | None] | None = None,
     unknown_child_id: Callable[[str], set[str] | None] | None = None,
+    missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
     ui_files: set[str] | None = None,
 ) -> list[Finding]:
     """Every binding on this page that names something that is not there.
@@ -349,6 +354,11 @@ def reference_findings(
     "no opinion" -- a device with no driver loaded, one that is disabled, a
     driver that enumerates nothing. None must never become a warning: the
     commonest reason to have it is that the device is simply not connected yet.
+
+    ``missing_params`` answers the question after it: the command exists and is
+    spelled right, and the driver still refuses it because a parameter it
+    declares required was never filled in. Same "None is no opinion" contract,
+    and for the same reason. See ``core/command_params``.
     """
     findings: list[Finding] = []
     in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
@@ -399,7 +409,7 @@ def reference_findings(
                 findings.append(missing_file)
         findings.extend(_element_findings(
             dump, el_id, page_ids, device_ids, macro_ids, device_commands,
-            undeclared_property, unknown_child_id,
+            undeclared_property, unknown_child_id, missing_params,
         ))
     return findings
 
@@ -488,6 +498,7 @@ def _element_findings(
     device_commands: Callable[[str], set[str] | None] | None,
     undeclared_property: Callable[[str], set[str] | None] | None = None,
     unknown_child_id: Callable[[str], set[str] | None] | None = None,
+    missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     el_type = str(dump.get("type", "?"))
@@ -579,6 +590,7 @@ def _element_findings(
             findings.extend(_action_findings(
                 action, el_id, el_type, f"do.{slot}[{index}]",
                 page_ids, device_ids, macro_ids, device_commands, options,
+                missing_params,
             ))
     return findings
 
@@ -610,6 +622,7 @@ def _action_findings(
     macro_ids: set[str],
     device_commands: Callable[[str], set[str] | None] | None,
     options: set[str] | None,
+    missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     name = action.get("action")
@@ -647,8 +660,8 @@ def _action_findings(
                 f"this project. The devices are: {_listed(device_ids)}.",
                 key=("dangling_reference", el_id, where, "device"),
             ))
-        elif isinstance(device, str) and isinstance(command, str) and device_commands:
-            declared = device_commands(device)
+        elif isinstance(device, str) and isinstance(command, str):
+            declared = device_commands(device) if device_commands else None
             if declared is not None and command not in declared:
                 findings.append(Finding(
                     el_id, "dangling_reference",
@@ -656,6 +669,16 @@ def _action_findings(
                     f"driver does not have. Its commands are: {_listed(declared)}.",
                     key=("dangling_reference", el_id, where, "command"),
                 ))
+            else:
+                # The command is one the driver has, and it can still be
+                # unrunnable: a parameter the driver declares required, never
+                # filled in. Nothing else on the page says so, and the control
+                # draws and takes a press exactly like a working one.
+                unsupplied = missing_params(action) if missing_params else None
+                if unsupplied:
+                    findings.append(_unrunnable_finding(
+                        el_id, el_type, where, device, command, unsupplied,
+                    ))
 
     elif name == "value_map":
         mapped = _mapping(action.get("map")) or {}
@@ -680,9 +703,37 @@ def _action_findings(
             findings.extend(_action_findings(
                 nested, el_id, el_type, f"{where}['{value}']",
                 page_ids, device_ids, macro_ids, device_commands, None,
+                missing_params,
             ))
 
     return findings
+
+
+def _unrunnable_finding(
+    el_id: str,
+    el_type: str,
+    where: str,
+    device: str,
+    command: str,
+    unsupplied: list[str],
+) -> Finding:
+    """A command the driver has, that the driver will still refuse.
+
+    One finding for the action rather than one per parameter: they are filled in
+    on the same form, in the same visit, and two sentences about one card would
+    read as two mistakes. The refusal is quoted verbatim because it is what
+    somebody sees on the panel when they finally press the control, and matching
+    the two makes the connection without explaining it.
+    """
+    named = " and ".join(f"'{name}'" for name in unsupplied)
+    them = "it" if len(unsupplied) == 1 else "them"
+    return Finding(
+        el_id, "unrunnable_command",
+        f"{el_id} ({el_type}) {where} sends '{command}' to '{device}' without {named}. "
+        f"Its driver requires {them}, so the device refuses every press with "
+        f"\"'{command}': '{unsupplied[0]}' is required\".",
+        key=("unrunnable_command", el_id, where),
+    )
 
 
 def _listed(names: Iterable[str]) -> str:

@@ -309,6 +309,34 @@ def _enum_wire_values(options: list[Any]) -> list[str]:
     return out
 
 
+def missing_required_params(
+    param_defs: Any, params: Any
+) -> list[str]:
+    """The params a command declares required that this call does not supply.
+
+    The runtime gate below is one caller. The other callers are the static
+    ones -- the macro lint, the UI binding review, the Builder's Validate --
+    which have to answer the same question BEFORE anything is sent, and had
+    better answer it the same way: a gate that says a step is fine and a
+    runtime that refuses it is worse than no gate, because the gate is what
+    somebody trusts at handover.
+
+    So the rule lives here once, next to the enforcement it describes.
+    Absent and ``None`` both count as not supplied; an empty string does not
+    (see :func:`normalize_and_validate_command_params` -- a blank value is a
+    value, and it has always been treated as an optional left blank). Declared
+    order, so a caller listing them names them the way the driver does.
+    """
+    if not isinstance(param_defs, dict):
+        return []
+    supplied = params if isinstance(params, dict) else {}
+    return [
+        name for name, pdef in param_defs.items()
+        if isinstance(pdef, dict) and pdef.get("required")
+        and supplied.get(name) is None
+    ]
+
+
 def normalize_and_validate_command_params(
     command: str,
     param_defs: dict[str, Any],
@@ -349,16 +377,16 @@ def normalize_and_validate_command_params(
     driver author's, so the runtime enforces it here, at the one gate every
     caller passes through. Absent and ``None`` both count as not supplied; an
     empty string does not (a blank value is a value, and this function has
-    always treated it as an optional left blank).
+    always treated it as an optional left blank). Which ones are missing is
+    :func:`missing_required_params` above, because the authoring gates have to
+    ask the same question before anything is sent.
 
     Raises ``CommandParamError`` (a ValueError) with a user-facing message.
     """
     if not isinstance(param_defs, dict):
         return params
-    supplied = params or {}
-    for name, pdef in param_defs.items():
-        if isinstance(pdef, dict) and pdef.get("required") and supplied.get(name) is None:
-            raise CommandParamError(f"'{command}': '{name}' is required")
+    for name in missing_required_params(param_defs, params):
+        raise CommandParamError(f"'{command}': '{name}' is required")
     if not params:
         # Returned unchanged, not normalized to {}: a caller that passed None
         # gets None back, so a driver handler sees the argument it always did.

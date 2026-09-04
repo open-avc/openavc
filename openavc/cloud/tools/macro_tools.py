@@ -44,6 +44,23 @@ class MacroToolsMixin:
             return engine.macros.plugin_action_types()
         return frozenset()
 
+    def _missing_params_check(self, project: Any = None) -> Any:
+        """Whether a step's chosen command has the parameters it needs.
+
+        Refused rather than warned, like every other ``validate_macro``
+        finding: the AI can fix a step it is told about in the same turn, and a
+        macro that saves clean and then does nothing in the room is the failure
+        the whole module exists to stop. ``project`` is the copy being mutated,
+        so a group added in the same edit resolves.
+        """
+        from openavc.core.command_params import missing_params_check
+
+        engine = self._get_engine()
+        return missing_params_check(
+            getattr(engine, "devices", None) if engine else None,
+            project if project is not None else getattr(engine, "project", None),
+        )
+
     async def _get_macro(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -195,7 +212,9 @@ class MacroToolsMixin:
                 raise ToolEditError({"error": f"Macro '{macro_id}' already exists"})
 
             err = validate_macro(
-                steps, triggers, project, extra_actions=self._plugin_action_types()
+                steps, triggers, project,
+                extra_actions=self._plugin_action_types(),
+                missing_params=self._missing_params_check(project),
             )
             if err:
                 raise ToolEditError({"error": f"Macro '{macro_id}': {err}"})
@@ -246,6 +265,7 @@ class MacroToolsMixin:
                     input.get("triggers", []) if "triggers" in input else [],
                     project,
                     extra_actions=self._plugin_action_types(),
+                    missing_params=self._missing_params_check(project),
                 )
                 if err:
                     raise ToolEditError({"error": f"Macro '{macro_id}': {err}"})

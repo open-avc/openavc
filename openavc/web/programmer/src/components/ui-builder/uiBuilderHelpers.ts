@@ -1344,6 +1344,51 @@ export function actionIncompleteCheck(a: Record<string, unknown>): boolean {
   return !a.action;
 }
 
+/**
+ * Every `device.command` this element sends, in the objects the project holds.
+ *
+ * The objects themselves rather than copies: the platform answers about them by
+ * identity (`api/commandIssues.ts`), which is what keeps a walker and a
+ * validator from inventing two spellings of the same path.
+ *
+ * An action still missing its device or its command is left out. There is
+ * nothing to ask about it yet, and `actionIncompleteCheck` already says so.
+ */
+export function elementCommandActions(el: UIElement): Record<string, unknown>[] {
+  const doMap = ((el.bindings || {}) as Record<string, unknown>).do as
+    | Record<string, unknown>
+    | undefined;
+  const found: Record<string, unknown>[] = [];
+  const collect = (a: Record<string, unknown>) => {
+    if (a.action === "device.command" && a.device && a.command) found.push(a);
+    // The engine runs each mapped entry as an action of its own, so a select's
+    // per-option commands are as real as any other.
+    if (a.action === "value_map" && a.map && typeof a.map === "object") {
+      for (const branch of Object.values(a.map as Record<string, unknown>)) {
+        for (const sub of Array.isArray(branch) ? branch : [branch]) {
+          if (sub && typeof sub === "object") collect(sub as Record<string, unknown>);
+        }
+      }
+    }
+  };
+  for (const slot of ACTION_SLOTS) {
+    for (const a of slotActions(doMap, slot)) collect(a);
+  }
+  return found;
+}
+
+/** Every `device.command` in the project's pages and master elements. */
+export function projectCommandActions(project: ProjectConfig): Record<string, unknown>[] {
+  const found: Record<string, unknown>[] = [];
+  for (const page of project.ui?.pages ?? []) {
+    for (const el of page.elements ?? []) found.push(...elementCommandActions(el));
+  }
+  for (const mel of project.ui?.master_elements ?? []) {
+    found.push(...elementCommandActions(mel as UIElement));
+  }
+  return found;
+}
+
 /** Remove navigate actions targeting a deleted page from every `do.<interaction>`
  *  action list. */
 function scrubNavigateActions(el: UIElement, pageId: string): UIElement {
@@ -5474,7 +5519,17 @@ export interface ValidationIssue {
   elementId?: string;
 }
 
-export function validateProject(project: ProjectConfig): ValidationIssue[] {
+/**
+ * @param commandIssues What the platform says about each `device.command` in
+ *   the project, keyed by the action object (see `api/commandIssues.ts`).
+ *   Omitted means it was not asked or could not be reached, and nothing is
+ *   claimed either way -- this file cannot see the drivers, and guessing is
+ *   how Validate came to answer "No Issues" for a control the device refuses.
+ */
+export function validateProject(
+  project: ProjectConfig,
+  commandIssues?: Map<Record<string, unknown>, string[]>,
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const pageIds = new Set(project.ui.pages.map((p) => p.id));
   const deviceIds = new Set(project.devices.map((d) => d.id));
@@ -5513,6 +5568,13 @@ export function validateProject(project: ProjectConfig): ValidationIssue[] {
       }
       if (b.action === "device.command" && b.device && !deviceIds.has(b.device as string)) {
         issues.push({ severity: "error", message: `Device "${b.device}" not found`, location: slotLoc, pageId, elementId: el.id });
+      }
+      // The device is here and the command is one it has, and the driver will
+      // still refuse it: a parameter it declares required was never filled in.
+      // The sentence is the platform's, so this warning and the refusal on the
+      // wall are the same words.
+      for (const message of commandIssues?.get(b) ?? []) {
+        issues.push({ severity: "error", message, location: slotLoc, pageId, elementId: el.id });
       }
       if (b.action === "macro" && b.macro && !macroIds.has(b.macro as string)) {
         issues.push({ severity: "error", message: `Macro "${b.macro}" not found`, location: slotLoc, pageId, elementId: el.id });
