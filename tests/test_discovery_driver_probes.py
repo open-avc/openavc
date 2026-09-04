@@ -74,16 +74,18 @@ def _make_hint(driver_id: str, **discovery):
     })
 
 
-def _udp_responder(port: int, query_match: bytes, reply: bytes) -> threading.Thread:
+def _udp_responder(query_match: bytes, reply: bytes) -> int:
     """Spawn a one-shot UDP server that replies to ``query_match`` packets.
 
-    Binds synchronously so callers can probe the moment this returns; the
-    background thread just does recvfrom on the already-bound socket. Without
-    the sync bind, Linux CI runners are slow enough that the probe goes out
-    before the thread's bind() completes and the test KeyErrors.
+    Returns the port it is listening on. Binds synchronously so callers can
+    probe the moment this returns; the background thread just does recvfrom on
+    the already-bound socket. Without the sync bind, Linux CI runners are slow
+    enough that the probe goes out before the thread's bind() completes and the
+    test KeyErrors.
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", port))
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
     s.settimeout(3.0)
 
     def serve():
@@ -95,20 +97,20 @@ def _udp_responder(port: int, query_match: bytes, reply: bytes) -> threading.Thr
             pass
         finally:
             s.close()
-    t = threading.Thread(target=serve, daemon=True)
-    t.start()
-    return t
+    threading.Thread(target=serve, daemon=True).start()
+    return port
 
 
-def _tcp_responder(port: int, reply: bytes) -> threading.Thread:
+def _tcp_responder(reply: bytes) -> int:
     """Spawn a one-shot TCP server that sends ``reply`` after first read.
 
-    Binds and listens synchronously to avoid the same race that bit the UDP
-    helper on slow Linux CI runners.
+    Returns the port it is listening on. Binds and listens synchronously to
+    avoid the same race that bit the UDP helper on slow Linux CI runners.
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("127.0.0.1", port))
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
     s.listen(1)
     s.settimeout(4.0)
 
@@ -128,24 +130,25 @@ def _tcp_responder(port: int, reply: bytes) -> threading.Thread:
             pass
         finally:
             s.close()
-    t = threading.Thread(target=serve, daemon=True)
-    t.start()
-    return t
+    threading.Thread(target=serve, daemon=True).start()
+    return port
 
 
 def _tcp_responder_segments(
-    port: int, segments: list[bytes], *, gap: float = 0.2,
-) -> threading.Thread:
+    segments: list[bytes], *, gap: float = 0.2,
+) -> int:
     """Spawn a one-shot TCP server that emits ``segments`` as separate sends.
 
-    Simulates a device whose identifying banner arrives in a later TCP
-    segment than its first — e.g. a telnet controller that sends IAC
-    negotiation in one segment and the welcome line in the next. Does not
-    read from the client (connect-only banner-grab style), then closes.
+    Returns the port it is listening on. Simulates a device whose identifying
+    banner arrives in a later TCP segment than its first — e.g. a telnet
+    controller that sends IAC negotiation in one segment and the welcome line
+    in the next. Does not read from the client (connect-only banner-grab
+    style), then closes.
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("127.0.0.1", port))
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
     s.listen(1)
     s.settimeout(4.0)
 
@@ -163,19 +166,26 @@ def _tcp_responder_segments(
             pass
         finally:
             s.close()
-    t = threading.Thread(target=serve, daemon=True)
-    t.start()
-    return t
+    threading.Thread(target=serve, daemon=True).start()
+    return port
 
 
-_NEXT_PORT = [39600]
+def _unused_port() -> int:
+    """A port with nothing listening on it, for the probes that must find none.
 
-
-def _next_port() -> int:
-    """Hand out a unique port per call so concurrent tests don't collide."""
-    p = _NEXT_PORT[0]
-    _NEXT_PORT[0] += 1
-    return p
+    It used to be a counter handing out 39600, 39601, ... — fixed numbers that
+    sit inside Linux's default ephemeral range (32768-60999), so any outbound
+    socket the suite itself had open could be holding the one about to be
+    bound. That is what `OSError: [Errno 98] Address already in use` was on CI:
+    not a leak and not a collision between these tests, just whichever one drew
+    the unlucky number that run. Asking the OS for a port and handing back what
+    it closed is both free of that and a better test — a fixed number could
+    have had a real service on it, which would have failed the probe for a
+    reason the assertion does not describe.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 # ---------------------------------------------------------------------------
@@ -402,8 +412,7 @@ class TestSourceIPBinding:
 class TestProbeRunnerIntegration:
     @pytest.mark.asyncio
     async def test_udp_probe_emits_evidence_with_extracted_fields(self):
-        port = _next_port()
-        _udp_responder(port, b"WHOIS", b"FAKE-VENDOR ack model=ABC123 fw=2.5\n")
+        port = _udp_responder(b"WHOIS", b"FAKE-VENDOR ack model=ABC123 fw=2.5\n")
         h = _make_hint("fake_vendor", udp_probe={
             "port": port, "send_ascii": "WHOIS\n",
             "expect": "FAKE-VENDOR",
@@ -433,7 +442,7 @@ class TestProbeRunnerIntegration:
 
     @pytest.mark.asyncio
     async def test_udp_probe_silent_on_no_responder(self):
-        port = _next_port()
+        port = _unused_port()
         h = _make_hint("noone_home", udp_probe={
             "port": port, "send_ascii": "ping",
             "expect": "pong",
@@ -450,8 +459,7 @@ class TestProbeRunnerIntegration:
 
     @pytest.mark.asyncio
     async def test_tcp_probe_emits_evidence_and_lifts_manufacturer(self):
-        port = _next_port()
-        _tcp_responder(port, b"pr Lightware FrameServer 2.7.3\n")
+        port = _tcp_responder(b"pr Lightware FrameServer 2.7.3\n")
         h = _make_hint("lightware_lw3", tcp_probe={
             "port": port, "send_ascii": "GET /sys/version\r\n",
             "expect": "Lightware",
@@ -480,7 +488,6 @@ class TestProbeRunnerIntegration:
 
     @pytest.mark.asyncio
     async def test_tcp_probe_connect_only_omits_matched_pattern(self):
-        port = _next_port()
         # Banner-grab style: the responder sends as soon as it accepts,
         # without reading first. Using the segments helper (one segment =
         # no gap) keeps this deterministic. The earlier version reused
@@ -489,7 +496,7 @@ class TestProbeRunnerIntegration:
         # flaked under full-suite load whenever the responder thread was
         # scheduled late. Nothing here is testing timeout behavior, so the
         # wall-clock dependence was pure liability.
-        _tcp_responder_segments(port, [b"banner\n"])
+        port = _tcp_responder_segments([b"banner\n"])
         h = _make_hint("connect_only", tcp_probe={
             "port": port,
             "timeout_ms": 1000,
@@ -507,8 +514,7 @@ class TestProbeRunnerIntegration:
 
     @pytest.mark.asyncio
     async def test_tcp_probe_no_match_returns_none(self):
-        port = _next_port()
-        _tcp_responder(port, b"unrelated banner")
+        port = _tcp_responder(b"unrelated banner")
         h = _make_hint("strict", tcp_probe={
             "port": port, "send_ascii": "x",
             "expect": "Lightware",
@@ -527,13 +533,12 @@ class TestProbeRunnerIntegration:
         # identifying banner in a later segment would never match. The
         # runner must accumulate across segments. Mirrors the TurtleAV
         # controllers (IAC, then "Welcome To Controller(h)...").
-        port = _next_port()
         iac = b"\xff\xfb\x03\xff\xfb\x01\xff\xfe\x01\xff\xfd\x00"
         banner = (
             b"\r\n====\r\nWelcome To Controller(h) Terminal Control System"
             b"\r\nFW Version: 1.50.02\r\nCONTROLLER> "
         )
-        _tcp_responder_segments(port, [iac, banner], gap=0.2)
+        port = _tcp_responder_segments([iac, banner], gap=0.2)
         h = _make_hint("darwinish", tcp_probe={
             "port": port,
             "expect_regex": r"Controller\(h\)|DARWIN CONTROL",
@@ -551,9 +556,8 @@ class TestProbeRunnerIntegration:
     async def test_tcp_probe_iac_only_no_banner_returns_none(self):
         # A telnet host that negotiates but never sends the expected banner
         # must not match — and must not hang to the full budget.
-        port = _next_port()
         iac = b"\xff\xfb\x03\xff\xfb\x01"
-        _tcp_responder_segments(port, [iac], gap=0.0)
+        port = _tcp_responder_segments([iac], gap=0.0)
         h = _make_hint("darwinish_neg", tcp_probe={
             "port": port,
             "expect_regex": r"Controller\(h\)",
@@ -619,8 +623,7 @@ class TestTcpProbeRateLimiting:
 
     @pytest.mark.asyncio
     async def test_tcp_probe_acquires_rate_limiter_before_connect(self):
-        port = _next_port()
-        _tcp_responder(port, b"pr Lightware FrameServer 2.7.3\n")
+        port = _tcp_responder(b"pr Lightware FrameServer 2.7.3\n")
         h = _make_hint("lightware_lw3", tcp_probe={
             "port": port, "send_ascii": "GET /sys/version\r\n",
             "expect": "Lightware",
@@ -638,8 +641,7 @@ class TestTcpProbeRateLimiting:
     @pytest.mark.asyncio
     async def test_tcp_probe_without_limiter_still_runs(self):
         # A direct caller (no limiter) is still allowed — the param is optional.
-        port = _next_port()
-        _tcp_responder(port, b"pr Lightware FrameServer 2.7.3\n")
+        port = _tcp_responder(b"pr Lightware FrameServer 2.7.3\n")
         h = _make_hint("lightware_lw3", tcp_probe={
             "port": port, "send_ascii": "x",
             "expect": "Lightware", "timeout_ms": 2000,
@@ -691,8 +693,7 @@ class TestUdpProbeResponderCap:
 class TestVendorStringIntegration:
     @pytest.mark.asyncio
     async def test_udp_extract_manufacturer_emits_vendor_string_evidence(self):
-        port = _next_port()
-        _udp_responder(port, b"WHOIS", b"FAKE-VENDOR\n")
+        port = _udp_responder(b"WHOIS", b"FAKE-VENDOR\n")
         h = _make_hint("vendor_test", udp_probe={
             "port": port, "send_ascii": "WHOIS",
             "expect": "FAKE-VENDOR",
@@ -722,8 +723,7 @@ class TestBestDriverFirstIntegration:
 
     @pytest.mark.asyncio
     async def test_cross_vendor_probe_yields_to_vendor_specific(self):
-        port = _next_port()
-        _tcp_responder(port, b"banner Vendor=NovaStar\n")
+        port = _tcp_responder(b"banner Vendor=NovaStar\n")
         # Cross-vendor driver: declares the TCP probe with cross_vendor: true.
         cross = _make_hint("unbranded_lw3", tcp_probe={
             "port": port, "send_ascii": "x",
