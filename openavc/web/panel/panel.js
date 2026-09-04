@@ -2344,6 +2344,23 @@ class PanelApp {
                 elementDef: element,
                 binding: element.bindings.show.look,
             });
+        } else if (effectiveMode === 'toggle') {
+            // A toggle button's own indication. Registered ONLY when the
+            // element has no look binding of its own: that binding is the
+            // author saying what this button looks like, and two bindings
+            // writing one element's colour and label is how the two drift
+            // into disagreeing.
+            this.bindings.push({
+                type: 'toggle_look',
+                element: el,
+                elementDef: element,
+                binding: {
+                    key: pressBinding.toggle_key,
+                    value: pressBinding.toggle_value,
+                    on_label: pressBinding.on_label,
+                    off_label: pressBinding.off_label,
+                },
+            });
         }
 
         return el;
@@ -6113,6 +6130,9 @@ class PanelApp {
             case 'feedback':
                 this.evaluateFeedback(b);
                 break;
+            case 'toggle_look':
+                this.evaluateToggleLook(b);
+                break;
             case 'label_look':
                 this.evaluateLabelLook(b);
                 break;
@@ -6464,6 +6484,162 @@ class PanelApp {
             };
             this.renderElementContent(element, iconDef);
         }
+    }
+
+    /**
+     * A toggle button's own indication: whether the thing it toggles is on.
+     *
+     * Toggle mode used to be a DISPATCH rule and never a display rule --
+     * `toggle_key` was read in the press handler, to pick between `ui.press`
+     * and `ui.toggle_off`, and nowhere else. So a mute button configured
+     * exactly the way the Builder invites ("Toggle: on/off based on current
+     * state", a state key, a value that means on, and a live "Current: true
+     * ON" badge under it) muted the amplifier every time and drew the same
+     * pixels either way. A mute, power or mic toggle with no indication is
+     * the commonest control on an AV panel, and the wall is where the
+     * indication matters more than the press.
+     *
+     * Two halves, and the first is a documented contract rather than a new
+     * idea: `on_label` / `off_label` are written up in the project format and
+     * in the UI Builder guide as changing the button text per state, and
+     * nothing here read them. The second is the look, for the toggle that
+     * names no labels -- which is nearly all of them, since the Builder only
+     * offered those two fields to control surfaces.
+     *
+     * What it draws:
+     *   on      -- the accent, filled, with a text colour computed to read on
+     *              it, plus `on_label` where one is set
+     *   off     -- the button's own look and its own label (or `off_label`)
+     *   offline -- the same as off, asserting nothing, per the rule the rest
+     *              of this renderer follows: an unreachable device's last
+     *              known state is not a state to draw
+     *
+     * A `show.look` binding takes the whole job instead (see renderButton) --
+     * this never runs beside one.
+     */
+    evaluateToggleLook(b) {
+        const { element, elementDef, binding } = b;
+        const baseStyle = elementDef.style || {};
+        const displayMode = elementDef.display_mode || 'text';
+        const suppressLabel = displayMode === 'image' || displayMode === 'icon_only';
+
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+
+        const stateValue = this.state[binding.key];
+        const on = !offline && stateValue != null && binding.value !== undefined &&
+            String(stateValue).toLowerCase() === String(binding.value).toLowerCase();
+
+        // applyStyle only ever writes a property it has a value for, so going
+        // off has to drop the lit colours first or a button whose own style
+        // names none stays lit for good.
+        this._clearStateColours(element, baseStyle);
+        const style = this.getThemedStyle(elementDef.type, on
+            ? { ...baseStyle, ...this._toggleOnStyle(elementDef) }
+            : baseStyle);
+        this.applyStyle(element, style);
+        element.classList.toggle('toggle-on', on);
+        // Frameless and image buttons take their fill from artwork, so the
+        // class above is the whole indication there -- an outline, which no
+        // inline write of ours ever clobbers.
+        if (elementDef.frameless) this.applyFrameless(element);
+        // Empty rather than skipped when there is nothing to put back: a tinted
+        // image layer would otherwise stay lit after the button went off.
+        this.updateImageTint(element, style.bg_color || '');
+
+        // The words, only where the author asked for them. A toggle that names
+        // neither label keeps whatever it is already showing: rewriting the
+        // label every pass would fight a `ui.<id>.label` override and rebuild
+        // an icon layout for nothing.
+        const named = binding.on_label != null || binding.off_label != null;
+        if (named && !suppressLabel) {
+            const word = offline ? null : (on ? binding.on_label : binding.off_label);
+            this._setLabelText(element, word != null && word !== '' ? word : (elementDef.label || ''));
+            const icon = elementDef.icon || elementDef.style?.icon;
+            if (icon) this.renderElementContent(element, elementDef);
+        }
+    }
+
+    /**
+     * The look a toggle takes while it is on: the accent, filled.
+     *
+     * The accent rather than a colour of our own, so it follows the theme and
+     * the panel's own accent setting, and so an element that names its own
+     * `accent_color` lights in that. Deliberately no border colour: the off
+     * pass restores the element's own style, and `_clearStateColours` drops
+     * exactly the two properties a state look may write (background and text)
+     * -- adding a third here without teaching that helper about it is how a
+     * button ends up wearing half of a state it is no longer in.
+     */
+    _toggleOnStyle(elementDef) {
+        const accent = elementDef.style?.accent_color
+            // Read from the inline custom property the theme sets rather than
+            // through getComputedStyle: this runs in the binding pass, and a
+            // computed read there costs a style flush on every state batch.
+            // The fallback is the same colour the :root rule in
+            // panel-elements.css carries, so a panel that never loaded a theme
+            // lights in the accent it is already drawn with.
+            || document.documentElement.style.getPropertyValue('--panel-accent').trim()
+            || '#2196F3';
+        const style = { bg_color: accent };
+        const text = this._readableTextOn(accent);
+        if (text) style.text_color = text;
+        return style;
+    }
+
+    /**
+     * Near-black or white, whichever reads on this background -- picked by
+     * WCAG contrast rather than a lightness guess, because the built-in
+     * accents run from #1976D2 to #00E676 and one answer cannot serve both.
+     *
+     * Returns null when the colour cannot be read, and the button then keeps
+     * its own text colour: hex and rgb()/rgba() are what every theme variable
+     * and every colour picker in the IDE write, and resolving a named colour
+     * or hsl() would mean asking the browser through a canvas, which this path
+     * cannot afford.
+     */
+    _readableTextOn(color) {
+        const rgb = this._parseRgbChannels(color);
+        if (!rgb) return null;
+        const lum = this._relativeLuminance(rgb);
+        const DARK = 0.00518;              // relative luminance of #111111
+        const onWhite = 1.05 / (lum + 0.05);
+        const onDark = (lum + 0.05) / (DARK + 0.05);
+        return onDark >= onWhite ? '#111111' : '#ffffff';
+    }
+
+    /** [r, g, b] 0-255 from a hex or rgb()/rgba() colour, or null. */
+    _parseRgbChannels(color) {
+        if (typeof color !== 'string') return null;
+        const v = color.trim().toLowerCase();
+        const hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/);
+        if (hex) {
+            const h = hex[1];
+            const wide = h.length > 4;
+            const pair = (i) => wide ? h.slice(i * 2, i * 2 + 2) : h[i] + h[i];
+            return [0, 1, 2].map(i => parseInt(pair(i), 16));
+        }
+        const rgb = v.match(/^rgba?\(([^)]+)\)$/);
+        if (rgb) {
+            const parts = rgb[1].split(/[,/\s]+/).filter(Boolean);
+            if (parts.length < 3) return null;
+            const chan = (s) => {
+                const n = s.endsWith('%') ? (parseFloat(s) / 100) * 255 : parseFloat(s);
+                return isNaN(n) ? null : Math.max(0, Math.min(255, Math.round(n)));
+            };
+            const out = parts.slice(0, 3).map(chan);
+            return out.every(c => c !== null) ? out : null;
+        }
+        return null;
+    }
+
+    /** WCAG relative luminance of [r, g, b]. */
+    _relativeLuminance([r, g, b]) {
+        const lin = [r, g, b].map(c => {
+            const s = c / 255;
+            return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
     }
 
     /**

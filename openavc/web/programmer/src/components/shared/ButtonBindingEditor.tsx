@@ -381,6 +381,13 @@ export function ButtonBindingEditor({
                 </span>
               </div>
             )}
+            {toggleKey && !surfaceOrder && (
+              <div style={{ ...hintStyle, lineHeight: 1.4 }}>
+                On the panel the button lights in the accent color while this state is
+                on. For your own colors or words, add an <strong>Appearance</strong>
+                {" "}binding under Shows.
+              </div>
+            )}
             {!toggleKey && (
               <div style={{
                 fontSize: 11, padding: "6px 8px", borderRadius: "var(--border-radius)",

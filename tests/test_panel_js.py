@@ -169,6 +169,16 @@ SCENARIOS = [
     "q206_a_text_box_being_typed_into_is_not_yanked",
     "q206_an_accepted_command_leaves_the_control_alone",
     "q206_a_failed_macro_step_puts_its_control_back",
+    # A toggle button says whether the thing it toggles is on.
+    "q209_a_toggle_button_shows_whether_it_is_on",
+    "q209_the_press_still_picks_its_half_from_the_same_state",
+    "q209_the_lit_colour_follows_the_accent_and_stays_readable",
+    "q209_a_toggle_says_the_words_it_was_given",
+    "q209_a_toggle_naming_no_words_is_left_alone",
+    "q209_an_appearance_binding_takes_the_whole_job",
+    "q209_an_unreachable_device_is_not_a_toggle_that_is_off",
+    "q209_a_frameless_toggle_is_ringed_rather_than_filled",
+    "q209_a_toggle_with_no_state_key_indicates_nothing",
 ]
 
 

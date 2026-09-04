@@ -89,6 +89,19 @@ function project({ elements, placements, background, snap, extraLayouts }) {
     };
 }
 
+/** A button in Toggle mode: the "Mute Ch 1" an integrator builds in Q-209. */
+function toggleButton(id, key, onValue, extra) {
+    return Object.assign({
+        id, type: 'button', label: id,
+        style: { bg_color: '#424242' },
+        bindings: { do: { press: [{
+            action: 'device.command', device: 'amp', command: 'mute_on',
+            mode: 'toggle', toggle_key: key, toggle_value: onValue,
+            off_action: { action: 'device.command', device: 'amp', command: 'mute_off' },
+        }] } },
+    }, extra || {});
+}
+
 function renderProject(app, proj) {
     app.uiDef = proj.ui;
     app.uiSettings = proj.ui.settings || {};
@@ -2557,6 +2570,263 @@ const tests = {
         });
         assert(readout.textContent === '-6.0 dB',
             `the failed step puts the control back, got ${readout.textContent}`);
+    },
+
+    // --- Q-209 / F-064: a toggle button says whether it is on -------------
+    //
+    // Toggle mode used to be a dispatch rule and never a display rule: the
+    // photographed mute button was pixel-identical muted and unmuted while
+    // muting the amplifier every time.
+
+    q209_a_toggle_button_shows_whether_it_is_on() {
+        const app = mkApp();
+        const proj = project({
+            elements: [toggleButton('mute', 'device.amp.channel.01.mute', true)],
+            placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.channel.01.mute': false };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        const off = el.style.backgroundColor;
+        assert(!el.classList.contains('toggle-on'), 'off: not lit');
+
+        app.state['device.amp.channel.01.mute'] = true;
+        app.evaluateAllBindings(['device.amp.channel.01.mute']);
+        assert(el.classList.contains('toggle-on'), 'on: the button reads as on');
+        assert(el.style.backgroundColor === 'rgb(33, 150, 243)',
+            `on: lit in the accent, got ${el.style.backgroundColor}`);
+        assert(el.style.backgroundColor !== off,
+            'on and off must not draw the same pixels — that is the whole finding');
+
+        app.state['device.amp.channel.01.mute'] = false;
+        app.evaluateAllBindings(['device.amp.channel.01.mute']);
+        assert(!el.classList.contains('toggle-on'), 'off again: not lit');
+        assert(el.style.backgroundColor === off,
+            `off again: back to its own look, got ${el.style.backgroundColor}`);
+
+        // A button that names no colours of its own takes them from the
+        // stylesheet, and only an empty inline value lets that through -- the
+        // lit colours have to be dropped rather than written over.
+        const app2 = mkApp();
+        const bare = toggleButton('bare', 'var.on', true);
+        delete bare.style;
+        const proj2 = project({ elements: [bare], placements: { bare: { x: 5, y: 5, w: 20, h: 10 } } });
+        app2.state = { 'var.on': true };
+        renderProject(app2, proj2);
+        const el2 = app2.root.querySelector('[data-element-id="bare"]');
+        assert(el2.style.backgroundColor === 'rgb(33, 150, 243)',
+            `on: lit, got ${el2.style.backgroundColor}`);
+        app2.state['var.on'] = false;
+        app2.evaluateAllBindings(['var.on']);
+        assert(el2.style.backgroundColor === '',
+            `off: the lit colour is dropped, not painted over, got "${el2.style.backgroundColor}"`);
+        assert(el2.style.color === '',
+            `off: and so is the text colour, got "${el2.style.color}"`);
+    },
+
+    // The press half is what already worked. It has never had a test, and it
+    // shares a function with the new display half.
+    q209_the_press_still_picks_its_half_from_the_same_state() {
+        const app = mkApp();
+        const sent = [];
+        app.send = (m) => sent.push(m);
+        const proj = project({
+            elements: [toggleButton('mute', 'device.amp.mute', true)],
+            placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.mute': false };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        el.dispatchEvent(new window.MouseEvent('mousedown', { cancelable: true }));
+        assert(sent[0] && sent[0].type === 'ui.press',
+            `off -> the on action, got ${JSON.stringify(sent[0])}`);
+        app.state['device.amp.mute'] = true;
+        app.evaluateAllBindings(['device.amp.mute']);
+        sent.length = 0;
+        el.dispatchEvent(new window.MouseEvent('mousedown', { cancelable: true }));
+        assert(sent[0] && sent[0].type === 'ui.toggle_off',
+            `on -> the off action, got ${JSON.stringify(sent[0])}`);
+    },
+
+    // The built-in accents run from #1976D2 to #00E676, so one text colour
+    // cannot serve them: white on the bright green is unreadable.
+    q209_the_lit_colour_follows_the_accent_and_stays_readable() {
+        const cases = [
+            ['#1976D2', 'rgb(255, 255, 255)', 'rgb(25, 118, 210)'],
+            ['#00E676', 'rgb(17, 17, 17)', 'rgb(0, 230, 118)'],
+            ['#FFA726', 'rgb(17, 17, 17)', 'rgb(255, 167, 38)'],
+        ];
+        for (const [accent, text, bg] of cases) {
+            document.documentElement.style.setProperty('--panel-accent', accent);
+            const app = mkApp();
+            const proj = project({
+                elements: [toggleButton('t', 'var.on', true)],
+                placements: { t: { x: 5, y: 5, w: 20, h: 10 } },
+            });
+            app.state = { 'var.on': true };
+            renderProject(app, proj);
+            const el = app.root.querySelector('[data-element-id="t"]');
+            assert(el.style.backgroundColor === bg,
+                `${accent}: lit in the theme accent, got ${el.style.backgroundColor}`);
+            assert(el.style.color === text,
+                `${accent}: text that reads on it, got ${el.style.color}`);
+        }
+        document.documentElement.style.removeProperty('--panel-accent');
+
+        // An element that names its own accent lights in that one.
+        const app = mkApp();
+        const own = toggleButton('t', 'var.on', true);
+        own.style = { accent_color: '#D4AF37' };
+        const proj = project({ elements: [own], placements: { t: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'var.on': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="t"]');
+        assert(el.style.backgroundColor === 'rgb(212, 175, 55)',
+            `an element's own accent wins, got ${el.style.backgroundColor}`);
+        assert(el.style.color === 'rgb(17, 17, 17)',
+            `and is read for contrast too, got ${el.style.color}`);
+    },
+
+    // on_label / off_label are documented in the project format and in the UI
+    // Builder guide as changing the button text per state. Nothing read them.
+    q209_a_toggle_says_the_words_it_was_given() {
+        const app = mkApp();
+        const btn = toggleButton('mute', 'device.amp.mute', true);
+        btn.label = 'Mute Ch 1';
+        btn.bindings.do.press[0].on_label = 'MUTED';
+        btn.bindings.do.press[0].off_label = 'MUTE';
+        const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'device.amp.connected': true, 'device.amp.mute': false };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        assert(el.textContent === 'MUTE', `off word, got "${el.textContent}"`);
+        app.state['device.amp.mute'] = true;
+        app.evaluateAllBindings(['device.amp.mute']);
+        assert(el.textContent === 'MUTED', `on word, got "${el.textContent}"`);
+
+        // Only one of the two named: the other state keeps the button's name.
+        const app2 = mkApp();
+        const half = toggleButton('p', 'var.power', true);
+        half.label = 'Power';
+        half.bindings.do.press[0].on_label = 'ON';
+        const proj2 = project({ elements: [half], placements: { p: { x: 5, y: 5, w: 20, h: 10 } } });
+        app2.state = { 'var.power': false };
+        renderProject(app2, proj2);
+        const el2 = app2.root.querySelector('[data-element-id="p"]');
+        assert(el2.textContent === 'Power', `no off word, so its own, got "${el2.textContent}"`);
+        app2.state['var.power'] = true;
+        app2.evaluateAllBindings(['var.power']);
+        assert(el2.textContent === 'ON', `on word, got "${el2.textContent}"`);
+    },
+
+    // A toggle naming no words is left holding whatever it is already showing,
+    // rather than having its label rewritten on every state batch -- which
+    // would fight a ui.<id>.label override and rebuild an icon layout for
+    // nothing.
+    q209_a_toggle_naming_no_words_is_left_alone() {
+        const app = mkApp();
+        const proj = project({
+            elements: [toggleButton('mute', 'var.on', true)],
+            placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'var.on': false };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        app.state['ui.mute.label'] = 'From a macro';
+        app.evaluateAllBindings(['ui.mute.label']);
+        assert(el.textContent === 'From a macro',
+            `an override still owns the words, got "${el.textContent}"`);
+        app.state['var.on'] = true;
+        app.evaluateAllBindings(['var.on']);
+        assert(el.textContent === 'From a macro',
+            `and the toggle lighting up does not take them, got "${el.textContent}"`);
+        assert(el.classList.contains('toggle-on'), 'while the look still tracks the state');
+    },
+
+    // The author's own appearance binding takes the whole job. Two bindings
+    // writing one element's colour and label is how the two drift apart.
+    q209_an_appearance_binding_takes_the_whole_job() {
+        const app = mkApp();
+        const btn = toggleButton('mute', 'device.amp.mute', true);
+        btn.label = 'Mute';
+        btn.bindings.show = { look: {
+            key: 'device.amp.mute', default_state: 'false',
+            states: { true: { label: 'MUTED', bg_color: '#2e7d32' },
+                      false: { label: 'MUTE', bg_color: '#c62828' } },
+        } };
+        const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'device.amp.connected': true, 'device.amp.mute': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        assert(app.bindings.every(b => b.type !== 'toggle_look'),
+            'a button with a look binding registers no toggle look of its own');
+        assert(el.style.backgroundColor === 'rgb(46, 125, 50)',
+            `the author's colour, not the accent, got ${el.style.backgroundColor}`);
+        assert(el.textContent === 'MUTED', `and the author's word, got "${el.textContent}"`);
+        assert(!el.classList.contains('toggle-on'),
+            'and no lit ring underneath it');
+    },
+
+    // Q-213's rule, one control further on: an unreachable device's last known
+    // state is not a state to draw, and "off" is a claim.
+    q209_an_unreachable_device_is_not_a_toggle_that_is_off() {
+        const app = mkApp();
+        const btn = toggleButton('mute', 'device.amp.mute', true);
+        btn.label = 'Mute Ch 1';
+        btn.bindings.do.press[0].on_label = 'MUTED';
+        btn.bindings.do.press[0].off_label = 'MUTE';
+        const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'device.amp.connected': true, 'device.amp.mute': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        assert(el.classList.contains('toggle-on') && el.textContent === 'MUTED', 'lit while connected');
+
+        app.state['device.amp.connected'] = false;
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(!el.classList.contains('toggle-on'), 'offline: not lit');
+        assert(el.textContent === 'Mute Ch 1',
+            `offline: its own name, not "MUTE" -- which would claim it is unmuted, got "${el.textContent}"`);
+        assert(el.classList.contains('device-offline'), 'offline: and reads as unavailable');
+
+        app.state['device.amp.connected'] = true;
+        app.evaluateAllBindings(['device.amp.connected']);
+        assert(el.classList.contains('toggle-on') && el.textContent === 'MUTED',
+            'back when the device is back');
+    },
+
+    // A frameless or image button takes its fill from artwork, so the outline
+    // in panel-elements.css is the whole indication there.
+    q209_a_frameless_toggle_is_ringed_rather_than_filled() {
+        const app = mkApp();
+        const btn = toggleButton('mute', 'var.on', true);
+        btn.frameless = true;
+        const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'var.on': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        assert(el.classList.contains('toggle-on'), 'a frameless toggle still reads as on');
+        assert(el.style.backgroundColor === 'transparent',
+            `and keeps its frameless background, got ${el.style.backgroundColor}`);
+        // jsdom does not expand the shorthand, so read it as written.
+        const outline = window.getComputedStyle(el).getPropertyValue('outline');
+        assert(/solid/.test(outline) && /accent/.test(outline),
+            `the ring in the accent is what shows it, got outline "${outline}"`);
+    },
+
+    // Without a state key there is nothing to indicate, and the press falls
+    // back to tap -- so no dead ring on a button that is not really a toggle.
+    q209_a_toggle_with_no_state_key_indicates_nothing() {
+        const app = mkApp();
+        const btn = { id: 'b', type: 'button', label: 'Go', bindings: { do: { press: [
+            { action: 'macro', macro: 'go', mode: 'toggle' },
+        ] } } };
+        const proj = project({ elements: [btn], placements: { b: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = {};
+        renderProject(app, proj);
+        assert(app.bindings.every(x => x.type !== 'toggle_look'),
+            'no state key, nothing to indicate');
+        assert(!app.root.querySelector('[data-element-id="b"]').classList.contains('toggle-on'),
+            'and no ring');
     },
 };
 

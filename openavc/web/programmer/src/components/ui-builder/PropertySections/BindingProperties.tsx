@@ -251,6 +251,11 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
         showRelease
         showLabel={false}
         showFeedback={false}
+        // The panel honors On Label / Off Label, and the project format and
+        // the UI Builder guide both say so — they were only ever offered to
+        // control surfaces, so the fields the docs describe could not be set
+        // on the button they describe.
+        showToggleLabels
         onBindingsChange={(nb) => {
           const nextDo = { ...doMap };
           for (const slot of ["press", "release", "hold"] as const) {

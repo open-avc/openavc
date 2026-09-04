@@ -415,6 +415,8 @@ A button's **Does** bucket starts with a **Button Mode** that controls how press
 
 **Toggle** is state-aware. You pick a state key (any variable or device property), and the button reads it to decide which action to fire. If the state says "off," pressing fires the On Action; if "on," pressing fires the Off Action. You can also set **On Label** and **Off Label** so the button text changes automatically. Toggle works on both web panel buttons and physical control surfaces (Stream Deck).
 
+A toggle button also *shows* whether it is on. While the state key matches the value that means "on," the panel lights the button in the accent color, with text picked to stay readable on it. A frameless or image button is ringed in the accent instead, since its face comes from the artwork. Set **Appearance** under **Shows** if you want your own colors or words for each state: that binding takes over the button's look completely, and the accent lighting steps aside. While the device behind the state key is unreachable the button shows neither state, as described under "While a device is unreachable" below.
+
 Hold Repeat has a configurable repeat interval (default 200ms). Tap / Long Press has a configurable threshold (default 500ms): presses shorter than the threshold are taps, longer are long presses. A button can also carry a separate **Release Action** that fires when the press is let go.
 
 ## Button Display Modes

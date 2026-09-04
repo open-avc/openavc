@@ -100,6 +100,16 @@
     pointer-events: none;
     animation: macro-pulse 1.5s ease-in-out infinite;
 }
+/* A toggle button while the thing it toggles is on. The fill is written inline
+   by panel.js, which has to compute a text colour that reads on the accent.
+   This ring is what a frameless or image button gets instead — there the
+   background is transparent by design or hidden behind the artwork, and an
+   outline is the one thing no inline write of ours clobbers. On a filled
+   button it lands in the same colour as the fill and is not seen. */
+.panel-button.toggle-on {
+    outline: 0.1429rem solid var(--el-accent, var(--panel-accent));
+    outline-offset: -0.1429rem;
+}
 @keyframes macro-pulse {
     0%, 100% { opacity: 0.7; }
     50% { opacity: 0.4; }

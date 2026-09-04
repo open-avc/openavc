@@ -570,6 +570,18 @@ dead panel rather than a healthy one.
 Bind the sense that is TRUE when the thing is working. Where only the negative
 exists as a variable, keep both and set them together, rather than mapping a
 colour onto a value that can never light.
+
+## A toggle button already shows whether it is on
+
+`mode: "toggle"` is a display rule as well as a dispatch one. While `toggle_key`
+matches `toggle_value` the panel lights the button in the accent colour, picks a
+text colour that reads on it, and honours `on_label` / `off_label` where they are
+set. So a mute or power toggle needs no second binding to indicate.
+
+A `show.look` on the same button **replaces** all of that -- its states own the
+colour and the words, and the toggle's own look stands aside. Add one only when
+the specific colours matter (a red MUTED, an amber warming-up); adding one that
+just repeats the toggle's own key is work the panel was already doing.
 """
 
 CUSTOM_PAGE_INTRO = """\
