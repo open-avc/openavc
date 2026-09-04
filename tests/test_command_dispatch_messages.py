@@ -362,3 +362,135 @@ async def test_the_route_surfaces_the_drivers_own_sentence(monkeypatch):
     assert caught.value.detail == told
     # The generic wrapper must NOT be what the operator sees.
     assert "Failed to send command" not in caught.value.detail
+
+
+# ── A number that is not a number: NaN and infinity ─────────────────────────
+#
+# `float("NaN")` succeeds, and every comparison with NaN is False -- so NaN
+# cleared `num < min` and `num > max` alike and went out on the wire. Observed
+# on connected hardware: `set_gain` with `"NaN"` answered `success: true` and
+# left the reading undefined. Infinity was caught only where a `max` happened
+# to be declared, because `inf > max` IS True; a param with no max took it.
+#
+# The integer path was worse than a wrong value: the `f != int(f)` check runs
+# outside the try, and `int(float("nan"))` raises ValueError while
+# `int(float("inf"))` raises OverflowError -- so a non-finite value on an
+# integer param came back as `Device 'x' not found` (the REST layer maps a bare
+# ValueError that way) or as a 500. Both are answers about the wrong thing.
+
+
+@pytest.mark.parametrize(
+    "value", ["NaN", "nan", "-nan", float("nan"), "inf", "Infinity", "-Infinity",
+              float("inf"), float("-inf")],
+)
+def test_a_number_param_refuses_a_value_that_is_not_a_number(value):
+    """Whatever the bounds are, and whether or not there are any."""
+    with pytest.raises(CommandParamError) as caught:
+        normalize_and_validate_command_params(
+            "set_gain",
+            {"gain": {"type": "number", "min": -80, "max": 20}},
+            {"gain": value},
+        )
+    assert "must be a number" in str(caught.value)
+
+    # And with no max at all, which is where infinity used to get through.
+    with pytest.raises(CommandParamError):
+        normalize_and_validate_command_params(
+            "ramp_to", {"ramp": {"type": "number"}}, {"ramp": value},
+        )
+
+
+@pytest.mark.parametrize("value", ["NaN", float("nan"), "inf", float("-inf")])
+def test_an_integer_param_refuses_it_as_a_value_rather_than_crashing(value):
+    """The refusal has to be a CommandParamError, not whatever `int()` raises.
+
+    A ValueError out of here is answered `Device 'x' not found` by the REST
+    door -- the single most misdirecting thing it could say about a device
+    that is connected and rendering -- and an OverflowError misses even that
+    branch and lands in the catch-all as a 500.
+    """
+    with pytest.raises(CommandParamError) as caught:
+        normalize_and_validate_command_params(
+            "route", {"input": {"type": "integer", "min": 1, "max": 8}},
+            {"input": value},
+        )
+    assert "must be a whole number" in str(caught.value)
+
+
+def test_the_numbers_that_are_numbers_still_pass():
+    """The guard must not cost the ordinary values anything."""
+    out = normalize_and_validate_command_params(
+        "set_gain",
+        {"gain": {"type": "number", "min": -80, "max": 20}, "chan": {"type": "integer"}},
+        {"gain": -6.5, "chan": 5.0},
+    )
+    assert out == {"gain": -6.5, "chan": 5}
+    # The bounds themselves, which NaN used to clear from both sides.
+    for bad, why in ((-81, "at least"), (21, "at most")):
+        with pytest.raises(CommandParamError, match=why):
+            normalize_and_validate_command_params(
+                "set_gain", {"gain": {"type": "number", "min": -80, "max": 20}},
+                {"gain": bad},
+            )
+
+
+# ── A required param left blank ─────────────────────────────────────────────
+#
+# The required check read `is None`, so a blank passed it; the trim-then-skip
+# below then dropped the value with no type check and no range check, and
+# whatever the driver did with a missing required value came back as success.
+# Measured on real hardware: `set_input_level` with `level: ""` answered
+# HTTP 200 `{"success": true}` while the input stayed where it was.
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+@pytest.mark.parametrize(
+    ("ptype", "extra"),
+    [("number", {}), ("integer", {}), ("child_id", {"child_type": "zone"}),
+     ("enum", {"values": ["a", "b"]}), ("boolean", {})],
+)
+def test_a_blank_is_not_a_value_for_anything_that_names_a_quantity(ptype, extra, blank):
+    with pytest.raises(CommandParamError) as caught:
+        normalize_and_validate_command_params(
+            "set_level",
+            {"level": {"type": ptype, "required": True, **extra}},
+            {"level": blank},
+        )
+    assert str(caught.value) == "'set_level': 'level' is required"
+
+
+def test_a_blank_string_is_still_a_value_and_still_clears_a_name():
+    """Deliberately unchanged. For free text the platform cannot tell a blank
+    somebody meant from a blank somebody left, and clearing a name by sending
+    an empty one is a real thing a driver offers."""
+    out = normalize_and_validate_command_params(
+        "rename", {"name": {"type": "string", "required": True}}, {"name": ""},
+    )
+    assert out == {"name": ""}
+    # A param that declares no type at all is a string param.
+    assert normalize_and_validate_command_params(
+        "rename", {"name": {"required": True}}, {"name": ""},
+    ) == {"name": ""}
+
+
+def test_a_blank_optional_is_left_exactly_as_it_was():
+    """The skip this sits beside is for an optional left blank, and that is
+    still what it is for -- an optional numeric left empty is not an error."""
+    out = normalize_and_validate_command_params(
+        "set_zone_level",
+        {"zone": {"type": "child_id", "child_type": "zone", "required": True},
+         "level": {"type": "number", "min": -80, "max": 10}},
+        {"zone": 4, "level": ""},
+    )
+    assert out == {"zone": 4, "level": ""}
+
+
+def test_whitespace_is_a_value_where_the_driver_says_it_is():
+    """`trim: false` is declared for a payload whose edge whitespace is
+    protocol-meaningful, so spaces there are content rather than nothing."""
+    out = normalize_and_validate_command_params(
+        "passthrough",
+        {"payload": {"type": "string", "required": True, "trim": False}},
+        {"payload": "  "},
+    )
+    assert out == {"payload": "  "}

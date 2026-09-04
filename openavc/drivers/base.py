@@ -18,6 +18,7 @@ connect() as before.
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import re
 from abc import ABC, abstractmethod
@@ -254,12 +255,26 @@ def _as_number(value: Any, ptype: str) -> float | None:
     """Coerce a command-param value to a float for range checking, or None when
     it isn't a valid number of the declared type. Booleans never count as
     numbers; an integer param rejects a non-integral value (5.0 is fine, 5.5 is
-    not)."""
+    not).
+
+    NaN and infinity are not numbers here, and the range check below cannot be
+    the thing that stops them: every comparison with NaN is False, so NaN
+    cleared ``num < min`` and ``num > max`` alike and went out on the wire --
+    a fader set to an undefined level, reported as a success. Infinity was
+    caught only where a ``max`` happened to be declared, so a param without one
+    took it. Rejected here, before the integer check, because that check is
+    where it would otherwise stop being a value question at all:
+    ``int(float("nan"))`` raises ValueError and ``int(float("inf"))`` raises
+    OverflowError, and the REST door answers a bare ValueError with
+    ``Device 'x' not found`` -- about a device that is connected and rendering.
+    """
     if isinstance(value, bool):
         return None
     try:
         f = float(value)
     except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
         return None
     if ptype == "integer" and f != int(f):
         return None
@@ -322,10 +337,17 @@ def missing_required_params(
     somebody trusts at handover.
 
     So the rule lives here once, next to the enforcement it describes.
-    Absent and ``None`` both count as not supplied; an empty string does not
-    (see :func:`normalize_and_validate_command_params` -- a blank value is a
-    value, and it has always been treated as an optional left blank). Declared
-    order, so a caller listing them names them the way the driver does.
+    Absent and ``None`` count as not supplied. So does a BLANK, on every type
+    except a string: a blank names no quantity, no endpoint and no option, and
+    reading it as supplied is what let ``level: ""`` through the required check
+    and then through the trim-and-skip below -- sent with no type check and no
+    range check, and answered `success: true` while the device stayed where it
+    was. For free text a blank IS a value and stays one: the platform cannot
+    tell a blank somebody meant from a blank somebody left, and clearing a name
+    by sending an empty one is a real thing a driver offers. A param declaring
+    ``trim: false`` says its edge whitespace is protocol-meaningful, so only a
+    truly empty string counts there. Declared order, so a caller listing them
+    names them the way the driver does.
     """
     if not isinstance(param_defs, dict):
         return []
@@ -333,8 +355,20 @@ def missing_required_params(
     return [
         name for name, pdef in param_defs.items()
         if isinstance(pdef, dict) and pdef.get("required")
-        and supplied.get(name) is None
+        and _is_unsupplied(supplied.get(name), pdef)
     ]
+
+
+def _is_unsupplied(value: Any, pdef: dict[str, Any]) -> bool:
+    """Whether a required param has nothing in it -- see the caller for why a
+    blank is nothing everywhere except on a string."""
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    if pdef.get("type", "string") == "string":
+        return False
+    return (value if pdef.get("trim", True) is False else value.strip()) == ""
 
 
 def normalize_and_validate_command_params(
@@ -375,9 +409,8 @@ def normalize_and_validate_command_params(
     *value* checks on the very same command answered with
     ``'route': 'output' must be at most 8, got 99``. The declaration is the
     driver author's, so the runtime enforces it here, at the one gate every
-    caller passes through. Absent and ``None`` both count as not supplied; an
-    empty string does not (a blank value is a value, and this function has
-    always treated it as an optional left blank). Which ones are missing is
+    caller passes through. Absent, ``None`` and -- on everything but a string
+    param -- a blank all count as not supplied. Which ones are missing is
     :func:`missing_required_params` above, because the authoring gates have to
     ask the same question before anything is sent.
 

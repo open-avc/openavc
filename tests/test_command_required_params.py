@@ -92,10 +92,12 @@ AMP = _driver()
         pytest.param({"channel": 1}, ["level"], id="one supplied"),
         pytest.param({"channel": 1, "level": -6}, [], id="both supplied"),
         pytest.param({"channel": None, "level": -6}, ["channel"], id="null is absent"),
-        # A blank IS a value, and always has been -- see the runtime gate. The
-        # static side must not invent a stricter rule than the thing it is
-        # predicting, or Validate starts refusing what the device accepts.
-        pytest.param({"channel": "", "level": ""}, [], id="blank counts as supplied"),
+        # A blank names no channel and no level, so neither is supplied. The
+        # static side must not invent a rule the runtime does not have, in
+        # either direction -- the runtime assertion below is what holds them
+        # together. (A blank on a STRING param is still a value; that one is
+        # pinned next to the runtime, in test_command_dispatch_messages.)
+        pytest.param({"channel": "", "level": "  "}, ["channel", "level"], id="blank is nothing"),
         pytest.param({"ramp": 2}, ["channel", "level"], id="optional does not help"),
     ],
 )
