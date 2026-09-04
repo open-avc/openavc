@@ -686,7 +686,12 @@ class MacroEngine:
         if action == "event.emit":
             return f"Emitting {step.get('event', '?')}"
         if action == "conditional":
-            return f"Checking {step.get('condition', {}).get('key', '?')}"
+            # `or {}` for the same reason as the wait_until line below: a step
+            # that never filled a field in still carries the key, holding null,
+            # so the `{}` default never applied. This one runs while ANNOUNCING
+            # step one, so a conditional with no condition killed the whole
+            # macro before any of it ran.
+            return f"Checking {(step.get('condition') or {}).get('key', '?')}"
         if action == "wait_until":
             cond = step.get("condition") or {}
             key = cond.get("key", "?")

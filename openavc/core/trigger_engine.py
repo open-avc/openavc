@@ -316,8 +316,14 @@ class TriggerEngine:
             return
         t = ts.trigger
 
-        # Check state_operator match
-        op = t.get("state_operator", "any")
+        # Check state_operator match. `or "any"`, not a `.get` default: a
+        # trigger saved without an operator carries the key with an explicit
+        # null (the project models dump every unset optional), so the default
+        # never applied and every fire died on `invalid operator 'None'`. The
+        # second reader of this field is in _delayed_fire below, and it was
+        # unreachable while this one refused -- so fixing one of them is what
+        # exposes the other.
+        op = t.get("state_operator") or "any"
         target = t.get("state_value")
         if op != "any":
             try:
@@ -528,7 +534,7 @@ class TriggerEngine:
             # Re-check triggering condition for state_change triggers
             if t.get("type") == "state_change":
                 state_key = t.get("state_key", "")
-                op = t.get("state_operator", "any")
+                op = t.get("state_operator") or "any"  # see _on_state_change
                 target = t.get("state_value")
                 if op != "any":
                     current = self.state.get(state_key)
