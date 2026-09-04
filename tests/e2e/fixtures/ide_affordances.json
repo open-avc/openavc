@@ -270,7 +270,8 @@
     "SELECT select",
     "INPUT type: number",
     "BUTTON (unnamed)",
-    "BUTTON (unnamed)"
+    "BUTTON (unnamed)",
+    "INPUT placeholder: 5"
   ],
   "State": [
     "BUTTON Delete all variables with zero usages",
