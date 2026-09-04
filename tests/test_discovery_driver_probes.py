@@ -170,22 +170,17 @@ def _tcp_responder_segments(
     return port
 
 
-def _unused_port() -> int:
-    """A port with nothing listening on it, for the probes that must find none.
-
-    It used to be a counter handing out 39600, 39601, ... — fixed numbers that
-    sit inside Linux's default ephemeral range (32768-60999), so any outbound
-    socket the suite itself had open could be holding the one about to be
-    bound. That is what `OSError: [Errno 98] Address already in use` was on CI:
-    not a leak and not a collision between these tests, just whichever one drew
-    the unlucky number that run. Asking the OS for a port and handing back what
-    it closed is both free of that and a better test — a fixed number could
-    have had a real service on it, which would have failed the probe for a
-    reason the assertion does not describe.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+# Ports here used to come off a counter starting at 39600 — fixed numbers that
+# sit inside Linux's default ephemeral range (32768-60999), so any outbound
+# socket the suite itself had open could be holding the one about to be bound.
+# That is what `OSError: [Errno 98] Address already in use` was on CI: not a
+# leak and not a collision between these tests, just whichever one drew the
+# unlucky number that run. Every port is now the kernel's choice, and it is
+# HELD from the moment it is chosen — the responders above bind and serve in
+# one step and hand the number back, and the one test that wants nothing
+# listening keeps its own socket open for the duration. Nothing here binds a
+# port, reads the number and lets go: that gap is the same bug wearing the
+# other hat, and it is what queue item Q-215 is about in six other files.
 
 
 # ---------------------------------------------------------------------------
@@ -442,19 +437,25 @@ class TestProbeRunnerIntegration:
 
     @pytest.mark.asyncio
     async def test_udp_probe_silent_on_no_responder(self):
-        port = _unused_port()
-        h = _make_hint("noone_home", udp_probe={
-            "port": port, "send_ascii": "ping",
-            "expect": "pong",
-            "timeout_ms": 300,
-        })
-        rl = RateLimiter(rate_per_sec=20)
-        results = await run_udp_broadcast_probe(
-            h.udp_probe,
-            targets=["127.0.0.1"],
-            source_ip="127.0.0.1",
-            rate_limiter=rl,
-        )
+        # The port is HELD for the duration rather than bound, read and let go:
+        # port 0 comes from the ephemeral range, so anything on the machine can
+        # take it in the gap and then this asserts against whatever that turned
+        # out to be. A bound socket that never replies IS "no responder", and
+        # holding it is what makes that true for the whole test.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as silent:
+            silent.bind(("127.0.0.1", 0))
+            h = _make_hint("noone_home", udp_probe={
+                "port": silent.getsockname()[1], "send_ascii": "ping",
+                "expect": "pong",
+                "timeout_ms": 300,
+            })
+            rl = RateLimiter(rate_per_sec=20)
+            results = await run_udp_broadcast_probe(
+                h.udp_probe,
+                targets=["127.0.0.1"],
+                source_ip="127.0.0.1",
+                rate_limiter=rl,
+            )
         assert results == {}
 
     @pytest.mark.asyncio
