@@ -271,7 +271,16 @@
     "INPUT type: number",
     "BUTTON (unnamed)",
     "BUTTON (unnamed)",
-    "INPUT placeholder: 5"
+    "INPUT type: range",
+    "BUTTON (unnamed)",
+    "INPUT type: number",
+    "INPUT type: number",
+    "BUTTON Nothing \u2014 dim on the timer alone",
+    "BUTTON (unnamed)",
+    "INPUT placeholder: 5",
+    "BUTTON (unnamed)",
+    "INPUT type: text",
+    "BUTTON (unnamed)"
   ],
   "State": [
     "BUTTON Delete all variables with zero usages",

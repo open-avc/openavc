@@ -34,12 +34,26 @@ will eventually click something that CHANGES the project, and then it is not an
 inventory, it is an edit -- so the only rows it opens are the ones named in
 DETAIL_ROWS.
 
+The walk runs with the DEPLOYMENT capabilities forced on (see
+``_force_capability_gates``). Two Settings cards are gated on what the server
+says the box can do -- the Panel Display card on ``panel_dim_available``, the
+Kiosk card on ``kiosk_available`` -- and both answers are false on every dev
+checkout, so neither card had ever been drawn here. This test passed clean
+while a button was deleted from the Panel Display card, and the three bugs
+found in it on 2026-09-04 were all found by hand. Forcing the flags is not a
+shortcut past the UI: the card still renders, and is still read, through the
+real Programmer. Only the environment is simulated, because an appliance is
+not something a dev box can be.
+
 What this does NOT cover, so nobody reads it as more than it is: dialogs and
 menus that open on click, controls that only appear once a row is hovered or an
 element selected, anything gated behind a device being online, the detail pane
 of any screen not named in DETAIL_ROWS, and the contents of any screen that
 needs data this seed project does not have. Those are worth adding; the absence
 of a screen from the fixture is not evidence that screen is safe.
+
+It also does not cover a card gated on something OTHER than a flag on
+``/api/system/version`` -- the override below reaches exactly those two.
 """
 
 from __future__ import annotations
@@ -274,6 +288,32 @@ def _open_first_row(page: Page, screen: str) -> bool:
     return True
 
 
+def _force_capability_gates(page: Page) -> None:
+    """Answer /api/system/version as an appliance would, so gated cards draw.
+
+    Two Settings cards ask the SERVER what this box is before they render, and
+    a dev checkout is never an appliance and never a kiosk -- so on every
+    machine this test has ever run on, both were absent and their absence read
+    as normal. The Panel Display card is the one that cost: a button was
+    deleted from it and this file stayed green, because there was nothing to
+    compare against.
+
+    This rewrites the two booleans on the way past and changes nothing else --
+    the version, channel and platform the server really reported still ride
+    through, so a card keyed on any of them is unaffected. The rest of the
+    walk is untouched, and the cards themselves are drawn and read through the
+    real IDE exactly like every other screen here.
+    """
+    def _handler(route) -> None:
+        response = route.fetch()
+        body = response.json()
+        body["panel_dim_available"] = True
+        body["kiosk_available"] = True
+        route.fulfill(response=response, json=body)
+
+    page.route("**/api/system/version", _handler)
+
+
 def _walk(page: Page, base_url: str) -> dict[str, list[str]]:
     """Every rail destination, and every sub-tab on each one."""
     page.goto(f"{base_url}/programmer/", wait_until="domcontentloaded")
@@ -349,6 +389,7 @@ def _describe(missing: list[str], added: list[str], screen: str) -> list[str]:
 def test_no_control_disappears(server_factory, page: Page, request):
     """The IDE's controls, screen by screen, against the committed inventory."""
     handle = server_factory(project_overrides=_seed())
+    _force_capability_gates(page)
     fresh = _walk(page, handle.base_url)
 
     if request.config.getoption("--regen-inventory", default=False):
