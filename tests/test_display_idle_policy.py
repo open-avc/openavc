@@ -132,6 +132,21 @@ def test_brightness_out_of_range_is_clamped_but_unset_stays_unset(client):
     assert _policy(c)["brightness_percent"] is None
 
 
+@pytest.mark.parametrize("authored", [1, 2, 5, 9, 0, -30])
+def test_a_brightness_too_low_to_read_is_refused(client, authored):
+    """The stuck-panel case, and the reason it is checked on the server.
+
+    A panel below this cannot be read, so the control that would undo it is on
+    somebody's laptop rather than in the room. `ProjectSettings` only admits
+    settings a person standing in front of the panel can recover from, and a
+    project carrying 1% arrives from a cloud template on a hundred panels at
+    once -- so the Programmer's own slider floor is not the check that holds.
+    """
+    c, engine, _s = client
+    engine.project = _project(brightness_percent=authored)
+    assert _policy(c)["brightness_percent"] == 10
+
+
 def test_hold_follows_the_named_state_key(client):
     c, engine, state = client
     engine.project = _project(idle_dim_hold_state_key="var.system_on")

@@ -133,6 +133,14 @@ _DIM_LEVEL_MIN, _DIM_LEVEL_MAX = 1, 90
 # 2026-09-04, a slept screen did not wake on a real finger, only on the power
 # button.
 _DIM_LEVEL_BLACKOUT = 0
+# The lowest brightness this will hand a panel. Not a hardware floor -- the
+# panel's own is lower -- but a panel dimmer than this cannot be read, and the
+# control that would undo it is on somebody's laptop rather than on the panel.
+# Enforced HERE, not only in the Programmer, because this value can arrive from
+# a cloud template pushed to a hundred panels at once: `ProjectSettings` only
+# admits settings whose worst case a person standing in front of the panel can
+# undo, and an unreadable screen is not one of those.
+_BRIGHTNESS_MIN = 10
 
 
 @open_router.get("/system/display-idle")
@@ -197,7 +205,7 @@ async def get_display_idle(
 
     brightness = d.brightness_percent
     if brightness is not None:
-        brightness = _num(brightness, 100, 1, 100)
+        brightness = _num(brightness, 100, _BRIGHTNESS_MIN, 100)
 
     return {
         "enabled": bool(d.idle_dim_enabled),

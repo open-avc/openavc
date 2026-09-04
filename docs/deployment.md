@@ -452,7 +452,7 @@ A panel that shows the same page all day and all night can leave a faint permane
 
 On hardware where OpenAVC drives its own touch screen, Programmer > Settings > **Panel Display** offers:
 
-- **Brightness** — the panel's normal brightness. Until you set it, each panel keeps whatever its own screen is set to, and clearing it hands control back to the panel.
+- **Brightness** — the panel's normal brightness, set here for every panel the project is deployed to. Until you set it, each panel keeps whatever its own screen is set to. Once you have set it, the panel's own brightness control still works on top of it, and keeps working until you change this value again.
 - **Dim the panel when idle**, and **Dim after** — the minutes of no touch before it fades.
 - **Dim to** — a percentage of the panel's normal brightness. It is a percentage rather than a fixed level so a panel already turned down for a dark space dims further instead of getting brighter. **Set it to 0 to black the screen out instead**: the backlight goes as low as the panel allows and the page is covered, so it reads as switched off from across the room. A touch brings it straight back.
 - **Stay bright while** — an optional state value that holds the panel at full brightness while it is on. A meeting in progress generates no touches, so a plain timer would dim the panel in the middle of a presentation. Point this at whatever your project already sets when the space is in use: a system-on variable, or a display's power state.

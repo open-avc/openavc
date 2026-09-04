@@ -125,6 +125,17 @@ const DIM_PERCENT_MIN = 1;
 const DIM_PERCENT_MAX = 90;
 const DIM_BLACKOUT = 0;
 
+// The lowest brightness the Programmer will set. Not a hardware limit -- the
+// panel's own floor is lower -- but a panel dimmer than this cannot be read,
+// and the control that would undo it is on somebody's laptop, not the panel.
+// There used to be a "Clear" button beside this slider meaning "stop managing
+// this panel". It restored nothing, so clicking it at 1% left the panel dark
+// with its own control reading "not set": a stuck screen two clicks away. It
+// was removed rather than fixed, because the local-override case it existed
+// for is already covered -- the shell writes brightness only when this value
+// CHANGES, so a panel's own brightness control keeps working regardless.
+const BRIGHTNESS_MIN = 10;
+
 const clampMinutes = (n: number) =>
   Number.isFinite(n) ? Math.min(Math.max(n, DIM_MINUTES_MIN), DIM_MINUTES_MAX) : 5;
 
@@ -1851,25 +1862,21 @@ export function SystemSettingsView() {
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <input
                 type="range"
-                min={1}
+                min={BRIGHTNESS_MIN}
                 max={100}
                 style={{ flex: 1, maxWidth: 260 }}
                 value={panelBrightness ?? 100}
                 onChange={(e) => updateDisplay("brightness_percent", Number(e.target.value))}
               />
-              <span style={{ fontSize: "var(--font-size-sm)", minWidth: 64, color: "var(--text-muted)" }}>
-                {panelBrightness === null ? "Not set" : `${panelBrightness}%`}
+              <span style={{ fontSize: "var(--font-size-sm)", minWidth: 74, color: "var(--text-muted)" }}>
+                {panelBrightness === null ? "Panel's own" : `${panelBrightness}%`}
               </span>
-              {panelBrightness !== null && (
-                <button
-                  style={{ ...btnStyle, padding: "2px 10px", fontSize: 12 }}
-                  onClick={() => updateDisplay("brightness_percent", null)}
-                >
-                  Clear
-                </button>
-              )}
             </div>
-            <span style={helpText}>The panel's normal brightness. Until you set it, each panel keeps whatever its own screen is set to, and clearing it hands control back.</span>
+            <span style={helpText}>
+              {panelBrightness === null
+                ? "Each panel is using whatever its own screen is set to. Move the slider to set them all from here."
+                : "The panel's normal brightness. The panel's own brightness control still works on top of this, until you change this value again."}
+            </span>
           </div>
           <div style={toggleRow}>
             <div>
