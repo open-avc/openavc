@@ -719,7 +719,11 @@ export function SystemSettingsView() {
     void handleUploadCert(certFile, keyFile);
   };
 
-  const hasDirty = Object.keys(dirty).length > 0;
+  // BOTH stores, because this one Save button now writes both. The panel
+  // display and device settings live in the project, so a change to only
+  // those left this false, the button greyed, and nothing saved -- the edit
+  // looked accepted and silently went nowhere.
+  const hasDirty = Object.keys(dirty).length > 0 || projectDirty;
   const net = merged("network");
   const auth = merged("auth");
   const log = merged("logging");
