@@ -691,14 +691,94 @@ class PluginConfig(_ForwardCompatModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+class DisplaySettings(_ForwardCompatModel):
+    """How this room's panel behaves when nobody is using it.
+
+    The motivation is burn-in: a panel pinned on one page around the clock
+    leaves a ghost of that page on the screen, and a dimmer picture ages it
+    more slowly. Nothing here ever puts the display to SLEEP -- measured on
+    appliance hardware 2026-09-04, a slept screen does not come back on a real
+    finger (only the power button woke it), which on a wall-mounted panel is
+    indistinguishable from broken. `dim_level_percent: 0` gets the same LOOK
+    safely: the backlight goes to the panel's floor and the content is covered
+    in black, so it reads as off across a room while every touch still works.
+    """
+
+    # On by default. A panel showing one page all day is the case this exists
+    # for, and leaving it off meant every unit needed a visit to switch it on.
+    idle_dim_enabled: bool = True
+    # Seconds of no touch before the panel dims. Clamped 30..7200 where read.
+    idle_dim_timeout_seconds: int = 300
+    # Percent OF THE PANEL'S CONFIGURED BRIGHTNESS, not of full scale, so a
+    # panel already turned down for a dark room dims further where an absolute
+    # level would brighten it. 0 means blackout (see the class docstring);
+    # otherwise clamped 1..90 where read.
+    idle_dim_level_percent: int = 20
+    # Whether the touch that wakes a dim panel also presses what is under it.
+    # Off means the first touch only restores brightness, so nobody mutes a
+    # live room by tapping a screen they could not read.
+    idle_dim_wake_passes_touch: bool = False
+    # Optional state key that holds the panel bright while it is truthy. A
+    # meeting generates no touches, so a bare timer dims mid-presentation.
+    idle_dim_hold_state_key: str = ""
+    # The panel's normal brightness, 1..100. None means "not managed" -- the
+    # panel keeps whatever its own maintenance control set, which is what
+    # every panel does until somebody sets this.
+    brightness_percent: int | None = None
+
+
+class DeviceSettings(_ForwardCompatModel):
+    """Deployment-wide device behaviour a project carries to every panel."""
+
+    # Seconds between reconnect attempts for a device that has gone offline
+    # for a network reason. This is the rate of connection attempts an IT
+    # department sees, so it is a property of the SITE rather than of one box
+    # -- which is why it travels with the project. None defers to the
+    # instance's own system.json. Clamped 1..300 where read.
+    reconnect_interval_seconds: float | None = None
+
+
+class ProjectSettings(_ForwardCompatModel):
+    """Settings that travel WITH the project, to every panel it is pushed to.
+
+    A customer with a hundred panels sets these once and deploys one template;
+    before this block they were per-box, so every panel needed a visit.
+
+    What may live here is bounded by one rule, and it is a security rule
+    rather than a taste one: **a project file is a MOVABLE artifact.** It
+    arrives from a cloud template, an import, a backup restore, and the AI. So
+    a setting belongs here only when its worst case is "the panel looks
+    wrong" -- recoverable by anyone standing in front of it. Anything whose
+    worst case is "the box cannot be reached" or "the wrong people can reach
+    it" stays in system.json and never travels: `network` (a pushed
+    bind_address strands every panel at once, with nothing on them able to
+    undo it), `auth` (credentials), `cloud.system_key` (that key IS the
+    device's identity -- copied to a hundred panels they would all share one),
+    and `tls` (certificates are per-device). `updates.channel` is deliberately
+    excluded too: it is a real fleet lever and belongs in cloud fleet
+    operations, not hidden inside a room file where a restored old backup
+    could move a site back onto beta with nobody noticing.
+
+    tests/test_project_settings.py pins that list, so adding a field here has
+    to argue against the rule rather than slip past it.
+    """
+
+    display: DisplaySettings = Field(default_factory=DisplaySettings)
+    devices: DeviceSettings = Field(default_factory=DeviceSettings)
+
+
 class ProjectConfig(_ForwardCompatModel):
     # Keep in sync with project_migration.CURRENT_VERSION — the default stamped
     # on a freshly-created project so it isn't immediately "migrated" on reload.
     # A stale default here is not cosmetic: a project written with it gets the
     # whole 0.7->0.8 migration re-run over an already-0.8 body on its next
     # save, which collapses every placement and re-divides every rem value.
-    openavc_version: str = "0.12.0"
+    openavc_version: str = "0.13.0"
     project: ProjectMeta
+    # Settings the project carries to every panel it is deployed to. See
+    # ProjectSettings for what may live here and, more importantly, what may
+    # not.
+    settings: ProjectSettings = Field(default_factory=ProjectSettings)
     devices: list[DeviceConfig] = Field(default_factory=list)
     device_groups: list[DeviceGroup] = Field(default_factory=list)
     connections: dict[str, dict[str, Any]] = Field(default_factory=dict)

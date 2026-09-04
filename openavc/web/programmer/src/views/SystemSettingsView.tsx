@@ -5,10 +5,12 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
+import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { SystemConfig, NetworkAdapter, TlsStatus, TlsUploadResult, SshStatus } from "../api/restClient";
+import type { ProjectConfig } from "../api/types";
 
 const REDACTED = "***";
 
@@ -117,14 +119,20 @@ const selectStyle: React.CSSProperties = {
 // before the save, so the field never claims a value that will not take.
 const DIM_MINUTES_MIN = 1;
 const DIM_MINUTES_MAX = 120;
-const DIM_PERCENT_MIN = 5;
+// 0 is not a percentage but a mode -- blackout -- so the control's floor is 0
+// while the lowest real dim level is DIM_PERCENT_MIN.
+const DIM_PERCENT_MIN = 1;
 const DIM_PERCENT_MAX = 90;
+const DIM_BLACKOUT = 0;
 
 const clampMinutes = (n: number) =>
   Number.isFinite(n) ? Math.min(Math.max(n, DIM_MINUTES_MIN), DIM_MINUTES_MAX) : 5;
 
-const clampPercent = (n: number) =>
-  Number.isFinite(n) ? Math.min(Math.max(n, DIM_PERCENT_MIN), DIM_PERCENT_MAX) : 20;
+const clampPercent = (n: number) => {
+  if (!Number.isFinite(n)) return 20;
+  if (n <= DIM_BLACKOUT) return DIM_BLACKOUT;
+  return Math.min(Math.max(n, DIM_PERCENT_MIN), DIM_PERCENT_MAX);
+};
 
 const toggleRow: React.CSSProperties = {
   display: "flex",
@@ -385,6 +393,20 @@ export function SystemSettingsView() {
   const keyInputRef = useRef<HTMLInputElement>(null);
   const [kioskAvailable, setKioskAvailable] = useState(false);
   const [panelDimAvailable, setPanelDimAvailable] = useState(false);
+
+  // The panel display settings live in the PROJECT, not system.json, so a
+  // customer sets them once and deploys one template to every panel. Selected
+  // one primitive at a time: a selector that builds an object returns a new
+  // reference every render and crashes React 19.
+  const projectDirty = useProjectStore((s) => s.dirty);
+  const projectLoaded = useProjectStore((s) => s.project !== null);
+  const dimEnabled = useProjectStore((s) => s.project?.settings?.display?.idle_dim_enabled ?? true);
+  const dimTimeout = useProjectStore((s) => s.project?.settings?.display?.idle_dim_timeout_seconds ?? 300);
+  const dimLevel = useProjectStore((s) => s.project?.settings?.display?.idle_dim_level_percent ?? 20);
+  const dimWakePasses = useProjectStore((s) => s.project?.settings?.display?.idle_dim_wake_passes_touch ?? false);
+  const dimHoldKey = useProjectStore((s) => s.project?.settings?.display?.idle_dim_hold_state_key ?? "");
+  const panelBrightness = useProjectStore((s) => s.project?.settings?.display?.brightness_percent ?? null);
+  const reconnectInterval = useProjectStore((s) => s.project?.settings?.devices?.reconnect_interval_seconds ?? null);
   const [ssh, setSsh] = useState<SshStatus | null>(null);
   const [sshBusy, setSshBusy] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
@@ -464,6 +486,36 @@ export function SystemSettingsView() {
     [],
   );
 
+  /** Patch one project-settings field. Merges through the current project so
+   *  a write to `display` never drops `devices`, and vice versa. */
+  const updateDisplay = useCallback(
+    (key: string, value: unknown) => {
+      const st = useProjectStore.getState();
+      const cur = st.project?.settings;
+      st.update({
+        settings: {
+          display: { ...(cur?.display ?? {}), [key]: value },
+          devices: { ...(cur?.devices ?? {}) },
+        },
+      } as Partial<ProjectConfig>);
+    },
+    [],
+  );
+
+  const updateProjectDevices = useCallback(
+    (key: string, value: unknown) => {
+      const st = useProjectStore.getState();
+      const cur = st.project?.settings;
+      st.update({
+        settings: {
+          display: { ...(cur?.display ?? {}) },
+          devices: { ...(cur?.devices ?? {}), [key]: value },
+        },
+      } as Partial<ProjectConfig>);
+    },
+    [],
+  );
+
   // Merged view: base config + unsaved changes
   const merged = useCallback(
     <S extends keyof SystemConfig>(section: S): SystemConfig[S] => {
@@ -474,7 +526,22 @@ export function SystemSettingsView() {
   );
 
   const handleSave = async () => {
-    if (Object.keys(dirty).length === 0) return;
+    // The panel display + device settings live in the project, so one Save
+    // button has to flush both stores. Project first: it is the one with a
+    // conflict path, and a failure there must not be hidden behind a
+    // successful system.json write.
+    if (projectDirty) {
+      try {
+        await useProjectStore.getState().save();
+      } catch (e) {
+        showError("Could not save project settings: " + String(e));
+        return;
+      }
+    }
+    if (Object.keys(dirty).length === 0) {
+      if (projectDirty) showSuccess("Settings saved.");
+      return;
+    }
 
     // Don't send redacted values back
     const payload: Record<string, Record<string, unknown>> = {};
@@ -658,7 +725,6 @@ export function SystemSettingsView() {
   const log = merged("logging");
   const upd = merged("updates");
   const kiosk = merged("kiosk");
-  const display = merged("display");
   const tls = merged("tls");
 
   // Warning: no auth + public bind
@@ -1770,18 +1836,45 @@ export function SystemSettingsView() {
           </div>
         </div>
 
-        {/* Panel display — only where this instance drives a screen it can dim */}
-        {panelDimAvailable && <>
+        {/* Panel display — only where this instance drives a screen it can dim.
+            These live in the PROJECT, not system.json, so one template carries
+            them to every panel a customer deploys it to. */}
+        {panelDimAvailable && projectLoaded && <>
         <h3 style={sectionTitle}>Panel Display</h3>
         <div style={cardStyle}>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Brightness</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <input
+                type="range"
+                min={1}
+                max={100}
+                style={{ flex: 1, maxWidth: 260 }}
+                value={panelBrightness ?? 100}
+                onChange={(e) => updateDisplay("brightness_percent", Number(e.target.value))}
+              />
+              <span style={{ fontSize: "var(--font-size-sm)", minWidth: 64, color: "var(--text-muted)" }}>
+                {panelBrightness === null ? "Not set" : `${panelBrightness}%`}
+              </span>
+              {panelBrightness !== null && (
+                <button
+                  style={{ ...btnStyle, padding: "2px 10px", fontSize: 12 }}
+                  onClick={() => updateDisplay("brightness_percent", null)}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <span style={helpText}>The panel's normal brightness. Until you set it, each panel keeps whatever its own screen is set to, and clearing it hands control back.</span>
+          </div>
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Dim the panel when idle</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Fades the panel down after a period with no touches. A panel left on the same page all day and night can leave a permanent ghost of it on the screen, and a dimmer picture ages the display more slowly. The screen never switches off.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Fades the panel down after a period with no touches. A panel left on the same page all day and night can leave a permanent ghost of it on the screen, and a dimmer picture ages the display more slowly.</div>
             </div>
-            <Toggle checked={display.idle_dim_enabled} onChange={(v) => update("display", "idle_dim_enabled", v)} />
+            <Toggle checked={dimEnabled} onChange={(v) => updateDisplay("idle_dim_enabled", v)} />
           </div>
-          {display.idle_dim_enabled && <>
+          {dimEnabled && <>
           <div style={fieldRow}>
             <label style={labelStyle}>Dim after</label>
             <input
@@ -1789,15 +1882,9 @@ export function SystemSettingsView() {
               min={DIM_MINUTES_MIN}
               max={DIM_MINUTES_MAX}
               style={{ ...inputStyle, maxWidth: 120 }}
-              value={Math.round(display.idle_dim_timeout_seconds / 60)}
-              onChange={(e) => update(
-                "display", "idle_dim_timeout_seconds",
-                (parseInt(e.target.value) || 0) * 60,
-              )}
-              onBlur={(e) => update(
-                "display", "idle_dim_timeout_seconds",
-                clampMinutes(parseInt(e.target.value)) * 60,
-              )}
+              value={Math.round(dimTimeout / 60)}
+              onChange={(e) => updateDisplay("idle_dim_timeout_seconds", (parseInt(e.target.value) || 0) * 60)}
+              onBlur={(e) => updateDisplay("idle_dim_timeout_seconds", clampMinutes(parseInt(e.target.value)) * 60)}
             />
             <span style={helpText}>Minutes with no touch before the panel dims.</span>
           </div>
@@ -1805,25 +1892,24 @@ export function SystemSettingsView() {
             <label style={labelStyle}>Dim to</label>
             <input
               type="number"
-              min={DIM_PERCENT_MIN}
+              min={0}
               max={DIM_PERCENT_MAX}
               style={{ ...inputStyle, maxWidth: 120 }}
-              value={display.idle_dim_level_percent}
-              onChange={(e) => update(
-                "display", "idle_dim_level_percent", parseInt(e.target.value) || 0,
-              )}
-              onBlur={(e) => update(
-                "display", "idle_dim_level_percent",
-                clampPercent(parseInt(e.target.value)),
-              )}
+              value={dimLevel}
+              onChange={(e) => updateDisplay("idle_dim_level_percent", parseInt(e.target.value) || 0)}
+              onBlur={(e) => updateDisplay("idle_dim_level_percent", clampPercent(parseInt(e.target.value)))}
             />
-            <span style={helpText}>Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening.</span>
+            <span style={helpText}>
+              {dimLevel === 0
+                ? "Blacked out: the screen goes as dark as the panel allows and the page is covered, so it reads as switched off. A touch brings it straight back."
+                : "Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening. Set it to 0 to black the screen out instead."}
+            </span>
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Stay bright while</label>
             <VariableKeyPicker
-              value={display.idle_dim_hold_state_key}
-              onChange={(key) => update("display", "idle_dim_hold_state_key", key)}
+              value={dimHoldKey}
+              onChange={(key) => updateDisplay("idle_dim_hold_state_key", key)}
               showDeviceState
               placeholder="Nothing — dim on the timer alone"
             />
@@ -1832,11 +1918,41 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Waking touch also presses the button</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Off: the touch that wakes a dimmed panel only brings the brightness back, so nobody mutes a live room by tapping a screen they could not read. On: that touch also does whatever it landed on, which is quicker but acts on a control the user could not see.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Off: the touch that wakes a dimmed panel only brings the brightness back, so nobody mutes a live room by tapping a screen they could not read. On: that touch also does whatever it landed on.</div>
             </div>
-            <Toggle checked={display.idle_dim_wake_passes_touch} onChange={(v) => update("display", "idle_dim_wake_passes_touch", v)} />
+            <Toggle checked={dimWakePasses} onChange={(v) => updateDisplay("idle_dim_wake_passes_touch", v)} />
           </div>
           </>}
+        </div>
+        </>}
+
+        {/* Device behaviour that travels with the project, for the same reason. */}
+        {projectLoaded && <>
+        <h3 style={sectionTitle}>Devices</h3>
+        <div style={cardStyle}>
+          <div style={fieldRow}>
+            <label style={labelStyle}>Retry every</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <input
+                type="number"
+                min={1}
+                max={300}
+                style={{ ...inputStyle, maxWidth: 120 }}
+                placeholder="5"
+                value={reconnectInterval ?? ""}
+                onChange={(e) => updateProjectDevices(
+                  "reconnect_interval_seconds",
+                  e.target.value === "" ? null : (parseInt(e.target.value) || 0),
+                )}
+                onBlur={(e) => updateProjectDevices(
+                  "reconnect_interval_seconds",
+                  e.target.value === "" ? null : Math.min(Math.max(parseInt(e.target.value) || 5, 1), 300),
+                )}
+              />
+              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>seconds</span>
+            </div>
+            <span style={helpText}>How often OpenAVC retries a device that has gone offline. This is the rate of connection attempts your IT department sees, so raise it on a network that is strict about them. Leave it empty to use this system's own setting.</span>
+          </div>
         </div>
         </>}
 

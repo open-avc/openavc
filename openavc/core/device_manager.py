@@ -155,6 +155,10 @@ class DeviceManager:
     def __init__(self, state: StateStore, events: EventBus):
         self.state = state
         self.events = events
+        # What the loaded project says the retry interval should be, or None
+        # when it says nothing. Set by the Engine wherever a project is
+        # applied, so it follows a save or a cloud push without a restart.
+        self.project_reconnect_interval: float | None = None
         self._devices: dict[str, BaseDriver] = {}
         self._device_configs: dict[str, dict[str, Any]] = {}
         self._reconnect_tasks: dict[str, asyncio.Task] = {}
@@ -1387,9 +1391,21 @@ class DeviceManager:
         base *= 2 ** flaps
         return base * (1.0 + random.uniform(-_RECONNECT_JITTER, _RECONNECT_JITTER))
 
-    @staticmethod
-    def _reconnect_interval() -> float:
-        """The configured steady-state retry interval, in seconds."""
+    def _reconnect_interval(self) -> float:
+        """The configured steady-state retry interval, in seconds.
+
+        The PROJECT wins where it says anything, because the rate of
+        connection attempts an IT department sees is a property of the site
+        rather than of one box -- so a customer sets it once and deploys it to
+        every panel. A project that says nothing (the normal case) defers to
+        this instance's own system.json, which is where the setting lived
+        before and still works for a box configured by hand.
+        """
+        if self.project_reconnect_interval is not None:
+            try:
+                return min(max(float(self.project_reconnect_interval), 1.0), 300.0)
+            except (TypeError, ValueError):
+                pass
         try:
             from openavc.system_config import get_system_config
 

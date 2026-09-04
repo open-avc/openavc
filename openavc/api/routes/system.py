@@ -120,12 +120,19 @@ def _panel_dim_available() -> bool:
         return False
 
 
-# Bounds on the two numbers, applied where they are READ rather than where
-# they are written -- same shape as the device reconnect interval. A
-# hand-edited system.json goes through no endpoint, so a check at the write
-# door is not the one that holds.
+# Bounds applied where the settings are READ rather than where they are
+# written -- a project can arrive from a cloud template, an import or a backup
+# restore, so a check at one write door is not the one that holds.
 _DIM_TIMEOUT_MIN, _DIM_TIMEOUT_MAX = 30, 7200
-_DIM_LEVEL_MIN, _DIM_LEVEL_MAX = 5, 90
+_DIM_LEVEL_MIN, _DIM_LEVEL_MAX = 1, 90
+# 0 is not a dim level but a mode: blackout. The backlight goes to the panel's
+# floor and the content is covered in black, which reads as off across a room
+# while every touch still works. It is spelled as the bottom of the same
+# control because "as dark as this panel goes" is what somebody reaching for 0
+# means -- and true sleep is not available: measured on appliance hardware
+# 2026-09-04, a slept screen did not wake on a real finger, only on the power
+# button.
+_DIM_LEVEL_BLACKOUT = 0
 
 
 @open_router.get("/system/display-idle")
@@ -133,11 +140,15 @@ async def get_display_idle(
     request: Request,
     credentials: HTTPBasicCredentials = Depends(_basic),
 ) -> dict[str, Any]:
-    """The idle-dim policy, for whatever is drawing the panel on this screen.
+    """The panel display policy, for whatever is drawing the panel here.
 
     Open to the local console because the caller is the thing showing the
     panel on this very box -- the appliance shell, over loopback, with no
     credential of its own. A remote caller still has to authenticate.
+
+    Read from the PROJECT rather than from system.json, so a customer sets it
+    once and deploys one template to a hundred panels. See
+    ``ProjectSettings`` for why only settings that fail safe may live there.
 
     ``hold`` is resolved HERE rather than handing the shell a state key to
     evaluate: what counts as truthy is a platform rule (``condition_eval``),
@@ -150,41 +161,64 @@ async def get_display_idle(
     ):
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    from openavc.system_config import get_system_config
+    from openavc.core.project_loader import DisplaySettings
 
-    cfg = get_system_config()
+    try:
+        engine = _get_engine()
+    except HTTPException:
+        engine = None
 
-    def _num(key: str, default: int, lo: int, hi: int) -> int:
+    project = getattr(engine, "project", None) if engine else None
+    d = getattr(getattr(project, "settings", None), "display", None) or DisplaySettings()
+
+    def _num(value: Any, default: int, lo: int, hi: int) -> int:
         try:
-            return min(max(int(cfg.get("display", key, default)), lo), hi)
+            return min(max(int(value), lo), hi)
         except (TypeError, ValueError):
             return default
 
-    hold_key = str(cfg.get("display", "idle_dim_hold_state_key", "") or "").strip()
+    level_raw = d.idle_dim_level_percent
+    try:
+        blackout = int(level_raw) == _DIM_LEVEL_BLACKOUT
+    except (TypeError, ValueError):
+        blackout = False
+
+    hold_key = str(d.idle_dim_hold_state_key or "").strip()
     hold = False
-    if hold_key:
+    if hold_key and engine is not None:
         try:
-            hold = bool(_get_engine().state.get(hold_key))
+            hold = bool(engine.state.get(hold_key))
         except Exception:
             # A key nothing has written yet, or an engine still starting.
-            # Not-held is the safe reading: it dims, which is recoverable by
+            # Not-held is the safe reading: it dims, which anyone can undo by
             # touching the panel, where a stuck hold silently disables the
             # whole feature.
             hold = False
 
+    brightness = d.brightness_percent
+    if brightness is not None:
+        brightness = _num(brightness, 100, 1, 100)
+
     return {
-        "enabled": bool(cfg.get("display", "idle_dim_enabled", False)),
+        "enabled": bool(d.idle_dim_enabled),
         "timeout_seconds": _num(
-            "idle_dim_timeout_seconds", 300, _DIM_TIMEOUT_MIN, _DIM_TIMEOUT_MAX
+            d.idle_dim_timeout_seconds, 300, _DIM_TIMEOUT_MIN, _DIM_TIMEOUT_MAX
         ),
-        "level_percent": _num(
-            "idle_dim_level_percent", 20, _DIM_LEVEL_MIN, _DIM_LEVEL_MAX
+        # Blackout is its own flag rather than a level of 0 on the wire, so the
+        # client never has to know that 0 is a mode. The level it gets is
+        # always a real percentage it can multiply by.
+        "level_percent": (
+            _DIM_LEVEL_MIN if blackout
+            else _num(level_raw, 20, _DIM_LEVEL_MIN, _DIM_LEVEL_MAX)
         ),
-        "wake_passes_touch": bool(
-            cfg.get("display", "idle_dim_wake_passes_touch", False)
-        ),
+        "blackout": blackout,
+        "wake_passes_touch": bool(d.idle_dim_wake_passes_touch),
         "hold_state_key": hold_key,
         "hold": hold,
+        # None means "not managed": the panel keeps whatever its own
+        # maintenance control set. Every panel is in that state until somebody
+        # sets it, so it must not read as "set me to full".
+        "brightness_percent": brightness,
     }
 
 

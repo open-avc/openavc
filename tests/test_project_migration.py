@@ -16,6 +16,7 @@ from openavc.core.project_migration import (
     migrate_0_9_to_0_10,
     migrate_0_10_to_0_11,
     migrate_0_11_to_0_12,
+    migrate_0_12_to_0_13,
     migrate_project,
 )
 from openavc.ui.matrix_model import resolve_axis
@@ -389,7 +390,8 @@ class TestFullMigrationChain:
         data = migrate_0_8_to_0_9(data)
         data = migrate_0_9_to_0_10(data)
         data = migrate_0_10_to_0_11(data)
-        data = migrate_0_11_to_0_12(data)  # Now at CURRENT_VERSION
+        data = migrate_0_11_to_0_12(data)
+        data = migrate_0_12_to_0_13(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False

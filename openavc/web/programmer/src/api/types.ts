@@ -498,9 +498,37 @@ export interface SchemaField {
   device_field?: string;
 }
 
+/** Settings the project carries to every panel it is deployed to.
+ *
+ *  Only settings that fail SAFE live here: a project file is movable (cloud
+ *  template, import, backup restore, the AI), so anything that could make a
+ *  panel unreachable -- network, auth, cloud identity, TLS -- stays in
+ *  system.json and never travels. See ProjectSettings in project_loader.py. */
+export interface DisplaySettings {
+  idle_dim_enabled: boolean;
+  idle_dim_timeout_seconds: number;
+  /** Percent of the panel's configured brightness. 0 means blackout. */
+  idle_dim_level_percent: number;
+  idle_dim_wake_passes_touch: boolean;
+  idle_dim_hold_state_key: string;
+  /** The panel's normal brightness, 1-100. null = not managed. */
+  brightness_percent: number | null;
+}
+
+export interface ProjectDeviceSettings {
+  /** null = defer to the instance's own system.json. */
+  reconnect_interval_seconds: number | null;
+}
+
+export interface ProjectSettings {
+  display: DisplaySettings;
+  devices: ProjectDeviceSettings;
+}
+
 export interface ProjectConfig {
   openavc_version: string;
   project: ProjectMeta;
+  settings: ProjectSettings;
   devices: DeviceConfig[];
   device_groups: DeviceGroup[];
   connections: Record<string, Record<string, unknown>>;

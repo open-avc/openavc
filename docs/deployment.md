@@ -446,21 +446,27 @@ How a change takes effect depends on the hardware. On the Pi appliance and Linux
 
 On the Raspberry Pi image, an `openavc-info.service` also displays the IP address and access URLs on the HDMI console at boot, so you can find the device on the network even without mDNS.
 
-### Dimming the panel when it is idle
+### Panel brightness and dimming
 
-A panel that shows the same page all day and all night can leave a faint permanent ghost of that page on the screen. Dimming the picture when nobody is using it slows that down considerably.
+A panel that shows the same page all day and all night can leave a faint permanent ghost of that page on the screen. Dimming the picture when nobody is using it slows that down considerably, so **it is on by default**: five minutes with no touch, dimmed to 20%.
 
-On appliance hardware that drives its own touch screen, Programmer > Settings > **Panel Display** offers:
+On hardware where OpenAVC drives its own touch screen, Programmer > Settings > **Panel Display** offers:
 
-- **Dim the panel when idle**, off until you turn it on.
-- **Dim after** — minutes with no touch before the panel fades down.
-- **Dim to** — a percentage of the panel's normal brightness. It is a percentage rather than a fixed level so a panel already turned down for a dark space dims further instead of getting brighter.
+- **Brightness** — the panel's normal brightness. Until you set it, each panel keeps whatever its own screen is set to, and clearing it hands control back to the panel.
+- **Dim the panel when idle**, and **Dim after** — the minutes of no touch before it fades.
+- **Dim to** — a percentage of the panel's normal brightness. It is a percentage rather than a fixed level so a panel already turned down for a dark space dims further instead of getting brighter. **Set it to 0 to black the screen out instead**: the backlight goes as low as the panel allows and the page is covered, so it reads as switched off from across the room. A touch brings it straight back.
 - **Stay bright while** — an optional state value that holds the panel at full brightness while it is on. A meeting in progress generates no touches, so a plain timer would dim the panel in the middle of a presentation. Point this at whatever your project already sets when the space is in use: a system-on variable, or a display's power state.
-- **Waking touch also presses the button** — off by default, so the first touch on a dimmed panel only brings the brightness back. Nobody mutes a live room by tapping a screen they could not read. Turn it on if you would rather the wake touch act on the control underneath it.
+- **Waking touch also presses the button** — off by default, so the first touch on a dimmed panel only brings the brightness back. Nobody mutes a live room by tapping a screen they could not read.
 
-The screen never switches off, only dims. A dark panel looks broken to somebody walking into the space.
+The screen is never put to sleep, even when blacked out. On panel hardware a sleeping screen cannot be woken by touching it, only by the power button, which on a wall-mounted panel is no better than a dead one.
 
 The section appears only on hardware where OpenAVC drives the display itself. On a panel running the OpenAVC Panel app against a server elsewhere, screen timeout and brightness are the tablet's own settings.
+
+### Settings that travel with the project
+
+Panel display settings, and the device retry interval, are stored **in the project file** rather than per system. Set them once, and every system you deploy that project to gets them: a cloud template pushed to a hundred panels carries them, and so does a project you export and open somewhere else.
+
+That is deliberately limited to settings whose worst case is a panel that looks wrong. Anything that decides how a system is *reached* stays with the individual system and never travels: network address and ports, passwords and API keys, cloud pairing, and certificates. A project file moves around, so a mistake in one of those would take a whole fleet off the network at once with no way to undo it from the panel.
 
 ### Raspberry Pi: OS login and SSH
 

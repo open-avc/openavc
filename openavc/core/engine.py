@@ -255,6 +255,7 @@ class Engine:
 
         # Load project — with corruption recovery
         self.project = self._load_project_safe()
+        self._apply_project_settings()
         self.state.set("system.project_name", self.project.project.name, source="system")
 
         # Publish project asset catalog so plugins (e.g. audio_player) can
@@ -656,6 +657,7 @@ class Engine:
         # up at event time, so a UI-only change needs nothing beyond this
         # swap and the ui.definition broadcast below.
         self.project = new_project
+        self._apply_project_settings()
         self._project_revision += 1
         self._dirty_since_backup = True
 
@@ -665,6 +667,7 @@ class Engine:
             log.error("Project reconcile failed, rolling back to previous "
                       "project state", exc_info=True)
             self.project = prev_project
+            self._apply_project_settings()
             self._project_revision = prev_revision
             self._dirty_since_backup = prev_dirty
 
@@ -884,6 +887,25 @@ class Engine:
         if not self.project:
             return []
         return [m.model_dump(mode="json") for m in self.project.monitors]
+
+    def _apply_project_settings(self) -> None:
+        """Push the project's `settings` block onto the runtime that reads it.
+
+        Called wherever `self.project` is replaced -- load, apply, and the
+        rollback -- so a save or a cloud push takes effect without a restart,
+        and a rollback puts the previous value back with everything else.
+        """
+        try:
+            settings = getattr(self.project, "settings", None)
+            devices = getattr(settings, "devices", None)
+            self.devices.project_reconnect_interval = getattr(
+                devices, "reconnect_interval_seconds", None
+            )
+        except Exception:
+            # A project this malformed has bigger problems than its retry
+            # interval; falling back to system.json is the pre-existing
+            # behaviour and is always safe.
+            self.devices.project_reconnect_interval = None
 
     def resolved_device_config(self, device) -> dict:
         """The config this device actually dials — driver defaults, project
