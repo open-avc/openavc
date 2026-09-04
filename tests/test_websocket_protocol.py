@@ -366,6 +366,26 @@ async def test_macro_execute_missing_macro_id():
 
 
 @pytest.mark.asyncio
+async def test_a_preset_naming_a_macro_that_is_gone_says_so_and_starts_nothing():
+    """A matrix preset outlives the macro it runs, the same as a button does.
+
+    The same sentence the bound-button door produces, because from the panel
+    they are one thing -- and no run is started for a macro that is not there.
+    """
+    ws = FakeWS()
+    engine = _make_engine()
+    engine.macros.has_macro.return_value = False
+    with patch("openavc.api._engine._engine", engine):
+        await _handle_message(
+            ws, {"type": "macro.execute", "macro_id": "system_on"}, "panel",
+        )
+        await asyncio.sleep(0)
+    assert ws.sent[0]["type"] == "error"
+    assert ws.sent[0]["message"] == "No macro named 'system_on'."
+    engine.macros.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_ui_page_sends_navigate_to_sender():
     """ui.page emits event and sends navigation back to the sender only."""
     ws = FakeWS()

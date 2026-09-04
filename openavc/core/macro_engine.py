@@ -108,6 +108,16 @@ class MacroEngine:
         """Check if any invocation of the macro is currently running."""
         return bool(self._running.get(macro_id))
 
+    def has_macro(self, macro_id: str) -> bool:
+        """Is this macro loaded?
+
+        Here rather than in the caller because ``execute`` already decides it
+        one line down, and a second reading of the same dict is what drifts.
+        A caller that starts a macro in the background has no other way to ask:
+        the refusal ``execute`` raises happens inside a task nobody is holding.
+        """
+        return macro_id in self._macros
+
     def _throttle_reason(
         self, macro_id: str, overlap: str, cooldown: float
     ) -> str | None:

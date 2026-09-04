@@ -323,6 +323,25 @@ class UIEventRuntime:
         elif action == "macro":
             macro_id = action_def.get("macro", "")
             if macro_id:
+                # Asked BEFORE the task, because after it there is nobody to
+                # tell. A macro runs in the background so a warm-up sequence
+                # cannot block the press, and the refusal a missing macro
+                # raises therefore lands in a task nothing is awaiting: the
+                # press was recorded as started, the log got an exception, and
+                # the room got a button that does nothing and says nothing.
+                # Deleting a macro and leaving the button that ran it is the
+                # ordinary way to arrive here.
+                if not engine.macros.has_macro(macro_id):
+                    self._warn_once(
+                        element, f"macro:{macro_id}",
+                        f"runs the macro '{macro_id}', which is not in this "
+                        f"project, so nothing runs when it fires",
+                    )
+                    record(
+                        macro=macro_id, started=False,
+                        error=f"No macro named '{macro_id}'.",
+                    )
+                    return
                 if dry_run:
                     record(macro=macro_id, started=False)
                     return
@@ -470,6 +489,22 @@ class UIEventRuntime:
             record(ran=False)
             self._warn_undispatched(action, element)
 
+    def _warn_once(self, element: Any, key: str, what: str) -> bool:
+        """Say something about one element's binding, once.
+
+        Deduped per (element, key) rather than per press, because a bad binding
+        on a slider fires on every tick of a drag and a real signal buried in
+        log spam is not a signal. Not deduped per key alone: the same mistake
+        on two elements is two things to go and fix. Cleared when the project
+        is replaced -- see forget_undispatched_actions.
+        """
+        el_id = str(getattr(element, "id", "") or "?")
+        if (el_id, key) in self._warned_actions:
+            return False
+        self._warned_actions.add((el_id, key))
+        log.warning(f"UI element '{el_id}' {what}")
+        return True
+
     def _warn_undispatched(self, action: str, element: Any) -> None:
         """Say, once, that a binding names something nothing runs.
 
@@ -477,27 +512,19 @@ class UIEventRuntime:
         Builder authors one. This catches the other population: a hand-edited
         ``.avc``, and a project written against a different version. Neither
         passes a door, and from the room both look like a broken device.
-
-        Deduped per (element, action) rather than per press, because a bad
-        action on a slider fires on every tick of a drag and a real signal
-        buried in log spam is not a signal. Not deduped per action alone: the
-        same typo on two elements is two things to go and fix.
         """
-        el_id = str(getattr(element, "id", "") or "?")
-        if (el_id, action) in self._warned_actions:
-            return
-        self._warned_actions.add((el_id, action))
         usable = ", ".join(sorted(DISPATCHED_ACTIONS))
         if not action:
-            log.warning(
-                f"UI element '{el_id}' has a binding entry with no action, so "
-                f"nothing runs when it fires. Valid actions: {usable}"
+            self._warn_once(
+                element, action,
+                f"has a binding entry with no action, so nothing runs when it "
+                f"fires. Valid actions: {usable}",
             )
         else:
-            log.warning(
-                f"UI element '{el_id}' has the binding action '{action}', which "
-                f"nothing dispatches, so nothing runs when it fires. Valid "
-                f"actions: {usable}"
+            self._warn_once(
+                element, action,
+                f"has the binding action '{action}', which nothing dispatches, "
+                f"so nothing runs when it fires. Valid actions: {usable}",
             )
 
     def _command_error(self, device_id: str, exc: Exception) -> str:

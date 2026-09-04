@@ -102,6 +102,13 @@ function toggleButton(id, key, onValue, extra) {
     }, extra || {});
 }
 
+/** The failure band is appended to the shared document and outlives a
+ *  scenario, so anything asserting on it starts from no band at all. */
+function clearFailureBand() {
+    const band = document.getElementById('panel-failure-message');
+    if (band) band.remove();
+}
+
 function renderProject(app, proj) {
     app.uiDef = proj.ui;
     app.uiSettings = proj.ui.settings || {};
@@ -2827,6 +2834,150 @@ const tests = {
             'no state key, nothing to indicate');
         assert(!app.root.querySelector('[data-element-id="b"]').classList.contains('toggle-on'),
             'and no ring');
+    },
+
+    // Q-139 / E5 -- a macro is a fact about the room, so every panel sees every
+    // run of it, and no frame says which run it belongs to. Clearing the claim
+    // on the first ending run threw away the press somebody is standing there
+    // waiting for.
+    q139_a_run_that_ends_does_not_take_another_runs_claim() {
+        const app = mkApp();
+        app.ws = { readyState: 1, send() {} };
+        clearFailureBand();
+
+        // A schedule is already running "System On" when somebody walks up.
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 2 });
+        // They press the button that runs it. Through send(), which is what
+        // makes the macro this panel's to report on.
+        app.send({ type: 'macro.execute', macro_id: 'system_on' });
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 2 });
+        // The schedule's run finishes first -- it started earlier.
+        app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
+        // And then theirs cannot reach the projector.
+        app.handleMessage({
+            type: 'macro.step_error', macro_id: 'system_on',
+            message: 'Ceiling Projector is not connected.',
+        });
+
+        const band = document.getElementById('panel-failure-message');
+        assert(band && band.classList.contains('visible')
+            && band.textContent === 'Ceiling Projector is not connected.',
+            `the press still reports its own failure, got "${band && band.textContent}"`);
+    },
+
+    // The other direction, and the reason the count is not simply "never
+    // forget": once the run somebody started has ended, a later failure of the
+    // same macro belongs to whoever started THAT one.
+    q139_a_claim_is_given_back_when_the_run_it_started_ends() {
+        const app = mkApp();
+        app.ws = { readyState: 1, send() {} };
+        clearFailureBand();
+
+        app.send({ type: 'macro.execute', macro_id: 'system_on' });
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 2 });
+        app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
+
+        // Somebody else's run, minutes later, fails.
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 2 });
+        app.handleMessage({
+            type: 'macro.step_error', macro_id: 'system_on',
+            message: 'Ceiling Projector is not connected.',
+        });
+
+        assert(!document.getElementById('panel-failure-message'),
+            'a room where nobody touched anything stays quiet');
+    },
+
+    // The same count, one surface over: a button lit while its macro runs went
+    // dark on the first ending run even though another was still going.
+    q139_a_button_stays_busy_while_a_second_run_is_still_going() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'btn_on', type: 'button', label: 'System On',
+                bindings: { do: { press: [{ action: 'macro', macro: 'system_on' }] } },
+            }],
+            placements: { btn_on: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="btn_on"]');
+
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 2 });
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 2 });
+        assert(el.classList.contains('macro-busy'), 'two runs, the button is busy');
+
+        app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
+        assert(el.classList.contains('macro-busy'),
+            'one has ended and the other has not, so it is still busy');
+
+        app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
+        assert(!el.classList.contains('macro-busy'), 'both ended, and it goes dark');
+    },
+
+    // Q-139 / E8 -- neither of a matrix's two odd frames names an element: a
+    // preset sends macro.execute and a lock sends state.set. The failure band
+    // would then place itself against whatever was touched before, and cover
+    // the control somebody still has a finger on.
+    q139_a_matrix_preset_and_lock_name_the_control_they_came_from() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        const proj = project({
+            elements: [{
+                id: 'mx', type: 'matrix', matrix_style: 'list',
+                matrix_config: {
+                    show_lock: true,
+                    sources: [{ value: 1, label: 'Laptop' }],
+                    destinations: [{
+                        value: 1, label: 'Left', route_key: 'device.sw.route_1',
+                        lock_key: 'var.left_lock',
+                    }],
+                    presets: [{ name: 'Presentation', macro: 'presentation' }],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        });
+        app.state = { 'device.sw.connected': true, 'device.sw.route_1': 1 };
+        renderProject(app, proj);
+
+        app._lastTouchedElementId = 'btn_somewhere_else';
+        app.root.querySelector('.matrix-preset-btn')
+            .dispatchEvent(new window.MouseEvent('click', { cancelable: true }));
+        assert(app.ws.sent.some(m => m.type === 'macro.execute' && m.macro_id === 'presentation'),
+            'the preset ran its macro');
+        assert(app._lastTouchedElementId === 'mx',
+            `the preset names the matrix, got "${app._lastTouchedElementId}"`);
+
+        app._lastTouchedElementId = 'btn_somewhere_else';
+        app.root.querySelector('.matrix-lock-btn')
+            .dispatchEvent(new window.MouseEvent('click', { cancelable: true }));
+        assert(app.ws.sent.some(m => m.type === 'state.set' && m.key === 'var.left_lock'),
+            'the lock wrote its variable');
+        assert(app._lastTouchedElementId === 'mx',
+            `the lock names the matrix, got "${app._lastTouchedElementId}"`);
+    },
+
+    // Q-139 / E8 -- the band carries failures of things people did. A frame
+    // with no source_type is the connection refusing a message before anything
+    // was read off it, so it cannot name what failed; "Rate limit exceeded" in
+    // front of a room is a fact about our protocol nobody there can act on.
+    q139_a_connection_level_refusal_is_not_put_on_the_glass() {
+        const app = mkApp();
+        clearFailureBand();
+
+        app.handleMessage({ type: 'error', message: 'Rate limit exceeded' });
+        assert(!document.getElementById('panel-failure-message'),
+            'the protocol keeps its complaints to the console');
+
+        // And the rule is narrow: a refusal of something somebody pressed
+        // still says so.
+        app.handleMessage({
+            type: 'error', source_type: 'ui.press', element_id: 'btn_on',
+            message: 'Ceiling Projector is not connected.',
+        });
+        const band = document.getElementById('panel-failure-message');
+        assert(band && band.classList.contains('visible')
+            && band.textContent === 'Ceiling Projector is not connected.',
+            `a named failure is still drawn, got "${band && band.textContent}"`);
     },
 };
 

@@ -179,6 +179,11 @@ SCENARIOS = [
     "q209_an_unreachable_device_is_not_a_toggle_that_is_off",
     "q209_a_frameless_toggle_is_ringed_rather_than_filled",
     "q209_a_toggle_with_no_state_key_indicates_nothing",
+    "q139_a_run_that_ends_does_not_take_another_runs_claim",
+    "q139_a_claim_is_given_back_when_the_run_it_started_ends",
+    "q139_a_button_stays_busy_while_a_second_run_is_still_going",
+    "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
+    "q139_a_connection_level_refusal_is_not_put_on_the_glass",
 ]
 
 

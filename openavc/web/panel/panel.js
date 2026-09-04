@@ -252,7 +252,8 @@ class PanelApp {
         this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
         this._runningMacros = {};    // macro_id -> { description, step_index, total_steps }
-        this._startedMacros = {};    // macro_id -> { at, reported } for macros THIS panel started
+        this._startedMacros = {};    // macro_id -> { at, reported, running } for macros THIS panel started
+        this._macroRuns = {};        // macro_id -> how many runs of it are in flight (see _endMacroRun)
         this.reconnectDelay = 1000;
         this.maxReconnectDelay = 30000; // matches the backoff cap used in onclose
         this.reconnectAttempts = 0;
@@ -795,6 +796,13 @@ class PanelApp {
                 break;
 
             case 'macro.started':
+                this._macroRuns[msg.macro_id] = (this._macroRuns[msg.macro_id] || 0) + 1;
+                // A claim made before this frame is a press waiting for its
+                // run; now it has one. Until it does, an ending run belongs to
+                // somebody else and must not take the claim with it.
+                if (this._startedMacros[msg.macro_id]) {
+                    this._startedMacros[msg.macro_id].running = true;
+                }
                 this._runningMacros[msg.macro_id] = {
                     description: '',
                     step_index: 0,
@@ -820,8 +828,7 @@ class PanelApp {
             case 'macro.completed':
             case 'macro.error':
             case 'macro.cancelled':
-                delete this._runningMacros[msg.macro_id];
-                delete this._startedMacros[msg.macro_id];
+                this._endMacroRun(msg.macro_id);
                 this._updateMacroBusyState(msg.macro_id);
                 this._updateMacroProgressBindings(msg.macro_id);
                 break;
@@ -833,7 +840,17 @@ class PanelApp {
                 console.warn(msg.source_type
                     ? `[WS Error] ${msg.source_type}: ${msg.message}`
                     : `[WS Error] ${msg.message}`);
-                this.showFailureMessage(msg.message);
+                // The band only ever carries a failure of something somebody
+                // did. A frame with no source_type is the connection refusing a
+                // message before anything was read off it -- a rate limit, a
+                // frame that was not JSON -- and it cannot name what failed
+                // because nothing was parsed. "Rate limit exceeded" on a wall
+                // panel is a fact about our protocol in front of a room that
+                // can do nothing with it, and it displaces the sentence that
+                // would have been useful. The revert still runs, which is the
+                // half that matters there: the control stops showing a value
+                // the device never took.
+                if (msg.source_type) this.showFailureMessage(msg.message);
                 this._revertRefusedInteraction(msg.element_id);
                 break;
 
@@ -900,7 +917,39 @@ class PanelApp {
     _claimMacro(macroId) {
         // A fresh press re-arms the report: pressing again after a failure is
         // somebody asking again, and silence would read as having fixed it.
-        this._startedMacros[macroId] = { at: Date.now(), reported: false };
+        this._startedMacros[macroId] = { at: Date.now(), reported: false, running: false };
+    }
+
+    /**
+     * One run of a macro ended. Forget it only when they all have.
+     *
+     * A macro is a fact about the room, so every panel sees every run of it --
+     * and nothing on the wire says which run a frame belongs to. Keyed by macro
+     * id alone, the first ending run cleared the busy state and, worse, threw
+     * away the claim: press "System On" while a schedule is already running it,
+     * that run finishes, and the failure of the run somebody is standing there
+     * waiting for arrives to a panel that has forgotten it ever asked. Silence,
+     * which is what this whole surface exists to end.
+     *
+     * Counting the starts is what tells them apart without a run id: every run
+     * announces itself on the same socket, so what is in flight is knowable
+     * even though which-is-which is not. A start that never happens -- the
+     * macro's own overlap guard refused it -- leaves the claim to age out, the
+     * case MACRO_CLAIM_MAX_AGE_MS was always for.
+     */
+    _endMacroRun(macroId) {
+        const left = Math.max(0, (this._macroRuns[macroId] || 0) - 1);
+        if (left) {
+            this._macroRuns[macroId] = left;
+            return;
+        }
+        delete this._macroRuns[macroId];
+        delete this._runningMacros[macroId];
+        // Only a claim that has seen its run start. One made a moment ago is a
+        // press whose run has not been announced yet, and the frame that just
+        // arrived is somebody else's.
+        const claim = this._startedMacros[macroId];
+        if (claim && claim.running) delete this._startedMacros[macroId];
     }
 
     _macrosReachableFrom(node, found) {
@@ -3259,6 +3308,10 @@ class PanelApp {
             }
             // No optimistic flip: the state change is what every panel sees, so
             // the one that pressed it should show the same thing the others do.
+            // The frame names a key, not an element, so this is the only place
+            // that knows which control the refusal of it would be about -- same
+            // rule as the custom-control bridge.
+            this._lastTouchedElementId = element.id;
             this.send({ type: 'state.set', key, value: !this._lockEngaged(this.state[key]) });
         };
 
@@ -3367,6 +3420,11 @@ class PanelApp {
                 btn.addEventListener('click', () => {
                     // Presets trigger a macro
                     if (preset.macro) {
+                        // A macro frame names no element, so the failure band
+                        // would place itself against whatever was touched
+                        // before this -- and cover the preset bar somebody
+                        // still has a finger on. Same rule as the lock above.
+                        this._lastTouchedElementId = element.id;
                         this.send({ type: 'macro.execute', macro_id: preset.macro });
                     }
                 });

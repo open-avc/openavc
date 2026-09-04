@@ -41,6 +41,11 @@ def _project(tmp_path: Path, elements: list[dict], macros: list[dict] | None = N
 def _engine(tmp_path: Path, elements: list[dict], macros: list[dict] | None = None) -> Engine:
     engine = Engine(_project(tmp_path, elements, macros))
     engine.project = load_project(engine.project_path)
+    # The macro engine is loaded here rather than left empty because a binding
+    # that names a macro now asks whether that macro is there before starting
+    # it -- so an engine holding no macros is a room where every macro button
+    # is broken, which is not what these cases are about.
+    engine.macros.load_macros([m.model_dump() for m in engine.project.macros])
     return engine
 
 
@@ -226,6 +231,64 @@ async def test_a_macro_start_is_recorded(tmp_path) -> None:
     dispatched = await engine.handle_ui_event("press", "btn_go")
 
     assert dispatched == [{"action": "macro", "macro": "system_on", "started": True}]
+
+
+@pytest.mark.asyncio
+async def test_a_button_whose_macro_is_gone_says_so_instead_of_starting_it(
+    tmp_path,
+) -> None:
+    """The macro was deleted and the button that runs it was not.
+
+    Starting it used to be recorded as started, because the start is a
+    background task and nothing waited to see it fail -- so the press reached
+    the engine, raised inside a task nobody was reading, and the room got
+    silence. That is the failure this whole surface exists to end.
+    """
+    engine = _engine(
+        tmp_path,
+        [{"id": "btn_go", "type": "button",
+          "bindings": {"do": {"press": [{"action": "macro", "macro": "system_on"}]}}}],
+        macros=[],
+    )
+    started: list[str] = []
+
+    async def execute(macro_id):
+        started.append(macro_id)
+
+    engine.macros.execute = execute
+
+    dispatched = await engine.handle_ui_event("press", "btn_go")
+
+    assert dispatched == [{
+        "action": "macro", "macro": "system_on", "started": False,
+        "error": "No macro named 'system_on'.",
+    }]
+    # And nothing was started: the record is not a report on a task that ran
+    # anyway.
+    assert started == []
+
+
+@pytest.mark.asyncio
+async def test_a_macro_a_dry_run_names_is_still_checked(tmp_path) -> None:
+    """A preview of a button whose macro is gone is a preview of nothing.
+
+    The dry run is what the AI reads back to verify its own write, and a
+    ``started: False`` with no reason is exactly what it reads for a normal
+    preview -- so without the sentence the two are indistinguishable.
+    """
+    engine = _engine(
+        tmp_path,
+        [{"id": "btn_go", "type": "button",
+          "bindings": {"do": {"press": [{"action": "macro", "macro": "system_on"}]}}}],
+        macros=[],
+    )
+
+    dispatched = await engine.handle_ui_event("press", "btn_go", dry_run=True)
+
+    assert dispatched == [{
+        "action": "macro", "macro": "system_on", "started": False,
+        "error": "No macro named 'system_on'.", "would_run": True,
+    }]
 
 
 # --- A matrix destination may override the element's route action ------------

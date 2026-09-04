@@ -550,6 +550,14 @@ async def _handle_message(
         if not macro_id:
             await _send_ws_error(ws, msg_type, "Missing macro_id")
             return
+        # The same sentence a bound button gets (core.ui_events), because it is
+        # the same failure: a matrix preset and a button that runs a macro are
+        # one thing to whoever is standing at the panel, and the id in it is
+        # the only thing anybody can go and look up. Answered before the task
+        # rather than out of it, so the run that cannot happen never starts.
+        if not engine.macros.has_macro(macro_id):
+            await _send_ws_error(ws, msg_type, f"No macro named '{macro_id}'.")
+            return
 
         async def _run_macro() -> None:
             try:

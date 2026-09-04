@@ -498,6 +498,8 @@ def _macro_project() -> dict[str, Any]:
              "label": "Did the macro reach its last step"},
             {"id": "routed", "type": "integer", "default": 0,
              "label": "Source routed to the display"},
+            {"id": "routed_lobby", "type": "integer", "default": 0,
+             "label": "Source routed to the lobby"},
         ],
         "macros": [
             {
@@ -535,8 +537,13 @@ def _macro_project() -> dict[str, Any]:
                     "placements": {
                         "btn_on": {"x": 4.0, "y": 6.0, "w": 30.0, "h": 14.0},
                         "btn_both": {"x": 40.0, "y": 6.0, "w": 30.0, "h": 14.0},
+                        "btn_gone": {"x": 4.0, "y": 24.0, "w": 30.0, "h": 14.0},
                         "btn_outer": {"x": 4.0, "y": 76.0, "w": 30.0, "h": 14.0},
-                        "mx_presets": {"x": 4.0, "y": 30.0, "w": 60.0, "h": 40.0},
+                        "mx_presets": {"x": 40.0, "y": 24.0, "w": 30.0, "h": 24.0},
+                        # Deliberately in the bottom half: the failure band has
+                        # to get out of the way of the preset bar, and where
+                        # the control is decides which end it draws at.
+                        "mx_low": {"x": 40.0, "y": 58.0, "w": 40.0, "h": 38.0},
                     },
                     "hidden": [],
                 }],
@@ -544,6 +551,31 @@ def _macro_project() -> dict[str, Any]:
                     _button("btn_on", "system_on"),
                     _button("btn_both", "both_projectors"),
                     _button("btn_outer", "outer"),
+                    # The macro this one runs is not in the project. Deleting a
+                    # macro and leaving the button that ran it is the ordinary
+                    # way a room arrives here.
+                    _button("btn_gone", "retired_preset"),
+                    {
+                        "id": "mx_low",
+                        "type": "matrix",
+                        "label": "Routing",
+                        "parent": None,
+                        # Its own source and destination values, so the
+                        # crosspoint locator above still names exactly one
+                        # cell on the page.
+                        "matrix_config": {
+                            "style": "crosspoint",
+                            "sources": [{"value": 9, "label": "Podium"}],
+                            "destinations": [
+                                {"value": "out9", "label": "Lobby",
+                                 "route_key": "var.routed_lobby"},
+                            ],
+                            "presets": [
+                                {"name": "Presentation", "macro": "system_on"},
+                            ],
+                        },
+                        "bindings": {"do": {"route": []}},
+                    },
                     {
                         "id": "mx_presets",
                         "type": "matrix",
@@ -695,6 +727,49 @@ def test_a_macro_this_panel_did_not_start_says_nothing(macro_panel) -> None:
     # under a tenth of a second in the test above.
     macro_panel.page.wait_for_timeout(1500)
     expect(macro_panel.page.locator("#panel-failure-message")).to_have_count(0)
+
+
+def test_a_button_whose_macro_was_deleted_says_so_instead_of_nothing(
+    macro_panel,
+) -> None:
+    """Q-139/E3, end to end: the quietest failure of the lot.
+
+    Everything about this press works -- the socket, the binding runtime, the
+    element -- and the macro it names is simply not there any more. The start
+    happens in a background task nobody awaits, so the refusal used to land in
+    the log and the room got a button that does nothing and says nothing.
+    """
+    band = macro_panel.page.locator("#panel-failure-message")
+    expect(band).to_have_count(0)
+
+    macro_panel.element("btn_gone").click()
+
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_text(
+        "No macro named 'retired_preset'.", timeout=EXPECT_TIMEOUT,
+    )
+
+
+def test_the_message_gets_out_of_the_way_of_a_matrix_preset(macro_panel) -> None:
+    """Q-139/E8: a preset's frame names no element, so the band placed itself
+    against whatever was touched before it.
+
+    Press something at the top of the page first, so "where the last press was"
+    is a wrong answer that is available. Then press a preset at the bottom: the
+    band has to move to the top, off the preset bar the finger is still on.
+    """
+    band = macro_panel.page.locator("#panel-failure-message")
+
+    macro_panel.element("btn_on").click()
+    expect(band).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(band).not_to_have_class(_re.compile(r"\bat-top\b"), timeout=EXPECT_TIMEOUT)
+
+    macro_panel.page.locator('[data-element-id="mx_low"] .matrix-preset-btn').click()
+
+    expect(band).to_have_class(_re.compile(r"\bat-top\b"), timeout=EXPECT_TIMEOUT)
+    expect(band).to_have_text(
+        f"{DEAD_NAME} is not connected.", timeout=EXPECT_TIMEOUT,
+    )
 
 
 # ---------------------------------------------------------------------------

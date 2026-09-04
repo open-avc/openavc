@@ -184,3 +184,24 @@ async def test_an_action_the_chain_knows_says_nothing(tmp_path, caplog) -> None:
         await engine.handle_ui_event("press", "btn_ok")
 
     assert "nothing dispatches" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_macro_that_is_not_there_is_reported_once_per_element(
+    tmp_path, caplog,
+) -> None:
+    """The same dedupe covers a button whose macro was deleted.
+
+    A `macro` action can sit under a slider's `change` binding, where it fires
+    on every tick of a drag -- the same log flood the rule above exists for,
+    reached by a different route.
+    """
+    engine = _engine(tmp_path, [_button("btn_go", {"action": "macro", "macro": "system_on"})])
+
+    with caplog.at_level("WARNING"):
+        for _ in range(5):
+            await engine.handle_ui_event("press", "btn_go")
+
+    lines = [r for r in caplog.records if "system_on" in r.getMessage()]
+    assert len(lines) == 1, "five presses, one line"
+    assert "btn_go" in lines[0].getMessage()
