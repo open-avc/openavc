@@ -73,6 +73,16 @@ describe("elementCommandActions", () => {
     p.ui.master_elements = [fader({ do: { press: [SET_FADER] } })] as never;
     expect(projectCommandActions(p)).toEqual([SET_FADER]);
   });
+
+  it("covers macro steps, which Validate already reports on", () => {
+    // A gate that names a step aimed at a deleted device and stays quiet about
+    // one the device would refuse is the same half-answer, one level down.
+    const step = { action: "device.command", device: "amp", command: "set_fader", params: {} };
+    const nested = { action: "conditional", then_steps: [step] };
+    const p = project([]);
+    p.macros = [{ id: "m", name: "M", steps: [nested] }] as never;
+    expect(projectCommandActions(p)).toEqual([step]);
+  });
 });
 
 describe("validateProject with what the platform answered", () => {
@@ -86,6 +96,19 @@ describe("validateProject with what the platform answered", () => {
       location: "Main > fader_1 > change",
       pageId: "main",
       elementId: "fader_1",
+    });
+  });
+
+  it("reports a macro step the same way", () => {
+    const step = { action: "device.command", device: "amp", command: "set_fader", params: {} };
+    const p = project([]);
+    p.macros = [{ id: "m", name: "Startup", steps: [step] }] as never;
+    const answers = new Map([[step, ["'set_fader': 'channel' is required"]]]);
+    const issues = validateProject(p, answers as never);
+    expect(issues).toContainEqual({
+      severity: "error",
+      message: "'set_fader': 'channel' is required",
+      location: 'Macro "Startup" > device.command',
     });
   });
 

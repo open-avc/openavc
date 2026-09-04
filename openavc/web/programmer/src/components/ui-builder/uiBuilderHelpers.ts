@@ -1377,7 +1377,16 @@ export function elementCommandActions(el: UIElement): Record<string, unknown>[] 
   return found;
 }
 
-/** Every `device.command` in the project's pages and master elements. */
+/**
+ * Every command in the project a driver could refuse: pages, master elements
+ * and macro steps.
+ *
+ * The macros are here because Validate reports on them already -- it is where a
+ * step aimed at a deleted device turns up -- and a gate that names one kind of
+ * broken step while staying quiet about another is the shape this whole check
+ * exists to remove. A step's own editor marks it live; this is the sweep
+ * somebody runs before handing the room over.
+ */
 export function projectCommandActions(project: ProjectConfig): Record<string, unknown>[] {
   const found: Record<string, unknown>[] = [];
   for (const page of project.ui?.pages ?? []) {
@@ -1386,6 +1395,14 @@ export function projectCommandActions(project: ProjectConfig): Record<string, un
   for (const mel of project.ui?.master_elements ?? []) {
     found.push(...elementCommandActions(mel as UIElement));
   }
+  const collectStep = (step: MacroStep) => {
+    if ((step.action === "device.command" || step.action === "group.command") && step.command) {
+      found.push(step as unknown as Record<string, unknown>);
+    }
+    step.then_steps?.forEach(collectStep);
+    step.else_steps?.forEach(collectStep);
+  };
+  for (const macro of project.macros ?? []) (macro.steps ?? []).forEach(collectStep);
   return found;
 }
 
@@ -5738,6 +5755,9 @@ export function validateProject(
       }
       if (step.action === "macro" && step.macro && !macroIds.has(step.macro)) {
         issues.push({ severity: "error", message: `Macro "${step.macro}" not found`, location: `${prefix} > ${step.description || "call macro"}` });
+      }
+      for (const message of commandIssues?.get(step as unknown as Record<string, unknown>) ?? []) {
+        issues.push({ severity: "error", message, location: `${prefix} > ${step.description || step.action}` });
       }
       step.then_steps?.forEach((s) => checkStep(s, prefix));
       step.else_steps?.forEach((s) => checkStep(s, prefix));
