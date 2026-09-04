@@ -531,6 +531,13 @@ It only appears when something failed. A control that works is silent, and the
 rest of a press still runs when one action in it fails, so a button that turns
 on a projector and dims the lights still dims the lights.
 
+A control pointing at something that is no longer there says so too: press a
+button whose macro has since been deleted and the panel answers "No macro named
+'movie_night'." rather than doing nothing. What it stays quiet about is trouble
+nobody in the space can act on, such as a panel sending faster than the system
+will accept: the control still goes back to the value the system knows, but the
+band is saved for the messages somebody can do something with.
+
 A preset button that runs a macro works the same way, and the message arrives
 a moment later rather than on the press: starting a macro always succeeds, and
 the failure happens partway through it. Only the panel the macro was started

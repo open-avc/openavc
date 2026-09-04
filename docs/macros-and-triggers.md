@@ -280,6 +280,8 @@ Triggers automatically execute macros based on conditions. Click the **Triggers*
 | **Event** | An event fires on the bus | `ui.press.btn_panic` |
 | **Startup** | System starts | Run initialization macro |
 
+A **State Change** trigger does not have to match a value. Leave the operator on **Changes (any value)** and it fires every time the key changes, whatever it changed to, which is what you want for "something moved, go and look" automation. Pick an operator to narrow it to a value instead.
+
 The schedule trigger includes a visual cron builder with two modes: a **field-by-field editor** (separate inputs for minute, hour, day, month, weekday with labels) and a raw expression editor. A dropdown of common examples ("Every weekday at 8am", "First Monday of month", "Every 15 minutes during business hours") lets you start from a template.
 
 **Fire Now:** Click the **Fire Now** button on any trigger to manually execute it immediately, without waiting for the condition to be met. Useful for testing.
