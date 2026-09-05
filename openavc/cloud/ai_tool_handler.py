@@ -649,9 +649,9 @@ class AIToolHandler(
     }
 
     # Tools that may run without the project-serialization lock: every
-    # read-only tool, plus execute_macro — it awaits a full (possibly long)
-    # macro run but never mutates engine.project, so holding the lock would
-    # needlessly block project edits behind a running macro. Everything else
+    # read-only tool, plus execute_macro — it waits on a macro run (bounded
+    # now, but still tens of seconds) and never mutates engine.project, so
+    # holding the lock would needlessly block project edits. Everything else
     # (all project-mutating tools, and unclassified tools) takes the lock by
     # default, so a new write tool is serialized automatically.
     _CONCURRENT_SAFE_TOOLS = _READ_ONLY_TOOLS | {"execute_macro"}

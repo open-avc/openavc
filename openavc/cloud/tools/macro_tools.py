@@ -319,10 +319,20 @@ class MacroToolsMixin:
         engine = self._get_engine()
         if engine and engine.macros:
             try:
-                await engine.macros.execute(macro_id)
+                # Bounded, same as the IDE's run button: a macro may wait for a
+                # device indefinitely, and an AI turn spent holding that open
+                # would end in a timeout reported as a failed macro.
+                status = await engine.macros.execute_detached(macro_id)
             except ValueError as e:
                 return {"error": str(e)}
-            return {"status": "executed", "macro_id": macro_id}
+            result: dict = {"status": status, "macro_id": macro_id}
+            if status == "running":
+                result["note"] = (
+                    "The macro started and is still running — it is waiting on "
+                    "a step (a delay, or a wait_until condition). This is not a "
+                    "failure. Check the macro's state or the log for how it ends."
+                )
+            return result
         return {"error": "Macro engine not available"}
 
     async def _cancel_macro(self, input: dict) -> Any:

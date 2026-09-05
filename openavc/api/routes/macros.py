@@ -31,14 +31,19 @@ async def execute_macro(macro_id: str) -> dict[str, Any]:
     _rate_limit_test(f"macro_execute:{macro_id}")
     engine = _get_engine()
     try:
-        await engine.macros.execute(macro_id)
+        # Bounded: the macro runs in its own task and this waits only long
+        # enough to report an ordinary one's outcome. A macro is allowed to
+        # wait forever (`wait_until` with no timeout), and holding the request
+        # for that told the caller a running macro had failed as soon as some
+        # client or proxy gave up on the socket.
+        status = await engine.macros.execute_detached(macro_id)
     except ValueError as e:
         raise _api_error(404, str(e))
     except Exception as e:
         # The traceback goes to the log (which the IDE streams live) rather than
         # into the toast — a failing step's exception is rarely a sentence.
         raise _api_error(500, f"Macro '{macro_id}' failed to run — see the log for details.", exc=e)
-    return {"status": "executed", "macro_id": macro_id}
+    return {"status": status, "macro_id": macro_id}
 
 
 @router.post("/macros/{macro_id}/cancel")

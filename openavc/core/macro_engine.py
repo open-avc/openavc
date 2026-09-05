@@ -43,6 +43,17 @@ _CANCEL_GRACE_SECONDS = 5.0
 _QUEUE_POLL_SECONDS = 1.0
 _QUEUE_MAX_WAIT_SECONDS = 300.0
 
+# How long an OPERATOR door (the IDE's run button, the cloud AI's run_macro)
+# waits for a macro before answering "it is running". A macro is allowed to
+# wait forever — `wait_until` with `timeout: null` is a documented shape and
+# waiting for a projector is what it is for — but a request is not: held open
+# it eventually dies at some client or proxy, and the caller is told a macro
+# that is running perfectly well has FAILED. Well under the cloud tunnel's
+# 300s read timeout, and longer than any macro whose outcome is worth
+# reporting in a toast; a longer one is followed on the live progress the
+# IDE already receives over the WebSocket.
+OPERATOR_RUN_WAIT_SECONDS = 30.0
+
 # The call chain of the macro currently executing in this task context.
 # The in-engine ``_call_chain`` argument only covers direct macro->macro
 # nesting; tasks spawned during step execution (event-bus handler dispatch,
@@ -58,6 +69,21 @@ _active_call_chain: ContextVar[frozenset[str]] = ContextVar(
 def active_call_chain() -> frozenset[str]:
     """Return the macro call chain active in the current task context."""
     return _active_call_chain.get()
+
+
+def _log_detached_failure(task: asyncio.Task) -> None:
+    """Retrieve a detached macro task's exception so it is logged, not lost.
+
+    ``execute`` handles a step failure itself, so this fires only for
+    something raised around it. Nobody is awaiting the task by the time it
+    can happen, and an unretrieved exception reaches the log as a bare
+    "Task exception was never retrieved" with no macro id in it.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error(f"Macro task failed after the caller stopped waiting: {exc}")
 
 
 class MacroEngine:
@@ -99,6 +125,9 @@ class MacroEngine:
         # tick can't both register before either fires preemption and
         # then cancel each other (A49).
         self._start_lock = asyncio.Lock()
+        # Strong references to the tasks execute_detached starts, so a macro
+        # nobody is awaiting any more is not collected out from under itself.
+        self._detached: set[asyncio.Task] = set()
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
         # Plugin-registered actions: action_type -> (handler, plugin_id, label)
@@ -447,6 +476,58 @@ class MacroEngine:
                     task_set.discard(task)
                     if not task_set:
                         self._running.pop(macro_id, None)
+
+    async def execute_detached(
+        self,
+        macro_id: str,
+        context: dict[str, Any] | None = None,
+        *,
+        wait_seconds: float | None = None,
+    ) -> str:
+        """Run a macro in its own task, waiting only ``wait_seconds`` for it.
+
+        Returns ``"executed"`` when the macro finished inside that window and
+        ``"running"`` when it did not. The macro keeps going either way —
+        nothing here cancels it.
+
+        This is the shape the OPERATOR doors need: the IDE's run button and
+        the cloud AI's ``run_macro``, where a person asked for a macro and is
+        holding a socket open waiting for the answer. ``execute`` runs the
+        steps in the CALLER'S task, so a `wait_until` with no timeout — a
+        legal, documented shape meaning "wait for the projector" — held that
+        request until the socket died, and the caller was told the macro had
+        FAILED when it was running perfectly well.
+
+        The automation doors keep awaiting ``execute`` directly: a trigger, a
+        script, a plugin and a panel press have no socket to lose, and one of
+        them waiting for a device is the feature.
+
+        Raises ``ValueError`` for a macro that does not exist, so a caller can
+        still answer 404 — that refusal has to happen here rather than inside
+        the task, where nobody would see it.
+        """
+        if not self.has_macro(macro_id):
+            raise ValueError(f"Macro '{macro_id}' not found")
+
+        # Read at call time, not bound as a default: the constant is the knob
+        # a test turns down, and a default argument would freeze it at import.
+        if wait_seconds is None:
+            wait_seconds = OPERATOR_RUN_WAIT_SECONDS
+
+        task = asyncio.create_task(self.execute(macro_id, context))
+        self._detached.add(task)
+        task.add_done_callback(self._detached.discard)
+        task.add_done_callback(_log_detached_failure)
+        try:
+            # shield, so the timeout ends the WAIT and not the macro.
+            await asyncio.wait_for(asyncio.shield(task), timeout=wait_seconds)
+        except asyncio.TimeoutError:
+            log.info(
+                f"Macro '{macro_id}' is still running after {wait_seconds:.0f}s "
+                f"— answering the caller and letting it continue"
+            )
+            return "running"
+        return "executed"
 
     async def execute_steps(
         self,
