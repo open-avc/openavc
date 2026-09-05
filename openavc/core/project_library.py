@@ -228,19 +228,23 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
 
 
 
-def _drop_superseded_bundled_drivers(old_bundle: Path) -> None:
+def _drop_superseded_bundled_drivers(old_bundle: Path) -> list[str]:
     """Remove driver_repo copies that came from the bundle being replaced.
 
     `_install_bundled_drivers` deliberately never overwrites an existing file,
     so a driver unpacked from a stale bundle would otherwise survive in
-    driver_repo forever and keep losing to the fresh one. Deleting it lets the
-    next open install the current copy.
+    driver_repo forever and keep losing to the fresh one.
 
     Byte-identity against the OLD bundle is the proof that we put the file
     there and nobody has edited it since, so removing it cannot lose user work.
     A driver the user has modified differs and is left strictly alone — which
     is the same promise the no-overwrite rule makes.
+
+    Returns the file names removed, so the caller can put the current copy of
+    each straight back: the live project that was opened from this starter is
+    still using them, and a box must not boot with its devices orphaned.
     """
+    removed: list[str] = []
     try:
         with zipfile.ZipFile(old_bundle, "r") as zf:
             for name in zf.namelist():
@@ -252,9 +256,35 @@ def _drop_superseded_bundled_drivers(old_bundle: Path) -> None:
                 existing = _DRIVER_REPO_DIR / fname
                 if existing.is_file() and existing.read_bytes() == zf.read(name):
                     existing.unlink()
+                    removed.append(fname)
                     log.info("Removed superseded bundled driver: %s", fname)
     except Exception as e:  # noqa: BLE001 - never let cleanup block startup
         log.warning("Could not clean up superseded bundled drivers: %s", e)
+    return removed
+
+
+def _reinstall_bundled_drivers(new_bundle: Path, names: list[str]) -> None:
+    """Write the current copy of each driver just removed, from the new bundle.
+
+    Only the files that were removed, and only the bytes: the driver loader
+    that runs right after seeding registers whatever is in driver_repo, and a
+    file the user has since added under the same name is never touched.
+    """
+    if not names:
+        return
+    try:
+        with zipfile.ZipFile(new_bundle, "r") as zf:
+            members = {Path(n).name: n for n in zf.namelist() if n.startswith("drivers/")}
+            for fname in names:
+                member = members.get(fname)
+                dest = _DRIVER_REPO_DIR / fname
+                if member is None or dest.exists():
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(zf.read(member))
+                log.info("Installed the current bundled driver: %s", fname)
+    except Exception as e:  # noqa: BLE001 - never let this block startup
+        log.warning("Could not reinstall bundled drivers: %s", e)
 
 
 def _refresh_starter_bundles(lib: Path) -> None:
@@ -282,8 +312,9 @@ def _refresh_starter_bundles(lib: Path) -> None:
         try:
             if dest.read_bytes() == zip_file.read_bytes():
                 continue
-            _drop_superseded_bundled_drivers(dest)
+            removed = _drop_superseded_bundled_drivers(dest)
             shutil.copy2(zip_file, dest)
+            _reinstall_bundled_drivers(dest, removed)
             log.info("Refreshed bundled drivers for starter project: %s", project_id)
         except OSError as e:
             log.warning("Could not refresh starter bundle %s: %s", project_id, e)

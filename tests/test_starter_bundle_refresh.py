@@ -79,10 +79,14 @@ def test_a_users_edited_project_avc_is_never_touched(wired) -> None:
     assert (lib / "simple_projector" / "project.avc").read_text() == '{"user": "edited"}'
 
 
-def test_an_unedited_unpacked_driver_is_removed_so_the_fresh_one_installs(wired) -> None:
+def test_an_unedited_unpacked_driver_is_replaced_by_the_fresh_one(wired) -> None:
     """`_install_bundled_drivers` never overwrites, so the stale copy already in
     driver_repo would win forever. It is byte-identical to the old bundle, which
-    proves we put it there."""
+    proves we put it there -- and the live project opened from this starter is
+    still using it, so the current copy goes straight back. Removing it and
+    leaving the reinstall to the next open orphaned every device on a box
+    whose live project came from a starter, until somebody re-opened the
+    starter from the library (and lost their edits doing so)."""
     _seed, _lib, repo = wired
     # write_bytes, not write_text: on Windows text mode rewrites "\n" as
     # "\r\n", so the copy would no longer be byte-identical to the bundle it
@@ -90,10 +94,22 @@ def test_an_unedited_unpacked_driver_is_removed_so_the_fresh_one_installs(wired)
     # install path writes drivers with write_bytes for exactly this reason.
     (repo / "acme_widget.py").write_bytes(OLD.encode())
     project_library.ensure_starter_projects()
-    assert not (repo / "acme_widget.py").exists(), (
-        "the superseded copy survived; the next open would skip it as 'existing' "
-        "and the box would stay broken"
+    assert (repo / "acme_widget.py").read_bytes() == NEW.encode(), (
+        "the driver the live project uses is not the shipped copy; the box "
+        "would boot with the device orphaned"
     )
+
+
+def test_a_driver_the_new_bundle_no_longer_ships_is_not_put_back(wired) -> None:
+    """Only what the shipped bundle carries comes back: a driver a release
+    dropped stays dropped."""
+    seed, _lib, repo = wired
+    with zipfile.ZipFile(seed / "simple_projector.zip", "w") as zf:
+        zf.writestr("project.avc", "{}")
+        zf.writestr("drivers/acme_other.py", NEW)
+    (repo / "acme_widget.py").write_bytes(OLD.encode())
+    project_library.ensure_starter_projects()
+    assert not (repo / "acme_widget.py").exists()
 
 
 def test_a_driver_the_user_edited_is_left_alone(wired) -> None:
