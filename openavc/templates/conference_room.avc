@@ -96,7 +96,7 @@
                 {
                     "action": "device.command",
                     "device": "projector1",
-                    "command": "input",
+                    "command": "set_input",
                     "params": {
                         "input": "hdmi1"
                     }
@@ -115,7 +115,7 @@
                 {
                     "action": "device.command",
                     "device": "projector1",
-                    "command": "input",
+                    "command": "set_input",
                     "params": {
                         "input": "hdmi2"
                     }
