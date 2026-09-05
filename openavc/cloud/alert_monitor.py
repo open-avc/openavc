@@ -17,7 +17,7 @@ from fnmatch import fnmatch
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import (
-    ACTIVE_ALERTS, ALERT, ALERT_RESOLVED, MONITORS,
+    ACTIVE_ALERTS, ALERT, ALERT_RESOLVED, MONITORS, RESOLVED_RULE_REMOVED,
     build_active_alerts_payload, build_alert_payload,
     build_alert_resolved_payload, build_monitors_payload,
 )
@@ -543,6 +543,12 @@ class AlertMonitor:
         drops its armed timer the same way whichever door removed it. A rule
         deleted while its alert was still open would otherwise sit in the
         portal forever with nothing left that could ever resolve it.
+
+        The resolve says ``rule_removed`` rather than the default, and that is
+        the whole point of the reason field: nothing happened in the room. The
+        cloud counts a recovery's span as the time a fault took to fix, on a
+        report an integrator hands a client, so a tidied rule used to read as a
+        repair of however long the rule had been sitting there.
         """
         rules = self._sanitize_rules(raw_new)
 
@@ -556,7 +562,9 @@ class AlertMonitor:
             parts = alert_key.split(":")
             if len(parts) >= 2 and parts[0] == "rule" and parts[1] in deleted_ids:
                 resolved_id = self._active_alerts.pop(alert_key)
-                self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(resolved_id))
+                self._queue_send(ALERT_RESOLVED, build_alert_resolved_payload(
+                    resolved_id, reason=RESOLVED_RULE_REMOVED,
+                ))
 
         for alert_key in list(self._pattern_timers.keys()):
             parts = alert_key.split(":")

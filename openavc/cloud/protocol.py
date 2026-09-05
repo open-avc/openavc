@@ -197,6 +197,24 @@ MESSAGE_PRIORITY = {
 }
 
 
+# --- Alert Resolution Reasons ---
+
+# Why an alert ended, on the `reason` field of `alert_resolved`. An instance
+# can only ever report two things, and the difference between them is what a
+# service report prints as how fast a fault was dealt with: the span from
+# `fired_at` measures a repair for the first and nothing at all for the second.
+
+# The reading came back. This is the only one that is a repair.
+RESOLVED_RECOVERED = "recovered"
+# The rule went away, so nobody is asking the question any more. Nothing
+# happened in the room. This instance deliberately does NOT say whether the
+# rule was disabled, deleted, re-scoped away from this system or removed from
+# the project: all it sees is a rule that left the set it evaluates, and
+# claiming to know which would be a guess. The cloud knows for the doors it
+# owns and records those more precisely.
+RESOLVED_RULE_REMOVED = "rule_removed"
+
+
 # --- Timestamp ---
 
 def _now_iso() -> str:
@@ -396,7 +414,9 @@ def build_alert_payload(
 
 
 def build_alert_resolved_payload(
-    alert_id: str, resolved_at: str | None = None
+    alert_id: str,
+    resolved_at: str | None = None,
+    reason: str = RESOLVED_RECOVERED,
 ) -> dict[str, Any]:
     """Alert-resolved payload.
 
@@ -406,8 +426,15 @@ def build_alert_resolved_payload(
     other on the cloud's would leave the queueing delay in the answer — and
     would mix two clocks in one subtraction, which can go negative. Both ends
     now come from the one clock that watched the fault.
+
+    ``reason`` says which of the two things happened, because the span above is
+    only a repair time for one of them — see the constants.
     """
-    return {"alert_id": alert_id, "resolved_at": resolved_at or _now_iso()}
+    return {
+        "alert_id": alert_id,
+        "resolved_at": resolved_at or _now_iso(),
+        "reason": reason,
+    }
 
 
 def build_active_alerts_payload(alert_ids: list[str]) -> dict[str, Any]:

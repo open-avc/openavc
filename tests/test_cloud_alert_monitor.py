@@ -1400,3 +1400,127 @@ async def test_a_duration_rule_is_stamped_when_it_fired_not_when_it_armed(wire_c
     assert payload["fired_at"] == held_long_enough
 
     await monitor.stop()
+
+
+# --- Why the alert ended ---
+#
+# The cloud counts the span from fired_at to resolved_at as the time a fault
+# took to fix, on a report an integrator hands a client. That is only true when
+# the reading came back. A rule that simply stopped being asked -- disabled in
+# the portal, deleted, or a monitor taken out of the project -- says nothing
+# about the room, and used to be indistinguishable from a repair on the wire.
+
+
+@pytest.mark.asyncio
+async def test_a_reading_coming_back_is_a_recovery():
+    """The default, and the whole compatibility story: every resolve that is
+    not something else keeps saying exactly what it said before."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(agent, state, MockEventBus())
+    await monitor.start()
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            condition={"key": "device.proj.temp", "operator": ">", "value": 80},
+        )]
+    })
+    state.set("device.proj.temp", 90)
+    await _drain(monitor, agent)
+    state.set("device.proj.temp", 40)
+    await _drain(monitor, agent)
+
+    msg_type, payload = alerts(agent)[-1]
+    assert msg_type == "alert_resolved"
+    assert payload["reason"] == "recovered"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_device_reporting_again_is_a_recovery():
+    """The absence path sends its own resolve, straight through the agent
+    rather than the queue, so it needs its own pin."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(agent, state, MockEventBus())
+    await monitor.start()
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_type="absence",
+            condition={"key_prefix": "device.", "threshold_seconds": 60},
+        )]
+    })
+    state.set("device.proj.power", "on")
+    await monitor._run_periodic_checks(time.time() + 120)
+    assert alerts(agent)[-1][0] == "alert"
+
+    state.set("device.proj.power", "off")
+    await monitor._run_periodic_checks(time.time())
+
+    msg_type, payload = alerts(agent)[-1]
+    assert msg_type == "alert_resolved"
+    assert payload["reason"] == "recovered"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_rule_leaving_the_pushed_set_is_not_a_repair():
+    """Disabled and deleted arrive here identically -- the portal pushes only
+    enabled rules -- so the instance reports the one thing it actually knows."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(agent, state, MockEventBus())
+    await monitor.start()
+
+    rule_id = str(uuid.uuid4())
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_id=rule_id,
+            condition={"key": "device.proj.temp", "operator": ">", "value": 80},
+        )]
+    })
+    state.set("device.proj.temp", 90)
+    await _drain(monitor, agent)
+    assert alerts(agent)[-1][0] == "alert"
+
+    # The reading never comes back. The rule just stops being pushed.
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {"rules": []})
+    await _drain(monitor, agent)
+
+    msg_type, payload = alerts(agent)[-1]
+    assert msg_type == "alert_resolved"
+    assert payload["reason"] == "rule_removed"
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_monitor_removed_from_the_project_is_not_a_repair():
+    """The path no cloud-side sweep could ever reach: a monitor compiles to a
+    rule id of its own, so the alert carries no rule row to sweep from."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitors = [{
+        "key": "device.proj.lamp_hours", "label": "Lamp Hours", "normal_max": 2000,
+    }]
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(), monitors_provider=lambda: monitors,
+    )
+    await monitor.start()
+
+    state.set("device.proj.lamp_hours", 2400)
+    await _drain(monitor, agent)
+    assert alerts(agent)[-1][0] == "alert"
+
+    monitors.clear()
+    monitor._on_project_applied_sync("system.project.reloaded", None)
+    await _drain(monitor, agent)
+
+    msg_type, payload = alerts(agent)[-1]
+    assert msg_type == "alert_resolved"
+    assert payload["reason"] == "rule_removed"
+
+    await monitor.stop()
