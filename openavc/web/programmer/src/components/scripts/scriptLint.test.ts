@@ -14,7 +14,7 @@ function issue(over: Partial<ScriptIssue> = {}): ScriptIssue {
   return {
     line: 4,
     event: "custom.select_source",
-    message: 'Nothing in this project emits "custom.select_source", so this handler never runs.',
+    message: 'Nothing in this project emits "custom.select_source", so this handler runs only if an outside system emits it over the API.',
     ...over,
   };
 }

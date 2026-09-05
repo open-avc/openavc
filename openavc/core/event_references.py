@@ -14,15 +14,23 @@ routing logic was correct and whose event never arrived.
 is open -- `ui.*` comes from a panel, `device.*` from a driver's lifecycle,
 `plugin.*` from whatever is installed, `isc.*` from another instance, `cloud.*`
 from the cloud -- and a warning that fires on a working handler teaches people
-to stop reading warnings. `custom.` is closed by construction: a plugin's emit
-is auto-prefixed `plugin.<id>.` (`core/plugin_api.py`), a peer instance's is
-prefixed `isc.<peer>.` (`core/isc.py`), and nothing in the REST or WebSocket
-surface emits a caller-supplied name. So the three doors below are the whole
-population, and "nothing emits this" is a fact rather than a guess:
+to stop reading warnings. `custom.` is the one namespace a PROJECT can emit
+into: a plugin's emit is auto-prefixed `plugin.<id>.` (`core/plugin_api.py`),
+a peer instance's is prefixed `isc.<peer>.` (`core/isc.py`). So the three
+doors below are the whole in-project population, and "nothing in this project
+emits this" is a fact rather than a guess:
 
     a macro's `event.emit` step, including inside a conditional's branches
     a control's `event.emit` action, including everywhere one nests
     another script's `events.emit(...)`
+
+**What the fact no longer implies.** `custom.` is also the one namespace an
+OUTSIDE system may emit into -- the WebSocket's `event.emit` and
+`POST /api/events` (`core/event_bus.check_event_emit`) -- and that is the
+whole point of a handler in a room whose logic lives in a Node-RED flow. So
+the sentence says what is known (nothing here emits it) and what follows (it
+runs only if something outside does), never "this handler never runs". A
+handler waiting on an outside system is worth a glance, not a deletion.
 
 Read statically, never by importing: the editor asks about source it is holding
 and has not saved, and a script that fails to load has to be readable too --
@@ -297,8 +305,9 @@ def dead_listeners(
                 "event": pattern,
                 "message": (
                     f'Nothing in this project emits "{pattern}", so this handler '
-                    f"never runs. Emit it from a macro's Emit Event step, a "
-                    f"control's Emit Event action, or events.emit() in another "
+                    f"runs only if an outside system emits it over the API. To "
+                    f"fire it from here, emit it from a macro's Emit Event step, "
+                    f"a control's Emit Event action, or events.emit() in another "
                     f"script."
                 ),
             })

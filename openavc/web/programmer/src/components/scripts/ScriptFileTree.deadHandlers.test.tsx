@@ -40,12 +40,12 @@ function renderTree(overrides: Partial<Parameters<typeof ScriptFileTree>[0]> = {
 describe("dead handlers on the script list", () => {
   it("marks the row of a script whose handler nothing can reach", () => {
     renderTree({ deadHandlers: { router: 1 } });
-    expect(screen.getByText("1 handler never runs")).toBeTruthy();
+    expect(screen.getByText("1 handler with no emitter")).toBeTruthy();
   });
 
   it("counts them, because one file can carry several", () => {
     renderTree({ deadHandlers: { router: 3 } });
-    expect(screen.getByText("3 handlers never run")).toBeTruthy();
+    expect(screen.getByText("3 handlers with no emitter")).toBeTruthy();
   });
 
   it("leaves a script with nothing wrong showing its description", () => {
@@ -55,7 +55,7 @@ describe("dead handlers on the script list", () => {
 
   it("says nothing at all when no script has one", () => {
     renderTree();
-    expect(screen.queryByText(/never runs/)).toBeNull();
+    expect(screen.queryByText(/no emitter/)).toBeNull();
     expect(screen.getByText("Source routing")).toBeTruthy();
   });
 
@@ -64,7 +64,7 @@ describe("dead handlers on the script list", () => {
       deadHandlers: { router: 1 },
       loadErrors: { router: "SyntaxError: invalid syntax (line 3)" },
     });
-    expect(screen.queryByText(/never runs/)).toBeNull();
+    expect(screen.queryByText(/no emitter/)).toBeNull();
     expect(screen.getByText(/SyntaxError/)).toBeTruthy();
   });
 });

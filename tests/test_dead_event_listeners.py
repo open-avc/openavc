@@ -13,7 +13,9 @@ Two properties matter more than any single case here:
 
 1. **It only speaks where it can be sure.** `custom.` is the one namespace
    closed to the project: a plugin's emit is auto-prefixed, a peer instance's
-   is prefixed, and no REST or WebSocket door emits a caller-supplied name.
+   is prefixed. An OUTSIDE system may emit into it (the WebSocket's
+   `event.emit`, `POST /api/events`), which is why the sentence says the
+   handler runs only if something outside emits it, never that it never runs.
    Everywhere else the emitter set is open, so a warning would eventually fire
    on a working handler and teach people to stop reading warnings. The
    out-of-scope cases below are as load-bearing as the in-scope ones.
@@ -90,7 +92,8 @@ def test_a_handler_nothing_emits_is_reported_where_the_pattern_is_written():
     assert DEAD_HANDLER.splitlines()[issue["line"] - 1].strip() == (
         '@on_event("custom.select_source")'
     )
-    assert "never runs" in issue["message"]
+    assert "runs only if an outside system emits it" in issue["message"]
+    assert "never runs" not in issue["message"]
 
 
 def test_a_script_with_nothing_wrong_is_absent_rather_than_empty():
@@ -486,9 +489,10 @@ async def test_the_ai_is_told_in_the_reply_it_is_already_reading(ai):
     )
     assert result["status"] == "saved"
     assert result["warnings"] == [
-        'Nothing in this project emits "custom.select_source", so this handler never '
-        "runs. Emit it from a macro's Emit Event step, a control's Emit Event action, "
-        "or events.emit() in another script."
+        'Nothing in this project emits "custom.select_source", so this handler runs '
+        "only if an outside system emits it over the API. To fire it from here, emit "
+        "it from a macro's Emit Event step, a control's Emit Event action, or "
+        "events.emit() in another script."
     ]
     assert "warnings, not failures" in result["warning_note"]
 

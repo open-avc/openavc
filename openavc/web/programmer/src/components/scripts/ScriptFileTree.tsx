@@ -295,9 +295,9 @@ export function ScriptFileTree({
                         ) : deadHandlers[s.id] ? (
                           <div
                             style={warnDescStyle}
-                            title="Open the script to see which event, and where to emit it."
+                            title="Nothing in this project emits its event. Open the script to see which, and where to emit it."
                           >
-                            {deadHandlers[s.id] === 1 ? "1 handler never runs" : `${deadHandlers[s.id]} handlers never run`}
+                            {deadHandlers[s.id] === 1 ? "1 handler with no emitter" : `${deadHandlers[s.id]} handlers with no emitter`}
                           </div>
                         ) : s.description ? (
                           <div style={descStyle}>{s.description}</div>

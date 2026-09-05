@@ -262,17 +262,18 @@ await events.emit(event_name, payload=None)
 await events.emit("custom.room_ready", {"room": "auditorium"})
 ```
 
-#### Handlers that never run
+#### Handlers with no emitter
 
-A `custom.` event only ever comes from this project: a macro's **Emit Event**
-step, a control's **Emit Event** action, or another script's `events.emit()`.
-So a handler waiting for one nobody sends can never fire, and nothing about it
-looks wrong — the handler is correct, the script loads, and the room simply
-does not react.
-
-The IDE marks those for you. The `@on_event` line carries a warning, and the
-script list marks the file, so you can see there is something to fix without
-opening it. The mark clears as soon as something emits that name.
+A `custom.` event comes from one of four places: a macro's **Emit Event**
+step, a control's **Emit Event** action, another script's `events.emit()`, or
+an outside system sending it over the API (a Node-RED flow, or a
+`POST /api/events` from anything that can make an HTTP request — see
+[Node-RED](node-red.md)). A handler waiting for one that nothing in the
+project emits looks correct in every way — the script loads, the room simply
+does not react — so the IDE marks it: the `@on_event` line carries a warning
+and the script list marks the file. If the event is meant to arrive from
+outside, the mark is telling you what this script depends on; otherwise it
+clears as soon as something in the project emits that name.
 
 Nothing is blocked, and writing the handler before the macro that will fire it
 is a normal way to work. Handlers for events the platform itself sends
