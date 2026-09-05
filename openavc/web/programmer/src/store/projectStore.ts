@@ -29,7 +29,7 @@ interface ProjectStore {
   savePending: boolean;  // true while debouncedSave timer is pending
   error: string | null;
   dirty: boolean;
-  revision: number | null;  // kept for WebSocket project.reloaded detection
+  revision: string | null;  // kept for WebSocket project.reloaded detection
   etag: string | null;  // ETag for optimistic concurrency
   conflictDetected: boolean;  // true when 409 received
 
@@ -78,10 +78,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const raw = await api.getProject();
       const etag = (raw as any)._etag ?? null;
       delete (raw as any)._etag;
-      // Revision 0 is valid (engine boots at 0 before the first save) — guard
-      // with isNaN rather than `|| null`, which would collapse 0 to null.
-      const parsed = etag ? parseInt(etag.replace(/"/g, ""), 10) : NaN;
-      const revision = Number.isNaN(parsed) ? null : parsed;
+      // The ETag is an opaque token — compared for equality and nothing else.
+      // It used to be a counter this parsed to a number; that counter restarted
+      // at 0 every boot, so a tab left open across a restart held one the
+      // server agreed with.
+      const revision = etag ? etag.replace(/"/g, "") : null;
       if (!get().dirty) {
         set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false });
         return true;
@@ -206,10 +207,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const raw = await api.getProject();
       const etag = (raw as any)._etag ?? null;
       delete (raw as any)._etag;
-      // Revision 0 is valid (engine boots at 0 before the first save) — guard
-      // with isNaN rather than `|| null`, which would collapse 0 to null.
-      const parsed = etag ? parseInt(etag.replace(/"/g, ""), 10) : NaN;
-      const revision = Number.isNaN(parsed) ? null : parsed;
+      // The ETag is an opaque token — compared for equality and nothing else.
+      // It used to be a counter this parsed to a number; that counter restarted
+      // at 0 every boot, so a tab left open across a restart held one the
+      // server agreed with.
+      const revision = etag ? etag.replace(/"/g, "") : null;
       set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false, undoStack: [], redoStack: [] });
     } catch (e) {
       set({ error: String(e), loading: false });

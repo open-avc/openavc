@@ -301,13 +301,14 @@ async def save_project_config(request: Request) -> dict[str, Any]:
                    "Send the ETag from your last GET /api/project in an If-Match header.",
         )
 
+    # The ETag is an opaque token — compared for equality and nothing else, so
+    # there is no shape to reject here. A value this server never issued is a
+    # 409 (it does not match the current revision), which is also the right
+    # answer for one issued by an earlier run of the process.
     if_match = request.headers.get("if-match")
-    expected_rev: int | None = None
+    expected_rev: str | None = None
     if if_match is not None:
-        try:
-            expected_rev = int(if_match.strip('"'))
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Invalid If-Match value")
+        expected_rev = if_match.strip('"')
 
     # The migration chain keys on this field and treats a missing one as the
     # OLDEST format -- running the whole chain over a current-format body,
@@ -339,11 +340,11 @@ async def save_project_config(request: Request) -> dict[str, Any]:
         new_revision = await engine.apply_project(
             project, expected_revision=expected_rev
         )
-    except ProjectRevisionConflictError:
-        raise HTTPException(
-            status_code=409,
-            detail="Project was modified by another session. Reload to see the latest changes.",
-        )
+    except ProjectRevisionConflictError as e:
+        # The engine's own sentence: it is the half that knows whether another
+        # writer landed a save or the caller's token is simply from an earlier
+        # run of the server.
+        raise HTTPException(status_code=409, detail=str(e))
     return JSONResponse(
         content={"status": "saved"},
         headers={"ETag": f'"{new_revision}"'},

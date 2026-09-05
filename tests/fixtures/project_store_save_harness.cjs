@@ -54,7 +54,7 @@ async function main() {
     const outcome = await H.runSaveWithRetry(deps);
     results.m307_success_first_try = {
       pass: outcome === "saved" && calls === 1 && sleeps.length === 0 &&
-        state.etag === '"5"' && state.revision === 5 && state.error === null,
+        state.etag === '"5"' && state.revision === "5" && state.error === null,
       detail: { outcome, calls, sleeps, etag: state.etag, revision: state.revision },
     };
   }
@@ -121,28 +121,30 @@ async function main() {
     };
   }
 
-  // ETag "0" is a real revision (the engine boots at revision 0 before the
-  // first save) — it must parse to 0, not collapse to null.
+  // The ETag is an opaque token: whatever the server sent, quotes stripped
+  // and nothing else. It used to be parsed as an integer, which is what made a
+  // stale tab's "0" agree with a freshly restarted server.
   {
     const { deps, state } = makeDeps({
-      saveProject: async () => ({ etag: '"0"' }),
+      saveProject: async () => ({ etag: '"9d24571b-0"' }),
     });
     const outcome = await H.runSaveWithRetry(deps);
-    results.revision_zero_survives_save = {
-      pass: outcome === "saved" && state.revision === 0 && state.etag === '"0"',
+    results.revision_token_kept_verbatim = {
+      pass: outcome === "saved" && state.revision === "9d24571b-0" &&
+        state.etag === '"9d24571b-0"',
       detail: { outcome, revision: state.revision, etag: state.etag },
     };
   }
 
-  // A non-numeric ETag still falls back to revision null.
+  // No ETag on the response is the only case that leaves revision null.
   {
     const { deps, state } = makeDeps({
-      saveProject: async () => ({ etag: '"abc"' }),
+      saveProject: async () => ({}),
     });
     const outcome = await H.runSaveWithRetry(deps);
-    results.revision_non_numeric_etag_null = {
-      pass: outcome === "saved" && state.revision === null,
-      detail: { outcome, revision: state.revision },
+    results.revision_null_when_no_etag = {
+      pass: outcome === "saved" && state.revision === null && state.etag === null,
+      detail: { outcome, revision: state.revision, etag: state.etag },
     };
   }
 

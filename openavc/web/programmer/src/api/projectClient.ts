@@ -121,7 +121,17 @@ export async function saveProject(
   });
 
   if (res.status === 409) {
-    throw new ConflictError("Project was modified by another session. Reload to see the latest changes.");
+    // Prefer the server's sentence: only it knows whether another writer
+    // landed a save or this page's ETag is from before a restart.
+    let detail = "";
+    try {
+      detail = ((await res.json()) as { detail?: string })?.detail ?? "";
+    } catch {
+      /* no body, or not JSON — fall back to the generic wording */
+    }
+    throw new ConflictError(
+      detail || "Project was modified by another session. Reload to see the latest changes.",
+    );
   }
   if (!res.ok) {
     const body = await res.text();

@@ -141,12 +141,12 @@ async def test_pending_settings_persist_from_inside_reconcile_no_deadlock(
     # Deadlock guard: a naive apply_project call in the handler would hang
     # here forever (the handler is awaited inline under the reconcile lock).
     await asyncio.wait_for(eng.apply_project(new_project), timeout=10)
-    rev_after_apply = eng._project_revision
-    assert rev_after_apply == 1
+    saves_after_apply = eng._revision_counter
+    assert saves_after_apply == 1
 
     # The bookkeeping persist runs outside the lock, right after.
     await wait_for_condition(
-        lambda: eng._project_revision == rev_after_apply + 1,
+        lambda: eng._revision_counter == saves_after_apply + 1,
         message="pending-settings persist never bumped the revision",
     )
     on_disk = _disk_project(eng)
@@ -175,12 +175,14 @@ async def test_scheduled_bookkeeping_outside_lock_persists_and_bumps(tmp_path):
         {"device_id": "panel1", "applied": ["input"], "remaining": {}},
     )
     await wait_for_condition(
-        lambda: eng._project_revision == 1,
+        lambda: eng._revision_counter == 1,
         message="bookkeeping persist never bumped the revision",
     )
     dev = next(d for d in _disk_project(eng)["devices"] if d["id"] == "panel1")
     assert dev.get("pending_settings") in ({}, None)
-    assert [m["revision"] for m in sent if m.get("type") == "project.reloaded"] == [1]
+    assert [m["revision"] for m in sent if m.get("type") == "project.reloaded"] == [
+        eng._project_revision
+    ]
 
 
 @pytest.mark.asyncio
@@ -198,12 +200,12 @@ async def test_bookkeeping_writes_coalesce_into_one_persist(tmp_path):
     eng.schedule_bookkeeping_change(rename)
     eng.schedule_bookkeeping_change(flag)
     await wait_for_condition(
-        lambda: eng._project_revision >= 1,
+        lambda: eng._revision_counter >= 1,
         message="bookkeeping flush never ran",
     )
     # Let any (wrong) second flush land before asserting.
     await asyncio.sleep(0.05)
-    assert eng._project_revision == 1
+    assert eng._revision_counter == 1
     meta = _disk_project(eng)["project"]
     assert meta["name"] == "Renamed" and meta["id"] == "p2"
 
@@ -233,7 +235,7 @@ async def test_bookkeeping_mutation_applies_to_swapped_project(tmp_path):
         eng.project = eng.project.model_copy(deep=True)
 
     await wait_for_condition(
-        lambda: eng._project_revision >= 1,
+        lambda: eng._revision_counter >= 1,
         message="deferred persist never ran",
     )
     assert next(
@@ -253,10 +255,12 @@ async def test_plugin_save_config_uncontended_persists_before_return(tmp_path):
     await eng._save_plugin_config("plug1", {"x": 2})
 
     # Awaited path: persisted + bumped by the time the call returns.
-    assert eng._project_revision == 1
+    assert eng._revision_counter == 1
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
     assert eng.project.plugins["plug1"].config == {"x": 2}
-    assert [m["revision"] for m in sent if m.get("type") == "project.reloaded"] == [1]
+    assert [m["revision"] for m in sent if m.get("type") == "project.reloaded"] == [
+        eng._project_revision
+    ]
 
 
 @pytest.mark.asyncio
@@ -276,7 +280,7 @@ async def test_plugin_save_config_under_lock_defers_without_deadlock(tmp_path):
         assert eng.project.plugins["plug1"].config == {"x": 2}
 
     await wait_for_condition(
-        lambda: eng._project_revision == 1,
+        lambda: eng._revision_counter == 1,
         message="deferred plugin-config persist never ran",
     )
     assert _disk_project(eng)["plugins"]["plug1"]["config"] == {"x": 2}
@@ -299,7 +303,7 @@ async def test_plugin_save_config_failure_reverts_in_memory(tmp_path, monkeypatc
 
     # Reverted so the poisoned config can't break every later save.
     assert eng.project.plugins["plug1"].config == {"x": 1}
-    assert eng._project_revision == 0
+    assert eng._revision_counter == 0
 
 
 @pytest.mark.asyncio
@@ -331,4 +335,4 @@ async def test_bookkeeping_scheduled_during_stop_teardown_persists(tmp_path):
     # loop surviving past shutdown.
     disk = _disk_project(eng)
     assert disk["plugins"]["plug1"]["config"].get("written_during_stop") is True
-    assert eng._project_revision == 1
+    assert eng._revision_counter == 1

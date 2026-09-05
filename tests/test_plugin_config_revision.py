@@ -31,7 +31,7 @@ def _engine(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_save_plugin_config_persists_and_bumps_revision(tmp_path, monkeypatch):
     engine = _engine(tmp_path, monkeypatch)
-    engine._project_revision = 5
+    before = engine._project_revision
 
     await engine._save_plugin_config(
         "video_panel", {"streams": [{"stream_id": "cam1"}]}
@@ -43,18 +43,18 @@ async def test_save_plugin_config_persists_and_bumps_revision(tmp_path, monkeypa
     }
     # ...and the revision advanced, so a stale editor PUT will 409 rather than
     # clobber this change.
-    assert engine._project_revision == 6
+    assert engine._project_revision != before
 
 
 @pytest.mark.asyncio
 async def test_save_plugin_config_unknown_plugin_does_not_bump(tmp_path, monkeypatch):
     engine = _engine(tmp_path, monkeypatch)
-    engine._project_revision = 9
+    before = engine._project_revision
 
     await engine._save_plugin_config("not_installed", {"x": 1})
 
     # No matching plugin entry -> nothing saved -> revision unchanged.
-    assert engine._project_revision == 9
+    assert engine._project_revision == before
 
 
 @pytest.mark.asyncio
@@ -63,7 +63,7 @@ async def test_save_plugin_config_reverts_on_save_failure(tmp_path, monkeypatch)
 
     engine = _engine(tmp_path, monkeypatch)
     engine.project.plugins["video_panel"].config = {"keep": 1}
-    engine._project_revision = 5
+    before = engine._project_revision
 
     # Persisting fails (e.g. disk full). The in-memory config must revert so it
     # matches disk and doesn't poison the next save of anything.
@@ -78,7 +78,7 @@ async def test_save_plugin_config_reverts_on_save_failure(tmp_path, monkeypatch)
 
     # Reverted to the last-good config; revision not bumped.
     assert engine.project.plugins["video_panel"].config == {"keep": 1}
-    assert engine._project_revision == 5
+    assert engine._project_revision == before
     engine.broadcast_ws.assert_awaited_once()
 
 
@@ -127,7 +127,7 @@ async def test_uninstall_endpoint_removes_plugin_and_bumps_revision(tmp_path, mo
     engine.project.plugins["video_panel"] = PluginConfig(
         enabled=False, config={"streams": [{"stream_id": "cam1"}]}
     )
-    engine._project_revision = 7
+    before = engine._project_revision
     plugins_api.set_engine(engine)
 
     result = await plugins_api.uninstall_plugin_endpoint("video_panel")
@@ -137,4 +137,4 @@ async def test_uninstall_endpoint_removes_plugin_and_bumps_revision(tmp_path, mo
     assert "video_panel" not in engine.project.plugins
     # ...and the revision advanced, so a stale editor PUT 409s rather than
     # restoring video_panel and its streams.
-    assert engine._project_revision == 8
+    assert engine._project_revision != before

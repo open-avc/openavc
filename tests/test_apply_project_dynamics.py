@@ -293,7 +293,7 @@ async def test_get_put_round_trip_is_all_clean(tmp_path, acme_dynamics_drivers):
 
     await eng.apply_project(round_tripped)
 
-    assert eng._project_revision == 1
+    assert eng._revision_counter == 1
     assert eng.project is round_tripped
     assert cancel_calls == [], "clean apply cancelled running macros"
     assert trigger_stops == [], "clean apply rebuilt triggers"
@@ -410,12 +410,17 @@ async def test_concurrent_writers_no_lost_update_and_gapless_revisions(tmp_path)
     # Disk matches memory: the last committed save is what a reload sees.
     assert load_project(eng.project_path) == eng.project
 
-    # Revisions: strictly monotonic, no skips, no repeats — every commit
-    # broadcast exactly one project.reloaded with its own revision.
-    final = eng._project_revision
-    assert sorted(broadcast_revisions) == list(range(1, final + 1)), (
+    # Revisions: no skips, no repeats — every commit minted one token and
+    # broadcast exactly one project.reloaded carrying it. The token is opaque
+    # to clients, but in here its save-count half is what pins one-mint-per-
+    # commit, and the run id is what makes it unmatchable after a restart.
+    expected = [
+        f"{eng._boot_id}-{n}" for n in range(1, eng._revision_counter + 1)
+    ]
+    assert sorted(broadcast_revisions) == sorted(expected), (
         f"revision sequence has skips or repeats: {sorted(broadcast_revisions)}"
     )
+    assert eng._project_revision == expected[-1]
 
     await eng.triggers.stop()
 
@@ -459,10 +464,16 @@ async def _primed_engine(tmp_path, **project_kwargs) -> Engine:
     return eng
 
 
-async def _assert_rolled_back_and_healthy(eng: Engine) -> None:
+async def _assert_rolled_back_and_healthy(
+    eng: Engine, prev_revision: str
+) -> None:
     """After a failed apply: previous revision, one trigger listener (not
-    zero, not doubled), and the baseline trigger still fires exactly once."""
-    assert eng._project_revision == 0
+    zero, not doubled), and the baseline trigger still fires exactly once.
+
+    The save count goes back with the token — a mint that was rolled back was
+    never handed to anyone, so it must not read as a committed save."""
+    assert eng._project_revision == prev_revision
+    assert eng._revision_counter == 0
     assert len(eng.triggers._state_sub_ids) == 1, (
         "rollback left trigger listeners stacked or missing"
     )
@@ -503,6 +514,7 @@ async def test_devices_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
         side_effect=[RuntimeError("injected reconcile failure"), {}, {}]
     )
     prev_project = eng.project
+    prev_revision = eng._project_revision
     new_project = _edited(
         eng,
         devices=[{"id": "d1", "driver": "generic_tcp", "name": "D1",
@@ -514,11 +526,11 @@ async def test_devices_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project
-    await _assert_rolled_back_and_healthy(eng)
+    await _assert_rolled_back_and_healthy(eng, prev_revision)
 
     revision = await eng.apply_project(new_project)
 
-    assert revision == 1
+    assert revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     eng.devices.add_device.assert_awaited_once()
     assert eng.devices.add_device.await_args.args[0]["id"] == "d1"
@@ -540,6 +552,7 @@ async def test_plugins_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
     loader.remove_plugin_tracking = MagicMock()
     eng.plugin_loader = loader
     prev_project = eng.project
+    prev_revision = eng._project_revision
     new_project = _edited(
         eng, plugins={"acme_plugin": {"enabled": True, "config": {"level": 1}}}
     )
@@ -548,11 +561,11 @@ async def test_plugins_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project
-    await _assert_rolled_back_and_healthy(eng)
+    await _assert_rolled_back_and_healthy(eng, prev_revision)
 
     revision = await eng.apply_project(new_project)
 
-    assert revision == 1
+    assert revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     assert loader.start_plugin.await_count == 2
     await eng.triggers.stop()
@@ -572,6 +585,7 @@ async def test_macros_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp_
 
     eng.macros.load_macros = load_macros_fails_once
     prev_project = eng.project
+    prev_revision = eng._project_revision
     new_macro = {"id": "m_new", "name": "New",
                  "steps": [{"action": "state.set", "key": "var.m_new_ran",
                             "value": True}],
@@ -586,11 +600,11 @@ async def test_macros_reconcile_failure_rolls_back_then_next_apply_succeeds(tmp_
     assert eng.project is prev_project
     # Rollback reloads macro definitions from the restored project (call 2).
     assert calls["n"] == 2
-    await _assert_rolled_back_and_healthy(eng)
+    await _assert_rolled_back_and_healthy(eng, prev_revision)
 
     revision = await eng.apply_project(new_project)
 
-    assert revision == 1
+    assert revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     await eng.macros.execute("m_new")
     assert eng.state.get("var.m_new_ran") is True
@@ -605,6 +619,7 @@ async def test_variables_reconcile_failure_rolls_back_then_next_apply_succeeds(t
         RuntimeError("injected reconcile failure"), None,
     ]
     prev_project = eng.project
+    prev_revision = eng._project_revision
     new_project = _edited(
         eng,
         variables=[
@@ -617,11 +632,11 @@ async def test_variables_reconcile_failure_rolls_back_then_next_apply_succeeds(t
         await eng.apply_project(new_project)
 
     assert eng.project is prev_project
-    await _assert_rolled_back_and_healthy(eng)
+    await _assert_rolled_back_and_healthy(eng, prev_revision)
 
     revision = await eng.apply_project(new_project)
 
-    assert revision == 1
+    assert revision == eng._project_revision != prev_revision
     assert eng.project is new_project
     assert eng.state.get("var.volume") == 42
     assert eng.persister.update_keys.call_count == 2

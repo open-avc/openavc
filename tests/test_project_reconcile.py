@@ -201,16 +201,17 @@ async def test_ui_edit_does_not_disturb_runtime(tmp_path):
         ui_elements=[{"id": "btn1", "type": "button",
                       "grid_area": {"col": 1, "row": 1}}],
     ))
+    before = eng._project_revision
     revision = await eng.apply_project(new_project)
 
-    assert revision == 1
+    assert revision == eng._project_revision != before
     assert counters == {}, f"UI-only edit touched the runtime: {counters}"
     await asyncio.sleep(0.1)
     assert fire_count["n"] == 1, "startup trigger re-fired on a UI edit"
 
     types = [m["type"] for m in broadcasts]
     assert types == ["ui.definition", "project.reloaded"]
-    assert broadcasts[1]["revision"] == 1
+    assert broadcasts[1]["revision"] == eng._project_revision
 
     # The bytes landed on disk (persist-first).
     on_disk = json.loads(Path(eng.project_path).read_text(encoding="utf-8"))
@@ -372,22 +373,22 @@ async def test_load_origin_uses_full_script_reload(tmp_path):
 @pytest.mark.asyncio
 async def test_apply_project_occ_conflict(tmp_path):
     eng = _make_engine(tmp_path)
-    eng._project_revision = 5
+    current = eng._project_revision
 
     with pytest.raises(ProjectRevisionConflictError):
         await eng.apply_project(
             ProjectConfig(**_project_dict(name="Stale")),
-            expected_revision=3,
+            expected_revision="a-token-from-another-run",
         )
 
-    assert eng._project_revision == 5
+    assert eng._project_revision == current
     assert eng.project.project.name == "P"
 
     revision = await eng.apply_project(
         ProjectConfig(**_project_dict(name="Fresh")),
-        expected_revision=5,
+        expected_revision=current,
     )
-    assert revision == 6
+    assert revision == eng._project_revision != current
     assert eng.project.project.name == "Fresh"
 
 
@@ -423,6 +424,7 @@ async def test_failed_variable_edit_rolls_back_scoped(tmp_path):
 
     eng._register_variable_validation = boom
 
+    before = eng._project_revision
     with pytest.raises(RuntimeError, match="validation rebuild failed"):
         await eng.apply_project(ProjectConfig(**_project_dict(
             variables=[{"id": "v1", "type": "number", "default": 2}],
@@ -431,7 +433,8 @@ async def test_failed_variable_edit_rolls_back_scoped(tmp_path):
 
     # Runtime rolled back: revision and project restored, no device sync,
     # trigger listeners intact (not stacked, not lost).
-    assert eng._project_revision == 0
+    assert eng._project_revision == before
+    assert eng._revision_counter == 0
     assert eng.project.variables[0].default == 1
     assert "sync_devices" not in counters, "scoped rollback synced devices"
     assert len(eng.triggers._state_sub_ids) == baseline_subs

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 import shutil
 import socket
 import time
@@ -123,7 +124,19 @@ class Engine:
         # re-entrancy guard so chained bindings (var bound to another var's
         # key) propagate while genuine cycles (A<->B) terminate.
         self._var_binding_active: set[str] = set()
-        self._project_revision: int = 0  # incremented on every save
+        # The project's revision, as an OPAQUE token — compared for equality
+        # and nothing else. It was a counter from 0, which meant every run
+        # handed out the same values: a Builder tab left open across a restart
+        # held an `If-Match` the new process agreed with, and its first autosave
+        # saved over everything anyone had done since, with no 409 and nothing
+        # in the log, because as far as the server could tell it WAS a valid
+        # save. The random half makes a token from an earlier run unmatchable;
+        # the counter half keeps a log line readable ("the 12th save this run").
+        # Never parse it, order it, or persist it — a token restored from a
+        # backup would be one this run has already handed out.
+        self._boot_id: str = secrets.token_hex(4)
+        self._revision_counter: int = 0  # saves committed this run
+        self._project_revision: str = f"{self._boot_id}-0"
 
         # Event/state subscription IDs (for cleanup on stop/reload)
         self._state_sub_ids: list[str] = []
@@ -552,10 +565,10 @@ class Engine:
         self,
         new_project: ProjectConfig,
         *,
-        expected_revision: int | None = None,
+        expected_revision: str | None = None,
         origin: ProjectOrigin = ProjectOrigin.EDIT,
         persist: bool = True,
-    ) -> int:
+    ) -> str:
         """The one way a project change enters the engine.
 
         Checks optimistic concurrency (``expected_revision=None`` skips the
@@ -574,7 +587,12 @@ class Engine:
                 new_project, expected_revision, origin, persist
             )
 
-    async def apply_project_edit(self, mutate) -> int:
+    def _new_revision(self) -> str:
+        """Mint the next revision token: this run's id plus a save count."""
+        self._revision_counter += 1
+        return f"{self._boot_id}-{self._revision_counter}"
+
+    async def apply_project_edit(self, mutate) -> str:
         """Apply an edit built from the current project, atomically.
 
         Callers that copy ``engine.project``, mutate the copy, and then call
@@ -624,17 +642,27 @@ class Engine:
     async def _apply_project_locked(
         self,
         new_project: ProjectConfig,
-        expected_revision: int | None,
+        expected_revision: str | None,
         origin: ProjectOrigin,
         persist: bool,
-    ) -> int:
+    ) -> str:
         """Body of :meth:`apply_project`. Caller holds ``_reload_lock``."""
         if (
             expected_revision is not None
             and expected_revision != self._project_revision
         ):
+            if self._revision_counter == 0:
+                # Nothing has been saved since this process started, so no
+                # other writer can have invalidated the caller's token — it
+                # is from an earlier run. "Another session" would send them
+                # looking for a colleague who was never there.
+                raise ProjectRevisionConflictError(
+                    "The system restarted since this page loaded the project. "
+                    "Reload to see the latest changes."
+                )
             raise ProjectRevisionConflictError(
-                "Project was modified by another session"
+                "Project was modified by another session. "
+                "Reload to see the latest changes."
             )
 
         if persist:
@@ -651,6 +679,7 @@ class Engine:
         # Snapshot for rollback on reconcile failure
         prev_project = self.project
         prev_revision = self._project_revision
+        prev_counter = self._revision_counter
         prev_dirty = self._dirty_since_backup
 
         # Swapping self.project IS the UI reload: UI dispatch looks elements
@@ -658,7 +687,7 @@ class Engine:
         # swap and the ui.definition broadcast below.
         self.project = new_project
         self._apply_project_settings()
-        self._project_revision += 1
+        self._project_revision = self._new_revision()
         self._dirty_since_backup = True
 
         try:
@@ -668,7 +697,12 @@ class Engine:
                       "project state", exc_info=True)
             self.project = prev_project
             self._apply_project_settings()
+            # The counter goes back too, so it stays a count of COMMITTED
+            # saves. The token minted above never left the process (nothing
+            # is broadcast or returned until the reconcile succeeds), so the
+            # next save may safely mint it again.
             self._project_revision = prev_revision
+            self._revision_counter = prev_counter
             self._dirty_since_backup = prev_dirty
 
             # The new bytes stay on disk deliberately: the file is the source
@@ -1054,7 +1088,7 @@ class Engine:
                     if asyncio.iscoroutine(result):
                         await result
                 raise
-            self._project_revision += 1
+            self._project_revision = self._new_revision()
             revision = self._project_revision
         await self.broadcast_ws({
             "type": "project.reloaded",
@@ -1093,7 +1127,7 @@ class Engine:
                     for mutate, _on_error in batch:
                         mutate(self.project)
                     await save_project_async(self.project_path, self.project)
-                    self._project_revision += 1
+                    self._project_revision = self._new_revision()
                     revision = self._project_revision
                 except Exception as e:
                     log.error(f"Deferred project persist failed: {e}")

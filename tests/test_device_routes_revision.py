@@ -110,7 +110,7 @@ async def test_device_update_bumps_revision(rev_engine):
     before = engine._project_revision
     resp = client.patch("/api/devices/ctrl1", json={"name": "Renamed"})
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     assert load_project(engine.project_path).devices[0].name == "Renamed"
 
 
@@ -120,7 +120,7 @@ async def test_device_delete_bumps_revision_and_sweeps_state(rev_engine):
     before = engine._project_revision
     resp = client.delete("/api/devices/ctrl1")
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     assert load_project(engine.project_path).devices == []
     assert engine.devices.get_device_config("ctrl1") is None
     # The seam's device sync also sweeps orphaned state keys — the old
@@ -135,7 +135,7 @@ async def test_pending_settings_store_bumps_revision(rev_engine):
         "/api/devices/ctrl1/settings/pending", json={"settings": {"brightness": 50}}
     )
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     dev = load_project(engine.project_path).devices[0]
     assert dev.pending_settings == {"brightness": 50}
     # Runtime queue and persisted queue stay identical (reconciler stays
@@ -153,7 +153,7 @@ async def test_child_entity_patch_bumps_revision_without_device_bounce(rev_engin
         "/api/devices/ctrl1/children/encoder/5", json={"label": "Stage TX"}
     )
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     dev = load_project(engine.project_path).devices[0]
     assert dev.child_entities["encoder"]["005"].label == "Stage TX"
     # Applied live — the same driver instance keeps running.
@@ -167,7 +167,7 @@ async def test_connection_update_bumps_revision(rev_engine):
         "/api/connections/ctrl1", json={"host": "10.0.0.60", "port": 5001}
     )
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     assert load_project(engine.project_path).connections["ctrl1"]["host"] == "10.0.0.60"
     # The connections diff hot-swapped the device with the new host.
     assert engine.devices.get_device_config("ctrl1")["config"]["host"] == "10.0.0.60"
@@ -181,7 +181,7 @@ async def test_connection_bulk_update_bumps_revision(rev_engine):
     )
     assert resp.status_code == 200
     assert resp.json()["count"] == 1
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     assert engine.devices.get_device_config("ctrl1")["config"]["host"] == "10.0.0.61"
 
 
@@ -190,7 +190,7 @@ async def test_connection_delete_bumps_revision(rev_engine):
     before = engine._project_revision
     resp = client.delete("/api/connections/ctrl1")
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     assert "ctrl1" not in load_project(engine.project_path).connections
 
 
@@ -202,6 +202,6 @@ async def test_connection_import_bumps_revision(rev_engine):
         json={"ctrl1": {"host": "10.0.0.62", "port": 5001, "_device_name": "X"}},
     )
     assert resp.status_code == 200
-    assert engine._project_revision > before
+    assert engine._project_revision != before
     conn = load_project(engine.project_path).connections["ctrl1"]
     assert conn == {"host": "10.0.0.62", "port": 5001}

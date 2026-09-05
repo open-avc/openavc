@@ -13,7 +13,7 @@ export interface SaveStatePatch {
   savePending?: boolean;
   dirty?: boolean;
   etag?: string | null;
-  revision?: number | null;
+  revision?: string | null;
   conflictDetected?: boolean;
   error?: string | null;
 }
@@ -55,10 +55,8 @@ export async function runSaveWithRetry(
     try {
       const result = await deps.saveProject(project, etag ?? undefined);
       const newEtag = result.etag ?? null;
-      // Revision 0 is valid (engine boots at 0 before the first save) — guard
-      // with isNaN rather than `|| null`, which would collapse 0 to null.
-      const parsedRevision = newEtag ? parseInt(newEtag.replace(/"/g, ""), 10) : NaN;
-      const newRevision = Number.isNaN(parsedRevision) ? null : parsedRevision;
+      // The ETag is an opaque token — kept as it came, compared for equality.
+      const newRevision = newEtag ? newEtag.replace(/"/g, "") : null;
       // If the project ref changed during the save, the user kept editing —
       // keep dirty=true so the caller schedules another save.
       const editedDuringSave = deps.getProject() !== project;

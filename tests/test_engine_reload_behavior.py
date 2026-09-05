@@ -147,7 +147,8 @@ async def test_reload_broadcasts_ui_definition_and_project_reloaded(tmp_path):
 
     reloaded_msgs = [m for m in sent if m["type"] == "project.reloaded"]
     assert len(reloaded_msgs) == 1
-    assert reloaded_msgs[0]["revision"] == eng._project_revision == 1
+    assert reloaded_msgs[0]["revision"] == eng._project_revision
+    assert eng._revision_counter == 1
 
     await eng.triggers.stop()
 
@@ -472,11 +473,13 @@ async def test_put_project_persists_bytes_and_hot_reloads(tmp_path):
     transport = ASGITransport(app=app, client=("127.0.0.1", 50000))
     async with AsyncClient(transport=transport,
                            base_url="http://testserver") as client:
-        resp = await client.put("/api/project", json=body,
-                                headers={"If-Match": '"0"'})
+        resp = await client.put(
+            "/api/project", json=body,
+            headers={"If-Match": f'"{eng._project_revision}"'},
+        )
 
     assert resp.status_code == 200
-    assert resp.headers["etag"] == '"1"'
+    assert resp.headers["etag"] == f'"{eng._project_revision}"'
 
     # The bytes landed on disk, with the previous file kept as .avc.bak.
     on_disk = json.loads(Path(eng.project_path).read_text(encoding="utf-8"))
@@ -487,7 +490,7 @@ async def test_put_project_persists_bytes_and_hot_reloads(tmp_path):
 
     # The runtime applied the new project, not just the disk.
     assert eng.project.project.name == "Renamed via PUT"
-    assert eng._project_revision == 1
+    assert eng._revision_counter == 1
     assert eng.state.get("var.volume") == 42
 
     await eng.triggers.stop()
