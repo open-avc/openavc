@@ -45,6 +45,8 @@ Drag any OpenAVC node onto a flow, open it, and add a new **openavc-server**. En
 
 All the nodes on one server share a single connection, and it reconnects on its own if the system restarts.
 
+**Announce as** (optional) gives the connection a name, `lobby-logic` say. While it is connected, OpenAVC holds `system.integration.lobby-logic.connected` at `true`; when it drops, `false`. That key is how the room can tell whether the flow is there (see below).
+
 ## The nodes
 
 | Node | What it does | Message |
@@ -82,8 +84,9 @@ The nodes exist because a flow should hold one socket rather than make HTTP call
 
 ## If Node-RED stops
 
-A flow that has become the room's logic is part of the room. If Node-RED is down, a button that only sets a variable still sets it, and nothing answers. Two habits keep that from being a surprise:
+A flow that has become the room's logic is part of the room. If Node-RED is down, a button that only sets a variable still sets it, and nothing answers. Three habits keep that from being a surprise:
 
+- Give the server node a name under **Announce as**, then use the key it publishes: bind an LED on the panel to `system.integration.<name>.connected`, add it as a [monitored reading](variables-and-state.md#monitor-a-reading) so the Dashboard and a cloud alert say when the flow is gone, or put a **State Change** trigger on it that runs a fallback macro when it turns `false`.
 - Keep the sequences that must always work, System On and System Off at least, as OpenAVC macros, and have the flow *call* them with a **macro** node rather than replace them.
 - Run Node-RED where it restarts on its own (a service, a container with a restart policy), on the same network segment as the system.
 
@@ -94,6 +97,7 @@ A flow that has become the room's logic is part of the room. If Node-RED is down
 - **HTTPS is on and the connection never opens.** Untick **Verify the certificate** for a self-signed certificate.
 - **A `set variable` node is refused.** Without an API key, only `var.*` and `plugin.*` keys can be written. Device state is written by the device's driver, never by hand.
 - **An `emit event` node is refused.** Events from outside are always `custom.<name>`. The node adds the prefix; something else naming `device.` or `cloud.` events is refused on purpose.
+- **`event in` shows "OpenAVC too old for events".** The system is on a version before 0.33, which had no event stream. State, commands, macros and variables still work; update the system for events.
 
 ## See Also
 

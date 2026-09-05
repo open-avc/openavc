@@ -9,6 +9,7 @@
       port: { value: 8080, required: true, validate: RED.validators.number() },
       tls: { value: false },
       tlsVerify: { value: false },
+      clientName: { value: "" },
     },
     credentials: {
       apiKey: { type: "password" },
@@ -53,6 +54,15 @@
     <label for="node-config-input-apiKey"><i class="fa fa-key"></i> API key</label>
     <input type="password" id="node-config-input-apiKey" placeholder="leave blank to connect as a panel" />
   </div>
+  <div class="form-row">
+    <label for="node-config-input-clientName"><i class="fa fa-heartbeat"></i> Announce as</label>
+    <input type="text" id="node-config-input-clientName" placeholder="e.g. lobby-logic (optional)" />
+  </div>
+  <div class="form-tips">
+    With a name here, OpenAVC keeps <code>system.integration.&lt;name&gt;.connected</code>
+    true while this connection is up and false when it drops, so a panel light, a monitored
+    reading or a trigger can tell when the flow is not there.
+  </div>
   <div class="form-tips">
     With an API key this connection can do what the Programmer can. Without one it can do
     what a panel can: read state, send commands, run macros, and write <code>var.*</code>
@@ -72,6 +82,10 @@ One OpenAVC system. Every OpenAVC node points at one of these, and all the nodes
 Leave it blank and the connection joins as a **panel**: it reads all state, sends device commands, runs macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. That is enough for a flow that acts as the room's logic.
 
 Give it a key and the connection joins as the **Programmer**: everything above, plus every state namespace and every event. Generate one in the Programmer under Settings › Security. It is stored as a Node-RED credential and never sent to the browser.
+
+### Announce as
+
+A flow that has become a space's logic is part of the space, and when it is down a panel button still takes the press and nothing answers. Give the connection a name and OpenAVC publishes `system.integration.<name>.connected`, `true` while the socket is open and `false` when it drops. Bind an LED to it, add it as a monitored reading with an alert, or put a trigger on it that runs a fallback macro. The name is lowercased and kept to letters, digits, `_` and `-`.
 
 ### Lookups in the editor
 

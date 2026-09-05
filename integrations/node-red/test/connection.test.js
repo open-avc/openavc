@@ -5,7 +5,7 @@ import { createRequire } from "module";
 // ESM because vitest is.
 const require = createRequire(import.meta.url);
 const { FakeOpenAVC } = require("./fake-openavc");
-const { OpenAVCConnection } = require("../lib/connection");
+const { OpenAVCConnection, LEGACY_DETECT_MS } = require("../lib/connection");
 const { globToRegExp, compile, parsePatterns } = require("../lib/glob");
 
 let fake;
@@ -73,6 +73,47 @@ describe("role and credential", () => {
     expect(data.devices.map((d) => d.id)).toEqual(["switcher", "projector"]);
     expect(fake.lastRestHeaders["x-api-key"]).toBe("secret-key");
   });
+});
+
+describe("announcing a name", () => {
+  it("puts the name on the connect URL, and nothing when there is none", async () => {
+    const named = connect({ name: "Lobby Logic" });
+    await once(named, "open");
+    expect(fake.connections[0].name).toBe("Lobby Logic");
+    expect(fake.connections[0].url).toContain("name=Lobby%20Logic");
+
+    const plain = connect();
+    await once(plain, "open");
+    expect(fake.connections[1].url).not.toContain("name=");
+  });
+});
+
+describe("an OpenAVC older than the event doors", () => {
+  it("is noticed when the subscription goes unanswered, and emit refuses", async () => {
+    await fake.stop();
+    fake = await new FakeOpenAVC({ legacy: true }).start();
+    const warned = [];
+    const c = connect({ logger: { log() {}, warn: (m) => warned.push(m), error() {} } });
+    await once(c, "open");
+    c.subscribeEvents("a", ["custom.*"]);
+    const legacy = once(c, "legacy");
+    await new Promise((r) => setTimeout(r, LEGACY_DETECT_MS + 200));
+    await legacy;
+    expect(c.legacy).toBe(true);
+    expect(warned.join("\n")).toMatch(/older than 0\.33/);
+    await expect(c.emitEvent("custom.x", {})).rejects.toThrow(/older than 0\.33/);
+    // The rest of the protocol is untouched.
+    expect(await c.sendCommand("switcher", "route")).toEqual({ success: true });
+  }, 10000);
+
+  it("is not mistaken for one when the subscription is answered", async () => {
+    const c = connect();
+    await once(c, "open");
+    c.subscribeEvents("a", ["custom.*"]);
+    await once(c, "subscribed");
+    await new Promise((r) => setTimeout(r, LEGACY_DETECT_MS + 200));
+    expect(c.legacy).toBe(false);
+  }, 10000);
 });
 
 describe("the state mirror", () => {

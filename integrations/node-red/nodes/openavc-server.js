@@ -13,6 +13,7 @@ module.exports = function (RED) {
     this.tls = !!config.tls;
     this.tlsVerify = !!config.tlsVerify;
     const apiKey = (this.credentials && this.credentials.apiKey) || "";
+    this.clientName = String(config.clientName || "").trim();
 
     this.connection = new OpenAVCConnection({
       host: this.host,
@@ -20,6 +21,7 @@ module.exports = function (RED) {
       tls: this.tls,
       tlsVerify: this.tlsVerify,
       apiKey,
+      name: this.clientName,
       logger: {
         log: (m) => this.log(m),
         warn: (m) => this.warn(m),

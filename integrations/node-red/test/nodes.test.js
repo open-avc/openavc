@@ -60,6 +60,11 @@ describe("openavc-server", () => {
     expect(fake.connections[0].headers["x-api-key"]).toBe("k-123");
   });
 
+  it("announces the configured name", async () => {
+    await loadFlow([server({ clientName: "lobby-logic" })]);
+    expect(fake.connections[0].name).toBe("lobby-logic");
+  });
+
   it("closes the connection when the flow is undeployed", async () => {
     await loadFlow([server()]);
     await helper.unload();

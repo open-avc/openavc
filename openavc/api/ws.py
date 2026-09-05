@@ -9,6 +9,7 @@ Protocol: JSON messages with a "type" field.
 
 import asyncio
 import json
+import re
 import time
 from collections import deque
 from fnmatch import fnmatch
@@ -69,6 +70,16 @@ _log_subscriptions: dict[int, tuple[str, asyncio.Task]] = {}
 # bus walks every registered pattern on every emit and `state.changed` emits
 # on every state change.
 _event_subscriptions: dict[int, tuple[str, tuple[str, ...]]] = {}
+
+# The key a self-identified connection holds up while it is connected. A
+# system whose logic lives outside (a Node-RED flow) is part of the room, and
+# without this a dead flow is a panel that lights up, takes the press, and
+# answers with nothing. A panel LED, a monitored reading, or a trigger on
+# this key is how the room says so. Reference-counted by name, because two
+# sockets may announce the same name (a flow redeploying overlaps its old
+# socket with its new one) and the key must not blink false in between.
+INTEGRATION_KEY = "system.integration.{name}.connected"
+_integration_connections: dict[str, int] = {}
 
 # Strong refs for background macro runs spawned by macro.execute — asyncio
 # only weakly references tasks, so an unreferenced one can be GC'd mid-run.
@@ -143,6 +154,7 @@ async def _run_ws_connection(
         except Exception:
             log.debug("WebSocket ping loop ended on send failure", exc_info=True)
 
+    integration = ""
     try:
         namespaces_param = query_params.get("namespaces", "")
         ns_prefixes: tuple[str, ...] | None = None
@@ -161,6 +173,10 @@ async def _run_ws_connection(
         # `?events=custom.*,ui.press.*` subscribes at connect -- the same
         # subscription `event.subscribe` makes, for a client that would rather
         # not send a message first (a stock Node-RED websocket node).
+        integration = integration_name(query_params.get("name", ""))
+        if integration:
+            _integration_connected(engine, integration)
+
         events_param = query_params.get("events", "")
         if events_param:
             _subscribe_events(
@@ -223,7 +239,34 @@ async def _run_ws_connection(
             ping_task.cancel()
         _cleanup_log_subscription(ws_id)
         _cleanup_event_subscription(ws_id, engine)
+        if integration:
+            _integration_disconnected(engine, integration)
         engine.ws.remove_client(ws)
+
+
+def integration_name(raw: str) -> str:
+    """The name a connection announced, as a state-key segment, or "".
+
+    Lowercased, `[a-z0-9_-]` kept, any other run collapsed to one `-`, so
+    "Lobby Logic!" becomes "lobby-logic" and the key it holds up is one a
+    person can type into a binding. Nothing left after that means no name.
+    """
+    cleaned = re.sub(r"[^a-z0-9_-]+", "-", str(raw or "").lower()).strip("-")
+    return cleaned[:64]
+
+
+def _integration_connected(engine: Any, name: str) -> None:
+    _integration_connections[name] = _integration_connections.get(name, 0) + 1
+    engine.state.set(INTEGRATION_KEY.format(name=name), True, source="ws")
+
+
+def _integration_disconnected(engine: Any, name: str) -> None:
+    remaining = _integration_connections.get(name, 0) - 1
+    if remaining > 0:
+        _integration_connections[name] = remaining
+        return
+    _integration_connections.pop(name, None)
+    engine.state.set(INTEGRATION_KEY.format(name=name), False, source="ws")
 
 
 def _parse_event_patterns(raw: Any) -> tuple[str, ...] | None:

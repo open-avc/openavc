@@ -32,6 +32,8 @@ Needs Node-RED 4.0 or later and OpenAVC 0.33 or later.
 
 Add an **openavc-server**, enter the host and port the Programmer opens on, and deploy. Leave the API key blank to connect as a panel (read all state, send commands, run macros, write `var.*`, emit `custom.*` events), or paste a key from the Programmer's Settings › Security to connect as the Programmer.
 
+Give the server node a name under **Announce as** and OpenAVC publishes `system.integration.<name>.connected`, so a panel light or an alert can say when the flow is not there.
+
 Import **Import › Examples › @openavc/node-red-openavc › logic-engine** for a working flow to start from.
 
 The full guide is in the OpenAVC docs: [docs.openavc.com/node-red](https://docs.openavc.com/node-red/).

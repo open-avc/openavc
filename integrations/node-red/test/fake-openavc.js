@@ -11,6 +11,10 @@ const { compile } = require("../lib/glob");
 
 class FakeOpenAVC {
   constructor(opts = {}) {
+    // legacy: behave like an OpenAVC that predates the event doors -- every
+    // event.* frame is ignored in silence, which is what an unknown message
+    // type gets.
+    this.legacy = !!opts.legacy;
     this.state = { "var.request_source": "", "var.status": "idle", "device.switcher.online": true, ...(opts.state || {}) };
     this.devices = opts.devices || [
       { id: "switcher", name: "Main Switcher", driver: "acme_switcher", connected: true },
@@ -96,7 +100,7 @@ class FakeOpenAVC {
   _onConnection(ws, req) {
     const url = new URL(req.url, "http://x");
     const role = url.searchParams.get("client") || "panel";
-    const conn = { ws, url: req.url, headers: req.headers, role, patterns: [] };
+    const conn = { ws, url: req.url, headers: req.headers, role, patterns: [], name: url.searchParams.get("name") || "" };
     const events = url.searchParams.get("events");
     if (events) conn.patterns = events.split(",").map((s) => s.trim()).filter(Boolean);
     this.connections.push(conn);
@@ -111,6 +115,7 @@ class FakeOpenAVC {
   _onFrame(conn, frame) {
     this.received.push(frame);
     const ws = conn.ws;
+    if (this.legacy && String(frame.type).startsWith("event.")) return;
     switch (frame.type) {
       case "pong":
         break;

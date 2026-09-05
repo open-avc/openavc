@@ -21,12 +21,19 @@ module.exports = function (RED) {
       this.send({ topic: event, payload, timestamp });
     };
 
+    // An OpenAVC older than the event doors ignores the subscription in
+    // silence; the connection notices and this node says so where it is seen.
+    const onLegacy = () => this.status({ fill: "yellow", shape: "ring", text: "OpenAVC too old for events (needs 0.33)" });
+
     conn.subscribeEvents(this.id, mine);
     conn.on("event", onEvent);
+    conn.on("legacy", onLegacy);
     attachStatus(this, conn);
+    if (conn.legacy) onLegacy();
 
     this.on("close", (done) => {
       conn.removeListener("event", onEvent);
+      conn.removeListener("legacy", onLegacy);
       conn.unsubscribeEvents(this.id);
       done();
     });

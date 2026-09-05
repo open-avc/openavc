@@ -8,6 +8,10 @@ const WebSocket = require("ws");
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 const REQUEST_TIMEOUT_MS = 10000;
+// How long a subscription may go unanswered before the server is taken to be
+// older than the event doors (0.33). An OpenAVC that predates them ignores an
+// unknown message type in silence, so silence is the only signal there is.
+const LEGACY_DETECT_MS = 5000;
 
 // Close codes the server uses on purpose. Anything else is the network.
 const CLOSE_REASONS = {
@@ -34,6 +38,10 @@ class OpenAVCConnection extends EventEmitter {
     this.tls = !!opts.tls;
     this.tlsVerify = !!opts.tlsVerify;
     this.apiKey = opts.apiKey || "";
+    // What this connection announces itself as. The server holds up
+    // `system.integration.<name>.connected` while the socket is open, so a
+    // panel LED or a monitored reading can say whether the flow is alive.
+    this.name = String(opts.name || "").trim();
     this.logger = opts.logger || { log() {}, warn() {}, error() {} };
     this.role = this.apiKey ? "programmer" : "panel";
 
@@ -49,13 +57,17 @@ class OpenAVCConnection extends EventEmitter {
     this._patterns = new Map();
     this._subscribeTimer = null;
     this._lastUnion = [];
+    this._legacyTimer = null;
+    // Set once a subscription goes unanswered; cleared on the next open.
+    this.legacy = false;
 
     // request key -> [{resolve, reject, timer}], oldest first
     this._pending = new Map();
   }
 
   get url() {
-    return `${this.tls ? "wss" : "ws"}://${this.host}:${this.port}/ws?client=${this.role}`;
+    const base = `${this.tls ? "wss" : "ws"}://${this.host}:${this.port}/ws?client=${this.role}`;
+    return this.name ? `${base}&name=${encodeURIComponent(this.name)}` : base;
   }
 
   get baseUrl() {
@@ -77,6 +89,8 @@ class OpenAVCConnection extends EventEmitter {
     this._closed = true;
     clearTimeout(this._reconnectTimer);
     this._reconnectTimer = null;
+    clearTimeout(this._legacyTimer);
+    this._legacyTimer = null;
     const ws = this._ws;
     this._ws = null;
     if (ws) {
@@ -101,6 +115,7 @@ class OpenAVCConnection extends EventEmitter {
     this._ws = ws;
     ws.on("open", () => {
       this._backoff = RECONNECT_MIN_MS;
+      this.legacy = false;
       this._setStatus("connected");
       this._sendSubscribe(true);
       this.emit("open");
@@ -116,6 +131,8 @@ class OpenAVCConnection extends EventEmitter {
   _onClose(ws, code, reason) {
     if (ws !== this._ws) return; // a socket close() already let go of
     this._ws = null;
+    clearTimeout(this._legacyTimer);
+    this._legacyTimer = null;
     this._setStatus("disconnected");
     this._rejectAll(`disconnected from OpenAVC (${code})`);
     this.emit("close", code, String(reason || ""));
@@ -174,6 +191,8 @@ class OpenAVCConnection extends EventEmitter {
         this.emit("event", msg.event, msg.payload || {}, msg.timestamp);
         break;
       case "event.subscribed":
+        clearTimeout(this._legacyTimer);
+        this._legacyTimer = null;
         this.emit("subscribed", msg.patterns || []);
         break;
       case "command.ack":
@@ -302,6 +321,9 @@ class OpenAVCConnection extends EventEmitter {
   }
 
   emitEvent(event, payload) {
+    if (this.legacy) {
+      return Promise.reject(new Error("this OpenAVC is older than 0.33 and cannot receive events"));
+    }
     return this._request(`emit:${event}`, { type: "event.emit", event, payload: payload || {} });
   }
 
@@ -343,11 +365,26 @@ class OpenAVCConnection extends EventEmitter {
   _sendSubscribe(onOpen) {
     const union = this.eventPatterns();
     if (union.length) {
-      this._send({ type: "event.subscribe", patterns: union });
+      if (this._send({ type: "event.subscribe", patterns: union })) this._armLegacyTimer();
     } else if (!onOpen && this._lastUnion.length) {
       this._send({ type: "event.unsubscribe" });
     }
     this._lastUnion = union;
+  }
+
+  _armLegacyTimer() {
+    if (this._legacyTimer || this.legacy) return;
+    this._legacyTimer = setTimeout(() => {
+      this._legacyTimer = null;
+      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+      this.legacy = true;
+      this.logger.warn(
+        `OpenAVC ${this.host}:${this.port} did not answer the event subscription: ` +
+          "it is older than 0.33, so event in and emit event will hear and reach nothing " +
+          "until it is updated. State, commands, macros and variables still work."
+      );
+      this.emit("legacy");
+    }, LEGACY_DETECT_MS);
   }
 
   // --- REST, for the editor's lookups ---
@@ -381,4 +418,10 @@ class OpenAVCConnection extends EventEmitter {
   }
 }
 
-module.exports = { OpenAVCConnection, RECONNECT_MIN_MS, RECONNECT_MAX_MS, REQUEST_TIMEOUT_MS };
+module.exports = {
+  OpenAVCConnection,
+  RECONNECT_MIN_MS,
+  RECONNECT_MAX_MS,
+  REQUEST_TIMEOUT_MS,
+  LEGACY_DETECT_MS,
+};
