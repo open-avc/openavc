@@ -977,6 +977,11 @@ class SimulationManager:
             if driver.config.get("host") != "127.0.0.1" or driver.config.get("port") != sim_port:
                 self._apply_sim_redirect(driver, device_id, sim_port)
                 log.info("Re-applied simulation redirect for %s to port %d", device_id, sim_port)
+                if dm.is_paused(device_id):
+                    # Held disconnected on purpose (driver test panel). The
+                    # redirect is in place for whenever it resumes; reconnecting
+                    # here would release the pause the same way the save used to.
+                    continue
                 try:
                     await dm.reconnect_device(device_id)
                 except Exception as e:

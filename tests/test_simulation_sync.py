@@ -25,9 +25,13 @@ class _FakeDeviceManager:
         self._device_configs = device_configs
         self._devices = devices
         self.reconnected: list[str] = []
+        self.paused: set[str] = set()
 
     async def reconnect_device(self, device_id):
         self.reconnected.append(device_id)
+
+    def is_paused(self, device_id):
+        return device_id in self.paused
 
 
 class _FakeEngine:
@@ -207,3 +211,42 @@ async def test_sync_added_adopts_orphan_on_already_simulated(monkeypatch):
     assert driver.config["host"] == "127.0.0.1"
     assert driver.config["port"] == 19005
     assert "dev3" in dm.reconnected
+
+
+# ── Q-191: a paused device is not reconnected by the post-save re-redirect ──
+
+@pytest.mark.asyncio
+async def test_sync_reapplies_redirect_and_reconnects_a_running_device():
+    """Baseline for the pause case below: a device whose driver instance was
+    replaced by the save is redirected back at the simulator and reconnected."""
+    driver = _FakeDriver(host="10.0.0.5", port=4001)
+    dm = _FakeDeviceManager(
+        device_configs={"dev1": {"driver": "acme", "config": {}}},
+        devices={"dev1": driver},
+    )
+    mgr = _active_manager(dm)
+    mgr._sim_ports = {"dev1": 19001}
+
+    await mgr.sync()
+
+    assert driver.config == {"host": "127.0.0.1", "port": 19001}
+    assert dm.reconnected == ["dev1"]
+
+
+@pytest.mark.asyncio
+async def test_sync_does_not_reconnect_a_paused_device():
+    """The redirect still lands — it is what the eventual resume dials — but the
+    reconnect does not, or the save releases the pause by the back door."""
+    driver = _FakeDriver(host="10.0.0.5", port=4001)
+    dm = _FakeDeviceManager(
+        device_configs={"dev1": {"driver": "acme", "config": {}}},
+        devices={"dev1": driver},
+    )
+    dm.paused.add("dev1")
+    mgr = _active_manager(dm)
+    mgr._sim_ports = {"dev1": 19001}
+
+    await mgr.sync()
+
+    assert driver.config == {"host": "127.0.0.1", "port": 19001}
+    assert dm.reconnected == []

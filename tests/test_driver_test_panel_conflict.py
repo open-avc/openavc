@@ -286,6 +286,137 @@ async def test_disconnect_all_cancels_pause_ttl(dm, core):
 
 
 # ---------------------------------------------------------------------------
+# A pause survives driver-instance replacement (Q-191)
+#
+# The pause exists so the test panel can hold the only session a single-session
+# device allows. Both paths that swap the driver instance under a live device id
+# — a project save that touches the device's row, and the driver hot-reload the
+# panel's own Save fires — used to drop the pause and reconnect the production
+# device into the middle of the test.
+# ---------------------------------------------------------------------------
+
+
+DEVICE_CFG = {
+    "id": "dev1",
+    "driver": "mock_a81_tcp",
+    "name": "Dev 1",
+    "config": {"port": 9999},
+}
+
+
+async def _add_and_pause(dm, config=None, ttl=30):
+    """Add a device through the real path and pause it, as the panel does."""
+    await dm.add_device(dict(config or DEVICE_CFG))
+    await dm.pause_device("dev1", ttl=ttl)
+    return dm._devices["dev1"]
+
+
+async def test_project_save_does_not_release_a_pause(dm, core):
+    """A devices-section save re-adds the driver instance. The pause is owned by
+    the test panel, which still holds the competing session — the save must not
+    silently reconnect the production device underneath it."""
+    state, _ = core
+    paused_driver = await _add_and_pause(dm)
+    assert paused_driver.connect_calls == 1  # the add, before the pause
+
+    await dm.update_device("dev1", {**DEVICE_CFG, "name": "Renamed"})
+
+    new_driver = dm._devices["dev1"]
+    assert new_driver is not paused_driver  # the instance really was replaced
+    assert new_driver.connect_calls == 0
+    assert state.get("device.dev1.paused") is True
+    assert state.get("device.dev1.connected") is False
+    assert "dev1" in dm._intentional_disconnect
+    assert "dev1" in dm._pause_expiry_tasks
+
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
+
+async def test_driver_reload_does_not_release_a_pause(dm, core):
+    """Saving the driver from the Driver Builder hot-reloads every device using
+    it — which is the panel's own workflow, so this is the likelier collision of
+    the two."""
+    state, _ = core
+    paused_driver = await _add_and_pause(dm)
+
+    await dm.reload_driver("mock_a81_tcp")
+
+    new_driver = dm._devices["dev1"]
+    assert new_driver is not paused_driver
+    assert new_driver.connect_calls == 0
+    assert state.get("device.dev1.paused") is True
+    assert state.get("device.dev1.connected") is False
+    assert "dev1" in dm._intentional_disconnect
+    assert "dev1" in dm._pause_expiry_tasks
+
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
+
+async def test_carried_pause_keeps_the_remaining_ttl(dm, core):
+    """The TTL is the backstop for an abandoned pause. A save must carry what is
+    left of it, not hand an abandoned pause a fresh full term."""
+    await _add_and_pause(dm, ttl=30)
+    await asyncio.sleep(0.05)
+
+    await dm.update_device("dev1", {**DEVICE_CFG, "name": "Renamed"})
+
+    remaining = dm._pause_remaining("dev1")
+    assert remaining is not None
+    assert 0 < remaining < 30
+
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
+
+async def test_carried_pause_still_expires(dm, core):
+    """Carrying the pause must carry a live backstop, not a dead marker: an
+    abandoned pause that survived a save must still auto-resume."""
+    state, _ = core
+    await _add_and_pause(dm, ttl=0.05)
+
+    await dm.update_device("dev1", {**DEVICE_CFG, "name": "Renamed"})
+    await asyncio.sleep(0.25)
+
+    assert state.get("device.dev1.paused") is False
+    assert state.get("device.dev1.connected") is True
+    assert dm._devices["dev1"].connect_calls == 1
+    assert "dev1" not in dm._intentional_disconnect
+
+
+async def test_a_device_that_is_not_paused_still_reconnects_on_save(dm, core):
+    """Guard the guard: the carry must be conditional on an actual pause, or a
+    save would stop reconnecting every device it touches."""
+    state, _ = core
+    await dm.add_device(dict(DEVICE_CFG))
+
+    await dm.update_device("dev1", {**DEVICE_CFG, "name": "Renamed"})
+
+    assert dm._devices["dev1"].connect_calls == 1
+    assert state.get("device.dev1.connected") is True
+    assert "dev1" not in dm._intentional_disconnect
+    assert "dev1" not in dm._pause_expiry_tasks
+
+
+async def test_disabling_a_paused_device_drops_the_pause(dm, core):
+    """A disabled device has no driver instance to resume into, so the pause has
+    nothing left to protect — carrying it would leave a device that reads paused
+    forever and a backstop firing at a device that isn't there."""
+    state, _ = core
+    await _add_and_pause(dm)
+
+    await dm.update_device("dev1", {**DEVICE_CFG, "enabled": False})
+
+    # Falsy, not literally False: remove_device deletes the namespace, and an
+    # absent key is how every never-paused device reads.
+    assert not state.get("device.dev1.paused")
+    assert state.get("device.dev1.enabled") is False
+    assert "dev1" not in dm._intentional_disconnect
+    assert "dev1" not in dm._pause_expiry_tasks
+
+
+# ---------------------------------------------------------------------------
 # /driver-test-conflicts endpoint
 # ---------------------------------------------------------------------------
 
