@@ -1,11 +1,17 @@
-# Publishes the Node-RED package (integrations/node-red) to npm when a
-# node-red-v<version> tag is pushed. The tag's version must match the
-# package.json version, so a tag can never publish a number nobody bumped.
+# STAGES the Node-RED package (integrations/node-red) on npm when a
+# node-red-v<version> tag is pushed. Staged, not published: the version sits
+# on npmjs.com until a person clicks Publish on the package's page, so every
+# release keeps a human gate and nothing this workflow (or anyone holding it)
+# does can put a version in front of the world on its own. That is npm's
+# recommended posture for trusted publishers, and the package's settings
+# there allow staging only.
 #
-# No token is stored anywhere: npm's trusted publishing trusts this workflow
-# by name (repository open-avc/openavc, file node-red-publish.yml) through
-# GitHub's OIDC token, which is what `id-token: write` grants. Provenance is
-# attached automatically for a public package built from a public repo.
+# The tag's version must match the package.json version, so a tag can never
+# stage a number nobody bumped. No token is stored anywhere: npm trusts this
+# workflow by name (repository open-avc/openavc, file node-red-publish.yml)
+# through GitHub's OIDC token, which is what `id-token: write` grants.
+# Provenance is attached automatically for a public package from a public
+# repo.
 #
 # Deliberately a separate tag family from the platform's v* release tags:
 # the package has its own version and its own cadence.
@@ -22,7 +28,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish @open-avc/node-red-openavc
+    name: Stage @open-avc/node-red-openavc
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -47,10 +53,16 @@ jobs:
             exit 1
           fi
 
+      # `npm stage` is new in npm 11; the runner's bundled npm may predate it.
+      - name: Use an npm that knows how to stage
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - name: Install and test
         run: |
           npm ci
           npm test
 
-      - name: Publish
-        run: npm publish --access public
+      - name: Stage on npm (a person publishes it from npmjs.com)
+        run: npm stage publish --access public
