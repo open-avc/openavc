@@ -23,7 +23,7 @@ A panel button writes a variable, the flow watches the variable, the flow acts, 
 4. A **command** node routes the switcher. A **set variable** node writes `Showing HDMI 1` to `var.status`.
 5. The label on the panel updates. So does the same label on every other panel in the space.
 
-The example flow that ships with the nodes (**Import › Examples › @openavc/node-red-openavc › logic-engine**) is exactly this:
+The example flow that ships with the nodes (**Import › Examples › @open-avc/node-red-openavc › logic-engine**) is exactly this:
 
 ![The logic-engine example flow in the Node-RED editor](images/node-red-logic-engine.png)
 
@@ -31,10 +31,10 @@ Two more examples sit beside it. **fire-a-trigger** is the reverse direction: th
 
 ## Install the nodes
 
-In Node-RED, open **Manage palette › Install** and search for `@openavc/node-red-openavc`, or in your Node-RED user directory run:
+In Node-RED, open **Manage palette › Install** and search for `@open-avc/node-red-openavc`, or in your Node-RED user directory run:
 
 ```
-npm install @openavc/node-red-openavc
+npm install @open-avc/node-red-openavc
 ```
 
 You need Node-RED 4.0 or later and OpenAVC 0.33 or later. Node-RED can run anywhere that can reach the OpenAVC system: the same computer, a server in the rack, a container.

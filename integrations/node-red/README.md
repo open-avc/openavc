@@ -22,10 +22,10 @@ Device, command, macro and key fields fill their lists from the system, so you p
 
 ## Install
 
-In Node-RED: **Manage palette › Install › `@openavc/node-red-openavc`**, or in your Node-RED user directory:
+In Node-RED: **Manage palette › Install › `@open-avc/node-red-openavc`**, or in your Node-RED user directory:
 
 ```
-npm install @openavc/node-red-openavc
+npm install @open-avc/node-red-openavc
 ```
 
 Needs Node-RED 4.0 or later and OpenAVC 0.33 or later.
@@ -38,7 +38,7 @@ Give the server node a name under **Announce as** and OpenAVC publishes `system.
 
 ## Examples
 
-Three working flows ship with the nodes, under **Import › Examples › @openavc/node-red-openavc** in the editor:
+Three working flows ship with the nodes, under **Import › Examples › @open-avc/node-red-openavc** in the editor:
 
 | Example | What it shows |
 |---------|---------------|

@@ -118,6 +118,17 @@ def test_the_readme_s_screenshot_is_a_file_in_this_repo():
         assert (ROOT / rel).is_file(), f"README image {rel} is not in the repo"
 
 
+def test_the_shared_editor_script_is_served_under_the_package_s_own_name(package_json):
+    """Node-RED serves a package's resources/ folder at resources/<package
+    name>/, so the <script src> in the server node's editor file has to spell
+    the package name exactly. A rename that misses it leaves every node dialog
+    without its lookups, and nothing but a blank dropdown says so."""
+    html = (PACKAGE / "nodes" / "openavc-server.html").read_text(encoding="utf-8")
+    expected = f'src="resources/{package_json["name"]}/editor.js"'
+    assert expected in html, f"openavc-server.html does not load {expected}"
+    assert (PACKAGE / "resources" / "editor.js").is_file()
+
+
 def test_the_package_pins_the_node_red_it_needs(package_json):
     # The core websocket client gained headers in 4.0, and `resources/` (the
     # shared editor script) has been served since 1.3 -- 4.0 is the floor.
