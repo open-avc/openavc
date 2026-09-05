@@ -11,6 +11,7 @@ import asyncio
 import json
 import time
 from collections import deque
+from fnmatch import fnmatch
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -19,6 +20,7 @@ from openavc.api._engine import get_engine_optional
 from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
 from openavc.api.error_messages import friendly_error
+from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.state_store import check_state_write, is_flat_primitive
 from openavc.utils.log_buffer import get_log_buffer, LogEntry
 from openavc.utils.request_origin import cloud_session_secret
@@ -60,6 +62,13 @@ def set_engine(engine) -> None:
 
 # Per-client log subscriptions: ws -> (sub_id, task)
 _log_subscriptions: dict[int, tuple[str, asyncio.Task]] = {}
+
+# Per-client event-stream subscriptions: ws id -> (bus handler id, patterns).
+# ONE bus handler per client, registered on "*" and filtering against the
+# client's own small pattern list -- not one handler per pattern, because the
+# bus walks every registered pattern on every emit and `state.changed` emits
+# on every state change.
+_event_subscriptions: dict[int, tuple[str, tuple[str, ...]]] = {}
 
 # Strong refs for background macro runs spawned by macro.execute — asyncio
 # only weakly references tasks, so an unreferenced one can be GC'd mid-run.
@@ -149,6 +158,15 @@ async def _run_ws_connection(
         # values — the client converges on the latest.
         engine.ws.add_client(ws, ns_prefixes=ns_prefixes, defer_delivery=True)
 
+        # `?events=custom.*,ui.press.*` subscribes at connect -- the same
+        # subscription `event.subscribe` makes, for a client that would rather
+        # not send a message first (a stock Node-RED websocket node).
+        events_param = query_params.get("events", "")
+        if events_param:
+            _subscribe_events(
+                ws, engine, _parse_event_patterns(events_param) or (), client_type
+            )
+
         full_state = engine.state.snapshot()
         if ns_prefixes:
             state_snapshot = {k: v for k, v in full_state.items() if k.startswith(ns_prefixes)}
@@ -204,7 +222,68 @@ async def _run_ws_connection(
         if ping_task and not ping_task.done():
             ping_task.cancel()
         _cleanup_log_subscription(ws_id)
+        _cleanup_event_subscription(ws_id, engine)
         engine.ws.remove_client(ws)
+
+
+def _parse_event_patterns(raw: Any) -> tuple[str, ...] | None:
+    """The patterns a subscribe carries, or None when the shape is wrong.
+
+    Takes the message form (a list of strings) and the query form (one
+    comma-separated string). Blanks are dropped and duplicates folded, so an
+    empty result means "subscribe to nothing", which is what unsubscribe is.
+    """
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    if not isinstance(raw, list) or not all(isinstance(p, str) for p in raw):
+        return None
+    seen: dict[str, None] = {}
+    for pattern in raw:
+        pattern = pattern.strip()
+        if pattern:
+            seen[pattern] = None
+    return tuple(seen)
+
+
+def _subscribe_events(
+    ws: WebSocket, engine: Any, patterns: tuple[str, ...], client_type: str
+) -> None:
+    """Replace this client's event subscription with ``patterns``.
+
+    Replace, not add: a reconnecting client resends its whole set, and a
+    second subscribe that stacked on the first would deliver every event
+    twice. An empty set is an unsubscribe.
+    """
+    ws_id = id(ws)
+    _cleanup_event_subscription(ws_id, engine)
+    if not patterns:
+        return
+    panel = client_type == "panel"
+
+    def _forward(event: str, payload: dict[str, Any]) -> None:
+        # Runs inside every emit on the bus: decide and enqueue, never await.
+        # The hub's per-client queue is what keeps a slow subscriber from
+        # stalling the emit path (it is dropped on overflow, same as a panel).
+        if not event_visible(event, panel=panel):
+            return
+        if not any(fnmatch(event, p) for p in patterns):
+            return
+        engine.ws.send(ws, {
+            "type": "event",
+            "event": event,
+            "payload": payload,
+            "timestamp": time.time(),
+        })
+
+    handler_id = engine.events.on("*", _forward)
+    _event_subscriptions[ws_id] = (handler_id, patterns)
+
+
+def _cleanup_event_subscription(ws_id: int, engine: Any) -> None:
+    """Drop a client's event subscription and its bus handler."""
+    sub = _event_subscriptions.pop(ws_id, None)
+    if sub and engine is not None:
+        engine.events.off(sub[0])
 
 
 def _cleanup_log_subscription(ws_id: int) -> None:
@@ -329,10 +408,16 @@ async def _run_ui_event(
 # (presets), and set state (plugin iframes). The log stream is programmer-only:
 # the buffer carries verbatim transport TX/RX, which can include device
 # credentials, and panel clients are unauthenticated.
+#
+# The event doors are open to a panel on the same terms as the rest: a panel
+# already causes `ui.press.*`, and a button's own Emit Event action emits
+# `custom.*` unauthenticated. What it may SEE and EMIT is decided in
+# core/event_bus (event_visible / check_event_emit), not here.
 _PANEL_ALLOWED_TYPES = frozenset({
     "ui.press", "ui.release", "ui.hold", "ui.toggle_off", "ui.change",
     "ui.select", "ui.route", "ui.submit",
     "ui.page", "command", "macro.execute", "state.set", "pong",
+    "event.subscribe", "event.unsubscribe", "event.emit",
 })
 
 
@@ -603,6 +688,39 @@ async def _handle_message(
 
     elif msg_type == "log.unsubscribe":
         _cleanup_log_subscription(id(ws))
+
+    elif msg_type == "event.subscribe":
+        patterns = _parse_event_patterns(msg.get("patterns"))
+        if patterns is None:
+            await _send_ws_error(
+                ws, msg_type, "'patterns' must be a list of event name patterns"
+            )
+            return
+        _subscribe_events(ws, engine, patterns, client_type)
+        # A data reply rather than an ack, the way log.subscribe answers with
+        # log.history: it carries the set that is now live, which a client
+        # that folded or dropped entries wants to see.
+        await _send_ws(ws, {"type": "event.subscribed", "patterns": list(patterns)})
+
+    elif msg_type == "event.unsubscribe":
+        _cleanup_event_subscription(id(ws), engine)
+        await _send_ws(ws, {"type": "event.subscribed", "patterns": []})
+
+    elif msg_type == "event.emit":
+        event = msg.get("event")
+        payload = msg.get("payload")
+        reason = check_event_emit(event, payload)
+        if reason:
+            await _send_ws_error(ws, msg_type, reason)
+            return
+        # A receipt, not an outcome -- the same shape as macro.execute.ack and
+        # for the same reason: a script handler that awaits would otherwise
+        # head-of-line block this client's whole message loop. The bus logs
+        # a handler that raises; nothing about that is this caller's to fix.
+        task = asyncio.create_task(engine.events.emit(event, payload or {}))
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
+        await _send_ws(ws, {"type": "event.emit.ack", "event": event})
 
     elif msg_type == "pong":
         pass  # Heartbeat response — no action needed

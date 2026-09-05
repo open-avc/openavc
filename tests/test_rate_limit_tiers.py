@@ -72,6 +72,10 @@ EXPECTED_CONTROL = {
     ("POST", "/api/discovery/scan"),
     ("POST", "/api/discovery/stop"),
     ("POST", "/api/driver-definitions"),
+    # The bus's door for an outside system. It fires automation the way a
+    # command fires a device, and a building system posting occupancy would
+    # exhaust the standard 60/min.
+    ("POST", "/api/events"),
     # Called from the Driver Builder on a debounce while an author types, so
     # it is the one control-tier route whose budget a human can spend without
     # touching hardware. 120/min is plenty for a debounced editor that skips

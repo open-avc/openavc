@@ -59,6 +59,62 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+# --- The event doors' policy ---------------------------------------------------
+#
+# Two remote doors reach the bus from outside the process -- the WebSocket's
+# event stream and its `event.emit` message, and `POST /api/events` -- and both
+# ask here, the way every remote door into the state store asks
+# `state_store.check_state_write`. One rule, so a subscription and an emit
+# cannot reach different conclusions about the same name.
+
+# What no external subscriber receives as an event. A state change is the
+# state stream's job (`state.update`, batched at 50 ms), and a `*` subscription
+# that also carried `state.changed` would double the hot path to say nothing
+# the next update does not already say.
+EVENT_STREAM_EXCLUDED_PREFIXES = ("state.",)
+
+# What an UNAUTHENTICATED subscriber may see: the namespaces a panel already
+# reflects. The rest -- a plugin's, a peer instance's, the cloud's, the AI's --
+# carry other systems' payloads, and the log stream is programmer-only on the
+# same reasoning.
+PANEL_VISIBLE_EVENT_PREFIXES = ("custom.", "ui.", "device.", "macro.", "system.")
+
+# What ANY external caller may emit. Every other namespace is owned by a
+# subsystem -- a driver's lifecycle, a plugin, the cloud, a peer -- and a
+# spoofed `device.disconnected.x` or `cloud.command` is a lie those subsystems
+# act on. The event analogue of `PANEL_WRITABLE_PREFIXES`, and it does not
+# widen with a credential: the Programmer has no reason to forge a device
+# event either.
+EXTERNAL_EMIT_PREFIXES = ("custom.",)
+
+
+def event_visible(event: str, *, panel: bool) -> bool:
+    """Whether an external subscriber with this posture receives ``event``."""
+    if event.startswith(EVENT_STREAM_EXCLUDED_PREFIXES):
+        return False
+    if panel:
+        return event.startswith(PANEL_VISIBLE_EVENT_PREFIXES)
+    return True
+
+
+def check_event_emit(event: Any, payload: Any) -> str | None:
+    """One policy for every remote door that emits onto the bus.
+
+    Returns a user-facing reason, or None when the emit is allowed. REST turns
+    it into a 422, the WebSocket into an error frame -- the same sentence
+    through both, so a caller cannot succeed at one door and fail at the other.
+    """
+    if not isinstance(event, str) or not event.strip():
+        return "Missing event name"
+    prefix = next((p for p in EXTERNAL_EMIT_PREFIXES if event.startswith(p)), None)
+    if prefix is None or not event[len(prefix):].strip():
+        names = ", ".join(f"'{p}<name>'" for p in EXTERNAL_EMIT_PREFIXES)
+        return f"An event emitted over the API must be named {names}"
+    if payload is not None and not isinstance(payload, dict):
+        return "Event payload must be a JSON object"
+    return None
+
+
 # Recursion depth of a SINGLE emit chain (emit -> handler -> emit -> ...), not
 # the number of emits running concurrently. A ContextVar gives us exactly this:
 # asyncio.create_task / gather copy the current context, so independent

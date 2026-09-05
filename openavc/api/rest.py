@@ -15,6 +15,7 @@ from openavc.api.routes import cloud as _cloud_routes
 from openavc.api.routes import devices as _devices_routes
 from openavc.api.routes import driver_test as _driver_test_routes
 from openavc.api.routes import drivers as _drivers_routes
+from openavc.api.routes import events as _events_routes
 from openavc.api.routes import host as _host_routes
 from openavc.api.routes import ir_db as _ir_db_routes
 from openavc.api.routes import isc as _isc_routes
@@ -55,6 +56,7 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)
 # Include domain routers (protected)
 router.include_router(_variables_routes.router)
 router.include_router(_macros_routes.router)
+router.include_router(_events_routes.router)
 router.include_router(_scripts_routes.router)
 router.include_router(_devices_routes.router)
 router.include_router(_drivers_routes.router)

@@ -249,19 +249,34 @@ class WSHub:
                     continue
                 text = json.dumps({"type": "state.delete", "keys": filtered_keys})
 
-            queue = self._send_queues.get(id(ws))
-            if queue is None:
-                continue
-            try:
-                queue.put_nowait(text)
-            except asyncio.QueueFull:
-                log.warning(
-                    "WebSocket client send queue overflowed "
-                    f"({_WS_SEND_QUEUE_MAX} messages) — dropping client so it "
-                    "reconnects with a fresh snapshot"
-                )
-                self._drop_client(ws, cancel_writer=True)
-                self._close_client(ws)
+            self._enqueue(ws, text)
+
+    def send(self, ws, message: dict[str, Any]) -> None:
+        """Queue a JSON message for ONE client, on the same terms as broadcast.
+
+        The event stream's bus handler calls this from inside every emit on the
+        bus, so it decides and enqueues and never awaits a socket. A client the
+        hub no longer holds (already dropped) is skipped; one whose queue
+        overflows is dropped exactly as it would be under ``broadcast``.
+        ``default=str`` because the payload is somebody else's dict -- a value
+        that is not JSON must not take the whole stream down.
+        """
+        self._enqueue(ws, json.dumps(message, default=str))
+
+    def _enqueue(self, ws, text: str) -> None:
+        queue = self._send_queues.get(id(ws))
+        if queue is None:
+            return
+        try:
+            queue.put_nowait(text)
+        except asyncio.QueueFull:
+            log.warning(
+                "WebSocket client send queue overflowed "
+                f"({_WS_SEND_QUEUE_MAX} messages) — dropping client so it "
+                "reconnects with a fresh snapshot"
+            )
+            self._drop_client(ws, cancel_writer=True)
+            self._close_client(ws)
 
     # --- State batching ---
 
