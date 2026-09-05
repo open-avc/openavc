@@ -1,0 +1,56 @@
+# Publishes the Node-RED package (integrations/node-red) to npm when a
+# node-red-v<version> tag is pushed. The tag's version must match the
+# package.json version, so a tag can never publish a number nobody bumped.
+#
+# No token is stored anywhere: npm's trusted publishing trusts this workflow
+# by name (repository open-avc/openavc, file node-red-publish.yml) through
+# GitHub's OIDC token, which is what `id-token: write` grants. Provenance is
+# attached automatically for a public package built from a public repo.
+#
+# Deliberately a separate tag family from the platform's v* release tags:
+# the package has its own version and its own cadence.
+name: Publish Node-RED package
+
+on:
+  push:
+    tags:
+      - "node-red-v*"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Publish @open-avc/node-red-openavc
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: integrations/node-red
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: The tag names the version package.json carries
+        run: |
+          tag_version="${GITHUB_REF_NAME#node-red-v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "tag says $tag_version, package.json says $pkg_version -- bump one of them" >&2
+            exit 1
+          fi
+
+      - name: Install and test
+        run: |
+          npm ci
+          npm test
+
+      - name: Publish
+        run: npm publish --access public
