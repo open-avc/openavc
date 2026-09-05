@@ -141,7 +141,7 @@ class HelpRequests:
         })
         log.info("Help requested: %s", text)
 
-        delivered = await self._relay(request_id, text, severity)
+        delivered = await self._relay(request_id, text, severity, raised_at)
         if not delivered:
             # Only downgrade if nothing has moved on since -- an acknowledgement
             # that beat the relay's own reply must not be overwritten.
@@ -150,8 +150,15 @@ class HelpRequests:
 
         return {"raised": True, "help_id": request_id, "delivered": delivered}
 
-    async def _relay(self, request_id: str, message: str, severity: str) -> bool:
-        """Hand the request to the cloud. Never raises; the room comes first."""
+    async def _relay(
+        self, request_id: str, message: str, severity: str, raised_at: str
+    ) -> bool:
+        """Hand the request to the cloud. Never raises; the room comes first.
+
+        ``raised_at`` is the same instant the panel reads back from
+        ``system.help_requested_at``, handed over rather than re-taken, so the
+        portal and the room agree on when the button was pressed.
+        """
         agent = getattr(self._engine, "cloud_agent", None)
         if agent is None or not getattr(agent, "connected", False):
             log.warning(
@@ -174,6 +181,7 @@ class HelpRequests:
                     "raised_by": "macro",
                     "project": getattr(self._engine.project, "name", "") or "",
                 },
+                fired_at=raised_at,
             ))
             return True
         except Exception:

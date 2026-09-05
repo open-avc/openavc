@@ -1245,3 +1245,158 @@ async def test_the_sweep_does_not_re_fire_what_is_already_firing():
     assert len(alerts(agent)) == 1
 
     await monitor.stop()
+
+
+# --- When it happened, versus when the cloud heard about it ---
+#
+# An alert's fired_at used to be stamped by the cloud when the message arrived,
+# so everything between the room seeing the fault and the cloud reading about
+# it -- the send loop's flush, a replay across a reconnect -- was subtracted
+# from the fault. The span the service report prints as "how fast did you deal
+# with it?" is resolved_at - fired_at, so both ends have to come from the clock
+# that watched the room.
+
+
+class _FakeClock:
+    """A clock the test drives, formatted exactly as the wire wants it."""
+
+    def __init__(self, start: float = 1_800_000_000.0):
+        self.now = start
+
+    def iso(self) -> str:
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(self.now, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S.%f"
+        )[:-3] + "Z"
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _instant(iso: str) -> float:
+    from datetime import datetime
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+@pytest.fixture
+def wire_clock(monkeypatch):
+    from openavc.cloud import protocol
+
+    clock = _FakeClock()
+    monkeypatch.setattr(protocol, "_now_iso", clock.iso)
+    return clock
+
+
+@pytest.mark.asyncio
+async def test_an_alert_is_stamped_when_the_reading_went_wrong(wire_clock):
+    """Not when the send loop got round to it, up to a second later."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{"key": "var.volume", "normal_max": 80}],
+    )
+    await monitor.start()
+
+    went_wrong = wire_clock.iso()
+    state.set("var.volume", 92)
+    wire_clock.advance(1.0)  # the flush interval
+    await _drain(monitor, agent)
+
+    msg_type, payload = alerts(agent)[0]
+    assert msg_type == "alert"
+    assert payload["fired_at"] == went_wrong
+    assert payload["fired_at"] != wire_clock.iso()
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_resolve_is_stamped_when_the_reading_came_back(wire_clock):
+    """The other end of the same span, and it moves for the same reasons."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{"key": "var.volume", "normal_max": 80}],
+    )
+    await monitor.start()
+
+    state.set("var.volume", 92)
+    await _drain(monitor, agent)
+
+    wire_clock.advance(120.0)
+    came_back = wire_clock.iso()
+    state.set("var.volume", 40)
+    wire_clock.advance(1.0)
+    await _drain(monitor, agent)
+
+    msg_type, payload = alerts(agent)[-1]
+    assert msg_type == "alert_resolved"
+    assert payload["resolved_at"] == came_back
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_fault_that_heals_inside_one_flush_keeps_its_real_duration(wire_clock):
+    """The case seen in the wild: both messages leave in the same batch,
+    milliseconds apart, for a fault that lasted half a second. Read off the
+    cloud's clock that is a millisecond-long repair; read off the room's it is
+    what actually happened."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(),
+        monitors_provider=lambda: [{"key": "var.volume", "normal_max": 80}],
+    )
+    await monitor.start()
+
+    state.set("var.volume", 92)
+    wire_clock.advance(0.5)
+    state.set("var.volume", 40)
+    wire_clock.advance(0.5)
+    await _drain(monitor, agent)
+
+    fired = dict(alerts(agent))["alert"]["fired_at"]
+    resolved = dict(alerts(agent))["alert_resolved"]["resolved_at"]
+    assert _instant(resolved) - _instant(fired) == pytest.approx(0.5, abs=0.01)
+
+    await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_duration_rule_is_stamped_when_it_fired_not_when_it_armed(wire_clock):
+    """A rule that deliberately waits before complaining is not complaining
+    during the wait. Counting its grace window as fault time would report a
+    repair nobody could have shortened."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(agent, state, MockEventBus())
+    await monitor.start()
+
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            rule_type="pattern",
+            condition={
+                "key": "device.projector1.status",
+                "value": "error",
+                "duration_seconds": 300,
+            },
+        )]
+    })
+
+    armed = time.time()
+    state.set("device.projector1.status", "error")
+    await _drain(monitor, agent)
+    assert alerts(agent) == []
+
+    wire_clock.advance(400.0)
+    held_long_enough = wire_clock.iso()
+    await monitor._run_periodic_checks(armed + 400)
+
+    msg_type, payload = alerts(agent)[0]
+    assert msg_type == "alert"
+    assert payload["fired_at"] == held_long_enough
+
+    await monitor.stop()

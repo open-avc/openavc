@@ -363,8 +363,26 @@ def build_alert_payload(
     device_id: str | None,
     message: str,
     detail: dict[str, Any],
+    fired_at: str | None = None,
 ) -> dict[str, Any]:
-    """Alert-fired payload."""
+    """Alert-fired payload.
+
+    ``fired_at`` is when THIS instance saw the fault, as an ISO-8601 UTC
+    instant — the same thing every state change already carries in its own
+    ``ts``, and here for the same reason. Without it the cloud stamped its
+    receipt time and called that the fire time, so every delay between the two
+    was quietly subtracted from the fault: the send loop's flush (up to a
+    second), and a replay across a reconnect (as long as the reconnect took).
+    A fault that fired and healed inside one flush tick arrived as a
+    millisecond-long repair, and that span is what the printable service report
+    renders as how fast somebody dealt with it.
+
+    Defaults to now because every caller builds this at the moment it registers
+    the alert as active. It is the moment the ALERT fired, not the moment the
+    reading first went wrong: a rule with a ``duration_seconds`` is deliberately
+    not complaining during its grace window, so counting that window as part of
+    the fault would report a repair time nobody could have shortened.
+    """
     return {
         "alert_id": alert_id,
         "rule_id": rule_id,
@@ -373,12 +391,23 @@ def build_alert_payload(
         "device_id": device_id,
         "message": message,
         "detail": detail,
+        "fired_at": fired_at or _now_iso(),
     }
 
 
-def build_alert_resolved_payload(alert_id: str) -> dict[str, Any]:
-    """Alert-resolved payload."""
-    return {"alert_id": alert_id}
+def build_alert_resolved_payload(
+    alert_id: str, resolved_at: str | None = None
+) -> dict[str, Any]:
+    """Alert-resolved payload.
+
+    ``resolved_at`` is when this instance saw the reading come back, and it
+    rides here for the same reason ``fired_at`` rides on the alert: what the
+    report prints is a SPAN, so stamping one end on the agent's clock and the
+    other on the cloud's would leave the queueing delay in the answer — and
+    would mix two clocks in one subtraction, which can go negative. Both ends
+    now come from the one clock that watched the fault.
+    """
+    return {"alert_id": alert_id, "resolved_at": resolved_at or _now_iso()}
 
 
 def build_active_alerts_payload(alert_ids: list[str]) -> dict[str, Any]:

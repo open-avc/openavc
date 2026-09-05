@@ -103,6 +103,17 @@ async def test_it_reaches_the_cloud_as_an_alert(engine, help_requests):
 
 
 @pytest.mark.asyncio
+async def test_the_portal_and_the_room_agree_on_when_it_was_pressed(engine, help_requests):
+    """The cloud used to stamp its own receipt time as the fire time, so the
+    portal read a moment later than the label in the room did. The instant is
+    handed over rather than re-taken."""
+    await help_requests.raise_request(message="Lecture Hall 2 needs someone")
+
+    _, payload = engine.cloud_agent.sent[0]
+    assert payload["fired_at"] == engine.state.get(KEY_REQUESTED_AT)
+
+
+@pytest.mark.asyncio
 async def test_an_unreachable_cloud_is_said_out_loud(help_requests):
     """A panel claiming help is coming when nothing left the building is worse
     than one saying it could not get out."""

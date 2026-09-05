@@ -640,7 +640,16 @@ class AlertMonitor:
         return valid
 
     def _queue_send(self, msg_type: str, payload: dict[str, Any]) -> None:
-        """Queue a message to be sent asynchronously (safe to call from sync context)."""
+        """Queue a built message to be sent asynchronously (safe from sync code).
+
+        **The payload is BUILT by the caller, here, at the moment it observed
+        the thing — never later by the send loop.** That is what makes the
+        ``fired_at`` / ``resolved_at`` stamps on an alert mean anything: this
+        queue holds a message for up to a second, and the sequencer can hold it
+        across a whole reconnect, so a payload assembled at send time would
+        carry the delay as part of the fault. Pass a built payload, not the
+        ingredients for one.
+        """
         max_pending = 100
         if len(self._pending_sends) >= max_pending:
             # Drop oldest to prevent unbounded growth
