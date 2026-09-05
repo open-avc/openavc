@@ -1006,13 +1006,20 @@ async def test_the_count_goes_back_down_when_a_load_unwinds(
     state, _, _ = subsystems
     engine.SCRIPT_LOAD_TIMEOUT = 0.2
 
+    # The count is 1 only between the timeout and the abandoned thread's NEXT
+    # platform call, which is where it unwinds. With a 5 ms loop that window
+    # was narrower than the scheduler's jitter on the Windows runner, and the
+    # thread reached its next call before the assertion ran (CI 2026-09-05).
+    # A 0.3 s gap makes the window a fact: the timeout lands at 0.2 s while
+    # the thread is asleep, the unwind comes at its 0.3 s call, and the 0.4 s
+    # wait below is after both.
     _write_script(script_dir, "unwinds2.py", """\
         import time
         from openavc import state
 
         while True:
             state.set("var.y", 1)
-            time.sleep(0.005)
+            time.sleep(0.3)
     """)
     engine.load_scripts([{"id": "unwinds2", "file": "unwinds2.py", "enabled": True}])
     assert state.get("system.abandoned_script_loads") == 1
