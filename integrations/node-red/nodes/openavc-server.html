@@ -1,0 +1,79 @@
+<script src="resources/@openavc/node-red-openavc/editor.js"></script>
+
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-server", {
+    category: "config",
+    defaults: {
+      name: { value: "" },
+      host: { value: "", required: true },
+      port: { value: 8080, required: true, validate: RED.validators.number() },
+      tls: { value: false },
+      tlsVerify: { value: false },
+    },
+    credentials: {
+      apiKey: { type: "password" },
+    },
+    label: function () {
+      return this.name || this.host + ":" + this.port;
+    },
+    oneditprepare: function () {
+      const $tls = $("#node-config-input-tls");
+      const $verifyRow = $("#openavc-tls-verify-row");
+      const sync = () => $verifyRow.toggle($tls.is(":checked"));
+      $tls.on("change", sync);
+      sync();
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-server">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-config-input-name" placeholder="Room 201" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-host"><i class="fa fa-server"></i> Host</label>
+    <input type="text" id="node-config-input-host" placeholder="192.168.1.50 or openavc.local" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-port"><i class="fa fa-plug"></i> Port</label>
+    <input type="text" id="node-config-input-port" style="width: 100px" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-tls"><i class="fa fa-lock"></i> HTTPS</label>
+    <input type="checkbox" id="node-config-input-tls" style="width: auto; vertical-align: middle" />
+    <span style="margin-left: 6px">Connect over HTTPS (port 8443 by default)</span>
+  </div>
+  <div class="form-row" id="openavc-tls-verify-row">
+    <label for="node-config-input-tlsVerify">&nbsp;</label>
+    <input type="checkbox" id="node-config-input-tlsVerify" style="width: auto; vertical-align: middle" />
+    <span style="margin-left: 6px">Verify the certificate (off for a self-signed certificate)</span>
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-apiKey"><i class="fa fa-key"></i> API key</label>
+    <input type="password" id="node-config-input-apiKey" placeholder="leave blank to connect as a panel" />
+  </div>
+  <div class="form-tips">
+    With an API key this connection can do what the Programmer can. Without one it can do
+    what a panel can: read state, send commands, run macros, and write <code>var.*</code>
+    variables. Generate a key in the Programmer under Settings &rsaquo; Security.
+  </div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-server">
+One OpenAVC system. Every OpenAVC node points at one of these, and all the nodes on it share a single WebSocket connection that reconnects on its own.
+
+### Connecting
+
+**Host** and **Port** are where the Programmer opens (`http://host:8080/programmer`). Tick **HTTPS** if the system has it enabled; leave **Verify the certificate** off for the self-signed certificate a system generates for itself, and on for a cloud-issued or company certificate.
+
+### API key
+
+Leave it blank and the connection joins as a **panel**: it reads all state, sends device commands, runs macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. That is enough for a flow that acts as the room's logic.
+
+Give it a key and the connection joins as the **Programmer**: everything above, plus every state namespace and every event. Generate one in the Programmer under Settings › Security. It is stored as a Node-RED credential and never sent to the browser.
+
+### Lookups in the editor
+
+The device, command, macro and state key fields on the other nodes fill their lists from this system. That needs the server node to be **deployed** first, because the lookups go through its connection.
+</script>

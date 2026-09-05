@@ -189,6 +189,14 @@ jobs:
         working-directory: openavc/web/simulator
         run: npm run test
 
+      # The Node-RED package loads every node into a real Node-RED runtime
+      # against a stand-in OpenAVC that speaks the socket protocol.
+      - name: Install and test the Node-RED package
+        working-directory: integrations/node-red
+        run: |
+          npm ci
+          npm test
+
   wheel-smoke:
     name: Wheel smoke (built wheel serves the UI)
     runs-on: ubuntu-latest

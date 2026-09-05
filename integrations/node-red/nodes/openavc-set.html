@@ -1,0 +1,79 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-set", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-pencil",
+    inputs: 1,
+    outputs: 1,
+    paletteLabel: "set variable",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      key: { value: "" },
+      value: { value: "payload" },
+      valueType: { value: "msg" },
+    },
+    label: function () {
+      return this.name || this.key || "set variable";
+    },
+    oneditprepare: function () {
+      const ed = window.openavcEditor;
+      const $hint = $("#openavc-hint");
+      const $key = $("#node-input-key");
+      $("#node-input-value").typedInput({
+        default: "msg",
+        types: ["msg", "str", "num", "bool"],
+        typeField: "#node-input-valueType",
+      });
+      const load = () =>
+        ed.fetchList("state-keys", (keys, err) => {
+          if (err) {
+            ed.hint($hint, err);
+            return;
+          }
+          ed.hint($hint, "");
+          const writable = keys.filter((k) => k.startsWith("var.") || k.startsWith("plugin."));
+          ed.autocomplete($key, writable.map((k) => ({ label: k, value: k })));
+        });
+      $("#node-input-server").on("change", load);
+      load();
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-set">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-key"><i class="fa fa-key"></i> Key</label>
+    <input type="text" id="node-input-key" placeholder="var.status" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-value"><i class="fa fa-pencil"></i> Value</label>
+    <input type="text" id="node-input-value" />
+    <input type="hidden" id="node-input-valueType" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+  <div class="form-tips" id="openavc-hint" style="display: none"></div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-set">
+Writes a value to an OpenAVC variable. Every panel control bound to that key updates at once.
+
+### Input
+
+: key (string) : overrides the key on the node
+: payload : the value to write, unless the node names another message property or a fixed value
+
+### Output
+
+: payload.success (boolean) : `true` when the write was accepted
+: payload.error (string) : why it was refused
+
+Values are flat: a string, a number, a boolean or null. Without an API key on the server node, only `var.*` and `plugin.*` keys can be written; that is where a flow's own status belongs anyway. Device state (`device.*`) is written by the device's driver, never by hand.
+</script>

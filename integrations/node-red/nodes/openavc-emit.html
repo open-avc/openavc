@@ -1,0 +1,63 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-emit", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-bullhorn",
+    inputs: 1,
+    outputs: 1,
+    paletteLabel: "emit event",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      event: { value: "" },
+      payload: { value: "payload" },
+      payloadType: { value: "msg" },
+    },
+    label: function () {
+      return this.name || this.event || "emit event";
+    },
+    oneditprepare: function () {
+      $("#node-input-payload").typedInput({
+        default: "msg",
+        types: ["msg", "json"],
+        typeField: "#node-input-payloadType",
+      });
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-emit">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-event"><i class="fa fa-bullhorn"></i> Event</label>
+    <input type="text" id="node-input-event" placeholder="custom.occupancy_changed" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-payload"><i class="fa fa-list"></i> Payload</label>
+    <input type="text" id="node-input-payload" />
+    <input type="hidden" id="node-input-payloadType" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-emit">
+Emits an event inside OpenAVC. An **event** trigger on a macro fires from it, and a script's `@on_event` handler runs.
+
+### Input
+
+: event (string) : overrides the event name on the node
+: payload (object) : what the macro or script receives; a macro reads it as `$trigger.<field>`
+
+The name is always under `custom.`; the prefix is added if you leave it off. A payload that is not an object is wrapped as `{"value": ...}`.
+
+### Output
+
+: payload.success (boolean) : `true` when OpenAVC accepted the event
+: payload.error (string) : why it did not
+</script>

@@ -1,0 +1,77 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-state-in", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-database",
+    inputs: 0,
+    outputs: 1,
+    paletteLabel: "state in",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      patterns: { value: "var.*" },
+      replay: { value: true },
+    },
+    label: function () {
+      return this.name || this.patterns || "state in";
+    },
+    oneditprepare: function () {
+      const ed = window.openavcEditor;
+      const $hint = $("#openavc-hint");
+      const $patterns = $("#node-input-patterns");
+      const load = () =>
+        ed.fetchList("state-keys", (keys, err) => {
+          if (err) {
+            ed.hint($hint, err);
+            return;
+          }
+          ed.hint($hint, "");
+          ed.autocomplete($patterns, keys.map((k) => ({ label: k, value: k })));
+        });
+      $("#node-input-server").on("change", load);
+      load();
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-state-in">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-patterns"><i class="fa fa-filter"></i> Keys</label>
+    <input type="text" id="node-input-patterns" placeholder="var.*, device.projector.power" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-replay">&nbsp;</label>
+    <input type="checkbox" id="node-input-replay" style="width: auto; vertical-align: middle" />
+    <span style="margin-left: 6px">Send current values when the connection opens</span>
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+  <div class="form-tips" id="openavc-hint" style="display: none"></div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-state-in">
+Sends a message every time a matching OpenAVC state key changes.
+
+### Keys
+
+A comma-separated list of state keys or patterns. `*` matches anything, dots included, so `var.*` is every user variable, `device.projector.*` is everything the projector reports, and `device.*.online` is every device's online flag. Leave it empty for everything.
+
+### Output
+
+: topic (string) : the state key, e.g. `var.request_source`
+: payload (string | number | boolean | null) : the new value
+: replay (boolean) : present and `true` when this is a current value sent because the connection opened, not a change
+: deleted (boolean) : present and `true` when the key was removed
+
+State values are always flat: a string, a number, a boolean or null.
+
+### The pattern this is for
+
+Bind a panel button to set a `var.*` variable, watch that variable here, and do the logic in the flow. The panel does not know or care where the logic lives.
+</script>

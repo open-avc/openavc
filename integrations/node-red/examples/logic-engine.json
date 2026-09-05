@@ -1,0 +1,115 @@
+[
+  {
+    "id": "openavc_example_tab",
+    "type": "tab",
+    "label": "OpenAVC logic engine",
+    "disabled": false,
+    "info": "A panel button sets var.request_source. This flow sees it, routes the switcher, and writes var.status back so a label on the panel can show it. Point the openavc-server node at your system and deploy."
+  },
+  {
+    "id": "openavc_example_server",
+    "type": "openavc-server",
+    "name": "Room",
+    "host": "192.168.1.50",
+    "port": "8080",
+    "tls": false,
+    "tlsVerify": false
+  },
+  {
+    "id": "openavc_example_note",
+    "type": "comment",
+    "z": "openavc_example_tab",
+    "name": "In the UI Builder: a button whose press does Set State var.request_source = \"hdmi1\", and a label bound to var.status",
+    "info": "",
+    "x": 400,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "openavc_example_state_in",
+    "type": "openavc-state-in",
+    "z": "openavc_example_tab",
+    "name": "",
+    "server": "openavc_example_server",
+    "patterns": "var.request_source",
+    "replay": false,
+    "x": 170,
+    "y": 120,
+    "wires": [["openavc_example_decide"]]
+  },
+  {
+    "id": "openavc_example_decide",
+    "type": "function",
+    "z": "openavc_example_tab",
+    "name": "which input?",
+    "func": "// The panel wrote a source name; turn it into a switcher route.\nconst inputs = { hdmi1: 1, hdmi2: 2, wireless: 3 };\nconst input = inputs[msg.payload];\nif (!input) { node.warn(`unknown source ${msg.payload}`); return null; }\nmsg.params = { input, output: 1 };\nmsg.source = msg.payload;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 370,
+    "y": 120,
+    "wires": [["openavc_example_route"]]
+  },
+  {
+    "id": "openavc_example_route",
+    "type": "openavc-command",
+    "z": "openavc_example_tab",
+    "name": "",
+    "server": "openavc_example_server",
+    "device": "switcher",
+    "command": "route",
+    "params": "{}",
+    "paramsType": "json",
+    "x": 560,
+    "y": 120,
+    "wires": [["openavc_example_status_text"]]
+  },
+  {
+    "id": "openavc_example_status_text",
+    "type": "function",
+    "z": "openavc_example_tab",
+    "name": "status line",
+    "func": "msg.payload = msg.payload.success ? `Showing ${msg.source}` : `Could not switch: ${msg.payload.error}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 750,
+    "y": 120,
+    "wires": [["openavc_example_set_status"]]
+  },
+  {
+    "id": "openavc_example_set_status",
+    "type": "openavc-set",
+    "z": "openavc_example_tab",
+    "name": "",
+    "server": "openavc_example_server",
+    "key": "var.status",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 940,
+    "y": 120,
+    "wires": [[]]
+  },
+  {
+    "id": "openavc_example_events",
+    "type": "openavc-event-in",
+    "z": "openavc_example_tab",
+    "name": "",
+    "server": "openavc_example_server",
+    "patterns": "custom.*, device.disconnected.*",
+    "x": 190,
+    "y": 220,
+    "wires": [["openavc_example_debug"]]
+  },
+  {
+    "id": "openavc_example_debug",
+    "type": "debug",
+    "z": "openavc_example_tab",
+    "name": "events",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "true",
+    "x": 390,
+    "y": 220,
+    "wires": []
+  }
+]

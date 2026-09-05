@@ -1,0 +1,102 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-command", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-bolt",
+    inputs: 1,
+    outputs: 1,
+    paletteLabel: "command",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      device: { value: "" },
+      command: { value: "" },
+      params: { value: "{}" },
+      paramsType: { value: "json" },
+    },
+    label: function () {
+      if (this.name) return this.name;
+      if (this.device && this.command) return this.device + ": " + this.command;
+      return "command";
+    },
+    oneditprepare: function () {
+      const ed = window.openavcEditor;
+      const $hint = $("#openavc-hint");
+      const $device = $("#node-input-device");
+      const $command = $("#node-input-command");
+      $("#node-input-params").typedInput({
+        default: "json",
+        types: ["json", "msg"],
+        typeField: "#node-input-paramsType",
+      });
+      const loadDevices = () =>
+        ed.fetchList("devices", (list, err) => {
+          if (err) {
+            ed.hint($hint, err);
+            return;
+          }
+          ed.hint($hint, "");
+          ed.autocomplete($device, list.map((d) => ({ label: d.name + " (" + d.id + ")", value: d.id })));
+        });
+      const loadCommands = () => {
+        const device = $device.val();
+        if (!device) return;
+        ed.fetchList("devices/" + encodeURIComponent(device) + "/commands", (list, err) => {
+          if (err) return;
+          ed.autocomplete(
+            $command,
+            list.map((c) => ({ label: c.description ? c.name + " - " + c.description : c.name, value: c.name }))
+          );
+        });
+      };
+      $("#node-input-server").on("change", loadDevices);
+      $device.on("change", loadCommands);
+      loadDevices();
+      loadCommands();
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-command">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-device"><i class="fa fa-hdd-o"></i> Device</label>
+    <input type="text" id="node-input-device" placeholder="pick, or leave empty and send msg.device" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-command"><i class="fa fa-bolt"></i> Command</label>
+    <input type="text" id="node-input-command" placeholder="pick, or leave empty and send msg.command" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-params"><i class="fa fa-list"></i> Parameters</label>
+    <input type="text" id="node-input-params" />
+    <input type="hidden" id="node-input-paramsType" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+  <div class="form-tips" id="openavc-hint" style="display: none"></div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-command">
+Sends one command to one device and waits for OpenAVC to say whether it went out.
+
+### Input
+
+: device (string) : overrides the device on the node
+: command (string) : overrides the command on the node
+: params (object) : overrides the parameters on the node, e.g. `{"input": 2, "output": 1}`
+
+Parameters can also be a fixed JSON object on the node, or taken from any message property.
+
+### Output
+
+: payload.success (boolean) : `true` when the device accepted the command
+: payload.error (string) : why it did not, in the words OpenAVC's own panel would show
+
+A failed command also raises an error a **catch** node can pick up. The device's driver decides which commands exist and what each needs; the lists in the editor come from the system, so pick rather than type.
+</script>

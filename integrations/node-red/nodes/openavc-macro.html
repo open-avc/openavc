@@ -1,0 +1,65 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-macro", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-play",
+    inputs: 1,
+    outputs: 1,
+    paletteLabel: "macro",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      macro: { value: "" },
+    },
+    label: function () {
+      return this.name || this.macro || "macro";
+    },
+    oneditprepare: function () {
+      const ed = window.openavcEditor;
+      const $hint = $("#openavc-hint");
+      const $macro = $("#node-input-macro");
+      const load = () =>
+        ed.fetchList("macros", (list, err) => {
+          if (err) {
+            ed.hint($hint, err);
+            return;
+          }
+          ed.hint($hint, "");
+          ed.autocomplete($macro, list.map((m) => ({ label: m.name + " (" + m.id + ")", value: m.id })));
+        });
+      $("#node-input-server").on("change", load);
+      load();
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-macro">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-macro"><i class="fa fa-play"></i> Macro</label>
+    <input type="text" id="node-input-macro" placeholder="pick, or leave empty and send msg.macro" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+  <div class="form-tips" id="openavc-hint" style="display: none"></div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-macro">
+Runs a macro and sends a message when it has finished.
+
+### Input
+
+: macro (string) : overrides the macro on the node
+
+### Output
+
+: payload.success (boolean) : `true` when the macro completed
+: payload.error (string) : why it did not - a step that failed, or a cancellation
+
+A macro with delay steps takes as long as it takes; the output waits for it. A macro that stops on an error also raises one a **catch** node can pick up.
+</script>

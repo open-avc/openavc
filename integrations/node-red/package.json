@@ -1,0 +1,52 @@
+{
+  "name": "@openavc/node-red-openavc",
+  "version": "0.1.0",
+  "description": "Node-RED nodes for OpenAVC: read room state and events, send device commands, run macros, write variables, emit events.",
+  "license": "MIT",
+  "author": "OpenAVC",
+  "homepage": "https://openavc.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/open-avc/openavc.git",
+    "directory": "integrations/node-red"
+  },
+  "keywords": [
+    "openavc",
+    "av control",
+    "audio visual"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "node-red": {
+    "version": ">=4.0.0",
+    "nodes": {
+      "openavc-server": "nodes/openavc-server.js",
+      "openavc-state-in": "nodes/openavc-state-in.js",
+      "openavc-event-in": "nodes/openavc-event-in.js",
+      "openavc-command": "nodes/openavc-command.js",
+      "openavc-macro": "nodes/openavc-macro.js",
+      "openavc-set": "nodes/openavc-set.js",
+      "openavc-emit": "nodes/openavc-emit.js"
+    }
+  },
+  "files": [
+    "lib",
+    "nodes",
+    "resources",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "node-red": "^5.0.0",
+    "node-red-node-test-helper": "^0.3.4",
+    "vitest": "^3.2.0"
+  }
+}

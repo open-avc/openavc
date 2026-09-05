@@ -1,0 +1,54 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-event-in", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-bell",
+    inputs: 0,
+    outputs: 1,
+    paletteLabel: "event in",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      patterns: { value: "custom.*" },
+    },
+    label: function () {
+      return this.name || this.patterns || "event in";
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-event-in">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-patterns"><i class="fa fa-filter"></i> Events</label>
+    <input type="text" id="node-input-patterns" placeholder="custom.*, device.disconnected.*" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-event-in">
+Sends a message every time OpenAVC emits a matching event.
+
+### Events
+
+A comma-separated list of event names or patterns; `*` matches anything, dots included. The ones a flow usually wants:
+
+- `custom.*` - events a macro's **Emit Event** step, a control's **Emit Event** action, or a script emits
+- `ui.press.*`, `ui.change.*` - a panel control was used (the element id is the last part)
+- `device.connected.*`, `device.disconnected.*`, `device.error.*` - a device came or went
+- `macro.started.*`, `macro.completed.*` - a macro ran
+
+Without an API key on the server node the connection sees what a panel reflects: `custom.`, `ui.`, `device.`, `macro.` and `system.` events. With one it sees every event. State changes never arrive as events; use **state in** for those.
+
+### Output
+
+: topic (string) : the event name, e.g. `custom.presentation_started`
+: payload (object) : whatever the emitter attached
+: timestamp (number) : when it fired, seconds since the epoch
+</script>
