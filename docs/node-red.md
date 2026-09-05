@@ -23,7 +23,11 @@ A panel button writes a variable, the flow watches the variable, the flow acts, 
 4. A **command** node routes the switcher. A **set variable** node writes `Showing HDMI 1` to `var.status`.
 5. The label on the panel updates. So does the same label on every other panel in the space.
 
-The example flow that ships with the nodes (**Import › Examples › @openavc/node-red-openavc › logic-engine**) is exactly this.
+The example flow that ships with the nodes (**Import › Examples › @openavc/node-red-openavc › logic-engine**) is exactly this:
+
+![The logic-engine example flow in the Node-RED editor](images/node-red-logic-engine.png)
+
+Two more examples sit beside it. **fire-a-trigger** is the reverse direction: the flow decides a meeting has started and emits an event, and a macro with an Event trigger does the sequence. **macros-do-the-sequences** is the shape most spaces want: the flow decides *when*, OpenAVC's own `system_on` and `system_off` macros do the warm-up and shut-down, and a catch node puts a failure on the panel. Each tab's description says what to set up on the OpenAVC side.
 
 ## Install the nodes
 

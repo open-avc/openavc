@@ -1,0 +1,152 @@
+[
+  {
+    "id": "openavc_macros_tab",
+    "type": "tab",
+    "label": "Macros do the sequences",
+    "disabled": false,
+    "info": "The flow decides WHEN; OpenAVC's macros do the warm-up and shut-down sequences that have to work even when Node-RED is not there. Matches the Conference Room starter project (macros system_on and system_off).\n\nA panel button or a schedule writes var.room_mode to \"on\" or \"off\". The flow runs the matching macro, waits for it to finish, and writes what happened to var.status. If a macro fails, the catch node writes the reason instead, so the panel never goes quiet.\n\nPoint the openavc-server node at your system and deploy."
+  },
+  {
+    "id": "openavc_macros_server",
+    "type": "openavc-server",
+    "name": "Room",
+    "host": "192.168.1.50",
+    "port": "8080",
+    "tls": false,
+    "tlsVerify": false,
+    "clientName": "room-logic"
+  },
+  {
+    "id": "openavc_macros_note",
+    "type": "comment",
+    "z": "openavc_macros_tab",
+    "name": "In the UI Builder: buttons that Set Variable var.room_mode = \"on\" / \"off\", and a label bound to var.status",
+    "info": "",
+    "x": 430,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "openavc_macros_mode",
+    "type": "openavc-state-in",
+    "z": "openavc_macros_tab",
+    "name": "",
+    "server": "openavc_macros_server",
+    "patterns": "var.room_mode",
+    "replay": false,
+    "x": 160,
+    "y": 120,
+    "wires": [["openavc_macros_switch"]]
+  },
+  {
+    "id": "openavc_macros_switch",
+    "type": "switch",
+    "z": "openavc_macros_tab",
+    "name": "on or off?",
+    "property": "payload",
+    "propertyType": "msg",
+    "rules": [
+      { "t": "eq", "v": "on", "vt": "str" },
+      { "t": "eq", "v": "off", "vt": "str" }
+    ],
+    "checkall": "false",
+    "repair": false,
+    "outputs": 2,
+    "x": 350,
+    "y": 120,
+    "wires": [["openavc_macros_on"], ["openavc_macros_off"]]
+  },
+  {
+    "id": "openavc_macros_on",
+    "type": "openavc-macro",
+    "z": "openavc_macros_tab",
+    "name": "",
+    "server": "openavc_macros_server",
+    "macro": "system_on",
+    "x": 540,
+    "y": 80,
+    "wires": [["openavc_macros_status"]]
+  },
+  {
+    "id": "openavc_macros_off",
+    "type": "openavc-macro",
+    "z": "openavc_macros_tab",
+    "name": "",
+    "server": "openavc_macros_server",
+    "macro": "system_off",
+    "x": 540,
+    "y": 160,
+    "wires": [["openavc_macros_status"]]
+  },
+  {
+    "id": "openavc_macros_status",
+    "type": "function",
+    "z": "openavc_macros_tab",
+    "name": "what happened",
+    "func": "// The macro node answers when the macro has FINISHED, not when it was accepted.\nmsg.payload = msg.payload.success ? \"Room is ready\" : `Could not: ${msg.payload.error}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 750,
+    "y": 120,
+    "wires": [["openavc_macros_set"]]
+  },
+  {
+    "id": "openavc_macros_set",
+    "type": "openavc-set",
+    "z": "openavc_macros_tab",
+    "name": "",
+    "server": "openavc_macros_server",
+    "key": "var.status",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 950,
+    "y": 120,
+    "wires": [[]]
+  },
+  {
+    "id": "openavc_macros_note2",
+    "type": "comment",
+    "z": "openavc_macros_tab",
+    "name": "A macro that fails also raises an error: the catch node puts the reason on the panel",
+    "info": "",
+    "x": 400,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "openavc_macros_catch",
+    "type": "catch",
+    "z": "openavc_macros_tab",
+    "name": "",
+    "scope": ["openavc_macros_on", "openavc_macros_off"],
+    "uncaught": false,
+    "x": 160,
+    "y": 300,
+    "wires": [["openavc_macros_reason"]]
+  },
+  {
+    "id": "openavc_macros_reason",
+    "type": "function",
+    "z": "openavc_macros_tab",
+    "name": "the reason",
+    "func": "msg.payload = `Check the room: ${msg.error.message}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 350,
+    "y": 300,
+    "wires": [["openavc_macros_set2"]]
+  },
+  {
+    "id": "openavc_macros_set2",
+    "type": "openavc-set",
+    "z": "openavc_macros_tab",
+    "name": "",
+    "server": "openavc_macros_server",
+    "key": "var.status",
+    "value": "payload",
+    "valueType": "msg",
+    "x": 550,
+    "y": 300,
+    "wires": [[]]
+  }
+]

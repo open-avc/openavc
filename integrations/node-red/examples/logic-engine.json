@@ -19,7 +19,7 @@
     "id": "openavc_example_note",
     "type": "comment",
     "z": "openavc_example_tab",
-    "name": "In the UI Builder: a button whose press does Set State var.request_source = \"hdmi1\", and a label bound to var.status",
+    "name": "In the UI Builder: a button whose press does Set Variable var.request_source = \"hdmi1\", and a label bound to var.status",
     "info": "",
     "x": 400,
     "y": 40,

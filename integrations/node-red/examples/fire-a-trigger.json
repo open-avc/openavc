@@ -1,0 +1,105 @@
+[
+  {
+    "id": "openavc_trigger_tab",
+    "type": "tab",
+    "label": "Fire a trigger from a flow",
+    "disabled": false,
+    "info": "The flow decides something happened; a macro in OpenAVC does the sequence. The emit event node fires an Event trigger, and the macro reads the payload as $trigger.<field>.\n\nOn the OpenAVC side: in Macros, add a macro with an Event trigger whose pattern is custom.meeting_started. Its steps read the payload as $trigger.<field>: a Set Variable step whose value is exactly $trigger.organizer writes the organizer's name to var.status (a $ reference is the whole value, not part of a sentence); a Conditional step can branch on $trigger.minutes.\n\nPoint the openavc-server node at your system and deploy."
+  },
+  {
+    "id": "openavc_trigger_server",
+    "type": "openavc-server",
+    "name": "Room",
+    "host": "192.168.1.50",
+    "port": "8080",
+    "tls": false,
+    "tlsVerify": false,
+    "clientName": "calendar-flow"
+  },
+  {
+    "id": "openavc_trigger_note",
+    "type": "comment",
+    "z": "openavc_trigger_tab",
+    "name": "In OpenAVC: a macro with an Event trigger on custom.meeting_started, reading $trigger.organizer and $trigger.minutes",
+    "info": "",
+    "x": 470,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "openavc_trigger_inject",
+    "type": "inject",
+    "z": "openavc_trigger_tab",
+    "name": "a meeting starts",
+    "props": [{ "p": "payload" }],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "topic": "",
+    "payload": "{\"organizer\":\"A. Todd\",\"minutes\":60}",
+    "payloadType": "json",
+    "x": 170,
+    "y": 120,
+    "wires": [["openavc_trigger_emit"]]
+  },
+  {
+    "id": "openavc_trigger_emit",
+    "type": "openavc-emit",
+    "z": "openavc_trigger_tab",
+    "name": "",
+    "server": "openavc_trigger_server",
+    "event": "custom.meeting_started",
+    "payload": "payload",
+    "payloadType": "msg",
+    "x": 400,
+    "y": 120,
+    "wires": [["openavc_trigger_accepted"]]
+  },
+  {
+    "id": "openavc_trigger_accepted",
+    "type": "debug",
+    "z": "openavc_trigger_tab",
+    "name": "accepted?",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload",
+    "x": 620,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "openavc_trigger_note2",
+    "type": "comment",
+    "z": "openavc_trigger_tab",
+    "name": "Watch the macro run: every macro reports when it starts and finishes",
+    "info": "",
+    "x": 360,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "openavc_trigger_events",
+    "type": "openavc-event-in",
+    "z": "openavc_trigger_tab",
+    "name": "",
+    "server": "openavc_trigger_server",
+    "patterns": "macro.started.*, macro.completed.*",
+    "x": 200,
+    "y": 280,
+    "wires": [["openavc_trigger_debug"]]
+  },
+  {
+    "id": "openavc_trigger_debug",
+    "type": "debug",
+    "z": "openavc_trigger_tab",
+    "name": "macro lifecycle",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "true",
+    "x": 460,
+    "y": 280,
+    "wires": []
+  }
+]

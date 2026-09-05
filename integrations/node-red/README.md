@@ -4,6 +4,8 @@ Use Node-RED as the logic behind an [OpenAVC](https://openavc.com) space. OpenAV
 
 A panel button sets a variable, the flow sees it within 50 ms, does whatever it does (checks a calendar, an occupancy sensor, a building system), sends device commands and writes status back, and the panel re-renders from state. The panel never knows where the logic lives.
 
+![The logic-engine example: a panel button writes a variable, the flow routes the switcher and writes the status back](https://raw.githubusercontent.com/open-avc/openavc/main/docs/images/node-red-logic-engine.png)
+
 ## Nodes
 
 | Node | What it does |
@@ -34,7 +36,17 @@ Add an **openavc-server**, enter the host and port the Programmer opens on, and 
 
 Give the server node a name under **Announce as** and OpenAVC publishes `system.integration.<name>.connected`, so a panel light or an alert can say when the flow is not there.
 
-Import **Import › Examples › @openavc/node-red-openavc › logic-engine** for a working flow to start from.
+## Examples
+
+Three working flows ship with the nodes, under **Import › Examples › @openavc/node-red-openavc** in the editor:
+
+| Example | What it shows |
+|---------|---------------|
+| **logic-engine** | The pattern above: a panel button writes `var.request_source`, the flow routes the switcher and writes `var.status` back. Also watches `custom.*` and device events. |
+| **fire-a-trigger** | The reverse: the flow decides a meeting started and emits `custom.meeting_started`; a macro with an Event trigger runs the sequence and reads `$trigger.organizer`. |
+| **macros-do-the-sequences** | The flow decides *when*, OpenAVC's macros do the warm-up and shut-down. Runs `system_on` / `system_off` from `var.room_mode`, waits for them to finish, and a catch node puts a failure on the panel. Matches the Conference Room starter project. |
+
+Each tab's description (the `i` panel) says what to set up on the OpenAVC side. Point the **openavc-server** node at your system and deploy.
 
 The full guide is in the OpenAVC docs: [docs.openavc.com/node-red](https://docs.openavc.com/node-red/).
 

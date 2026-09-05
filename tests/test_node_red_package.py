@@ -74,6 +74,50 @@ def test_every_reply_type_the_package_reads_is_one_the_server_produces():
     assert not unknown, f"the package reads reply types the server never sends: {sorted(unknown)}"
 
 
+# Node-RED's own core node types an example may use. Anything else an example
+# names has to be one of ours, or the import fails with "unknown node type".
+_CORE_NODE_TYPES = {"tab", "comment", "inject", "debug", "function", "switch", "catch"}
+
+
+def test_every_example_is_a_flow_that_imports_clean(package_json):
+    """Examples appear under Import > Examples in the editor. One that names
+    a node type nobody has, or a server that is not in the file, imports as a
+    broken flow -- and it is the first thing a new user touches."""
+    ours = set(package_json["node-red"]["nodes"])
+    examples = sorted((PACKAGE / "examples").glob("*.json"))
+    assert examples, "no examples shipped"
+    for path in examples:
+        flow = json.loads(path.read_text(encoding="utf-8"))
+        assert isinstance(flow, list) and flow, f"{path.name}: not a flow export"
+        tabs = {n["id"] for n in flow if n.get("type") == "tab"}
+        servers = {n["id"] for n in flow if n.get("type") == "openavc-server"}
+        assert tabs, f"{path.name}: no tab"
+        assert servers, f"{path.name}: no openavc-server config node"
+        for node in flow:
+            kind = node.get("type")
+            assert kind in ours or kind in _CORE_NODE_TYPES, f"{path.name}: unknown node type {kind!r}"
+            if kind in ("tab", "openavc-server"):
+                continue
+            assert node.get("z") in tabs, f"{path.name}: {node['id']} is on no tab"
+            if kind in ours:
+                assert node.get("server") in servers, f"{path.name}: {node['id']} points at no server in the file"
+        info = next(n for n in flow if n.get("type") == "tab").get("info", "")
+        assert "openavc-server" in info, f"{path.name}: the tab's description does not say to point the server node at a system"
+
+
+def test_the_readme_s_screenshot_is_a_file_in_this_repo():
+    """npm and the flow library render the README from the registry, where a
+    relative image path is a broken image. The README points at the raw
+    GitHub copy of a file that lives beside the docs, so one file serves the
+    README, the docs site and GitHub."""
+    readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
+    urls = re.findall(r"!\[[^\]]*\]\((https://raw\.githubusercontent\.com/open-avc/openavc/main/[^)]+)\)", readme)
+    assert urls, "the README has no screenshot"
+    for url in urls:
+        rel = url.split("/open-avc/openavc/main/", 1)[1]
+        assert (ROOT / rel).is_file(), f"README image {rel} is not in the repo"
+
+
 def test_the_package_pins_the_node_red_it_needs(package_json):
     # The core websocket client gained headers in 4.0, and `resources/` (the
     # shared editor script) has been served since 1.3 -- 4.0 is the floor.
