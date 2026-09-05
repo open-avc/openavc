@@ -447,7 +447,7 @@ async def test_reload_rollback_resyncs_devices_and_plugins(tmp_path):
 
     sync = {"devices": 0, "plugins": 0}
 
-    async def count_devices():
+    async def count_devices(**kwargs):
         sync["devices"] += 1
 
     async def count_plugins():

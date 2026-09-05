@@ -12,7 +12,7 @@ import asyncio
 import contextlib
 import logging
 import socket
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -333,6 +333,7 @@ async def test_start_refuses_when_no_port_in_the_span_will_bind(monkeypatch):
 
     mgr = _manager()
     mgr.engine = MagicMock()
+    mgr.engine.wait_for_device_bringup = AsyncMock()
     mgr.engine.project = {"project": {"name": "Scratch"}}
     mgr.engine.devices._device_configs = {
         "dev1": {"driver": "acme_widget", "name": "Dev 1", "config": {}},
@@ -372,6 +373,7 @@ async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch):
 
         mgr = _manager()
         mgr.engine = MagicMock()
+        mgr.engine.wait_for_device_bringup = AsyncMock()
         mgr.engine.project = {"project": {"name": "Scratch"}}
         mgr.engine.devices._device_configs = {
             "dev1": {"driver": "acme_widget", "name": "Dev 1", "config": {}},

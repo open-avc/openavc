@@ -322,6 +322,11 @@ class SimulationManager:
         if self._active:
             raise RuntimeError("Simulation is already active")
 
+        # A project save answers before its devices are on the wire. Let that
+        # bring-up finish before redirecting anything: the two would otherwise
+        # be opening and closing the same transports at the same time.
+        await self.engine.wait_for_device_bringup()
+
         # Clean up any zombie process from a previous failed start
         await self._cleanup_process()
 
@@ -728,6 +733,10 @@ class SimulationManager:
             self.engine.state.set("system.simulation_ui_url", None, source="simulation")
             return
 
+        # Same reason as start(): don't restore addresses out from under a
+        # bring-up that is still opening transports on the simulator's.
+        await self.engine.wait_for_device_bringup()
+
         log.info("Stopping simulation...")
 
         # Devices point back at their real addresses from here on, so a refused
@@ -905,9 +914,16 @@ class SimulationManager:
                 driver.config[key] = orig[key]
 
     async def _redirect_connections(self) -> None:
-        """Swap device host/port (and serial→tcp) to point at the simulator."""
+        """Swap device host/port (and serial→tcp) to point at the simulator.
+
+        The reconnects run concurrently. Each one cancels a running reconnect
+        loop (which can be mid-sleep) before it cycles the transport, so
+        sequential awaits cost roughly a second per device — a 106-device
+        project spent 104 seconds inside POST /api/simulation/start.
+        """
         dm = self.engine.devices
 
+        redirected: list[str] = []
         for device_id, sim_port in self._sim_ports.items():
             driver = dm._devices.get(device_id)
             if not driver:
@@ -923,17 +939,30 @@ class SimulationManager:
                 self._original_configs[device_id]["port"],
                 sim_port,
             )
+            redirected.append(device_id)
 
-            # Reconnect with new config
-            try:
-                await dm.reconnect_device(device_id)
-            except Exception as e:
-                log.warning("Failed to reconnect %s to simulator: %s", device_id, e)
+        await self._reconnect_all(redirected, "to simulator")
+
+    async def _reconnect_all(self, device_ids: list[str], what: str) -> None:
+        """Reconnect every named device concurrently, logging failures."""
+        if not device_ids:
+            return
+        dm = self.engine.devices
+        results = await asyncio.gather(
+            *(dm.reconnect_device(did) for did in device_ids),
+            return_exceptions=True,
+        )
+        for did, result in zip(device_ids, results):
+            if isinstance(result, Exception):
+                log.warning("Failed to reconnect %s %s: %s", did, what, result)
 
     async def _restore_connections(self) -> None:
-        """Restore original device host/port and reconnect."""
+        """Restore original device host/port and reconnect (concurrently —
+        stopping simulation on a large project paid the same per-device wait
+        as starting it)."""
         dm = self.engine.devices
 
+        restored: list[str] = []
         for device_id, orig in self._original_configs.items():
             driver = dm._devices.get(device_id)
             if not driver:
@@ -942,17 +971,23 @@ class SimulationManager:
             self._restore_original_config(driver, orig)
 
             log.info("Restored %s to %s:%s", device_id, orig["host"], orig["port"])
+            restored.append(device_id)
 
-            try:
-                await dm.reconnect_device(device_id)
-            except Exception as e:
-                log.warning("Failed to reconnect %s to real device: %s", device_id, e)
+        await self._reconnect_all(restored, "to real device")
 
     async def sync(self) -> None:
         """Sync simulated devices with the current project.
 
-        Called after project reload. Starts simulators for new devices,
-        stops and restores connections for removed devices.
+        Called from the engine's device bring-up after a project change, and
+        deliberately BEFORE the deferred connects: a device this save added
+        gets its redirect applied while it is still registered-but-not-dialed,
+        so its first connection attempt goes to the simulator instead of
+        failing against the real address and being fixed up afterwards.
+
+        Every per-device step here — the stop, the start, the reconnect —
+        runs concurrently with its peers and over one HTTP session. Serially
+        they cost about a second each, which is what made adding 102 devices
+        to a simulated project a 113-second save.
         """
         if not self._active or not self._process or self._process.returncode is not None:
             return
@@ -969,6 +1004,7 @@ class SimulationManager:
         # Re-apply redirects to existing simulated devices whose driver
         # instances may have been replaced by _sync_devices() during reload
         continuing = simulated_ids & current_device_ids
+        to_reconnect: list[str] = []
         for device_id in continuing:
             driver = dm._devices.get(device_id)
             if not driver:
@@ -982,10 +1018,13 @@ class SimulationManager:
                     # redirect is in place for whenever it resumes; reconnecting
                     # here would release the pause the same way the save used to.
                     continue
-                try:
-                    await dm.reconnect_device(device_id)
-                except Exception as e:
-                    log.warning("Failed to reconnect %s to simulator after reload: %s", device_id, e)
+                if dm.is_connect_deferred(device_id):
+                    # Registered by this save and not yet dialed. The bring-up
+                    # that runs straight after this will open it once, on the
+                    # redirect we just applied.
+                    continue
+                to_reconnect.append(device_id)
+        await self._reconnect_all(to_reconnect, "to simulator after reload")
 
         if not added and not removed:
             return
@@ -994,91 +1033,115 @@ class SimulationManager:
 
         sim_api = self._sim_ui_url  # e.g., http://localhost:19500
 
-        # Stop simulators for removed devices
-        for device_id in removed:
-            log.info("Simulation sync: removing %s", device_id)
-            # Restore the original connection if we still have the device.
-            orig = self._original_configs.get(device_id)
-            if orig:
-                driver = dm._devices.get(device_id)
-                if driver:
-                    self._restore_original_config(driver, orig)
-            # Only forget the port slot when the stop actually succeeds (200)
-            # or the instance is already gone (404). On any other outcome the
-            # subprocess instance keeps running — dropping the slot would leak
-            # its port; leaving it tracked lets the next sync retry the stop.
-            stopped = False
-            try:
-                async with aiohttp.ClientSession() as session:
-                    resp = await session.post(
-                        f"{sim_api}/api/devices/{device_id}/stop",
-                        timeout=aiohttp.ClientTimeout(total=5),
-                    )
-                    if resp.status in (200, 404):
-                        stopped = True
-                    else:
-                        body = await resp.text()
-                        log.warning(
-                            "Simulator stop for removed device %s returned %s: %s",
-                            device_id, resp.status, body[:200],
-                        )
-            except Exception as e:
-                log.warning("Failed to stop simulator for removed device %s: %s", device_id, e)
-            if stopped:
-                self._original_configs.pop(device_id, None)
-                self._sim_ports.pop(device_id, None)
+        async with aiohttp.ClientSession() as session:
+            await asyncio.gather(
+                *(self._sync_remove_device(session, sim_api, device_id)
+                  for device_id in removed),
+                *(self._sync_add_device(session, sim_api, device_id)
+                  for device_id in added),
+                return_exceptions=True,
+            )
 
-        # Start simulators for new devices — send the SAME full payload as the
-        # initial launch (name, real host/port, config, child_entities) so an
-        # added device isn't a degraded simulation missing its children.
-        for device_id in added:
-            cfg = dm._device_configs.get(device_id)
-            if not cfg:
-                continue
-            payload = self._device_sim_payload(device_id, cfg)
-            payload.pop("device_id", None)  # carried in the URL path
-            log.info("Simulation sync: adding %s (driver=%s)", device_id, payload["driver_id"])
-            started_ok = False
-            try:
-                async with aiohttp.ClientSession() as session:
-                    resp = await session.post(
-                        f"{sim_api}/api/devices/{device_id}/start",
-                        json=payload,
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    )
-                    if resp.status == 200:
-                        started_ok = True
-                        data = await resp.json()
-                        sim_port = data.get("port", 0)
-                        if sim_port:
-                            self._redirect_device_to_sim(
-                                device_id, sim_port, bool(data.get("tls"))
-                            )
-                            await self._reconnect_quietly(device_id)
-                            log.info("Simulation sync: %s on port %d", device_id, sim_port)
-                        else:
-                            log.warning("Simulator started %s but reported no port", device_id)
-                    elif resp.status == 400:
-                        # A prior leak may have left an orphaned instance the
-                        # simulator now reports as "already simulated". Adopt its
-                        # running port instead of leaving the device pointed at
-                        # its real address.
-                        if not await self._adopt_existing_sim(sim_api, device_id):
-                            body = await resp.text()
-                            log.warning("Simulator refused device %s: %s", device_id, body[:200])
-                    else:
-                        body = await resp.text()
-                        log.warning("Simulator refused device %s: %s", device_id, body[:200])
-            except Exception as e:
-                log.warning("Failed to start simulator for new device %s: %s", device_id, e)
-                # If /start committed an instance server-side but our handling
-                # then failed (e.g. response parse), roll it back so we don't
-                # leak the instance + one of only 500 sim ports.
-                if started_ok and device_id not in self._sim_ports:
-                    await self._best_effort_stop(sim_api, device_id)
+        log.info("Simulation sync complete: +%d -%d devices", len(added), len(removed))
 
-        if added or removed:
-            log.info("Simulation sync complete: +%d -%d devices", len(added), len(removed))
+    async def _sync_remove_device(
+        self, session: Any, sim_api: str, device_id: str
+    ) -> None:
+        """Stop one removed device's simulator and restore its connection."""
+        dm = self.engine.devices
+        log.info("Simulation sync: removing %s", device_id)
+        # Restore the original connection if we still have the device.
+        orig = self._original_configs.get(device_id)
+        if orig:
+            driver = dm._devices.get(device_id)
+            if driver:
+                self._restore_original_config(driver, orig)
+        # Only forget the port slot when the stop actually succeeds (200)
+        # or the instance is already gone (404). On any other outcome the
+        # subprocess instance keeps running — dropping the slot would leak
+        # its port; leaving it tracked lets the next sync retry the stop.
+        import aiohttp
+
+        stopped = False
+        try:
+            resp = await session.post(
+                f"{sim_api}/api/devices/{device_id}/stop",
+                timeout=aiohttp.ClientTimeout(total=5),
+            )
+            if resp.status in (200, 404):
+                stopped = True
+            else:
+                body = await resp.text()
+                log.warning(
+                    "Simulator stop for removed device %s returned %s: %s",
+                    device_id, resp.status, body[:200],
+                )
+        except Exception as e:
+            log.warning("Failed to stop simulator for removed device %s: %s", device_id, e)
+        if stopped:
+            self._original_configs.pop(device_id, None)
+            self._sim_ports.pop(device_id, None)
+
+    async def _sync_add_device(
+        self, session: Any, sim_api: str, device_id: str
+    ) -> None:
+        """Start one added device's simulator and point the driver at it.
+
+        Sends the SAME full payload as the initial launch (name, real
+        host/port, config, child_entities) so an added device isn't a
+        degraded simulation missing its children.
+        """
+        import aiohttp
+
+        dm = self.engine.devices
+        cfg = dm._device_configs.get(device_id)
+        if not cfg:
+            return
+        payload = self._device_sim_payload(device_id, cfg)
+        payload.pop("device_id", None)  # carried in the URL path
+        log.info("Simulation sync: adding %s (driver=%s)", device_id, payload["driver_id"])
+        started_ok = False
+        try:
+            resp = await session.post(
+                f"{sim_api}/api/devices/{device_id}/start",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            )
+            if resp.status == 200:
+                started_ok = True
+                data = await resp.json()
+                sim_port = data.get("port", 0)
+                if sim_port:
+                    self._redirect_device_to_sim(
+                        device_id, sim_port, bool(data.get("tls"))
+                    )
+                    if not dm.is_connect_deferred(device_id):
+                        # A device registered by this save has never been
+                        # dialed; the bring-up right after this opens it on
+                        # the redirect we just applied. Anything else is
+                        # already on the wire and has to be moved.
+                        await self._reconnect_quietly(device_id)
+                    log.info("Simulation sync: %s on port %d", device_id, sim_port)
+                else:
+                    log.warning("Simulator started %s but reported no port", device_id)
+            elif resp.status == 400:
+                # A prior leak may have left an orphaned instance the
+                # simulator now reports as "already simulated". Adopt its
+                # running port instead of leaving the device pointed at
+                # its real address.
+                if not await self._adopt_existing_sim(sim_api, device_id):
+                    body = await resp.text()
+                    log.warning("Simulator refused device %s: %s", device_id, body[:200])
+            else:
+                body = await resp.text()
+                log.warning("Simulator refused device %s: %s", device_id, body[:200])
+        except Exception as e:
+            log.warning("Failed to start simulator for new device %s: %s", device_id, e)
+            # If /start committed an instance server-side but our handling
+            # then failed (e.g. response parse), roll it back so we don't
+            # leak the instance + one of only 500 sim ports.
+            if started_ok and device_id not in self._sim_ports:
+                await self._best_effort_stop(sim_api, device_id)
 
     def _redirect_device_to_sim(
         self, device_id: str, sim_port: int, sim_tls: bool = False
@@ -1118,7 +1181,8 @@ class SimulationManager:
                     self._redirect_device_to_sim(
                         device_id, dev["port"], bool(dev.get("tls"))
                     )
-                    await self._reconnect_quietly(device_id)
+                    if not self.engine.devices.is_connect_deferred(device_id):
+                        await self._reconnect_quietly(device_id)
                     log.info(
                         "Adopted orphaned simulator instance for %s on port %d",
                         device_id, dev["port"],

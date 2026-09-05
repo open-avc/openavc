@@ -26,6 +26,7 @@ class _FakeDeviceManager:
         self._devices = devices
         self.reconnected: list[str] = []
         self.paused: set[str] = set()
+        self.deferred: set[str] = set()
 
     async def reconnect_device(self, device_id):
         self.reconnected.append(device_id)
@@ -33,10 +34,16 @@ class _FakeDeviceManager:
     def is_paused(self, device_id):
         return device_id in self.paused
 
+    def is_connect_deferred(self, device_id):
+        return device_id in self.deferred
+
 
 class _FakeEngine:
     def __init__(self, dm):
         self.devices = dm
+
+    async def wait_for_device_bringup(self):
+        return None
 
 
 class _FakeProcess:

@@ -39,6 +39,7 @@ from openavc.drivers.child_ids import (
     coerce_child_local_id,
 )
 from openavc.drivers.registry import get_driver_class, is_driver_registered
+from openavc.core.device_config import bridge_first
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.state_store import StateStore
 from openavc.utils.log_redaction import get_secret_registry, redact_config
@@ -170,6 +171,10 @@ class DeviceManager:
         self._flap_counts: dict[str, int] = {}
         self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
         self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
+        # Registered but not yet dialed — see add_device(defer_connect=True)
+        # and bring_up(). A project save registers its devices inside the
+        # request and connects them after it has answered.
+        self._deferred_connects: set[str] = set()
         self._pause_expiry_tasks: dict[str, asyncio.Task] = {}  # pause TTL backstops
         # When each armed pause expires (monotonic). Kept beside the task
         # because a task can't be asked how much of its sleep is left, and a
@@ -202,7 +207,11 @@ class DeviceManager:
         )
 
     async def add_device(
-        self, device_config: dict[str, Any], carry_pause: float | None = None
+        self,
+        device_config: dict[str, Any],
+        carry_pause: float | None = None,
+        *,
+        defer_connect: bool = False,
     ) -> None:
         """
         Instantiate a driver, register its state variables, and connect.
@@ -213,11 +222,28 @@ class DeviceManager:
                 under (see ``update_device``). The driver is registered but not
                 connected, and the pause is re-armed for that long. Only the
                 remove-and-re-add paths pass it; a genuine add is never paused.
+            defer_connect: Register the device but leave it on the deferred
+                list for :meth:`bring_up` to dial. The project reconcile uses
+                this so a save answers before the fleet is on the wire.
         """
         device_id = device_config["id"]
         driver_id = device_config["driver"]
         name = device_config.get("name", device_id)
-        config = device_config.get("config", {})
+        # The driver gets its OWN dict, never the one we keep in
+        # _device_configs. A live driver writes into its config — the
+        # simulation redirect swaps host/port/transport, an inbound-push
+        # driver records the listener port it bound, a YAML driver zeroes
+        # poll_interval across a login — and _device_configs is what
+        # Engine._sync_devices compares against the project to decide which
+        # devices actually changed. Sharing one dict made every one of those
+        # runtime writes read as a config edit, so the next save removed and
+        # re-added the device for a change nobody made: under simulation that
+        # is the WHOLE fleet on every save, which is where renaming one
+        # device on a 107-device project came to cost 109 seconds.
+        # routes/devices.py says the same thing about the pending-settings
+        # write it makes ("a skewed copy would re-add the device on the next
+        # device-section reconcile for a change that is already live").
+        config = dict(device_config.get("config", {}))
 
         # Adding a device is a fresh start, so it must not inherit a
         # suppress-auto-reconnect mark left by whatever happened to this id
@@ -276,14 +302,9 @@ class DeviceManager:
         self.state.set(f"device.{device_id}.enabled", True, source="config")
         log.info(f"Added device '{device_id}' ({name}) using driver '{driver_id}'")
 
-        # If this device routes through a bridge, let the bridge configure the
-        # port (e.g. push serial baud/parity) before we open the connection, so
-        # the transparent pass-through carries bytes at the right line settings.
-        await self._prepare_bridge_for(device_id, config)
-
-        # A pause carried across the instance swap: everything above still runs
-        # (the device is registered, and its bridge port is ready for whenever
-        # it resumes) — only the connect is suppressed, which is the whole harm.
+        # A pause carried across the instance swap: the registration above still
+        # runs (and bring_up still preps the bridge port for whenever it
+        # resumes) — only the connect is suppressed, which is the whole harm.
         # Whoever holds the pause still holds the session it was taken to
         # protect. The backstop is re-armed with the time the pause had left.
         if carry_pause is not None:
@@ -295,14 +316,50 @@ class DeviceManager:
                 f"Device '{device_id}' was re-added while paused — staying "
                 f"paused ({carry_pause:.0f}s left on the backstop)"
             )
-            # Still probe for a web UI: the pause is about the control session,
-            # and remove_device dropped the detected URL on the way through.
+            # The bridge port is prepared and the web UI probed even while
+            # paused: the pause is about the control session, and
+            # remove_device dropped the detected URL on the way through.
+            await self._prepare_bridge_for(device_id, config)
             self._schedule_web_ui_probe(device_id)
             return
+
+        if defer_connect:
+            # Registered, not yet dialed. The caller runs bring_up() once the
+            # rest of the reconcile has settled — which is what lets a project
+            # save answer before the fleet is on the wire, and what lets the
+            # simulation redirect land before the first connect instead of
+            # after a failed one.
+            self.state.set(
+                f"device.{device_id}.connected", False, source="device_manager"
+            )
+            self._deferred_connects.add(device_id)
+            return
+
+        await self._bring_up_device(device_id)
+
+    async def _bring_up_device(self, device_id: str) -> None:
+        """Prepare the bridge port, connect, and probe for a web UI.
+
+        The second half of ``add_device``, split out so it can run later (and
+        concurrently with its peers) than the registration. Never raises: a
+        failed connect is normal and is reported through ``offline_reason``
+        plus the reconnect loop, exactly as it always was.
+        """
+        driver = self._devices.get(device_id)
+        if driver is None:
+            return
+        config = driver.config or {}
+
+        # If this device routes through a bridge, let the bridge configure the
+        # port (e.g. push serial baud/parity) before we open the connection, so
+        # the transparent pass-through carries bytes at the right line settings.
+        await self._prepare_bridge_for(device_id, config)
 
         # Attempt connection
         try:
             await driver.connect()
+            if not await self._discard_if_superseded(device_id, driver):
+                return
             # Apply pending settings after successful connect
             await self._apply_pending_settings(device_id)
             # A bridge-routed device (IR on an emitter port) connect()s without
@@ -317,6 +374,8 @@ class DeviceManager:
                 if bridge_id:
                     self._set_bridge_offline_reason(device_id, bridge_id)
         except Exception as e:
+            if not await self._discard_if_superseded(device_id, driver):
+                return
             log.warning(f"Failed to connect '{device_id}': {e}")
             if self._set_offline_reason(device_id, driver, exc=e) == "auth_failed":
                 self._pause_reconnect_for_auth(device_id)
@@ -327,6 +386,79 @@ class DeviceManager:
         # control protocol connected — a device can be offline for control yet
         # still serve a reachable admin page.
         self._schedule_web_ui_probe(device_id)
+
+    async def _discard_if_superseded(self, device_id: str, driver: Any) -> bool:
+        """True if ``driver`` is still this device's instance.
+
+        A bring-up runs outside the reconcile lock, so a second save can
+        remove the device — or replace its driver — while a connect is still
+        in flight. Whatever that connect opened belongs to nobody: close it,
+        and leave nothing behind about a device that has moved on. Returns
+        False (and disconnects) when the instance has been superseded.
+
+        Both the connect that just ran and the disconnect below write state
+        under this device's id, which is not theirs to write any more, so the
+        namespace is put right afterwards: emptied when the device was removed
+        outright (remove_device already cleared it once), and re-stated from
+        the live instance when the device was merely replaced.
+        """
+        current = self._devices.get(device_id)
+        if current is driver:
+            return True
+        log.info(
+            f"Device '{device_id}' changed while it was being brought up — "
+            f"discarding the connection that was in flight"
+        )
+        try:
+            await driver.disconnect()
+        except Exception:
+            log.debug(f"Error discarding superseded '{device_id}'", exc_info=True)
+        prefix = f"device.{device_id}."
+        if device_id not in self._device_configs:
+            for key in self.state.get_namespace(prefix):
+                self.state.delete(f"{prefix}{key}")
+        elif current is not None:
+            self.state.set(
+                f"{prefix}connected",
+                bool(getattr(current, "_connected", False)),
+                source="device_manager",
+            )
+        return False
+
+    def is_connect_deferred(self, device_id: str) -> bool:
+        """True while this device is registered but not yet dialed.
+
+        Asked by anything that would otherwise reconnect a device on its
+        behalf — the simulation redirect most of all, which has no reason to
+        cycle a transport that has never been opened.
+        """
+        return device_id in self._deferred_connects
+
+    async def bring_up(self) -> None:
+        """Connect every device registered with ``defer_connect=True``.
+
+        Bridges first, then their dependents (a bridge-bound device's port prep
+        needs its bridge live), and concurrently within each batch — sequential
+        awaits here would serialize one connect timeout per device, which is
+        the cost this whole split exists to take out of the save.
+        """
+        pending = [d for d in self._deferred_connects if d in self._devices]
+        self._deferred_connects.clear()
+        if not pending:
+            return
+        configs = {
+            did: self._device_configs[did]
+            for did in pending
+            if did in self._device_configs
+        }
+        for batch in bridge_first(list(configs), configs):
+            results = await asyncio.gather(
+                *(self._bring_up_device(did) for did in batch),
+                return_exceptions=True,
+            )
+            for did, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    log.error(f"Bringing up device '{did}' failed: {result}")
 
     async def _prepare_bridge_for(
         self, device_id: str, config: dict[str, Any]
@@ -390,6 +522,10 @@ class DeviceManager:
         # under the same id.
         self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
+        # A device removed before the deferred bring-up reached it must not be
+        # dialed afterwards — bring_up re-checks the registry, but dropping the
+        # entry here keeps a removed id from surviving in the set at all.
+        self._deferred_connects.discard(device_id)
         # Forget the flap history too — a device re-added under the same id is
         # a fresh device, and inheriting a backoff it never earned would make
         # its first reconnect mysteriously slow.
@@ -424,7 +560,13 @@ class DeviceManager:
 
         log.info(f"Removed device '{device_id}'")
 
-    async def update_device(self, device_id: str, new_config: dict[str, Any]) -> None:
+    async def update_device(
+        self,
+        device_id: str,
+        new_config: dict[str, Any],
+        *,
+        defer_connect: bool = False,
+    ) -> None:
         """
         Update a device by disconnecting and re-adding with new config.
 
@@ -440,6 +582,8 @@ class DeviceManager:
         Args:
             device_id: The existing device ID.
             new_config: Full device config dict (id, driver, name, config).
+            defer_connect: Passed through to :meth:`add_device` — leave the
+                re-added device for :meth:`bring_up` to dial.
         """
         carry_pause = self._pause_remaining(device_id)
         if device_id in self._devices or device_id in self._orphaned_devices:
@@ -454,7 +598,9 @@ class DeviceManager:
         # path and leave the backstop cancelled.
         if not new_config.get("enabled", True):
             carry_pause = None
-        await self.add_device(new_config, carry_pause=carry_pause)
+        await self.add_device(
+            new_config, carry_pause=carry_pause, defer_connect=defer_connect
+        )
 
     async def send_command(
         self, device_id: str, command: str, params: dict[str, Any] | None = None
@@ -770,7 +916,28 @@ class DeviceManager:
         """Return a single device's config dict, or None if not tracked."""
         return self._device_configs.get(device_id)
 
-    async def retry_orphaned_device(self, device_id: str) -> bool:
+    def merge_live_config(self, device_id: str, delta: dict[str, Any]) -> None:
+        """Apply a connection/protocol delta to the live driver AND to the
+        stored config the reconcile compares against.
+
+        Both halves or neither. The driver's copy is what the next connect
+        dials; the stored copy is what ``Engine._sync_devices`` compares to
+        the project, so a caller that writes a setting straight into the
+        project has to move this one too — otherwise the very next reconcile
+        reads the skew as an edit and tears the device down for a change that
+        is already live. (A setup action does exactly that mid-wizard, which
+        would invalidate the running handler's ``self``.)
+        """
+        driver = self._devices.get(device_id)
+        if driver is not None and driver.config is not None:
+            driver.config.update(delta)
+        stored = self._device_configs.get(device_id)
+        if stored is not None:
+            stored.setdefault("config", {}).update(delta)
+
+    async def retry_orphaned_device(
+        self, device_id: str, *, defer_connect: bool = False
+    ) -> bool:
         """Re-attempt adding an orphaned device (e.g., after installing its driver).
 
         Returns True if the device was successfully activated, False if still orphaned.
@@ -787,10 +954,10 @@ class DeviceManager:
 
         # Remove from orphan tracking and re-add normally
         await self.remove_device(device_id)
-        await self.add_device(config)
+        await self.add_device(config, defer_connect=defer_connect)
         return device_id not in self._orphaned_devices
 
-    async def retry_all_orphans(self) -> list[str]:
+    async def retry_all_orphans(self, *, defer_connect: bool = False) -> list[str]:
         """Promote every orphan whose driver is now in the registry.
 
         Called after the driver loader runs (project reload, community
@@ -805,7 +972,9 @@ class DeviceManager:
             if not is_driver_registered(driver_id):
                 continue
             try:
-                ok = await self.retry_orphaned_device(device_id)
+                ok = await self.retry_orphaned_device(
+                    device_id, defer_connect=defer_connect
+                )
                 if ok:
                     activated.append(device_id)
                     log.info(

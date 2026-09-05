@@ -13,6 +13,7 @@ panel interaction does), and ``device_config`` (what a device dials).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import secrets
 import shutil
@@ -150,6 +151,13 @@ class Engine:
         # outside the reconcile lock.
         self._bookkeeping_queue: list[tuple[Any, Any]] = []
         self._bookkeeping_task: asyncio.Task | None = None
+
+        # Device bring-up after a project change (see
+        # _schedule_device_bringup): one worker at a time, with a flag for
+        # "another round is wanted" so a save landing mid-bring-up is never
+        # lost and never starts a second concurrent pass over the fleet.
+        self._bringup_task: asyncio.Task | None = None
+        self._bringup_requested = False
 
         # Tracking
         self._start_time: float = 0
@@ -445,6 +453,18 @@ class Engine:
         """Stop the engine gracefully."""
         log.info("Engine stopping...")
         self._running = False
+        # Stop bringing devices up. Nothing is lost: a device that never got
+        # dialed is registered and offline, which is what shutdown makes of
+        # every device anyway, and _stop_inner disconnects the rest.
+        self._bringup_requested = False
+        bringup = self._bringup_task
+        if bringup is not None:
+            bringup.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await bringup
+            # A task cancelled before it ever ran never reaches its own
+            # cleanup, so clear the slot here rather than relying on it.
+            self._bringup_task = None
         # Drain any queued bookkeeping persist before teardown so a
         # just-applied pending-settings clear or plugin-config save isn't
         # lost when the loop closes.
@@ -809,16 +829,25 @@ class Engine:
             # it, so cross-row effects only surface when every device's
             # resolved config is re-compared. _sync_devices diffs in memory
             # and is cheap.
-            await self._sync_devices()
+            #
+            # Nothing here dials a device. Registration is in-memory and
+            # instant; connecting is a network wait per device, and a save
+            # that holds it is a save that can be reported as FAILED by a
+            # client timeout after the bytes are already on disk. The
+            # bring-up runs after this reconcile answers — see
+            # _schedule_device_bringup.
+            await self._sync_devices(defer_connect=True)
 
             # Promote any orphans whose driver is now in the registry.
             # Must follow both the driver load and the device sync.
-            await self.devices.retry_all_orphans()
+            await self.devices.retry_all_orphans(defer_connect=True)
 
             # _sync_devices replaces driver instances, so simulator
-            # redirects must be re-applied.
-            if self.simulation.active:
-                await self.simulation.sync()
+            # redirects must be re-applied — and they are re-applied BEFORE
+            # the deferred connects, which is why the bring-up owns both in
+            # that order rather than the redirect chasing a connect that has
+            # already failed against the device's real address.
+            self._schedule_device_bringup()
 
         if diff.plugins:
             await self._sync_plugins()
@@ -881,7 +910,8 @@ class Engine:
         bytes stay on disk.
         """
         if diff.devices or diff.connections:
-            await self._sync_devices()
+            await self._sync_devices(defer_connect=True)
+            self._schedule_device_bringup()
         if diff.plugins:
             await self._sync_plugins()
 
@@ -947,8 +977,68 @@ class Engine:
         resolved. See ``core.device_config``."""
         return resolve_device_config(device, self.project)
 
-    async def _sync_devices(self) -> None:
-        """Sync running devices with project config (add new, remove deleted, update changed)."""
+    def _schedule_device_bringup(self) -> None:
+        """Ask for a device bring-up round, starting the worker if it is idle.
+
+        The reconcile registers devices and returns; this is what actually
+        puts them on the wire, outside the request that saved the project.
+        Deliberately fire-and-forget from the caller's point of view — a
+        device that will not connect is normal, and is reported through its
+        ``offline_reason`` and the reconnect loop like any other.
+        """
+        self._bringup_requested = True
+        if self._bringup_task is None or self._bringup_task.done():
+            self._bringup_task = asyncio.ensure_future(self._device_bringup_worker())
+
+    async def _device_bringup_worker(self) -> None:
+        """Run bring-up rounds until nothing more is asked for.
+
+        One worker, never two: a second save landing mid-round sets the flag
+        instead of starting a concurrent pass, so the fleet is never dialed
+        twice at once. The flag is consumed and the loop re-checked with no
+        await in between, so a request cannot slip past the exit.
+        """
+        try:
+            while self._bringup_requested:
+                self._bringup_requested = False
+                try:
+                    # The simulator redirect first, so a device registered by
+                    # this save dials 127.0.0.1 on its FIRST attempt rather
+                    # than failing against its real address and being fixed up
+                    # afterwards.
+                    if self.simulation.active:
+                        await self.simulation.sync()
+                    await self.devices.bring_up()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("Device bring-up after a project change failed")
+        finally:
+            # Cleared synchronously as the coroutine returns, so a
+            # _schedule_device_bringup that runs after the loop condition was
+            # last read starts a fresh worker instead of setting a flag
+            # nothing will ever look at again.
+            self._bringup_task = None
+
+    async def wait_for_device_bringup(self) -> None:
+        """Block until no bring-up round is pending or running.
+
+        For callers that genuinely need the fleet up before they continue —
+        starting simulation, and tests that assert on connection state after
+        a save.
+        """
+        # ``done()`` as well as ``None``: a task cancelled before its first
+        # step never runs its own cleanup, so the attribute can outlive it.
+        while (task := self._bringup_task) is not None and not task.done():
+            await asyncio.wait({task})
+
+    async def _sync_devices(self, *, defer_connect: bool = False) -> None:
+        """Sync running devices with project config (add new, remove deleted, update changed).
+
+        ``defer_connect`` registers the added/changed devices without dialing
+        them, leaving that to ``DeviceManager.bring_up`` — see
+        :meth:`_schedule_device_bringup`.
+        """
         if not self.project:
             return
 
@@ -978,7 +1068,9 @@ class Engine:
         if new_device_ids:
             for batch in bridge_first(new_device_ids, project_devices):
                 add_results = await asyncio.gather(
-                    *(self.devices.add_device(project_devices[did]) for did in batch),
+                    *(self.devices.add_device(
+                        project_devices[did], defer_connect=defer_connect
+                    ) for did in batch),
                     return_exceptions=True,
                 )
                 for did, result in zip(batch, add_results):
@@ -1007,8 +1099,9 @@ class Engine:
                 changed_ids.append(device_id)
         if changed_ids:
             update_results = await asyncio.gather(
-                *(self.devices.update_device(did, project_devices[did])
-                  for did in changed_ids),
+                *(self.devices.update_device(
+                    did, project_devices[did], defer_connect=defer_connect
+                ) for did in changed_ids),
                 return_exceptions=True,
             )
             for did, result in zip(changed_ids, update_results):

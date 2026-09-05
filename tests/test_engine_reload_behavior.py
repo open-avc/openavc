@@ -268,7 +268,7 @@ async def test_sync_devices_adds_bridges_before_their_dependents(
     eng.devices = _mock_devices({})
     order = []
 
-    async def record_add(config):
+    async def record_add(config, **kwargs):
         order.append(config["id"])
 
     eng.devices.add_device = AsyncMock(side_effect=record_add)

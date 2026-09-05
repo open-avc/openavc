@@ -111,14 +111,12 @@ class SetupActionContext:
             project.connections.pop(device_id, None)
         dev.config = protocol
 
-        # Merge into the live driver BEFORE the reconcile: driver.config is
-        # the same dict the device manager compares against the new resolved
-        # config, so updating it first keeps that compare convergent — the
-        # running instance is not torn down, the handler's ``self`` stays
-        # valid, and the next connect() uses the new settings.
-        driver = engine.devices.get_driver(device_id)
-        if driver is not None:
-            driver.config.update(delta)
+        # Merge into the live device BEFORE the reconcile — into the driver
+        # (what the next connect dials) and into the config the device manager
+        # compares against the new resolved one. Doing it first keeps that
+        # compare convergent, so the running instance is not torn down and the
+        # handler's ``self`` stays valid.
+        engine.devices.merge_live_config(device_id, delta)
 
         # Runs in the action's background task, never under the reconcile
         # lock, so awaiting the seam directly is safe. The revision bump and
