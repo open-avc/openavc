@@ -311,9 +311,45 @@ def test_a_wedged_endpoint_is_visible_without_opening_anything(
 
     banner = page.locator('[data-testid="child-trouble-banner"]')
     expect(banner).to_be_visible(timeout=EXPECT_TIMEOUT)
-    # Counted against the roster, and named the way the list names it.
-    expect(banner).to_contain_text("1 of 4 encoder is not answering")
+    # Counted against the roster, named the way the list names it, and worded
+    # for what is actually wrong. This endpoint IS answering -- its service is
+    # what has hung -- so "not answering" would send somebody to the wrong
+    # remedy, which is the entire reason the code exists.
+    expect(banner).to_contain_text("1 of 4 encoder is reachable, but not running")
     expect(banner).to_contain_text("Encoder 3")
+
+
+def test_an_empty_slot_is_not_reported_as_a_fault(
+    page: Page, server_factory,
+) -> None:
+    """A position with nothing in it is marked, and counted nowhere.
+
+    Some rosters are slots rather than channels -- the extension positions on
+    a chained mixer, the card slots on a frame. Reporting those as down would
+    trade one false alarm (green dots on hardware that does not exist) for
+    another, so the mark, the badge and the banner have to disagree here on
+    purpose.
+    """
+    handle = server_factory(initial_children=4)
+    _open_device(page, handle.base_url, "Test Controller")
+
+    handle.write_ops([{
+        "op": "fault", "child_type": "encoder", "local_id": 2,
+        "code": "not_fitted",
+    }])
+
+    row = page.locator('[data-testid="child-row-002"]')
+    dot = row.locator('[data-testid="child-presence-dot"]')
+    expect(dot).to_have_attribute("data-reason", "not_fitted", timeout=EXPECT_TIMEOUT)
+    # Not in service, and not trouble: two different questions.
+    expect(dot).to_have_attribute("data-ok", "false")
+    expect(dot).to_have_attribute("data-trouble", "false")
+
+    # No badge, no banner, and it stays where the roster put it.
+    expect(page.locator('[data-testid="child-type-down-encoder"]')).to_have_count(0)
+    expect(page.locator('[data-testid="child-trouble-banner"]')).to_have_count(0)
+    first_row = page.locator('[data-testid^="child-row-"]').first
+    expect(first_row).to_have_attribute("data-testid", "child-row-001")
 
 
 def test_the_row_and_the_tab_agree_with_the_banner(
