@@ -555,28 +555,26 @@ def _min_as_number(var_def: dict[str, Any]) -> float | None:
         return None
 
 
-def state_var_default(
-    var_def: dict[str, Any], *, number_from_min: bool = False
-) -> Any:
-    """The value a declared state variable starts at, before anything is read
-    from the device.
+def state_var_default(var_def: dict[str, Any]) -> Any:
+    """The value a declared state variable would hold, for a consumer that has
+    to produce one.
 
-    One rule for every consumer — the driver runtime seeding a device's (and
-    a child's) state, the auto-generated simulator seeding the values it will
-    serve, and the validator working out what a variable would hold. They
-    used to agree by hand and had drifted three ways.
+    One rule for every consumer that needs it: the auto-generated simulator
+    seeding the wire values it will serve, the validator working out what a
+    variable would hold, and the platform clearing a stale ``last_error`` back
+    to the shape its driver's own seeding produced. They used to agree by hand
+    and had drifted three ways.
 
-    An ``integer`` variable with a fractional ``min`` rounds UP, so the start
-    value is never below the minimum the driver declared; a non-numeric
-    ``min`` is an authoring bug that falls back to 0 rather than crashing
-    driver instantiation.
+    An ``integer`` variable with a fractional ``min`` rounds UP, so the value is
+    never below the minimum the driver declared; a non-numeric ``min`` is an
+    authoring bug that falls back to 0 rather than crashing.
 
-    ``number_from_min`` is the one place the callers genuinely differ, and it
-    is not drift. A driver seeds the LOGICAL value it publishes, so a fader
-    declaring ``min: -80`` starts at -80.0. A simulator seeds the WIRE value
-    it will put on the socket, which is a different namespace — the driver's
-    response rules map between the two — so it starts numeric variables at
-    0.0 and lets the first poll settle it.
+    **The driver runtime is deliberately not a caller.** It used to be, through
+    a ``number_from_min`` flag that made a fader declaring ``min: -80`` start at
+    -80.0 — a value nothing downstream could tell from a reading. A device that
+    has not spoken has no reading, so the runtime records ``None`` and every
+    consumer that judges a reading already knows what that means. See
+    ``BaseDriver._default_for_var_def``.
     """
     var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
     if var_type == "boolean":
@@ -589,16 +587,15 @@ def state_var_default(
         return math.ceil(min_num)
     if var_type in ("number", "float"):
         # 'float' is an accepted type alias for 'number' (driver loader +
-        # schema). Both seed a numeric 0.0, not '' — a consumer reading the
-        # var before the first poll must not get a string where a number is
-        # expected.
-        if not number_from_min:
-            return 0.0
-        min_num = _min_as_number(var_def)
-        if min_num is None:
-            _warn_unusable_min(var_def)
-            return 0.0
-        return min_num
+        # schema). Both give a numeric 0.0, not '' — a consumer reading the
+        # var must not get a string where a number is expected.
+        #
+        # Unlike the integer branch above, this one does not consult `min`: a
+        # simulator seeds the WIRE value it will put on the socket, which is a
+        # different namespace from the logical value a driver's response rules
+        # map it to. That asymmetry predates the runtime leaving; it is the
+        # behaviour every remaining caller already had.
+        return 0.0
     if var_type == "enum":
         values = var_def.get("values", [])
         return values[0] if values else ""

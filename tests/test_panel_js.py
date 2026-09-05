@@ -158,6 +158,10 @@ SCENARIOS = [
     "q213_no_connected_key_is_not_a_claim_that_the_device_is_down",
     "q213_the_design_canvas_draws_the_live_look",
     "q213_an_element_is_unavailable_while_any_of_its_devices_is",
+    # A live device that has simply not reported a reading yet -- which is now
+    # every reading, until the device sends it.
+    "q172_a_live_device_that_has_not_reported_draws_no_value",
+    "q172_an_unreported_reading_is_not_the_unavailable_mark",
     # A refused command must not leave the operator's value standing.
     "q206_a_fader_announces_the_value_it_is_drawing",
     "q206_a_refused_change_puts_the_fader_back",

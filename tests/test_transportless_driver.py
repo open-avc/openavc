@@ -108,12 +108,15 @@ async def test_reconnect_is_clean(core, listener):
     await driver.disconnect()
 
 
-async def test_state_variables_seed_from_the_declaration(core, listener):
+async def test_state_variables_get_a_key_from_the_declaration(core, listener):
+    """Declared, so the keys are there; unreported, so they hold nothing."""
     port, _ = listener
     driver = _relay(core, port)
     await driver.connect()
-    assert driver.get_state("wakes_sent") == 0
-    assert driver.get_state("last_wake") == ""
+    assert driver.state.has("device.relay1.wakes_sent")
+    assert driver.state.has("device.relay1.last_wake")
+    assert driver.get_state("wakes_sent") is None
+    assert driver.get_state("last_wake") is None
 
 
 async def test_no_liveness_watchdog_without_a_probe(core, listener):
@@ -146,7 +149,7 @@ async def test_missing_config_is_reported_not_raised(core, listener):
     driver = _relay(core, port, unit_id="")
     await driver.connect()
     assert await driver.send_command("wake") is None
-    assert driver.get_state("wakes_sent") == 0
+    assert driver.get_state("wakes_sent") is None
 
 
 def test_payload_builder_rejects_a_malformed_unit_id():

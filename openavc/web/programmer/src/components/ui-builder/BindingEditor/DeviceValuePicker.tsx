@@ -22,6 +22,7 @@ import type {
 import { CHILD_RESERVED_PROPS } from "../../../api/types";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
+import { hasReading } from "../../../api/stateClient";
 import {
   SearchableDropdown,
   dropdownRowStyle,
@@ -511,7 +512,7 @@ function PropertyDropdown({
                           </div>
                         )}
                       </div>
-                      {live !== undefined && (
+                      {hasReading(live) && (
                         <span
                           style={{
                             fontSize: 11,

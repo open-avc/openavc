@@ -651,6 +651,8 @@ Any variable can also declare:
 
 - `control: true` — marks a variable an integrator would bind a panel control to (a fader level, a mute, a source selection), as opposed to a read-out or metadata. The UI Builder's value picker lists flagged variables first. Ordering only — unflagged variables always remain pickable.
 
+**A declared variable has no value until your driver reports one.** The platform creates the state key as soon as the device is added, so the UI Builder's value picker offers it, the State tab lists it and a `$device.<id>.<variable>` reference resolves — but it holds nothing until you call `set_state`. That is deliberate: a panel showing "0 h" for a lamp with 450 hours on it, or "off" for a projector nobody has reached, is worse than a panel showing "--". Downstream, "nothing reported" is understood everywhere — a Dashboard tile draws `--`, a monitor with limits stays quiet instead of alerting, a fader draws no handle, and a macro condition on the variable makes no decision. So report early: read your device's values in `_initial_sync` or on the first poll rather than leaving a variable blank until something happens to change it. Note that `min` is range metadata for the UI, not a starting value.
+
 #### `child_entity_types` entry
 
 Some devices are really a controller for many sub-units: a video matrix manages hundreds of encoders and decoders, a DSP has dozens of zones, a presentation switcher has video-wall presets. Declaring `child_entity_types` lets the driver register those sub-units as **child entities** so each gets its own state, its own row in the device's Child Entities tab, and addressable state keys (`device.<id>.<type>.<local_id>.<property>`) — without inventing your own key conventions.
@@ -2819,7 +2821,8 @@ Plenty of drivers keep a `last_error` string for the things a device says
 about itself: a rejected command, a response the driver could not parse. If
 you declare one in `state_variables`, you write it and the platform clears
 it — a poll that finishes cleanly, and that writes nothing to `last_error`
-itself, resets it to the value the variable starts at.
+itself, resets it to empty. Empty rather than blank-because-unreported: the
+device just answered, so "no error" is something the platform knows.
 
 That means you do not need a clearing rule of your own, and you should not
 add one. Rewrite the value each time the fault recurs and it stays on screen;

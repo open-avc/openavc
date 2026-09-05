@@ -473,6 +473,13 @@ def _assert_child_parity(drv, sim, child_type, child_ids, var_names) -> None:
     for cid in child_ids:
         for name in var_names:
             key = f"{child_type}.{cid}.{name}"
+            # Guard the guard: the driver only holds a reading it was told, so
+            # a variable the test never exercised would compare an absence
+            # against the simulator's seeded wire value and pass for free.
+            assert drv.get_state(key) is not None, (
+                f"{key!r} was never reported to the driver, so parity here "
+                f"would not be comparing anything"
+            )
             assert drv.get_state(key) == sim.get_state(key), (
                 f"child parity broken for {key!r}: "
                 f"driver={drv.get_state(key)!r} sim={sim.get_state(key)!r}"
@@ -496,7 +503,9 @@ async def test_zone_amp_child_command_round_trips():
         await _wait_for(lambda: drv.get_state("zone.2.level") == 55)
         assert sim.get_state("zone.2.level") == 55
         assert sim.get_state("zone.1.level") == 0
-        assert drv.get_state("zone.1.level") == 0
+        # The simulator holds a wire value it can serve; the driver holds no
+        # reading for a zone it has not been told about.
+        assert drv.get_state("zone.1.level") is None
 
         # Value-mapped child reply ("ZM 1 ON" <-> mute True).
         await drv.send_command("zone_mute_on", {"zone": 1})
@@ -506,6 +515,14 @@ async def test_zone_amp_child_command_round_trips():
 
         await drv.send_command("zone_mute_off", {"zone": 1})
         await _wait_for(lambda: drv.get_state("zone.1.mute") is False)
+
+        # Exercise the two variables the sweep at the end has not touched, so
+        # it compares reported readings on both children rather than a pair of
+        # absences -- which is what it used to do, and which passed for free.
+        await drv.send_command("set_zone_level", {"zone": 1, "level": 20})
+        await _wait_for(lambda: drv.get_state("zone.1.level") == 20)
+        await drv.send_command("zone_mute_on", {"zone": 2})
+        await _wait_for(lambda: drv.get_state("zone.2.mute") is True)
 
         # Flat fallback keeps working alongside the child model.
         await drv.send_command("power_on")

@@ -51,10 +51,10 @@ def _definition(only_when: object) -> dict:
 
 GATE = {"key": "audio_mode", "operator": "equals", "value": "2"}
 
-# What a declared integer state variable holds before anything reports one. A
-# skipped rule leaves this standing; it is not the same as "the device said 0",
-# which is exactly why the gate matters more than a default ever could.
-SEEDED = 0
+# What a declared state variable holds before anything reports one: nothing. A
+# skipped rule leaves that standing, which is the whole point -- "the device has
+# not said" must never be confused with "the device said 0".
+UNREPORTED = None
 
 
 def _audio_source(drv):
@@ -74,10 +74,11 @@ async def test_the_rule_is_skipped_while_the_gate_is_shut() -> None:
     drv = _make_driver(_definition(GATE))
     await drv.on_data_received(b"MODE0\r\n")
     await drv.on_data_received(b"AUDIO SRC 4\r\n")
-    # Still the value the platform seeds a declared integer with, because the
-    # rule never ran. Seeded, not absent: a declared state variable exists from
-    # construction so a bound label never draws a blank.
-    assert _audio_source(drv) == SEEDED
+    # Nothing reported, because the rule never ran. The key still exists -- a
+    # declared state variable is created at construction so a picker and a
+    # $-reference can find it -- it simply holds no reading.
+    assert drv.state.has("device.widget_1.audio_source")
+    assert _audio_source(drv) is UNREPORTED
 
 
 @pytest.mark.asyncio
@@ -141,7 +142,7 @@ async def test_a_gate_on_a_key_nothing_has_written_is_shut() -> None:
     it is in, so a rule that only makes sense in one of them does not apply."""
     drv = _make_driver(_definition(GATE))
     await drv.on_data_received(b"AUDIO SRC 4\r\n")
-    assert _audio_source(drv) == SEEDED
+    assert _audio_source(drv) is UNREPORTED
 
 
 @pytest.mark.asyncio
@@ -168,7 +169,7 @@ async def test_a_shut_gate_lets_a_later_rule_have_the_frame() -> None:
     drv = _make_driver(definition)
     await drv.on_data_received(b"MODE0\r\n")
     await drv.on_data_received(b"AUDIO SRC 4\r\n")
-    assert _audio_source(drv) == SEEDED
+    assert _audio_source(drv) is UNREPORTED
     assert drv.state.get(f"device.{drv.device_id}.fallback") == 4
 
 

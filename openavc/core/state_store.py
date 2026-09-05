@@ -292,6 +292,15 @@ class StateStore:
         driver polls) can't smuggle a nested object past the caller-side
         guards and corrupt change detection. It's dropped, not coerced: we
         never persist an arbitrary blob, even stringified.
+
+        "No change" means the key already held this value, which is why the
+        presence check comes first. Without it, ``set(key, None)`` on a key that
+        does not exist compared ``None == None`` and returned, so the key was
+        never created — making the absent/None distinction ``has()`` promises
+        unreachable through the front door. A driver declaring a reading nobody
+        has taken yet writes exactly that, and its key has to exist for a
+        binding picker, the live state list and a ``$device.…`` reference to
+        find it.
         """
         if not is_flat_primitive(value):
             log.warning(
@@ -305,7 +314,7 @@ class StateStore:
             log.debug("State key '%s' has unknown namespace prefix (source=%s)", key, source)
 
         old_value = self._store.get(key)
-        if old_value == value and type(old_value) is type(value):
+        if key in self._store and old_value == value and type(old_value) is type(value):
             return  # No change, skip notifications
 
         self._store[key] = value
@@ -337,7 +346,7 @@ class StateStore:
                 )
                 continue
             old_value = store.get(key)
-            if old_value == value and type(old_value) is type(value):
+            if key in store and old_value == value and type(old_value) is type(value):
                 continue
             store[key] = value
             history.append(HistoryEntry(key, old_value, value, source))

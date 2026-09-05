@@ -4841,19 +4841,27 @@ class PanelApp {
     }
 
     /**
-     * The fader with nothing to show, because the device it reads is gone.
+     * The fader with nothing to show: the device it reads is gone, or it is
+     * right there and has not reported this reading yet.
      *
-     * The handle is hidden (CSS, off the element's `device-offline` class)
-     * rather than parked at the floor: a handle at the bottom is a claim of
-     * minimum, and on a -80..0 fader that reads as fully attenuated. What was
-     * photographed for this fault was the opposite claim -- a handle at the
-     * top over "0.0 dB" -- on an amplifier sitting at -6.0 and muted.
+     * The handle is hidden rather than parked at the floor: a handle at the
+     * bottom is a claim of minimum, and on a -80..0 fader that reads as fully
+     * attenuated. What was photographed for the offline fault was the opposite
+     * claim -- a handle at the top over "0.0 dB" -- on an amplifier sitting at
+     * -6.0 and muted.
+     *
+     * `no-reading` goes on the handle rather than on the element, because the
+     * element's `device-offline` mark is a different statement (dimmed and
+     * dashed: "this control cannot be trusted") and a live device that simply
+     * has not answered yet has earned neither. It is also per-handle rather
+     * than tallied, since one fader has exactly one.
      */
     _renderFaderUnknown(b) {
         const { handle, valueDisplay, unit, horizontal } = b._fader;
         if (horizontal) handle.style.left = '0%';
         else handle.style.bottom = '0%';
         handle.removeAttribute('aria-valuenow');
+        handle.classList.add('no-reading');
         if (valueDisplay) valueDisplay.textContent = this._unknownValueText(unit);
     }
 
@@ -4875,14 +4883,14 @@ class PanelApp {
             return;
         }
         if (raw === undefined || raw === null) {
-            // Bound key deleted — return the handle to the floor rather than
-            // leaving it parked at the last device value.
-            if (horizontal) handle.style.left = '0%';
-            else handle.style.bottom = '0%';
-            handle.setAttribute('aria-valuenow', String(min));
-            if (valueDisplay) valueDisplay.textContent = fmt(min);
+            // No reading: the key was deleted, or the device is reachable and
+            // simply has not reported this one yet. Same answer either way, and
+            // it is the same one an unreachable device gets -- printing fmt(min)
+            // was a claim of full attenuation nobody made.
+            this._renderFaderUnknown(b);
             return;
         }
+        handle.classList.remove('no-reading');
         const value = Math.max(min, Math.min(max, this._reverseScale(Number(raw), min, max, outputMin, outputMax, scaleToFull)));
         const frac = span > 0 ? this._responseCurveInverse((value - min) / span, response, responseDbRange) : 0;
         if (horizontal) handle.style.left = `${frac * 100}%`;
@@ -6754,7 +6762,13 @@ class PanelApp {
         }
 
         if (value === undefined || value === null) {
-            setText('');
+            // Same sentence-without-the-number the offline branch draws: a
+            // label formatted "Amp draw: {value} A" reads "Amp draw: -- A"
+            // rather than vanishing, so the page keeps its shape and the reader
+            // can see which reading is missing.
+            setText(binding.format
+                ? String(binding.format).split('{value}').join('--')
+                : '--');
             return;
         }
         const shown = this._labelValueText(value, elementDef);
@@ -6821,24 +6835,20 @@ class PanelApp {
             if (isVertical) fill.style.height = pct + '%';
             else fill.style.width = pct + '%';
         };
-        if (offline) {
-            // Nothing to read: the fill is emptied, the thumb is hidden by CSS
-            // (a thumb at the bottom is a claim of minimum) and the readout
-            // says so rather than printing the range's floor as a value.
+        if (offline || rawValue === undefined || rawValue === null) {
+            // Nothing to read -- the device is unreachable, the key was
+            // deleted, or the device is right there and has not reported this
+            // one yet. The fill is emptied, the thumb is hidden (a thumb at the
+            // bottom is a claim of minimum) and the readout says so rather than
+            // printing the range's floor as a value.
             element.value = valueToPos(min);
             element.removeAttribute('aria-valuetext');
+            element.classList.add('no-reading');
             setFill(0);
             if (valueDisplay) valueDisplay.textContent = this._unknownValueText(unit);
             return;
         }
-        if (rawValue === undefined || rawValue === null) {
-            // Bound key deleted — return the slider to its minimum (bottom).
-            element.value = valueToPos(min);
-            element.setAttribute('aria-valuetext', fmtValue(min));
-            setFill(0);
-            if (valueDisplay) valueDisplay.textContent = fmtValue(min);
-            return;
-        }
+        element.classList.remove('no-reading');
         const displayValue = this._reverseScale(Number(rawValue), min, max, outputMin, outputMax, scaleToFull);
         const pos = valueToPos(displayValue);
         element.value = pos;
@@ -6852,17 +6862,12 @@ class PanelApp {
         const value = this.state[binding.key];
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
-        if (offline) {
+        if (offline || value === undefined || value === null) {
             // No selection at all rather than a stale one or the first option:
             // a dropdown reading "HDMI 2" for a switcher nobody can reach is
-            // the same confident wrong answer a fader gives.
+            // the same confident wrong answer a fader gives, and so is one
+            // reading "HDMI 1" for a switcher that has not said yet.
             element.selectedIndex = -1;
-            return;
-        }
-        if (value === undefined || value === null) {
-            // Bound key deleted — fall back to the first option rather than
-            // pinning the last device selection.
-            if (element.options.length) element.selectedIndex = 0;
             return;
         }
         element.value = String(value);

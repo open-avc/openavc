@@ -1,23 +1,23 @@
-"""The default value of a declared state variable, pinned across all three
-consumers.
+"""What a declared state variable holds before the device has spoken, pinned
+across every consumer that answers the question.
 
-"What does a state variable hold before anything is read from the device"
-used to be answered in four places under three different rules: the driver
-runtime, the simulator's per-device seeding, the simulator's per-child
-seeding, and the validator — whose comment claimed to mirror the simulator
-and did not. The drift was latent rather than live (no shipped driver
-declares a fractional integer ``min``), and the failure mode when it fires is
-a validator warning on a correct driver, which is exactly what teaches an
-author to stop reading warnings.
+There are two questions here and they used to be confused for one.
 
-There is one rule now. This test is the table that made the case, run against
-all three callers, so a fifth spelling cannot appear quietly.
+**What does the runtime record?** Nothing — ``None``. A device that has not
+reported a reading has no reading, and the store already distinguishes "the
+driver declares this" (``has()``) from "somebody reported it" (``get()``). The
+runtime used to record a typed value instead — a numeric at its declared
+``min``, an enum at its first value — which nothing downstream could tell from a
+reading: a projector nobody had reached published ``lamp_hours = 0`` against a
+true 450, the relay shipped it to the cloud as fresh, and a monitor declaring a
+minimum above zero fired on it.
 
-The runtime/simulator difference in the ``number`` column is deliberate and
-is NOT drift: a driver publishes logical values (a fader declaring min -80
-starts at -80.0), while a simulator seeds the wire value it will put on the
-socket. Those are different namespaces, and the driver's response rules map
-between them.
+**What value WOULD it hold, for a consumer that has to produce one?** That is
+still ``compiled_protocol.state_var_default``, and its two callers are the
+auto-generated simulator (seeding the wire values it will serve) and the
+validator (working out what a variable would hold). Those used to be answered in
+four places under three rules; there is one rule now, and this is the table that
+made the case.
 """
 
 import math
@@ -48,51 +48,60 @@ def _validator(var_def):
     return _default_for_type(var_def)
 
 
-# (declared var, runtime, simulator) — the validator must always match the
-# simulator, and the simulator's two seeding paths must always match each
-# other, so those are asserted rather than tabulated.
+# What a value-producing consumer answers. The validator must always match the
+# simulator, and the simulator's two seeding paths must always match each other,
+# so those are asserted rather than tabulated.
 TABLE = [
-    ({"type": "number", "min": -12}, -12.0, 0.0),
-    ({"type": "number", "min": -80.0}, -80.0, 0.0),
-    ({"type": "number"}, 0.0, 0.0),
-    ({"type": "float", "min": -3.5}, -3.5, 0.0),
-    ({"type": "integer", "min": 0}, 0, 0),
-    ({"type": "integer", "min": 5}, 5, 5),
-    ({"type": "integer"}, 0, 0),
-    ({"type": "boolean"}, False, False),
-    ({"type": "boolean", "min": 1}, False, False),
-    ({"type": "enum", "values": ["off", "on"]}, "off", "off"),
-    ({"type": "enum", "values": []}, "", ""),
-    ({"type": "string"}, "", ""),
-    ({}, "", ""),
+    ({"type": "number", "min": -12}, 0.0),
+    ({"type": "number", "min": -80.0}, 0.0),
+    ({"type": "number"}, 0.0),
+    ({"type": "float", "min": -3.5}, 0.0),
+    ({"type": "integer", "min": 0}, 0),
+    ({"type": "integer", "min": 5}, 5),
+    ({"type": "integer"}, 0),
+    ({"type": "boolean"}, False),
+    ({"type": "boolean", "min": 1}, False),
+    ({"type": "enum", "values": ["off", "on"]}, "off"),
+    ({"type": "enum", "values": []}, ""),
+    ({"type": "string"}, ""),
+    ({}, ""),
 ]
 
 
 def test_default_table():
-    for var_def, expected_runtime, expected_sim in TABLE:
-        assert _runtime(var_def) == expected_runtime, var_def
-        assert _simulator(var_def) == expected_sim, var_def
-        assert _simulator_child(var_def) == expected_sim, var_def
-        assert _validator(var_def) == expected_sim, var_def
+    for var_def, expected in TABLE:
+        assert _simulator(var_def) == expected, var_def
+        assert _simulator_child(var_def) == expected, var_def
+        assert _validator(var_def) == expected, var_def
 
 
-def test_integer_min_rounds_up_everywhere():
-    """A fractional ``min`` on an integer var rounds UP, in every consumer.
+def test_the_runtime_records_no_reading_whatever_was_declared():
+    """Every row of the table above, and the runtime's answer is the same one.
 
-    Truncating would seed the variable BELOW the minimum its own driver
-    declares — the runtime used to, the simulator did not, and the validator
-    passed the authored 0.5 through untouched and then warned that the
-    simulator's 1 didn't round-trip.
+    This is the whole fix: a reading that was never read is not a number, not a
+    word, and not an empty string. It is nothing, which is what
+    ``monitors.NO_VALUE``, ``alert_monitor`` and ``condition_eval`` all already
+    understand ``None`` to mean.
+    """
+    for var_def, _ in TABLE:
+        assert _runtime(var_def) is None, var_def
+
+
+def test_integer_min_rounds_up_for_a_consumer_that_needs_a_value():
+    """A fractional ``min`` on an integer var rounds UP.
+
+    Truncating would produce a value BELOW the minimum its own driver declares —
+    the simulator did not, and the validator passed the authored 0.5 through
+    untouched and then warned that the simulator's 1 didn't round-trip.
     """
     var_def = {"type": "integer", "min": 0.5}
-    assert _runtime(var_def) == 1
     assert _simulator(var_def) == 1
     assert _simulator_child(var_def) == 1
     assert _validator(var_def) == 1
 
     negative = {"type": "integer", "min": -2.5}
     assert math.ceil(-2.5) == -2
-    for reader in (_runtime, _simulator, _simulator_child, _validator):
+    for reader in (_simulator, _simulator_child, _validator):
         assert reader(negative) == -2
 
 
@@ -101,17 +110,18 @@ def test_unusable_min_falls_back_to_zero_without_crashing():
     reason to take a device's whole state down at instantiation."""
     bad_int = {"type": "integer", "min": "low"}
     bad_num = {"type": "number", "min": "low"}
-    for reader in (_runtime, _simulator, _simulator_child, _validator):
+    for reader in (_simulator, _simulator_child, _validator):
         assert reader(bad_int) == 0
         assert reader(bad_num) == 0.0
+    assert _runtime(bad_int) is None
+    assert _runtime(bad_num) is None
 
 
 def test_boolean_min_is_not_a_number():
-    """``min: true`` must not seed 1 — float(True) is 1.0 and would look
+    """``min: true`` must not produce 1 — float(True) is 1.0 and would look
     like a deliberate starting value."""
     assert state_var_default({"type": "integer", "min": True}) == 0
-    assert state_var_default({"type": "number", "min": True},
-                             number_from_min=True) == 0.0
+    assert state_var_default({"type": "number", "min": True}) == 0.0
 
 
 def test_float_is_a_number_alias_for_the_simulator_too():
@@ -122,4 +132,3 @@ def test_float_is_a_number_alias_for_the_simulator_too():
     assert _simulator({"type": "float"}) == 0.0
     assert _simulator_child({"type": "float"}) == 0.0
     assert _validator({"type": "float"}) == 0.0
-    assert _runtime({"type": "float", "min": 2}) == 2.0

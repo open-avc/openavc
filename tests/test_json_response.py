@@ -96,8 +96,8 @@ async def test_json_invalid_body_is_ignored(driver):
     """Non-JSON / non-object bodies don't crash and don't change state."""
     await driver.on_data_received(b"not json at all")
     await driver.on_data_received(b'["a","list"]')
-    assert driver.get_state("sessions") == 0
-    assert driver.get_state("in_use") is False
+    assert driver.get_state("sessions") is None
+    assert driver.get_state("in_use") is None
 
 
 async def test_json_single_element_array_body_unwrapped(driver):
@@ -114,7 +114,7 @@ async def test_json_single_element_array_body_unwrapped(driver):
 async def test_json_multi_element_array_still_ignored(driver):
     """A multi-element array is ambiguous — no unwrap, state untouched."""
     await driver.on_data_received(b'[{"sessions":9},{"sessions":8}]')
-    assert driver.get_state("sessions") == 0
+    assert driver.get_state("sessions") is None
 
 
 async def test_json_falls_through_to_regex():
@@ -183,7 +183,7 @@ async def test_json_require_scopes_rule_to_matching_bodies():
     # Peripheral body: carries `status` but not the required key — the scoped
     # rule must not apply; the unscoped rule still does.
     await drv.on_data_received(b'{"status":"Ok","sessions":2}')
-    assert drv.get_state("status_text") == ""
+    assert drv.get_state("status_text") is None
     assert drv.get_state("sessions") == 2
     # Power body: required key present — the scoped rule applies.
     await drv.on_data_received(
@@ -212,7 +212,7 @@ async def test_json_require_list_needs_every_key():
     drv = cls("scoped2", {"host": "127.0.0.1"}, st, events)
 
     await drv.on_data_received(b'{"status":"A","alpha":1}')
-    assert drv.get_state("status_text") == ""
+    assert drv.get_state("status_text") is None
     await drv.on_data_received(b'{"status":"B","alpha":1,"beta":2}')
     assert drv.get_state("status_text") == "B"
 

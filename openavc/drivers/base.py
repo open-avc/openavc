@@ -772,7 +772,18 @@ class BaseDriver(ABC):
         )
 
     def _init_state_variables(self) -> None:
-        """Register all state variables from DRIVER_INFO with default values."""
+        """Create a state key for every variable this driver declares.
+
+        The keys exist from construction so a binding picker, the IDE's live
+        state list and a ``$device.…`` reference all know the reading is on
+        offer. The values do not: each starts at ``None`` — "declared, never
+        reported" — until the device says otherwise. See
+        :meth:`_default_for_var_def` for why the platform does not invent one.
+
+        ``connected`` is the exception, and it is not a reading: the platform
+        knows for a fact that a driver being constructed is not connected yet,
+        so ``False`` is a statement rather than a guess.
+        """
         state_vars = self.DRIVER_INFO.get("state_variables", {})
         for prop_name, prop_info in state_vars.items():
             self.set_state(prop_name, self._default_for_var_def(prop_info))
@@ -2290,9 +2301,10 @@ class BaseDriver(ABC):
         that made the field unreadable.
 
         Only for a driver that declares the property. The platform does not
-        invent the convention for a driver that never opted into it, and
-        clearing to the declared default (rather than to ``""`` or ``None``)
-        keeps the value the same shape the driver's own seeding produced.
+        invent the convention for a driver that never opted into it, and it
+        clears to the value the declaration implies rather than to ``None``:
+        this is a device that just answered cleanly, so "no error" is something
+        we know, not something nobody has said.
         """
         var_def = self.DRIVER_INFO.get("state_variables", {}).get(
             self.LAST_ERROR_PROPERTY
@@ -2766,16 +2778,49 @@ class BaseDriver(ABC):
 
     @staticmethod
     def _default_for_var_def(var_def: dict[str, Any]) -> Any:
-        """Default value for a declared state variable — per-device and
-        per-child seeding both come through here.
+        """What a declared state variable holds before the device has spoken —
+        per-device and per-child seeding both come through here, and the answer
+        is always ``None``.
 
-        The rule itself lives in ``compiled_protocol`` so the runtime, the
-        simulator and the validator cannot drift apart on it.
-        ``number_from_min`` is what makes this the driver's answer: a driver
-        publishes logical values, so a numeric variable starts at its
-        declared minimum.
+        The key is created; the value is not invented. Those are two different
+        facts and the store already keeps them apart: ``has()`` says the driver
+        declares this reading, ``get()`` returning ``None`` says nobody has
+        reported it. A binding picker, the IDE's live-state list and a
+        ``$device.…`` reference all read the first; every consumer that judges a
+        reading reads the second.
+
+        It used to seed a *typed* value — a numeric at its declared ``min``, an
+        enum at its first value, a string at ``""`` — and downstream nothing
+        could tell that from a reading. A projector that had never been reached
+        published ``lamp_hours = 0`` against a true 450 and ``power = "off"``
+        for a projector that might be on; the relay shipped both to the cloud as
+        fresh readings, and a monitor declaring ``normal_min`` above zero fired
+        on the invented one.
+
+        ``None`` is not a new convention invented here — it is the one the rest
+        of the platform already documents and was being denied its input:
+
+        * ``core/monitors.py`` — ``None`` is ``NO_VALUE``, drawn "--", never 0.
+        * ``cloud/alert_monitor.py`` — a ``None`` reading matches no threshold
+          and is "neither in the set nor out of it", so nothing fires on it.
+        * ``core/condition_eval.py`` — ``None`` is "no decision", so
+          ``power != "on"`` cannot fire a shutdown for a device that simply has
+          not polled yet.
+        * ``configurable.py``'s ``count_from_state`` — ``None`` means "not
+          reported yet", and the roster waits rather than building 0 children.
+
+        ``var_def`` is unused and stays in the signature deliberately: it is
+        what a caller has in hand, and taking it away would say the answer might
+        one day depend on the declaration again. It must not. A driver that
+        wants a value on a child at registration passes ``initial_state``.
+
+        The old rule still exists as ``compiled_protocol.state_var_default`` and
+        is still the right answer for the two consumers that must produce a
+        value rather than report one — the auto-generated simulator seeding the
+        wire values it will serve, and the validator working out what a variable
+        would hold.
         """
-        return state_var_default(var_def, number_from_min=True)
+        return None
 
     def register_child(
         self,
@@ -2886,11 +2931,15 @@ class BaseDriver(ABC):
         project_label = project_entry.get("label", "") if project_entry else ""
 
         # Every reserved prop needs an explicit arm. Without one they fall
-        # through to _default_for_var_def and seed from the declared type —
-        # which for the two fault keys means every child in the room
-        # registering already carrying a fault code, and for `online` means a
-        # child arriving offline. The defaults ARE the semantics here: a child
-        # is present until told otherwise, and claims no fault until one.
+        # through to _default_for_var_def, which records "declared, never
+        # reported" — right for a reading off the hardware, wrong for these
+        # four, which are the platform's own statements about the child rather
+        # than readings from it. `online` unknown would leave the dot on every
+        # Child Entities row, the `N down` count and the device banner unable to
+        # say anything; the two fault keys unknown would read as a fault nobody
+        # can name. They ARE the semantics here: a child is present until told
+        # otherwise, claims no fault until one, and is called what the project
+        # calls it.
         updates: dict[str, Any] = {}
         for prop, var_def in eff_schema.items():
             if prop == "online":

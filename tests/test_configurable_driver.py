@@ -117,10 +117,10 @@ def test_driver_info_commands(driver_class):
 
 
 def test_state_initialization(driver):
-    """State variables are initialized from definition."""
-    assert driver.get_state("input") == 0
-    assert driver.get_state("volume") == 0
-    assert driver.get_state("mute") is False
+    """Every variable in the definition gets a key, and none gets a value."""
+    for prop in ("input", "volume", "mute"):
+        assert driver.state.has(f"device.{driver.device_id}.{prop}"), prop
+        assert driver.get_state(prop) is None, prop
     assert driver.get_state("connected") is False
 
 
@@ -148,8 +148,8 @@ async def test_on_data_mute_response(driver):
 async def test_on_data_no_match(driver):
     """Unmatched data doesn't change state."""
     await driver.on_data_received(b"GARBAGE")
-    # State should be unchanged from defaults
-    assert driver.get_state("input") == 0
+    # Nothing was reported, so nothing is held.
+    assert driver.get_state("input") is None
 
 
 async def test_static_set_values_coerce_to_declared_type(state, events):
@@ -386,8 +386,9 @@ def test_yaml_driver_register_child_through_base_path(state, events):
 
     assert state.get("device.ctrl_a.encoder.005.name") == "Lobby TX"
     assert state.get("device.ctrl_a.encoder.005.signal_present") is True
-    # ip defaulted from the declared "string" type.
-    assert state.get("device.ctrl_a.encoder.005.ip") == ""
+    # ip was declared but not supplied: the key is there, holding nothing.
+    assert state.has("device.ctrl_a.encoder.005.ip")
+    assert state.get("device.ctrl_a.encoder.005.ip") is None
     # Platform-managed keys present without the YAML having to declare them.
     assert state.get("device.ctrl_a.encoder.005.online") is True
     assert state.get("device.ctrl_a.encoder.005.label") == ""

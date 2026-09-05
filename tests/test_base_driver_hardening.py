@@ -4,7 +4,7 @@ Covers the audit findings closed in this group:
   H-049 disconnect cleanup tasks keep a strong ref (no GC orphan)
   M-090 serial params coerced + validated before pyserial
   M-091 max_missed_polls <= 0 clamped so a healthy device isn't marked offline
-  M-092 'float'/'number' state vars default to 0.0, not ''
+  M-092 a declared state var's key exists from construction, holding no reading
   M-093 a non-numeric `min` doesn't crash driver instantiation
   M-094 a watchdog/transport disconnect closes the transport (no leaked socket)
   M-095 poll_children drops a stale write for a child re-registered mid-poll
@@ -257,10 +257,10 @@ class TestMaxMissedPollsClamp:
         await drv.stop_polling()
 
 
-# ── M-092 / M-093: numeric state-var defaults ──
+# ── M-092 / M-093: what a declared state variable holds before the first read ──
 
 
-class TestNumericDefaults:
+class TestDeclaredVariablesStartUnreported:
 
     def test_float_and_number_defaults_are_numeric(self):
         class _VarDrv(BaseDriver):
@@ -277,14 +277,15 @@ class TestNumericDefaults:
                 return None
 
         drv = _mk(_VarDrv)
-        # M-092: float defaults to 0.0, not '' — a numeric consumer pre-poll
-        # must not see a string.
-        assert drv.get_state("level") == 0.0
-        assert isinstance(drv.get_state("level"), float)
-        assert drv.get_state("gain") == 5.0
-        assert isinstance(drv.get_state("gain"), float)
-        assert drv.get_state("volume") == 2
-        assert isinstance(drv.get_state("volume"), int)
+        # Declared, so the key is there for a picker and a $-reference to find.
+        for prop in ("level", "gain", "volume"):
+            assert drv.state.has(f"device.dev.{prop}")
+        # Not reported, so there is no value — not a 0.0, not the declared min,
+        # and (the older bug this test was written for) not a '' where a numeric
+        # consumer expects a number.
+        assert drv.get_state("level") is None
+        assert drv.get_state("gain") is None
+        assert drv.get_state("volume") is None
 
     def test_non_numeric_min_does_not_crash_instantiation(self):
         class _BadMinDrv(BaseDriver):
@@ -301,14 +302,25 @@ class TestNumericDefaults:
 
         # M-093: instantiation must not raise on a non-numeric min.
         drv = _mk(_BadMinDrv)
-        assert drv.get_state("ratio") == 0.0
-        assert drv.get_state("count") == 0
+        assert drv.state.has("device.dev.ratio")
+        assert drv.state.has("device.dev.count")
+        assert drv.get_state("ratio") is None
+        assert drv.get_state("count") is None
 
-    def test_default_for_var_def_handles_float_and_bad_min(self):
-        assert BaseDriver._default_for_var_def({"type": "float"}) == 0.0
-        assert BaseDriver._default_for_var_def({"type": "number", "min": 3}) == 3.0
-        assert BaseDriver._default_for_var_def({"type": "number", "min": "x"}) == 0.0
-        assert BaseDriver._default_for_var_def({"type": "integer", "min": "x"}) == 0
+    def test_default_for_var_def_never_invents_a_value(self):
+        """No declaration produces a starting value — not a type, not a min,
+        not an enum's first entry. See BaseDriver._default_for_var_def."""
+        for var_def in (
+            {"type": "float"},
+            {"type": "number", "min": 3},
+            {"type": "number", "min": "x"},
+            {"type": "integer", "min": "x"},
+            {"type": "enum", "values": ["off", "on"]},
+            {"type": "boolean"},
+            {"type": "string"},
+            {},
+        ):
+            assert BaseDriver._default_for_var_def(var_def) is None, var_def
 
 
 # ── M-095 / L-061: poll_children atomicity + ABA guard ──
@@ -384,17 +396,18 @@ class _SeededDriver(BaseDriver):
 
 
 class TestDeleteState:
-    """delete_state removes a seeded key from the device namespace entirely
-    (for drivers that narrow their surface at runtime and need to drop the
-    defaults _init_state_variables seeded for the removed variables)."""
+    """delete_state removes a declared key from the device namespace entirely
+    (for drivers that narrow their surface at runtime and need to drop the keys
+    _init_state_variables created for the removed variables)."""
 
-    def test_removes_seeded_key(self):
+    def test_removes_declared_key(self):
         drv = _mk(_SeededDriver)
-        assert drv.state.get("device.dev.level") == 5
+        assert drv.state.has("device.dev.level")
         drv.delete_state("level")
         assert "device.dev.level" not in drv.state.snapshot()
-        # The other seeded key is untouched.
-        assert drv.state.get("device.dev.label") == ""
+        # The other declared key is untouched — still present, still unreported.
+        assert drv.state.has("device.dev.label")
+        assert drv.state.get("device.dev.label") is None
 
     def test_missing_key_is_a_no_op(self):
         drv = _mk(_SeededDriver)

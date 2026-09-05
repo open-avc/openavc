@@ -1,6 +1,20 @@
 import type { StateHistoryEntry, ScriptReference } from "./types";
 import { request } from "./base";
 
+/**
+ * Has anything reported this state key?
+ *
+ * `undefined` is a key the snapshot does not carry; `null` is a key a driver
+ * declares and the device has not reported yet -- which is the normal state of
+ * every reading on a device that has not come up. Neither is a value, and
+ * printing either one puts the word "undefined" or "null" in front of somebody
+ * mid-build. The panel's answer to the same question is "--"; in the IDE the
+ * indicator simply does not draw.
+ */
+export function hasReading(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
 // --- State ---
 
 export async function getState(): Promise<Record<string, unknown>> {

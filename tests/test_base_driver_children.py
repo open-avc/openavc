@@ -107,15 +107,20 @@ def test_child_entity_register_creates_state_keys():
     drv = _make_driver()
     drv.register_child("encoder", 5, initial_state={"name": "Lobby TX"})
 
-    # Every declared prop got a key, with caller overrides applied and
-    # type-correct defaults filled in for the rest.
+    # Every declared prop got a key, with caller overrides applied.
     assert drv.state.get("device.ctrl1.encoder.005.name") == "Lobby TX"
-    assert drv.state.get("device.ctrl1.encoder.005.ip") == ""
-    assert drv.state.get("device.ctrl1.encoder.005.signal_present") is False
-    assert drv.state.get("device.ctrl1.encoder.005.audio_source") == "HDMI"
-    assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == 1
+
+    # The rest exist and hold no reading: the child was registered, not read.
+    # A value here would be the platform speaking for the hardware — an encoder
+    # reporting "HDMI" as its source before anybody asked it.
+    for prop in ("ip", "signal_present", "audio_source", "lan_mode"):
+        key = f"device.ctrl1.encoder.005.{prop}"
+        assert drv.state.has(key), prop
+        assert drv.state.get(key) is None, prop
 
     # Platform-managed `online` defaults to True (registered → assumed online).
+    # It is the platform's own statement about the child rather than a reading
+    # off it, which is why it has an arm of its own.
     assert drv.state.get("device.ctrl1.encoder.005.online") is True
 
 
@@ -307,7 +312,7 @@ def test_set_child_state_batch_unknown_prop_aborts_entire_batch():
     with pytest.raises(ValueError):
         drv.set_child_state_batch("encoder", 5, {"name": "OK", "bogus": 1})
     # The valid "name" update must NOT have landed — validation is up-front.
-    assert drv.state.get("device.ctrl1.encoder.005.name") == ""
+    assert drv.state.get("device.ctrl1.encoder.005.name") is None
 
 
 def test_set_child_state_batch_writes_all_props():
@@ -381,7 +386,7 @@ def test_set_children_state_batch_rejects_unknown_prop_before_any_write():
             ("encoder", 2, {"bogus": "x"}),
         ])
     # Neither update lands — validation is up-front.
-    assert drv.state.get("device.ctrl1.encoder.001.name") == ""
+    assert drv.state.get("device.ctrl1.encoder.001.name") is None
 
 
 def test_set_children_state_batch_empty_is_noop():
@@ -613,7 +618,9 @@ def test_string_local_id_static_type_creates_keys():
     drv = _make_dsp()
     drv.register_child("named_control", "Volume", initial_state={"value": -12.0})
     assert drv.state.get("device.dsp1.named_control.Volume.value") == -12.0
-    assert drv.state.get("device.dsp1.named_control.Volume.string") == ""
+    # Declared but not supplied and not read: the key exists, holding nothing.
+    assert drv.state.has("device.dsp1.named_control.Volume.string")
+    assert drv.state.get("device.dsp1.named_control.Volume.string") is None
     assert drv.state.get("device.dsp1.named_control.Volume.online") is True
     assert drv.list_children("named_control") == ["Volume"]
     assert drv.is_child_registered("named_control", "Volume") is True
@@ -668,10 +675,10 @@ def test_dynamic_child_schema_per_instance():
 
     # PgmGain's discovered controls exist; the platform `online`/`label` too.
     assert drv.state.get("device.dsp1.component.PgmGain.gain") == -6.0
-    assert drv.state.get("device.dsp1.component.PgmGain.mute") is False
+    assert drv.state.get("device.dsp1.component.PgmGain.mute") is None
     assert drv.state.get("device.dsp1.component.PgmGain.label") == "Program Gain"
     assert drv.state.get("device.dsp1.component.PgmGain.online") is True
-    assert drv.state.get("device.dsp1.component.PgmRouter.select_1") == 0
+    assert drv.state.get("device.dsp1.component.PgmRouter.select_1") is None
 
     # Each child validates against ITS OWN schema.
     drv.set_child_state("component", "PgmGain", "gain", -3.0)

@@ -52,6 +52,21 @@ Browse all devices and their live state properties. Each property shows:
 
 Use this view to discover available state keys when building macros or UI bindings.
 
+**A blank value means the device has not reported it.** Every property a driver
+declares gets a key as soon as the device is added, so you can bind to it and
+reference it before the hardware is even on the bench — but the value stays empty
+until the device sends one. A projector that has never been reached shows a blank
+lamp-hour count rather than `0`, because zero would be a reading nobody took.
+
+That absence carries through everywhere: a Dashboard tile draws `--`, a monitor
+with limits set stays quiet rather than alerting, a panel control draws no value,
+and a macro condition on the key makes no decision (it is neither equal nor not
+equal to anything). Once the device reports, everything reads normally.
+
+A property that stays blank on a *connected* device means the driver has not
+reported it yet — some values only arrive when they change. A Startup trigger
+that runs a poll or a read command is the usual fix.
+
 ## Monitor a reading
 
 Some readings tell you whether the room is all right: projector lamp hours, a DSP's temperature, whether the amp is faulted, whether the room is occupied. Tag one with **Monitor** and it appears on the Dashboard with its live value, and on the system's health card in OpenAVC Cloud if this system is paired.

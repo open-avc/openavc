@@ -321,7 +321,8 @@ async def test_contains_special_chars_are_literal():
 
 
 def test_state_vars_auto_derived_from_responses_seed():
-    """Vars written by responses are auto-declared and seeded before any reply."""
+    """Vars written by responses are auto-declared, and their keys exist before
+    any reply — holding no reading, because none has arrived."""
     drv, _ = _make(
         {
             "responses": [
@@ -331,9 +332,10 @@ def test_state_vars_auto_derived_from_responses_seed():
             ],
         }
     )
-    # Seeded defaults: integer → 0, string → "".
-    assert drv.get_state("volume") == 0
-    assert drv.get_state("name") == ""
+    assert drv.state.has(f"device.{drv.device_id}.volume")
+    assert drv.state.has(f"device.{drv.device_id}.name")
+    assert drv.get_state("volume") is None
+    assert drv.get_state("name") is None
     assert "volume" in drv.DRIVER_INFO["state_variables"]
     assert "name" in drv.DRIVER_INFO["state_variables"]
 
@@ -350,9 +352,11 @@ def test_explicit_state_var_overrides_derived():
             ],
         }
     )
-    # Seeded from the declared min, not the derived default of 0.
-    assert drv.get_state("volume") == 10
+    # The authored declaration is what survives, not the one derived from the
+    # response rule (which would carry neither a min nor a label).
+    assert drv.DRIVER_INFO["state_variables"]["volume"]["min"] == 10
     assert drv.DRIVER_INFO["state_variables"]["volume"]["label"] == "Volume"
+    assert drv.get_state("volume") is None
 
 
 # ── Isolation: the shared class definition is never mutated ─────────────────

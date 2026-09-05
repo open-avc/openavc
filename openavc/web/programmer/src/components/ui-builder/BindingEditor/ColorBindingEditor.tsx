@@ -2,6 +2,7 @@ import { Plus, X } from "lucide-react";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { useConnectionStore } from "../../../store/connectionStore";
+import { hasReading } from "../../../api/stateClient";
 
 interface ColorBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -25,7 +26,7 @@ export function ColorBindingEditor({
   const defaultColor = String(current.default || "#9E9E9E");
   const stateKey = String(current.key || "");
   const liveValue = useConnectionStore((s) => stateKey ? s.liveState[stateKey] : undefined);
-  const matchedColor = liveValue !== undefined ? (colorMap[String(liveValue)] || defaultColor) : undefined;
+  const matchedColor = hasReading(liveValue) ? (colorMap[String(liveValue)] || defaultColor) : undefined;
 
   const handleChange = (patch: Record<string, unknown>) => {
     onChange({ ...current, ...patch });
@@ -88,7 +89,7 @@ export function ColorBindingEditor({
       </div>
 
       {/* Live value indicator */}
-      {stateKey && liveValue !== undefined && (
+      {stateKey && hasReading(liveValue) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 11 }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
           <span style={{ fontWeight: 500 }}>{String(liveValue)}</span>

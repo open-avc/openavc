@@ -591,6 +591,22 @@ knowing which device is out matters.
 A matrix is marked one destination at a time, so a matrix spanning two
 switchers keeps drawing the routes of the one that is still there.
 
+### Before a device has reported
+
+There is a quieter version of the same thing. A device can be connected and
+simply not have sent a particular reading yet — in the seconds after it comes
+up, or for a value it only reports when something changes. A control bound to
+that reading draws `--` and no handle, exactly as above, but it is **not**
+dimmed and it has no dashed edge: the device is answering, so the control is
+not marked as untrustworthy. Dimmed and dashed means "you cannot rely on this
+control"; a plain `--` means "nothing has been reported yet".
+
+That is why a fader can sit at `--` for a moment on a page you have just
+opened. It is not a fault, and it clears itself as soon as the device answers.
+If a control stays at `--` on a connected device, the driver is not reporting
+that value — check the device's Live State list, where the same reading will
+be blank.
+
 The design canvas never draws any of this. It shows every control the way you
 built it, whether or not the gear is plugged in yet, so you can judge colours
 and artwork on a bench. **Preview** is where you see what the room sees.

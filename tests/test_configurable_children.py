@@ -142,9 +142,11 @@ def test_count_roster_registers_children():
     counts = driver._register_declared_children()
     assert counts == {"output": 2, "zone": 3}
     assert driver.list_children("output") == [1, 2]
-    # Padded state keys exist with schema defaults.
-    assert driver.state.get("device.dev1.output.01.input") == 0
-    assert driver.state.get("device.dev1.output.02.mute") is False
+    # Padded state keys exist, holding no reading until the device reports.
+    assert driver.state.has("device.dev1.output.01.input")
+    assert driver.state.get("device.dev1.output.01.input") is None
+    assert driver.state.has("device.dev1.output.02.mute")
+    assert driver.state.get("device.dev1.output.02.mute") is None
 
 
 def test_label_template_seeds_label():
@@ -238,7 +240,7 @@ async def test_child_set_routes_by_captured_id():
     driver._register_declared_children()
     await driver.on_data_received(b"Out2 In7")
     assert driver.state.get("device.dev1.output.02.input") == 7
-    assert driver.state.get("device.dev1.output.01.input") == 0
+    assert driver.state.get("device.dev1.output.01.input") is None
 
 
 async def test_child_set_literal_ids_combined_line():
@@ -630,9 +632,11 @@ async def test_child_set_id_map_unmapped_wire_id_skips():
     driver = _make_driver(_wire_map_definition())
     driver._register_declared_children()
     await driver.on_data_received(b"WIRE9:5")
-    assert driver.state.get("device.dev1.output.01.input") == 0
-    assert driver.state.get("device.dev1.output.02.input") == 0
-    assert driver.state.get("device.dev1.output.09.input") is None
+    # Registered but never written: the key is there, holding nothing.
+    assert driver.state.get("device.dev1.output.01.input") is None
+    assert driver.state.get("device.dev1.output.02.input") is None
+    # Never registered at all: no key.
+    assert not driver.state.has("device.dev1.output.09.input")
 
 
 async def test_param_wire_map_translates_child_id():
@@ -871,7 +875,7 @@ async def test_osc_child_set_routes_by_address_segment():
     driver = _make_osc_driver()
     await driver.on_data_received(_osc("/ch/02/mix/fader", ("f", 0.5)))
     assert driver.state.get("device.dev1.channel.02.fader") == 0.5
-    assert driver.state.get("device.dev1.channel.01.fader") == 0.0
+    assert driver.state.get("device.dev1.channel.01.fader") is None
 
 
 async def test_osc_flat_mapping_coexists_with_child_set():
@@ -910,8 +914,8 @@ async def test_osc_child_set_id_map_routes_wire_id():
 async def test_osc_child_set_id_map_unmapped_wire_id_skips():
     driver = _make_osc_driver()
     await driver.on_data_received(_osc("/wire/9/lvl", ("f", 0.25)))
-    assert driver.state.get("device.dev1.channel.01.fader") == 0.0
-    assert driver.state.get("device.dev1.channel.02.fader") == 0.0
+    assert driver.state.get("device.dev1.channel.01.fader") is None
+    assert driver.state.get("device.dev1.channel.02.fader") is None
 
 
 async def test_osc_child_set_unregistered_id_skipped():
@@ -928,7 +932,7 @@ async def test_osc_child_set_out_of_range_segment_skips():
     definition["responses"][0]["child_set"][0]["id"] = {"segment": 9}
     driver = _make_osc_driver(definition)
     await driver.on_data_received(_osc("/ch/01/mix/fader", ("f", 0.5)))
-    assert driver.state.get("device.dev1.channel.01.fader") == 0.0
+    assert driver.state.get("device.dev1.channel.01.fader") is None
 
 
 async def test_osc_poll_expands_each_child_with_format_spec():

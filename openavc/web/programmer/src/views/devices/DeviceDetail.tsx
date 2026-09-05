@@ -1582,7 +1582,11 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
   }, [newestEntry]);
 
   const formatValue = (v: unknown) => {
-    if (v === null || v === undefined) return "null";
+    // "—", not "null": a reading the device has not sent is the normal state of
+    // every variable until it does, and the word belongs to a debugger rather
+    // than to somebody commissioning a room. Same mark the Dashboard tile and
+    // the panel use for the same thing.
+    if (v === null || v === undefined) return "—";
     return String(v);
   };
 

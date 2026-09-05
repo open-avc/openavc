@@ -224,7 +224,7 @@ def test_set_states_is_whole_or_nothing_under_strict(strict):
     drv = _mk()
     with pytest.raises(UndeclaredStateError):
         drv.set_states({"level": 42, "output_5_mute": True})
-    assert drv.state.get("device.amp_1.level") == 0     # seeded default, untouched
+    assert drv.state.get("device.amp_1.level") is None  # untouched, still unreported
 
 
 # ── The asymmetry itself, pinned ────────────────────────────────────────────

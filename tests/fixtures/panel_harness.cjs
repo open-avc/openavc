@@ -207,10 +207,14 @@ const tests = {
         input._dragging = false;
         app.evaluateSliderValue(b);
         assert(Number(input.value) === 10, 'slider updates once drag ends');
-        // H-002: reset to min on delete.
+        // H-002 / Q-172: no reading is not the floor. The travel empties and
+        // the thumb goes away rather than parking at min, which would be a
+        // claim of minimum -- the same one an unreachable device gets.
         delete app.state['var.vol'];
         app.evaluateSliderValue(b);
-        assert(Number(input.value) === 0, 'slider reset to min on delete');
+        assert(Number(input.value) === 0, 'slider travel emptied on delete');
+        assert(input.classList.contains('no-reading'), 'slider thumb hidden with no reading');
+        assert(!input.hasAttribute('aria-valuetext'), 'slider asserts no value to a screen reader');
     },
 
     h002_select_reset() {
@@ -221,9 +225,11 @@ const tests = {
         app.state = { 'var.sel': 'b' };
         app.evaluateSelectValue(b);
         assert(sel.value === 'b', 'select set to b');
+        // Q-172: no selection at all. Falling back to the first option was a
+        // confident wrong answer -- "HDMI 1" for a switcher that never said.
         delete app.state['var.sel'];
         app.evaluateSelectValue(b);
-        assert(sel.value === 'a', 'select falls back to first option on delete');
+        assert(sel.selectedIndex === -1, `select shows no selection with no reading, got ${sel.selectedIndex}`);
     },
 
     h002_textinput_reset() {
@@ -245,9 +251,12 @@ const tests = {
         app.state = { 'var.f': 50 };
         app.evaluateFaderValue(b);
         assert(handle.style.bottom === '50%', `fader at 50%, got ${handle.style.bottom}`);
+        // Q-172: the handle goes away rather than parking at the floor, which
+        // on a -80..0 fader reads as fully attenuated.
         delete app.state['var.f'];
         app.evaluateFaderValue(b);
-        assert(handle.style.bottom === '0%', `fader reset to floor on delete, got ${handle.style.bottom}`);
+        assert(handle.classList.contains('no-reading'), 'fader handle hidden with no reading');
+        assert(!handle.hasAttribute('aria-valuenow'), 'fader asserts no value to a screen reader');
     },
 
     // §82.4 — fractional-step sliders/faders must not leak binary float noise
@@ -2261,6 +2270,137 @@ const tests = {
     // -40.5 dB over an amplifier at 0.0. A refusal changes no state, so there
     // is no push coming to overwrite the move -- only a reload heals it, and a
     // wall tablet is the one browser that is never reloaded.
+
+    // Q-172: the device is RIGHT THERE and has not reported this reading yet.
+    //
+    // A different sentence from Q-213's "the device is unreachable", and it now
+    // happens on every fresh connection: a declared state variable holds no
+    // value until the device sends one, where it used to hold a number the
+    // platform invented. Three renderers' null branch invented one of their own
+    // on top of that -- the fader and the slider parked at their floor, the
+    // select showed its first option -- which on a live device is a confident
+    // wrong answer with nothing to mark it.
+    q172_a_live_device_that_has_not_reported_draws_no_value() {
+        const app = mkApp();
+        app.state = { 'device.d.connected': true, 'device.d.v': null };
+
+        // Fader: no handle, no aria value, "-- dB".
+        const handle = document.createElement('div');
+        const faderOut = document.createElement('div');
+        const fb = {
+            type: 'fader_value', element: document.createElement('div'),
+            elementDef: { id: 'f' }, binding: { key: 'device.d.v' },
+            _fader: { handle, valueDisplay: faderOut, min: -80, max: 0, unit: 'dB',
+                horizontal: false, outputMin: null, outputMax: null, scaleToFull: true,
+                response: null, responseDbRange: null, fmt: (v) => `${v.toFixed(1)} dB` },
+        };
+        app.evaluateFaderValue(fb);
+        assert(faderOut.textContent === '-- dB', `fader unreported, got ${faderOut.textContent}`);
+        assert(handle.classList.contains('no-reading'), 'fader handle hidden while unreported');
+        assert(!handle.hasAttribute('aria-valuenow'), 'fader announces no value while unreported');
+
+        // Slider: empty travel, hidden thumb, "-- %".
+        const input = document.createElement('input'); input.type = 'range';
+        const fill = document.createElement('div');
+        const sliderOut = document.createElement('div');
+        const sb = {
+            type: 'slider_value', element: input, elementDef: { id: 's', min: 0, max: 100 },
+            binding: { key: 'device.d.v' }, fill, valueDisplay: sliderOut,
+            isVertical: false, outputMin: null, outputMax: null, scaleToFull: true,
+            steps: 100, unit: '%', valueToPos: (v) => v, fmtValue: (v) => `${v} %`,
+        };
+        app.evaluateSliderValue(sb);
+        assert(sliderOut.textContent === '-- %', `slider unreported, got ${sliderOut.textContent}`);
+        assert(input.classList.contains('no-reading'), 'slider thumb hidden while unreported');
+        assert(fill.style.width === '0%', `slider fill emptied, got ${fill.style.width}`);
+
+        // Select: no selection, not the first option.
+        const sel = document.createElement('select');
+        for (const v of ['hdmi1', 'hdmi2']) {
+            const o = document.createElement('option'); o.value = v; sel.appendChild(o);
+        }
+        app.state['device.d.input'] = null;
+        const selB = {
+            type: 'select_value', element: sel, elementDef: { id: 'sel' },
+            binding: { key: 'device.d.input' },
+        };
+        app.evaluateSelectValue(selB);
+        assert(sel.selectedIndex === -1, `select unreported shows nothing, got ${sel.selectedIndex}`);
+
+        // Gauge: no arc, "--%".
+        const fgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        const gb = {
+            type: 'gauge_value', element: document.createElement('div'), elementDef: { id: 'g' },
+            binding: { key: 'device.d.v' },
+            _svg: { fgPath, valueText, startAngle: 0, endAngle: 180, radius: 10,
+                min: 0, max: 100, unit: '%', gaugeColor: '#0f0', zones: [], showValue: true,
+                displayDecimals: null, arcPath: () => 'M0 0' },
+        };
+        app.evaluateGaugeValue(gb);
+        assert(valueText.textContent === '--%', `gauge unreported, got ${valueText.textContent}`);
+        assert(fgPath.getAttribute('d') === '', 'gauge arc cleared while unreported');
+
+        // Formatted label: the sentence keeps its shape, "Amp draw: -- A".
+        // Rendered through the real page, because the label's text is written
+        // on the way through renderProject rather than by a named evaluator.
+        const app2 = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'draw', type: 'label', text: '',
+                bindings: { show: { value: {
+                    key: 'device.amp.ac_line_current', format: 'Amp draw: {value} A',
+                } } },
+            }],
+            placements: { draw: { x: 5, y: 5, w: 30, h: 8 } },
+        });
+        app2.state = { 'device.amp.connected': true, 'device.amp.ac_line_current': null };
+        renderProject(app2, proj);
+        const labelEl = app2.root.querySelector('[data-element-id="draw"]');
+        assert(labelEl.textContent === 'Amp draw: -- A',
+            `label unreported, got "${labelEl.textContent}"`);
+    },
+
+    // The two states must not look the same. Q-213's dimmed-and-dashed mark
+    // means "this control cannot be trusted"; a device that is answering and
+    // has simply not sent this reading yet has not earned it, and its own CSS
+    // comment says "--" alone cannot be told from "nothing reported yet" --
+    // which is exactly the distinction being drawn here.
+    q172_an_unreported_reading_is_not_the_unavailable_mark() {
+        const app = mkApp();
+        const el = document.createElement('div');
+        const handle = document.createElement('div');
+        const out = document.createElement('div');
+        app.elementMap = { f: { el } };
+        const b = {
+            type: 'fader_value', element: el, elementDef: { id: 'f' },
+            binding: { key: 'device.d.v' },
+            _fader: { handle, valueDisplay: out, min: -80, max: 0, unit: 'dB',
+                horizontal: false, outputMin: null, outputMax: null, scaleToFull: true,
+                response: null, responseDbRange: null, fmt: (v) => `${v.toFixed(1)} dB` },
+        };
+
+        // Live device, nothing reported: no value, no mark.
+        app.state = { 'device.d.connected': true, 'device.d.v': null };
+        app.evaluateFaderValue(b);
+        assert(out.textContent === '-- dB', 'unreported reads --');
+        assert(!el.classList.contains('device-offline'),
+            'a live device is not marked unavailable');
+
+        // Same absent value, device now gone: the mark appears.
+        app.state['device.d.connected'] = false;
+        app.evaluateFaderValue(b);
+        assert(el.classList.contains('device-offline'),
+            'an unreachable device is marked unavailable');
+
+        // And a real reading clears both.
+        app.state['device.d.connected'] = true;
+        app.state['device.d.v'] = -6;
+        app.evaluateFaderValue(b);
+        assert(out.textContent === '-6.0 dB', `reported reads the value, got ${out.textContent}`);
+        assert(!handle.classList.contains('no-reading'), 'handle returns with a reading');
+        assert(!el.classList.contains('device-offline'), 'mark cleared with a reading');
+    },
 
     // Found while writing the scenarios above, and fixed with them: the first
     // draw of a fader used an inline copy of the drag's update, missing its one

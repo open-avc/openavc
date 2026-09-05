@@ -15,6 +15,7 @@ import { useConnectionStore } from "../../../store/connectionStore";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
+import { hasReading } from "../../../api/stateClient";
 
 interface FeedbackBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -167,7 +168,7 @@ export function FeedbackBindingEditor({
   const observedValues = useMemo(() => {
     // Collect unique values we've seen for this key type
     const vals = new Set<string>();
-    if (liveValue !== undefined) vals.add(String(liveValue));
+    if (hasReading(liveValue)) vals.add(String(liveValue));
     // For booleans, always show both
     if (liveValue === true || liveValue === false || liveValue === "true" || liveValue === "false") {
       vals.add("true");
@@ -342,7 +343,7 @@ export function FeedbackBindingEditor({
             <option value="">Select state key...</option>
             {categoryKeys.map((k) => (
               <option key={k.key} value={k.key}>
-                {k.label}{k.value !== undefined ? ` (${String(k.value)})` : ""}
+                {k.label}{hasReading(k.value) ? ` (${String(k.value)})` : ""}
               </option>
             ))}
           </select>
@@ -350,7 +351,7 @@ export function FeedbackBindingEditor({
       )}
 
       {/* Live value indicator */}
-      {stateKey && liveValue !== undefined && (
+      {stateKey && hasReading(liveValue) && (
         <div style={{
           display: "flex", alignItems: "center", gap: "var(--space-sm)",
           padding: "4px 8px", borderRadius: "var(--border-radius)",

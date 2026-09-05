@@ -1180,6 +1180,22 @@
     visibility: hidden;
 }
 
+/* The same missing handle, for the quieter case: the device is right there and
+   has simply not reported this reading yet (or the bound key is gone). The
+   readout says "--" and the travel is empty, but the element is NOT dimmed and
+   dashed -- that mark means "this control cannot be trusted", which a device
+   that is answering has not earned. Set per handle rather than on the element,
+   so a second binding on the same control cannot clear it. */
+.fader-handle.no-reading {
+    visibility: hidden;
+}
+input[type="range"].no-reading::-webkit-slider-thumb {
+    visibility: hidden;
+}
+input[type="range"].no-reading::-moz-range-thumb {
+    visibility: hidden;
+}
+
 /* A matrix is marked a row at a time, because one matrix can span several
    switchers and only some of them may be gone. */
 .matrix-tile.device-offline,
