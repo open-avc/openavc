@@ -60,7 +60,7 @@ Sends a message every time a matching OpenAVC state key changes.
 
 ### Keys
 
-A comma-separated list of state keys or patterns. `*` matches anything, dots included, so `var.*` is every user variable, `device.projector.*` is everything the projector reports, and `device.*.online` is every device's online flag. Leave it empty for everything.
+A comma-separated list of state keys or patterns. `*` matches anything, dots included, so `var.*` is every user variable, `device.projector.*` is everything the projector reports, and `device.*.online` is every device's online flag. Leave it empty for everything. A device's sub-units report under the device, `device.<id>.<type>.<number>.<property>`, so `device.matrix.output.*.source` is every output's source.
 
 ### Output
 
@@ -69,7 +69,7 @@ A comma-separated list of state keys or patterns. `*` matches anything, dots inc
 : replay (boolean) : present and `true` when this is a current value sent because the connection opened, not a change
 : deleted (boolean) : present and `true` when the key was removed
 
-State values are always flat: a string, a number, a boolean or null.
+State values are always flat: a string, a number, a boolean or null. To read a value when the flow asks rather than when it changes, use **state get**.
 
 ### The pattern this is for
 

@@ -22,7 +22,7 @@
       const $key = $("#node-input-key");
       $("#node-input-value").typedInput({
         default: "msg",
-        types: ["msg", "str", "num", "bool"],
+        types: ["msg", "flow", "global", "str", "num", "bool", "env", "jsonata"],
         typeField: "#node-input-valueType",
       });
       const load = () =>
@@ -63,12 +63,14 @@
 </script>
 
 <script type="text/markdown" data-help-name="openavc-set">
-Writes a value to an OpenAVC variable. Every panel control bound to that key updates at once.
+Writes a value to an OpenAVC variable. Every panel control bound to that key updates at once, on every panel.
 
 ### Input
 
 : key (string) : overrides the key on the node
-: payload : the value to write, unless the node names another message property or a fixed value
+: payload : the value to write, unless the node names another message property, a context value, a fixed value or a JSONata expression
+
+A key that does not exist yet is created. A message that does not carry the property the node reads (`msg.payload` by default) is refused rather than written as `null`.
 
 ### Output
 

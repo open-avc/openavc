@@ -3,11 +3,17 @@
 // A stand-in OpenAVC that speaks the real WebSocket protocol and the four REST
 // reads the editor makes. Enough to drive every node end to end without a
 // Python process, and to make the server misbehave on purpose (drop clients,
-// refuse a command, fail a macro).
+// refuse a command, fail a macro, stall, rate-limit, demand a key).
+//
+// Like the real server it reads each connection's frames ONE AT A TIME and
+// answers each before reading the next, which is the fact the connection's
+// reply routing rests on.
 
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const { compile } = require("../lib/glob");
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class FakeOpenAVC {
   constructor(opts = {}) {
@@ -15,24 +21,54 @@ class FakeOpenAVC {
     // event.* frame is ignored in silence, which is what an unknown message
     // type gets.
     this.legacy = !!opts.legacy;
-    this.state = { "var.request_source": "", "var.status": "idle", "device.switcher.online": true, ...(opts.state || {}) };
+    // claimed: a password-protected system. REST answers 401 without the
+    // key, and a programmer socket without it is refused at the upgrade.
+    this.claimed = !!opts.claimed;
+    this.apiKey = opts.apiKey || "k-123";
+    // stallMs: every device command takes this long, holding the loop.
+    this.stallMs = opts.stallMs || 0;
+    // rateLimitAfter: the Nth frame on a connection gets the limiter's
+    // error frame (no source_type) and is dropped, like the real one.
+    this.rateLimitAfter = opts.rateLimitAfter || 0;
+    // silent: send the snapshot and then nothing at all, not even pings.
+    this.silent = !!opts.silent;
+    this.state = { "var.request_source": "", "var.status": "idle", "device.switcher.online": true, "device.switcher.name": "Main Switcher", "device.switcher.connected": true, "device.projector.name": "Projector", "device.projector.connected": false, ...(opts.state || {}) };
     this.devices = opts.devices || [
       { id: "switcher", name: "Main Switcher", driver: "acme_switcher", connected: true },
       { id: "projector", name: "Projector", driver: "acme_projector", connected: false },
     ];
+    // Command specs in the API's shape: params is a dict keyed by name.
     this.commands = opts.commands || {
-      switcher: { route: { description: "Route an input to an output", params: [{ name: "input" }, { name: "output" }] } },
-      projector: { power_on: { description: "Power on" }, power_off: {} },
+      switcher: { route: { label: "Route", help: "Route an input to an output", params: { input: { type: "integer", required: true }, output: { type: "integer", required: true } } } },
+      projector: { power_on: { label: "Power On", params: {} }, power_off: {} },
     };
-    this.macros = opts.macros || [{ id: "system_on", name: "System On" }, { id: "bad", name: "Always fails" }];
-    this.connections = []; // {ws, url, headers, role, patterns}
+    this.macros = opts.macros || [
+      { id: "system_on", name: "System On" },
+      { id: "bad", name: "Always fails" },
+      { id: "skip_me", name: "Skips when running", overlap: "skip", ms: 200 },
+      { id: "flaky", name: "One step fails" },
+      { id: "slow", name: "Slow", ms: 400 },
+    ];
+    this.running = new Map(); // macro id -> [{timer, finish}]
+    this.connections = []; // {ws, url, headers, role, patterns, name, frames}
     this.received = []; // every inbound frame, in order
     this.port = 0;
   }
 
   async start() {
     this.server = http.createServer((req, res) => this._rest(req, res));
-    this.wss = new WebSocketServer({ server: this.server });
+    this.wss = new WebSocketServer({
+      server: this.server,
+      verifyClient: (info, cb) => {
+        const url = new URL(info.req.url, "http://x");
+        const key = info.req.headers["x-api-key"];
+        if (this.claimed && url.searchParams.get("client") === "programmer" && key !== this.apiKey) {
+          cb(false, 403, "Forbidden");
+          return;
+        }
+        cb(true);
+      },
+    });
     this.wss.on("connection", (ws, req) => this._onConnection(ws, req));
     await new Promise((resolve) => this.server.listen(0, "127.0.0.1", resolve));
     this.port = this.server.address().port;
@@ -40,6 +76,8 @@ class FakeOpenAVC {
   }
 
   async stop() {
+    for (const list of this.running.values()) for (const r of list) clearTimeout(r.timer);
+    this.running.clear();
     for (const c of this.connections) c.ws.terminate();
     this.connections = [];
     await new Promise((resolve) => this.wss.close(() => resolve()));
@@ -100,21 +138,32 @@ class FakeOpenAVC {
   _onConnection(ws, req) {
     const url = new URL(req.url, "http://x");
     const role = url.searchParams.get("client") || "panel";
-    const conn = { ws, url: req.url, headers: req.headers, role, patterns: [], name: url.searchParams.get("name") || "" };
+    const conn = { ws, url: req.url, headers: req.headers, role, patterns: [], name: url.searchParams.get("name") || "", frames: 0, queue: Promise.resolve() };
     const events = url.searchParams.get("events");
     if (events) conn.patterns = events.split(",").map((s) => s.trim()).filter(Boolean);
     this.connections.push(conn);
+    this.connectionsSeen = (this.connectionsSeen || 0) + 1;
     ws.on("close", () => {
       this.connections = this.connections.filter((c) => c !== conn);
     });
-    ws.on("message", (data) => this._onFrame(conn, JSON.parse(data)));
+    ws.on("message", (data) => {
+      const frame = JSON.parse(data);
+      this.received.push(frame);
+      // One at a time, in order, like the real server's message loop.
+      conn.queue = conn.queue.then(() => this._onFrame(conn, frame)).catch(() => {});
+    });
     this._send(ws, { type: "state.snapshot", state: { ...this.state } });
-    this._send(ws, { type: "ui.definition", ui: { pages: [] } });
+    if (!this.silent) this._send(ws, { type: "ui.definition", ui: { pages: [] } });
   }
 
-  _onFrame(conn, frame) {
-    this.received.push(frame);
+  async _onFrame(conn, frame) {
     const ws = conn.ws;
+    if (this.silent) return;
+    conn.frames += 1;
+    if (this.rateLimitAfter && conn.frames === this.rateLimitAfter) {
+      this._send(ws, { type: "error", message: "Rate limit exceeded" });
+      return;
+    }
     if (this.legacy && String(frame.type).startsWith("event.")) return;
     switch (frame.type) {
       case "pong":
@@ -140,6 +189,7 @@ class FakeOpenAVC {
         this.emitEvent(frame.event, frame.payload || {});
         break;
       case "command":
+        if (this.stallMs) await sleep(this.stallMs);
         if (frame.device_id === "projector") {
           this._send(ws, {
             type: "command.ack",
@@ -168,23 +218,57 @@ class FakeOpenAVC {
         break;
       case "macro.execute": {
         const id = frame.macro_id;
-        if (!this.macros.some((m) => m.id === id)) {
+        const macro = this.macros.find((m) => m.id === id);
+        if (!macro) {
           this._send(ws, { type: "error", source_type: "macro.execute", message: `No macro named '${id}'.` });
           break;
         }
         this._send(ws, { type: "macro.execute.ack", macro_id: id });
-        setTimeout(() => {
-          if (id === "bad") {
-            this._broadcast({ type: "macro.error", macro_id: id, name: "Always fails", error: "step 1/1 failed" });
-          } else {
-            this._broadcast({ type: "macro.completed", macro_id: id, name: id });
-          }
-        }, 20);
+        this._runMacro(macro);
+        break;
+      }
+      case "macro.cancel": {
+        const id = frame.macro_id;
+        if (!this.macros.some((m) => m.id === id)) {
+          this._send(ws, { type: "error", source_type: "macro.cancel", message: `No macro named '${id}'.` });
+          break;
+        }
+        const runs = this.running.get(id) || [];
+        this._send(ws, { type: "macro.cancel.ack", macro_id: id, cancelled: runs.length > 0 });
+        for (const r of runs.splice(0)) {
+          clearTimeout(r.timer);
+          this._broadcast({ type: "macro.cancelled", macro_id: id, name: id });
+        }
         break;
       }
       default:
         break;
     }
+  }
+
+  _runMacro(macro) {
+    const id = macro.id;
+    const runs = this.running.get(id) || [];
+    if (macro.overlap === "skip" && runs.length) {
+      this._broadcast({ type: "macro.skipped", macro_id: id, name: macro.name, reason: "overlap=skip and an instance is already running" });
+      return;
+    }
+    this._broadcast({ type: "macro.started", macro_id: id, name: macro.name, total_steps: 1 });
+    const run = {};
+    run.timer = setTimeout(() => {
+      const list = this.running.get(id) || [];
+      list.splice(list.indexOf(run), 1);
+      if (id === "bad") {
+        this._broadcast({ type: "macro.error", macro_id: id, name: macro.name, error: "step 1/1 failed" });
+        return;
+      }
+      if (id === "flaky") {
+        this._broadcast({ type: "macro.step_error", macro_id: id, call_chain: [id], step_index: 0, total_steps: 2, action: "device.command", device: "projector", group: null, command: "power_on", error: "Device 'projector' is not connected", message: "Projector is not connected." });
+      }
+      this._broadcast({ type: "macro.completed", macro_id: id, name: macro.name });
+    }, macro.ms || 20);
+    runs.push(run);
+    this.running.set(id, runs);
   }
 
   _send(ws, frame) {
@@ -204,6 +288,7 @@ class FakeOpenAVC {
       res.end(JSON.stringify(body));
     };
     this.lastRestHeaders = req.headers;
+    if (this.claimed && req.headers["x-api-key"] !== this.apiKey) return json(401, { detail: "Not authenticated" });
     if (url.pathname === "/api/devices") return json(200, { devices: this.devices });
     const m = url.pathname.match(/^\/api\/devices\/([^/]+)$/);
     if (m) {

@@ -9,6 +9,7 @@
       port: { value: 8080, required: true, validate: RED.validators.number() },
       tls: { value: false },
       tlsVerify: { value: false },
+      tlsConfig: { type: "tls-config", required: false },
       clientName: { value: "" },
     },
     credentials: {
@@ -19,10 +20,16 @@
     },
     oneditprepare: function () {
       const $tls = $("#node-config-input-tls");
-      const $verifyRow = $("#openavc-tls-verify-row");
-      const sync = () => $verifyRow.toggle($tls.is(":checked"));
+      const $rows = $("#openavc-tls-verify-row, #openavc-tls-config-row");
+      const sync = () => $rows.toggle($tls.is(":checked"));
       $tls.on("change", sync);
       sync();
+    },
+    oneditsave: function () {
+      // An unticked HTTPS keeps no TLS configuration behind it.
+      if (!$("#node-config-input-tls").is(":checked")) {
+        $("#node-config-input-tlsConfig").val("");
+      }
     },
   });
 </script>
@@ -50,6 +57,14 @@
     <input type="checkbox" id="node-config-input-tlsVerify" style="width: auto; vertical-align: middle" />
     <span style="margin-left: 6px">Verify the certificate (off for a self-signed certificate)</span>
   </div>
+  <div class="form-row" id="openavc-tls-config-row">
+    <label for="node-config-input-tlsConfig">&nbsp;</label>
+    <input type="text" id="node-config-input-tlsConfig" />
+    <div class="form-tips" style="margin-top: 4px">
+      Optional. A TLS configuration carries a company CA certificate or a client certificate,
+      and its own "Verify server certificate" setting applies.
+    </div>
+  </div>
   <div class="form-row">
     <label for="node-config-input-apiKey"><i class="fa fa-key"></i> API key</label>
     <input type="password" id="node-config-input-apiKey" placeholder="leave blank to connect as a panel" />
@@ -64,24 +79,27 @@
     reading or a trigger can tell when the flow is not there.
   </div>
   <div class="form-tips">
-    With an API key this connection can do what the Programmer can. Without one it can do
-    what a panel can: read state, send commands, run macros, and write <code>var.*</code>
-    variables. Generate a key in the Programmer under Settings &rsaquo; Security.
+    Without an API key this connection can do what a panel can: read all state, send
+    commands, run macros, write <code>var.*</code> variables and emit <code>custom.*</code>
+    events. With one it can also write any state namespace and hear every event. Generate
+    a key in the Programmer under Settings &rsaquo; Access.
   </div>
 </script>
 
 <script type="text/markdown" data-help-name="openavc-server">
-One OpenAVC system. Every OpenAVC node points at one of these, and all the nodes on it share a single WebSocket connection that reconnects on its own.
+One OpenAVC system. Every OpenAVC node points at one of these, and all the nodes on it share a single WebSocket connection that reconnects on its own. Two systems in one flow are two of these.
 
 ### Connecting
 
-**Host** and **Port** are where the Programmer opens (`http://host:8080/programmer`). Tick **HTTPS** if the system has it enabled; leave **Verify the certificate** off for the self-signed certificate a system generates for itself, and on for a cloud-issued or company certificate.
+**Host** and **Port** are where the Programmer opens (`http://host:8080/programmer`). Tick **HTTPS** if the system has it enabled; leave **Verify the certificate** off for the self-signed certificate a system generates for itself, and on for a cloud-issued or company certificate. A company certificate signed by your own CA needs that CA: add a **TLS configuration** and put the CA certificate in it (its own "Verify server certificate" setting then applies).
 
 ### API key
 
-Leave it blank and the connection joins as a **panel**: it reads all state, sends device commands, runs macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. That is enough for a flow that acts as the room's logic.
+Leave it blank and the connection joins as a **panel**: it reads all state, sends device commands, runs and cancels macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. That is enough for a flow that acts as the room's logic.
 
-Give it a key and the connection joins as the **Programmer**: everything above, plus every state namespace and every event. Generate one in the Programmer under Settings › Security. It is stored as a Node-RED credential and never sent to the browser.
+Give it a key and the connection joins as the **Programmer**: everything above, plus writing any state namespace and hearing every event on the bus. Generate one in the Programmer under **Settings › Access** (a key needs a Programmer password set as well). It is stored as a Node-RED credential and never sent to the browser.
+
+If the key is wrong, every node on this server shows **disconnected: the server refused the API key** and the Node-RED log says the same.
 
 ### Announce as
 
@@ -89,5 +107,9 @@ A flow that has become a space's logic is part of the space, and when it is down
 
 ### Lookups in the editor
 
-The device, command, macro and state key fields on the other nodes fill their lists from this system. That needs the server node to be **deployed** first, because the lookups go through its connection.
+The device, command, macro and state key fields on the other nodes fill their lists from this system. That needs the server node to be **deployed** first, because the lookups go through its connection. Devices and state keys come from the live connection with or without a key; commands and macros are read over the REST API, which a password-protected system only answers with the key. The dialog says so, and typing the id works either way.
+
+### Knowing the connection is up
+
+Every OpenAVC node shows the connection on its status dot. A **status** node (from the palette's common section) turns those changes into messages, so a flow can react when the system goes away or comes back.
 </script>

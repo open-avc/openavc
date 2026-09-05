@@ -22,7 +22,10 @@ module.exports = function (RED) {
         // The server accepts custom.* from outside and nothing else; spare the
         // author the prefix.
         if (!event.startsWith(PREFIX)) event = PREFIX + event;
-        let payload = evaluate(RED, this, msg, config.payload || "payload", config.payloadType || "msg", {});
+        const type = config.payloadType || "msg";
+        const source = config.payload === undefined || config.payload === null ? "payload" : config.payload;
+        let payload = await evaluate(RED, this, msg, source, type, {});
+        if (payload === undefined) payload = {};
         if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
           payload = { value: payload };
         }

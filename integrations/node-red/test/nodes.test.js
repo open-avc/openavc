@@ -15,8 +15,10 @@ const commandNode = require("../nodes/openavc-command");
 const macroNode = require("../nodes/openavc-macro");
 const setNode = require("../nodes/openavc-set");
 const emitNode = require("../nodes/openavc-emit");
+const stateGetNode = require("../nodes/openavc-state-get");
+const { NEEDS_KEY } = require("../lib/admin");
 
-const ALL = [serverNode, stateInNode, eventInNode, commandNode, macroNode, setNode, emitNode];
+const ALL = [serverNode, stateInNode, eventInNode, commandNode, macroNode, setNode, emitNode, stateGetNode];
 
 let fake;
 
@@ -300,16 +302,23 @@ describe("the editor's lookups", () => {
     await helper.startServer();
     try {
       await loadFlow([server()], { srv: { apiKey: "k-123" } });
+      // Devices come from the live state mirror (every device publishes its
+      // name there), so no REST call and no credential is needed for them.
       const devices = await helper.request().get("/openavc/srv/devices").expect(200);
-      expect(devices.body.map((d) => d.id)).toEqual(["switcher", "projector"]);
-      expect(fake.lastRestHeaders["x-api-key"]).toBe("k-123");
+      expect(devices.body).toEqual([
+        { id: "projector", name: "Projector", driver: "", connected: false },
+        { id: "switcher", name: "Main Switcher", driver: "", connected: true },
+      ]);
 
       const commands = await helper.request().get("/openavc/srv/devices/switcher/commands").expect(200);
+      expect(fake.lastRestHeaders["x-api-key"]).toBe("k-123");
       expect(commands.body.map((c) => c.name)).toEqual(["route"]);
+      expect(commands.body[0].description).toBe("Route");
       expect(commands.body[0].params.map((p) => p.name)).toEqual(["input", "output"]);
+      expect(commands.body[0].params[0]).toMatchObject({ name: "input", type: "integer", required: true });
 
       const macros = await helper.request().get("/openavc/srv/macros").expect(200);
-      expect(macros.body.map((m) => m.id)).toEqual(["system_on", "bad"]);
+      expect(macros.body.map((m) => m.id)).toEqual(["system_on", "bad", "skip_me", "flaky", "slow"]);
 
       const keys = await helper.request().get("/openavc/srv/state-keys").expect(200);
       expect(keys.body).toContain("var.status");
@@ -335,5 +344,225 @@ describe("a node with no server", () => {
     helper.getNode("cmd").receive({});
     await new Promise((r) => setTimeout(r, 30));
     expect(seen).toEqual([]);
+  });
+});
+
+describe("the editor's lookups on a password-protected system", () => {
+  it("still list devices and state keys without a key, and say a key is needed for the rest", async () => {
+    await fake.stop();
+    fake = await new FakeOpenAVC({ claimed: true }).start();
+    await helper.startServer();
+    try {
+      await loadFlow([server()]);
+      const devices = await helper.request().get("/openavc/srv/devices").expect(200);
+      expect(devices.body.map((d) => d.id)).toEqual(["projector", "switcher"]);
+      const keys = await helper.request().get("/openavc/srv/state-keys").expect(200);
+      expect(keys.body).toContain("var.status");
+      const macros = await helper.request().get("/openavc/srv/macros").expect(403);
+      expect(macros.body.error).toBe(NEEDS_KEY);
+      expect(NEEDS_KEY).toMatch(/Settings › Access/);
+      const commands = await helper.request().get("/openavc/srv/devices/switcher/commands").expect(403);
+      expect(commands.body.error).toBe(NEEDS_KEY);
+    } finally {
+      await helper.stopServer();
+    }
+  });
+});
+
+describe("openavc-state-get", () => {
+  const flow = (extra) => [
+    server(),
+    { id: "g", type: "openavc-state-get", server: "srv", key: "var.status", output: "payload", ...extra, wires: [["h"]] },
+    { id: "h", type: "helper" },
+  ];
+
+  it("answers with what the key holds now, on demand", async () => {
+    await loadFlow(flow());
+    await fake.waitFor(() => (helper.getNode("srv").connection.status === "connected" ? true : null));
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("g").receive({ payload: "asked" });
+    const msg = await got;
+    expect(msg.topic).toBe("var.status");
+    expect(msg.payload).toBe("idle");
+  });
+
+  it("takes the key from the message, puts the value where asked, and gives null for a key nobody holds", async () => {
+    await loadFlow(flow({ key: "", output: "current" }));
+    await fake.waitFor(() => (helper.getNode("srv").connection.status === "connected" ? true : null));
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("g").receive({ key: "device.switcher.online", payload: "kept" });
+    const msg = await got;
+    expect(msg.current).toBe(true);
+    expect(msg.payload).toBe("kept");
+
+    const got2 = nextInput(helper.getNode("h"));
+    helper.getNode("g").receive({ key: "var.nothing_here" });
+    expect((await got2).current).toBeNull();
+  });
+
+  it("answers a pattern with every matching key", async () => {
+    await loadFlow(flow({ key: "device.switcher.*" }));
+    await fake.waitFor(() => (helper.getNode("srv").connection.status === "connected" ? true : null));
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("g").receive({});
+    expect((await got).payload).toEqual({ "device.switcher.connected": true, "device.switcher.name": "Main Switcher", "device.switcher.online": true });
+  });
+
+  it("raises rather than answering from a stale copy while disconnected", async () => {
+    await loadFlow([
+      ...flow(),
+      { id: "c", type: "catch", scope: null, uncaught: false, wires: [["hc"]] },
+      { id: "hc", type: "helper" },
+    ]);
+    const conn = helper.getNode("srv").connection;
+    await fake.waitFor(() => (conn.status === "connected" ? true : null));
+    fake.dropClients();
+    await fake.waitFor(() => (conn.status !== "connected" ? true : null));
+    const caught = nextInput(helper.getNode("hc"));
+    helper.getNode("g").receive({});
+    expect((await caught).error.message).toMatch(/not connected/);
+  });
+});
+
+describe("openavc-macro, cancelling", () => {
+  it("cancels a running macro from the node's action or from msg.action", async () => {
+    await loadFlow([
+      server(),
+      { id: "m_run", type: "openavc-macro", server: "srv", macro: "slow", action: "run", wires: [["h"]] },
+      { id: "m_stop", type: "openavc-macro", server: "srv", macro: "slow", action: "cancel", wires: [["hs"]] },
+      { id: "m_any", type: "openavc-macro", server: "srv", macro: "", action: "run", wires: [["ha"]] },
+      { id: "h", type: "helper" },
+      { id: "hs", type: "helper" },
+      { id: "ha", type: "helper" },
+    ]);
+    const finished = nextInput(helper.getNode("h"));
+    helper.getNode("m_run").receive({});
+    await fake.waitFor(() => fake.running.get("slow")?.length || null);
+    const stopped = nextInput(helper.getNode("hs"));
+    helper.getNode("m_stop").receive({});
+    expect((await stopped).payload).toEqual({ success: true, cancelled: true });
+    expect((await finished).payload).toEqual({ success: false, error: "macro cancelled" });
+
+    const nothing = nextInput(helper.getNode("ha"));
+    helper.getNode("m_any").receive({ macro: "slow", action: "cancel" });
+    expect((await nothing).payload).toEqual({ success: true, cancelled: false });
+  });
+
+  it("reports a start the macro's own guard turned away, and step errors on a run that finished", async () => {
+    await loadFlow([
+      server(),
+      { id: "m", type: "openavc-macro", server: "srv", macro: "", wires: [["h"]] },
+      { id: "h", type: "helper" },
+    ]);
+    const seen = [];
+    helper.getNode("h").on("input", (m) => seen.push(m.payload));
+    helper.getNode("m").receive({ macro: "skip_me" });
+    helper.getNode("m").receive({ macro: "skip_me" });
+    await fake.waitFor(() => (seen.length === 2 ? true : null));
+    expect(seen).toEqual([
+      { success: false, error: "macro skipped: overlap=skip and an instance is already running" },
+      { success: true },
+    ]);
+
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("m").receive({ macro: "flaky" });
+    const msg = await got;
+    expect(msg.payload.success).toBe(true);
+    expect(msg.payload.step_errors).toEqual([
+      { step: 1, action: "device.command", device: "projector", command: "power_on", error: "Projector is not connected." },
+    ]);
+  });
+});
+
+describe("openavc-set, with nothing to write", () => {
+  it("refuses a message without the property rather than writing null", async () => {
+    await loadFlow([
+      server(),
+      { id: "s", type: "openavc-set", server: "srv", key: "var.status", value: "payload", valueType: "msg", wires: [["h"]] },
+      { id: "h", type: "helper" },
+    ]);
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("s").receive({ topic: "no payload here" });
+    expect((await got).payload.error).toMatch(/msg\.payload is not on the message/);
+    expect(fake.framesOfType("state.set")).toHaveLength(0);
+  });
+
+  it("writes a fixed empty string, which is how a request variable is cleared", async () => {
+    await loadFlow([
+      server(),
+      { id: "s", type: "openavc-set", server: "srv", key: "var.request_source", value: "", valueType: "str", wires: [["h"]] },
+      { id: "h", type: "helper" },
+    ]);
+    fake.state["var.request_source"] = "laptop";
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("s").receive({});
+    expect((await got).payload).toEqual({ success: true });
+    expect(fake.state["var.request_source"]).toBe("");
+  });
+
+  it("writes a value computed by JSONata", async () => {
+    await loadFlow([
+      server(),
+      { id: "s", type: "openavc-set", server: "srv", key: "var.status", value: '"Showing " & payload', valueType: "jsonata", wires: [["h"]] },
+      { id: "h", type: "helper" },
+    ]);
+    const got = nextInput(helper.getNode("h"));
+    helper.getNode("s").receive({ payload: "HDMI 1" });
+    expect((await got).payload).toEqual({ success: true });
+    expect(fake.state["var.status"]).toBe("Showing HDMI 1");
+  });
+});
+
+describe("openavc-event-in, on a connection with no key", () => {
+  it("says which patterns it cannot hear instead of sitting silent", async () => {
+    await loadFlow([
+      server(),
+      { id: "ev", type: "openavc-event-in", server: "srv", patterns: "plugin.*, custom.*", wires: [["h"]] },
+      { id: "h", type: "helper" },
+    ]);
+    const logged = helper.log().args.map((a) => a[0]);
+    const warning = logged.find((l) => l && l.level === 30 && /plugin\.\*/.test(l.msg));
+    expect(warning).toBeTruthy();
+    expect(warning.msg).toMatch(/Without an API key/);
+    const ev = helper.getNode("ev");
+    await fake.waitFor(() => (ev.status.lastCall && /needs an API key for plugin/.test(ev.status.lastCall.args[0].text) ? true : null));
+  });
+
+  it("does not warn when the connection has a key", async () => {
+    await loadFlow([
+      server(),
+      { id: "ev", type: "openavc-event-in", server: "srv", patterns: "plugin.*", wires: [["h"]] },
+      { id: "h", type: "helper" },
+    ], { srv: { apiKey: "k-123" } });
+    const logged = helper.log().args.map((a) => a[0]);
+    expect(logged.some((l) => l && /Without an API key/.test(l.msg))).toBe(false);
+  });
+});
+
+describe("openavc-server, key refused", () => {
+  it("shows the reason on every node's status", async () => {
+    await fake.stop();
+    fake = await new FakeOpenAVC({ claimed: true }).start();
+    await helper.load(ALL, [
+      server(),
+      { id: "s", type: "openavc-set", server: "srv", key: "var.status", wires: [[]] },
+    ], { srv: { apiKey: "wrong" } });
+    const s = helper.getNode("s");
+    await fake.waitFor(() => (s.status.lastCall && /refused the API key/.test(s.status.lastCall.args[0].text) ? true : null), 3000);
+    expect(s.status.lastCall.args[0]).toMatchObject({ fill: "red", text: "disconnected: the server refused the API key" });
+  });
+});
+
+describe("openavc-server, with a TLS configuration", () => {
+  it("takes its certificate options, verify setting included", async () => {
+    const tlsNode = require("@node-red/nodes/core/network/05-tls.js");
+    await helper.load([tlsNode, serverNode], [
+      { id: "t", type: "tls-config", name: "company CA", verifyservercert: true, servername: "avc.example" },
+      server({ tls: true, tlsVerify: false, tlsConfig: "t", port: 1 }),
+    ]);
+    const conn = helper.getNode("srv").connection;
+    expect(conn.tls).toBe(true);
+    expect(conn.tlsOptions).toMatchObject({ rejectUnauthorized: true, servername: "avc.example" });
+    expect(conn._tlsOpts().rejectUnauthorized).toBe(true);
   });
 });

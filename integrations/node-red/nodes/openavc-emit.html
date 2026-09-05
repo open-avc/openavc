@@ -19,7 +19,7 @@
     oneditprepare: function () {
       $("#node-input-payload").typedInput({
         default: "msg",
-        types: ["msg", "json"],
+        types: ["msg", "json", "flow", "global", "jsonata"],
         typeField: "#node-input-payloadType",
       });
     },
@@ -47,17 +47,19 @@
 </script>
 
 <script type="text/markdown" data-help-name="openavc-emit">
-Emits an event inside OpenAVC. An **event** trigger on a macro fires from it, and a script's `@on_event` handler runs.
+Emits an event inside OpenAVC. A macro with an **Event** trigger on that name runs, and a script's `@on_event` handler runs.
 
 ### Input
 
 : event (string) : overrides the event name on the node
-: payload (object) : what the macro or script receives; a macro reads it as `$trigger.<field>`
+: payload (object) : what the macro or script receives; a macro reads it as `$trigger.<field>`, a script as `event.payload`
 
-The name is always under `custom.`; the prefix is added if you leave it off. A payload that is not an object is wrapped as `{"value": ...}`.
+The name is always under `custom.`; the prefix is added if you leave it off. The payload can come from any message property, flow or global context, a fixed JSON object or a JSONata expression. A payload that is not an object is wrapped as `{"value": ...}`; a message with no payload sends `{}`.
 
 ### Output
 
 : payload.success (boolean) : `true` when OpenAVC accepted the event
 : payload.error (string) : why it did not
+
+Accepted means the event is on the bus, not that a macro ran: watch `macro.completed.*` with an **event in** node if the flow needs to know.
 </script>

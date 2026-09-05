@@ -16,6 +16,11 @@ module.exports = function (RED) {
         if (!macro) {
           throw new Error("A macro is required: set one on the node, or send msg.macro.");
         }
+        const action = msg.action || config.action || "run";
+        if (action === "cancel") return conn.cancelMacro(macro);
+        if (action !== "run") {
+          throw new Error(`msg.action must be "run" or "cancel", not "${action}".`);
+        }
         return conn.executeMacro(macro);
       });
     });

@@ -15,11 +15,24 @@ module.exports = function (RED) {
     const apiKey = (this.credentials && this.credentials.apiKey) || "";
     this.clientName = String(config.clientName || "").trim();
 
+    // A Node-RED TLS configuration (a company CA, a client certificate)
+    // applies its options over the two checkboxes, its own verify setting
+    // included.
+    let tlsOptions = null;
+    if (this.tls && config.tlsConfig) {
+      const tlsNode = RED.nodes.getNode(config.tlsConfig);
+      if (tlsNode && typeof tlsNode.addTLSOptions === "function") {
+        tlsOptions = {};
+        tlsNode.addTLSOptions(tlsOptions);
+      }
+    }
+
     this.connection = new OpenAVCConnection({
       host: this.host,
       port: this.port,
       tls: this.tls,
       tlsVerify: this.tlsVerify,
+      tlsOptions,
       apiKey,
       name: this.clientName,
       logger: {

@@ -41,10 +41,10 @@ A comma-separated list of event names or patterns; `*` matches anything, dots in
 
 - `custom.*` - events a macro's **Emit Event** step, a control's **Emit Event** action, or a script emits
 - `ui.press.*`, `ui.change.*` - a panel control was used (the element id is the last part)
-- `device.connected.*`, `device.disconnected.*`, `device.error.*` - a device came or went
-- `macro.started.*`, `macro.completed.*` - a macro ran
+- `device.connected.*`, `device.disconnected.*`, `device.error.*` - a device came or went, or refused a command
+- `macro.started.*`, `macro.completed.*`, `macro.skipped.*` - a macro ran, or was turned away by its own overlap or cooldown setting
 
-Without an API key on the server node the connection sees what a panel reflects: `custom.`, `ui.`, `device.`, `macro.` and `system.` events. With one it sees every event. State changes never arrive as events; use **state in** for those.
+Without an API key on the server node the connection sees what a panel reflects: `custom.`, `ui.`, `device.`, `macro.` and `system.` events. With one it sees every event, `plugin.` and `script.` included. A pattern the connection cannot hear is marked on the node's status. State changes never arrive as events; use **state in** for those.
 
 ### Output
 

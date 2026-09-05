@@ -1,6 +1,6 @@
 "use strict";
 
-const { serverOf, attachStatus, reply, evaluate } = require("../lib/node-common");
+const { serverOf, attachStatus, reply, evaluate, describe } = require("../lib/node-common");
 
 module.exports = function (RED) {
   function OpenAVCCommandNode(config) {
@@ -19,7 +19,10 @@ module.exports = function (RED) {
         }
         let params = msg.params;
         if (params === undefined) {
-          params = evaluate(RED, this, msg, config.params, config.paramsType, {});
+          params = await evaluate(RED, this, msg, config.params, config.paramsType, {});
+          if (params === undefined) {
+            throw new Error(`The parameters, ${describe(config.params, config.paramsType)}, are not on the message.`);
+          }
         }
         if (params === null || typeof params !== "object" || Array.isArray(params)) {
           throw new Error("Command parameters must be an object, e.g. {\"input\": 2}.");

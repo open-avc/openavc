@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "Macros do the sequences",
     "disabled": false,
-    "info": "The flow decides WHEN; OpenAVC's macros do the warm-up and shut-down sequences that have to work even when Node-RED is not there. Matches the Conference Room starter project (macros system_on and system_off).\n\nA panel button or a schedule writes var.room_mode to \"on\" or \"off\". The flow runs the matching macro, waits for it to finish, and writes what happened to var.status. If a macro fails, the catch node writes the reason instead, so the panel never goes quiet.\n\nPoint the openavc-server node at your system and deploy."
+    "info": "The flow decides WHEN; OpenAVC's macros do the warm-up and shut-down sequences that have to work even when Node-RED is not there. Matches the Conference Room starter project (macros system_on and system_off).\n\nA panel button or a schedule writes var.room_mode to \"on\" or \"off\". The flow runs the matching macro, waits for it to finish, and writes what happened to var.status. If a macro does not finish (a step failed with the macro set to stop on errors, or it was cancelled), the macro node raises an error and the catch node writes the reason, so the panel never goes quiet.\n\nPoint the openavc-server node at your system and deploy."
   },
   {
     "id": "openavc_macros_server",
@@ -36,7 +36,11 @@
     "replay": false,
     "x": 160,
     "y": 120,
-    "wires": [["openavc_macros_switch"]]
+    "wires": [
+      [
+        "openavc_macros_switch"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_switch",
@@ -46,15 +50,30 @@
     "property": "payload",
     "propertyType": "msg",
     "rules": [
-      { "t": "eq", "v": "on", "vt": "str" },
-      { "t": "eq", "v": "off", "vt": "str" }
+      {
+        "t": "eq",
+        "v": "on",
+        "vt": "str"
+      },
+      {
+        "t": "eq",
+        "v": "off",
+        "vt": "str"
+      }
     ],
     "checkall": "false",
     "repair": false,
     "outputs": 2,
     "x": 350,
     "y": 120,
-    "wires": [["openavc_macros_on"], ["openavc_macros_off"]]
+    "wires": [
+      [
+        "openavc_macros_on"
+      ],
+      [
+        "openavc_macros_off"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_on",
@@ -65,7 +84,11 @@
     "macro": "system_on",
     "x": 540,
     "y": 80,
-    "wires": [["openavc_macros_status"]]
+    "wires": [
+      [
+        "openavc_macros_status"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_off",
@@ -76,19 +99,27 @@
     "macro": "system_off",
     "x": 540,
     "y": 160,
-    "wires": [["openavc_macros_status"]]
+    "wires": [
+      [
+        "openavc_macros_status"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_status",
     "type": "function",
     "z": "openavc_macros_tab",
     "name": "what happened",
-    "func": "// The macro node answers when the macro has FINISHED, not when it was accepted.\nmsg.payload = msg.payload.success ? \"Room is ready\" : `Could not: ${msg.payload.error}`;\nreturn msg;",
+    "func": "// The macro node answers when the macro has FINISHED, not when it was accepted.\n// A macro that did not finish also raises an error; the catch node below writes\n// that one, so this only handles success.\nif (!msg.payload.success) return null;\nmsg.payload = \"Room is ready\";\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 750,
     "y": 120,
-    "wires": [["openavc_macros_set"]]
+    "wires": [
+      [
+        "openavc_macros_set"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_set",
@@ -101,7 +132,9 @@
     "valueType": "msg",
     "x": 950,
     "y": 120,
-    "wires": [[]]
+    "wires": [
+      []
+    ]
   },
   {
     "id": "openavc_macros_note2",
@@ -118,11 +151,18 @@
     "type": "catch",
     "z": "openavc_macros_tab",
     "name": "",
-    "scope": ["openavc_macros_on", "openavc_macros_off"],
+    "scope": [
+      "openavc_macros_on",
+      "openavc_macros_off"
+    ],
     "uncaught": false,
     "x": 160,
     "y": 300,
-    "wires": [["openavc_macros_reason"]]
+    "wires": [
+      [
+        "openavc_macros_reason"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_reason",
@@ -134,7 +174,11 @@
     "noerr": 0,
     "x": 350,
     "y": 300,
-    "wires": [["openavc_macros_set2"]]
+    "wires": [
+      [
+        "openavc_macros_set2"
+      ]
+    ]
   },
   {
     "id": "openavc_macros_set2",
@@ -147,6 +191,8 @@
     "valueType": "msg",
     "x": 550,
     "y": 300,
-    "wires": [[]]
+    "wires": [
+      []
+    ]
   }
 ]

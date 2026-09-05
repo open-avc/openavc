@@ -1,0 +1,75 @@
+<script type="text/javascript">
+  RED.nodes.registerType("openavc-state-get", {
+    category: "OpenAVC",
+    color: "#8AB493",
+    icon: "font-awesome/fa-search",
+    inputs: 1,
+    outputs: 1,
+    paletteLabel: "state get",
+    defaults: {
+      name: { value: "" },
+      server: { type: "openavc-server", required: true },
+      key: { value: "" },
+      output: { value: "payload" },
+    },
+    label: function () {
+      return this.name || this.key || "state get";
+    },
+    oneditprepare: function () {
+      const ed = window.openavcEditor;
+      const $hint = $("#openavc-hint");
+      const $key = $("#node-input-key");
+      $("#node-input-output").typedInput({ default: "msg", types: ["msg"] });
+      const load = () =>
+        ed.fetchList("state-keys", (keys, err) => {
+          if (err) {
+            ed.hint($hint, err);
+            return;
+          }
+          ed.hint($hint, "");
+          ed.autocomplete($key, keys.map((k) => ({ label: k, value: k })));
+        });
+      $("#node-input-server").on("change", load);
+      load();
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="openavc-state-get">
+  <div class="form-row">
+    <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+    <input type="text" id="node-input-server" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-key"><i class="fa fa-key"></i> Key</label>
+    <input type="text" id="node-input-key" placeholder="device.projector.power, or var.* for several" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-output"><i class="fa fa-arrow-right"></i> Put it in</label>
+    <input type="text" id="node-input-output" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+  <div class="form-tips" id="openavc-hint" style="display: none"></div>
+</script>
+
+<script type="text/markdown" data-help-name="openavc-state-get">
+Reads what a state key holds right now, when a message arrives. **state in** tells you when a value *changes*; this answers when the flow *asks*: is the projector on, before deciding what to do about a button press.
+
+The answer comes from the connection's live copy of the system's state, so it is immediate and costs the system nothing.
+
+### Input
+
+: key (string) : overrides the key on the node
+
+### Output
+
+: topic (string) : the key that was read
+: payload : the value, or `null` for a key the system does not hold. A key with `*` or `?` in it (`device.projector.*`) gives an object of every matching key and its value instead.
+
+The value can be put on another message property instead of `payload` (**Put it in**), so the message that asked keeps what it was carrying.
+
+While the connection is down the node raises an error a **catch** node can pick up, rather than answering from a copy that may be stale.
+</script>

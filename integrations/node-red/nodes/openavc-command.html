@@ -26,7 +26,7 @@
       const $command = $("#node-input-command");
       $("#node-input-params").typedInput({
         default: "json",
-        types: ["json", "msg"],
+        types: ["json", "msg", "flow", "global", "jsonata"],
         typeField: "#node-input-paramsType",
       });
       const loadDevices = () =>
@@ -42,7 +42,11 @@
         const device = $device.val();
         if (!device) return;
         ed.fetchList("devices/" + encodeURIComponent(device) + "/commands", (list, err) => {
-          if (err) return;
+          if (err) {
+            ed.hint($hint, err);
+            return;
+          }
+          ed.hint($hint, "");
           ed.autocomplete(
             $command,
             list.map((c) => ({ label: c.description ? c.name + " - " + c.description : c.name, value: c.name }))
@@ -89,14 +93,16 @@ Sends one command to one device and waits for OpenAVC to say whether it went out
 
 : device (string) : overrides the device on the node
 : command (string) : overrides the command on the node
-: params (object) : overrides the parameters on the node, e.g. `{"input": 2, "output": 1}`
+: params (object) : overrides the parameters on the node, e.g. `{"input": "hdmi1"}`
 
-Parameters can also be a fixed JSON object on the node, or taken from any message property.
+Parameters can also be a fixed JSON object on the node, or come from any message property, flow or global context, or a JSONata expression. A command that takes none sends `{}`.
 
 ### Output
 
 : payload.success (boolean) : `true` when the device accepted the command
-: payload.error (string) : why it did not, in the words OpenAVC's own panel would show
+: payload.error (string) : why it did not, in the words OpenAVC's own panel would show: the device is not connected, the command is not one its driver declares, a required parameter is missing or out of range
 
-A failed command also raises an error a **catch** node can pick up. The device's driver decides which commands exist and what each needs; the lists in the editor come from the system, so pick rather than type.
+A failed command also raises an error a **catch** node can pick up. The device's driver decides which commands exist and what each needs; the lists in the editor come from the system, so pick rather than type. A device's sub-units (an output on a switcher, a zone on an amplifier) are ordinary parameters of the command that addresses them.
+
+Every node on one server shares one connection, and OpenAVC answers a connection's requests one at a time, so a command waiting on a slow device holds the others on that server for as long as it takes. A device that is offline is refused at once.
 </script>

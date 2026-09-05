@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "OpenAVC logic engine",
     "disabled": false,
-    "info": "A panel button sets var.request_source. This flow sees it, routes the switcher, and writes var.status back so a label on the panel can show it. Point the openavc-server node at your system and deploy."
+    "info": "A panel button sets var.request_source; this flow decides what to do about it, switches the projector's input, and writes var.status back so a label on the panel can show it. The panel never knows where the logic lives.\n\nMatches the Conference Room starter project (device projector1, command set_input). In the UI Builder, give a button a Set Variable action: var.request_source = \"laptop\" (or \"wireless\"), and bind a label's value to var.status. The inject node at the top does the same as that button, so you can try the flow before building the panel.\n\nThe state get node reads the projector's power before switching: a projector that is off gets a status line instead of a command it cannot take.\n\nOnce it has acted, the flow clears var.request_source again, so pressing the same button twice runs the flow twice: a variable only reports a change, and the same value written twice is not one.\n\nPoint the openavc-server node at your system and deploy."
   },
   {
     "id": "openavc_example_server",
@@ -13,103 +13,199 @@
     "host": "192.168.1.50",
     "port": "8080",
     "tls": false,
-    "tlsVerify": false
+    "tlsVerify": false,
+    "clientName": "room-logic"
   },
   {
     "id": "openavc_example_note",
     "type": "comment",
     "z": "openavc_example_tab",
-    "name": "In the UI Builder: a button whose press does Set Variable var.request_source = \"hdmi1\", and a label bound to var.status",
-    "info": "",
-    "x": 400,
+    "x": 300,
     "y": 40,
-    "wires": []
+    "name": "In the UI Builder: a button whose press does Set Variable var.request_source = \"laptop\", and a label bound to var.status",
+    "info": ""
+  },
+  {
+    "id": "openavc_example_try",
+    "type": "inject",
+    "z": "openavc_example_tab",
+    "x": 170,
+    "y": 100,
+    "name": "try it: laptop",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "topic": "",
+    "payload": "laptop",
+    "payloadType": "str",
+    "wires": [
+      [
+        "openavc_example_try_set"
+      ]
+    ]
+  },
+  {
+    "id": "openavc_example_try_set",
+    "type": "openavc-set",
+    "z": "openavc_example_tab",
+    "x": 420,
+    "y": 100,
+    "name": "",
+    "server": "openavc_example_server",
+    "key": "var.request_source",
+    "value": "payload",
+    "valueType": "msg",
+    "wires": [
+      []
+    ]
   },
   {
     "id": "openavc_example_state_in",
     "type": "openavc-state-in",
     "z": "openavc_example_tab",
+    "x": 190,
+    "y": 180,
     "name": "",
     "server": "openavc_example_server",
     "patterns": "var.request_source",
     "replay": false,
-    "x": 170,
-    "y": 120,
-    "wires": [["openavc_example_decide"]]
+    "wires": [
+      [
+        "openavc_example_power"
+      ]
+    ]
+  },
+  {
+    "id": "openavc_example_power",
+    "type": "openavc-state-get",
+    "z": "openavc_example_tab",
+    "x": 430,
+    "y": 180,
+    "name": "projector power?",
+    "server": "openavc_example_server",
+    "key": "device.projector1.power",
+    "output": "power",
+    "wires": [
+      [
+        "openavc_example_decide"
+      ]
+    ]
   },
   {
     "id": "openavc_example_decide",
     "type": "function",
     "z": "openavc_example_tab",
+    "x": 660,
+    "y": 180,
     "name": "which input?",
-    "func": "// The panel wrote a source name; turn it into a switcher route.\nconst inputs = { hdmi1: 1, hdmi2: 2, wireless: 3 };\nconst input = inputs[msg.payload];\nif (!input) { node.warn(`unknown source ${msg.payload}`); return null; }\nmsg.params = { input, output: 1 };\nmsg.source = msg.payload;\nreturn msg;",
-    "outputs": 1,
+    "func": "// The panel wrote a source name; turn it into a projector input.\n// An empty value is the flow clearing the request below, not a press.\nif (!msg.payload) return null;\nconst inputs = { laptop: \"hdmi1\", wireless: \"hdmi2\" };\nconst input = inputs[msg.payload];\nif (!input) { node.warn(`unknown source ${msg.payload}`); return null; }\nmsg.source = msg.payload;\n// msg.power came from the state get node: no point switching a projector that is off.\nif (msg.power !== \"on\") {\n    msg.payload = `Projector is ${msg.power || \"not reporting\"}; turn the system on first`;\n    return [null, msg];\n}\nmsg.params = { input };\nreturn [msg, null];",
+    "outputs": 2,
     "noerr": 0,
-    "x": 370,
-    "y": 120,
-    "wires": [["openavc_example_route"]]
+    "wires": [
+      [
+        "openavc_example_route"
+      ],
+      [
+        "openavc_example_set_status",
+        "openavc_example_clear"
+      ]
+    ]
   },
   {
     "id": "openavc_example_route",
     "type": "openavc-command",
     "z": "openavc_example_tab",
+    "x": 890,
+    "y": 160,
     "name": "",
     "server": "openavc_example_server",
-    "device": "switcher",
-    "command": "route",
+    "device": "projector1",
+    "command": "set_input",
     "params": "{}",
     "paramsType": "json",
-    "x": 560,
-    "y": 120,
-    "wires": [["openavc_example_status_text"]]
+    "wires": [
+      [
+        "openavc_example_status_text"
+      ]
+    ]
   },
   {
     "id": "openavc_example_status_text",
     "type": "function",
     "z": "openavc_example_tab",
+    "x": 1110,
+    "y": 160,
     "name": "status line",
     "func": "msg.payload = msg.payload.success ? `Showing ${msg.source}` : `Could not switch: ${msg.payload.error}`;\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
-    "x": 750,
-    "y": 120,
-    "wires": [["openavc_example_set_status"]]
+    "wires": [
+      [
+        "openavc_example_set_status",
+        "openavc_example_clear"
+      ]
+    ]
   },
   {
     "id": "openavc_example_set_status",
     "type": "openavc-set",
     "z": "openavc_example_tab",
+    "x": 1330,
+    "y": 180,
     "name": "",
     "server": "openavc_example_server",
     "key": "var.status",
     "value": "payload",
     "valueType": "msg",
-    "x": 940,
-    "y": 120,
-    "wires": [[]]
+    "wires": [
+      []
+    ]
   },
   {
     "id": "openavc_example_events",
     "type": "openavc-event-in",
     "z": "openavc_example_tab",
+    "x": 190,
+    "y": 300,
     "name": "",
     "server": "openavc_example_server",
     "patterns": "custom.*, device.disconnected.*",
-    "x": 190,
-    "y": 220,
-    "wires": [["openavc_example_debug"]]
+    "wires": [
+      [
+        "openavc_example_debug"
+      ]
+    ]
   },
   {
     "id": "openavc_example_debug",
     "type": "debug",
     "z": "openavc_example_tab",
+    "x": 430,
+    "y": 300,
     "name": "events",
     "active": true,
     "tosidebar": true,
     "console": false,
-    "complete": "true",
-    "x": 390,
-    "y": 220,
-    "wires": []
+    "complete": "true"
+  },
+  {
+    "id": "openavc_example_clear",
+    "type": "openavc-set",
+    "z": "openavc_example_tab",
+    "name": "clear the request",
+    "server": "openavc_example_server",
+    "key": "var.request_source",
+    "value": "",
+    "valueType": "str",
+    "x": 1330,
+    "y": 240,
+    "wires": [
+      []
+    ]
   }
 ]

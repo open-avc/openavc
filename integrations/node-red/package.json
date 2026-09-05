@@ -1,6 +1,6 @@
 {
   "name": "@open-avc/node-red-openavc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node-RED nodes for OpenAVC: read room state and events, send device commands, run macros, write variables, emit events.",
   "license": "MIT",
   "author": "OpenAVC",
@@ -28,6 +28,7 @@
     "nodes": {
       "openavc-server": "nodes/openavc-server.js",
       "openavc-state-in": "nodes/openavc-state-in.js",
+      "openavc-state-get": "nodes/openavc-state-get.js",
       "openavc-event-in": "nodes/openavc-event-in.js",
       "openavc-command": "nodes/openavc-command.js",
       "openavc-macro": "nodes/openavc-macro.js",

@@ -10,9 +10,12 @@
       name: { value: "" },
       server: { type: "openavc-server", required: true },
       macro: { value: "" },
+      action: { value: "run" },
     },
     label: function () {
-      return this.name || this.macro || "macro";
+      if (this.name) return this.name;
+      if (this.macro) return (this.action === "cancel" ? "cancel " : "") + this.macro;
+      return this.action === "cancel" ? "cancel macro" : "macro";
     },
     oneditprepare: function () {
       const ed = window.openavcEditor;
@@ -39,7 +42,14 @@
     <input type="text" id="node-input-server" />
   </div>
   <div class="form-row">
-    <label for="node-input-macro"><i class="fa fa-play"></i> Macro</label>
+    <label for="node-input-action"><i class="fa fa-play"></i> Action</label>
+    <select id="node-input-action" style="width: 70%">
+      <option value="run">Run the macro and wait for it to finish</option>
+      <option value="cancel">Cancel the macro if it is running</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-macro"><i class="fa fa-list"></i> Macro</label>
     <input type="text" id="node-input-macro" placeholder="pick, or leave empty and send msg.macro" />
   </div>
   <div class="form-row">
@@ -50,16 +60,29 @@
 </script>
 
 <script type="text/markdown" data-help-name="openavc-macro">
-Runs a macro and sends a message when it has finished.
+Runs a macro and sends a message when it has finished, or cancels one that is running.
 
 ### Input
 
 : macro (string) : overrides the macro on the node
+: action (string) : `run` or `cancel`, overriding the action on the node
 
-### Output
+### Output, running
 
 : payload.success (boolean) : `true` when the macro completed
-: payload.error (string) : why it did not - a step that failed, or a cancellation
+: payload.error (string) : why it did not: a step that failed with the macro set to stop on errors, a cancellation, or a start the macro's own overlap or cooldown setting turned away
+: payload.step_errors (array) : present when a step failed but the macro carried on, as macros do unless set to stop on errors. Each entry names the `step`, `action`, `device`, `command` and `error`, in the words OpenAVC's own panel would show.
 
-A macro with delay steps takes as long as it takes; the output waits for it. A macro that stops on an error also raises one a **catch** node can pick up.
+A macro with delay steps takes as long as it takes; the output waits for it. A macro that does not complete also raises an error a **catch** node can pick up. A macro that completes with step errors does not (it completed), so check `payload.step_errors` if a half-done sequence matters to the flow.
+
+### Output, cancelling
+
+: payload.success (boolean) : `true` when OpenAVC accepted the request
+: payload.cancelled (boolean) : `true` when the macro was running and has been told to stop, `false` when nothing was running
+
+A cancelled run's own **macro** node answers with `payload.error` "macro cancelled".
+
+### Device groups
+
+A command to every device in a group is a macro with a **Group Command** step; run it from here. Otherwise send the command once per device with a **command** node.
 </script>

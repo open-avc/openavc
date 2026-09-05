@@ -135,3 +135,16 @@ def test_the_package_pins_the_node_red_it_needs(package_json):
     assert package_json["node-red"]["version"] == ">=4.0.0"
     assert package_json["engines"]["node"] == ">=18"
     assert "resources" in package_json["files"]
+
+
+def test_the_event_in_node_s_idea_of_what_a_keyless_connection_hears_is_the_server_s():
+    """`event in` warns when a pattern can never match anything a keyless
+    (panel-posture) connection is shown, so the node is not left silent. The
+    list it judges by is a copy of the server's; this keeps the two equal."""
+    from openavc.core.event_bus import PANEL_VISIBLE_EVENT_PREFIXES
+
+    js = (PACKAGE / "nodes" / "openavc-event-in.js").read_text(encoding="utf-8")
+    match = re.search(r"PANEL_VISIBLE_PREFIXES = \[([^\]]+)\]", js)
+    assert match, "openavc-event-in.js no longer declares PANEL_VISIBLE_PREFIXES"
+    mirrored = tuple(re.findall(r'"([^"]+)"', match.group(1)))
+    assert mirrored == PANEL_VISIBLE_EVENT_PREFIXES
