@@ -38,7 +38,18 @@ const { window } = dom;
 const { document } = window;
 
 // --- Stubs the panel code touches at construction / in the paths under test ---
-window.fetch = async () => ({ ok: false, json: async () => ({}) });
+// Records what it was handed, so a scenario can assert on the headers the
+// panel's own fetch patch attaches. panel.js binds THIS as its originalFetch
+// at eval time, which is the only way to see them from outside.
+window.__fetchCalls = [];
+// jsdom ships Headers but neither Request nor fetch. The panel's fetch patch
+// asks `input instanceof Request` to find headers on a Request argument, and
+// without the global that line is a ReferenceError rather than a false.
+if (!window.Request) window.Request = class Request {};
+window.fetch = async (input, init) => {
+    window.__fetchCalls.push({ input, init });
+    return { ok: false, json: async () => ({}) };
+};
 window.requestAnimationFrame = (cb) => { cb(0); return 0; };        // run binding batches synchronously
 window.cancelAnimationFrame = () => {};
 class FakeWS { constructor() { this.readyState = 1; } send() {} close() {} }
@@ -50,6 +61,10 @@ window.HTMLMediaElement.prototype.play = function () { return Promise.resolve();
 window.HTMLMediaElement.prototype.pause = function () {};
 
 window.eval(source);
+// panel.js replaced window.fetch with its credential-attaching wrapper. Held
+// here because a later scenario reassigns window.fetch for its own purposes,
+// and the auth scenarios must exercise the real wrapper whatever ran first.
+const patchedFetch = window.fetch;
 const PanelApp = window.__PanelApp;
 const mkApp = () => new PanelApp();
 
@@ -3100,6 +3115,66 @@ const tests = {
     // with no source_type is the connection refusing a message before anything
     // was read off it, so it cannot name what failed; "Rate limit exceeded" in
     // front of a room is a fact about our protocol nobody there can act on.
+    // Q-163 -- the Basic header the panel attaches to every API call. A bare
+    // btoa() is a Latin-1 encoder and the server reads the header as UTF-8: an
+    // umlaut went out as one byte where two were expected, so the password
+    // silently did not match and every call 401'd. The sibling
+    // getAuthSubprotocol() two lines below it always had this right.
+    async q163_the_basic_header_is_utf8_not_latin1() {
+        const pass = 'p\u00e4ssw\u00f6rd-\u00fc';
+        window.sessionStorage.setItem(
+            'openavc.programmer.auth', JSON.stringify({ user: '', pass }),
+        );
+        window.__fetchCalls.length = 0;
+        try {
+            await patchedFetch('/api/status');
+            const call = window.__fetchCalls[0];
+            assert(call, 'the patched fetch reached the underlying one');
+            const header = call.init && call.init.headers
+                && call.init.headers.get('Authorization');
+            assert(header && header.startsWith('Basic '),
+                `expected a Basic header, got "${header}"`);
+            const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+            assert(decoded === `:${pass}`,
+                `header decodes to "${decoded}", not ":${pass}"`);
+        } finally {
+            window.sessionStorage.removeItem('openavc.programmer.auth');
+        }
+    },
+
+    // The half that does not merely garble: btoa REFUSES a code point above
+    // Latin-1, so getAuthHeader() threw and no API call was made at all. A
+    // Polish l-stroke is the everyday version of this.
+    async q163_a_password_above_latin1_does_not_break_the_request() {
+        const pass = 'has\u0142o-secret';
+        window.sessionStorage.setItem(
+            'openavc.programmer.auth', JSON.stringify({ user: '', pass }),
+        );
+        window.__fetchCalls.length = 0;
+        try {
+            await patchedFetch('/api/status');
+            const call = window.__fetchCalls[0];
+            assert(call, 'the request was made rather than throwing');
+            const header = call.init.headers.get('Authorization');
+            assert(Buffer.from(header.slice(6), 'base64').toString('utf8') === `:${pass}`,
+                'the header round-trips through UTF-8');
+        } finally {
+            window.sessionStorage.removeItem('openavc.programmer.auth');
+        }
+    },
+
+    // Guards the guard: no stored credential must still mean no header, or the
+    // two above would pass against a build that always attached one.
+    async q163_no_stored_credential_attaches_no_header() {
+        window.sessionStorage.removeItem('openavc.programmer.auth');
+        window.__fetchCalls.length = 0;
+        await patchedFetch('/api/status');
+        const call = window.__fetchCalls[0];
+        assert(call, 'the request still went through');
+        assert(!(call.init && call.init.headers && call.init.headers.get('Authorization')),
+            'no credential, no Authorization header');
+    },
+
     q139_a_connection_level_refusal_is_not_put_on_the_glass() {
         const app = mkApp();
         clearFailureBand();

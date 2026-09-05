@@ -61,7 +61,49 @@ from openavc.utils.request_origin import (
 
 log = get_logger(__name__)
 
-_basic = HTTPBasic(auto_error=False)
+
+class _Utf8HTTPBasic(HTTPBasic):
+    """HTTP Basic that reads the header the way every other door here does.
+
+    THE POINT IS THAT THERE IS ONE DECODER. FastAPI's own ``HTTPBasic``
+    decodes the header as **ASCII** (`fastapi/security/http.py`), while this
+    module's `_decode_basic_header` decodes UTF-8 — and that one was reachable
+    only from `check_ws_auth` and the SPA's JSON sign-in. So the same
+    ``Authorization`` header meant different things depending on which door it
+    arrived at: measured on a real server, a password of `pässwörd-ü` signed in
+    through the browser and authenticated the WebSocket while every REST route
+    answered 401. Plain European accents do it; it does not take an emoji. This
+    module's own docstring promises Basic stays first-class for curl.
+
+    It also never RAISES, which the base class does on a decode failure or a
+    header with no colon — **even with `auto_error=False`**. A dependency that
+    raises answers the request before `programmer_auth_satisfied` runs, so the
+    caller's OTHER credentials were never looked at: measured, a valid
+    ``X-API-Key`` got 200 alone and 401 with a non-ASCII Basic header beside
+    it. A browser attaches cached Basic credentials to every request to an
+    origin, so one unusable password broke a working integration on the same
+    box. Returning None instead lets the check fall through to the API key, the
+    session token, and finally to this module's own 401 — which is also the one
+    that decides whether to send ``WWW-Authenticate`` at all (`_challenge_headers`,
+    and sending it on a browser fetch is the v0.24.1 regression).
+
+    Subclassed rather than replaced by a plain function so the OpenAPI security
+    scheme the base class registers stays on the schema.
+    """
+
+    async def __call__(self, request: Request) -> HTTPBasicCredentials | None:
+        decoded = _decode_basic_header(request.headers.get("authorization", ""))
+        if decoded is None:
+            return None
+        username, password = decoded
+        return HTTPBasicCredentials(username=username, password=password)
+
+
+#: The one Basic reader for every door. `openavc/api/plugins.py`,
+#: `plugin_ext.py`, `routes/system.py` and `routes/setup.py` all import THIS —
+#: the first two used to build their own `HTTPBasic`, which is how the
+#: divergence went unnoticed.
+_basic = _Utf8HTTPBasic(auto_error=False)
 
 
 def _get_username() -> str:
@@ -96,7 +138,13 @@ def _check_username(provided: str) -> bool:
     expected = _get_username()
     if not expected:
         return True
-    return secrets.compare_digest(provided, expected)
+    # Encoded, because `compare_digest` raises TypeError on two str arguments
+    # that are not both ASCII. A username is never hashed, so this is the only
+    # comparison it ever gets, and `björn` used to 500 the request rather than
+    # sign anybody in. Same rule as `utils/password_hash`.
+    return secrets.compare_digest(
+        provided.encode("utf-8"), expected.encode("utf-8")
+    )
 
 
 def _check_api_key(provided: str) -> bool:

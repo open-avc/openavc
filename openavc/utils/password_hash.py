@@ -159,7 +159,18 @@ def verify_password(provided: str, stored: str) -> bool:
     if not stored:
         return False
     if not looks_hashed(stored):
-        return secrets.compare_digest(provided, stored)
+        # UTF-8 bytes, not the strings: `secrets.compare_digest` REFUSES two
+        # str arguments that are not both ASCII -- it raises TypeError rather
+        # than returning False. `OPENAVC_PROGRAMMER_PASSWORD` is stored as a
+        # plaintext and never converted, so one accent in it turned every
+        # comparison into an unhandled 500 on that deployment: measured, the
+        # SPA's own sign-in door answered 500 and the WebSocket handshake was
+        # refused outright, so nothing could sign in at all. Encoding both
+        # sides keeps the comparison timing-safe and makes it answer the
+        # question instead of throwing.
+        return secrets.compare_digest(
+            provided.encode("utf-8"), stored.encode("utf-8")
+        )
 
     parsed = _parse(stored)
     if parsed is None:
@@ -208,8 +219,12 @@ def verify_api_key(provided: str, stored: str) -> bool:
         return False
     if not looks_hashed(stored):
         # A plaintext: OPENAVC_API_KEY, or a hand-provisioned system.json that
-        # has not been through a server start yet.
-        return secrets.compare_digest(provided, stored)
+        # has not been through a server start yet. Encoded for the same reason
+        # the password branch above is: two non-ASCII strings raise out of
+        # `compare_digest` rather than comparing false.
+        return secrets.compare_digest(
+            provided.encode("utf-8"), stored.encode("utf-8")
+        )
 
     parts = stored.split("$")
     if len(parts) != 3 or parts[0] != _ALGO_KEY:

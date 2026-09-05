@@ -257,3 +257,42 @@ class TestMalformedApiKeyRecords:
 
     def test_a_record_with_an_empty_salt_verifies_nothing(self):
         assert verify_api_key("x", "sha256$$YWJj") is False
+
+
+class TestNonAsciiPlaintextCredentials:
+    """A plaintext credential with an accent must COMPARE, not raise.
+
+    `secrets.compare_digest` refuses two `str` arguments that are not both
+    ASCII — it raises TypeError rather than returning False. The plaintext
+    branch is the one `OPENAVC_PROGRAMMER_PASSWORD` and `OPENAVC_API_KEY` take,
+    and those are never converted to a digest, so on that deployment a single
+    accent turned every authentication into an unhandled 500. Measured on a
+    real server with `OPENAVC_PROGRAMMER_PASSWORD=pässwörd-ü`: the SPA's own
+    sign-in door answered 500 and the WebSocket handshake was refused, so
+    nothing could sign in at all — not even the browser.
+    """
+
+    PASSWORD = "pässwörd-ü"
+
+    def test_the_right_plaintext_password_verifies(self):
+        assert verify_password(self.PASSWORD, self.PASSWORD) is True
+
+    def test_the_wrong_plaintext_password_does_not(self):
+        assert verify_password("wröng-ü", self.PASSWORD) is False
+
+    def test_an_ascii_attempt_against_a_non_ascii_plaintext_does_not(self):
+        """The mixed case raises too — one ASCII side is not enough."""
+        assert verify_password("plainwrong", self.PASSWORD) is False
+
+    def test_the_right_plaintext_api_key_verifies(self):
+        assert verify_api_key("nyckel-ü", "nyckel-ü") is True
+
+    def test_the_wrong_plaintext_api_key_does_not(self):
+        assert verify_api_key("nyckel-ö", "nyckel-ü") is False
+
+    def test_a_hashed_non_ascii_password_still_verifies(self):
+        """Guards the guard: the digest branch already handled this, and must
+        keep doing so — it is what a claimed instance actually stores."""
+        stored = hash_password(self.PASSWORD)
+        assert verify_password(self.PASSWORD, stored) is True
+        assert verify_password("wröng-ü", stored) is False

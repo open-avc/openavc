@@ -12,9 +12,13 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBasicCredentials
 
-from openavc.api.auth import programmer_auth_satisfied, require_programmer_auth
+from openavc.api.auth import (
+    _basic as _auth_basic,
+    programmer_auth_satisfied,
+    require_programmer_auth,
+)
 from openavc.api.errors import api_error as _api_error
 from openavc.api.static_files import serve_static_file
 from openavc.core.plugin_config import (
@@ -48,8 +52,10 @@ open_router = APIRouter(prefix="/api")
 
 # Non-erroring Basic scheme: lets an open-router handler read credentials when
 # present without forcing a 401 (which would summon the browser's native dialog
-# on an unauthenticated panel).
-_basic = HTTPBasic(auto_error=False)
+# on an unauthenticated panel). Imported rather than built here: this module
+# used to construct its own `HTTPBasic`, which decodes ASCII, so a password
+# with an accent in it reached this door as no credentials at all.
+_basic = _auth_basic
 
 _engine = None
 

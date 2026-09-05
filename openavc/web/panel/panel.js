@@ -28,10 +28,17 @@
         return null;
     }
 
+    // URI-encode before base64, the same way getAuthSubprotocol() below and the
+    // Programmer SPA's buildBasicHeader() do. A bare btoa() is a Latin-1
+    // encoder: an accent in the Latin-1 range (a, o, u with umlauts) went out
+    // as one byte where the server reads UTF-8, so the password silently did
+    // not match and every panel API call 401'd; anything above it (a Polish l,
+    // a Turkish s, an emoji) makes btoa THROW InvalidCharacterError and takes
+    // the whole request with it.
     function getAuthHeader() {
         const a = getStoredAuth();
         if (!a) return null;
-        return 'Basic ' + btoa(`${a.user}:${a.pass}`);
+        return 'Basic ' + btoa(unescape(encodeURIComponent(`${a.user}:${a.pass}`)));
     }
 
     // Mirrors getAuthSubprotocols() in the Programmer SPA: URI-encode for

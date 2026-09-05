@@ -187,6 +187,9 @@ SCENARIOS = [
     "q139_a_claim_is_given_back_when_the_run_it_started_ends",
     "q139_a_button_stays_busy_while_a_second_run_is_still_going",
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
+    "q163_the_basic_header_is_utf8_not_latin1",
+    "q163_a_password_above_latin1_does_not_break_the_request",
+    "q163_no_stored_credential_attaches_no_header",
     "q139_a_connection_level_refusal_is_not_put_on_the_glass",
 ]
 

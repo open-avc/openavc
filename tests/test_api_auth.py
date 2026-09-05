@@ -659,3 +659,109 @@ class TestChallengeSuppression:
             headers={"Sec-Fetch-Dest": "empty", "Authorization": f"Basic {cred}"},
         )
         assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# One decoder for every door: a non-ASCII password over HTTP Basic
+# ---------------------------------------------------------------------------
+
+class TestNonAsciiBasicPassword:
+    """The same Authorization header must mean the same thing at every door.
+
+    FastAPI's own `HTTPBasic` decodes the header as ASCII and, on failure,
+    RAISES 401 rather than returning no credentials -- even with
+    `auto_error=False`. The server's `_decode_basic_header` decodes UTF-8, and
+    it was reachable only from the WebSocket check and the SPA's JSON sign-in.
+    So a password with a plain European accent signed in through the browser
+    and authenticated the WebSocket, while every curl and integration using
+    Basic got a bare 401 with no hint that the password was the problem --
+    against a docstring in this module promising Basic stays first-class.
+
+    Measured on a real server before the fix (`pässwörd-ü`): REST 401,
+    WebSocket accepted, SPA sign-in 200.
+    """
+
+    PASSWORD = "pässwörd-ü"
+
+    def _basic_header(self, user: str, password: str) -> dict:
+        raw = f"{user}:{password}".encode("utf-8")
+        return {"Authorization": "Basic " + base64.b64encode(raw).decode("ascii")}
+
+    def test_a_rest_route_accepts_it(self, monkeypatch):
+        _set_auth(monkeypatch, password=self.PASSWORD)
+        client = TestClient(_make_app_with_protected_route())
+
+        r = client.get("/guarded", headers=self._basic_header("", self.PASSWORD))
+        assert r.status_code == 200
+
+    def test_the_websocket_check_agrees_with_the_rest_route(self, monkeypatch):
+        """The two used to disagree, which is the whole finding."""
+        _set_auth(monkeypatch, password=self.PASSWORD)
+        headers = self._basic_header("", self.PASSWORD)
+
+        client = TestClient(_make_app_with_protected_route())
+        rest = client.get("/guarded", headers=headers).status_code == 200
+        ws = check_ws_auth({}, {"authorization": headers["Authorization"]})
+
+        assert rest is True
+        assert ws is True
+
+    def test_a_non_ascii_username_works_too(self, monkeypatch):
+        _set_auth(monkeypatch, username="björn", password=self.PASSWORD)
+        client = TestClient(_make_app_with_protected_route())
+
+        r = client.get("/guarded", headers=self._basic_header("björn", self.PASSWORD))
+        assert r.status_code == 200
+
+    def test_the_wrong_non_ascii_password_is_still_refused(self, monkeypatch):
+        """Guards the guard: a build that accepted anything would pass the rest."""
+        _set_auth(monkeypatch, password=self.PASSWORD)
+        client = TestClient(_make_app_with_protected_route())
+
+        r = client.get("/guarded", headers=self._basic_header("", "wröng-ü"))
+        assert r.status_code == 401
+
+    def test_an_undecodable_basic_header_falls_through_to_the_api_key(self, monkeypatch):
+        """A bad Basic header must not cost the request its OTHER credential.
+
+        FastAPI's HTTPBasic raised on a decode failure, so it answered 401
+        before `programmer_auth_satisfied` ran and never looked at X-API-Key.
+        A browser attaches cached Basic credentials to every request to an
+        origin, so one bad password broke a working integration on the same box.
+        Measured on a real server: key alone 200, key plus a non-ASCII Basic
+        header 401.
+        """
+        _set_auth(monkeypatch, password="secret", api_key="a-key-with-entropy")
+        client = TestClient(_make_app_with_protected_route())
+
+        headers = {
+            "Authorization": "Basic " + base64.b64encode(b"\xff\xfe undecodable").decode("ascii"),
+            "X-API-Key": "a-key-with-entropy",
+        }
+        assert client.get("/guarded", headers=headers).status_code == 200
+
+    def test_a_bad_basic_header_gets_this_servers_401_not_fastapis(self, monkeypatch):
+        """The refusal has to come from our own handler, because that is the one
+        that decides whether to send `WWW-Authenticate` -- and sending it on a
+        browser fetch pops Chrome's native sign-in dialog over the app, which is
+        the v0.24.1 regression. FastAPI's raise carried the challenge
+        unconditionally; measured on a real server, a non-ASCII password put
+        `www-authenticate: Basic` on a 401 that an ASCII one did not.
+        """
+        _set_auth(monkeypatch, password="secret")
+        client = TestClient(
+            _make_app_with_protected_route(), raise_server_exceptions=False
+        )
+
+        r = client.get(
+            "/guarded",
+            headers={
+                "Authorization": "Basic " + base64.b64encode(
+                    "böb:wrong".encode("utf-8")
+                ).decode("ascii"),
+                "Sec-Fetch-Dest": "empty",
+            },
+        )
+        assert r.status_code == 401
+        assert r.json()["detail"] == "Authentication required"
+        assert "www-authenticate" not in {k.lower() for k in r.headers}

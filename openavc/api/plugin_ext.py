@@ -41,7 +41,7 @@ import secrets
 import time
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBasicCredentials
 
 from openavc.api import auth as _auth
 from openavc.api.auth import programmer_auth_satisfied
@@ -61,7 +61,10 @@ _DEFAULT_TTL_SECONDS = 12 * 3600
 # restart is transparent.
 _SECRET = secrets.token_bytes(32)
 
-_basic = HTTPBasic(auto_error=False)
+# The one Basic reader, imported rather than built here: a locally-made
+# `HTTPBasic` decodes ASCII, so a password with an accent in it reached this
+# door as no credentials at all.
+_basic = _auth._basic
 
 
 # ---------------------------------------------------------------------------
