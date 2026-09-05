@@ -4,16 +4,21 @@
   "description": "Node-RED nodes for OpenAVC: read room state and events, send device commands, run macros, write variables, emit events.",
   "license": "MIT",
   "author": "OpenAVC",
-  "homepage": "https://openavc.com",
+  "homepage": "https://docs.openavc.com/node-red/",
+  "bugs": {
+    "url": "https://github.com/open-avc/openavc/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/open-avc/openavc.git",
     "directory": "integrations/node-red"
   },
   "keywords": [
+    "node-red",
     "openavc",
     "av control",
-    "audio visual"
+    "audio visual",
+    "room control"
   ],
   "engines": {
     "node": ">=18"
