@@ -123,3 +123,4 @@ A live feed of recent state changes across the entire system (up to 500 entries)
 - [Programmer IDE Overview](programmer-overview.md). IDE layout, state concepts, and typical workflow.
 - [Macros and Triggers](macros-and-triggers.md). Command sequences and automation conditions.
 - [Scripting Guide](scripting-guide.md). Complete Python scripting API.
+- [Node-RED](node-red.md). A flow that reads and writes these variables can be the room's logic.

@@ -290,6 +290,8 @@ The schedule trigger includes a visual cron builder with two modes: a **field-by
 
 **Event Autocomplete:** The event pattern field in event triggers suggests events from your configured devices, macros, and scripts as you type.
 
+An **Event** trigger on a `custom.*` name can also be fired from outside the system: a [Node-RED](node-red.md) flow's **emit event** node, or a `POST /api/events` from anything that can make an HTTP request. The macro reads whatever came with the event as `$trigger.<field>`, exactly as it would from an Emit Event step.
+
 Trigger safety features prevent runaway automation:
 
 - **Debounce.** Prevent rapid re-firing (configurable seconds).
@@ -370,3 +372,4 @@ See the [Scripting Guide](scripting-guide.md) for the complete API reference inc
 - [Scripting Guide](scripting-guide.md). Complete Python scripting API
 - [Scheduling Guide](scheduling-guide.md). Cron schedules, trigger-schedules, timers
 - [Variables and State](variables-and-state.md). User variables, device states, and activity monitoring
+- [Node-RED](node-red.md). Run a space's logic as a flow, with macros doing the sequences

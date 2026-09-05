@@ -26,7 +26,7 @@ In Node-RED: **Manage palette › Install › `@openavc/node-red-openavc`**, or 
 npm install @openavc/node-red-openavc
 ```
 
-Needs Node-RED 4.0 or later and OpenAVC 0.34 or later.
+Needs Node-RED 4.0 or later and OpenAVC 0.33 or later.
 
 ## Connect
 
