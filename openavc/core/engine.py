@@ -368,6 +368,7 @@ class Engine:
         self._event_sub_ids.append(self.events.on("macro.cancelled.*", self._on_macro_event))
         self._event_sub_ids.append(self.events.on("macro.error.*", self._on_macro_event))
         self._event_sub_ids.append(self.events.on("macro.step_error.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.skipped.*", self._on_macro_event))
 
         # Bridge trigger events to WebSocket
         self._event_sub_ids.append(self.events.on("trigger.fired", self._on_trigger_event))

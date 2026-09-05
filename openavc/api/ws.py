@@ -459,7 +459,7 @@ async def _run_ui_event(
 _PANEL_ALLOWED_TYPES = frozenset({
     "ui.press", "ui.release", "ui.hold", "ui.toggle_off", "ui.change",
     "ui.select", "ui.route", "ui.submit",
-    "ui.page", "command", "macro.execute", "state.set", "pong",
+    "ui.page", "command", "macro.execute", "macro.cancel", "state.set", "pong",
     "event.subscribe", "event.unsubscribe", "event.emit",
 })
 
@@ -705,6 +705,32 @@ async def _handle_message(
         _bg_tasks.add(task)
         task.add_done_callback(_bg_tasks.discard)
         await _send_ws(ws, {"type": "macro.execute.ack", "macro_id": macro_id})
+
+    elif msg_type == "macro.cancel":
+        # Stop every running invocation of a macro. Open to a panel on the
+        # same terms as macro.execute: whoever may start a thirty-second
+        # warm-up may stop it. The ack says whether anything was running to
+        # stop; the run itself reports its end as `macro.cancelled`. The
+        # cancel waits up to a grace period for the steps to unwind, which is
+        # too long to hold this client's message loop, so it runs in the
+        # background like the execute does.
+        macro_id = msg.get("macro_id", "")
+        if not macro_id:
+            await _send_ws_error(ws, msg_type, "Missing macro_id")
+            return
+        if not engine.macros.has_macro(macro_id):
+            await _send_ws_error(ws, msg_type, f"No macro named '{macro_id}'.")
+            return
+        running = engine.macros.is_macro_running(macro_id)
+        if running:
+            task = asyncio.create_task(engine.macros.cancel(macro_id))
+            _bg_tasks.add(task)
+            task.add_done_callback(_bg_tasks.discard)
+        await _send_ws(ws, {
+            "type": "macro.cancel.ack",
+            "macro_id": macro_id,
+            "cancelled": running,
+        })
 
     elif msg_type == "project.reload":
         try:

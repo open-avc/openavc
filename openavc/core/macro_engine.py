@@ -405,39 +405,48 @@ class MacroEngine:
         # ``task.cancel()`` on the targets; the drain await happens
         # outside the lock so other unrelated macros can still start.
         cancelled: list[tuple[str, asyncio.Task]] = []
+        blocked: str | None = None
         if task is not None:
             async with self._start_lock:
                 blocked = self._throttle_reason(macro_id, overlap, cooldown)
-                if blocked is not None:
-                    _active_call_chain.reset(_chain_token)
-                    log.info(f"Macro '{name}' skipped — {blocked}")
-                    return
-                self._running.setdefault(macro_id, set()).add(task)
-                if cooldown > 0:
-                    self._last_started_monotonic[macro_id] = time.monotonic()
-                if cancel_group:
-                    cancelled = self._collect_group_targets(
-                        cancel_group, exclude_task=task
-                    )
-                    for mid, t in cancelled:
-                        log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
-                        t.cancel()
+                if blocked is None:
+                    self._running.setdefault(macro_id, set()).add(task)
+                    if cooldown > 0:
+                        self._last_started_monotonic[macro_id] = time.monotonic()
+                    if cancel_group:
+                        cancelled = self._collect_group_targets(
+                            cancel_group, exclude_task=task
+                        )
+                        for mid, t in cancelled:
+                            log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
+                            t.cancel()
         else:
             # Synthetic execute() with no current task: honour the throttle
             # (skip/cooldown) but there's no task to register or preempt with.
             blocked = self._throttle_reason(macro_id, overlap, cooldown)
-            if blocked is not None:
-                _active_call_chain.reset(_chain_token)
-                log.info(f"Macro '{name}' skipped — {blocked}")
-                return
-            if cooldown > 0:
-                self._last_started_monotonic[macro_id] = time.monotonic()
-            if cancel_group:
-                # No current task — preempt anyway.
-                cancelled = self._collect_group_targets(cancel_group, exclude_task=None)
-                for mid, t in cancelled:
-                    log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
-                    t.cancel()
+            if blocked is None:
+                if cooldown > 0:
+                    self._last_started_monotonic[macro_id] = time.monotonic()
+                if cancel_group:
+                    # No current task — preempt anyway.
+                    cancelled = self._collect_group_targets(cancel_group, exclude_task=None)
+                    for mid, t in cancelled:
+                        log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
+                        t.cancel()
+        if blocked is not None:
+            _active_call_chain.reset(_chain_token)
+            log.info(f"Macro '{name}' skipped — {blocked}")
+            # A run that never starts is still an outcome somebody asked for.
+            # Every other way a run ends has a lifecycle event; without this
+            # one a caller waiting on the outcome (the WebSocket's
+            # macro.execute acks receipt and nothing more) waits forever.
+            # Emitted outside the start lock: a handler that starts a macro
+            # of its own takes that lock too.
+            await self.events.emit(
+                f"macro.skipped.{macro_id}",
+                {"macro_id": macro_id, "name": name, "reason": blocked},
+            )
+            return
 
         # Wait for preempted tasks to fully unwind before we start sending
         # commands — A50.
