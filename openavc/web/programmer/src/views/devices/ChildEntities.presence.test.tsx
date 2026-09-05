@@ -155,6 +155,90 @@ describe("the presence dot", () => {
   });
 });
 
+describe("an empty slot", () => {
+  /** Q-203: seven AT-LINK extension positions on a standalone mixer. Not in
+   *  service, and nothing to go and fix. The whole panel has to agree about
+   *  that -- the dot, the badge, the order and the filter -- or it just moves
+   *  the false alarm from one control to another. */
+  const EMPTY = { a: "not_fitted", b: "not_fitted" };
+
+  it("is marked, but not marked as a fault", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload(["a", "b", "c"], EMPTY));
+    render(panel());
+
+    const row = await screen.findByTestId("child-row-a");
+    const dot = within(row).getByTestId("child-presence-dot");
+    expect(dot.getAttribute("data-ok")).toBe("false");
+    expect(dot.getAttribute("data-trouble")).toBe("false");
+    expect(dot.getAttribute("data-reason")).toBe("not_fitted");
+  });
+
+  it("is left out of the tab's down count", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload(["a", "b", "c"], EMPTY));
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    expect(screen.queryByTestId("child-type-down-decoder")).toBeNull();
+  });
+
+  it("does not offer a trouble filter that would only ever list slots", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload(["a", "b", "c"], EMPTY));
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    expect(screen.queryByTestId("child-trouble-filter")).toBeNull();
+  });
+
+  it("stays where the roster put it instead of being hoisted", async () => {
+    mocks.listChildEntities.mockResolvedValue(
+      payload(["a", "b", "c"], { c: "not_fitted" }),
+    );
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    const rows = screen.getAllByTestId(/^child-row-/);
+    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
+      "child-row-a", "child-row-b", "child-row-c",
+    ]);
+  });
+
+  it("is not what the filter shows when something IS wrong beside it", async () => {
+    mocks.listChildEntities.mockResolvedValue(
+      payload(["a", "b", "c"], { a: "not_fitted", b: "not_responding" }),
+    );
+    render(panel());
+
+    const filter = await screen.findByTestId("child-trouble-filter");
+    expect(filter.textContent).toContain("the one that is not answering");
+    await userEvent.click(within(filter).getByRole("checkbox"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("child-row-a")).toBeNull();
+    });
+    expect(screen.getByTestId("child-row-b")).toBeTruthy();
+  });
+});
+
+describe("a device that is offline", () => {
+  it("says so on every child, and words the filter for it", async () => {
+    // Q-205: the platform takes every registered child down with the parent.
+    // "not answering" would send somebody to the endpoints; the fix is on the
+    // device card above.
+    mocks.listChildEntities.mockResolvedValue(
+      payload(["a", "b"], { a: "parent_offline", b: "parent_offline" }),
+    );
+    render(panel());
+
+    const row = await screen.findByTestId("child-row-a");
+    const dot = within(row).getByTestId("child-presence-dot");
+    expect(dot.getAttribute("data-trouble")).toBe("true");
+
+    const filter = screen.getByTestId("child-trouble-filter");
+    expect(filter.textContent).toContain(
+      "2 that are unavailable while the device is offline",
+    );
+  });
+});
+
 describe("ordering", () => {
   it("lifts what is not answering to the top", async () => {
     mocks.listChildEntities.mockResolvedValue(

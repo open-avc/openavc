@@ -13,7 +13,10 @@ the same question ("why is this thing not working") one level down, for a
 sub-unit of a device rather than the device itself. Those are asserted by the
 driver rather than derived here, because nothing the platform can see tells a
 wedged endpoint from an absent one, but they share this home so there is one
-vocabulary and one place the frontend maps a code to copy.
+vocabulary and one place the frontend maps a code to copy. The one exception is
+`parent_offline`, which the platform asserts and a driver may not: when the
+connection to the parent drops there is nothing the driver can still see, so
+the only honest statement about every child under it is the platform's.
 
 This is the single place that owns both taxonomies: pure / stdlib, no I/O, and
 no driver- or transport-specific branching beyond the small amount the taxonomy
@@ -148,9 +151,15 @@ def is_permanent_fault(code: str) -> bool:
 # one vocabulary and one place the frontend maps codes to copy. Splitting them
 # would leave two modules both answering it.
 #
-# Unlike the device codes, these are never derived — nothing the platform can
-# see distinguishes them. Only the driver knows, so the driver asserts one,
-# exactly as it already asserts `online`.
+# Almost all of these are never derived — nothing the platform can see
+# distinguishes a wedged endpoint from an absent one. Only the driver knows, so
+# the driver asserts one, exactly as it already asserts `online`.
+#
+# `parent_offline` is the ONE exception, and it is here because the platform
+# genuinely does know it: when the connection to the parent device drops,
+# nothing under that device can be seen at all, whatever the driver last said.
+# A driver cannot assert it (its own transport is gone), so the platform does —
+# see BaseDriver._children_follow_parent, which is the only writer.
 #
 # The set is deliberately small: every code here earns its place by having a
 # DIFFERENT REMEDY from the others, which is the whole point of the item that
@@ -168,7 +177,17 @@ CHILD_NOT_RESPONDING = "not_responding"
 #: function it exists to perform is not running. Power-cycle or restart it.
 #: This is the one the boolean could never say.
 CHILD_SERVICE_FAULT = "service_fault"
-# A third code, `disabled` (off on purpose, not a fault), was drafted and cut
+#: The slot is empty: this id is a place something CAN be, and nothing is
+#: there. Not a fault, and nothing to go and fix — a mixer with no AT-LINK
+#: extensions chained to it is a correctly-configured mixer. Only a roster
+#: whose driver reports presence (`instances.presence: reported`) uses it; on
+#: an `assumed` roster every id is fitted by definition.
+CHILD_NOT_FITTED = "not_fitted"
+#: The parent device is unreachable, so nothing under it can be seen. Platform-
+#: asserted, never a driver's to claim — the fix is on the device card above,
+#: not on the child. Clears itself when the device reconnects.
+CHILD_PARENT_OFFLINE = "parent_offline"
+# A fifth code, `disabled` (off on purpose, not a fault), was drafted and cut
 # before it shipped. The one case in the corpus that looked like it — an MXNet
 # destination whose video path is disabled — is what pressing Off on a matrix
 # destination produces, so it is ordinary operation and `source_video: ""`
@@ -176,12 +195,32 @@ CHILD_SERVICE_FAULT = "service_fault"
 # this particular field is the thing the whole feature exists to remove. Add it
 # when a device genuinely reports "taken out of service".
 
-#: Every code a driver may put in `device.<id>.<type>.<lid>.offline_reason`.
-#: The empty string is always allowed and means "nothing claimed".
+#: Every code that can appear in `device.<id>.<type>.<lid>.offline_reason`, from
+#: any writer. The empty string is always allowed and means "nothing claimed".
 CHILD_FAULT_CODES: frozenset[str] = frozenset({
     CHILD_NOT_RESPONDING,
     CHILD_SERVICE_FAULT,
+    CHILD_NOT_FITTED,
+    CHILD_PARENT_OFFLINE,
 })
+
+#: The subset a DRIVER may assert through ``BaseDriver.child_fault``.
+#: `parent_offline` is excluded for the same reason `bridge_offline` is excluded
+#: from the device set above: it is the platform's own statement about a
+#: connection the driver no longer has, and a driver writing it would be
+#: claiming something it cannot see — the platform would clear it on the next
+#: reconnect anyway.
+CHILD_DRIVER_FAULT_CODES: frozenset[str] = frozenset({
+    CHILD_NOT_RESPONDING,
+    CHILD_SERVICE_FAULT,
+    CHILD_NOT_FITTED,
+})
+
+#: Codes that mean something is WRONG, as opposed to something being absent by
+#: design. The distinction is what the IDE counts and banners on: a chassis with
+#: seven empty extension slots is not "7 down", and saying so would trade one
+#: false alarm for another. Mirrored in the frontend by childPresence.ts.
+CHILD_TROUBLE_CODES: frozenset[str] = CHILD_FAULT_CODES - {CHILD_NOT_FITTED}
 
 #: The sentence each code gets when the driver does not word its own. A driver
 #: SHOULD word its own where it knows more (which service, which port), and
@@ -193,6 +232,11 @@ _CHILD_DEFAULT_MESSAGES = {
     CHILD_SERVICE_FAULT: (
         "Reachable, but not running. Power-cycle it, or restart it from the "
         "controller."
+    ),
+    CHILD_NOT_FITTED: "Nothing is connected here.",
+    CHILD_PARENT_OFFLINE: (
+        "The device is offline, so this can't be checked. See the device's own "
+        "status above."
     ),
 }
 
@@ -209,6 +253,16 @@ def default_child_fault_message(code: str) -> str:
 def is_child_fault_code(code: str) -> bool:
     """True when ``code`` is one this taxonomy defines."""
     return code in CHILD_FAULT_CODES
+
+
+def is_child_trouble_code(code: str) -> bool:
+    """True when ``code`` means something is WRONG rather than absent by design.
+
+    An unknown code counts as trouble: a driver writing a code this taxonomy
+    does not define is a bug, and the safe reading of "I don't recognise this"
+    is not "everything is fine".
+    """
+    return bool(code) and code != CHILD_NOT_FITTED
 
 
 class ConnectionFaultError(ConnectionError):

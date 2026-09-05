@@ -745,6 +745,14 @@
         "label": {
           "type": "string",
           "description": "Initial label template; {id} substitutes the local ID. A user-set project label always wins."
+        },
+        "presence": {
+          "type": "string",
+          "enum": [
+            "assumed",
+            "reported"
+          ],
+          "description": "Who owns each child's `online`. assumed (default) = every id is real hardware, so the platform holds them online while the device is reachable. reported = the ids are SLOTS that may be empty (AT-LINK extension positions, card-cage slots); the platform registers them offline with reason not_fitted and only the driver's own responses put one in service. Pick reported when the roster's steady state on a bare unit is blank. Requires platform 0.33.0."
         }
       },
       "additionalProperties": false,

@@ -121,7 +121,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   stateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
   childStateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
   childEntityType: new Set(["dynamic", "id_format", "instances", "label", "label_field", "label_plural", "state_variables", "summary_fields"]),
-  childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label"]),
+  childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label", "presence"]),
   childSetEntry: new Set(["id", "state", "type"]),
   eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
   queryEntry: new Set(["query_for", "send", "when"]),
@@ -894,6 +894,16 @@ export interface DriverChildInstances {
    * label always wins.
    */
   label?: string;
+  /**
+   * Who owns each child's `online`. assumed (default) = every id is real
+   * hardware, so the platform holds them online while the device is reachable.
+   * reported = the ids are SLOTS that may be empty (AT-LINK extension
+   * positions, card-cage slots); the platform registers them offline with
+   * reason not_fitted and only the driver's own responses put one in service.
+   * Pick reported when the roster's steady state on a bare unit is blank.
+   * Requires platform 0.33.0.
+   */
+  presence?: "assumed" | "reported";
 }
 
 export interface DriverChildEntityType {

@@ -171,6 +171,22 @@ CHILD_ID_TYPES: tuple[str, ...] = ("integer", "string")
 # The mutually exclusive roster sources an instances: block may declare.
 INSTANCE_SOURCES: tuple[str, ...] = ("count", "count_from", "ids_from", "ids")
 
+# Who owns a child's `online` on a declarative roster -- the platform or the
+# device. The same `instances: count: N` syntax means two different things and
+# only the driver author knows which: six mic inputs on a mixer are always
+# fitted, while seven AT-LINK extension slots are places where a device MAY be
+# connected and usually are not.
+#
+#   assumed   the ids are all real hardware. The platform owns presence: online
+#             while the device is reachable, offline while it is not. This is
+#             the default, and flipping it would take every matrix output and
+#             mixer input in the corpus offline until its driver learned to
+#             assert presence.
+#   reported  the ids are slots. The platform registers them `not_fitted` and
+#             says nothing more; the driver's own responses are what put one
+#             in service.
+CHILD_PRESENCE_MODES: tuple[str, ...] = ("assumed", "reported")
+
 # State keys the platform provides on every registered child, on top of
 # whatever the type declares in state_variables. A driver never declares
 # these and always may write them; a driver that DOES declare one keeps its
@@ -936,6 +952,12 @@ DEFS = {
             'label': {
                 'type': 'string',
                 'doc': 'Initial label template; {id} substitutes the local ID. A user-set project label always wins.',
+            },
+            'presence': {
+                'type': 'string',
+                'enum': CHILD_PRESENCE_MODES,
+                'doc': "Who owns each child's `online`. assumed (default) = every id is real hardware, so the platform holds them online while the device is reachable. reported = the ids are SLOTS that may be empty (AT-LINK extension positions, card-cage slots); the platform registers them offline with reason not_fitted and only the driver's own responses put one in service. Pick reported when the roster's steady state on a bare unit is blank.",
+                'since': '0.33.0',
             },
         },
         'extra': False,

@@ -498,7 +498,16 @@ function InstancesSection({
               ? "ids"
               : "none";
 
-  const keepLabel = inst?.label ? { label: inst.label } : {};
+  // Carried across every source change for the same reason the label is:
+  // whether these IDs are fitted hardware or empty slots is a fact about the
+  // roster, not about which field happens to size it, and dropping it on a
+  // switch would quietly put seven empty positions back online.
+  const keepPresence =
+    inst?.presence === "reported" ? { presence: "reported" as const } : {};
+  const keepLabel = {
+    ...keepPresence,
+    ...(inst?.label ? { label: inst.label } : {}),
+  };
   // `count_from_state` is a companion to the count family, not a source of its
   // own, so every write in that family has to carry it the way `label` is
   // carried — otherwise editing the config field silently drops it. It does
@@ -705,7 +714,49 @@ function InstancesSection({
             />
           </div>
         )}
+        {source !== "none" && (
+          <div>
+            <span style={{ ...labelStyle, fontSize: "11px" }}>
+              These IDs are
+            </span>
+            <select
+              data-testid={`child-instances-presence-${name}`}
+              value={inst?.presence ?? "assumed"}
+              onChange={(e) => {
+                const base = { ...(inst ?? {}) };
+                if (e.target.value === "reported") base.presence = "reported";
+                else delete base.presence;
+                onUpdate({ instances: base });
+              }}
+              style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+            >
+              <option value="assumed">Fitted hardware</option>
+              <option value="reported">Slots that may be empty</option>
+            </select>
+          </div>
+        )}
       </div>
+      {source !== "none" && (
+        <div style={helpStyle}>
+          {inst?.presence === "reported" ? (
+            <>
+              Each ID is a position something can be connected to, empty until
+              the device says otherwise. They start out marked{" "}
+              <strong>nothing connected</strong>, which is not counted as a
+              fault, and one of your responses has to set{" "}
+              <code>online</code> to <code>true</code> (and clear{" "}
+              <code>offline_reason</code>) to put it in service.
+            </>
+          ) : (
+            <>
+              Each ID is real hardware that is always there, so they are in
+              service whenever the device is reachable. Switch this if the
+              roster reads blank on a bare unit &mdash; the extension positions
+              on a chained mixer, the card slots on a frame.
+            </>
+          )}
+        </div>
+      )}
       <div style={helpStyle}>
         {source === "none" ? (
           <>

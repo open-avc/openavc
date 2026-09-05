@@ -17,15 +17,34 @@
  * fault code takes the boolean down with it (BaseDriver.child_fault), so
  * "something is wrong here" never hides in a column somebody has to know to
  * read. WHICH kind of trouble is the reason's job.
+ *
+ * TWO questions, not one. `ok` is "in service"; `trouble` is "something is
+ * wrong". They used to be the same boolean, which worked while every reason in
+ * the taxonomy was a fault. `not_fitted` is not: a mixer with seven empty
+ * AT-LINK extension slots is a correctly-configured mixer, and counting those
+ * as "7 down" would trade the old lie (seven green dots on hardware that does
+ * not exist) for a new one. So the dot reads `ok` — an empty slot is not in
+ * service, and drawing it green would be the original bug — while the tab
+ * badge, the trouble filter and the device banner read `trouble`.
  */
+
+/** Codes this module knows by name. The vocabulary itself lives server-side in
+ *  core/connection_fault.py; these are the two the UI has to branch on. */
+const NOT_FITTED = "not_fitted";
+const PARENT_OFFLINE = "parent_offline";
+const SERVICE_FAULT = "service_fault";
 
 /** A child's state as the list holds it: merged live state over the fetch. */
 export type ChildState = Record<string, unknown>;
 
 export interface ChildPresence {
-  /** False when this child is not in service. The dot, the sort and the
-   *  counts all key off this and nothing else. */
+  /** False when this child is not in service — including an empty slot. The
+   *  presence dot keys off this. */
   ok: boolean;
+  /** True when something is WRONG, as opposed to absent by design. The tab
+   *  count, the trouble filter, the row order and the device banner key off
+   *  this. Always implies `!ok`. */
+  trouble: boolean;
   /** The stable code, or "" when the driver did not say (which is what every
    *  driver that predates the taxonomy does, and is fine). */
   reason: string;
@@ -41,7 +60,33 @@ export function childPresence(state: ChildState | undefined): ChildPresence {
   const ok = online !== false;
   const reason = typeof state?.offline_reason === "string" ? state.offline_reason : "";
   const detail = typeof state?.offline_detail === "string" ? state.offline_detail : "";
-  return { ok, reason, detail };
+  // An unrecognised code counts as trouble: a driver writing one this
+  // taxonomy does not define is a bug, and the safe reading of "I do not know
+  // this code" is not "everything is fine".
+  return { ok, trouble: !ok && reason !== NOT_FITTED, reason, detail };
+}
+
+/**
+ * How to finish the sentence "N of M inputs are ___" for a set of trouble
+ * codes. One phrase when they all agree, a neutral one when they do not —
+ * "are not answering" was hardcoded, and it is wrong for an endpoint that is
+ * answering fine but not running, and wrong again for one whose parent device
+ * is simply unreachable.
+ */
+const TROUBLE_PHRASES: Record<string, string> = {
+  [SERVICE_FAULT]: "reachable, but not running",
+  [PARENT_OFFLINE]: "unavailable while the device is offline",
+};
+
+export function troublePhrase(reasons: readonly string[]): string {
+  const distinct = new Set(reasons);
+  if (distinct.size === 1) {
+    const [only] = distinct;
+    // `not_responding` and "" (every driver predating the taxonomy) both mean
+    // the same thing to a reader, and it is the phrase this has always used.
+    return TROUBLE_PHRASES[only] ?? "not answering";
+  }
+  return distinct.size === 0 ? "not answering" : "not in service";
 }
 
 /**
@@ -71,11 +116,21 @@ export function childStateFor(
  *  child instead of scanning the whole live-state map. */
 const RESERVED = ["online", "offline_reason", "offline_detail"] as const;
 
-/** How many of these children are not in service. */
-export function countNotOk(states: (ChildState | undefined)[]): number {
+/** How many of these children are in trouble — an empty slot is not. */
+export function countTrouble(states: (ChildState | undefined)[]): number {
   let n = 0;
-  for (const s of states) if (!childPresence(s).ok) n++;
+  for (const s of states) if (childPresence(s).trouble) n++;
   return n;
+}
+
+/** The trouble codes present across these children, for `troublePhrase`. */
+export function troubleReasons(states: (ChildState | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const s of states) {
+    const p = childPresence(s);
+    if (p.trouble) out.push(p.reason);
+  }
+  return out;
 }
 
 /**
@@ -90,8 +145,17 @@ export function countNotOk(states: (ChildState | undefined)[]): number {
  */
 const NAMES_SHOWN = 6;
 
+export interface TroubleGroup {
+  noun: string;
+  nounPlural: string;
+  names: string[];
+  /** One code per name, same order — what makes the headline's verb honest. */
+  reasons: string[];
+  total: number;
+}
+
 export function troubleSummary(
-  groups: { noun: string; nounPlural: string; names: string[]; total: number }[],
+  groups: TroubleGroup[],
 ): { headline: string; names: string } | null {
   const live = groups.filter((g) => g.names.length > 0);
   if (live.length === 0) return null;
@@ -107,7 +171,7 @@ export function troubleSummary(
   return {
     headline: `${parts.join(" and ")} ${
       all.length === 1 ? "is" : "are"
-    } not answering.`,
+    } ${troublePhrase(live.flatMap((g) => g.reasons))}.`,
     names: rest > 0
       ? `${shown.join(", ")} and ${rest} more`
       : shown.join(", "),
@@ -135,12 +199,21 @@ export interface ChildTypeInfo {
  * somebody authored, else the device's own name for it via the type's
  * label_field, else its id. A banner naming `0a1d` where the tab says
  * "Podium PC" would send somebody looking for the wrong thing.
+ *
+ * One difference from the server's version, and it is forced: the `label` key
+ * in live state holds the project label when somebody set one and the roster's
+ * own `instances.label` template ("Extension 3") when nobody did, and from
+ * live state alone those two cannot be told apart. child_display_name gets the
+ * project label as a separate argument and can rank the template below the
+ * device's name; here the conflated key stays first, which is right whenever
+ * it holds an authored name and harmless when it holds a template -- a slot
+ * that is not answering has no device name to lose to anyway.
  */
 export function scanChildTrouble(
   liveState: Record<string, unknown>,
   deviceId: string,
   childTypes: Record<string, ChildTypeInfo>,
-): { noun: string; nounPlural: string; names: string[]; total: number }[] {
+): TroubleGroup[] {
   const types = Object.keys(childTypes);
   if (types.length === 0) return [];
 
@@ -166,26 +239,30 @@ export function scanChildTrouble(
     child[prop] = value;
   }
 
-  const groups = [];
+  const groups: TroubleGroup[] = [];
   for (const ctype of types) {
     const bucket = byType.get(ctype);
     if (!bucket || bucket.size === 0) continue;
     const info = childTypes[ctype];
     const labelField = info.label_field;
     const names: string[] = [];
+    const reasons: string[] = [];
     for (const [padded, state] of bucket) {
-      if (childPresence(state).ok) continue;
+      const presence = childPresence(state);
+      if (!presence.trouble) continue;
       const authored = typeof state.label === "string" ? state.label : "";
       const fromDevice = labelField && typeof state[labelField] === "string"
         ? (state[labelField] as string)
         : "";
       names.push(authored || fromDevice || padded);
+      reasons.push(presence.reason);
     }
     if (names.length === 0) continue;
     groups.push({
       noun: info.label ?? ctype,
       nounPlural: info.label_plural ?? info.label ?? ctype,
       names,
+      reasons,
       total: bucket.size,
     });
   }

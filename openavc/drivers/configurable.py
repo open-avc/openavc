@@ -234,6 +234,43 @@ class ConfigurableDriver(BaseDriver):
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
 
+    def set_project_child_entities(
+        self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,
+    ) -> None:
+        """Take the project's child metadata, then build the declared roster.
+
+        A declarative roster is knowable without the device — ``count: 7`` is
+        seven whether anything answers or not — so it does not have to wait for
+        a first successful connect, and waiting is what made a mixer that had
+        never been reachable read "Inputs 0 / Outputs 0 — no inputs registered
+        yet" with every panel binding under it pointing at a key that did not
+        exist. Rooms get commissioned before the gear is racked; a page built
+        against ``input.1.level`` should not depend on the device having
+        answered once.
+
+        This is the same rule :meth:`BaseDriver._init_state_variables` follows
+        one level up: the keys exist so a binding picker, the live-state list
+        and a ``$device.…`` reference all know the reading is on offer, while
+        the values stay unknown until the device speaks. The children register
+        OFFLINE, carrying ``parent_offline`` — nothing has been reached, and
+        claiming presence here would be the exact fault this contract exists to
+        remove.
+
+        Here rather than in ``__init__`` because this is the moment the roster
+        has all of its inputs: the DeviceManager hands the project's labels
+        over immediately after construction, and registering before them would
+        seed every child with the driver's ``instances.label`` template and
+        then never take the integrator's own name (register_child is
+        idempotent by design).
+        """
+        super().set_project_child_entities(child_entities)
+        try:
+            self._register_declared_children()
+        except Exception:
+            log.exception(
+                f"[{self.device_id}] Failed to register declared children"
+            )
+
     def _condition_key(self, key: str) -> str:
         """One condition key, as a state-store key.
 
@@ -879,6 +916,17 @@ class ConfigurableDriver(BaseDriver):
                 if local_id not in wanted:
                     self.deregister_child(ctype, local_id)
             label_template = inst.get("label")
+            # Registering while the device is unreachable — at construction,
+            # or on a roster that resized after a drop. A child registered here
+            # has never been seen, so it takes the same mark every other child
+            # under an offline parent carries. A `reported` roster already says
+            # "empty" for itself and is left to say it.
+            offline_seed = (
+                self._child_parent_offline_presence()
+                if not self._connected
+                and not self._child_unknown_presence(ctype)["offline_reason"]
+                else None
+            )
             registered = 0
             for local_id in ids:
                 initial: dict[str, Any] | None = None
@@ -896,6 +944,8 @@ class ConfigurableDriver(BaseDriver):
                         initial = {
                             "label": label_template.replace("{id}", str(local_id))
                         }
+                if offline_seed is not None:
+                    initial = {**(initial or {}), **offline_seed}
                 try:
                     self.register_child(ctype, local_id, initial_state=initial)
                     registered += 1

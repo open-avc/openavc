@@ -6,7 +6,13 @@ import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CHILD_RESERVED_PROPS } from "../../api/types";
-import { childPresence, childStateFor, countNotOk } from "./childPresence";
+import {
+  childPresence,
+  childStateFor,
+  countTrouble,
+  troublePhrase,
+  troubleReasons,
+} from "./childPresence";
 import type {
   ChildEntitiesListResponse,
   ChildEntityEntry,
@@ -156,11 +162,12 @@ export function ChildEntities({
   const types = Object.keys(data.child_entity_types);
   if (types.length === 0) return null; // Driver doesn't declare any.
 
-  // Per-type "not answering" counts, for the tab badges. Read live so the
-  // number moves with the WS delta rather than the last fetch.
+  // Per-type trouble counts, for the tab badges. Read live so the number moves
+  // with the WS delta rather than the last fetch. Trouble, not not-in-service:
+  // a chassis with seven empty extension slots is not "7 down".
   const downByType: Record<string, number> = {};
   for (const t of types) {
-    downByType[t] = countNotOk(
+    downByType[t] = countTrouble(
       (data.children[t] ?? []).map((e) =>
         childStateFor(liveState, deviceId, t, e),
       ),
@@ -665,28 +672,39 @@ function ChildEntityList({
     [liveStateByPaddedId],
   );
 
-  // Endpoints that are not answering come first, and keep their roster order
-  // among themselves. On a frame with 96 outputs the two that are down are
+  // Endpoints in trouble come first, and keep their roster order among
+  // themselves. On a frame with 96 outputs the two that are down are
   // otherwise wherever they happen to fall, which is the whole complaint:
   // the answer was on screen and had to be hunted for. A stable partition,
   // not a sort — reordering healthy rows under somebody would be worse than
-  // not ordering at all.
+  // not ordering at all. An empty slot is not hoisted: it is where the roster
+  // put it, because nothing about it needs finding.
   const ordered = useMemo(() => {
     const down: ChildEntityEntry[] = [];
     const up: ChildEntityEntry[] = [];
     for (const e of entries) {
-      (childPresence(liveStateForChild(e)).ok ? up : down).push(e);
+      (childPresence(liveStateForChild(e)).trouble ? down : up).push(e);
     }
     return down.length === 0 ? entries : [...down, ...up];
   }, [entries, liveStateForChild]);
 
   const downCount = useMemo(
-    () => countNotOk(entries.map((e) => liveStateForChild(e))),
+    () => countTrouble(entries.map((e) => liveStateForChild(e))),
+    [entries, liveStateForChild],
+  );
+
+  // What to CALL the trouble in the filter's own label. All-parent_offline
+  // reads very differently from all-not_responding, and "not answering" for
+  // both was the wording this had before either code existed.
+  const downPhrase = useMemo(
+    () => troublePhrase(troubleReasons(entries.map((e) => liveStateForChild(e)))),
     [entries, liveStateForChild],
   );
 
   const visible = useMemo(
-    () => (troubleOnly ? ordered.filter((e) => !childPresence(liveStateForChild(e)).ok) : ordered),
+    () => (troubleOnly
+      ? ordered.filter((e) => childPresence(liveStateForChild(e)).trouble)
+      : ordered),
     [ordered, troubleOnly, liveStateForChild],
   );
 
@@ -790,7 +808,7 @@ function ChildEntityList({
             onChange={(e) => setTroubleOnly(e.target.checked)}
           />
           Show only the {downCount === 1 ? "one that is" : `${downCount} that are`}{" "}
-          not answering
+          {downPhrase}
         </label>
       )}
 
@@ -1085,12 +1103,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 
-/** One glanceable mark per row: filled when the endpoint is in service,
- *  hollow and warned when it is not. The title carries the driver's own
+/** One glanceable mark per row, in three states: filled when the endpoint is
+ *  in service, hollow and warned when something is wrong, hollow and muted
+ *  when the position is simply empty. The title carries the driver's own
  *  sentence where it wrote one, so hovering a bad row explains it without
- *  expanding anything. */
+ *  expanding anything.
+ *
+ *  An empty slot gets its own mark rather than the fault ring for the same
+ *  reason it is not counted in "N down": a mixer with nothing chained to it is
+ *  a working mixer, and seven red rings would send somebody looking for
+ *  hardware that was never installed. */
 function PresenceDot({ state }: { state: Record<string, unknown> }) {
-  const { ok, reason, detail } = childPresence(state);
+  const { ok, trouble, reason, detail } = childPresence(state);
   const title = ok
     ? "In service"
     : detail || (reason ? `Not in service (${reason})` : "Not answering");
@@ -1098,6 +1122,7 @@ function PresenceDot({ state }: { state: Record<string, unknown> }) {
     <span
       data-testid="child-presence-dot"
       data-ok={ok ? "true" : "false"}
+      data-trouble={trouble ? "true" : "false"}
       data-reason={reason}
       title={title}
       aria-label={title}
@@ -1110,7 +1135,9 @@ function PresenceDot({ state }: { state: Record<string, unknown> }) {
         // the colour does not land (a projector-lit room, a colour-blind
         // reader), which is exactly the room this gets read in.
         background: ok ? "var(--color-success)" : "transparent",
-        border: ok ? "none" : "2px solid var(--color-error)",
+        border: ok
+          ? "none"
+          : `2px solid ${trouble ? "var(--color-error)" : "var(--text-muted)"}`,
         boxSizing: "border-box",
       }}
     />

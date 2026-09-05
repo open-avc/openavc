@@ -133,6 +133,18 @@ The tab groups the sub-units by type (Encoders, Decoders, Zones, and so on), eac
 - **Inline labels.** Click a row's label to give the sub-unit a friendly name ("Lobby TV", "Stage Camera"). Your label is saved in the project and is separate from the name the device reports for itself. Where a device names its own sub-units -- AV-over-IP endpoints, DSP blocks -- that name is what the row shows, in grey, until you type one of your own over it. Either way it is the name that shows up in pickers when you build panels, macros, and routing.
 - **Refresh from Device.** Re-poll the controller so newly added or removed sub-units appear without reloading. It tells you what it found, including when the answer is nothing.
 
+### Reading the status mark
+
+Every row carries one mark, and it has three states:
+
+- **Filled green** — in service.
+- **A red ring** — something is wrong. Hover it for the reason: not answering (go and find it), or answering but not running (power-cycle it). Rows in this state are lifted to the top of the list, counted on the type's tab as "N down", and named on the device page above.
+- **A grey ring** — nothing is connected in this position. Some drivers model slots rather than channels: the extension positions on a chained mixer, the card slots on a frame. An empty one is not a fault, so it is not counted, not lifted, and never in the banner.
+
+While a device itself is offline, every sub-unit under it reads as unavailable and says so, rather than continuing to show the last numbers it had. They come back as the device does. The sub-units stay listed throughout — panels and macros bound to them keep working and go quiet, instead of pointing at something that has vanished.
+
+A device's sub-units are listed as soon as the driver knows how many there are, which for most drivers is before the device has ever been reached. You can build panels and macros against a room's equipment before any of it is racked.
+
 Some drivers cover a whole family of frames, so how many sub-units *this* one has is a setting on the device rather than something it reports — a matrix switcher with an **Input Count** and an **Output Count**, for example. Until you fill those in there are no sub-units to list, and no amount of connecting or refreshing will produce any. The empty list names the setting to fill in when that is the case, and the sub-units appear as soon as you save it.
 
 Each sub-unit's state is addressable everywhere a state key is, using the pattern `device.<id>.<type>.<local_id>.<property>` (for example `device.matrix_main.encoder.005.signal_present`). You rarely type these by hand. The pickers in UI bindings, macros, triggers, and scripts surface them for you.

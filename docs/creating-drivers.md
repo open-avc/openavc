@@ -695,7 +695,7 @@ child_entity_types:
 
 ##### Declarative children in YAML (`instances`, `child_set`, `each_child`)
 
-A YAML driver creates children by adding an `instances:` rule to the type declaration. The driver registers them right after connecting (and after any `auth:` handshake), so routed responses always have children to land on. Exactly one roster source:
+A YAML driver creates children by adding an `instances:` rule to the type declaration. The roster is built as soon as the device is added to the project — before it has ever been reached — so a page can be authored against `output.1.volume` on a bench where the frame is still in its box. Exactly one roster source:
 
 ```yaml
 child_entity_types:
@@ -711,7 +711,31 @@ child_entity_types:
       # ids_from: zone_ids         # or: a comma-separated config field ("1,2,4" — sparse IDs)
       # ids: [st, m]               # or: a literal fixed list (protocol-fixed rosters like main buses)
       label: "Output {id}"     # optional initial label; a user's project label always wins
+      # presence: reported     # only if these IDs are SLOTS that can be empty — see below
 ```
+
+**Are these IDs fitted hardware, or places something can go?** `count: 7` writes the same either way, and only you know which you meant. Six mic inputs on a mixer are always there; seven AT-LINK extension positions on the same mixer are usually empty. Say which with `presence`:
+
+| `presence` | Means | The platform's behaviour |
+|---|---|---|
+| `assumed` (default) | Every ID is real hardware | The children are in service whenever the device is reachable, and offline when it is not. Your driver never has to say anything about presence. |
+| `reported` | The IDs are slots that may be empty | The children register **offline** with the reason `not_fitted`, and stay that way until your driver says otherwise. |
+
+On a `reported` roster the response that reports a populated slot is what puts it in service, so it clears the reason at the same time:
+
+```yaml
+  - match: 'g_extstatus 0000 \S+ NC ([1-7]),"((?:[^"]|"")*)"'
+    child_set:
+      - type: extension
+        id: $1
+        state:
+          device_name: $2
+          online: "true"
+          offline_reason: ""
+          offline_detail: ""
+```
+
+Leave `presence` off unless the roster's steady state on a bare unit is blank. An empty slot draws as unavailable rather than as a fault — it is not counted in the "N down" badge and never reaches the device page's trouble banner — so marking always-fitted channels `reported` would hide real failures, not surface them.
 
 **Letting the device size the roster (`count_from_state`).** When the hardware reports how many sub-units it has, you don't have to make the installer type the number. Add `count_from_state` beside `count_from`, naming an integer state variable the device publishes:
 
@@ -2627,12 +2651,22 @@ So the platform gives every child two more keys beside `online`, mirroring the
 | `offline_reason` | A stable code automation can match on, or `""` for nothing claimed |
 | `offline_detail` | The sentence a person reads on the device page |
 
-Two codes, each earning its place by having a different remedy:
+Three codes you can set, each earning its place by having a different remedy:
 
 | Code | Means | What someone does about it |
 |---|---|---|
 | `not_responding` | The device lists it and it is not answering | Go and find it. Power, cabling, network. |
 | `service_fault` | It is answering, but the function it exists to perform is not running | Power-cycle it, or restart it from the controller. |
+| `not_fitted` | The slot is empty — nothing is connected in this position | Nothing. This is not a fault, and the IDE does not count it as one. |
+
+There is a fourth code, **`parent_offline`**, that the platform writes and a
+driver cannot: when the connection to the device drops, every child that was in
+service is marked with it, and every one of them is put back as it was when the
+device returns. You do not have to do anything for that to happen, and
+`child_fault()` refuses the code — your transport is gone, so it is not
+something you can still see. Children are never de-registered for it either: a
+panel bound to `input.1.level` keeps working and goes quiet, rather than
+pointing at a key that no longer exists.
 
 Build the fragment with `child_fault()` and merge it into whatever you were
 already writing for that child, so presence lands in the same batch as

@@ -190,21 +190,25 @@ def child_display_name(
 ) -> str:
     """What a child is CALLED — the one place that settles the precedence.
 
-    A child entity can get its name from two independent places, and they are
-    not interchangeable:
+    A child entity can get its name from three independent places, and they
+    are not interchangeable:
 
       * the **project label**, typed by the integrator and stored in the
-        project file, and
+        project file,
       * the **device-reported name**, live in the child's own state under the
         state variable the type names in ``label_field`` (a MENTOR endpoint
-        name, a DSP component's name, a light's name on its controller).
+        name, a DSP component's name, a light's name on its controller), and
+      * the **roster label**, seeded from an ``instances.label`` template
+        ("Extension {id}") into the child's own reserved ``label`` key — what
+        the driver author calls the slot when nobody else has named it.
 
     The order is: the integrator's own words win, then whatever the device
-    calls itself, then nothing. Returning ``""`` for "nothing" is deliberate —
-    the caller owns the fallback, because the useful fallback differs by
-    surface (a param picker wants ``"decoder 3"``, a matrix picker wants
-    ``"Decoder 3"``, and a report may want to say nothing at all). This
-    function answers *what it is called*, never *how to word its absence*.
+    calls itself, then what the driver's roster calls the position, then
+    nothing. Returning ``""`` for "nothing" is deliberate — the caller owns the
+    fallback, because the useful fallback differs by surface (a param picker
+    wants ``"decoder 3"``, a matrix picker wants ``"Decoder 3"``, and a report
+    may want to say nothing at all). This function answers *what it is called*,
+    never *how to word its absence*.
 
     It lives here, with the other child rules, because more than one door asks
     it and the answers must agree: the child-entity REST responses (which is
@@ -215,18 +219,29 @@ def child_display_name(
     endpoint names. Retyping names the device already knows is precisely what
     matrix inference exists to prevent.
 
+    The roster label was the same omission one step further down: a mixer's
+    seven AT-LINK extension slots seed "Extension 1".."Extension 7" and report
+    no device name until something is chained to them, so every row read
+    "(no label)" while the driver had named all seven.
+
     Pure stdlib, no server imports, like everything else in this module.
     """
     text = "" if project_label is None else str(project_label).strip()
     if text:
         return text
 
+    state = child_state or {}
     field = (type_def or {}).get("label_field")
-    if not isinstance(field, str) or not field.strip():
-        return ""
-    reported = (child_state or {}).get(field.strip())
-    if reported is None or isinstance(reported, bool):
+    if isinstance(field, str) and field.strip():
+        reported = state.get(field.strip())
         # A bool is never a name; it means the driver pointed label_field at
         # a flag, which is an authoring mistake rather than an empty name.
+        if reported is not None and not isinstance(reported, bool):
+            name = str(reported).strip()
+            if name:
+                return name
+
+    seeded = state.get("label")
+    if seeded is None or isinstance(seeded, bool):
         return ""
-    return str(reported).strip()
+    return str(seeded).strip()

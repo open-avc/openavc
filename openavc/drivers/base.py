@@ -26,7 +26,9 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from openavc.core.connection_fault import (
-    CHILD_FAULT_CODES,
+    CHILD_DRIVER_FAULT_CODES,
+    CHILD_NOT_FITTED,
+    CHILD_PARENT_OFFLINE,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     ConnectionFault,
@@ -34,11 +36,11 @@ from openavc.core.connection_fault import (
     classify_connection_fault,
     default_child_fault_message,
     default_fault_message,
-    is_child_fault_code,
 )
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import (
+    CHILD_PRESENCE_MODES,
     CHILD_RESERVED_PROP_SCHEMA,
     CHILD_RESERVED_PROPS,
 )
@@ -2449,6 +2451,13 @@ class BaseDriver(ABC):
         The property should be declared in ``DRIVER_INFO["state_variables"]``;
         an undeclared one still writes, but is reported (see
         :meth:`_check_undeclared_state`).
+
+        Writing ``connected`` also carries every registered child with it (see
+        :meth:`_children_follow_parent`). This method is the hook rather than
+        the half-dozen lifecycle sites that flip the flag, because a driver
+        overriding ``connect`` or ``disconnect`` still writes the key through
+        here — and a child left claiming presence under an unreachable parent
+        is the one failure this platform cannot ship.
         """
         var_def = self.DRIVER_INFO.get("state_variables", {}).get(property_name)
         if var_def is None:
@@ -2461,6 +2470,8 @@ class BaseDriver(ABC):
             value,
             source=f"device.{self.device_id}",
         )
+        if property_name == "connected" and self._children:
+            self._children_follow_parent(bool(value))
 
     @property
     def strict_state(self) -> bool:
@@ -2581,6 +2592,10 @@ class BaseDriver(ABC):
             f"device.{self.device_id}.{k}": v for k, v in updates.items()
         }
         self.state.set_batch(namespaced, source=f"device.{self.device_id}")
+        # Same rule as set_state: reachability carries the children with it,
+        # whichever door the driver used to write it.
+        if "connected" in updates and self._children:
+            self._children_follow_parent(bool(updates["connected"]))
 
     def get_state(self, property_name: str) -> Any:
         """Get a state value from this device's namespace."""
@@ -2620,10 +2635,13 @@ class BaseDriver(ABC):
     # State keys the platform always provides for every registered child, in
     # addition to whatever the driver declares in
     # child_entity_types[<type>].state_variables. All four are driver-managed
-    # — the platform seeds them and then has no opinion, because only the
-    # driver can see a sub-unit:
+    # — the platform seeds them and then has one opinion, about reachability,
+    # because that is the one thing about a sub-unit it can see for itself:
     #
-    #   online          presence, seeded True at registration
+    #   online          presence, seeded from the roster's presence mode (in
+    #                   service on an `assumed` roster, not_fitted on a
+    #                   `reported` one) and forced down while the parent device
+    #                   is unreachable (_children_follow_parent)
     #   label           the user-set friendly name, sourced from the project
     #                   file on registration and writable through the IDE/REST
     #   offline_reason  a stable code from the child fault taxonomy that
@@ -2651,6 +2669,99 @@ class BaseDriver(ABC):
     _CHILD_RESERVED_PROP_SCHEMA: dict[str, dict[str, Any]] = (
         CHILD_RESERVED_PROP_SCHEMA
     )
+
+    def _child_presence_mode(self, child_type: str) -> str:
+        """Who owns this roster's ``online`` — ``"assumed"`` or ``"reported"``.
+
+        ``instances.presence`` on the child type, defaulting to ``assumed``.
+        See ``drivers/spec.CHILD_PRESENCE_MODES`` for why the same
+        ``count: N`` syntax needs an author to say which kind of roster it is.
+        An unknown value reads as the default rather than raising: the schema
+        already refuses one at authoring time, and a roster is not worth taking
+        a device offline over at runtime.
+        """
+        try:
+            inst = self._child_type_def(child_type).get("instances")
+        except ValueError:
+            return "assumed"
+        mode = inst.get("presence") if isinstance(inst, dict) else None
+        return mode if mode in CHILD_PRESENCE_MODES else "assumed"
+
+    def _child_unknown_presence(self, child_type: str) -> dict[str, Any]:
+        """The three presence keys a child of this type carries before anything
+        is known about it — at registration, and again when its parent comes
+        back and the driver has not yet had a chance to say.
+
+        On an ``assumed`` roster that is "in service, nothing claimed": the ids
+        are real hardware and the device being reachable is the whole of the
+        question. On a ``reported`` roster it is ``not_fitted``: the ids are
+        slots, and a slot is empty until the device says something is in it.
+        """
+        if self._child_presence_mode(child_type) == "reported":
+            return {
+                "online": False,
+                "offline_reason": CHILD_NOT_FITTED,
+                "offline_detail": default_child_fault_message(CHILD_NOT_FITTED),
+            }
+        return {"online": True, "offline_reason": "", "offline_detail": ""}
+
+    @staticmethod
+    def _child_parent_offline_presence() -> dict[str, Any]:
+        """The three presence keys for a child whose parent is unreachable."""
+        return {
+            "online": False,
+            "offline_reason": CHILD_PARENT_OFFLINE,
+            "offline_detail": default_child_fault_message(CHILD_PARENT_OFFLINE),
+        }
+
+    def _children_follow_parent(self, connected: bool) -> None:
+        """Carry every registered child with the parent's reachability.
+
+        Called from :meth:`set_state` / :meth:`set_states` whenever
+        ``connected`` is written, which is every lifecycle path there is.
+
+        The rule, both directions, is that the platform only ever undoes what
+        it did:
+
+        * **Going offline** — a child that was in service with nothing claimed
+          reads ``online: false`` with ``parent_offline``. A child already
+          carrying a code keeps it: the driver's ``not_responding`` is more
+          specific than ours and stays true while the parent is away, and a
+          ``not_fitted`` slot does not become a fault because a cable came out
+          of the mixer.
+        * **Coming back** — exactly the children carrying ``parent_offline``
+          return to :meth:`_child_unknown_presence`; nothing else is touched.
+          The driver's next poll corrects anything that changed while it was
+          away, which is the only source that can.
+
+        The children stay REGISTERED throughout. Deregistering them would take
+        the panel's bindings with them, which is the failure this exists to
+        avoid — a fader bound to ``input.1.level`` must survive the cable being
+        pulled and go quiet, not point at a key that no longer exists.
+
+        Idempotent by construction: a second write of the same value finds
+        nothing left to change, so no transition tracking is needed.
+        """
+        updates: dict[str, Any] = {}
+        for child_type, bucket in self._children.items():
+            for local_id in bucket:
+                try:
+                    prefix = self._child_state_prefix(child_type, local_id)
+                except (TypeError, ValueError):
+                    continue
+                reason = self.state.get(f"{prefix}.offline_reason")
+                if connected:
+                    if reason != CHILD_PARENT_OFFLINE:
+                        continue
+                    new = self._child_unknown_presence(child_type)
+                else:
+                    if reason or self.state.get(f"{prefix}.online") is False:
+                        continue
+                    new = self._child_parent_offline_presence()
+                for prop, value in new.items():
+                    updates[f"{prefix}.{prop}"] = value
+        if updates:
+            self.state.set_batch(updates, source=f"device.{self.device_id}")
 
     def _child_type_def(self, child_type: str) -> dict[str, Any]:
         """Return the DRIVER_INFO child_entity_types[<type>] definition.
@@ -2839,8 +2950,10 @@ class BaseDriver(ABC):
         dynamic child's schema, ``deregister_child`` then register again.
 
         ``initial_state`` overrides per-prop defaults. The platform-managed
-        ``online`` key defaults to True if not specified in ``initial_state``.
-        Unknown props in ``initial_state`` raise ValueError.
+        ``online`` / ``offline_reason`` / ``offline_detail`` keys default to
+        the type's :meth:`_child_unknown_presence` — in service on an
+        ``assumed`` roster, ``not_fitted`` on a ``reported`` one. Unknown props
+        in ``initial_state`` raise ValueError.
 
         ``schema`` supplies a per-child state-variable map for child types
         declared ``dynamic: true`` — used when the child's controls are
@@ -2937,17 +3050,26 @@ class BaseDriver(ABC):
         # than readings from it. `online` unknown would leave the dot on every
         # Child Entities row, the `N down` count and the device banner unable to
         # say anything; the two fault keys unknown would read as a fault nobody
-        # can name. They ARE the semantics here: a child is present until told
-        # otherwise, claims no fault until one, and is called what the project
-        # calls it.
+        # can name. They ARE the semantics here: a child claims no fault until
+        # one, is called what the project calls it, and starts at whatever its
+        # roster says "nothing known yet" looks like — in service on an
+        # `assumed` roster, `not_fitted` on a `reported` one. It used to be
+        # online: True unconditionally, which is how seven empty AT-LINK
+        # extension slots came to draw seven green dots.
+        presence = self._child_unknown_presence(child_type)
+        if overrides.get("online") is True and "offline_reason" not in overrides:
+            # A driver saying "this slot IS populated" clears the roster's
+            # default claim with it. Otherwise a `reported` roster would hold
+            # online: True beside not_fitted, which is a contradiction the
+            # store has no way to resolve and every reader would resolve
+            # differently.
+            presence = {"online": True, "offline_reason": "", "offline_detail": ""}
         updates: dict[str, Any] = {}
         for prop, var_def in eff_schema.items():
-            if prop == "online":
-                value = overrides.get("online", True)
+            if prop in presence:
+                value = overrides.get(prop, presence[prop])
             elif prop == "label":
                 value = overrides.get("label", project_label)
-            elif prop in ("offline_reason", "offline_detail"):
-                value = overrides.get(prop, "")
             elif prop in overrides:
                 value = overrides[prop]
             else:
@@ -3056,14 +3178,18 @@ class BaseDriver(ABC):
         An unrecognised code is refused rather than written. It would otherwise
         reach a panel as a bare token with no sentence behind it, and a typo in
         a driver would be indistinguishable from a code the frontend has not
-        learned yet.
+        learned yet. ``parent_offline`` is refused too, though it is a real
+        code: it is the platform's statement about a connection the driver no
+        longer has (see _children_follow_parent), and a driver claiming it
+        would only be overwritten on the next reconnect.
         """
         if not code:
             return {"online": True, "offline_reason": "", "offline_detail": ""}
-        if not is_child_fault_code(code):
+        if code not in CHILD_DRIVER_FAULT_CODES:
             raise ValueError(
-                f"{code!r} is not a child fault code (expected one of "
-                f"{', '.join(sorted(CHILD_FAULT_CODES))})"
+                f"{code!r} is not a child fault code a driver may assert "
+                f"(expected one of "
+                f"{', '.join(sorted(CHILD_DRIVER_FAULT_CODES))})"
             )
         return {
             "online": False,
