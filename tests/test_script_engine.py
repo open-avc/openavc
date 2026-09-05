@@ -815,3 +815,207 @@ async def test_every_sync_callback_error_emits_and_keeps_ticking(monkeypatch):
     assert len(errors) >= 2
     assert errors[0]["timer_id"] == timer_id
     assert "tick failed" in errors[0]["error"]
+
+
+# ===== Q-183: an abandoned load thread is put on a leash, and reported =====
+#
+# Abandoning a load thread is not stopping it. A `while True:` at top level that
+# touches the platform kept writing state forever, every retry added another
+# writer racing the same key, the process pegged a core, and the damage showed
+# up as DEVICE faults -- a real device's poll timing out -- so it was diagnosed
+# nowhere near the script that caused it.
+
+
+def _abandoned_load_threads(script_id: str) -> list[threading.Thread]:
+    return [
+        t for t in threading.enumerate()
+        if t.name.startswith(f"script-load-{script_id}") and t.is_alive()
+    ]
+
+
+async def test_an_abandoned_load_stops_writing_state(engine, subsystems, script_dir):
+    """The measured shape: top-level code counting into a variable forever. Once
+    the load is abandoned, the next platform call it makes must unwind it."""
+    state, _, _ = subsystems
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "runaway.py", """\
+        import time
+        from openavc import state
+
+        n = 0
+        while True:
+            n += 1
+            state.set("var.loop_count", n)
+            time.sleep(0.005)
+    """)
+    assert engine.load_scripts(
+        [{"id": "runaway", "file": "runaway.py", "enabled": True}]
+    ) == 0
+
+    # Give the thread every chance to notice: it only unwinds on its next call.
+    await asyncio.sleep(0.3)
+    settled = state.get("var.loop_count")
+    await asyncio.sleep(0.3)
+
+    assert state.get("var.loop_count") == settled, (
+        "the abandoned load thread is still writing state"
+    )
+    assert not _abandoned_load_threads("runaway"), (
+        "the abandoned load thread never unwound"
+    )
+
+
+async def test_a_retry_does_not_leave_two_writers_racing(engine, subsystems, script_dir):
+    """The obvious integrator move -- fix the typo and reload -- used to leave the
+    old load running: two counters interleaved on one key, ~2.5M apart."""
+    state, _, _ = subsystems
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "runaway2.py", """\
+        import time
+        from openavc import state
+
+        n = 0
+        while True:
+            n += 1
+            state.set("var.loop_count", n)
+            time.sleep(0.005)
+    """)
+    cfg = [{"id": "runaway2", "file": "runaway2.py", "enabled": True}]
+    engine.load_scripts(cfg)
+    engine.reload_scripts(cfg)
+
+    await asyncio.sleep(0.4)
+    settled = state.get("var.loop_count")
+    await asyncio.sleep(0.3)
+
+    assert state.get("var.loop_count") == settled, "two loads are racing one key"
+    assert not _abandoned_load_threads("runaway2")
+
+
+async def test_an_abandoned_load_is_reported(engine, subsystems, script_dir):
+    """Nothing in the IDE, /api/status or the scripts view said a runaway
+    existed; only a restart cleared it. The engine has to keep the record."""
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "stuck.py", """\
+        import time
+        time.sleep(30)
+    """)
+    engine.load_scripts([{"id": "stuck", "file": "stuck.py", "enabled": True}])
+
+    reported = engine.get_abandoned_loads()
+    assert "stuck" in reported, reported
+    entry = reported["stuck"]
+    # A load that never touches the platform cannot be unwound, so this one is
+    # still running -- which is exactly the case that has to be visible.
+    assert entry["running"] is True
+    assert entry["attempts"] == 1
+
+
+async def test_a_load_that_unwinds_stops_being_reported_as_running(
+    engine, subsystems, script_dir
+):
+    """The record is not a tombstone: once the leash unwinds the thread, the
+    scripts view must stop claiming something is still running."""
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "unwinds.py", """\
+        import time
+        from openavc import state
+
+        while True:
+            state.set("var.x", 1)
+            time.sleep(0.005)
+    """)
+    engine.load_scripts([{"id": "unwinds", "file": "unwinds.py", "enabled": True}])
+    await asyncio.sleep(0.4)
+
+    assert engine.get_abandoned_loads()["unwinds"]["running"] is False
+
+
+async def test_a_healthy_script_is_untouched_by_a_neighbours_runaway(
+    engine, subsystems, script_dir
+):
+    """Guard the guard: the leash is per load thread, not a global stop. A
+    script that loads cleanly beside a runaway keeps working, and nothing is
+    reported against it."""
+    state, _, _ = subsystems
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "runaway3.py", """\
+        import time
+        from openavc import state
+
+        while True:
+            state.set("var.spin", 1)
+            time.sleep(0.005)
+    """)
+    _write_script(script_dir, "healthy.py", """\
+        from openavc import on_state_change, state
+
+        @on_state_change("var.trigger")
+        async def bump(key, old_value, new_value):
+            state.set("var.healthy_saw", new_value)
+    """)
+    engine.load_scripts([
+        {"id": "runaway3", "file": "runaway3.py", "enabled": True},
+        {"id": "healthy", "file": "healthy.py", "enabled": True},
+    ])
+    await asyncio.sleep(0.4)
+
+    state.set("var.trigger", "go")
+    await asyncio.sleep(0.1)
+    assert state.get("var.healthy_saw") == "go"
+    assert "healthy" not in engine.get_abandoned_loads()
+
+
+async def test_a_clean_load_reports_nothing(engine, subsystems, script_dir):
+    _write_script(script_dir, "fine.py", """\
+        from openavc import state
+        state.set("var.fine", 1)
+    """)
+    engine.load_scripts([{"id": "fine", "file": "fine.py", "enabled": True}])
+
+    assert engine.get_abandoned_loads() == {}
+
+
+async def test_a_running_runaway_is_visible_outside_the_scripts_view(
+    engine, subsystems, script_dir
+):
+    """Deleting the script takes its row -- and its warning -- off the scripts
+    view while the thread keeps going. A state key outlives that."""
+    state, _, _ = subsystems
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "unstoppable.py", """\
+        import time
+        time.sleep(30)
+    """)
+    engine.load_scripts(
+        [{"id": "unstoppable", "file": "unstoppable.py", "enabled": True}]
+    )
+
+    assert state.get("system.abandoned_script_loads") == 1
+
+
+async def test_the_count_goes_back_down_when_a_load_unwinds(
+    engine, subsystems, script_dir
+):
+    state, _, _ = subsystems
+    engine.SCRIPT_LOAD_TIMEOUT = 0.2
+
+    _write_script(script_dir, "unwinds2.py", """\
+        import time
+        from openavc import state
+
+        while True:
+            state.set("var.y", 1)
+            time.sleep(0.005)
+    """)
+    engine.load_scripts([{"id": "unwinds2", "file": "unwinds2.py", "enabled": True}])
+    assert state.get("system.abandoned_script_loads") == 1
+
+    await asyncio.sleep(0.4)
+    assert state.get("system.abandoned_script_loads") == 0

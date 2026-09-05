@@ -19,6 +19,7 @@ import asyncio
 import inspect
 import sys
 import threading
+import time
 import traceback
 import types
 from contextvars import ContextVar
@@ -139,6 +140,11 @@ class ScriptEngine:
         # it takes an Event the bus supplies, so a control calling it by name
         # could only ever get the arguments wrong.
         self._handler_names: dict[str, set[str]] = {}
+        # script_id -> {"attempts", "threads", "since"} for loads that timed
+        # out. Abandoning a load thread does not stop it, so this is what lets
+        # anything downstream say a runaway exists -- nothing did, and only a
+        # restart cleared it.
+        self._abandoned_loads: dict[str, dict[str, Any]] = {}
 
     def install(self) -> None:
         """Wire the script-API proxies to the real subsystems.
@@ -325,6 +331,12 @@ class ScriptEngine:
         NOT joined at interpreter shutdown, the server can still exit cleanly.
         (The previous ThreadPoolExecutor worker was non-daemon and was joined at
         exit, so one runaway script hung shutdown forever.)
+
+        Abandoning is not stopping, which is the other half. The thread goes on
+        the script API's leash, so it unwinds the next time it touches the
+        platform — the loop body of every runaway that can do harm. One that
+        touches nothing cannot be stopped at all (Python cannot kill a thread),
+        so it is recorded instead and reported by ``get_abandoned_loads``.
         """
         box: dict[str, BaseException] = {}
         done = threading.Event()
@@ -332,9 +344,18 @@ class ScriptEngine:
         def _runner() -> None:
             try:
                 exec(code, module.__dict__)
+            except script_api.ScriptLoadAbandoned:
+                log.info(
+                    f"Abandoned load thread for script '{script_id}' unwound "
+                    f"at its next platform call"
+                )
             except BaseException as exc:  # re-raised on the caller thread below
                 box["exc"] = exc
             finally:
+                script_api.release_load_thread(threading.current_thread())
+                # This thread is still alive while it runs its own finally, so
+                # say so explicitly rather than counting itself as a runaway.
+                self._publish_abandoned_count(finished=threading.current_thread())
                 done.set()
 
         thread = threading.Thread(
@@ -342,19 +363,80 @@ class ScriptEngine:
         )
         thread.start()
         if not done.wait(timeout=self.SCRIPT_LOAD_TIMEOUT):
+            script_api.abandon_load_thread(thread, script_id)
+            self._record_abandoned_load(script_id, thread)
+            self._publish_abandoned_count()
             log.warning(
                 f"Script '{script_id}' timed out during loading "
                 f"(>{self.SCRIPT_LOAD_TIMEOUT}s) — abandoning its load thread "
-                f"(a daemon thread, so it will not block server shutdown)"
+                f"(a daemon thread, so it will not block server shutdown). It "
+                f"stops at its next call into the platform; top-level code that "
+                f"calls nothing keeps running until the server restarts"
             )
             raise RuntimeError(
                 f"Script '{script_id}' timed out during loading "
                 f"(>{self.SCRIPT_LOAD_TIMEOUT}s) — possible infinite loop "
                 f"in top-level code"
             )
+        if self._abandoned_loads.pop(script_id, None) is not None:
+            self._publish_abandoned_count()
         exc = box.get("exc")
         if exc is not None:
             raise exc
+
+    def _record_abandoned_load(
+        self, script_id: str, thread: threading.Thread
+    ) -> None:
+        """Remember a load we gave up on, so the scripts view can say so.
+
+        Keeps every attempt's thread: a retry that times out again leaves two,
+        and whether ANY of them is still alive is the thing worth showing.
+        """
+        record = self._abandoned_loads.setdefault(
+            script_id, {"attempts": 0, "threads": [], "since": time.time()}
+        )
+        record["attempts"] += 1
+        record["threads"].append(thread)
+
+    def _publish_abandoned_count(
+        self, finished: threading.Thread | None = None
+    ) -> None:
+        """Keep ``system.abandoned_script_loads`` current.
+
+        The scripts view is where this belongs, but it is a view of the
+        project's scripts -- delete the script and the warning goes with it
+        while the thread keeps going. A state key outlives that, and is
+        readable from the State tab, a panel label, and the cloud.
+
+        ``finished`` is a thread that is unwinding right now: it is still alive
+        while it runs its own ``finally``, and counting it would leave the key
+        reading 1 for a runaway that has just stopped.
+        """
+        running = sum(
+            1 for record in self._abandoned_loads.values()
+            if any(
+                t.is_alive() and t is not finished for t in record["threads"]
+            )
+        )
+        self.state.set("system.abandoned_script_loads", running, source="system")
+
+    def get_abandoned_loads(self) -> dict[str, dict[str, Any]]:
+        """Loads this engine gave up on, and whether one is still running.
+
+        ``running`` is read from the threads themselves rather than cached, so
+        a load that unwinds on the leash stops being reported as running without
+        anything having to notice. The record survives until the script loads
+        cleanly again: a runaway nothing can stop is exactly what a restart is
+        needed for, and it must not disappear on its own.
+        """
+        return {
+            script_id: {
+                "attempts": record["attempts"],
+                "running": any(t.is_alive() for t in record["threads"]),
+                "since": record["since"],
+            }
+            for script_id, record in self._abandoned_loads.items()
+        }
 
     def _register_script(
         self,

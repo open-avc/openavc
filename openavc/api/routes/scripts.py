@@ -255,7 +255,12 @@ async def reload_scripts() -> dict[str, Any]:
     scripts_data = [s.model_dump() for s in engine.project.scripts] if engine.project else []
     count = engine.scripts.reload_scripts(scripts_data)
     errors = engine.scripts.get_load_errors()
-    return {"status": "reloaded", "handlers": count, "errors": errors}
+    return {
+        "status": "reloaded",
+        "handlers": count,
+        "errors": errors,
+        "abandoned": engine.scripts.get_abandoned_loads(),
+    }
 
 
 @router.post("/scripts/{script_id}/reload", dependencies=[Depends(require_claimed_auth)])
@@ -274,13 +279,24 @@ async def reload_single_script(script_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Script '{script_id}' not found")
     result = engine.scripts.reload_script(cfg)
     result["errors"] = engine.scripts.get_load_errors()
+    result["abandoned"] = engine.scripts.get_abandoned_loads()
     return result
 
 
 @router.get("/scripts/errors")
 async def get_script_errors() -> dict[str, Any]:
-    """Return load errors for scripts that failed to load."""
+    """Load errors, plus any load this engine gave up on.
+
+    The two are different things and both belong here. An error means the
+    script is not running; an abandoned load means its top-level code timed
+    out and, if `running` is still true, a thread of it is STILL GOING and
+    only a restart will clear it -- which is the state nothing used to report
+    anywhere, while the damage surfaced as devices flapping.
+    """
     engine = _get_engine()
     if not engine.scripts:
-        return {"errors": {}}
-    return {"errors": engine.scripts.get_load_errors()}
+        return {"errors": {}, "abandoned": {}}
+    return {
+        "errors": engine.scripts.get_load_errors(),
+        "abandoned": engine.scripts.get_abandoned_loads(),
+    }

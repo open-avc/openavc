@@ -544,6 +544,7 @@ async def stop_polling(event):
 - **Hot reload**: click Run in the Script Editor to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).
 - **Do not block the event loop**: use `await delay()` instead of `time.sleep()`. A blocking call freezes the entire system.
+- **Nothing at the top level should loop.** Code outside a handler runs once, when the script loads, and it gets 10 seconds. Past that the load is abandoned and the script does not run. Work that repeats belongs in `every()`. A loop that calls into the platform is stopped at its next call, so fixing the script and clicking Run clears it; a loop that calls nothing at all cannot be stopped and keeps a core busy until the server restarts, which is slow enough to make healthy devices look like they are dropping offline. The Scripts list says which one you have.
 - **Params are dicts**: `devices.send()` takes an optional dictionary as its third argument, not keyword arguments. Write `devices.send("proj", "set_input", {"input": "hdmi1"})`, not `devices.send("proj", "set_input", input="hdmi1")`.
 
 ## See Also

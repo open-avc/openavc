@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
+import threading
 import traceback
 from contextvars import ContextVar
 from typing import Any, Callable, TYPE_CHECKING
@@ -34,6 +36,88 @@ if TYPE_CHECKING:
 # platform itself now carries. Under __name__ it lands in the categoriser's
 # openavc.core.script branch on purpose.
 _log = get_logger(__name__)
+
+
+# --- The leash on an abandoned load thread ---
+#
+# A script's top-level code runs in a daemon thread bounded by a timeout, so an
+# infinite loop there can't take the event loop down with it. But abandoning a
+# thread is not stopping it: a `while True:` that touches the platform went on
+# writing state forever, every retry added another writer racing the same key,
+# and the process pegged a core until a real device's poll timed out — so the
+# damage showed up as DEVICE faults, nowhere near the script that caused it.
+#
+# The leash: the engine marks the thread, and every script-facing call checks
+# the mark and raises. A runaway unwinds the next time it touches the platform,
+# which is the loop body of every one that can do harm. A loop that touches
+# nothing cannot be stopped from here at all — Python has no way to kill a
+# thread — so that one is reported instead (see Engine.get_abandoned_loads).
+
+
+class ScriptLoadAbandoned(BaseException):
+    """Raised inside a load thread the engine has given up on, to unwind it.
+
+    A ``BaseException`` deliberately: script top-level code that wraps its work
+    in ``except Exception`` must not swallow the stop signal. Same reasoning as
+    ``asyncio.CancelledError``.
+    """
+
+
+# Threads the engine has abandoned, keyed by the Thread object itself — never
+# by ident, which CPython reuses, so a stale entry could later stop an innocent
+# thread. Written on the engine thread, read on the load thread; both are single
+# dict operations, and an empty dict costs one truth test on the hot path.
+_abandoned_load_threads: dict[threading.Thread, str] = {}
+
+
+def abandon_load_thread(thread: threading.Thread, script_id: str) -> None:
+    """Put a timed-out load thread on the leash."""
+    _abandoned_load_threads[thread] = script_id
+
+
+def release_load_thread(thread: threading.Thread) -> None:
+    """Take a thread off the leash — it has finished or unwound."""
+    _abandoned_load_threads.pop(thread, None)
+
+
+def _stop_if_abandoned() -> None:
+    """Unwind the calling thread if its load was abandoned."""
+    if not _abandoned_load_threads:
+        return
+    script_id = _abandoned_load_threads.get(threading.current_thread())
+    if script_id is None:
+        return
+    raise ScriptLoadAbandoned(
+        f"Script '{script_id}' was abandoned during loading and is being "
+        f"stopped at its next platform call"
+    )
+
+
+def _leashed(fn: Callable) -> Callable:
+    """Check the leash before a script-facing call reaches the platform."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        _stop_if_abandoned()
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def _leashed_async(fn: Callable) -> Callable:
+    """``_leashed`` for a coroutine function, keeping it a coroutine function.
+
+    Wrapping an ``async def`` in a plain function would make
+    ``iscoroutinefunction`` false for it, and a proxy method handed to
+    ``after()`` as a callback is dispatched on exactly that test.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        _stop_if_abandoned()
+        return await fn(*args, **kwargs)
+
+    return wrapper
 
 
 # --- Event object for handlers ---
@@ -77,6 +161,7 @@ _pending_event_handlers: list[tuple[str, Callable]] = []
 _pending_state_handlers: list[tuple[str, Callable]] = []
 
 
+@_leashed
 def on_event(pattern: str) -> Callable:
     """Decorator: register a handler for EventBus events matching *pattern*."""
 
@@ -87,6 +172,7 @@ def on_event(pattern: str) -> Callable:
     return decorator
 
 
+@_leashed
 def on_state_change(pattern: str) -> Callable:
     """Decorator: register a handler for StateStore changes matching *pattern*."""
 
@@ -133,6 +219,7 @@ class _DeviceProxy:
     def _bind(self, manager: DeviceManager) -> None:
         self._manager = manager
 
+    @_leashed_async
     async def send(
         self, device_id: str, command: str, params: dict[str, Any] | None = None
     ) -> Any:
@@ -140,6 +227,7 @@ class _DeviceProxy:
             raise RuntimeError("Script API not configured — devices proxy not bound")
         return await self._manager.send_command(device_id, command, params)
 
+    @_leashed
     def list(self) -> list[dict[str, Any]]:
         if self._manager is None:
             return []
@@ -155,21 +243,25 @@ class _StateProxy:
     def _bind(self, store: StateStore) -> None:
         self._store = store
 
+    @_leashed
     def get(self, key: str, default: Any = None) -> Any:
         if self._store is None:
             return default
         return self._store.get(key, default)
 
+    @_leashed
     def set(self, key: str, value: Any, source: str = "script") -> None:
         if self._store is None:
             raise RuntimeError("Script API not configured — state proxy not bound")
         self._store.set(key, value, source=source)
 
+    @_leashed
     def delete(self, key: str) -> None:
         if self._store is None:
             raise RuntimeError("Script API not configured — state proxy not bound")
         self._store.delete(key)
 
+    @_leashed
     def get_namespace(self, prefix: str) -> dict[str, Any]:
         if self._store is None:
             return {}
@@ -185,6 +277,7 @@ class _EventProxy:
     def _bind(self, bus: EventBus) -> None:
         self._bus = bus
 
+    @_leashed_async
     async def emit(self, event: str, payload: dict[str, Any] | None = None) -> None:
         if self._bus is None:
             raise RuntimeError("Script API not configured — event proxy not bound")
@@ -200,6 +293,7 @@ class _MacroProxy:
     def _bind(self, engine: MacroEngine) -> None:
         self._engine = engine
 
+    @_leashed_async
     async def execute(self, macro_id: str) -> None:
         if self._engine is None:
             raise RuntimeError("Script API not configured — macro proxy not bound")
@@ -215,15 +309,19 @@ class _MacroProxy:
 class _LogProxy:
     """Logger that prefixes messages with [script]."""
 
+    @_leashed
     def info(self, msg: str) -> None:
         _log.info(f"[script] {msg}")
 
+    @_leashed
     def warning(self, msg: str) -> None:
         _log.warning(f"[script] {msg}")
 
+    @_leashed
     def error(self, msg: str) -> None:
         _log.error(f"[script] {msg}")
 
+    @_leashed
     def debug(self, msg: str) -> None:
         _log.debug(f"[script] {msg}")
 
@@ -237,6 +335,7 @@ class _ISCProxy:
     def _bind(self, manager) -> None:
         self._manager = manager
 
+    @_leashed_async
     async def send_to(
         self, instance_id: str, event: str, payload: dict[str, Any] | None = None,
     ) -> None:
@@ -245,6 +344,7 @@ class _ISCProxy:
             raise RuntimeError("ISC not enabled")
         await self._manager.send_to(instance_id, event, payload)
 
+    @_leashed_async
     async def broadcast(
         self, event: str, payload: dict[str, Any] | None = None,
     ) -> None:
@@ -253,6 +353,7 @@ class _ISCProxy:
             raise RuntimeError("ISC not enabled")
         await self._manager.broadcast(event, payload)
 
+    @_leashed_async
     async def send_command(
         self,
         instance_id: str,
@@ -265,6 +366,7 @@ class _ISCProxy:
             raise RuntimeError("ISC not enabled")
         return await self._manager.send_command(instance_id, device_id, command, params)
 
+    @_leashed
     def get_instances(self) -> list[dict[str, Any]]:
         """List all discovered/connected peer instances."""
         if self._manager is None:
@@ -465,6 +567,7 @@ def discard_pending_timers() -> None:
     _pending_timers.clear()
 
 
+@_leashed_async
 async def delay(seconds: float) -> None:
     """Async sleep — use inside async handlers: await delay(2)."""
     await asyncio.sleep(seconds)
@@ -521,6 +624,7 @@ async def _run_timer_callback(
         )
 
 
+@_leashed
 def after(seconds: float, callback: Callable, *args: Any) -> str:
     """Run *callback* once after *seconds*. Returns timer ID for cancellation."""
     timer_id = _next_timer_id()
@@ -538,6 +642,7 @@ def after(seconds: float, callback: Callable, *args: Any) -> str:
     return timer_id
 
 
+@_leashed
 def every(seconds: float, callback: Callable, *args: Any) -> str:
     """Run *callback* every *seconds*. Returns timer ID for cancellation."""
     timer_id = _next_timer_id()
@@ -558,6 +663,7 @@ def every(seconds: float, callback: Callable, *args: Any) -> str:
     return timer_id
 
 
+@_leashed
 def cancel_timer(timer_id: str) -> bool:
     """Cancel a timer by ID. Returns True if cancelled, False if not found."""
     # A timer parked at load time but not yet materialized: drop it so it
@@ -573,6 +679,7 @@ def cancel_timer(timer_id: str) -> bool:
     return False
 
 
+@_leashed
 def cancel_all_timers() -> int:
     """Cancel all active and pending timers. Returns count cancelled."""
     count = 0

@@ -205,3 +205,33 @@ def test_get_recent_logs(client):
     resp = client.get("/api/logs/recent?count=10")
     assert resp.status_code == 200
     assert isinstance(resp.json()["logs"], list)
+
+
+# ── Q-183: the errors endpoint also reports a load that was abandoned ───────
+
+
+def test_script_errors_endpoint_reports_abandoned_loads(client, mock_engine):
+    """A load error and an abandoned load are different facts and both belong
+    here: the first says the script is not running, the second says a thread of
+    it may still be, which is the one that needs a restart."""
+    mock_engine.scripts.get_load_errors = MagicMock(
+        return_value={"test_script": "timed out during loading (>10s)"}
+    )
+    mock_engine.scripts.get_abandoned_loads = MagicMock(
+        return_value={"test_script": {"attempts": 2, "running": True, "since": 1.0}}
+    )
+
+    body = client.get("/api/scripts/errors").json()
+
+    assert body["errors"]["test_script"].startswith("timed out")
+    assert body["abandoned"]["test_script"]["running"] is True
+    assert body["abandoned"]["test_script"]["attempts"] == 2
+
+
+def test_script_errors_endpoint_says_nothing_when_all_is_well(client, mock_engine):
+    mock_engine.scripts.get_load_errors = MagicMock(return_value={})
+    mock_engine.scripts.get_abandoned_loads = MagicMock(return_value={})
+
+    body = client.get("/api/scripts/errors").json()
+
+    assert body == {"errors": {}, "abandoned": {}}

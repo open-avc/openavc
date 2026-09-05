@@ -17,6 +17,10 @@ interface ScriptFileTreeProps {
    *  On the LIST because a handler that has done nothing for months is in a
    *  file nobody has opened. */
   deadHandlers?: Record<string, number>;
+  /** Loads the server gave up on. `running` means a thread of that script's
+   *  top-level code is STILL going and only a restart will clear it -- the
+   *  state that used to show up as devices flapping and nothing else. */
+  abandonedLoads?: Record<string, { attempts: number; running: boolean }>;
   onSelectScript: (id: string) => void;
   onSelectDriver: (id: string) => void;
   onSelectUiFile: (path: string) => void;
@@ -41,6 +45,7 @@ export function ScriptFileTree({
   selectedType,
   loadErrors = {},
   deadHandlers = {},
+  abandonedLoads = {},
   onSelectScript,
   onSelectDriver,
   onSelectUiFile,
@@ -243,8 +248,14 @@ export function ScriptFileTree({
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
-                      {loadErrors[s.id] ? (
-                        <span title={`Load error: ${loadErrors[s.id]}`}>
+                      {loadErrors[s.id] || abandonedLoads[s.id]?.running ? (
+                        <span
+                          title={
+                            loadErrors[s.id]
+                              ? `Load error: ${loadErrors[s.id]}`
+                              : "A thread of this script's top-level code is still running"
+                          }
+                        >
                           <AlertTriangle size={14} style={{ color: "var(--danger, #ef4444)", flexShrink: 0 }} />
                         </span>
                       ) : (
@@ -263,6 +274,23 @@ export function ScriptFileTree({
                         {loadErrors[s.id] ? (
                           <div style={errorDescStyle} title={loadErrors[s.id]}>
                             {loadErrors[s.id].length > 60 ? loadErrors[s.id].slice(0, 60) + "..." : loadErrors[s.id]}
+                          </div>
+                        ) : abandonedLoads[s.id]?.running ? (
+                          <div
+                            style={errorDescStyle}
+                            title={
+                              "Its top-level code timed out and a thread of it is still " +
+                              "running. It stops when the server restarts."
+                            }
+                          >
+                            Load abandoned and still running
+                          </div>
+                        ) : abandonedLoads[s.id] ? (
+                          <div
+                            style={warnDescStyle}
+                            title="Its top-level code timed out. The load was stopped."
+                          >
+                            Load timed out and was stopped
                           </div>
                         ) : deadHandlers[s.id] ? (
                           <div

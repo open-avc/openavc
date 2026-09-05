@@ -193,8 +193,23 @@ export async function reloadScript(id: string): Promise<{
   return request(`/scripts/${id}/reload`, { method: "POST" });
 }
 
-export async function getScriptErrors(): Promise<Record<string, string>> {
-  return (await request<{ errors: Record<string, string> }>("/scripts/errors")).errors;
+/** A script load the server gave up on. `running` means a thread of it is
+ *  still going and only a restart will clear it. */
+export interface AbandonedScriptLoad {
+  attempts: number;
+  running: boolean;
+  since: number;
+}
+
+export async function getScriptErrors(): Promise<{
+  errors: Record<string, string>;
+  abandoned: Record<string, AbandonedScriptLoad>;
+}> {
+  const data = await request<{
+    errors: Record<string, string>;
+    abandoned?: Record<string, AbandonedScriptLoad>;
+  }>("/scripts/errors");
+  return { errors: data.errors ?? {}, abandoned: data.abandoned ?? {} };
 }
 
 export async function getScriptReferences(): Promise<ScriptReference[]> {

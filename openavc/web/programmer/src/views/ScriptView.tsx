@@ -47,6 +47,10 @@ export function ScriptView() {
   const [showCreateDriver, setShowCreateDriver] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ title: string; message: string; confirmLabel: string; onConfirm: () => void } | null>(null);
   const [scriptLoadErrors, setScriptLoadErrors] = useState<Record<string, string>>({});
+  // A load the server gave up on. Separate from an error: the script is not
+  // running, AND if `running` is true a thread of its top-level code still is,
+  // until the server restarts.
+  const [abandonedLoads, setAbandonedLoads] = useState<Record<string, api.AbandonedScriptLoad>>({});
   const [pythonDrivers, setPythonDrivers] = useState<PythonDriverInfo[]>([]);
   const [driverReloadErrors, setDriverReloadErrors] = useState<RuntimeError[]>([]);
   const [uiFiles, setUiFiles] = useState<CustomUiFile[]>([]);
@@ -63,7 +67,12 @@ export function ScriptView() {
 
   // Fetch script load errors and Python drivers on mount
   useEffect(() => {
-    api.getScriptErrors().then(setScriptLoadErrors).catch(() => {});
+    api.getScriptErrors()
+      .then(({ errors, abandoned }) => {
+        setScriptLoadErrors(errors);
+        setAbandonedLoads(abandoned);
+      })
+      .catch(() => {});
     loadPythonDrivers();
     void loadUiFiles();
   }, []);
@@ -858,6 +867,7 @@ export function ScriptView() {
             selectedId={selectedId}
             selectedType={selectedType}
             loadErrors={scriptLoadErrors}
+            abandonedLoads={abandonedLoads}
             deadHandlers={deadHandlerCounts}
             onSelectScript={handleSelectScript}
             onSelectDriver={handleSelectDriver}
