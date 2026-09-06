@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 
 // The regression this file exists for: on a CLAIMED instance a successful
 // update left the progress dialog open under "Restarting server" until a
@@ -153,23 +153,24 @@ describe("UpdatesView progress dialog", () => {
 // on such a box -- the install works, the server answers, the version is a real
 // version -- so without this card an appliance stuck on its golden baseline
 // looks exactly like one that is up to date.
-describe("UpdatesView deferred update", () => {
-  function statusWith(extra: Record<string, unknown>) {
-    vi.mocked(api.getUpdateStatus).mockResolvedValue({
-      current_version: "0.24.1",
-      deployment_type: "linux_package",
-      can_self_update: true,
-      update_available: "",
-      update_channel: "stable",
-      update_status: "idle",
-      update_progress: 0,
-      update_error: "",
-      rollback_available: false,
-      rollback_version: "",
-      ...extra,
-    } as Awaited<ReturnType<typeof api.getUpdateStatus>>);
-  }
+/** Serve /api/status for updates as an idle, current, self-updating box. */
+function statusWith(extra: Record<string, unknown>) {
+  vi.mocked(api.getUpdateStatus).mockResolvedValue({
+    current_version: "0.24.1",
+    deployment_type: "linux_package",
+    can_self_update: true,
+    update_available: "",
+    update_channel: "stable",
+    update_status: "idle",
+    update_progress: 0,
+    update_error: "",
+    rollback_available: false,
+    rollback_version: "",
+    ...extra,
+  } as Awaited<ReturnType<typeof api.getUpdateStatus>>);
+}
 
+describe("UpdatesView deferred update", () => {
   beforeEach(() => {
     liveState["system.update_status"] = "idle";
     stubHealth("0.24.1");
@@ -232,5 +233,57 @@ describe("UpdatesView deferred update", () => {
 
     expect(await screen.findByText("You're up to date")).toBeInTheDocument();
     expect(screen.queryByText(/has not been installed/)).not.toBeInTheDocument();
+  });
+});
+
+// A check that cannot reach GitHub answers 200 with an error rather than
+// failing, so the stored status still reads "no update available" -- which is
+// not the same claim as being current. handleCheck has always drawn that line
+// for the toast; these pin the card, which used to say the box was up to date
+// directly above the card saying the check never happened.
+describe("UpdatesView failed check", () => {
+  beforeEach(() => {
+    liveState["system.update_status"] = "idle";
+    stubHealth("0.24.1");
+    statusWith({});
+  });
+
+  /** Press "Check for Updates" and let handleCheck settle. */
+  async function pressCheck() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Check for Updates/ }));
+    });
+  }
+
+  it("does not call the box up to date when the check could not be made", async () => {
+    vi.mocked(api.checkForUpdates).mockResolvedValue({
+      update_available: false,
+      current_version: "0.24.1",
+      channel: "stable",
+      error: "Could not reach the update server",
+      offline_instructions: "Download the release on a machine with internet access.",
+    });
+
+    render(<UpdatesView />);
+    expect(await screen.findByText("You're up to date")).toBeInTheDocument();
+
+    await pressCheck();
+
+    expect(await screen.findByText("Could not check for updates")).toBeInTheDocument();
+    expect(screen.queryByText("You're up to date")).not.toBeInTheDocument();
+  });
+
+  it("still says so when the check succeeds and finds nothing", async () => {
+    vi.mocked(api.checkForUpdates).mockResolvedValue({
+      update_available: false,
+      current_version: "0.24.1",
+      channel: "stable",
+    });
+
+    render(<UpdatesView />);
+    await pressCheck();
+
+    expect(await screen.findByText("You're up to date")).toBeInTheDocument();
+    expect(screen.queryByText("Could not check for updates")).not.toBeInTheDocument();
   });
 });

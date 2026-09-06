@@ -362,8 +362,10 @@ export function UpdatesView() {
           </div>
         )}
 
-        {/* Up to date message */}
-        {!hasUpdate && !hasStaged && !hasDeferred && updateStatus === "idle" && !updateError && (
+        {/* Up to date message. A failed check disqualifies it the same way an
+            update error does: the status still reads "no update available",
+            but nothing has confirmed that, so the card below says so instead. */}
+        {!hasUpdate && !hasStaged && !hasDeferred && updateStatus === "idle" && !updateError && !checkResult?.error && (
           <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <CheckCircle size={20} style={{ color: "var(--color-success)", flexShrink: 0 }} />
             <div>
