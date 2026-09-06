@@ -175,7 +175,7 @@ jobs:
           path: dist/OpenAVC-Setup-*.exe
 
   # ── macOS installer (.pkg) ─────────────────────────────────────────
-  # One native build per arch (macos-14 = Apple Silicon, macos-13 = Intel).
+  # One native build per arch (macos-14 = Apple Silicon, macos-15-intel = Intel).
   # Signing + notarization gate on APPLE_TEAM_ID; with no Apple secrets the job
   # still produces a working *unsigned* .pkg (pre-enrollment / fork builds).
   macos:

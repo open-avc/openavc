@@ -5,11 +5,11 @@ For every `.avcdriver` file in the community driver repo, load the YAML,
 push it through `DriverDefinitionRequest` (the same Pydantic gate the API
 uses on save), and assert the round-trip is semantically equivalent.
 
-This catches the failure mode that bit Phase 0: when a new top-level field
+This catches a failure mode that has bitten before: when a new top-level field
 is added to the runtime but the API request model still uses the default
 `extra='ignore'`, every save silently drops the field. The Driver Builder
 renders the field, the user fills it in, the live YAML preview shows it,
-and then save strips it. The fix in P0 was `model_config = ConfigDict(extra="allow")`,
+and then save strips it. The fix was `model_config = ConfigDict(extra="allow")`,
 and this test makes sure that contract stays in place.
 
 It also catches type coercions that would corrupt a driver — for example,

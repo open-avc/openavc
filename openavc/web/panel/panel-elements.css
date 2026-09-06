@@ -5,7 +5,8 @@
  * Do not duplicate element styles in React renderers.
  *
  * Panel: imported via panel.css
- * Builder: imported directly by Canvas.tsx
+ * Builder: not imported. The IDE previews through an iframe of the real panel,
+ * so no Programmer source pulls in panel CSS.
  *
  * MEASUREMENTS ARE rem. 1rem is 14px at the 1280x800 reference and grows with
  * the panel from there (the type scale lives on :root in panel.css), so a
