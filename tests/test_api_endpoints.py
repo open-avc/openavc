@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from openavc.main import app
 from openavc.api import rest, ws
+from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.state_store import StateStore
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
@@ -181,7 +182,9 @@ def test_list_devices_empty(client):
 
 def test_get_device_not_found(client):
     c, engine = client
-    engine.devices.get_device_info.side_effect = ValueError("not found")
+    # The typed fault, because a bare ValueError no longer means this — see
+    # tests/test_device_not_found_answers.py for why.
+    engine.devices.get_device_info.side_effect = DeviceNotFoundError("not found")
     resp = c.get("/api/devices/nonexistent")
     assert resp.status_code == 404
 

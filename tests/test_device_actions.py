@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from openavc.api import rest, ws
-from openavc.core.device_manager import DeviceManager
+from openavc.core.device_manager import DeviceManager, DeviceNotFoundError
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.actions import resolve_device_actions, validate_actions
@@ -506,9 +506,16 @@ def test_command_route_names_the_command_not_the_device(actions_client):
 
 
 def test_command_route_still_says_device_when_the_device_is_missing(actions_client):
-    """The neighbouring message must not have moved."""
+    """The neighbouring message must not have moved.
+
+    The fault is typed now: a bare ValueError out of ``send_command`` is the
+    driver's own and answers as one (500), so faking a missing device means
+    raising what a missing device raises. See test_device_not_found_answers.py.
+    """
     c, engine = actions_client
-    engine.devices.send_command = AsyncMock(side_effect=ValueError("no such device"))
+    engine.devices.send_command = AsyncMock(
+        side_effect=DeviceNotFoundError("no such device")
+    )
     resp = c.post("/api/devices/dev1/command", json={"command": "power_on"})
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Device 'dev1' not found"

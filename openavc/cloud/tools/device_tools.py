@@ -5,8 +5,10 @@ from typing import Any
 import httpx
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.event_references import dead_listeners, project_script_sources
 from openavc.core.state_store import is_flat_primitive
+from openavc.drivers.base import DeviceSettingValueError
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 from openavc.drivers.registry import is_driver_registered, list_registered_drivers, register_driver
 
@@ -370,7 +372,7 @@ class DeviceToolsMixin:
         try:
             settings = engine.devices.get_device_settings(device_id)
             return {"device_id": device_id, "settings": settings}
-        except ValueError:
+        except DeviceNotFoundError:
             return {"error": f"Device '{device_id}' not found"}
 
     async def _set_device_setting(self, input: dict) -> Any:
@@ -394,8 +396,14 @@ class DeviceToolsMixin:
         try:
             await engine.devices.set_device_setting(device_id, setting_key, value)
             return {"success": True, "device_id": device_id, "key": setting_key, "value": value}
-        except ValueError:
-            return {"error": f"Device '{device_id}' or setting '{setting_key}' not found"}
+        except DeviceNotFoundError:
+            return {"error": f"Device '{device_id}' not found"}
+        except DeviceSettingValueError as e:
+            # Covers UnknownDeviceSettingError, which subclasses it. Both are
+            # written for a person to read and name what was wrong -- the
+            # generator's next attempt depends on being told which it was, and
+            # "device or setting not found" told it neither.
+            return {"error": str(e)}
         except ConnectionError:
             return {"error": f"Device '{device_id}' is not connected"}
         except NotImplementedError:

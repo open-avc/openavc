@@ -28,8 +28,8 @@ from openavc.core.connection_fault import (
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
     CommandParamError,
-    DeviceSettingValueError,
     UnknownCommandError,
+    UnknownDeviceSettingError,
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
@@ -46,6 +46,27 @@ from openavc.utils.log_redaction import get_secret_registry, redact_config
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+class DeviceNotFoundError(ValueError):
+    """No device with this id is registered — the id itself is what is wrong.
+
+    Every "no such device" raise in this module used to be a bare ValueError,
+    and the doors above mapped *any* ValueError to a 404 naming the device. So
+    a driver's own ValueError — a response its handler could not parse, a
+    helper deep inside a protocol — was answered ``Device 'x' not found`` about
+    a device that was connected and rendering its own page, which sends an
+    integrator to check cabling that is fine. That mapping had already claimed
+    two faults it did not have: :class:`UnknownCommandError` exists because a
+    typo'd command name answered this way, and a non-finite parameter value did
+    too. Naming the case makes the message a fact rather than a guess about
+    what could have raised.
+
+    Subclasses ValueError, so the callers that catch the broad type and report
+    the message — scripts, macros, the ISC and cloud command paths, the panel
+    WebSocket — are unchanged. The doors catch THIS to say "not found", and
+    everything else answers for itself.
+    """
 
 
 def not_connected(device_id: str) -> ConnectionError:
@@ -592,7 +613,7 @@ class DeviceManager:
             # Disabled device — just clean up config
             self._device_configs.pop(device_id, None)
         else:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         # A device the edit disables has no instance to resume into, so the
         # pause has nothing left to protect: let add_device take its disabled
         # path and leave the backstop cancelled.
@@ -615,7 +636,7 @@ class DeviceManager:
         """
         driver = self._devices.get(device_id)
         if driver is None:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         # Before the connected-gate on purpose: a command name the driver does
         # not declare is wrong whether or not the device happens to be online,
         # and "Device 'x' is not connected" would send the author to look at
@@ -832,7 +853,7 @@ class DeviceManager:
                     "commands": {},
                     "driver_info": {},
                 }
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
 
         from openavc.drivers.actions import resolve_device_actions
 
@@ -941,8 +962,14 @@ class DeviceManager:
         """Re-attempt adding an orphaned device (e.g., after installing its driver).
 
         Returns True if the device was successfully activated, False if still orphaned.
+
+        The two ways this can be asked about the wrong device are separate
+        answers, because the door above them is: an id nobody has is not found,
+        while a device that is running perfectly well has nothing to retry.
         """
         if device_id not in self._orphaned_devices:
+            if device_id not in self._device_configs:
+                raise DeviceNotFoundError(f"Device '{device_id}' not found")
             raise ValueError(f"Device '{device_id}' is not orphaned")
 
         config = self._orphaned_devices[device_id]
@@ -1002,14 +1029,16 @@ class DeviceManager:
         """Set a device setting value on a device by ID."""
         driver = self._devices.get(device_id)
         if driver is None:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         if not driver.get_state("connected"):
             raise not_connected(device_id)
 
         # Validate the setting exists
         settings = driver.DRIVER_INFO.get("device_settings", {})
         if key not in settings:
-            raise ValueError(f"Unknown device setting '{key}' for device '{device_id}'")
+            raise UnknownDeviceSettingError(
+                f"Unknown device setting '{key}' for device '{device_id}'"
+            )
 
         # Runtime value gate — the IDE editor's min/max/values/regex checks
         # are an authoring aid; scripts, macros, cloud, and raw REST bypass
@@ -1034,7 +1063,7 @@ class DeviceManager:
         """Return device settings metadata with current values from state."""
         driver = self._devices.get(device_id)
         if driver is None:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
 
         settings_def = driver.DRIVER_INFO.get("device_settings", {})
         result: dict[str, Any] = {}
@@ -1238,7 +1267,7 @@ class DeviceManager:
         """
         config = self._device_configs.get(device_id)
         if config is None:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
 
         driver = self._devices.get(device_id)
         if driver is not None:
@@ -1246,7 +1275,7 @@ class DeviceManager:
             validated: dict[str, Any] = {}
             for key, value in settings.items():
                 if key not in defs:
-                    raise DeviceSettingValueError(
+                    raise UnknownDeviceSettingError(
                         f"Unknown device setting '{key}' for device '{device_id}'"
                     )
                 validated[key] = validate_device_setting_value(key, defs[key], value)
@@ -1848,7 +1877,7 @@ class DeviceManager:
     async def reconnect_device(self, device_id: str) -> None:
         """Force disconnect and reconnect a device."""
         if device_id not in self._devices:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
         # A manual reconnect overrides a test-panel pause — clear the pause
         # bookkeeping so the flag can't go stale and the TTL backstop can't
@@ -1906,7 +1935,7 @@ class DeviceManager:
         is already down, and the handler doesn't use it. Pair with ``end_setup``.
         """
         if device_id not in self._devices:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         await self._cancel_reconnect(device_id)
         self._intentional_disconnect.add(device_id)
 
@@ -1933,7 +1962,7 @@ class DeviceManager:
         """
         driver = self._devices.get(device_id)
         if driver is None:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         self._clear_offline_reason(device_id)
         try:
             await driver.disconnect()
@@ -1954,7 +1983,7 @@ class DeviceManager:
         the TTL.
         """
         if device_id not in self._devices:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
         await self._cancel_reconnect(device_id)
         # Add to intentional_disconnect BEFORE disconnect so the disconnected
@@ -2039,7 +2068,7 @@ class DeviceManager:
         On connect failure the normal auto-reconnect loop takes over.
         """
         if device_id not in self._devices:
-            raise ValueError(f"Device '{device_id}' not found")
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
         driver = self._devices[device_id]
         self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)

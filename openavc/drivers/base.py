@@ -144,6 +144,21 @@ class DeviceSettingValueError(ValueError):
     """
 
 
+class UnknownDeviceSettingError(DeviceSettingValueError):
+    """A settings write named a key the driver does not declare.
+
+    The key half of the refusal above, split out because the two doors answer
+    it differently and both used to answer it wrong: the setting key is a path
+    segment on ``PUT /devices/{id}/settings/{key}`` (404 — that setting is not
+    there) and a body field on the pending-settings door (400, beside the value
+    checks). The first reached the caller as ``Device 'x' or setting 'y' not
+    found``, which blames the device for the author's typo.
+
+    Subclasses DeviceSettingValueError so a caller that only wants "this
+    settings write was refused" still needs one branch.
+    """
+
+
 class UndeclaredStateError(ValueError):
     """A driver wrote a state variable it never declared in
     ``DRIVER_INFO["state_variables"]``, under strict mode.

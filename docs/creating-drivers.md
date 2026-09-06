@@ -147,6 +147,8 @@ Order matters here. Build them in the order they appear:
 
 A command name the driver does not declare is refused the same way, with `Command 'query_evrything' not found on device 'switcher_1'`. Worth recognising: that is what a misspelled command in a Quick Action looks like from the device page.
 
+**An error your own code raises is reported as your code's.** When a handler fails at something the platform has no name for — a reply it could not parse, a helper deep inside a protocol — the answer is `Failed to send command 'query_input' to device 'switcher_1'` and the exception itself goes to the server log. It does not read as `Device 'switcher_1' not found`: that sentence is reserved for an id nothing in the project holds, so when you do see it, the id is wrong and the cabling is not the place to look.
+
 **Number formatting on the wire.** The runtime coerces each parameter to its declared type before substituting it, so an `integer` parameter always sends a whole number. A value of `26.0` (for example from a slider bound to the command) goes out as `26`, not `26.0`. For a `number` parameter, set **Decimals** to round to a fixed number of places (`decimals: 0` sends a whole number, `decimals: 1` sends one place). For finer control on a single placeholder, a format spec works inline: `{level:03d}` zero-pads (e.g. `007`), `{addr:02X}` hex-formats, and `{gain:.1f}` fixes one decimal place. Specs work even when the value arrives as a whole-number float.
 
 **Escape sequences** in command strings: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte, e.g. `\x1B` for ESC).

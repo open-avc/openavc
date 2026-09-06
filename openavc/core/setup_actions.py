@@ -27,6 +27,7 @@ import json
 from typing import Any
 from uuid import uuid4
 
+from openavc.core.device_manager import DeviceNotFoundError
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -150,12 +151,12 @@ class SetupActionRunner:
         """Kick off a setup action as a background task. Returns immediately with
         a ``run_id``; progress streams over the ``action.progress`` WS channel.
 
-        Raises ValueError if the device has no live driver, or
+        Raises DeviceNotFoundError if the device has no live driver, or
         SetupActionInProgress if one is already running on it.
         """
         driver = self._engine.devices.get_driver(device_id)
         if driver is None:
-            raise ValueError(
+            raise DeviceNotFoundError(
                 f"Device '{device_id}' not found or has no live driver"
             )
         if device_id in self._active:

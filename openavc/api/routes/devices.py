@@ -19,6 +19,7 @@ from openavc.api.models import (
     PendingSettingsRequest,
     RawSendRequest,
 )
+from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
 from openavc.drivers.base import (
@@ -26,6 +27,7 @@ from openavc.drivers.base import (
     CommandPartialError,
     DeviceSettingValueError,
     UnknownCommandError,
+    UnknownDeviceSettingError,
 )
 from openavc.drivers.child_ids import (
     child_display_name,
@@ -167,7 +169,7 @@ async def get_device(device_id: str) -> dict[str, Any]:
     engine = _get_engine()
     try:
         return engine.devices.get_device_info(device_id)
-    except ValueError as e:
+    except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
 
 
@@ -421,7 +423,7 @@ async def pause_device(device_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
     try:
         await engine.devices.pause_device(device_id)
-    except ValueError as e:
+    except DeviceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
     return {"status": "paused", "device_id": device_id}
 
@@ -436,7 +438,7 @@ async def resume_device(device_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
     try:
         await engine.devices.resume_device(device_id)
-    except ValueError as e:
+    except DeviceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
     return {"status": "resuming", "device_id": device_id}
 
@@ -447,8 +449,13 @@ async def retry_orphaned_device(device_id: str) -> dict[str, Any]:
     engine = _get_engine()
     try:
         success = await engine.devices.retry_orphaned_device(device_id)
+    except DeviceNotFoundError as e:
+        raise _api_error(404, f"Device '{device_id}' not found", e)
     except ValueError as e:
-        raise _api_error(404, f"Device '{device_id}' not found or not orphaned", e)
+        # The device is there and is not an orphan — nothing to retry. A 404
+        # would be a lie about a device the caller can see, and the old
+        # "not found or not orphaned" made the reader guess which it was.
+        raise _api_error(409, str(e), e)
     if success:
         return {"status": "activated", "device_id": device_id}
     return {"status": "still_orphaned", "device_id": device_id,
@@ -473,7 +480,7 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # command. (UnknownCommandError subclasses ValueError, so this branch
         # has to sit above the device-not-found one.)
         raise _api_error(404, str(e), e)
-    except ValueError as e:
+    except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
     except ConnectionError as e:
         raise _api_error(503, f"Device '{device_id}' is not connected", e)
@@ -491,6 +498,11 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # apart partway.
         raise _api_error(502, str(e), e)
     except Exception as e:
+        # Where a driver's own failure lands, whatever it raised. A driver
+        # ValueError -- a response its handler could not parse, a helper deep
+        # in a protocol -- used to be caught above and reported as a missing
+        # device; it belongs here with the driver's other faults, logged in
+        # full and answered with a sentence of ours.
         raise _api_error(500, f"Failed to send command '{body.command}' to device '{device_id}'", e)
 
 
@@ -645,7 +657,7 @@ async def invoke_device_action(
                 f"not declare",
                 e,
             )
-        except ValueError as e:
+        except DeviceNotFoundError as e:
             raise _api_error(404, f"Device '{device_id}' not found", e)
         except ConnectionError as e:
             raise _api_error(503, f"Device '{device_id}' is not connected", e)
@@ -674,8 +686,10 @@ async def invoke_device_action(
             status_code=409,
             detail=f"A setup action is already running on device '{device_id}'",
         ) from e
-    except ValueError as e:
-        raise _api_error(404, f"Device '{device_id}' not found", e)
+    except DeviceNotFoundError as e:
+        # The pre-check above already answered the ordinary case; this is the
+        # device going away between the two, so it says what the runner found.
+        raise _api_error(404, str(e), e)
 
 
 # --- Device Settings ---
@@ -688,7 +702,7 @@ async def get_device_settings(device_id: str) -> dict[str, Any]:
     try:
         settings = engine.devices.get_device_settings(device_id)
         return {"device_id": device_id, "settings": settings}
-    except ValueError as e:
+    except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
 
 
@@ -701,12 +715,17 @@ async def set_device_setting(
     try:
         await engine.devices.set_device_setting(device_id, setting_key, body.value)
         return {"success": True, "device_id": device_id, "key": setting_key, "value": body.value}
+    except UnknownDeviceSettingError as e:
+        # The setting key is a path segment here, so a key the driver does not
+        # declare is a 404 — but about the setting, which is what is missing.
+        # (It subclasses DeviceSettingValueError, so this branch sits above.)
+        raise _api_error(404, str(e), e)
     except DeviceSettingValueError as e:
         # A bad value (out of range / wrong type / not a declared option) —
         # surface the actionable message, not a misleading "not found".
         raise _api_error(400, str(e), e)
-    except ValueError as e:
-        raise _api_error(404, f"Device '{device_id}' or setting '{setting_key}' not found", e)
+    except DeviceNotFoundError as e:
+        raise _api_error(404, f"Device '{device_id}' not found", e)
     except ConnectionError as e:
         raise _api_error(503, f"Device '{device_id}' is not connected", e)
     except NotImplementedError as e:
@@ -727,8 +746,10 @@ async def store_pending_settings(
     try:
         await engine.devices.store_pending_settings(device_id, body.settings)
     except DeviceSettingValueError as e:
+        # Both halves of a refused write — an undeclared key and a bad value —
+        # arrive in the body here, so both are a 400 naming what was wrong.
         raise _api_error(400, str(e), e)
-    except ValueError as e:
+    except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
 
     # Persist the device manager's queue, not the raw body: intake validation

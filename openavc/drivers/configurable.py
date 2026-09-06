@@ -26,6 +26,7 @@ from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
     BaseDriver,
     ConnectionFaultError,
+    UnknownDeviceSettingError,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
 )
 from openavc.drivers.child_ids import coerce_child_local_id
@@ -2153,7 +2154,7 @@ class ConfigurableDriver(BaseDriver):
         settings = self._definition.get("device_settings", {})
         setting_def = settings.get(key)
         if not setting_def:
-            raise ValueError(f"Unknown device setting: {key}")
+            raise UnknownDeviceSettingError(f"Unknown device setting: {key}")
 
         write_def = setting_def.get("write")
         if not write_def:
