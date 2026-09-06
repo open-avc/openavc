@@ -270,7 +270,10 @@ DEFAULTS: dict[str, Any] = {
         "check_enabled": True,
         "channel": "stable",
         "auto_check_interval_hours": 24,
-        "auto_backup_before_update": True,
+        # Notifications only: the maintenance-window loop the cloud can start
+        # (updater/manager.apply_update_policy) will not install anything while
+        # this is on. An update somebody presses -- here or from the cloud --
+        # still installs; "automatically" is what this setting is about.
         "notify_only": False,
     },
     "cloud": {

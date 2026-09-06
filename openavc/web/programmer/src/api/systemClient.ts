@@ -267,7 +267,7 @@ export interface SystemConfig {
   auth: { programmer_username: string; programmer_password: string; api_key: string; panel_lock_code: string };
   isc: { enabled: boolean; discovery_enabled: boolean; auth_key: string };
   logging: { level: string; file_enabled: boolean; max_size_mb: number; max_files: number };
-  updates: { check_enabled: boolean; channel: string; auto_check_interval_hours: number; auto_backup_before_update: boolean; notify_only: boolean };
+  updates: { check_enabled: boolean; channel: string; auto_check_interval_hours: number; notify_only: boolean };
   cloud: { enabled: boolean; endpoint: string; system_key: string; system_id: string };
   kiosk: { enabled: boolean; target_url: string; cursor_visible: boolean };
   tls: { enabled: boolean; port: number; auto_generate: boolean; cert_file: string; key_file: string; redirect_http: boolean; cloud_cert: boolean };

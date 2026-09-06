@@ -478,3 +478,103 @@ def test_update_history_entries_record_rollback_false(tmp_path):
     with patch.object(mgr, "_save_history"):
         mgr._add_history_entry("0.13.0", "0.14.0", "pending")
     assert mgr._history[0]["rollback"] is False
+
+
+# ── Notify only: the one path that installs with nobody present ──
+
+class _Cfg:
+    """Stands in for the system config with one answer that matters."""
+
+    def __init__(self, notify_only):
+        self._notify_only = notify_only
+
+    def get(self, section, key, default=None):
+        if (section, key) == ("updates", "notify_only"):
+            return self._notify_only
+        return default
+
+
+@pytest.mark.asyncio
+async def test_notify_only_refuses_the_cloud_maintenance_window(tmp_path):
+    """The setting says "tell me, don't install". The maintenance-window loop
+    is the only thing anywhere that installs with nobody present, so it is the
+    one the setting has to reach -- and until it did, the toggle said the
+    system would not update itself while the cloud went ahead and did."""
+    mgr = _bare_manager(tmp_path)
+
+    async def _never(*_a, **_k):
+        await asyncio.sleep(3600)
+    mgr._maintenance_window_loop = _never
+
+    policy = {
+        "policy": "auto",
+        "maintenance_window_start": "02:00",
+        "maintenance_window_end": "03:00",
+    }
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+            patch("openavc.system_config.get_system_config", return_value=_Cfg(True)):
+        await mgr.apply_update_policy(policy)
+        assert mgr._maintenance_task is None, (
+            "notify-only asked for notifications; this schedules an install"
+        )
+
+    # And the default (off) still schedules, so the fix costs nobody their
+    # cloud-managed maintenance window.
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+            patch("openavc.system_config.get_system_config", return_value=_Cfg(False)):
+        await mgr.apply_update_policy(policy)
+        assert mgr._maintenance_task is not None
+        await mgr.apply_update_policy({"policy": "manual"})
+
+
+@pytest.mark.asyncio
+async def test_notify_only_leaves_a_deliberate_install_alone(tmp_path):
+    """"Without installing one on its own" is the whole of it: an update
+    somebody presses -- the Updates view here, or the cloud portal's update
+    command -- is a person deciding, and still installs.
+
+    Asserted at the first irreversible step rather than through the whole
+    flow: reaching the pre-update backup is proof it was not refused.
+    """
+    mgr = _bare_manager(tmp_path)
+    mgr._checker.last_result = MagicMock(version="9.9.9")
+    mgr.get_staged_update = lambda: None
+
+    reached = []
+
+    def _backup(*_a, **_k):
+        reached.append("backup")
+        raise RuntimeError("stop here")
+
+    with patch("openavc.updater.manager.can_self_update", return_value=True), \
+            patch("openavc.updater.backup.create_backup", _backup), \
+            patch("openavc.system_config.get_system_config", return_value=_Cfg(True)):
+        result = await mgr.apply_update()
+
+    assert reached == ["backup"], (
+        "notify-only stopped an update a person asked for"
+    )
+    assert result.get("success") is False  # it stopped at the stub, not before it
+
+
+def test_the_settings_this_system_stores_are_all_read():
+    """Every `updates.*` default has a reader in the server. Two did not: one
+    lied harmlessly (the pre-update backup is unconditional) and one lied in
+    the dangerous direction. A setting nobody reads is a promise to the person
+    who set it that nothing keeps."""
+    from pathlib import Path
+
+    from openavc.system_config import DEFAULTS
+
+    # Every module EXCEPT the one that declares them -- a default naming
+    # itself is not a reader, and that is exactly how these two survived.
+    source = ""
+    for path in sorted((Path(__file__).resolve().parents[1] / "openavc").rglob("*.py")):
+        if path.name == "system_config.py":
+            continue
+        source += path.read_text(encoding="utf-8")
+    for key in DEFAULTS["updates"]:
+        assert f'"{key}"' in source, (
+            f"updates.{key} is stored, shipped and shown in Settings, and "
+            "nothing reads it"
+        )

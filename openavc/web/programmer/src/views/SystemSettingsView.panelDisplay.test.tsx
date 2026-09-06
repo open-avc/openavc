@@ -52,7 +52,7 @@ const CONFIG = {
   auth: { programmer_username: "", programmer_password: "***", api_key: "", panel_lock_code: "" },
   isc: { enabled: true, discovery_enabled: true, auth_key: "" },
   logging: { level: "info", file_enabled: true, max_size_mb: 50, max_files: 5 },
-  updates: { check_enabled: true, channel: "stable", auto_check_interval_hours: 24, auto_backup_before_update: true, notify_only: false },
+  updates: { check_enabled: true, channel: "stable", auto_check_interval_hours: 24, notify_only: false },
   cloud: { enabled: false, endpoint: "", system_key: "", system_id: "" },
   kiosk: { enabled: false, target_url: "", cursor_visible: false },
   tls: { enabled: false, port: 8443, auto_generate: true, cert_file: "", key_file: "", redirect_http: true, cloud_cert: false },

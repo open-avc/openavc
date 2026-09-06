@@ -1167,6 +1167,20 @@ class UpdateManager:
         if policy != "auto" or not can_self_update(self._deployment_type):
             return
 
+        # This loop is the only thing anywhere that installs an update with
+        # nobody present, so it is the one `notify_only` has to reach -- an
+        # update somebody presses, here or in the cloud portal, is not what
+        # "automatically" means and still installs. Read at policy time rather
+        # than cached: the setting is edited in Settings > Updates, and the
+        # policy arrives again on every cloud session.
+        from openavc.system_config import get_system_config
+        if get_system_config().get("updates", "notify_only", False):
+            log.info(
+                "Cloud policy asks for automatic updates during a maintenance "
+                "window, but this system is set to notify only; not scheduling"
+            )
+            return
+
         start_time = self._parse_window_time(policy_config.get("maintenance_window_start"))
         end_time = self._parse_window_time(policy_config.get("maintenance_window_end"))
         if start_time is None or end_time is None:

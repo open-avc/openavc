@@ -1837,15 +1837,8 @@ export function SystemSettingsView() {
           </div>
           <div style={toggleRow}>
             <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Auto-backup before update</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Automatically back up projects before applying updates.</div>
-            </div>
-            <Toggle checked={upd.auto_backup_before_update} onChange={(v) => update("updates", "auto_backup_before_update", v)} />
-          </div>
-          <div style={toggleRow}>
-            <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Notify only</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Show update notifications without applying automatically.</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Say when an update is available, but never install one on its own. An update scheduled from the cloud is skipped too; you can still install one yourself.</div>
             </div>
             <Toggle checked={upd.notify_only} onChange={(v) => update("updates", "notify_only", v)} />
           </div>

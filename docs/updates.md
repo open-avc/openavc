@@ -195,6 +195,12 @@ If your system is connected to OpenAVC Cloud, your integrator may manage updates
 
 Even with cloud management, you can always check for and install updates locally from the Programmer IDE.
 
+A single system can opt out of the automatic half: turn on **Notify only** in
+Settings > Updates and this system will not install an update on its own, even
+inside a maintenance window the cloud has scheduled. It still says when one is
+available, and anyone with access can still install it -- from here or from the
+cloud portal.
+
 ## Disabling Automatic Checks
 
 To disable the background update check (the system will never check GitHub on its own):

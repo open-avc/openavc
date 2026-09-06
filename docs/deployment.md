@@ -127,7 +127,6 @@ System-level configuration controls the server itself: networking, authenticatio
         "check_enabled": true,
         "channel": "stable",
         "auto_check_interval_hours": 24,
-        "auto_backup_before_update": true,
         "notify_only": false
     },
     "cloud": {
