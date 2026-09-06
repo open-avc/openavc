@@ -142,7 +142,9 @@ Every row carries one mark, and it has three states:
 - **A red ring** — something is wrong. Hover it for the reason: not answering (go and find it), or answering but not running (power-cycle it). Rows in this state are lifted to the top of the list, counted on the type's tab as "N down", and named on the device page above.
 - **A grey ring** — nothing is connected in this position. Some drivers model slots rather than channels: the extension positions on a chained mixer, the card slots on a frame. An empty one is not a fault, so it is not counted, not lifted, and never in the banner.
 
-While a device itself is offline, every sub-unit under it reads as unavailable and says so, rather than continuing to show the last numbers it had. They come back as the device does. The sub-units stay listed throughout — panels and macros bound to them keep working and go quiet, instead of pointing at something that has vanished.
+While a device itself is offline, every sub-unit under it reads as unavailable and says so. They come back as the device does. The sub-units stay listed throughout — panels and macros bound to them keep working and go quiet, instead of pointing at something that has vanished.
+
+The readings stay too, marked **last heard** rather than left looking current. A panel blanks a reading it cannot trust, because a control in a room must not assert a number that is no longer true; this page is where you work out what happened, and "it was 511 when we lost it" is usually the thing you came for. The same mark appears on the device's own Live State list. What is *not* marked is everything the platform knows regardless — whether the device is connected, the fault reason, a sub-unit's online state, the name you gave it — because those are true right now, and are how you know the rest is stale.
 
 A device's sub-units are listed as soon as the driver knows how many there are, which for most drivers is before the device has ever been reached. You can build panels and macros against a room's equipment before any of it is racked.
 

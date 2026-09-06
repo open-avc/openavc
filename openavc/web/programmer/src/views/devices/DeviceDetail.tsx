@@ -16,6 +16,7 @@ import {
 import type { MonitorConfig } from "../../api/types";
 import { scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
+import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { normalizeOptionList, optionLabel, parseStateOptionList } from "../../components/shared/paramOptions";
 import {
   hasInvalidParams,
@@ -772,9 +773,16 @@ export function DeviceDetail({
                 {stateEntries.map(([key, value]) => {
                   const fullKey = `device.${deviceId}.${key}`;
                   const monitor = monitors.find((m) => m.key === fullKey);
+                  // A value the device is no longer reporting. Only the
+                  // driver's own readings: `connected`, `enabled`, the fault
+                  // pair and the rest of the platform's keys are statements
+                  // about the device that are true right now.
+                  const stale =
+                    !connected && value !== "" && key in declaredStateVars;
                   return (
                   <Fragment key={key}>
                   <tr
+                    data-testid={`live-state-${key}`}
                     style={{ borderBottom: monitor && openMonitor === fullKey ? undefined : "1px solid var(--border-color)" }}
                   >
                     <td
@@ -792,10 +800,12 @@ export function DeviceDetail({
                       </span>
                     </td>
                     <td
+                      title={stale ? DEVICE_STALE_TITLE : undefined}
                       style={{
                         padding: "var(--space-sm) var(--space-md)",
                         fontFamily: "var(--font-mono)",
                         fontSize: "var(--font-size-sm)",
+                        ...(stale ? staleValueStyle : null),
                       }}
                     >
                       {optionFeedKeys.has(key) ? (
@@ -803,6 +813,7 @@ export function DeviceDetail({
                       ) : (
                         value
                       )}
+                      {stale && <LastHeard />}
                     </td>
                     {/* The second authoring door. Most of what a room's health
                         actually is lives here — lamp hours, fault flags, input

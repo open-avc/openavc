@@ -6,6 +6,7 @@ import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CHILD_RESERVED_PROPS } from "../../api/types";
+import { CHILD_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { childReadingDeclarations } from "../../api/childStateVars";
 import { useSettled } from "../../components/shared/useSettled";
 import {
@@ -471,6 +472,8 @@ function ChildSearchResults({
       /** The matched readings, value unformatted: the Monitor control on each
           row judges the real value, not the string drawn beside it. */
       rows: [string, unknown][];
+      /** This child is not answering, so what it last said is not current. */
+      stale: boolean;
     }[] = [];
     for (const type of Object.keys(data.child_entity_types)) {
       const tSchema = data.child_entity_types[type];
@@ -495,6 +498,7 @@ function ChildSearchResults({
             typeLabel,
             entry,
             rows,
+            stale: !childPresence(state).ok,
           });
         }
       }
@@ -524,7 +528,7 @@ function ChildSearchResults({
         overflow: "auto",
       }}
     >
-      {shown.map(({ type, typeLabel, entry, rows }) => (
+      {shown.map(({ type, typeLabel, entry, rows, stale }) => (
         <div
           key={`${type}/${entry.local_id_padded}`}
           data-testid={`child-row-${entry.local_id_padded}`}
@@ -587,6 +591,7 @@ function ChildSearchResults({
                     )}
                     monitors={monitors}
                     onMonitorsChange={onMonitorsChange}
+                    stale={stale}
                   />
                 ))}
               </tbody>
@@ -913,6 +918,11 @@ function ChildEntityList({
             const displayLabel = authored || entry.display_name;
             const fromDevice = !authored && !!entry.display_name;
             const monitoredCount = monitoredByChild.get(entry.local_id_padded) ?? 0;
+            // Nothing is coming from this one any more, so every reading on it
+            // is the last one heard rather than a current value. The same fact
+            // the status mark beside it draws, applied to the numbers — the
+            // mark said it and the numbers went on looking live.
+            const stale = !childPresence(liveS).ok;
 
             return (
               <div
@@ -1027,22 +1037,31 @@ function ChildEntityList({
                       </button>
                     )}
                   </div>
-                  {summaryFields.map((field) => (
-                    <div
-                      key={field}
-                      style={{
-                        flex: 1,
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--font-size-sm)",
-                        color: "var(--text-primary)",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {formatStateValue(liveS[field])}
-                    </div>
-                  ))}
+                  {summaryFields.map((field) => {
+                    // A column of three values has no room for the words, so
+                    // here the dimming carries it, next to the status mark on
+                    // the same row that says why.
+                    const dim = stale && !CHILD_RESERVED_PROPS.has(field)
+                      && formatStateValue(liveS[field]) !== "";
+                    return (
+                      <div
+                        key={field}
+                        title={dim ? CHILD_STALE_TITLE : undefined}
+                        style={{
+                          flex: 1,
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "var(--font-size-sm)",
+                          color: dim ? "var(--text-muted)" : "var(--text-primary)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        data-stale={dim ? "true" : undefined}
+                      >
+                        {formatStateValue(liveS[field])}
+                      </div>
+                    );
+                  })}
                   {/* Something in this child is watched. A row here is a whole
                       child rather than one reading, so the mark says that much
                       and expanding says which — without it, a monitor set on
@@ -1117,6 +1136,7 @@ function ChildEntityList({
                               )}
                               monitors={monitors}
                               onMonitorsChange={onMonitorsChange}
+                              stale={stale}
                             />
                           ),
                         )}
@@ -1152,6 +1172,7 @@ function ReadingRow({
   declared,
   monitors,
   onMonitorsChange,
+  stale,
 }: {
   prop: string;
   value: unknown;
@@ -1159,9 +1180,15 @@ function ReadingRow({
   declared: DeclaredReading | undefined;
   monitors: MonitorConfig[];
   onMonitorsChange: (next: MonitorConfig[], description: string) => void;
+  /** This child is not answering, so its readings are the last ones heard.
+      Not its four reserved props: those are the platform saying what it knows
+      about the child right now, which is how we know it is not answering. */
+  stale: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const monitor = monitors.find((m) => m.key === stateKey);
+  const shown = formatStateValue(value);
+  const dim = stale && !CHILD_RESERVED_PROPS.has(prop) && shown !== "";
   return (
     <Fragment>
       <tr
@@ -1179,8 +1206,16 @@ function ReadingRow({
         >
           {prop}
         </td>
-        <td style={{ padding: "2px 8px", fontFamily: "var(--font-mono)" }}>
-          {formatStateValue(value)}
+        <td
+          title={dim ? CHILD_STALE_TITLE : undefined}
+          style={{
+            padding: "2px 8px",
+            fontFamily: "var(--font-mono)",
+            ...(dim ? staleValueStyle : null),
+          }}
+        >
+          {shown}
+          {dim && <LastHeard />}
         </td>
         {/* nowrap, because the column is sized to its contents: without it
             "Set what normal looks like" wraps to five lines and takes the

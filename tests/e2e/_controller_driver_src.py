@@ -30,7 +30,16 @@ class E2ETestController(BaseDriver):
         "manufacturer": "OpenAVC",
         "category": "controller",
         "transport": "tcp",
-        "state_variables": {},
+        # One declared DEVICE-level reading, so this driver has something the
+        # platform's own keys (connected, enabled, name) are not: a value that
+        # came off the hardware and goes stale when the hardware stops
+        # answering.
+        "state_variables": {
+            "temperature": {
+                "type": "number", "label": "Temperature",
+                "min": 0.0, "max": 80.0, "unit": "C",
+            },
+        },
         "commands": {},
         "config_schema": {
             "initial_children": {"type": "integer", "default": 0},
@@ -62,6 +71,7 @@ class E2ETestController(BaseDriver):
     async def connect(self) -> None:
         self._connected = True
         self.set_state("connected", True)
+        self.set_state("temperature", 41.5)
         await self.events.emit(f"device.connected.{self.device_id}")
 
         initial = int(self.config.get("initial_children", 0))
