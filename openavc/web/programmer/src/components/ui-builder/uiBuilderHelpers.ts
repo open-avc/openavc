@@ -2775,7 +2775,10 @@ function rewriteRefsDeep(value: unknown, oldId: string, newId: string): unknown 
 }
 
 function rewriteElement(el: UIElement, oldId: string, newId: string): UIElement {
-  const renamedSelf = el.id === oldId ? { ...el, id: newId } : el;
+  let renamedSelf = el.id === oldId ? { ...el, id: newId } : el;
+  // The container hierarchy is keyed by element id: a child of the renamed
+  // container points at it by `parent`, and would dangle otherwise.
+  if (renamedSelf.parent === oldId) renamedSelf = { ...renamedSelf, parent: newId };
   const bindings = rewriteRefsDeep(renamedSelf.bindings, oldId, newId) as UIElement["bindings"];
   const next: UIElement = bindings === renamedSelf.bindings
     ? renamedSelf
@@ -2871,6 +2874,27 @@ function rewriteVariable(v: VariableConfig, oldId: string, newId: string): Varia
 // lets renameElement hand back the original macros/variables/masters arrays when
 // a rename didn't touch them — which is exactly what the undo-snapshot guard in
 // UIBuilderView checks (result.macros !== project.macros) to keep the entry small.
+/** Geometry does not live on the element: every arrangement keys its
+ *  placements and hidden list by element id, so a rename has to reach them
+ *  or the old id stays behind as an orphan that Validate then reports, once
+ *  per renamed control. Same array back when no layout on the page held it. */
+function renameInLayouts(layouts: Layout[], oldId: string, newId: string): Layout[] {
+  if (!layouts) return layouts;
+  return mapPreserve(layouts, (l) => {
+    const hasPlacement = !!l.placements && oldId in l.placements;
+    const hasHidden = !!l.hidden?.includes(oldId);
+    if (!hasPlacement && !hasHidden) return l;
+    const next = { ...l };
+    if (hasPlacement) {
+      const placements: Record<string, Placement> = {};
+      for (const [id, box] of Object.entries(l.placements)) placements[id === oldId ? newId : id] = box;
+      next.placements = placements;
+    }
+    if (hasHidden) next.hidden = l.hidden.map((id) => (id === oldId ? newId : id));
+    return next;
+  });
+}
+
 function mapPreserve<T>(arr: T[], fn: (item: T) => T): T[] {
   let changed = false;
   const next = arr.map((item) => {
@@ -2933,7 +2957,9 @@ export function renameElement(
 ): RenameResult {
   const newPages = mapPreserve(pages, (p) => {
     const elements = mapPreserve(p.elements, (el) => rewriteElement(el, oldId, newId));
-    return elements === p.elements ? p : { ...p, elements };
+    const layouts = renameInLayouts(p.layouts, oldId, newId);
+    if (elements === p.elements && layouts === p.layouts) return p;
+    return { ...p, elements, layouts };
   });
   const newMasters = mapPreserve(masterElements, (m) => rewriteElement(m as unknown as UIElement, oldId, newId) as MasterElement);
   const newMacros = mapPreserve(macros, (m) => rewriteMacro(m, oldId, newId));

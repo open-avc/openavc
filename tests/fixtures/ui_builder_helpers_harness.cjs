@@ -491,6 +491,56 @@ function makeProject(macroKey) {
     detail: { macrosChanged: r.macros !== p.macros, rewritten },
   };
 }
+{
+  // Geometry is keyed by element id in every arrangement: a rename has to
+  // move the placement and the hidden entry, and leave a layout that never
+  // held the id by reference.
+  const box = { x: 4, y: 20, w: 20, h: 16 };
+  const other = { x: 50, y: 20, w: 20, h: 16 };
+  const untouched = { id: "tall", orientation: "portrait", primary: false, placements: { other }, hidden: [] };
+  const p = makeProject("var.unrelated");
+  p.pages[0].elements.push({ id: "other", type: "button", style: {}, bindings: {} });
+  p.pages[0].layouts = [
+    LANDSCAPE({ btn: box, other }),
+    { id: "wide", orientation: "portrait", primary: false, placements: { btn: box }, hidden: ["btn", "other"] },
+    untouched,
+  ];
+  const r = H.renameElement(p.pages, p.masters, p.macros, p.variables, p.scripts, "btn", "btn_go");
+  const L = r.pages[0].layouts;
+  results.rename_moves_placements = {
+    pass:
+      eq(L[0].placements, { btn_go: box, other }) &&
+      eq(L[1].placements, { btn_go: box }) &&
+      eq(L[1].hidden, ["btn_go", "other"]) &&
+      L[2] === untouched,
+    detail: { landscape: L[0].placements, wide: L[1], untouchedSame: L[2] === untouched },
+  };
+}
+{
+  // A rename that touches no layout hands the layouts array back by reference.
+  const p = makeProject("var.unrelated");
+  const before = p.pages[0].layouts;
+  const r = H.renameElement(p.pages, p.masters, p.macros, p.variables, p.scripts, "btn", "btn2");
+  results.rename_leaves_unplaced_layouts_alone = {
+    pass: r.pages[0].layouts === before && r.pages[0].elements[0].id === "btn2",
+    detail: { layoutsSame: r.pages[0].layouts === before },
+  };
+}
+{
+  // A child points at its container by id; renaming the container re-parents it.
+  const p = makeProject("var.unrelated");
+  p.pages[0].elements = [
+    { id: "box", type: "container", style: {}, bindings: {} },
+    { id: "kid", type: "button", style: {}, bindings: {}, parent: "box" },
+    { id: "loose", type: "button", style: {}, bindings: {}, parent: null },
+  ];
+  const r = H.renameElement(p.pages, p.masters, p.macros, p.variables, p.scripts, "box", "group_main");
+  const els = r.pages[0].elements;
+  results.rename_reparents_children = {
+    pass: els[0].id === "group_main" && els[1].parent === "group_main" && els[2].parent === null,
+    detail: { ids: els.map((e) => e.id), parents: els.map((e) => e.parent) },
+  };
+}
 
 // --- H-086: validateProject handles do.<interaction> action lists ---
 function makeValidationProject(elements) {
