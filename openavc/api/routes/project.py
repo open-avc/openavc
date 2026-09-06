@@ -435,10 +435,11 @@ async def save_to_library(data: LibrarySaveRequest) -> dict[str, Any]:
     scripts_dir = engine.project_path.parent / "scripts"
     assets_dir = engine.project_path.parent / "assets"
     ui_dir = engine.project_path.parent / "ui"
+    themes_dir = engine.project_path.parent / "themes"
 
     try:
         _save(data.id, engine.project, scripts_dir, data.name, data.description,
-              assets_dir=assets_dir, ui_dir=ui_dir)
+              assets_dir=assets_dir, ui_dir=ui_dir, themes_dir=themes_dir)
     except ValueError as e:
         raise _api_error(409, f"Library project '{data.id}' already exists", e)
 
@@ -457,10 +458,12 @@ async def replace_library_project(project_id: str, data: LibraryReplaceRequest) 
     scripts_dir = engine.project_path.parent / "scripts"
     assets_dir = engine.project_path.parent / "assets"
     ui_dir = engine.project_path.parent / "ui"
+    themes_dir = engine.project_path.parent / "themes"
 
     try:
         replace_in_library(project_id, engine.project, scripts_dir, data.name,
-                           data.description, assets_dir=assets_dir, ui_dir=ui_dir)
+                           data.description, assets_dir=assets_dir, ui_dir=ui_dir,
+                           themes_dir=themes_dir)
     except FileNotFoundError:
         raise HTTPException(
             status_code=404, detail=f"Project '{project_id}' not found in library",

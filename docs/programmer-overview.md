@@ -83,9 +83,9 @@ The **Project Library** (visible at the bottom of the Program view) stores saved
 - **Import/Export**: download project files as `.avc` or `.zip`, upload files from other instances
 - **Delete**: remove a saved project from the library
 
-**Export** in the Program header downloads the running project as a `.zip` that carries everything it needs to come up somewhere else: the project file, its scripts, any drivers and plugins it uses, its assets, and any custom controls. Save first, because the bundle is built from the saved project. **Import** takes that `.zip` back, adds it to the library and opens it, and it still accepts a plain `.avc` file on its own.
+**Export** in the Program header downloads the running project as a `.zip` that carries everything it needs to come up somewhere else: the project file, its scripts, any drivers and plugins it uses, its assets, custom themes, and any custom controls. Save first, because the bundle is built from the saved project. **Import** takes that `.zip` back, adds it to the library and opens it, and it still accepts a plain `.avc` file on its own. Save As and Duplicate also carry the project's custom themes.
 
-OpenAVC automatically creates a backup before important operations like opening a different project, creating a blank project, AI changes, and cloud config pushes. Backups are ZIP files that include the project file, scripts, assets, and persisted variable state, so restoring always returns you to a complete working state.
+OpenAVC automatically creates a backup before important operations like opening a different project, creating a blank project, AI changes, and cloud config pushes. Backups are ZIP files that include the project file, scripts, assets, custom controls, custom themes, and persisted variable state. Restoring replaces these files with the saved snapshot. An older bundle or backup that did not include its custom theme cannot recover that theme; import the original `.avctheme` file through Theme Studio.
 
 ### Backups
 

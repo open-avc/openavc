@@ -2,7 +2,7 @@
 OpenAVC Project Library — saved project file management.
 
 All saved projects live in saved_projects/<id>/project.avc with optional
-scripts/, assets/ and ui/ (custom controls) trees beside it.
+scripts/, assets/, themes/ and ui/ (custom controls) trees beside it.
 Starter projects are seeded from openavc/templates/ on first run.
 No distinction between bundled and user projects — all are equal.
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc import config
-from openavc.core import asset_tree
+from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.core.project_loader import (
     ISCConfig,
@@ -221,6 +221,7 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
 
         # Extract custom UI files (a starter template may ship a control)
         extract_from_zip(zf, project_dir / "ui")
+        theme_tree.extract_from_zip(zf, project_dir / "themes")
 
     # Copy the original .zip alongside the project so bundled drivers
     # can be installed when the user opens it
@@ -447,6 +448,7 @@ def _write_project_tree(
     description: str,
     assets_dir: Path | None,
     ui_dir: Path | None,
+    themes_dir: Path | None,
     created: str,
 ) -> None:
     """Write one saved project (the .avc, its scripts, assets and ui/) into
@@ -478,6 +480,8 @@ def _write_project_tree(
     # stayed behind opens with empty boxes where its controls were.
     if ui_dir is not None:
         _copy_tree(ui_dir, project_dir / "ui")
+    if themes_dir is not None:
+        theme_tree.copy_tree(themes_dir, project_dir / "themes")
 
 
 def save_to_library(
@@ -488,6 +492,7 @@ def save_to_library(
     description: str,
     assets_dir: Path | None = None,
     ui_dir: Path | None = None,
+    themes_dir: Path | None = None,
 ) -> None:
     """Save the current project to the library."""
     sid = sanitize_id(project_id)
@@ -497,7 +502,7 @@ def save_to_library(
 
     _write_project_tree(
         project_dir, sid, project, scripts_dir, name, description,
-        assets_dir, ui_dir, created=datetime.now().isoformat(),
+        assets_dir, ui_dir, themes_dir, created=datetime.now().isoformat(),
     )
     log.info(f"Saved project '{sid}' to library")
 
@@ -510,6 +515,7 @@ def replace_in_library(
     description: str,
     assets_dir: Path | None = None,
     ui_dir: Path | None = None,
+    themes_dir: Path | None = None,
 ) -> None:
     """Replace a saved project with the running one, keeping its id.
 
@@ -544,7 +550,7 @@ def replace_in_library(
 
     _write_project_tree(
         staging, sid, project, scripts_dir, name, description,
-        assets_dir, ui_dir, created=created,
+        assets_dir, ui_dir, themes_dir, created=created,
     )
     project_dir.rename(previous)
     try:
@@ -619,6 +625,7 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
     src_dir = _lib_dir() / sanitize_id(source_id)
     _copy_tree(src_dir / "assets", project_dir / "assets")
     _copy_tree(src_dir / "ui", project_dir / "ui")
+    theme_tree.copy_tree(src_dir / "themes", project_dir / "themes")
 
     log.info(f"Duplicated project '{source_id}' -> '{new_sid}'")
 
@@ -692,11 +699,14 @@ def open_from_library(
     # the previous project's files don't linger (both are served from
     # project_path.parent).
     lib_project_dir = _lib_dir() / sanitize_id(project_id)
-    for tree in ("assets", "ui"):
+    for tree in ("assets", "ui", "themes"):
         active_tree = project_path.parent / tree
         if active_tree.exists():
             shutil.rmtree(active_tree, ignore_errors=True)
-        _copy_tree(lib_project_dir / tree, active_tree)
+        if tree == "themes":
+            theme_tree.copy_tree(lib_project_dir / tree, active_tree)
+        else:
+            _copy_tree(lib_project_dir / tree, active_tree)
 
     log.info(f"Opened project '{project_id}' as '{new_project_name}'")
     return project
@@ -815,6 +825,7 @@ def _bundle_bytes(data: dict[str, Any], scripts: dict[str, str], project_dir: Pa
     # Hand-written custom controls travel with the project: an export that
     # left them behind would open on the other machine with empty boxes.
     ui_files = zip_entries(project_dir / "ui")
+    theme_files = theme_tree.zip_entries(project_dir / "themes")
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -828,6 +839,8 @@ def _bundle_bytes(data: dict[str, Any], scripts: dict[str, str], project_dir: Pa
         for archive_path, fpath in asset_files:
             zf.writestr(archive_path, fpath.read_bytes())
         for archive_path, fpath in ui_files:
+            zf.writestr(archive_path, fpath.read_bytes())
+        for archive_path, fpath in theme_files:
             zf.writestr(archive_path, fpath.read_bytes())
     return buf.getvalue()
 
@@ -1182,6 +1195,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
             # and a flattened one does not run. The path rules, file types and
             # caps are core/custom_ui.py's, the same ones the IDE writes under.
             extract_from_zip(zf, project_dir / "ui")
+            theme_tree.extract_from_zip(zf, project_dir / "themes")
         except BaseException:
             shutil.rmtree(project_dir, ignore_errors=True)
             raise

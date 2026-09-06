@@ -632,7 +632,7 @@ The Theme Picker in Panel Settings shows visual cards with color swatches for ea
 
 Select a theme to apply it immediately. The canvas preview updates in real time.
 
-To customize a theme, open the **Theme Studio** (click the paint brush icon in the toolbar). The studio lets you tweak any theme and save it as a custom theme. Custom themes can be exported as `.avctheme` files and shared across projects or installations.
+To customize a theme, open the **Theme Studio** (click the paint brush icon in the toolbar). The studio lets you tweak any theme and save it as a custom theme. All custom themes travel with the project when you save it to the library, duplicate it, export a project bundle, or create a backup. You can also export an individual theme as an `.avctheme` file and share it across projects or installations.
 
 ## Master Elements
 

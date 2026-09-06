@@ -7,6 +7,7 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
   - scripts/             (all .py script files)
   - assets/              (uploaded images, folders intact)
   - ui/                  (custom controls, folders intact)
+  - themes/              (project custom themes)
   - state.json           (persisted variable state, if present)
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
@@ -25,7 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from openavc.core import asset_tree
+from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -140,6 +141,16 @@ def _restore_ui_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
     _swap_dir(staging, target_dir)
 
 
+def _restore_theme_tree(zf: zipfile.ZipFile, target_dir: Path) -> None:
+    """Replace custom themes using the same staged swap as other project trees."""
+    staging = target_dir.with_name(target_dir.name + ".restore-new")
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    theme_tree.extract_from_zip(zf, staging)
+    _swap_dir(staging, target_dir)
+
+
 @dataclass
 class BackupInfo:
     """Metadata about a single backup file."""
@@ -223,6 +234,8 @@ def create_backup(
             # Custom controls, folders intact — one control is a folder, so this
             # tree is the one that cannot be flattened on the way in or out.
             for archive_path, f in zip_entries(project_dir / "ui"):
+                zf.write(f, archive_path)
+            for archive_path, f in theme_tree.zip_entries(project_dir / "themes"):
                 zf.write(f, archive_path)
             state_file = project_dir / "state.json"
             if state_file.is_file():
@@ -328,7 +341,7 @@ def list_backups(project_dir: Path) -> list[BackupInfo]:
 def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
     """Restore a project from a backup file.
 
-    ZIP backups: restores project.avc, scripts/, assets/, and state.json.
+    ZIP backups: restores project.avc, scripts/, assets/, ui/, themes/ and state.json.
     Legacy .avc.bak: restores project.avc only.
 
     Every write is atomic (temp + os.replace for files, staged rename swap for
@@ -364,6 +377,7 @@ def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
                 _restore_subdir(zf, names, "scripts/", project_dir / "scripts")
                 _restore_asset_tree(zf, project_dir / "assets")
                 _restore_ui_tree(zf, project_dir / "ui")
+                _restore_theme_tree(zf, project_dir / "themes")
 
                 # Persisted state — restore it, or clear a stale newer state.json
                 # when the backup predates persistence, so the older restored
