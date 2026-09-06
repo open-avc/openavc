@@ -521,6 +521,31 @@ CASES["do_actions"] = _project([
              "bindings": {"do": {"change": [{"action": "value_map", "map": {
                  "pc": {"action": "device.command", "device": "acme",
                         "command": "route"}}}]}}},
+            # The three dispatched names the corpus never spelled. Without them
+            # `script.call`, `event.emit` and `state.set` were the only members
+            # of the set that no case pushed through either side, so whatever
+            # each side does with them agreed by never being asked. They belong
+            # with the clean elements: all three are dispatched, so the right
+            # answer for every one is silence.
+            #
+            # `state.set` is nested in a toggle's off half on purpose. The walk
+            # reaches `off_action` and the corpus already proves that with a
+            # macro-only step, which trips a finding -- this is the other half
+            # of that proof, a nested action that must NOT.
+            {"id": "script_ok", "type": "button", "label": "Preset",
+             "bindings": {"do": {"press": [{"action": "script.call",
+                                            "function": "recall_preset",
+                                            "script": "room"}]}}},
+            {"id": "emit_ok", "type": "button", "label": "Ask",
+             "bindings": {"do": {"press": [{"action": "event.emit",
+                                            "event": "custom.help_wanted",
+                                            "payload": {"seat": "3"}}]}}},
+            {"id": "state_ok", "type": "button", "label": "Lights",
+             "bindings": {"do": {"press": [
+                 {"action": "state.set", "key": "var.lights", "value": "on",
+                  "mode": "toggle", "toggle_key": "var.lights",
+                  "off_action": {"action": "state.set", "key": "var.lights",
+                                 "value": "off"}}]}}},
         ],
         [_landscape({
             "nav_wrong": _pct_box(0, 0, 20, 12),
@@ -530,6 +555,9 @@ CASES["do_actions"] = _project([
             "mtx_rows": _pct_box(0, 20, 45, 45),
             "nav_ok": _pct_box(50, 20, 20, 12),
             "map_ok": _pct_box(75, 20, 20, 12),
+            "script_ok": _pct_box(50, 40, 20, 12),
+            "emit_ok": _pct_box(75, 40, 20, 12),
+            "state_ok": _pct_box(50, 55, 20, 12),
         })],
     ),
 ])

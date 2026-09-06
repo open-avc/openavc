@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { useProjectStore } from "../../store/projectStore";
+import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
 import { showError, showSuccess } from "../../store/toastStore";
 import type { OptionRow } from "./paramOptions";
 import * as api from "../../api/restClient";
@@ -152,6 +152,11 @@ export function SetupField({ device, field }: { device: string; field: string })
   const fieldType = String(schema.type || "string");
 
   const save = async () => {
+    // The driver's type comes from its config_schema, so saving before the
+    // driver list has arrived writes a port as the string "8554": schema is
+    // {} until then and every field looks like a string. The button below is
+    // disabled for the same window; this is the guard for the Enter key.
+    if (drivers === null) return;
     const coerced = coerceConfigValue(text, fieldType, schema.secret === true);
     if (!coerced.ok) {
       showError(`${label}: ${coerced.error}`);
@@ -162,10 +167,13 @@ export function SetupField({ device, field }: { device: string; field: string })
       // The whole config goes back: the device endpoint replaces the protocol
       // config with what it is sent, so a partial body would drop every other
       // field this driver has.
-      await api.updateDevice(device, {
-        config: { ...(entry.config ?? {}), [field]: coerced.value },
-      });
-      await useProjectStore.getState().load();
+      const config = { ...(entry.config ?? {}), [field]: coerced.value };
+      await api.updateDevice(device, { config });
+      // Not load(): that endpoint bumps the project revision, and load() is a
+      // no-op while the store is dirty, which leaves the UI Builder holding a
+      // stale ETag and 409ing its own next save. syncDeviceConfig mirrors the
+      // change instead when there are unsaved edits.
+      await syncDeviceConfig(device, config);
       showSuccess(`${label} saved.`);
     } catch {
       showError(`Could not save ${label}.`);
@@ -188,7 +196,11 @@ export function SetupField({ device, field }: { device: string; field: string })
           placeholder={schema.default != null ? String(schema.default) : ""}
           style={{ flex: 1, minWidth: 0 }}
         />
-        <button onClick={() => void save()} disabled={saving} style={{ whiteSpace: "nowrap" }}>
+        <button
+          onClick={() => void save()}
+          disabled={saving || drivers === null}
+          style={{ whiteSpace: "nowrap" }}
+        >
           {saving ? "Saving…" : "Save"}
         </button>
       </div>

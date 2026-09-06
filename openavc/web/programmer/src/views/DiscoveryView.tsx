@@ -254,7 +254,14 @@ export function DiscoveryPanel() {
       if (c.depth_budgets) setDepthBudgets(c.depth_budgets);
     }).catch(console.error);
     api.discoveryGetResults().then((r) => {
-      if (r.devices.length > 0) {
+      // A finished scan is the authority on what is out there, including when
+      // the answer is nothing. The device list lives in a store that outlives
+      // this view, and the reconcile below is skipped entirely when the scan
+      // finished while we were on another page (its ref died with the unmount),
+      // so an empty result has to clear the list here or every host from the
+      // last scan stays on screen until the page is reloaded.
+      const settled = r.status === "complete" || r.status === "partial";
+      if (r.devices.length > 0 || settled) {
         setDevices(r.devices);
         if (r.status === "running") setStatus("running");
         else if (r.status === "complete") setStatus("complete");

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { getTunnelPrefix } from "../../api/restClient";
 import { getSessionToken, hasSession, logout } from "../../api/auth";
 import {
@@ -20,6 +20,7 @@ import {
   StopCircle,
   Loader2,
   LogOut,
+  AlertTriangle,
 } from "lucide-react";
 import { Modal } from "../shared/Modal";
 import { usePluginStore } from "../../store/pluginStore";
@@ -112,6 +113,18 @@ const navItems: { id: ViewId; label: string; icon: typeof Monitor }[] = [
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const pluginViews = usePluginStore((s) => s.extensions.views);
+  // A plugin contributes its page only while it is running, so one that fails
+  // to start takes its entry out of this bar with nothing left in its place:
+  // the page a person used yesterday is simply gone, and the Plugins view that
+  // explains why is not where they would think to look. Deliberately not
+  // "stopped", which is somebody having turned the plugin off on purpose.
+  // Filtered here rather than in the selector: a selector that builds a new
+  // array re-renders forever under React 19.
+  const plugins = usePluginStore((s) => s.plugins);
+  const failedPlugins = useMemo(
+    () => plugins.filter((p) => p.status === "error"),
+    [plugins],
+  );
   const connected = useConnectionStore((s) => s.connected);
   const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
   const dirty = useProjectStore((s) => s.dirty);
@@ -239,7 +252,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           <span className={styles.tooltip}>{item.label}</span>
         </button>
       ))}
-      {pluginViews.length > 0 && (
+      {(pluginViews.length > 0 || failedPlugins.length > 0) && (
         <div style={{ width: "100%", borderTop: "1px solid var(--border-color)", margin: "var(--space-xs) 0", display: "flex", flexDirection: "column", alignItems: "center" }} />
       )}
       {pluginViews.map((view) => {
@@ -257,6 +270,17 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
           </button>
         );
       })}
+      {failedPlugins.map((p) => (
+        <button
+          key={`plugin-error:${p.plugin_id}`}
+          className={styles.navItem}
+          onClick={() => onViewChange("plugins")}
+          aria-label={`${p.name} is not running`}
+        >
+          <AlertTriangle size={16} style={{ color: "var(--color-error)" }} />
+          <span className={styles.tooltip}>{`${p.name} is not running`}</span>
+        </button>
+      ))}
       <div className={styles.spacer} />
       <button
         className={styles.navItem}
