@@ -1797,7 +1797,7 @@ interface QuickAdjustProps {
 
 function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar, onApplySurfaceStyle }: QuickAdjustProps) {
   const accent = String(vars.accent ?? "#2196F3");
-  const borderRadius = Number(vars.border_radius ?? 8);
+  const borderRadius = Number(displayStyleValue("border_radius", vars.border_radius ?? 8 / REM_BASE_PX));
   const fontFamily = String(vars.font_family ?? "Inter, system-ui, sans-serif");
 
   const roundnessPreset =
@@ -1914,7 +1914,7 @@ function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar
             value={roundnessPreset}
             onChange={(v) => {
               const map: Record<string, number> = { sharp: 0, standard: 8, round: 16 };
-              onSetVar("border_radius", map[v]);
+              onSetVar("border_radius", storeStyleValue("border_radius", map[v]));
             }}
           />
           {roundnessPreset === null && (
