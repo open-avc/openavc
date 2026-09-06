@@ -745,7 +745,7 @@ def replace_scripts(scripts_dir: Path, scripts: dict[str, str]) -> None:
 
 
 def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:
-    """Find driver files on disk for non-builtin drivers.
+    """Find non-builtin drivers and their simulator/discovery companions.
 
     Returns list of (filename, filepath) tuples.
     """
@@ -753,9 +753,11 @@ def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:
     if not driver_repo.exists():
         return []
 
-    from openavc.drivers.driver_loader import driver_id_from_file
+    from openavc.drivers.driver_loader import (
+        _is_driver_file, driver_companions, driver_id_from_file,
+    )
 
-    files = []
+    files: dict[str, Path] = {}
     for dep in driver_deps:
         if dep.get("source") == "builtin":
             continue
@@ -767,16 +769,18 @@ def _find_driver_files(driver_deps: list[dict]) -> list[tuple[str, Path]]:
         # a driver from the export bundle, producing a broken handoff.
         for ext in ("*.avcdriver", "*.py"):
             for f in driver_repo.glob(ext):
-                if f.name.startswith("_"):
+                if not _is_driver_file(f):
                     continue
                 if (
                     f.stem == driver_id
                     or f.stem.replace("-", "_") == driver_id
                     or driver_id_from_file(f) == driver_id
                 ):
-                    files.append((f.name, f))
+                    files[f.name] = f
+                    for companion in driver_companions(f):
+                        files[companion.name] = companion
                     break
-    return files
+    return list(files.items())
 
 
 def _find_plugin_files(plugin_deps: list[dict]) -> list[tuple[str, Path]]:
@@ -984,7 +988,10 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
     driver_repo.mkdir(exist_ok=True)
     installed: list[str] = []
 
-    for name in zf.namelist():
+    # YAML loading checks that its declared discovery companion already
+    # exists. Install companions first, regardless of archive member order.
+    names = sorted(zf.namelist(), key=lambda name: not name.endswith(COMPANION_SUFFIXES))
+    for name in names:
         if not name.startswith("drivers/"):
             continue
         fname = Path(name).name

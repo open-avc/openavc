@@ -813,6 +813,78 @@ class TestFindDriverFilesById:
         assert _find_driver_files(deps) == []
 
 
+@pytest.mark.parametrize("export_source", ["active", "library"])
+@pytest.mark.parametrize("driver_format", ["python", "yaml"])
+def test_export_import_carries_driver_companions(
+    tmp_lib, tmp_path, monkeypatch, export_source, driver_format,
+):
+    """A fresh import can load the driver and retains its supporting files.
+
+    Uploaded filenames can differ from declared IDs. YAML companions can
+    also have their own declared names, and must land before driver loading.
+    """
+    import sys
+
+    from openavc.drivers import registry
+
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", {})
+    monkeypatch.setitem(sys.modules, "openavc_driver_uploaded", None)
+    source = tmp_path / "source_drivers"
+    source.mkdir()
+    monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", source)
+    if driver_format == "python":
+        files = {
+            "uploaded.py": (
+                "from openavc.drivers.base import BaseDriver\n"
+                "class PortableDriver(BaseDriver):\n"
+                "    DRIVER_INFO = {'id': 'portable_widget', 'name': 'Portable Widget', "
+                "'transport': 'tcp', 'commands': {}, 'state_variables': {}}\n"
+            ),
+            "uploaded_sim.py": "# Simulator companion\n",
+            "uploaded_discovery.py": "# Discovery companion\n",
+        }
+    else:
+        files = {
+            "uploaded.avcdriver": (
+                "id: portable_widget\nname: Portable Widget\ntransport: tcp\n"
+                "commands:\n  power_on:\n    send: 'ON'\n"
+                "discovery:\n  python: ./widget_probe_discovery.py\n"
+            ),
+            "widget_probe_discovery.py": "async def probe(ctx):\n    return None\n",
+        }
+    for name, content in files.items():
+        (source / name).write_text(content, encoding="utf-8")
+    # Other installed drivers, private helpers and notes do not travel.
+    for name in ("unrelated.py", "unrelated_sim.py", "_helper.py", "notes.txt"):
+        (source / name).write_text("# unrelated\n", encoding="utf-8")
+    data = json.loads(_valid_avc("portable"))
+    data["devices"] = [{
+        "id": "widget", "name": "Widget", "driver": "portable_widget", "config": {},
+    }]
+    dep = {"driver_id": "portable_widget", "source": "community"}
+    data["driver_dependencies"] = [dep, dep]  # One archive member per file.
+    _seed_project(tmp_lib, "portable", data)
+    if export_source == "active":
+        content, filename, _ = plib.export_active_project(tmp_lib / "portable/project.avc")
+    else:
+        content, filename, _ = plib.export_project("portable")
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        assert sorted(archive.namelist()) == sorted([
+            "project.avc", *(f"drivers/{name}" for name in files),
+        ])
+        for name, expected in files.items():
+            assert archive.read(f"drivers/{name}") == expected.encode("utf-8")
+
+    destination = tmp_path / "fresh_drivers"
+    monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", destination)
+    imported = import_project(content, filename, override_id="received")
+    assert imported["installed_drivers"] == ["portable_widget"]
+    assert imported["missing_drivers"] == []
+    assert set(registry._DRIVER_REGISTRY) == {"portable_widget"}
+    for name, expected in files.items():
+        assert (destination / name).read_text(encoding="utf-8") == expected
+
+
 class TestABadBodyIsARequestError:
     """A missing field is the caller's mistake, and the reply should say so.
 

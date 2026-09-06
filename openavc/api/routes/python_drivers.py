@@ -8,9 +8,10 @@ delete, hot-reload, and export as a bundle. Every path resolves through
 **A Python driver is a file set, not a file.** The main ``<id>.py`` travels
 with its conventional siblings — ``<id>_discovery.py`` (discovery probe) and
 ``<id>_sim.py`` (simulator). Install fetches the trio as one unit, so export
-and delete treat it as one unit too; that rule lives here, in
-`python_driver_companions`, and `routes/drivers.py` calls it when uninstalling
-a ``.py`` driver.
+and delete treat it as one unit too. The sibling lookup lives in
+``drivers.driver_loader.driver_companions`` and project exports use it too.
+``routes/drivers.py`` calls ``remove_python_companions`` when uninstalling a
+``.py`` driver.
 
 Note the auth posture, which is deliberately *stricter* than its neighbours:
 every write here carries `require_claimed_auth` on top of the router's
@@ -31,27 +32,13 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
-from openavc.drivers.driver_loader import COMPANION_SUFFIXES
+from openavc.drivers.driver_loader import driver_companions
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import register_driver, unregister_driver
 
 log = get_logger(__name__)
 
 router = APIRouter()
-
-
-def python_driver_companions(main_path: Path) -> list[Path]:
-    """The companion files that exist beside a Python driver's ``<stem>.py``.
-
-    Only the two documented suffixes, only the driver's own siblings, only in
-    the driver's own directory — so this can never reach a file that isn't
-    part of this driver.
-    """
-    candidates = (
-        main_path.with_name(f"{main_path.stem}{suffix}")
-        for suffix in COMPANION_SUFFIXES
-    )
-    return [path for path in candidates if path.is_file()]
 
 
 def remove_python_companions(main_path: Path) -> list[str]:
@@ -62,7 +49,7 @@ def remove_python_companions(main_path: Path) -> list[str]:
     ``driver_repo/``. Returns the names removed.
     """
     removed: list[str] = []
-    for companion in python_driver_companions(main_path):
+    for companion in driver_companions(main_path):
         companion.unlink(missing_ok=True)
         removed.append(companion.name)
     return removed
@@ -136,7 +123,7 @@ async def export_python_driver_bundle(driver_id: str):
     if not main_path.exists():
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
-    files = [main_path, *python_driver_companions(main_path)]
+    files = [main_path, *driver_companions(main_path)]
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

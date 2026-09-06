@@ -60,6 +60,32 @@ DRIVER_EXTENSION = ".avcdriver"
 COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
 
 
+def driver_companions(main_path: Path) -> list[Path]:
+    """Existing simulator and discovery siblings belonging to this driver.
+
+    Python drivers use conventional names; YAML drivers declare their
+    discovery companion. Only files beside the installed driver travel with it.
+    """
+    if main_path.suffix == DRIVER_EXTENSION:
+        try:
+            definition = yaml.safe_load(main_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError):
+            return []
+        relpath = companion_relpath_from_def(definition) if isinstance(definition, dict) else None
+        if not relpath:
+            return []
+        relative = Path(relpath)
+        if relative.is_absolute() or relative.parent != Path("."):
+            return []
+        candidates = [main_path.with_name(relative.name)]
+    else:
+        candidates = [
+            main_path.with_name(f"{main_path.stem}{suffix}")
+            for suffix in COMPANION_SUFFIXES
+        ]
+    return [path for path in candidates if path.is_file()]
+
+
 def _is_driver_file(filepath: Path) -> bool:
     """Return False for companion / helper .py files that aren't drivers."""
     name = filepath.name
