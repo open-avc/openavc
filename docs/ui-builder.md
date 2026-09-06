@@ -261,7 +261,7 @@ Two more settings on the slider and fader control the readout and how commands a
 The **Appearance** card changes an element's look based on a state value. This is how buttons light up to show the current selection, the equivalent of feedback joins in Crestron, and how status LEDs map state to color.
 
 - **Source**: pick a category (Variables, Devices, Plugins, System) then the specific state key.
-- **Condition**: when the state key equals a value, the element is "active." For boolean keys you get an ON/OFF toggle; for string keys you get a dropdown of known values.
+- **Condition**: when the state key equals a value, the element is "active." For boolean keys you get an ON/OFF toggle; for string keys you get a dropdown of the values the key can take: what the driver declares for it (its listed values, or the choices of the command that sets it) plus whatever the device reports now. So a Wireless button can be bound to `hdmi2` while the display is still on HDMI 1.
 - **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons and camera presets also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there.
 - **Inactive appearance**: the same, for when the condition is false.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.

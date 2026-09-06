@@ -3,7 +3,8 @@
  *
  * Features:
  *   - Two-level state key picker (category → specific key)
- *   - Smart condition: boolean toggle, observed-values dropdown, or text input
+ *   - Smart condition: boolean toggle, a dropdown of the values the key can
+ *     take (what the driver declares, then what the device reports), or text
  *   - Live value indicator showing current state
  *   - Active/inactive color pickers with preview
  *   - Conditional label text (active/inactive)
@@ -16,6 +17,7 @@ import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { hasReading } from "../../../api/stateClient";
+import { fetchDeclaredValues } from "./declaredValues";
 
 interface FeedbackBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -164,9 +166,36 @@ export function FeedbackBindingEditor({
     return cat?.keys ?? [];
   }, [selectedCategory, categories]);
 
-  // Detect value type for smart condition
+  // What the driver declares the key can be. Without this the list held
+  // only the live reading, so a source button could not be bound to an input
+  // the display was not on yet (declaredValues.ts has the lookup order).
+  const [declaredValues, setDeclaredValues] = useState<string[]>([]);
+  useEffect(() => {
+    const m = /^device\.([^.]+)\.(.+)$/.exec(stateKey);
+    if (!m) {
+      setDeclaredValues([]);
+      return;
+    }
+    let stale = false;
+    fetchDeclaredValues(m[1], m[2]).then((vals) => {
+      if (!stale) setDeclaredValues(vals);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [stateKey]);
+
+  // A variable's allowed values are its declaration.
+  const variableAllowed = useMemo(() => {
+    if (!stateKey.startsWith("var.")) return [];
+    const v = variables.find((x) => `var.${x.id}` === stateKey);
+    return (v?.validation?.allowed ?? []).map(String);
+  }, [stateKey, variables]);
+
+  // The values on offer: the declaration in its own order, then anything only
+  // the live reading taught us.
   const observedValues = useMemo(() => {
-    // Collect unique values we've seen for this key type
+    const declared = declaredValues.length > 0 ? declaredValues : variableAllowed;
     const vals = new Set<string>();
     if (hasReading(liveValue)) vals.add(String(liveValue));
     // For booleans, always show both
@@ -185,8 +214,9 @@ export function FeedbackBindingEditor({
     if (v === "muted" || v === "unmuted") { vals.add("muted"); vals.add("unmuted"); }
     if (v === "connected" || v === "disconnected") { vals.add("connected"); vals.add("disconnected"); }
     if (v === "active" || v === "standby") { vals.add("active"); vals.add("standby"); }
-    return Array.from(vals).sort();
-  }, [liveValue]);
+    const extras = Array.from(vals).filter((x) => !declared.includes(x)).sort();
+    return [...declared, ...extras];
+  }, [liveValue, declaredValues, variableAllowed]);
 
   const isBooleanKey = liveValue === true || liveValue === false;
 
