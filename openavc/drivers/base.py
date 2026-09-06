@@ -29,6 +29,7 @@ from openavc.core.connection_fault import (
     CHILD_DRIVER_FAULT_CODES,
     CHILD_NOT_FITTED,
     CHILD_PARENT_OFFLINE,
+    NO_FAULT_CLAIMED,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     ConnectionFault,
@@ -36,6 +37,7 @@ from openavc.core.connection_fault import (
     classify_connection_fault,
     default_child_fault_message,
     default_fault_message,
+    normalize_child_fault_claim,
 )
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
@@ -2660,7 +2662,10 @@ class BaseDriver(ABC):
     #   label           the user-set friendly name, sourced from the project
     #                   file on registration and writable through the IDE/REST
     #   offline_reason  a stable code from the child fault taxonomy that
-    #                   automation can match on, or "" for nothing claimed
+    #                   automation can match on, or None for nothing claimed —
+    #                   the same value the device pair uses, and the only one
+    #                   these keys ever hold for it (connection_fault's
+    #                   NO_FAULT_CLAIMED, folded in at every write door)
     #   offline_detail  the sentence a person reads on the device page
     #
     # The last two are the child-level pair of device.<id>.offline_reason /
@@ -2718,7 +2723,11 @@ class BaseDriver(ABC):
                 "offline_reason": CHILD_NOT_FITTED,
                 "offline_detail": default_child_fault_message(CHILD_NOT_FITTED),
             }
-        return {"online": True, "offline_reason": "", "offline_detail": ""}
+        return {
+            "online": True,
+            "offline_reason": NO_FAULT_CLAIMED,
+            "offline_detail": NO_FAULT_CLAIMED,
+        }
 
     @staticmethod
     def _child_parent_offline_presence() -> dict[str, Any]:
@@ -3064,11 +3073,16 @@ class BaseDriver(ABC):
         # four, which are the platform's own statements about the child rather
         # than readings from it. `online` unknown would leave the dot on every
         # Child Entities row, the `N down` count and the device banner unable to
-        # say anything; the two fault keys unknown would read as a fault nobody
-        # can name. They ARE the semantics here: a child claims no fault until
-        # one, is called what the project calls it, and starts at whatever its
-        # roster says "nothing known yet" looks like — in service on an
-        # `assumed` roster, `not_fitted` on a `reported` one. It used to be
+        # say anything, and the two fault keys have to say "nothing claimed" on
+        # a `reported` roster rather than leave `not_fitted` unwritten. They ARE
+        # the semantics here: a child claims no fault until one, is called what
+        # the project calls it, and starts at whatever its roster says "nothing
+        # known yet" looks like — in service on an `assumed` roster,
+        # `not_fitted` on a `reported` one. (The fault keys' arm and the
+        # fallthrough now agree on an `assumed` roster — both are None. The arm
+        # stays because it is the statement, not the coincidence: None here
+        # means "no code claimed", which is a different fact from
+        # _default_for_var_def's "declared, nobody has reported it".) It used to be
         # online: True unconditionally, which is how seven empty AT-LINK
         # extension slots came to draw seven green dots.
         presence = self._child_unknown_presence(child_type)
@@ -3078,7 +3092,11 @@ class BaseDriver(ABC):
             # online: True beside not_fitted, which is a contradiction the
             # store has no way to resolve and every reader would resolve
             # differently.
-            presence = {"online": True, "offline_reason": "", "offline_detail": ""}
+            presence = {
+                "online": True,
+                "offline_reason": NO_FAULT_CLAIMED,
+                "offline_detail": NO_FAULT_CLAIMED,
+            }
         updates: dict[str, Any] = {}
         for prop, var_def in eff_schema.items():
             if prop in presence:
@@ -3089,7 +3107,9 @@ class BaseDriver(ABC):
                 value = overrides[prop]
             else:
                 value = self._default_for_var_def(var_def)
-            updates[self._child_state_key(child_type, local_id, prop)] = value
+            updates[self._child_state_key(child_type, local_id, prop)] = (
+                normalize_child_fault_claim(prop, value)
+            )
 
         self.state.set_batch(updates, source=f"device.{self.device_id}")
 
@@ -3158,7 +3178,7 @@ class BaseDriver(ABC):
         )
         self.state.set(
             self._child_state_key(child_type, local_id, prop),
-            value,
+            normalize_child_fault_claim(prop, value),
             source=f"device.{self.device_id}",
         )
 
@@ -3180,7 +3200,10 @@ class BaseDriver(ABC):
             ])
 
         Called with no code it means "in service, nothing claimed" and clears
-        both fault keys — clearing matters as much as setting, because a fault
+        both fault keys to ``None`` — the same value the device-level pair
+        clears to, and the same one registration seeds, so a child that has
+        recovered and a child that was never in trouble compare equal to a
+        trigger. Clearing matters as much as setting, because a fault
         nothing ever clears makes one transient failure look permanent for as
         long as the device stays up.
 
@@ -3199,7 +3222,11 @@ class BaseDriver(ABC):
         would only be overwritten on the next reconnect.
         """
         if not code:
-            return {"online": True, "offline_reason": "", "offline_detail": ""}
+            return {
+                "online": True,
+                "offline_reason": NO_FAULT_CLAIMED,
+                "offline_detail": NO_FAULT_CLAIMED,
+            }
         if code not in CHILD_DRIVER_FAULT_CODES:
             raise ValueError(
                 f"{code!r} is not a child fault code a driver may assert "
@@ -3231,7 +3258,8 @@ class BaseDriver(ABC):
         for prop in updates:
             self._validate_child_prop(child_type, local_id, prop)
         namespaced = {
-            self._child_state_key(child_type, local_id, prop): v
+            self._child_state_key(child_type, local_id, prop):
+                normalize_child_fault_claim(prop, v)
             for prop, v in updates.items()
         }
         self.state.set_batch(namespaced, source=f"device.{self.device_id}")
@@ -3263,7 +3291,9 @@ class BaseDriver(ABC):
         namespaced: dict[str, Any] = {}
         for child_type, local_id, child_updates in live:
             for prop, value in child_updates.items():
-                namespaced[self._child_state_key(child_type, local_id, prop)] = value
+                namespaced[self._child_state_key(child_type, local_id, prop)] = (
+                    normalize_child_fault_claim(prop, value)
+                )
         if namespaced:
             self.state.set_batch(namespaced, source=f"device.{self.device_id}")
 

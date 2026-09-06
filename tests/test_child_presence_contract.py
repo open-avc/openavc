@@ -119,7 +119,7 @@ def test_an_assumed_roster_still_registers_in_service():
     drv = _driver()
     drv.register_child("input", 1)
 
-    assert _presence(drv, "input", 1) == (True, "", "")
+    assert _presence(drv, "input", 1) == (True, None, None)
 
 
 def test_an_empty_slot_is_not_counted_as_trouble():
@@ -211,7 +211,7 @@ def test_a_child_that_was_already_down_with_no_reason_is_left_alone():
 
     drv.set_state("connected", False)
 
-    assert _presence(drv, "input", 1) == (False, "", "")
+    assert _presence(drv, "input", 1) == (False, None, None)
     assert _presence(drv, "input", 2)[1] == CHILD_PARENT_OFFLINE
 
     drv.set_state("connected", True)
@@ -234,7 +234,7 @@ def test_reconnecting_returns_the_children_the_platform_took_down():
 
     drv.set_state("connected", True)
 
-    assert _presence(drv, "input", 1) == (True, "", "")
+    assert _presence(drv, "input", 1) == (True, None, None)
 
 
 def test_reconnecting_returns_a_reported_slot_to_empty_not_to_present():
@@ -264,7 +264,7 @@ def test_reconnecting_does_not_clear_a_fault_the_driver_asserted():
     drv.set_state("connected", True)
 
     assert _presence(drv, "input", 1)[1] == CHILD_SERVICE_FAULT
-    assert _presence(drv, "input", 2) == (True, "", "")
+    assert _presence(drv, "input", 2) == (True, None, None)
 
 
 def test_the_flip_is_idempotent_in_both_directions():
@@ -276,7 +276,7 @@ def test_the_flip_is_idempotent_in_both_directions():
     assert _presence(drv, "input", 1)[1] == CHILD_PARENT_OFFLINE
     drv.set_state("connected", True)
     drv.set_state("connected", True)
-    assert _presence(drv, "input", 1) == (True, "", "")
+    assert _presence(drv, "input", 1) == (True, None, None)
 
 
 def test_the_batch_door_carries_the_children_too():
@@ -377,7 +377,7 @@ def test_the_roster_comes_into_service_when_the_device_does():
     drv = _configurable()
     drv.set_state("connected", True)
 
-    assert _presence(drv, "input", 1) == (True, "", "")
+    assert _presence(drv, "input", 1) == (True, None, None)
 
 
 def test_the_integrator_label_still_wins_over_the_roster_template():
@@ -418,3 +418,122 @@ def test_the_integrator_still_beats_both():
         "Ceiling Mic", {"label": "Extension 3", "device_name": "ATND1061DAN"},
         type_def,
     ) == "Ceiling Mic"
+
+
+# ---------------------------------------------------------------------------
+# "Nothing claimed" is ONE value, at both levels and from every writer
+# ---------------------------------------------------------------------------
+#
+# The device pair cleared to None and the child pair to "". Both are falsy, so
+# every reader in the platform agreed -- and a `state.change` trigger, a
+# condition comparing to "", or a script did not: the same claim about the same
+# kind of thing answered differently one level down. A contract cannot be
+# changed under the automation written against it after 1.0, so it is settled
+# here: nothing claimed is None, everywhere.
+#
+# `online` still carries in-service-or-not, which is what tells "no fault" from
+# "down, and the driver cannot say why" -- exactly as it did when the second of
+# those was spelled "".
+
+
+def test_nothing_claimed_is_the_same_value_at_both_levels():
+    from openavc.core.device_manager import DeviceManager
+
+    state = StateStore()
+    DeviceManager(state, EventBus())._clear_offline_reason("dev1")
+    device_pair = (
+        state.get("device.dev1.offline_reason"),
+        state.get("device.dev1.offline_detail"),
+    )
+
+    drv = _driver()
+    drv.register_child("input", 1)
+    child_pair = _presence(drv, "input", 1)[1:]
+
+    assert device_pair == (None, None)
+    assert child_pair == device_pair
+
+
+def test_a_driver_clearing_a_fault_lands_that_same_value():
+    # Clearing matters as much as setting: a fault nothing ever clears makes
+    # one transient outage look permanent. It has to clear to the value
+    # registration used, or a trigger sees a child that has recovered as
+    # different from one that was never in trouble.
+    drv = _driver()
+    drv.register_child("input", 1)
+    drv.set_child_state_batch("input", 1, drv.child_fault(CHILD_NOT_RESPONDING))
+    assert _presence(drv, "input", 1)[1] == CHILD_NOT_RESPONDING
+
+    drv.set_child_state_batch("input", 1, drv.child_fault())
+
+    assert _presence(drv, "input", 1) == (True, None, None)
+
+
+def test_an_empty_string_from_a_driver_is_stored_as_nothing_claimed():
+    # A YAML driver clears these through `child_set:`, and the only value it
+    # can put there is a string -- the compiler runs every mapped value
+    # through str(), so `null` in a definition would arrive as the literal
+    # "None". So "" is what the declarative surface writes, and the platform
+    # normalises it rather than letting the value depend on which of the two
+    # ways the driver was written.
+    drv = _driver()
+    for lid in (1, 2, 3):
+        drv.register_child("input", lid)
+    drv.set_child_state_batch("input", 1, drv.child_fault(CHILD_SERVICE_FAULT))
+    drv.set_child_state_batch("input", 2, drv.child_fault(CHILD_SERVICE_FAULT))
+    drv.set_child_state_batch("input", 3, drv.child_fault(CHILD_SERVICE_FAULT))
+
+    # The three doors a driver has, all three of which a real one uses.
+    drv.set_child_state("input", 1, "offline_reason", "")
+    drv.set_child_state("input", 1, "offline_detail", "")
+    drv.set_child_state_batch(
+        "input", 2, {"online": True, "offline_reason": "", "offline_detail": ""},
+    )
+    drv.set_children_state_batch([
+        ("input", 3, {"online": True, "offline_reason": "", "offline_detail": ""}),
+    ])
+
+    for lid in (1, 2, 3):
+        assert _presence(drv, "input", lid)[1:] == (None, None), lid
+
+
+def test_a_slot_a_driver_reports_populated_claims_nothing_the_same_way():
+    # register_child's own door: an initial_state saying "this slot IS
+    # fitted" clears the roster's not_fitted claim, and what it clears TO is
+    # the same nothing as everywhere else.
+    drv = _driver()
+    drv.register_child("slot", 2, initial_state={"online": True})
+    assert _presence(drv, "slot", 2) == (True, None, None)
+
+    drv.register_child("slot", 5, initial_state={
+        "online": True, "offline_reason": "", "offline_detail": "",
+    })
+    assert _presence(drv, "slot", 5) == (True, None, None)
+
+
+def test_down_with_no_code_reads_the_same_at_both_levels():
+    # Every driver written before the vocabulary: it can see something is
+    # wrong but not what kind, so it takes `online` down and says nothing.
+    # That is a legitimate state, and the pair it leaves behind has to be the
+    # one a device with no classified reason leaves behind too.
+    drv = _driver()
+    drv.register_child("input", 1)
+    drv.set_state("connected", True)
+    drv.set_child_state("input", 1, "online", False)
+
+    assert _presence(drv, "input", 1) == (False, None, None)
+
+
+def test_the_empty_label_is_left_alone():
+    # Only the two fault keys are normalised. A child nobody has named holds
+    # "" and must keep holding it: None there would read as "not reported"
+    # and put the display name back to guessing.
+    drv = _driver()
+    drv.register_child("input", 1)
+    drv.set_child_state("input", 1, "label", "")
+
+    assert drv.state.get("device.mix.input.1.label") == ""
+
+
+def test_the_taxonomy_reads_the_new_no_claim_as_no_trouble():
+    assert is_child_trouble_code(None) is False

@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import errno
 from dataclasses import dataclass
+from typing import Any
 
 # --- Stable offline_reason codes -------------------------------------------
 # These strings are a contract: triggers, scripts, and panels match on them,
@@ -196,7 +197,8 @@ CHILD_PARENT_OFFLINE = "parent_offline"
 # when a device genuinely reports "taken out of service".
 
 #: Every code that can appear in `device.<id>.<type>.<lid>.offline_reason`, from
-#: any writer. The empty string is always allowed and means "nothing claimed".
+#: any writer. ``None`` is always allowed and means "nothing claimed" — see
+#: NO_FAULT_CLAIMED below.
 CHILD_FAULT_CODES: frozenset[str] = frozenset({
     CHILD_NOT_RESPONDING,
     CHILD_SERVICE_FAULT,
@@ -250,12 +252,12 @@ def default_child_fault_message(code: str) -> str:
     return _CHILD_DEFAULT_MESSAGES.get(code, "")
 
 
-def is_child_fault_code(code: str) -> bool:
+def is_child_fault_code(code: str | None) -> bool:
     """True when ``code`` is one this taxonomy defines."""
     return code in CHILD_FAULT_CODES
 
 
-def is_child_trouble_code(code: str) -> bool:
+def is_child_trouble_code(code: str | None) -> bool:
     """True when ``code`` means something is WRONG rather than absent by design.
 
     An unknown code counts as trouble: a driver writing a code this taxonomy
@@ -263,6 +265,54 @@ def is_child_trouble_code(code: str) -> bool:
     is not "everything is fine".
     """
     return bool(code) and code != CHILD_NOT_FITTED
+
+
+# --- "nothing claimed" ------------------------------------------------------
+
+#: What both fault keys hold when no code is claimed — at device level and at
+#: child level, from the platform and from every driver.
+#:
+#: It has to be one value. Both levels were falsy, so every reader inside the
+#: platform agreed and the split was invisible here; the surfaces that compare
+#: rather than test are the ones outside it — a `state.change` trigger, a
+#: condition on `offline_reason`, a script — and to those, `None` at device
+#: level and `""` one level down are two different answers to the same
+#: question. `None` is the one that stays: the store already uses it for "no
+#: value", the device pair has always used it, and the child pair is the newer
+#: and far less-bound-against of the two.
+#:
+#: This does NOT mean a child claiming nothing is in service. A driver that can
+#: see something is wrong but not what kind sets `online: False` and claims no
+#: code — a legitimate and common state, and `online` is what tells it from a
+#: healthy child. That was true when this was spelled `""` and is unchanged.
+NO_FAULT_CLAIMED = None
+
+#: The two reserved child props :func:`normalize_child_fault_claim` governs.
+#: `online` is a boolean and `label` has its own meaning for `""` (nobody has
+#: named this unit), so neither is normalised.
+CHILD_FAULT_PROPS: frozenset[str] = frozenset({"offline_reason", "offline_detail"})
+
+
+def normalize_child_fault_claim(prop: str, value: Any) -> Any:
+    """Fold an empty-string write to a child's fault keys onto ``None``.
+
+    Applied at every door a driver writes a child through, because otherwise
+    the value would depend on how the driver was written rather than on what
+    it means. A YAML driver clears these through ``child_set:``, and a string
+    is the only thing it can put there — the compiler runs every mapped value
+    through ``str()``, so ``null`` in a definition arrives as the literal
+    ``"None"``. Refusing ``""`` instead was considered and rejected: it is what
+    the documented declarative pattern writes and what shipped drivers already
+    write, and a refusal would take working rosters offline to make a point
+    about spelling.
+
+    Nothing is lost by folding them together. ``""`` never carried anything
+    ``online`` was not already carrying (see NO_FAULT_CLAIMED), and no reader
+    in the platform ever distinguished them.
+    """
+    if prop in CHILD_FAULT_PROPS and value == "":
+        return NO_FAULT_CLAIMED
+    return value
 
 
 class ConnectionFaultError(ConnectionError):

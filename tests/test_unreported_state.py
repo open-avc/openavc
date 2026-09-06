@@ -139,8 +139,12 @@ def test_the_four_platform_child_keys_keep_their_meaning():
     drv = _driver()
     drv.register_child("lamp", 1)
     assert drv.state.get("device.proj1.lamp.1.online") is True
-    assert drv.state.get("device.proj1.lamp.1.offline_reason") == ""
-    assert drv.state.get("device.proj1.lamp.1.offline_detail") == ""
+    # None here is the platform claiming no fault -- the same value the
+    # device-level pair uses -- not the "declared, never reported" None
+    # the readings above carry. `label` keeps "" because an unnamed unit
+    # genuinely has no name, and the display falls back on that.
+    assert drv.state.get("device.proj1.lamp.1.offline_reason") is None
+    assert drv.state.get("device.proj1.lamp.1.offline_detail") is None
     assert drv.state.get("device.proj1.lamp.1.label") == ""
 
 

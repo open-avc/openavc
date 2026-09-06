@@ -45,10 +45,13 @@ export interface ChildPresence {
    *  count, the trouble filter, the row order and the device banner key off
    *  this. Always implies `!ok`. */
   trouble: boolean;
-  /** The stable code, or "" when the driver did not say (which is what every
-   *  driver that predates the taxonomy does, and is fine). */
+  /** The stable code, or "" when nothing is claimed (which is what every
+   *  driver that predates the taxonomy leaves, and is fine). The server sends
+   *  null for that, the same value the device-level pair uses; "" is this
+   *  module's own normal form so callers never branch on which they got. */
   reason: string;
-  /** The sentence to show. "" when the driver did not word one. */
+  /** The sentence to show. "" when nothing was worded — see `reason` on why
+   *  the wire value for that is null. */
   detail: string;
 }
 

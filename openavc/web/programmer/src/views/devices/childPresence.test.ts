@@ -32,6 +32,25 @@ describe("childPresence", () => {
     expect(p.detail).toBe("Reachable, but not running.");
   });
 
+  it("reads the server's null as nothing claimed, not as a fault", () => {
+    // What the wire actually carries for "no fault", at both levels: the
+    // server stores null on these two keys and normalises a driver's "" onto
+    // it, so a build that only handled the old empty string would read a
+    // healthy child as having an unrecognised code -- which counts as
+    // trouble, and would put every in-service endpoint on the trouble filter.
+    const p = childPresence({
+      online: true, offline_reason: null, offline_detail: null,
+    });
+    expect(p.ok).toBe(true);
+    expect(p.trouble).toBe(false);
+    expect(p.reason).toBe("");
+    expect(p.detail).toBe("");
+    // And a child that is down for a reason nobody can name still reads as
+    // trouble off `online` alone, exactly as it did when this was "".
+    expect(childPresence({ online: false, offline_reason: null }).trouble)
+      .toBe(true);
+  });
+
   it("treats an unknown child as present rather than faulted", () => {
     // Undefined is the pre-registration / stale-snapshot case. Drawing it red
     // would flash a wall of faults across every list while it loads.

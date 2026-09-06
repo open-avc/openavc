@@ -874,22 +874,22 @@ def test_a_child_registers_present_and_claiming_nothing():
     drv.register_child("named_control", "Gain1")
     state = drv.get_child_state("named_control", "Gain1")
     assert state["online"] is True
-    assert state["offline_reason"] == ""
-    assert state["offline_detail"] == ""
+    assert state["offline_reason"] is None
+    assert state["offline_detail"] is None
 
 
 def test_a_declared_enum_fault_key_still_registers_claiming_nothing():
-    """The seeding ladder needs an explicit arm for the fault keys, and THIS
-    is the case that proves it rather than the one above.
+    """A driver may DECLARE the fault keys to attach its own label or help,
+    and the natural way to declare `offline_reason` (the way the Driver
+    Builder would author it) is an enum of the codes. Declaring it must not
+    change what it registers holding: an eight-output frame arriving with
+    eight `not_responding` faults nobody has is the failure this pins.
 
-    Injected, `offline_reason` is `{"type": "string"}`, whose state_var_default
-    is "" anyway — so a test using the platform's own definition passes with
-    the arm and without it. The hazard is a driver that DECLARES the key, and
-    the natural way to declare it (the way the Driver Builder would author it)
-    is an enum of the codes. state_var_default on an enum returns its FIRST
-    VALUE, so without the arm every child in the room would register already
-    reporting `not_responding` — an eight-output frame arriving with eight
-    faults nobody has.
+    It is worth keeping even though both halves of the seeding ladder now
+    answer None — the explicit arm and _default_for_var_def's fallthrough —
+    because those are two different statements ("no code is claimed" vs
+    "declared, nobody has reported it") that happen to agree, and only one of
+    them is the rule for these keys.
     """
 
     class EnumDeclaring(BaseDriver):
@@ -920,7 +920,7 @@ def test_a_declared_enum_fault_key_still_registers_claiming_nothing():
 
     drv = EnumDeclaring("dev", {}, StateStore(), EventBus())
     drv.register_child("port", 1)
-    assert drv.get_child_state("port", 1)["offline_reason"] == ""
+    assert drv.get_child_state("port", 1)["offline_reason"] is None
 
 
 def test_a_driver_may_write_the_fault_keys_through_the_normal_path():
@@ -946,8 +946,8 @@ def test_child_fault_clears_both_keys_and_restores_presence():
     drv.set_child_state_batch("named_control", "Gain1", drv.child_fault())
     state = drv.get_child_state("named_control", "Gain1")
     assert state["online"] is True
-    assert state["offline_reason"] == ""
-    assert state["offline_detail"] == ""
+    assert state["offline_reason"] is None
+    assert state["offline_detail"] is None
 
 
 def test_a_fault_code_always_takes_the_boolean_down_with_it():

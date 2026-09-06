@@ -2650,7 +2650,7 @@ So the platform gives every child two more keys beside `online`, mirroring the
 
 | Key | What it holds |
 |---|---|
-| `offline_reason` | A stable code automation can match on, or `""` for nothing claimed |
+| `offline_reason` | A stable code automation can match on, or `null` when nothing is claimed |
 | `offline_detail` | The sentence a person reads on the device page |
 
 Three codes you can set, each earning its place by having a different remedy:
@@ -2697,18 +2697,25 @@ Three things to know:
   not-in-service rather than as green with the answer hidden in a column
   somebody has to know to read. *Which* kind of trouble is the reason's job.
 - **Clearing matters as much as setting.** `child_fault()` with no arguments
-  restores presence and clears both keys. A fault nothing ever clears makes
-  one transient outage look permanent for as long as the system stays up.
+  restores presence and clears both keys to `null` — the same value they hold
+  at registration and the same one a whole device uses, so a trigger comparing
+  against "no fault" reads the same at both levels and after a recovery. A
+  fault nothing ever clears makes one transient outage look permanent for as
+  long as the system stays up.
 - **Say nothing rather than guess.** If you can tell that something is wrong
   but not what kind, set `online` to `False` and leave the reason empty. That
-  is what every driver written before these keys does, and it is fine. A code
+  is what every driver written before these keys does, and it is fine —
+  `online` is what tells a child with no fault from a child that is down for a
+  reason nobody can name. A code
   that fires on a healthy state is worse than no code: an AV-over-IP encoder
   with nothing plugged into it can sit in a "not streaming" state forever
   while being perfectly reachable, and reporting that as a fault puts a red
   mark on a frame with nothing wrong with it.
 
 You can write these from a YAML driver too, through `child_set:` like any
-other property:
+other property. Write `""` to clear a reason — a mapped value is always a
+string, so that is how the declarative surface says "nothing claimed", and the
+platform stores it as `null` like every other clear:
 
 ```yaml
 responses:
