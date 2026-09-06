@@ -3,10 +3,39 @@ import { Zap, Cpu } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
-import { listDrivers, getScriptReferences } from "../../api/restClient";
+import {
+  listDrivers,
+  getScriptReferences,
+  getDevice,
+  listChildEntities,
+} from "../../api/restClient";
 import type { DriverInfo, MonitorConfig, ScriptReference } from "../../api/types";
+import { childReadingDeclarations } from "../../api/childStateVars";
+import { useSettled } from "../../components/shared/useSettled";
 import { MonitorControl } from "../../components/shared/MonitorControl";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
+
+/** What the driver says about one reading — the shape both the row badge and
+ *  the Monitor form read. Device-level and child readings share it. */
+type StateVarMeta = {
+  type?: string;
+  label?: string;
+  values?: string[];
+  unit?: string;
+  min?: number;
+  max?: number;
+};
+
+/** What the SELECTED device declares, for the device it was fetched for.
+ *  Carrying the id with it is what stops the previous device's declarations
+ *  being drawn under this one's name while a fetch is still in flight. */
+type DeviceDeclarations = {
+  deviceId: string;
+  /** Device-level readings, by property name. */
+  stateVars: Record<string, StateVarMeta>;
+  /** Child readings, by suffix under `device.<id>.`. */
+  childReadings: Map<string, StateVarMeta>;
+};
 
 export function DeviceStatesSubTab() {
   const project = useProjectStore((s) => s.project);
@@ -46,6 +75,58 @@ export function DeviceStatesSubTab() {
       .catch(console.error);
     return () => { cancelled = true; };
   }, []);
+
+  // What the selected device declares. Two fetches, because they answer two
+  // different questions and the registry above answers neither well: an
+  // instance-building driver only fills `state_variables` on the LIVE device,
+  // and a child reading's declaration is not on the device at all — it is on
+  // the child, or on the child's type. Without this every child key arrived
+  // here undeclared, so a per-channel level was offered the tick-the-values
+  // form and could not be given a range at all.
+  const [declarations, setDeclarations] = useState<DeviceDeclarations | null>(null);
+
+  // Re-fetch when the roster moves, not just when a device is picked: children
+  // register as the driver discovers them, so a device selected mid-connect
+  // would otherwise keep its empty declarations until it was selected again.
+  // Settled, because a controller registers its children in a burst.
+  const selectedKeyCount = useMemo(() => {
+    if (!selectedDeviceId) return 0;
+    const prefix = `device.${selectedDeviceId}.`;
+    let n = 0;
+    for (const k of Object.keys(liveState)) if (k.startsWith(prefix)) n++;
+    return n;
+  }, [selectedDeviceId, liveState]);
+  const settledKeyCount = useSettled(selectedKeyCount, 400);
+  // A driver that is not running declares nothing, so what this device says
+  // about itself changes when it comes and goes.
+  const selectedConnected = selectedDeviceId
+    ? liveState[`device.${selectedDeviceId}.connected`] === true
+    : false;
+
+  useEffect(() => {
+    if (!selectedDeviceId) {
+      setDeclarations(null);
+      return;
+    }
+    let cancelled = false;
+    const forDevice = selectedDeviceId;
+    Promise.all([
+      getDevice(forDevice),
+      listChildEntities(forDevice).catch(() => null),
+    ])
+      .then(([info, kids]) => {
+        if (cancelled) return;
+        setDeclarations({
+          deviceId: forDevice,
+          stateVars: ((info.driver_info as
+            { state_variables?: Record<string, StateVarMeta> } | undefined)
+            ?.state_variables ?? {}),
+          childReadings: childReadingDeclarations(kids),
+        });
+      })
+      .catch(() => { if (!cancelled) setDeclarations(null); });
+    return () => { cancelled = true; };
+  }, [selectedDeviceId, settledKeyCount, selectedConnected]);
 
   // All device state keys (driver-declared + any live ones), as a stable newline
   // signature so the usage map only rebuilds when the SET of keys changes, not on
@@ -95,11 +176,15 @@ export function DeviceStatesSubTab() {
 
     const prefix = `device.${selectedDeviceId}.`;
     const seen = new Set<string>();
-    const entries: { prop: string; key: string; value: unknown; meta: { type?: string; label?: string; values?: string[]; unit?: string; min?: number; max?: number } | null }[] = [];
+    const entries: { prop: string; key: string; value: unknown; meta: StateVarMeta | null }[] = [];
 
-    // Get state_variables from driver registry
+    // The live device's own declarations when they have arrived, else the
+    // registry's class-level copy — which is empty for a driver that builds
+    // its state variables per instance.
+    const declared = declarations?.deviceId === selectedDeviceId ? declarations : null;
     const driverDef = driverRegistry.find((d) => d.id === selectedDevice.driver);
-    const declaredVars = (driverDef?.state_variables ?? {}) as Record<string, { type?: string; label?: string; values?: string[]; unit?: string; min?: number; max?: number }>;
+    const declaredVars = declared?.stateVars
+      ?? ((driverDef?.state_variables ?? {}) as Record<string, StateVarMeta>);
 
     // 1. Start with driver-declared state variables (always available once loaded)
     for (const [prop, meta] of Object.entries(declaredVars)) {
@@ -108,17 +193,24 @@ export function DeviceStatesSubTab() {
       entries.push({ prop, key, value: liveState[key], meta });
     }
 
-    // 2. Add any live state keys not declared by the driver (e.g., connected, enabled, name)
+    // 2. Add any live state keys not declared at device level — the platform's
+    //    own (connected, enabled, name) and every child reading, whose
+    //    declaration lives on the child rather than on the device.
     for (const [k, v] of Object.entries(liveState)) {
       if (k.startsWith(prefix) && !seen.has(k)) {
         const prop = k.slice(prefix.length);
-        entries.push({ prop, key: k, value: v, meta: null });
+        entries.push({
+          prop,
+          key: k,
+          value: v,
+          meta: declared?.childReadings.get(prop) ?? null,
+        });
       }
     }
 
     entries.sort((a, b) => a.prop.localeCompare(b.prop));
     return entries;
-  }, [selectedDeviceId, devices, driverRegistry, liveState]);
+  }, [selectedDeviceId, devices, driverRegistry, liveState, declarations]);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
   const selectedPropUsages = selectedProp ? usageMap.get(selectedProp) ?? [] : [];

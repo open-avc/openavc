@@ -132,6 +132,7 @@ The tab groups the sub-units by type (Encoders, Decoders, Zones, and so on), eac
 - **Summary columns** chosen by the driver, plus an online indicator, so you can scan status at a glance.
 - **Inline labels.** Click a row's label to give the sub-unit a friendly name ("Lobby TV", "Stage Camera"). Your label is saved in the project and is separate from the name the device reports for itself. Where a device names its own sub-units -- AV-over-IP endpoints, DSP blocks -- that name is what the row shows, in grey, until you type one of your own over it. Either way it is the name that shows up in pickers when you build panels, macros, and routing.
 - **Refresh from Device.** Re-poll the controller so newly added or removed sub-units appear without reloading. It tells you what it found, including when the answer is nothing.
+- **Monitor on any reading.** Expand a row and every reading the sub-unit publishes carries the same **Monitor** tag as a device's own state, with the label, unit and range the driver declares already filled in. That is how a per-channel level or a per-zone fault gets onto the Dashboard and the cloud health card. See [Monitor a reading](variables-and-state.md#monitor-a-reading).
 
 ### Reading the status mark
 

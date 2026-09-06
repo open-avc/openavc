@@ -17,9 +17,9 @@ import type {
   DeviceInfo,
   UIElement,
   ChildEntitiesListResponse,
-  ChildEntityEntry,
 } from "../../../api/types";
 import { CHILD_RESERVED_PROPS } from "../../../api/types";
+import { childSchemaFor, childVarDefForSuffix } from "../../../api/childStateVars";
 import { useConnectionStore } from "../../../store/connectionStore";
 import * as api from "../../../api/restClient";
 import { hasReading } from "../../../api/stateClient";
@@ -129,36 +129,6 @@ interface PropEntry {
  *  Generated from the driver contract: hand-listing them is how a new one
  *  ends up offered as an ordinary control in a command cascade. */
 const PLATFORM_CHILD_PROPS = CHILD_RESERVED_PROPS;
-
-/** Effective var defs for one child: a dynamic child's own schema when
- *  present, else the type-level schema. */
-function childSchemaFor(
-  resp: ChildEntitiesListResponse,
-  ctype: string,
-  entry: ChildEntityEntry,
-): Record<string, DeviceStateVarDef> {
-  return (entry.schema ??
-    resp.child_entity_types[ctype]?.state_variables ??
-    {}) as Record<string, DeviceStateVarDef>;
-}
-
-/** Resolve a bound suffix like "input.01.fader_db" against the device's
- *  children payload (child type -> registered child -> var def). */
-export function childVarDefForSuffix(
-  resp: ChildEntitiesListResponse | null,
-  suffix: string,
-): DeviceStateVarDef | null {
-  if (!resp) return null;
-  const parts = suffix.split(".");
-  if (parts.length < 3) return null;
-  const [ctype, padded] = parts;
-  const prop = parts.slice(2).join(".");
-  const entry = (resp.children?.[ctype] ?? []).find(
-    (c) => c.local_id_padded === padded,
-  );
-  if (!entry) return null;
-  return childSchemaFor(resp, ctype, entry)[prop] ?? null;
-}
 
 /** Var def for a bound device suffix — device-level schema first, then the
  *  child-entity schemas. Used by MatchDriverRangeRow, which doesn't hold the

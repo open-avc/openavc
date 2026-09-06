@@ -46,6 +46,12 @@ class E2ETestController(BaseDriver):
                     "name": {"type": "string"},
                     "ip": {"type": "string"},
                     "signal_present": {"type": "boolean"},
+                    # A per-child reading with a real range, unit and label:
+                    # what a monitor on a child key has to be able to read.
+                    "level": {
+                        "type": "number", "label": "Output Level",
+                        "min": -80.0, "max": 0.0, "step": 0.5, "unit": "dB",
+                    },
                 },
                 "summary_fields": ["name", "ip", "signal_present"],
                 "label_field": "name",
@@ -66,6 +72,7 @@ class E2ETestController(BaseDriver):
                     "name": f"Encoder {lid}",
                     "ip": f"10.0.0.{(lid % 250) + 1}",
                     "signal_present": (lid % 3) != 0,
+                    "level": -6.5,
                 },
             )
 
@@ -119,6 +126,7 @@ class E2ETestController(BaseDriver):
                 "name": f"Encoder {lid}",
                 "ip": f"10.0.0.{(lid % 250) + 1}",
                 "signal_present": True,
+                "level": -6.5,
             }
             self.register_child(ctype, lid, initial_state=initial_state)
         elif kind == "remove":

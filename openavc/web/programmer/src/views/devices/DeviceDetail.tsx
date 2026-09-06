@@ -727,6 +727,8 @@ export function DeviceDetail({
         childKeyCount={hiddenChildKeyCount}
         config={deviceConfig?.config}
         driverInfo={deviceInfo?.driver_info}
+        monitors={monitors}
+        onMonitorsChange={handleMonitors}
       />
 
       {/* Live State */}

@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-react";
+import { Activity, ChevronDown, ChevronRight, Pencil, RefreshCw } from "lucide-react";
 import * as api from "../../api/restClient";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CHILD_RESERVED_PROPS } from "../../api/types";
+import { childReadingDeclarations } from "../../api/childStateVars";
+import { useSettled } from "../../components/shared/useSettled";
+import {
+  MonitorControl,
+  MonitorLimitsPanel,
+  type DeclaredReading,
+} from "../../components/shared/MonitorControl";
 import {
   childPresence,
   childStateFor,
@@ -17,6 +24,7 @@ import type {
   ChildEntitiesListResponse,
   ChildEntityEntry,
   ChildEntityTypeSchema,
+  MonitorConfig,
 } from "../../api/types";
 
 const ROW_HEIGHT = 36;
@@ -47,6 +55,8 @@ export function ChildEntities({
   childKeyCount,
   config,
   driverInfo,
+  monitors,
+  onMonitorsChange,
 }: {
   deviceId: string;
   /** Controlled filter term, owned by the parent device page so one box
@@ -66,6 +76,13 @@ export function ChildEntities({
   /** The driver's DRIVER_INFO, for `config_schema` labels: the field has to be
       named the way the settings form spells it. */
   driverInfo: Record<string, unknown> | undefined;
+  /** The project's monitors and the door to change them — the same list the
+      Live State table below writes into. This is the only place a per-channel
+      reading is actually read, and until it carried the control there was
+      nowhere to tag one: the Live State table sends child keys up here, and
+      up here had no Monitor at all. */
+  monitors: MonitorConfig[];
+  onMonitorsChange: (next: MonitorConfig[], description: string) => void;
 }) {
   const [data, setData] = useState<ChildEntitiesListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -142,6 +159,12 @@ export function ChildEntities({
       setRefreshing(false);
     }
   }, [deviceId, reload]);
+
+  // What each child reading declares — its type, unit and range, under a name
+  // that says which child it belongs to. Resolved once per payload, from the
+  // same helper the State tab's Monitor form reads, so the two authoring doors
+  // cannot offer different forms for the same key.
+  const declarations = useMemo(() => childReadingDeclarations(data), [data]);
 
   if (loadError) {
     return (
@@ -291,7 +314,14 @@ export function ChildEntities({
       )}
 
       {term ? (
-        <ChildSearchResults data={data} term={term} deviceId={deviceId} />
+        <ChildSearchResults
+          data={data}
+          term={term}
+          deviceId={deviceId}
+          declarations={declarations}
+          monitors={monitors}
+          onMonitorsChange={onMonitorsChange}
+        />
       ) : (
         schema && (
           <ChildEntityList
@@ -300,28 +330,14 @@ export function ChildEntities({
             schema={schema}
             entries={entries}
             emptyMessage={emptyRosterMessage(schema, connected, config, driverInfo)}
+            declarations={declarations}
+            monitors={monitors}
+            onMonitorsChange={onMonitorsChange}
           />
         )
       )}
     </Section>
   );
-}
-
-
-/** A value that only changes once it has stopped changing.
- *
- * Children register in bursts — 56 state keys arrive over a handful of
- * updates — and re-fetching the list on each burst would fetch it four times
- * to land on the same answer.
- */
-function useSettled<T>(value: T, delayMs: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    if (value === settled) return;
-    const timer = setTimeout(() => setSettled(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, settled, delayMs]);
-  return settled;
 }
 
 
@@ -413,10 +429,16 @@ function ChildSearchResults({
   data,
   term,
   deviceId,
+  declarations,
+  monitors,
+  onMonitorsChange,
 }: {
   data: ChildEntitiesListResponse;
   term: string;
   deviceId: string;
+  declarations: Map<string, DeclaredReading>;
+  monitors: MonitorConfig[];
+  onMonitorsChange: (next: MonitorConfig[], description: string) => void;
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
 
@@ -446,7 +468,9 @@ function ChildSearchResults({
       type: string;
       typeLabel: string;
       entry: ChildEntityEntry;
-      rows: [string, string][];
+      /** The matched readings, value unformatted: the Monitor control on each
+          row judges the real value, not the string drawn beside it. */
+      rows: [string, unknown][];
     }[] = [];
     for (const type of Object.keys(data.child_entity_types)) {
       const tSchema = data.child_entity_types[type];
@@ -460,7 +484,7 @@ function ChildSearchResults({
               k.toLowerCase().includes(term) ||
               formatStateValue(v).toLowerCase().includes(term),
           )
-          .map(([k, v]) => [k, formatStateValue(v)] as [string, string]);
+          .map(([k, v]) => [k, v] as [string, unknown]);
         const idMatch =
           String(entry.local_id).includes(term) ||
           entry.local_id_padded.toLowerCase().includes(term) ||
@@ -553,21 +577,17 @@ function ChildSearchResults({
             >
               <tbody>
                 {rows.map(([k, v]) => (
-                  <tr key={k} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                    <td
-                      style={{
-                        padding: "2px 8px",
-                        width: "30%",
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {k}
-                    </td>
-                    <td style={{ padding: "2px 8px", fontFamily: "var(--font-mono)" }}>
-                      {v}
-                    </td>
-                  </tr>
+                  <ReadingRow
+                    key={k}
+                    prop={k}
+                    value={v}
+                    stateKey={`device.${deviceId}.${type}.${entry.local_id_padded}.${k}`}
+                    declared={declarations.get(
+                      `${type}.${entry.local_id_padded}.${k}`,
+                    )}
+                    monitors={monitors}
+                    onMonitorsChange={onMonitorsChange}
+                  />
                 ))}
               </tbody>
             </table>
@@ -590,6 +610,9 @@ function ChildEntityList({
   schema,
   entries,
   emptyMessage,
+  declarations,
+  monitors,
+  onMonitorsChange,
 }: {
   deviceId: string;
   childType: string;
@@ -598,6 +621,10 @@ function ChildEntityList({
   /** What to say when this type has no children, worked out by the panel
       above from what the driver declares and whether the device is up. */
   emptyMessage: ReactNode;
+  /** Every child reading's declaration, by suffix under `device.<id>.`. */
+  declarations: Map<string, DeclaredReading>;
+  monitors: MonitorConfig[];
+  onMonitorsChange: (next: MonitorConfig[], description: string) => void;
 }) {
   const liveState = useConnectionStore((s) => s.liveState);
   // local_id is a number for numbered children, a string for name-keyed
@@ -638,6 +665,22 @@ function ChildEntityList({
       ).slice(0, 3),
     [schema],
   );
+
+  // How many readings are watched on each child, so a tagged one can be found
+  // from the list rather than by opening every row in it.
+  const monitoredByChild = useMemo(() => {
+    const root = `device.${deviceId}.${childType}.`;
+    const counts = new Map<string, number>();
+    for (const m of monitors) {
+      if (!m.key.startsWith(root)) continue;
+      const rest = m.key.slice(root.length);
+      const dot = rest.indexOf(".");
+      if (dot <= 0) continue;
+      const padded = rest.slice(0, dot);
+      counts.set(padded, (counts.get(padded) ?? 0) + 1);
+    }
+    return counts;
+  }, [monitors, deviceId, childType]);
 
   // Index liveState by padded local_id once per liveState change so
   // lookup per child is O(1) instead of O(liveState size). Without this,
@@ -869,6 +912,7 @@ function ChildEntityList({
             const authored = labelOverrides[entry.local_id] ?? entry.label;
             const displayLabel = authored || entry.display_name;
             const fromDevice = !authored && !!entry.display_name;
+            const monitoredCount = monitoredByChild.get(entry.local_id_padded) ?? 0;
 
             return (
               <div
@@ -999,6 +1043,28 @@ function ChildEntityList({
                       {formatStateValue(liveS[field])}
                     </div>
                   ))}
+                  {/* Something in this child is watched. A row here is a whole
+                      child rather than one reading, so the mark says that much
+                      and expanding says which — without it, a monitor set on
+                      channel 27 was invisible from the list it lives in. */}
+                  {monitoredCount > 0 && (
+                    <span
+                      data-testid={`child-monitored-${entry.local_id_padded}`}
+                      title={
+                        monitoredCount === 1
+                          ? "1 reading here is watched on the Dashboard and in the cloud"
+                          : `${monitoredCount} readings here are watched on the Dashboard and in the cloud`
+                      }
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        flexShrink: 0,
+                        color: "var(--accent)",
+                      }}
+                    >
+                      <Activity size={12} />
+                    </span>
+                  )}
                   <button
                     onClick={() => startEdit(entry)}
                     disabled={isSaving}
@@ -1039,33 +1105,19 @@ function ChildEntityList({
                         {/* Dynamic children carry their own discovered control
                             set in entry.schema; static children fall back to
                             the type-level schema (same for every sibling). */}
-                        {Object.entries(entry.schema ?? schema.state_variables).map(
-                          ([prop, _def]) => (
-                            <tr
+                        {Object.keys(entry.schema ?? schema.state_variables).map(
+                          (prop) => (
+                            <ReadingRow
                               key={prop}
-                              style={{
-                                borderBottom: "1px solid var(--border-color)",
-                              }}
-                            >
-                              <td
-                                style={{
-                                  padding: "2px 8px",
-                                  width: "30%",
-                                  fontFamily: "var(--font-mono)",
-                                  color: "var(--text-secondary)",
-                                }}
-                              >
-                                {prop}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "2px 8px",
-                                  fontFamily: "var(--font-mono)",
-                                }}
-                              >
-                                {formatStateValue(liveS[prop])}
-                              </td>
-                            </tr>
+                              prop={prop}
+                              value={liveS[prop]}
+                              stateKey={`device.${deviceId}.${childType}.${entry.local_id_padded}.${prop}`}
+                              declared={declarations.get(
+                                `${childType}.${entry.local_id_padded}.${prop}`,
+                              )}
+                              monitors={monitors}
+                              onMonitorsChange={onMonitorsChange}
+                            />
                           ),
                         )}
                       </tbody>
@@ -1078,6 +1130,92 @@ function ChildEntityList({
         </div>
       </div>
     </>
+  );
+}
+
+
+/** One child reading: what it is called, what it says, and whether anybody is
+ *  watching it.
+ *
+ *  The Monitor control is the same one the Live State table on the page above
+ *  carries, in the same shape — a toggle in the row and the limits form in a
+ *  full-width row underneath, because that form is 460px wide and a table cell
+ *  is not where it fits. It belongs here because this table IS the per-channel
+ *  readings: the Live State list sends every child key up to this panel, and
+ *  until now this panel offered no way to tag one, so the readings that matter
+ *  most on multi-channel gear were the only ones that could not be watched.
+ */
+function ReadingRow({
+  prop,
+  value,
+  stateKey,
+  declared,
+  monitors,
+  onMonitorsChange,
+}: {
+  prop: string;
+  value: unknown;
+  stateKey: string;
+  declared: DeclaredReading | undefined;
+  monitors: MonitorConfig[];
+  onMonitorsChange: (next: MonitorConfig[], description: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const monitor = monitors.find((m) => m.key === stateKey);
+  return (
+    <Fragment>
+      <tr
+        style={{
+          borderBottom: monitor && open ? undefined : "1px solid var(--border-color)",
+        }}
+      >
+        <td
+          style={{
+            padding: "2px 8px",
+            width: "30%",
+            fontFamily: "var(--font-mono)",
+            color: "var(--text-secondary)",
+          }}
+        >
+          {prop}
+        </td>
+        <td style={{ padding: "2px 8px", fontFamily: "var(--font-mono)" }}>
+          {formatStateValue(value)}
+        </td>
+        {/* nowrap, because the column is sized to its contents: without it
+            "Set what normal looks like" wraps to five lines and takes the
+            whole row with it. The flex wrapper is what actually puts the
+            control against the right edge — the control's own root is a
+            block, so `text-align` on the cell reaches nothing. */}
+        <td style={{ padding: "2px 8px", width: 1, whiteSpace: "nowrap" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <MonitorControl
+              compact
+              toggleOnly
+              stateKey={stateKey}
+              declared={declared}
+              monitors={monitors}
+              liveValue={value}
+              onChange={onMonitorsChange}
+              open={open}
+              onOpenChange={setOpen}
+            />
+          </div>
+        </td>
+      </tr>
+      {monitor && open && (
+        <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
+          <td colSpan={3} style={{ padding: "0 8px 8px" }}>
+            <MonitorLimitsPanel
+              monitor={monitor}
+              declared={declared}
+              monitors={monitors}
+              onChange={onMonitorsChange}
+            />
+          </td>
+        </tr>
+      )}
+    </Fragment>
   );
 }
 

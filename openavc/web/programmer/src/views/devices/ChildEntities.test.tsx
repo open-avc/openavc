@@ -75,6 +75,8 @@ function panel(props: Record<string, unknown> = {}) {
       childKeyCount={0}
       config={{}}
       driverInfo={DRIVER_INFO}
+      monitors={[]}
+      onMonitorsChange={() => {}}
       {...props}
     />
   );

@@ -76,6 +76,7 @@ You can tag a reading from either place it already appears:
 - **State > Variables**, on the variable you want to watch.
 - **State > Device States**, on any property you have selected.
 - **Devices**, on any row of a device's Live State list.
+- **Devices > Child Entities**, on any reading of a sub-unit: expand its row, or type into the filter box above the list to find the reading directly. This is where the per-channel readings are — a level per output, a fault per zone, signal presence per input — and a row with something watched carries a small mark, so you can find it again without opening every one.
 
 They all write to the same list, so it does not matter which you use.
 
