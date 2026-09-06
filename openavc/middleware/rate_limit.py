@@ -212,8 +212,12 @@ def unregister_standard_prefix(prefix: str) -> None:
 
 def _classify(method: str, path: str) -> str:
     """Classify a request into a rate-limit tier."""
-    # Media first: a plugin's guest alias can serve one too, and that alias
-    # is registered as standard below.
+    # Media first: it is the narrowest classification, so a route a plugin
+    # declared must not be answered by a broader rule below. Nothing can be
+    # both today -- media is declared through `register_router(media_paths=)`,
+    # which covers a plugin's own /ext mount, while a guest alias registers a
+    # standard prefix and has no way to declare anything media. This ordering
+    # is what keeps the narrowest answer winning if that ever changes.
     if _is_media_path(method, path):
         return "media"
     if any(path == p or path.startswith(p + "/") for p in _extra_standard_prefixes):

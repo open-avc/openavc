@@ -113,16 +113,26 @@ def _unchanged_since_last_fetch(response_headers, request_headers) -> bool:
     ``FileResponse`` sends an ETag and a Last-Modified but never acts on the
     conditional request that comes back -- Starlette keeps that logic in
     ``StaticFiles``, which these routes do not use because the guards above are
-    theirs. So the comparison is done here, borrowing Starlette's own rule so
-    the two cannot disagree about what a weak tag means.
+    theirs. So the comparison is done here, matching what ``StaticFiles`` does
+    so the two cannot disagree about what a weak tag means.
+
+    A caller that sent an ETag gets an answer about that ETag and nothing else
+    (RFC 7232 section 6: when both arrive, ignore the date). The date alone is
+    too coarse to be a second opinion here: ``Last-Modified`` is whole seconds
+    while the ETag is derived from a float mtime, so a control saved twice
+    inside one second changes the tag and not the date -- and honouring the
+    date anyway answered 304 to every later conditional request, leaving that
+    viewer on the previous file for good. Which is the exact opposite of what
+    the revalidate header above this exists to buy.
     """
     from email.utils import parsedate
 
     if_none_match = request_headers.get("if-none-match")
-    etag = response_headers.get("etag")
-    if if_none_match and etag:
-        if etag in [tag.strip(' W/') for tag in if_none_match.split(",")]:
-            return True
+    if if_none_match:
+        etag = response_headers.get("etag")
+        return bool(etag) and etag in [
+            tag.strip().removeprefix("W/") for tag in if_none_match.split(",")
+        ]
     since = parsedate(request_headers.get("if-modified-since") or "")
     modified = parsedate(response_headers.get("last-modified") or "")
     return since is not None and modified is not None and since >= modified

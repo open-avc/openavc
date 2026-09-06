@@ -390,3 +390,35 @@ def test_a_media_route_has_its_own_window():
     buckets = _IPBuckets()
     assert buckets.get_window("media") is buckets.media
     assert buckets.get_window("media") is not buckets.get_window("standard")
+
+
+class _StandardPrefix:
+    """Register a non-/api prefix as the standard tier and take it away again."""
+
+    def __init__(self, prefix):
+        self.prefix = prefix
+
+    def __enter__(self):
+        from openavc.middleware import rate_limit
+
+        rate_limit.register_standard_prefix(self.prefix)
+        return self
+
+    def __exit__(self, *exc):
+        from openavc.middleware import rate_limit
+
+        rate_limit.unregister_standard_prefix(self.prefix)
+
+
+def test_a_media_declaration_outranks_a_standard_prefix_on_the_same_path():
+    """The ordering the classifier is built on: the narrowest answer wins.
+
+    Nothing can be both today -- media is declared through the plugin's own
+    /ext mount and a guest alias only ever registers a standard prefix -- so
+    this pins the rule rather than a live case, which is exactly why it is
+    worth pinning: the classifier's first branch has no other witness.
+    """
+    with _StandardPrefix("/guest"), _MediaPatterns("/guest", ["GET /stream/*"]):
+        assert _classify("GET", "/guest/stream/cam1") == "media"
+        # And the rest of that prefix keeps the standard budget.
+        assert _classify("GET", "/guest/index.html") == "standard"
