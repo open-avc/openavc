@@ -61,6 +61,7 @@ vi.mock("../../store/projectStore", () => {
 vi.mock("../../store/logStore", () => {
   const state = {
     macroProgress: { macroId: null, status: null, activeStepPath: [] },
+    runningMacros: {},
     stepErrors: [],
     conditionalResults: [],
     groupResults: [],

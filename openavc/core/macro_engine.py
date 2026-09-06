@@ -344,6 +344,10 @@ class MacroEngine:
         if macro is None:
             raise ValueError(f"Macro '{macro_id}' not found")
 
+        # An awaited subroutine must return its failure/cancellation to the
+        # calling step. Only the outer invocation owns the event-only outcome;
+        # swallowing it here would let dependent parent steps keep running.
+        nested_call = bool(_call_chain)
         if _call_chain is None:
             _call_chain = frozenset()
 
@@ -471,12 +475,16 @@ class MacroEngine:
                 f"macro.cancelled.{macro_id}",
                 {"macro_id": macro_id, "name": name},
             )
+            if nested_call:
+                raise
         except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
             await self.events.emit(
                 f"macro.error.{macro_id}",
                 {"macro_id": macro_id, "name": name, "error": str(e)},
             )
+            if nested_call:
+                raise
         finally:
             _active_call_chain.reset(_chain_token)
             if task is not None:

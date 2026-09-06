@@ -91,6 +91,43 @@ async def test_nested_macro(macro_engine, core):
     assert state.get("var.inner_ran") is True
 
 
+@pytest.mark.parametrize("child_stops", [False, True])
+@pytest.mark.parametrize("parent_stops", [False, True])
+async def test_nested_failure_obeys_each_macros_error_policy(
+    macro_engine, core, child_stops, parent_stops,
+):
+    state, events = core
+    seen = _collect(events)
+    macro_engine.devices.send_command = AsyncMock(side_effect=ConnectionError("offline"))
+    macro_engine.load_macros([
+        {"id": "child", "stop_on_error": child_stops, "steps": [
+            {"action": "device.command", "device": "display", "command": "power_on"},
+            {"action": "state.set", "key": "var.child_after", "value": True},
+        ]},
+        {"id": "middle", "stop_on_error": True, "steps": [
+            {"action": "macro", "macro": "child"},
+            {"action": "state.set", "key": "var.middle_after", "value": True},
+        ]},
+        {"id": "parent", "stop_on_error": parent_stops, "steps": [
+            {"action": "macro", "macro": "middle"},
+            {"action": "state.set", "key": "var.parent_after", "value": True},
+        ]},
+    ])
+
+    # The top-level caller follows lifecycle events; a failed subroutine must
+    # reach the calling step so that the parent's own error policy can apply.
+    await macro_engine.execute("parent")
+
+    assert bool(state.get("var.child_after")) is (not child_stops)
+    assert bool(state.get("var.middle_after")) is (not child_stops)
+    assert bool(state.get("var.parent_after")) is (not (child_stops and parent_stops))
+    outcome = "error" if child_stops and parent_stops else "completed"
+    assert any(event == f"macro.{outcome}.parent" for event, _ in seen)
+    assert not macro_engine.is_macro_running("parent")
+    assert not macro_engine.is_macro_running("middle")
+    assert not macro_engine.is_macro_running("child")
+
+
 async def test_error_continues_to_next_step(macro_engine, core):
     state, _ = core
     macro_engine.devices.send_command = AsyncMock(side_effect=Exception("boom"))

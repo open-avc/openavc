@@ -18,7 +18,7 @@ export interface MacroProgress {
   macroId: string | null;
   stepIndex: number | null;
   totalSteps: number | null;
-  status: "idle" | "running" | "completed" | "error";
+  status: "idle" | "running" | "completed" | "error" | "cancelled";
   /** Tracks execution path through conditional branches, e.g. [2, "then", 0] */
   activeStepPath: StepPathSegment[];
 }
@@ -63,7 +63,7 @@ export interface MacroLastRun {
   startedAt: number;
   completedAt: number;
   duration: number;
-  status: "completed" | "error";
+  status: "completed" | "error" | "cancelled";
   stepErrors: StepError[];
   conditionalResults: ConditionalResult[];
   groupResults: GroupCommandResult[];
@@ -83,6 +83,7 @@ interface LogStore {
   logSubscribed: boolean;
 
   macroProgress: MacroProgress;
+  runningMacros: Record<string, number>;
   // Step-level data accumulated during a macro run
   stepErrors: StepError[];
   conditionalResults: ConditionalResult[];
@@ -105,11 +106,12 @@ interface LogStore {
 
   setMacroProgress: (p: Partial<MacroProgress>) => void;
   resetMacroProgress: () => void;
+  clearMacroRuns: () => void;
   addStepError: (e: StepError) => void;
   addConditionalResult: (r: ConditionalResult) => void;
   addGroupResult: (r: GroupCommandResult) => void;
   startMacroRun: (macroId: string) => void;
-  finishMacroRun: (status: "completed" | "error", error?: string) => void;
+  finishMacroRun: (macroId: string, status: MacroLastRun["status"], error?: string) => void;
   setTriggerPending: (triggerId: string, pending: TriggerPending | null) => void;
   setTriggerFired: (triggerId: string, fired: boolean) => void;
 }
@@ -130,6 +132,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
   logSubscribed: false,
 
   macroProgress: { ...INITIAL_MACRO },
+  runningMacros: {},
   stepErrors: [],
   conditionalResults: [],
   groupResults: [],
@@ -171,6 +174,11 @@ export const useLogStore = create<LogStore>((set, get) => ({
     groupResults: [],
   }),
 
+  clearMacroRuns: () => set({
+    runningMacros: {},
+    macroProgress: { ...INITIAL_MACRO },
+  }),
+
   addStepError: (e) => set((s) => ({ stepErrors: [...s.stepErrors, e] })),
 
   addConditionalResult: (r) => set((s) => ({ conditionalResults: [...s.conditionalResults, r] })),
@@ -179,7 +187,8 @@ export const useLogStore = create<LogStore>((set, get) => ({
 
   startMacroRun: (macroId) => {
     const s = get();
-    if (s.macroProgress.status === "running") {
+    set({ runningMacros: { ...s.runningMacros, [macroId]: (s.runningMacros[macroId] ?? 0) + 1 } });
+    if (Object.keys(s.runningMacros).length > 0) {
       return;
     }
     set({
@@ -191,10 +200,14 @@ export const useLogStore = create<LogStore>((set, get) => ({
     });
   },
 
-  finishMacroRun: (status, error) => {
+  finishMacroRun: (macroId, status, error) => {
     const s = get();
+    const runningMacros = { ...s.runningMacros };
+    const remaining = (runningMacros[macroId] ?? 0) - 1;
+    if (remaining > 0) runningMacros[macroId] = remaining;
+    else delete runningMacros[macroId];
     const lastRun: MacroLastRun = {
-      macroId: s.macroProgress.macroId ?? "",
+      macroId,
       startedAt: s.macroStartedAt,
       completedAt: Date.now(),
       duration: s.macroStartedAt ? Date.now() - s.macroStartedAt : 0,
@@ -204,7 +217,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
       groupResults: [...s.groupResults],
       error,
     };
-    set({ lastRun });
+    set({ lastRun, runningMacros });
   },
 
   setTriggerPending: (triggerId, pending) =>

@@ -76,6 +76,52 @@ async def test_cancel_not_running(engine):
     assert result is False
 
 
+@pytest.mark.parametrize("cancel_from", ["parent", "child", "cancel_group"])
+async def test_cancel_inside_subroutine_unwinds_the_whole_chain(
+    engine, events, state, cancel_from,
+):
+    waiting = asyncio.Event()
+    seen = []
+    events.on("macro.progress.child", lambda *_: waiting.set())
+    events.on("macro.*", lambda event, data: seen.append(event))
+    engine.load_macros([
+        {"id": "parent", "cancel_group": "power", "steps": [
+            {"action": "macro", "macro": "middle"},
+            {"action": "state.set", "key": "var.parent_after", "value": True},
+        ]},
+        {"id": "middle", "steps": [
+            {"action": "macro", "macro": "child"},
+            {"action": "state.set", "key": "var.middle_after", "value": True},
+        ]},
+        {"id": "child", "steps": [
+            {"action": "delay", "seconds": 60},
+            {"action": "state.set", "key": "var.child_after", "value": True},
+        ]},
+        {"id": "off", "cancel_group": "power", "steps": [
+            {"action": "state.set", "key": "var.off_ran", "value": True},
+        ]},
+    ])
+    task = asyncio.create_task(engine.execute("parent"))
+    try:
+        await asyncio.wait_for(waiting.wait(), timeout=1)
+        if cancel_from == "cancel_group":
+            await engine.execute("off")
+            assert state.get("var.off_ran") is True
+        else:
+            assert await engine.cancel(cancel_from) is True
+        await asyncio.wait_for(task, timeout=1)
+
+        for macro_id in ("parent", "middle", "child"):
+            assert state.get(f"var.{macro_id}_after") is None
+            assert f"macro.cancelled.{macro_id}" in seen
+            assert f"macro.completed.{macro_id}" not in seen
+            assert not engine.is_macro_running(macro_id)
+    finally:
+        if not task.done():
+            task.cancel()
+            await task
+
+
 @pytest.mark.asyncio
 async def test_cancel_cleanup(engine, state):
     """Cancelled macro is removed from _running."""

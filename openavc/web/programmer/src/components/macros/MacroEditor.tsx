@@ -431,8 +431,7 @@ export function MacroEditor({
   const { actions: pluginMacroActions, refresh: refreshPluginActions } = usePluginMacroActions();
 
   const macroProgress = useLogStore((s) => s.macroProgress);
-  const isRunning =
-    macroProgress.macroId === macro.id && macroProgress.status === "running";
+  const isRunning = useLogStore((s) => (s.runningMacros[macro.id] ?? 0) > 0);
   const isDone =
     macroProgress.macroId === macro.id && macroProgress.status === "completed";
   const isError =
@@ -1225,7 +1224,7 @@ function LastRunSummary({ lastRun }: { lastRun: MacroLastRun }) {
           <XCircle size={14} style={{ color: "#ef4444" }} />
         )}
         <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-          Last run: {isSuccess ? "Completed" : lastRun.status === "error" ? "Failed" : "Completed with errors"}
+          Last run: {isSuccess ? "Completed" : lastRun.status === "cancelled" ? "Cancelled" : lastRun.status === "error" ? "Failed" : "Completed with errors"}
         </span>
         <span style={{ color: "var(--text-muted)" }}>
           <Clock size={11} style={{ verticalAlign: "middle", marginRight: 2 }} />

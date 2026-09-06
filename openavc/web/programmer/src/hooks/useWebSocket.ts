@@ -66,6 +66,7 @@ export function useWebSocket() {
     const unsubDisconnect = ws.onDisconnect(() => {
       setConnected(false);
       useLogStore.getState().setLogSubscribed(false);
+      useLogStore.getState().clearMacroRuns();
     });
 
     // Debounce project reloads to avoid rapid-fire refetches
@@ -265,7 +266,7 @@ export function useWebSocket() {
 
       if (msg.type === "macro.completed") {
         const completedId = msg.macro_id as string;
-        useLogStore.getState().finishMacroRun("completed");
+        useLogStore.getState().finishMacroRun(completedId, "completed");
         useLogStore.getState().setMacroProgress({
           macroId: completedId,
           status: "completed",
@@ -280,12 +281,13 @@ export function useWebSocket() {
         macroResetTimers.add(resetTimer);
       }
 
-      if (msg.type === "macro.error") {
+      if (msg.type === "macro.error" || msg.type === "macro.cancelled") {
         const errorId = msg.macro_id as string;
-        useLogStore.getState().finishMacroRun("error", msg.error as string);
+        const status = msg.type === "macro.cancelled" ? "cancelled" : "error";
+        useLogStore.getState().finishMacroRun(errorId, status, msg.error as string);
         useLogStore.getState().setMacroProgress({
           macroId: errorId,
-          status: "error",
+          status,
         });
         const resetTimer = setTimeout(() => {
           macroResetTimers.delete(resetTimer);
@@ -410,6 +412,7 @@ export function useWebSocket() {
       ws.disconnect();
       setConnected(false);
       useLogStore.getState().setLogSubscribed(false);
+      useLogStore.getState().clearMacroRuns();
     };
   }, [setConnected, applyStateUpdate, setFullState]);
 }
