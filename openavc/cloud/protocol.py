@@ -344,9 +344,23 @@ def build_heartbeat_payload(
     devices_error: int,
     active_ws_clients: int,
     temperature_celsius: float | None = None,
+    notify_only: bool | None = None,
 ) -> dict[str, Any]:
     """Heartbeat metrics payload. temperature_celsius is omitted when the
-    platform exposes no sensor."""
+    platform exposes no sensor.
+
+    ``notify_only`` is the one field here that is not a measurement: it is the
+    local "tell me, don't install" switch, and the cloud has no other way to
+    know that a system will decline the maintenance window its fleet policy
+    schedules. It rides the heartbeat rather than the hello because it is
+    edited while the agent is connected, and an answer the portal shows must
+    not be a session old.
+
+    Omitted when nobody looked, the same way the temperature is. The cloud
+    reads a missing key as "has not said" and shows nothing, which is the only
+    honest answer from a caller that did not read the setting -- ``False``
+    there would assert the opposite of what half of those systems are set to.
+    """
     payload: dict[str, Any] = {
         "uptime_seconds": uptime_seconds,
         "cpu_percent": cpu_percent,
@@ -357,6 +371,8 @@ def build_heartbeat_payload(
         "devices_error": devices_error,
         "active_ws_clients": active_ws_clients,
     }
+    if notify_only is not None:
+        payload["notify_only"] = bool(notify_only)
     if temperature_celsius is not None:
         payload["temperature_celsius"] = temperature_celsius
     return payload

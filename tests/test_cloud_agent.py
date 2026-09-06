@@ -999,6 +999,62 @@ class TestHeartbeat:
         assert metrics["device_count"] == 3
 
     @pytest.mark.asyncio
+    async def test_the_heartbeat_says_whether_this_system_is_notify_only(self):
+        """A system set to notify-only declines the cloud's maintenance window,
+        and until now said so only in its own log -- so the portal offered a
+        fleet-wide auto policy and the operator watched one room quietly never
+        take it. It rides the heartbeat rather than the hello because the
+        setting is edited while the agent is connected, and a fact a portal
+        page shows must not be a whole session stale."""
+        from unittest.mock import patch
+
+        from openavc.core.state_store import StateStore
+        from openavc.cloud.heartbeat import HeartbeatCollector
+
+        class FakeDevices:
+            def list_devices(self):
+                return []
+
+        class _Cfg:
+            def __init__(self, notify_only):
+                self._notify_only = notify_only
+
+            def get(self, section, key, default=None):
+                if (section, key) == ("updates", "notify_only"):
+                    return self._notify_only
+                return default
+
+        collector = HeartbeatCollector(StateStore(), FakeDevices())
+        for setting in (True, False):
+            with patch("openavc.system_config.get_system_config",
+                       return_value=_Cfg(setting)):
+                metrics = await collector.collect()
+            # Both halves pinned: a system that is NOT notify-only has to say
+            # so, or the cloud cannot tell it from one too old to answer.
+            assert metrics["notify_only"] is setting
+
+    def test_a_caller_that_did_not_read_the_setting_says_nothing_about_it(self):
+        """The minimal heartbeat the agent sends without a collector never
+        looks at system.json. Sending False there would assert the opposite of
+        what a notify-only room is set to; a missing key is "has not said",
+        which is what the cloud stores and shows nothing for."""
+        payload = build_heartbeat_payload(
+            uptime_seconds=0, cpu_percent=0, memory_percent=0, disk_percent=0,
+            device_count=0, devices_connected=0, devices_error=0,
+            active_ws_clients=0,
+        )
+        assert "notify_only" not in payload
+
+        # And a value read as something other than a bool is still sent as one:
+        # system.json is hand-editable and the cloud stores a boolean column.
+        coerced = build_heartbeat_payload(
+            uptime_seconds=0, cpu_percent=0, memory_percent=0, disk_percent=0,
+            device_count=0, devices_connected=0, devices_error=0,
+            active_ws_clients=0, notify_only="yes",
+        )
+        assert coerced["notify_only"] is True
+
+    @pytest.mark.asyncio
     async def test_first_collect_reports_primed_cpu(self):
         """Constructing the collector primes psutil's CPU sampling.
 

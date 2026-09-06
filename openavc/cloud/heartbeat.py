@@ -84,7 +84,21 @@ class HeartbeatCollector:
             devices_error=self._get_devices_error(),
             active_ws_clients=self._get_ws_client_count(),
             temperature_celsius=self._get_temperature(),
+            notify_only=self._get_notify_only(),
         )
+
+    def _get_notify_only(self) -> bool:
+        """Is this system set to be told about updates rather than take them.
+
+        Read every heartbeat rather than cached at startup: it is a Settings
+        toggle, and a stale answer here is exactly the confusion the fleet
+        operator is being spared.
+        """
+        from openavc.system_config import get_system_config
+        try:
+            return bool(get_system_config().get("updates", "notify_only", False))
+        except Exception:  # a metric must never take the heartbeat down
+            return False
 
     # --- System Metrics ---
 

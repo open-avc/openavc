@@ -199,7 +199,9 @@ A single system can opt out of the automatic half: turn on **Notify only** in
 Settings > Updates and this system will not install an update on its own, even
 inside a maintenance window the cloud has scheduled. It still says when one is
 available, and anyone with access can still install it -- from here or from the
-cloud portal.
+cloud portal. A cloud-connected system reports the setting, so the portal shows
+which rooms are opted out rather than leaving your integrator to wonder why one
+stayed behind.
 
 ## Disabling Automatic Checks
 
