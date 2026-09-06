@@ -21,6 +21,21 @@ import type { LibraryProject, ProjectConfig } from "../api/types";
 import { parseApiError } from "../api/errors";
 import { showError, showInfo, showSuccess } from "../store/toastStore";
 
+/** The id the server will file a project under.
+ *
+ *  Mirrors `sanitize_id` in core/project_library.py, so the Save to Library
+ *  dialog recognises a collision while somebody types rather than after they
+ *  press. The server stays the authority: its suffixing of Windows reserved
+ *  device names is not mirrored, and such an id just falls back to the plain
+ *  refusal. */
+function libraryId(raw: string): string {
+  return raw.trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+}
+
 export function ProjectView() {
   const meta = useProjectStore((s) => s.project?.project);
   const openavcVersion = useProjectStore((s) => s.project?.openavc_version);
@@ -62,6 +77,10 @@ export function ProjectView() {
   const [openId, setOpenId] = useState("");
   const [dupId, setDupId] = useState("");
   const [dupName, setDupName] = useState("");
+
+  // Save As prefills the running project's id, so re-saving a room already in
+  // the library is the ordinary case rather than a mistake to refuse.
+  const saveAsClash = library.find((p) => p.id === libraryId(saveAsId));
 
   const refreshLibrary = useCallback(async () => {
     try {
@@ -192,7 +211,13 @@ export function ProjectView() {
     if (!saveAsId.trim() || !saveAsName.trim()) return;
     setBusy(true);
     try {
-      await api.saveToLibrary({ id: saveAsId.trim(), name: saveAsName.trim(), description: saveAsDesc.trim() });
+      const name = saveAsName.trim();
+      const description = saveAsDesc.trim();
+      if (saveAsClash) {
+        await api.replaceInLibrary(saveAsClash.id, { name, description });
+      } else {
+        await api.saveToLibrary({ id: saveAsId.trim(), name, description });
+      }
       setShowSaveAs(false);
       await refreshLibrary();
     } catch (e) {
@@ -739,6 +764,20 @@ export function ProjectView() {
         <Dialog title="Save to Library" onClose={() => setShowSaveAs(false)}>
           <label style={labelStyle}>Project ID</label>
           <input style={dialogInputStyle} value={saveAsId} onChange={(e) => setSaveAsId(e.target.value)} placeholder="e.g. my_boardroom" />
+          {saveAsClash && (
+            <div style={{
+              marginTop: "calc(var(--space-md) * -0.5)",
+              marginBottom: "var(--space-md)",
+              fontSize: 11,
+              color: "var(--text-muted)",
+              lineHeight: 1.4,
+            }}>
+              Replaces &ldquo;{saveAsClash.name}&rdquo; in the library
+              {saveAsClash.modified
+                ? `, last saved ${new Date(saveAsClash.modified).toLocaleString()}`
+                : ""}.
+            </div>
+          )}
           <label style={labelStyle}>Name</label>
           <input style={dialogInputStyle} value={saveAsName} onChange={(e) => setSaveAsName(e.target.value)} placeholder="e.g. Board Room Setup" />
           <label style={labelStyle}>Description</label>
@@ -746,7 +785,9 @@ export function ProjectView() {
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
             <button onClick={() => setShowSaveAs(false)} style={btnStyle}>Cancel</button>
             <button onClick={handleSaveAs} style={{ ...btnStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }} disabled={busy || !saveAsId.trim() || !saveAsName.trim()}>
-              {busy ? "Saving..." : "Save"}
+              {busy
+                ? (saveAsClash ? "Replacing..." : "Saving...")
+                : (saveAsClash ? "Replace" : "Save")}
             </button>
           </div>
         </Dialog>

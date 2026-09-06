@@ -10,6 +10,7 @@ import { CHILD_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { childReadingDeclarations } from "../../api/childStateVars";
 import { useSettled } from "../../components/shared/useSettled";
 import {
+  MonitorCell,
   MonitorControl,
   MonitorLimitsPanel,
   type DeclaredReading,
@@ -1217,26 +1218,19 @@ function ReadingRow({
           {shown}
           {dim && <LastHeard />}
         </td>
-        {/* nowrap, because the column is sized to its contents: without it
-            "Set what normal looks like" wraps to five lines and takes the
-            whole row with it. The flex wrapper is what actually puts the
-            control against the right edge — the control's own root is a
-            block, so `text-align` on the cell reaches nothing. */}
-        <td style={{ padding: "2px 8px", width: 1, whiteSpace: "nowrap" }}>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <MonitorControl
-              compact
-              toggleOnly
-              stateKey={stateKey}
-              declared={declared}
-              monitors={monitors}
-              liveValue={value}
-              onChange={onMonitorsChange}
-              open={open}
-              onOpenChange={setOpen}
-            />
-          </div>
-        </td>
+        <MonitorCell padding="2px 8px">
+          <MonitorControl
+            compact
+            toggleOnly
+            stateKey={stateKey}
+            declared={declared}
+            monitors={monitors}
+            liveValue={value}
+            onChange={onMonitorsChange}
+            open={open}
+            onOpenChange={setOpen}
+          />
+        </MonitorCell>
       </tr>
       {monitor && open && (
         <tr style={{ borderBottom: "1px solid var(--border-color)" }}>

@@ -175,7 +175,9 @@ export function ButtonBindingEditor({
   };
 
   // Build the list of sections to show based on mode
-  type Section = { id: string; label: string; type: "action" | "feedback" | "action_nested" };
+  type Section = {
+    id: string; label: string; type: "action" | "feedback" | "action_nested"; hint?: string;
+  };
   const sections: Section[] = [];
 
   if (currentMode === "tap") {
@@ -190,8 +192,16 @@ export function ButtonBindingEditor({
     sections.push({ id: "hold_action", label: "Long Press Action", type: "action_nested" });
   }
 
-  if (showRelease && currentMode === "tap") {
-    sections.push({ id: "release", label: "Release Action", type: "action" });
+  // Every mode: the panel sends ui.release at the end of any press and the
+  // runtime runs do.release for it, so a mode that hid the row hid an action
+  // that was firing. Hold Repeat is where it earns its keep -- a device driven
+  // continuously runs until it is told to stop.
+  if (showRelease) {
+    sections.push({
+      id: "release", label: "Release Action", type: "action",
+      hint: "Fires once when the press ends, in any mode. This is where a button that "
+        + "drives something continuously sends its stop.",
+    });
   }
 
   sections.push({ id: "feedback", label: "Visual Feedback", type: "feedback" });
@@ -456,6 +466,9 @@ export function ButtonBindingEditor({
                   />
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+                    {section.hint && (
+                      <div style={{ ...hintStyle, lineHeight: 1.4 }}>{section.hint}</div>
+                    )}
                     <ActionPicker
                       value={getActionValue(section.id)}
                       project={project}

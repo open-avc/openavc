@@ -181,6 +181,28 @@ export function MonitorControl({
   );
 }
 
+/** The table cell a row's compact Monitor control sits in.
+ *
+ *  One component rather than a style each table copies, because the rule is
+ *  not obvious and one copy of it drifting is invisible until somebody
+ *  monitors a reading: the column is sized to its contents, so without
+ *  `nowrap` the second control ("Set what normal looks like") is squeezed to
+ *  about 40px and wraps one word per line, taking the row to five. The flex
+ *  wrapper is what puts the control against the right edge — the control's own
+ *  root is a block, so `text-align` on the cell reaches nothing. */
+export function MonitorCell({
+  padding, children,
+}: {
+  padding: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <td style={{ padding, width: 1, whiteSpace: "nowrap" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>{children}</div>
+    </td>
+  );
+}
+
 /** The limits form on its own, so a caller with an awkward container (the Live
  *  State table) can place it where it will actually fit. */
 export function MonitorLimitsPanel({

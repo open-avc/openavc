@@ -928,3 +928,130 @@ class TestNestedAssetsSurviveEveryPath:
         assert (assets / "rooms" / "plan.png").read_bytes() == b"rooms plan"
         assert (assets / "floors" / "plan.png").read_bytes() == b"floors plan"
         assert (assets / "logo.png").read_bytes() == b"top level"
+
+
+class TestReplaceInLibrary:
+    """Saving a room you saved earlier.
+
+    Save As prefills the running project's own id, so the button's commonest
+    use answered "already exists" and left the dialog open: the ways through
+    were a second copy under a new id or deleting the saved one first.
+    """
+
+    def _running(self, tmp_lib, name="Huddle 101"):
+        """A running project with one script, one asset and one custom control."""
+        scripts_dir = tmp_lib / "_live_scripts"
+        scripts_dir.mkdir(exist_ok=True)
+        (scripts_dir / "room.py").write_text("# new", encoding="utf-8")
+        assets_dir = tmp_lib / "_live_assets"
+        assets_dir.mkdir(exist_ok=True)
+        (assets_dir / "logo.png").write_bytes(b"new logo")
+        ui_dir = tmp_lib / "_live_ui"
+        (ui_dir / "dial").mkdir(parents=True, exist_ok=True)
+        (ui_dir / "dial" / "index.html").write_text("<b>new</b>", encoding="utf-8")
+        return create_blank_project("huddle_101", name), scripts_dir, assets_dir, ui_dir
+
+    def test_it_overwrites_and_keeps_the_id(self, tmp_lib, sample_project_data):
+        sample_project_data["project"]["name"] = "Huddle 101 (old)"
+        _seed_project(tmp_lib, "huddle_101", sample_project_data, {"gone.py": "# old"})
+        project, scripts, assets, ui = self._running(tmp_lib)
+
+        plib.replace_in_library(
+            "huddle_101", project, scripts, "Huddle 101", "Finished",
+            assets_dir=assets, ui_dir=ui,
+        )
+
+        saved = json.loads((tmp_lib / "huddle_101" / "project.avc").read_text(encoding="utf-8"))
+        assert saved["project"]["id"] == "huddle_101"
+        assert saved["project"]["name"] == "Huddle 101"
+        assert saved["project"]["description"] == "Finished"
+        # The whole tree is the running one, not a merge over the old one.
+        assert (tmp_lib / "huddle_101" / "scripts" / "room.py").exists()
+        assert not (tmp_lib / "huddle_101" / "scripts" / "gone.py").exists()
+        assert (tmp_lib / "huddle_101" / "assets" / "logo.png").read_bytes() == b"new logo"
+        assert (tmp_lib / "huddle_101" / "ui" / "dial" / "index.html").exists()
+
+    def test_it_keeps_the_date_the_room_was_first_saved(self, tmp_lib, sample_project_data):
+        sample_project_data["project"]["created"] = "2026-01-04T09:00:00"
+        _seed_project(tmp_lib, "huddle_101", sample_project_data)
+        project, scripts, assets, ui = self._running(tmp_lib)
+
+        plib.replace_in_library("huddle_101", project, scripts, "Huddle 101", "")
+
+        saved = json.loads((tmp_lib / "huddle_101" / "project.avc").read_text(encoding="utf-8"))
+        assert saved["project"]["created"] == "2026-01-04T09:00:00"
+        assert saved["project"]["modified"] != "2026-01-04T09:00:00"
+
+    def test_it_refuses_when_there_is_nothing_to_replace(self, tmp_lib):
+        project, scripts, assets, ui = self._running(tmp_lib)
+        with pytest.raises(FileNotFoundError):
+            plib.replace_in_library("never_saved", project, scripts, "Nope", "")
+
+    def test_a_failure_part_way_leaves_the_saved_copy_alone(self, tmp_lib, sample_project_data):
+        """A library entry is a tree, not a file: the new one is built beside
+        the old one and swapped in, so a write that dies half way cannot leave
+        a room half-overwritten."""
+        sample_project_data["project"]["name"] = "Huddle 101 (old)"
+        _seed_project(tmp_lib, "huddle_101", sample_project_data, {"keep.py": "# old"})
+        project, scripts, assets, ui = self._running(tmp_lib)
+
+        with patch.object(plib, "_copy_tree", side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                plib.replace_in_library(
+                    "huddle_101", project, scripts, "Huddle 101", "",
+                    assets_dir=assets, ui_dir=ui,
+                )
+
+        saved = json.loads((tmp_lib / "huddle_101" / "project.avc").read_text(encoding="utf-8"))
+        assert saved["project"]["name"] == "Huddle 101 (old)"
+        assert (tmp_lib / "huddle_101" / "scripts" / "keep.py").exists()
+        assert not (tmp_lib / "huddle_101" / "scripts" / "room.py").exists()
+
+    def test_a_replace_in_flight_is_not_a_project(self, tmp_lib, sample_project_data):
+        """The staging and rollback directories are dot-prefixed, and
+        sanitize_id can never produce such a name."""
+        _seed_project(tmp_lib, ".huddle_101.previous", sample_project_data)
+        _seed_project(tmp_lib, "huddle_101", sample_project_data)
+        assert [p["id"] for p in list_projects()] == ["huddle_101"]
+
+
+class TestReplaceRoute:
+    """PUT /api/library/{id} — the door the Save to Library dialog presses."""
+
+    def _client(self, tmp_lib, project):
+        from types import SimpleNamespace
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from openavc.api.routes import project as project_routes
+
+        live = tmp_lib / "_live" / "project.avc"
+        live.parent.mkdir(parents=True, exist_ok=True)
+        (live.parent / "scripts").mkdir(exist_ok=True)
+        engine = SimpleNamespace(project=project, project_path=live)
+        app = FastAPI()
+        app.include_router(project_routes.router, prefix="/api")
+        with patch.object(project_routes, "_get_engine", return_value=engine):
+            yield TestClient(app)
+
+    def test_it_replaces_and_says_so(self, tmp_lib, sample_project_data):
+        _seed_project(tmp_lib, "huddle_101", sample_project_data)
+        project = create_blank_project("huddle_101", "Huddle 101")
+        for client in self._client(tmp_lib, project):
+            resp = client.put(
+                "/api/library/huddle_101",
+                json={"name": "Huddle 101", "description": "Finished"},
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.json() == {"status": "replaced", "project_id": "huddle_101"}
+
+        saved = json.loads((tmp_lib / "huddle_101" / "project.avc").read_text(encoding="utf-8"))
+        assert saved["project"]["description"] == "Finished"
+
+    def test_an_id_the_library_does_not_hold_is_a_404(self, tmp_lib):
+        project = create_blank_project("nope", "Nope")
+        for client in self._client(tmp_lib, project):
+            resp = client.put("/api/library/nope", json={"name": "Nope"})
+            assert resp.status_code == 404, resp.text
+            assert "not found in library" in resp.json()["detail"]

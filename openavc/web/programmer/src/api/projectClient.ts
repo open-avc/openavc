@@ -198,6 +198,18 @@ export async function saveToLibrary(data: {
   });
 }
 
+/** Overwrite a saved project with the running one, keeping its id and the
+ *  date it was first saved. */
+export async function replaceInLibrary(
+  id: string,
+  data: { name: string; description?: string }
+): Promise<{ status: string; project_id: string }> {
+  return request(`/library/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deleteLibraryProject(
   id: string
 ): Promise<{ status: string; project_id: string }> {

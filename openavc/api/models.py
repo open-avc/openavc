@@ -243,6 +243,13 @@ class LibrarySaveRequest(BaseModel):
     description: str = ""
 
 
+class LibraryReplaceRequest(BaseModel):
+    """A replace names its project in the path, so only the metadata is a body."""
+
+    name: str
+    description: str = ""
+
+
 class LibraryOpenRequest(BaseModel):
     library_id: str
     project_name: str

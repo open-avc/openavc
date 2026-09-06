@@ -12,6 +12,7 @@ from openavc.api.errors import api_error as _api_error
 from openavc.api.models import (
     LibraryDuplicateRequest,
     LibraryOpenRequest,
+    LibraryReplaceRequest,
     LibrarySaveRequest,
     LibraryUpdateRequest,
 )
@@ -442,6 +443,30 @@ async def save_to_library(data: LibrarySaveRequest) -> dict[str, Any]:
         raise _api_error(409, f"Library project '{data.id}' already exists", e)
 
     return {"status": "created", "project_id": data.id}
+
+
+@router.put("/library/{project_id}")
+async def replace_library_project(project_id: str, data: LibraryReplaceRequest) -> dict[str, Any]:
+    """Replace a saved project with the running one, keeping its id."""
+    from openavc.core.project_library import replace_in_library
+
+    engine = _get_engine()
+    if not engine.project:
+        raise HTTPException(status_code=503, detail="No project loaded")
+
+    scripts_dir = engine.project_path.parent / "scripts"
+    assets_dir = engine.project_path.parent / "assets"
+    ui_dir = engine.project_path.parent / "ui"
+
+    try:
+        replace_in_library(project_id, engine.project, scripts_dir, data.name,
+                           data.description, assets_dir=assets_dir, ui_dir=ui_dir)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, detail=f"Project '{project_id}' not found in library",
+        ) from None
+
+    return {"status": "replaced", "project_id": project_id}
 
 
 @router.delete("/library/{project_id}")

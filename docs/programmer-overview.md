@@ -77,7 +77,7 @@ To start a new room, click **Program** in the sidebar, give it a name (e.g., "Bo
 The **Project Library** (visible at the bottom of the Program view) stores saved project files for reuse. OpenAVC ships with four starter projects (Simple Projector, Conference Room, Classroom, Advanced AV Suite) that you can open, modify, or delete like any other project.
 
 - **New**: start with a blank project
-- **Save As**: save the current project to the library for later reuse
+- **Save As**: save the current project to the library for later reuse. If the ID already belongs to a saved project, the dialog says which one and the button becomes **Replace**, so saving a room you saved earlier overwrites it instead of asking for a second copy
 - **Open**: load a saved project (replaces the running one)
 - **Duplicate**: copy a saved project under a new name
 - **Import/Export**: download project files as `.avc` or `.zip`, upload files from other instances

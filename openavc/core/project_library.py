@@ -403,7 +403,9 @@ def list_projects() -> list[dict[str, Any]]:
     lib = _lib_dir()
 
     for d in sorted(lib.iterdir()):
-        if not d.is_dir():
+        # A dot-prefixed directory is a replace in flight, not a project;
+        # sanitize_id never produces one.
+        if not d.is_dir() or d.name.startswith("."):
             continue
         avc_path = d / "project.avc"
         if not avc_path.exists():
@@ -436,30 +438,27 @@ def get_project(project_id: str) -> tuple[dict[str, Any], dict[str, str]]:
     return data, scripts
 
 
-def save_to_library(
-    project_id: str,
+def _write_project_tree(
+    project_dir: Path,
+    sid: str,
     project: ProjectConfig,
     scripts_dir: Path,
     name: str,
     description: str,
-    assets_dir: Path | None = None,
-    ui_dir: Path | None = None,
+    assets_dir: Path | None,
+    ui_dir: Path | None,
+    created: str,
 ) -> None:
-    """Save the current project to the library."""
-    sid = sanitize_id(project_id)
-    project_dir = _lib_dir() / sid
-    if project_dir.exists() and (project_dir / "project.avc").exists():
-        raise ProjectExistsError(sid)
-
+    """Write one saved project (the .avc, its scripts, assets and ui/) into
+    ``project_dir``, which need not exist yet."""
     project_dir.mkdir(parents=True, exist_ok=True)
 
     data = project.model_dump(mode="json")
-    now = datetime.now().isoformat()
     data["project"]["id"] = sid
     data["project"]["name"] = name
     data["project"]["description"] = description
-    data["project"]["created"] = now
-    data["project"]["modified"] = now
+    data["project"]["created"] = created
+    data["project"]["modified"] = datetime.now().isoformat()
 
     avc_path = project_dir / "project.avc"
     _atomic_write_text(avc_path, json.dumps(data, indent=4, ensure_ascii=False))
@@ -480,7 +479,84 @@ def save_to_library(
     if ui_dir is not None:
         _copy_tree(ui_dir, project_dir / "ui")
 
+
+def save_to_library(
+    project_id: str,
+    project: ProjectConfig,
+    scripts_dir: Path,
+    name: str,
+    description: str,
+    assets_dir: Path | None = None,
+    ui_dir: Path | None = None,
+) -> None:
+    """Save the current project to the library."""
+    sid = sanitize_id(project_id)
+    project_dir = _lib_dir() / sid
+    if project_dir.exists() and (project_dir / "project.avc").exists():
+        raise ProjectExistsError(sid)
+
+    _write_project_tree(
+        project_dir, sid, project, scripts_dir, name, description,
+        assets_dir, ui_dir, created=datetime.now().isoformat(),
+    )
     log.info(f"Saved project '{sid}' to library")
+
+
+def replace_in_library(
+    project_id: str,
+    project: ProjectConfig,
+    scripts_dir: Path,
+    name: str,
+    description: str,
+    assets_dir: Path | None = None,
+    ui_dir: Path | None = None,
+) -> None:
+    """Replace a saved project with the running one, keeping its id.
+
+    Saving a room you saved before is the ordinary use of Save As, and a
+    library entry is a whole tree (scripts, assets, a ui/ directory) rather
+    than one file: the new tree is built beside the old one and swapped in, so
+    a failure part-way through leaves the saved copy exactly as it was rather
+    than half-overwritten. ``created`` is carried over -- a room saved in
+    January and saved again today was not created today.
+
+    Raises FileNotFoundError if there is nothing there to replace.
+    """
+    sid = sanitize_id(project_id)
+    project_dir = _lib_dir() / sid
+    avc_path = project_dir / "project.avc"
+    if not avc_path.exists():
+        raise FileNotFoundError(f"Project '{sid}' not found in library")
+
+    try:
+        created = str(_load_avc(avc_path).get("project", {}).get("created") or "")
+    except (OSError, ValueError, KeyError):
+        created = ""
+    if not created:
+        created = datetime.now().isoformat()
+
+    # Dot-prefixed, so list_projects skips them if anyone looks mid-swap;
+    # sanitize_id can never produce a name starting with a dot.
+    staging = _lib_dir() / f".{sid}.replacing"
+    previous = _lib_dir() / f".{sid}.previous"
+    shutil.rmtree(staging, ignore_errors=True)
+    shutil.rmtree(previous, ignore_errors=True)
+
+    _write_project_tree(
+        staging, sid, project, scripts_dir, name, description,
+        assets_dir, ui_dir, created=created,
+    )
+    project_dir.rename(previous)
+    try:
+        staging.rename(project_dir)
+    except OSError:
+        previous.rename(project_dir)
+        raise
+    finally:
+        shutil.rmtree(previous, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
+
+    log.info(f"Replaced project '{sid}' in library")
 
 
 def delete_project(project_id: str) -> bool:

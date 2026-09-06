@@ -11,7 +11,7 @@ import * as api from "../../api/restClient";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../../components/shared/ParamInput";
 import {
-  MonitorControl, MonitorLimitsPanel, type DeclaredReading,
+  MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
 import type { MonitorConfig } from "../../api/types";
 import { scanChildTrouble, troubleSummary } from "./childPresence";
@@ -819,7 +819,7 @@ export function DeviceDetail({
                         actually is lives here — lamp hours, fault flags, input
                         signal presence, a DSP's temperature — and until now
                         none of it could be tagged at all. */}
-                    <td style={{ padding: "var(--space-xs) var(--space-md)", textAlign: "right", width: 1 }}>
+                    <MonitorCell padding="var(--space-xs) var(--space-md)">
                       <MonitorControl
                         compact
                         toggleOnly
@@ -831,7 +831,7 @@ export function DeviceDetail({
                         open={openMonitor === fullKey}
                         onOpenChange={(next) => setOpenMonitor(next ? fullKey : null)}
                       />
-                    </td>
+                    </MonitorCell>
                   </tr>
                   {monitor && openMonitor === fullKey && (
                     <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
