@@ -22,6 +22,7 @@ import { VariableKeyPicker } from "./VariableKeyPicker";
 import { ActionListEditor, ActionTestButton } from "./ActionListEditor";
 import { useConnectionStore } from "../../store/connectionStore";
 import { pressActionFields, pressAfterActionEdit } from "./buttonBindingHelpers";
+import { macroLabel } from "../macros/macroHelpers";
 
 export interface ButtonBindings {
   press?: Record<string, unknown>[] | null;
@@ -141,7 +142,11 @@ export function ButtonBindingEditor({
     if (!action) return "Not configured";
     // A half-built action (type picked, targets not yet chosen) summarizes as
     // "Incomplete" — never interpolate missing parts into "undefined.undefined".
-    if (action.action === "macro") return action.macro ? `Macro: ${action.macro}` : "Incomplete";
+    if (action.action === "macro") {
+      // The id is generated and shown nowhere else, so a header reading
+      // "Macro: macro_17887078835..." truncated tells the reader nothing.
+      return action.macro ? `Macro: ${macroLabel(action.macro, project.macros)}` : "Incomplete";
+    }
     if (action.action === "device.command") {
       return action.device && action.command ? `${action.device}.${action.command}` : "Incomplete";
     }

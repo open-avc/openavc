@@ -5,8 +5,33 @@ export interface StepTypeInfo {
   label: string;
   description: string;
   color: string;
-  summary: (step: MacroStep, devices: DeviceConfig[]) => string;
+  /** One line for a collapsed step. `macros` is here for the same reason
+   *  `devices` is: a step that names another object by id has to be able to
+   *  print what that object is called. The trigger table next door has taken
+   *  all three since it was written. */
+  summary: (step: MacroStep, devices: DeviceConfig[], macros: MacroConfig[]) => string;
   defaults: () => Partial<MacroStep>;
+}
+
+/**
+ * What to call a macro on screen.
+ *
+ * A macro's id is generated (`macro_1788707883504_3`) and is shown nowhere
+ * else in the IDE, so a summary that prints one tells the reader nothing about
+ * which macro is meant, and a collapsed step has to be expanded to find out.
+ *
+ * A callee that is not in the list keeps its id and is marked: a step pointing
+ * at a macro that no longer exists is a defect, and a friendly name in its
+ * place would hide it. No list at all is not evidence of that, so it prints
+ * the id plain.
+ */
+export function macroLabel(macroId: unknown, macros: MacroConfig[] | undefined): string {
+  const id = typeof macroId === "string" ? macroId.trim() : "";
+  if (!id) return "?";
+  if (!macros) return id;
+  const found = macros.find((m) => m.id === id);
+  if (!found) return `${id} (missing)`;
+  return found.name || id;
 }
 
 export const STEP_TYPES: StepTypeInfo[] = [
@@ -59,7 +84,7 @@ export const STEP_TYPES: StepTypeInfo[] = [
     label: "Run Macro",
     description: "Execute another macro as a sub-routine",
     color: "#ec4899",
-    summary: (step) => step.macro ?? "?",
+    summary: (step, _devices, macros) => macroLabel(step.macro, macros),
     defaults: () => ({ action: "macro", macro: "" }),
   },
   {

@@ -142,7 +142,7 @@ function SortableStepItem({
   const labelText = typeInfo?.label ?? pluginAction?.label ?? (isMissingPlugin ? "Missing" : step.action);
   const labelBg = typeInfo?.color ?? (pluginAction ? "#a855f7" : isMissingPlugin ? "#ef4444" : "#666");
   const summaryText = typeInfo
-    ? typeInfo.summary(step, devices as any)
+    ? typeInfo.summary(step, devices as any, allMacros)
     : pluginAction
       ? pluginActionSummary(step, pluginAction)
       : isMissingPlugin
@@ -998,7 +998,7 @@ export function MacroEditor({
                     <div>
                       <div style={{ fontWeight: 500, color: "var(--accent)" }}>Paste Copied Step</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any) ?? s.action : ""; })()}
+                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any, allMacros) ?? s.action : ""; })()}
                       </div>
                     </div>
                   </div>
