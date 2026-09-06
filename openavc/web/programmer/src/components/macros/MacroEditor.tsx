@@ -39,6 +39,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { MacroConfig, MacroStep, TriggerConfig } from "../../api/types";
 import { useLogStore } from "../../store/logStore";
+import { useProjectStore } from "../../store/projectStore";
+import { showError } from "../../store/toastStore";
 import type { StepError, ConditionalResult, GroupCommandResult, MacroLastRun, StepPathSegment } from "../../store/logStore";
 import { StepEditor } from "./StepEditor";
 import { TriggerList } from "./TriggerList";
@@ -414,6 +416,7 @@ export function MacroEditor({
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [testPending, setTestPending] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showAddMenu && !showTemplates) return;
@@ -445,10 +448,21 @@ export function MacroEditor({
   const showLastRun = lastRun && lastRun.macroId === macro.id && !isRunning;
 
   const handleTest = async () => {
+    setTestPending(true);
     try {
+      const projectStore = useProjectStore.getState();
+      if (projectStore.dirty || projectStore.savePending || projectStore.saving) {
+        await projectStore.save();
+        const saved = useProjectStore.getState();
+        if (saved.dirty || saved.error || saved.conflictDetected) {
+          throw new Error(saved.error || "Save the project before testing this macro.");
+        }
+      }
       await api.executeMacro(macro.id);
     } catch (e) {
-      console.error("Macro execute failed:", e);
+      showError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTestPending(false);
     }
   };
 
@@ -694,7 +708,7 @@ export function MacroEditor({
         </div>
         <button
           onClick={handleTest}
-          disabled={isRunning}
+          disabled={isRunning || testPending}
           style={{
             ...btnStyle,
             background: isDone
@@ -702,10 +716,10 @@ export function MacroEditor({
               : isError
               ? "#ef4444"
               : "var(--accent)",
-            opacity: isRunning ? 0.7 : 1,
+            opacity: isRunning || testPending ? 0.7 : 1,
           }}
         >
-          {isRunning ? (
+          {isRunning || testPending ? (
             <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
           ) : isDone ? (
             <Check size={14} />

@@ -39,3 +39,21 @@ def test_nested_run_reports_the_parent_outcome(server_factory, page, outcome):
     with urlopen(f"{server.base_url}/api/state") as response:
         state = json.load(response)["state"]
     assert state["var.session"] is False
+
+
+def test_test_button_runs_the_edit_before_autosave_delay(server_factory, page):
+    server = server_factory(project_overrides={
+        "variables": [{"id": "session", "type": "boolean", "default": False}],
+        "macros": [{"id": "set_session", "name": "Set Session", "steps": [
+            {"action": "state.set", "key": "var.session", "value": False},
+        ]}],
+    })
+    page.goto(f"{server.base_url}/programmer/#macros")
+    page.get_by_text("Set Session", exact=True).click(timeout=15_000)
+    page.get_by_text("var.session = false", exact=True).click()
+    page.get_by_role("combobox").last.select_option("true")
+    page.get_by_role("button", name="Test", exact=True).click()
+    expect(page.get_by_text("Last run: Completed", exact=True)).to_be_visible(timeout=10_000)
+    with urlopen(f"{server.base_url}/api/state") as response:
+        state = json.load(response)["state"]
+    assert state["var.session"] is True

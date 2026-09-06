@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
@@ -18,6 +18,12 @@ import userEvent from "@testing-library/user-event";
  */
 
 const mocks = vi.hoisted(() => ({
+  projectState: {
+    project: { devices: [] }, dirty: false, saving: false,
+    savePending: false, conflictDetected: false, error: null as string | null,
+    save: vi.fn(async () => {}),
+  },
+  showError: vi.fn(),
   executeMacro: vi.fn(async () => ({})),
   cancelMacro: vi.fn(async () => ({})),
   listPlugins: vi.fn(async () => []),
@@ -49,7 +55,7 @@ vi.mock("../../store/connectionStore", () => {
 });
 
 vi.mock("../../store/projectStore", () => {
-  const state = { project: { devices: [] } };
+  const state = mocks.projectState;
   return {
     useProjectStore: Object.assign(
       (selector: (s: unknown) => unknown) => selector(state),
@@ -57,6 +63,11 @@ vi.mock("../../store/projectStore", () => {
     ),
   };
 });
+
+vi.mock("../../store/toastStore", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../store/toastStore")>(),
+  showError: mocks.showError,
+}));
 
 vi.mock("../../store/logStore", () => {
   const state = {
@@ -79,6 +90,45 @@ vi.mock("../../store/logStore", () => {
 
 import { MacroEditor } from "./MacroEditor";
 import type { MacroConfig, MacroStep } from "../../api/types";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.assign(mocks.projectState, {
+    dirty: false, saving: false, savePending: false,
+    conflictDetected: false, error: null,
+  });
+  mocks.projectState.save.mockReset();
+});
+
+describe("testing an edited macro", () => {
+  it("waits for the pending save before executing", async () => {
+    let finishSave!: () => void;
+    mocks.projectState.dirty = true;
+    mocks.projectState.save.mockImplementation(() => new Promise<void>((resolve) => {
+      finishSave = () => { mocks.projectState.dirty = false; resolve(); };
+    }));
+    const { Host } = hostFor([{ action: "delay", seconds: 1 }]);
+    render(<Host />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Test", exact: true }));
+    expect(mocks.projectState.save).toHaveBeenCalledOnce();
+    expect(mocks.executeMacro).not.toHaveBeenCalled();
+    await act(async () => finishSave());
+    await waitFor(() => expect(mocks.executeMacro).toHaveBeenCalledWith("macro_1"));
+  });
+
+  it.each(["conflict", "failed"])("does not run the old macro after a %s save", async (outcome) => {
+    mocks.projectState.dirty = true;
+    mocks.projectState.save.mockImplementation(async () => {
+      mocks.projectState.conflictDetected = outcome === "conflict";
+      mocks.projectState.error = "The project could not be saved.";
+    });
+    const { Host } = hostFor([{ action: "delay", seconds: 1 }]);
+    render(<Host />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Test", exact: true }));
+    await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith("The project could not be saved."));
+    expect(mocks.executeMacro).not.toHaveBeenCalled();
+  });
+});
 
 /**
  * Drives the editor the way MacroView does: the parent owns the macro and every

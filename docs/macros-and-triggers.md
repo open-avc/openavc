@@ -263,7 +263,7 @@ Nothing is blocked. A half-finished step is normal while you are building, so th
 
 ## Testing Macros
 
-Click **Test** to execute the macro immediately. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution.
+Click **Test** to save pending project edits and execute the macro. If saving fails or another session has changed the project, Test shows the save error and does not run the previous saved version. Resolve the error before testing again. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution.
 
 ## Convert to Script
 
