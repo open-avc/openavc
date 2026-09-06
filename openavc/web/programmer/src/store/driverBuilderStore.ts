@@ -91,7 +91,7 @@ interface DriverBuilderState {
   loadInstalledDrivers: () => Promise<void>;
   installDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<void>;
   uninstallDriver: (driverId: string) => Promise<void>;
-  updateDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<void>;
+  updateDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<string[]>;
 }
 
 export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
@@ -382,8 +382,9 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     },
 
     updateDriver: async (driverId, fileUrl, minPlatformVersion) => {
+      let result;
       try {
-        await api.updateCommunityDriver(driverId, fileUrl, minPlatformVersion);
+        result = await api.updateCommunityDriver(driverId, fileUrl, minPlatformVersion);
       } catch (e) {
         throw new Error(parseApiError(e));
       }
@@ -392,6 +393,9 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         get().loadInstalledDrivers(),
         get().loadDefinitions(),
       ]);
+      // The update itself landed; these are devices that did not come back on
+      // the new code and need looking at in Devices.
+      return result.devices_not_reconnected ?? [];
     },
   };
 });

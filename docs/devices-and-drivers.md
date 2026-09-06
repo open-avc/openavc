@@ -253,6 +253,8 @@ Installs come from the official driver library and nowhere else, and the downloa
 
 Updating a driver replaces its companion files too, so a driver's simulator and discovery logic stay in step with the driver itself. If a newer version stops shipping one, the old copy is removed rather than left behind.
 
+Devices already using the driver are rebuilt on the new version as part of the update, so there is no need to restart the server to pick it up. If a device does not come back, its name appears in a message and you can reconnect it from Devices.
+
 To remove a driver you no longer need:
 
 1. Open the **Installed** tab in Driver Library

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle, ArrowUpCircle, Loader2 } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { useConnectionStore } from "../../store/connectionStore";
+import { showError } from "../../store/toastStore";
 import { Modal } from "../shared/Modal";
 import { hasUpdate, compareSemver } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
@@ -315,7 +316,18 @@ export function CommunityBrowser() {
         return next;
       });
       try {
-        await useDriverBuilderStore.getState().updateDriver(driver.id, fileUrl, driver.min_platform_version);
+        const stillDown = await useDriverBuilderStore
+          .getState()
+          .updateDriver(driver.id, fileUrl, driver.min_platform_version);
+        // Not an install error: the update landed. The card's slot is worded
+        // "Install failed", so a device that did not come back needs its own
+        // channel or it goes unreported.
+        if (stillDown.length > 0) {
+          showError(
+            `${driver.name} updated. These devices did not reconnect: ` +
+              `${stillDown.join(", ")}. Open Devices to bring them back.`
+          );
+        }
       } catch (e) {
         setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
       } finally {

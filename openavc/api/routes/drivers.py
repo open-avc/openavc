@@ -1340,10 +1340,39 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     except Exception as e:
         raise _api_error(500, f"Failed to load updated driver '{driver_id}'", e)
 
+    # A device already running this driver was built from the old class and
+    # goes on using it until something rebuilds it, so the update only reaches
+    # the fleet after this swap. It is the same one the Code editor's
+    # hot-reload does, and the same one the two driver-definition writers do.
+    #
+    # Nothing here may fail the request: the new file is written and registered
+    # by this point, so an error would report an update that did happen as one
+    # that did not, and the caller would press Update again. Report which
+    # devices did not come back instead. reload_driver logs each device's own
+    # failure and leaves it out of what it returns.
+    reconnected: list[str] = []
+    using_before: list[str] = []
+    try:
+        engine = _get_engine()
+        using_before = engine.devices.get_devices_using_driver(driver_id)
+        reconnected = await engine.devices.reload_driver(driver_id)
+    except Exception:
+        log.exception(
+            "Driver '%s' was updated, but its devices could not be rebuilt",
+            driver_id,
+        )
+    not_reconnected = [d for d in using_before if d not in reconnected]
+
     from openavc.api.discovery import refresh_all_device_matches
     await refresh_all_device_matches()
 
-    return {"status": "updated", "driver_id": driver_id, "file": new_filename}
+    return {
+        "status": "updated",
+        "driver_id": driver_id,
+        "file": new_filename,
+        "devices_reconnected": reconnected,
+        "devices_not_reconnected": not_reconnected,
+    }
 
 
 # --- Driver Definitions ---

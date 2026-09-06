@@ -79,6 +79,9 @@ def stub_engine_wiring(monkeypatch):
     fake_engine.project = None  # uninstall skips the in-use device check
     fake_engine.devices.retry_all_orphans = AsyncMock(return_value=[])
     fake_engine.devices.get_devices_using_driver = lambda driver_id: []
+    # The community update rebuilds the devices running the driver. Default to
+    # a fleet that has none; the tests that care set both of these themselves.
+    fake_engine.devices.reload_driver = AsyncMock(return_value=[])
     # Both route modules under test here read the engine through their own
     # module namespace — install/uninstall from routes.drivers, delete from
     # routes.python_drivers — so a single patch would leave one of them
@@ -100,7 +103,7 @@ def stub_engine_wiring(monkeypatch):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
     monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _no_hashes)
-    yield
+    yield fake_engine
 
 
 def _fake_driver_class(driver_id: str):
@@ -511,6 +514,77 @@ async def test_update_refreshes_python_companions(driver_repo, monkeypatch):
     assert result["status"] == "updated"
     assert (repo / "foo_sim.py").read_text(encoding="utf-8") == "SIM = 2\n"
     assert (repo / "foo_discovery.py").read_text(encoding="utf-8") == "DISC = 2\n"
+
+
+@pytest.mark.asyncio
+async def test_update_rebuilds_the_devices_running_the_driver(
+    driver_repo, monkeypatch, stub_engine_wiring
+):
+    # Without this the file on disk is new and every running device is still
+    # the old class, so the integrator is told the driver is current while
+    # nothing controlling equipment is.
+    engine = stub_engine_wiring
+    engine.devices.get_devices_using_driver = lambda driver_id: ["display_main"]
+    engine.devices.reload_driver = AsyncMock(return_value=["display_main"])
+
+    _seed_installed_python_driver(driver_repo)
+    client = _update_client(
+        _ok("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n    V = 2\n"),
+        _ok("DISC = 2\n"),
+        _ok("SIM = 2\n"),
+    )
+    result = await _run_update(monkeypatch, driver_repo, client)
+
+    engine.devices.reload_driver.assert_awaited_once_with("foo")
+    assert result["devices_reconnected"] == ["display_main"]
+    assert result["devices_not_reconnected"] == []
+
+
+@pytest.mark.asyncio
+async def test_update_names_a_device_that_did_not_come_back(
+    driver_repo, monkeypatch, stub_engine_wiring
+):
+    # reload_driver logs a device's own failure and leaves it out of what it
+    # returns, so the difference is the only place that fact survives.
+    engine = stub_engine_wiring
+    engine.devices.get_devices_using_driver = lambda driver_id: ["display_main", "display_aux"]
+    engine.devices.reload_driver = AsyncMock(return_value=["display_aux"])
+
+    _seed_installed_python_driver(driver_repo)
+    client = _update_client(
+        _ok("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n    V = 2\n"),
+        _ok("DISC = 2\n"),
+        _ok("SIM = 2\n"),
+    )
+    result = await _run_update(monkeypatch, driver_repo, client)
+
+    assert result["status"] == "updated"
+    assert result["devices_not_reconnected"] == ["display_main"]
+
+
+@pytest.mark.asyncio
+async def test_update_reports_updated_even_when_the_rebuild_itself_fails(
+    driver_repo, monkeypatch, stub_engine_wiring
+):
+    # The new file is written and registered before the swap runs. Failing the
+    # request here would report an update that happened as one that did not,
+    # and the next press would download it again.
+    engine = stub_engine_wiring
+    engine.devices.get_devices_using_driver = lambda driver_id: ["display_main"]
+    engine.devices.reload_driver = AsyncMock(side_effect=RuntimeError("engine is down"))
+
+    _seed_installed_python_driver(driver_repo)
+    client = _update_client(
+        _ok("class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n    V = 2\n"),
+        _ok("DISC = 2\n"),
+        _ok("SIM = 2\n"),
+    )
+    result = await _run_update(monkeypatch, driver_repo, client)
+
+    assert result["status"] == "updated"
+    assert (driver_repo / "foo.py").read_text(encoding="utf-8").endswith("V = 2\n")
+    assert result["devices_reconnected"] == []
+    assert result["devices_not_reconnected"] == ["display_main"]
 
 
 @pytest.mark.asyncio

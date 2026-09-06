@@ -357,11 +357,21 @@ export async function uninstallDriver(
   return request(`/drivers/installed/${driverId}`, { method: "DELETE" });
 }
 
+export interface CommunityDriverUpdateResult {
+  status: string;
+  driver_id?: string;
+  file?: string;
+  /** Devices rebuilt on the new driver code by the update. */
+  devices_reconnected?: string[];
+  /** Devices on this driver that did not come back. The update itself landed. */
+  devices_not_reconnected?: string[];
+}
+
 export async function updateCommunityDriver(
   driverId: string,
   fileUrl: string,
   minPlatformVersion?: string
-): Promise<{ status: string }> {
+): Promise<CommunityDriverUpdateResult> {
   return request(`/drivers/installed/${driverId}/update`, {
     method: "POST",
     body: JSON.stringify({
