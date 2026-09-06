@@ -607,9 +607,13 @@ If a control stays at `--` on a connected device, the driver is not reporting
 that value — check the device's Live State list, where the same reading will
 be blank.
 
-The design canvas never draws any of this. It shows every control the way you
-built it, whether or not the gear is plugged in yet, so you can judge colours
-and artwork on a bench. **Preview** is where you see what the room sees.
+The design canvas never draws any of this. Sliders and faders without a reading
+show a sample in the middle of their usable range, including the handle and
+readout, so you can judge their size and styling before connecting equipment or
+choosing a binding. Theme Studio and the stylesheet preview use the same rule.
+A supplied reading takes precedence over the sample. These samples are only
+for authoring; they do not set a device or variable. **Preview** is where you
+see what the room sees, including missing readings and unreachable devices.
 
 ## Themes
 

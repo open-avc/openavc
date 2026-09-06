@@ -42,8 +42,9 @@ CONNECTED_KEY = f"device.{DEVICE}.connected"
 # Chromium actually shows. Returned rather than asserted in JS so a failure can
 # name the number that was on screen.
 PROBE_JS = r"""
-([type, extra, state]) => {
+([type, extra, state, editMode = false]) => {
   const app = window.__openavcPanel;
+  app.editMode = editMode;
   const box = document.getElementById('box');
   box.innerHTML = '';
   app.bindings = [];
@@ -86,6 +87,10 @@ PROBE_JS = r"""
     })(),
     unavailable: node.classList.contains('device-offline'),
     filter: cs.filter,
+    state: app.state,
+    value: node.querySelector('[role="slider"]')?.getAttribute('aria-valuenow')
+      ?? node.querySelector('input[type="range"]')?.getAttribute('aria-valuetext'),
+    fill: node.querySelector('.slider-fill')?.getAttribute('style'),
   };
 }
 """
@@ -214,3 +219,45 @@ def test_unreported_is_not_the_unavailable_mark(panel_page) -> None:
     assert unreachable["filter"] not in ("none", ""), (
         "the unavailable mark drew no dimming, so the two states look identical"
     )
+
+
+@pytest.mark.parametrize("spec", [FADER, SLIDER], ids=["fader", "slider"])
+@pytest.mark.parametrize("orientation", ["horizontal", "vertical"])
+@pytest.mark.parametrize("state", [{}, {LEVEL_KEY: None, CONNECTED_KEY: False}])
+def test_design_controls_keep_their_handles_without_readings(panel_page, spec, orientation, state):
+    extra = {**spec, "orientation": orientation}
+    extra.pop("type")
+    shown = panel_page.evaluate(PROBE_JS, [spec["type"], extra, state, True])
+    assert "error" not in shown, shown
+    assert shown["state"] == state, "design samples must not create device state"
+    assert shown["unavailable"] is False
+    assert "-40" in shown["text"] and "--" not in shown["text"], shown
+    if spec["type"] == "fader":
+        assert shown["handle"]["visibility"] == "visible", shown
+        assert shown["handle"]["area"] > 0, shown
+        assert shown["value"] == "-40", shown
+    else:
+        assert "no-reading" not in shown["thumbRule"], shown
+        assert "50%" in shown["fill"], shown
+
+
+@pytest.mark.parametrize("spec", [FADER, SLIDER], ids=["fader", "slider"])
+def test_design_samples_work_before_binding_and_respect_output_range(panel_page, spec):
+    extra = {**spec, "output_min": -30, "output_max": -10, "scale_to_full": False}
+    extra.pop("type")
+    extra.pop("bindings")
+    shown = panel_page.evaluate(PROBE_JS, [spec["type"], extra, {}, True])
+    assert "error" not in shown, shown
+    assert "-20" in shown["text"], shown
+    assert shown["state"] == {}
+
+
+@pytest.mark.parametrize("spec", [FADER, SLIDER], ids=["fader", "slider"])
+def test_design_readings_override_samples_and_keep_output_scaling(panel_page, spec):
+    extra = {**spec, "output_min": 0, "output_max": 100}
+    extra.pop("type")
+    state = {LEVEL_KEY: 75, CONNECTED_KEY: True}
+    shown = panel_page.evaluate(PROBE_JS, [spec["type"], extra, state, True])
+    assert "error" not in shown, shown
+    assert "-20" in shown["text"], shown
+    assert shown["state"] == state

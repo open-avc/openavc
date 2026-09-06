@@ -2598,15 +2598,11 @@ class PanelApp {
             return sUnit ? `${s} ${sUnit}` : s;
         };
 
-        // Set initial position from state if binding exists, else from min
+        // Use a design sample when the author has no reading to work with.
         const sliderBinding = element.bindings?.show?.value;
         const initialRaw = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
-        if (initialRaw !== undefined && initialRaw !== null) {
-            const dv = this._reverseScale(Number(initialRaw), sliderMin, sliderMax, sOutputMin, sOutputMax, sScaleToFull);
-            input.value = valueToPos(dv);
-        } else {
-            input.value = valueToPos(sliderMin);
-        }
+        const initialValue = this._controlDisplayValue(initialRaw, sliderMin, sliderMax, sOutputMin, sOutputMax, sScaleToFull);
+        input.value = valueToPos(initialValue ?? sliderMin);
 
         // Update fill from current travel position
         const updateFill = () => {
@@ -4595,16 +4591,10 @@ class PanelApp {
             el.appendChild(valueDisplay);
         }
 
-        // Position handle — initial value from state or 0
+        // Position the handle from a reading, or a sample in the design canvas.
         const valueBinding = element.bindings?.show?.value;
-        let currentValue = 0;
-        if (valueBinding?.key) {
-            const sv = this.state[valueBinding.key];
-            if (sv !== undefined && sv !== null) {
-                // Reverse-scale device value to display value
-                currentValue = this._reverseScale(Number(sv), min, max, outputMin, outputMax, scaleToFull);
-            }
-        }
+        const initialRaw = valueBinding?.key ? this.state[valueBinding.key] : undefined;
+        let currentValue = this._controlDisplayValue(initialRaw, min, max, outputMin, outputMax, scaleToFull) ?? 0;
         currentValue = Math.max(min, Math.min(max, currentValue));
 
         // Touch/mouse drag interaction
@@ -4848,6 +4838,23 @@ class PanelApp {
     }
 
     /**
+     * A display-domain reading, or a sample for an unreported design control.
+     * The sample never enters state or reaches the live panel. Keep it within
+     * the usable range so an author can see the handle, fill and readout even
+     * before choosing a binding or connecting equipment.
+     */
+    _controlDisplayValue(raw, min, max, outputMin, outputMax, scaleToFull) {
+        if (raw !== undefined && raw !== null) {
+            return this._reverseScale(Number(raw), min, max, outputMin, outputMax, scaleToFull);
+        }
+        if (!this.editMode) return null;
+        const limited = scaleToFull === false && outputMin != null && outputMax != null;
+        const low = limited ? Math.max(min, outputMin) : min;
+        const high = limited ? Math.min(max, outputMax) : max;
+        return low + (high - low) / 2;
+    }
+
+    /**
      * The fader with nothing to show: the device it reads is gone, or it is
      * right there and has not reported this reading yet.
      *
@@ -4889,7 +4896,8 @@ class PanelApp {
             this._renderFaderUnknown(b);
             return;
         }
-        if (raw === undefined || raw === null) {
+        const displayValue = this._controlDisplayValue(raw, min, max, outputMin, outputMax, scaleToFull);
+        if (displayValue === null) {
             // No reading: the key was deleted, or the device is reachable and
             // simply has not reported this one yet. Same answer either way, and
             // it is the same one an unreachable device gets -- printing fmt(min)
@@ -4898,7 +4906,7 @@ class PanelApp {
             return;
         }
         handle.classList.remove('no-reading');
-        const value = Math.max(min, Math.min(max, this._reverseScale(Number(raw), min, max, outputMin, outputMax, scaleToFull)));
+        const value = Math.max(min, Math.min(max, displayValue));
         const frac = span > 0 ? this._responseCurveInverse((value - min) / span, response, responseDbRange) : 0;
         if (horizontal) handle.style.left = `${frac * 100}%`;
         else handle.style.bottom = `${frac * 100}%`;
@@ -6842,7 +6850,8 @@ class PanelApp {
             if (isVertical) fill.style.height = pct + '%';
             else fill.style.width = pct + '%';
         };
-        if (offline || rawValue === undefined || rawValue === null) {
+        const displayValue = this._controlDisplayValue(rawValue, min, max, outputMin, outputMax, scaleToFull);
+        if (offline || displayValue === null) {
             // Nothing to read -- the device is unreachable, the key was
             // deleted, or the device is right there and has not reported this
             // one yet. The fill is emptied, the thumb is hidden (a thumb at the
@@ -6856,7 +6865,6 @@ class PanelApp {
             return;
         }
         element.classList.remove('no-reading');
-        const displayValue = this._reverseScale(Number(rawValue), min, max, outputMin, outputMax, scaleToFull);
         const pos = valueToPos(displayValue);
         element.value = pos;
         element.setAttribute('aria-valuetext', fmtValue(displayValue));
