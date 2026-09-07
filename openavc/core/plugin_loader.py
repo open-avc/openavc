@@ -979,7 +979,10 @@ class PluginLoader:
             cloud_agent_provider=self._cloud_agent_provider,
         )
 
-        # Instantiate and start
+        # Instantiate and start. `instance` is bound before the try so the
+        # failure path can tell "the constructor never ran" from "start() did
+        # and left things open" — only the second has anything to tear down.
+        instance = None
         try:
             instance = plugin_class()
             await asyncio.wait_for(instance.start(api), timeout=PLUGIN_START_TIMEOUT)
@@ -1039,6 +1042,32 @@ class PluginLoader:
             # Clean up any partial registrations
             self._macros.unregister_plugin_actions(plugin_id)
             self._unregister_script_api(plugin_id)
+            # Then give the plugin its own teardown. Everything above is what
+            # the PLATFORM owns; a child process, a socket, a serial port or a
+            # hardware handle that start() opened is owned by the plugin, and
+            # its teardown is precisely what was interrupted. Without this the
+            # handle stays open with nothing referencing it — nothing can close
+            # it again short of restarting the server, and no surface in the
+            # IDE shows that it is held.
+            #
+            # Same order and same guard as _stop_plugin_locked: unregister
+            # first so nothing can dispatch into a half-shutdown plugin, then a
+            # bounded stop() with every exception logged and swallowed. A
+            # stop() that trips over an attribute start() never assigned is an
+            # ordinary outcome here, not a special case.
+            if instance is not None:
+                try:
+                    await asyncio.wait_for(instance.stop(), timeout=PLUGIN_STOP_TIMEOUT)
+                except asyncio.TimeoutError:
+                    log.error(
+                        f"Plugin '{plugin_id}' stop() timed out after "
+                        f"{PLUGIN_STOP_TIMEOUT}s while cleaning up a failed start"
+                    )
+                except Exception:  # Catch-all: plugin stop() runs arbitrary code
+                    log.exception(
+                        f"Plugin '{plugin_id}' stop() raised while cleaning up a "
+                        f"failed start"
+                    )
             await registry.cleanup(self._state, self._events)
             await self._events.emit(
                 "plugin.error", {"plugin_id": plugin_id, "error": msg}
