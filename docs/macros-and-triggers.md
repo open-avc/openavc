@@ -245,6 +245,23 @@ is not treated as a failed step. The **Test** view lists every member with a
 success or fail icon. It counts as a failed step only when the command reached
 no device at all.
 
+### How the run reports itself
+
+However a run ends, the answer says which of these it was:
+
+| | What it means |
+|---|---|
+| **Completed** | Every step ran. |
+| **Failed** | At least one step did not. The macro may still have run to the end — with Stop on Error off, that is what it is meant to do — but it did not do everything it was asked. |
+| **Cancelled** | Something stopped it part-way, so its later steps never ran: somebody cancelled it, or another macro in the same Cancel Group preempted it. |
+| **Skipped** | It never started. Its own Overlap or Cooldown setting refused the run, and nothing was sent to any device. |
+| **Running** | It is still going after 30 seconds — usually a **Delay** or a **Wait Until**. Not a failure; watch the live progress for how it ends. |
+
+A macro that calls another one reports **Failed** when the macro it called did,
+even where the called macro was set to continue past its own failures and
+finished normally. Continue on Error decides whether the steps after a failure
+still run; it does not make the failure stop being one.
+
 ## Variables in Macros
 
 The **Set Variable** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **true / false** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
@@ -263,7 +280,7 @@ Nothing is blocked. A half-finished step is normal while you are building, so th
 
 ## Testing Macros
 
-Click **Test** to save pending project edits and execute the macro. If saving fails or another session has changed the project, Test shows the save error and does not run the previous saved version. Resolve the error before testing again. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution.
+Click **Test** to save pending project edits and execute the macro. If saving fails or another session has changed the project, Test shows the save error and does not run the previous saved version. Resolve the error before testing again. A progress indicator shows which step is running, with live status updates. Conditional steps show whether the condition evaluated to true or false, and group command steps show per-device success/fail icons. A **Last Run** summary shows the timestamp, duration, step results, and any errors from the most recent execution. When the run did not go cleanly, Test says so on the button as well: a run whose steps failed, one that was cancelled, and one that never started each get their own message rather than finishing quietly.
 
 ## Convert to Script
 
@@ -299,7 +316,7 @@ Trigger safety features prevent runaway automation:
 - **Cooldown.** Minimum interval between executions.
 - **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases.
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes), or `allow` (run them concurrently).
-- **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally.
+- **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 
 Example: A "projector auto-off" trigger watches `device.projector_main.power` for `"on"`, with a guard condition that `var.room_active` equals `false`. This shuts down a projector that someone turned on manually without using the panel, but only if the room is not in active use.
 

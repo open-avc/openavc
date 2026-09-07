@@ -332,6 +332,25 @@ class MacroToolsMixin:
                     "a step (a delay, or a wait_until condition). This is not a "
                     "failure. Check the macro's state or the log for how it ends."
                 )
+            elif status == "failed":
+                result["note"] = (
+                    "The macro ran and at least one of its steps did not. Read "
+                    "the log for the step and the reason — each failed step "
+                    "logged which one it was and why. Do not report this as a "
+                    "success."
+                )
+            elif status == "cancelled":
+                result["note"] = (
+                    "Something cancelled the macro part-way through, so its "
+                    "later steps never ran: either somebody cancelled it, or "
+                    "another macro in the same cancel_group preempted it."
+                )
+            elif status == "skipped":
+                result["note"] = (
+                    "The macro did not start at all — its own overlap or "
+                    "cooldown guard refused this run. Nothing was sent to any "
+                    "device."
+                )
             return result
         return {"error": "Macro engine not available"}
 

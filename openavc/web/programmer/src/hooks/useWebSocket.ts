@@ -266,10 +266,22 @@ export function useWebSocket() {
 
       if (msg.type === "macro.completed") {
         const completedId = msg.macro_id as string;
-        useLogStore.getState().finishMacroRun(completedId, "completed");
+        // The run reached the end either way; `outcome` is how it went. A run
+        // that stepped over three dead devices used to finish in this branch
+        // marked "completed", in the same green as a clean one, with the only
+        // trace in the step-error list beside it.
+        const ranClean = msg.outcome !== "failed";
+        const finish = ranClean ? "completed" : "error";
+        useLogStore.getState().finishMacroRun(
+          completedId,
+          finish,
+          ranClean
+            ? undefined
+            : `${msg.failed_steps as number} step(s) failed`,
+        );
         useLogStore.getState().setMacroProgress({
           macroId: completedId,
-          status: "completed",
+          status: finish,
         });
         // Auto-reset after a brief moment, but only if still showing this macro
         const resetTimer = setTimeout(() => {

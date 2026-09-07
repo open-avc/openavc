@@ -329,9 +329,26 @@ class MacroEngine:
     async def execute(
         self, macro_id: str, context: dict[str, Any] | None = None,
         _call_chain: frozenset[str] | None = None,
-    ) -> None:
+    ) -> str:
         """
-        Execute a macro by ID.
+        Execute a macro by ID. Returns how the run ended.
+
+        One of ``completed`` (every step ran), ``failed`` (at least one step
+        did not, whether or not the run carried on past it), ``cancelled``
+        (something cancelled it mid-run — a ``POST /cancel`` or a cancel_group
+        preemption), or ``skipped`` (the macro's own overlap/cooldown guard
+        refused the start).
+
+        It REPORTS rather than raises, and that is the point. The outer
+        catch-all isolates a macro's failure from whatever fired it: a trigger,
+        a panel press, a script and a plugin must not inherit it. But isolation
+        was being done by silence — every one of those endings returned None,
+        so the operator door answered ``executed`` for all four and a run whose
+        every step failed was indistinguishable from a clean one. A caller that
+        ignores the return value behaves exactly as before.
+
+        A NESTED call is different and still raises (see ``nested_call``): a
+        subroutine's failure belongs to the step that awaited it.
 
         Args:
             macro_id: The macro to execute.
@@ -450,7 +467,7 @@ class MacroEngine:
                 f"macro.skipped.{macro_id}",
                 {"macro_id": macro_id, "name": name, "reason": blocked},
             )
-            return
+            return "skipped"
 
         # Wait for preempted tasks to fully unwind before we start sending
         # commands — A50.
@@ -463,12 +480,28 @@ class MacroEngine:
         )
 
         try:
-            await self.execute_steps(steps, context, macro_id, stop_on_error, _call_chain=_call_chain)
+            failed_steps = await self.execute_steps(
+                steps, context, macro_id, stop_on_error, _call_chain=_call_chain
+            )
+            outcome = "failed" if failed_steps else "completed"
+            # Still `macro.completed`, and deliberately: the run DID reach the
+            # end, which is what that event has always meant and what the IDE's
+            # progress display keys off. What it never carried is how it went,
+            # so a run that stepped over three dead devices marked itself
+            # complete and said so in the same words as a clean one.
             await self.events.emit(
                 f"macro.completed.{macro_id}",
-                {"macro_id": macro_id, "name": name},
+                {
+                    "macro_id": macro_id, "name": name,
+                    "outcome": outcome, "failed_steps": failed_steps,
+                },
             )
-            log.info(f"Macro '{name}' completed")
+            log.info(
+                f"Macro '{name}' completed"
+                if not failed_steps
+                else f"Macro '{name}' completed with {failed_steps} failed step(s)"
+            )
+            return outcome
         except asyncio.CancelledError:
             log.info(f"Macro '{name}' was cancelled")
             await self.events.emit(
@@ -477,6 +510,7 @@ class MacroEngine:
             )
             if nested_call:
                 raise
+            return "cancelled"
         except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
             await self.events.emit(
@@ -485,6 +519,7 @@ class MacroEngine:
             )
             if nested_call:
                 raise
+            return "failed"
         finally:
             _active_call_chain.reset(_chain_token)
             if task is not None:
@@ -544,7 +579,11 @@ class MacroEngine:
                 f"— answering the caller and letting it continue"
             )
             return "running"
-        return "executed"
+        # The outcome the run reported, not the fact that awaiting it returned.
+        # `executed` was the only word this ever said, and it said it for a
+        # macro whose every step failed and for one that was cancelled out from
+        # under the caller.
+        return task.result()
 
     async def execute_steps(
         self,
@@ -555,12 +594,24 @@ class MacroEngine:
         _conditional_depth: int = 0,
         _call_chain: frozenset[str] | None = None,
         _path_prefix: list[int | str] | None = None,
-    ) -> None:
+        _failures: list[str] | None = None,
+    ) -> int:
         """
-        Execute a list of steps sequentially.
+        Execute a list of steps sequentially. Returns how many steps FAILED.
 
         Each step is wrapped in try/except — errors are logged but
         execution continues to the next step (unless stop_on_error is True).
+
+        The count is why this returns anything at all. With the default
+        ``stop_on_error: false`` a failed step is caught here and stepped over,
+        so the run reaches the end and nothing above could tell it from a clean
+        one — the caller was told ``executed`` either way. Continuing is right
+        and is unchanged; being quiet about it was not.
+
+        ``_failures`` is the run's shared tally, threaded down so a failure
+        inside a conditional's branch counts toward the run that owns it. A
+        caller passing nothing gets a fresh one, which is every caller outside
+        this class.
 
         ``_path_prefix`` is the tree location of this step list. Top-level runs
         pass ``[]``; a conditional recursing into a branch passes
@@ -572,6 +623,7 @@ class MacroEngine:
         context = context or {}
         total = len(steps)
         prefix = _path_prefix or []
+        failures = [] if _failures is None else _failures
 
         for i, step in enumerate(steps):
             action = step.get("action", "")
@@ -595,10 +647,11 @@ class MacroEngine:
             try:
                 unreported = await self._execute_step(
                     step, context, _conditional_depth, macro_id, stop_on_error,
-                    _call_chain, _step_path=step_path,
+                    _call_chain, _step_path=step_path, _failures=failures,
                 )
             except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
                 step_detail = self._step_error_detail(step, i, total)
+                failures.append(step_detail)
                 log.error(f"Macro step failed: {step_detail} — {e}")
                 # Emit step-level error event so the frontend can show it
                 if macro_id:
@@ -622,9 +675,9 @@ class MacroEngine:
                 # It still does not raise, so stop_on_error is unchanged.
                 if unreported is not None and macro_id:
                     error, message = unreported
-                    log.error(
-                        f"Macro step failed: {self._step_error_detail(step, i, total)} — {error}"
-                    )
+                    step_detail = self._step_error_detail(step, i, total)
+                    failures.append(step_detail)
+                    log.error(f"Macro step failed: {step_detail} — {error}")
                     await self.events.emit(
                         f"macro.step_error.{macro_id}",
                         self._step_error_payload(
@@ -632,6 +685,8 @@ class MacroEngine:
                             call_chain=_call_chain,
                         ),
                     )
+
+        return len(failures)
 
     def _condition_actual(
         self, key: str, context: dict[str, Any] | None = None
@@ -817,10 +872,14 @@ class MacroEngine:
         stop_on_error: bool = False,
         _call_chain: frozenset[str] | None = None,
         _step_path: list[int | str] | None = None,
+        _failures: list[str] | None = None,
     ) -> tuple[str, str] | None:
         """Execute a single macro step. ``_step_path`` is this step's tree
         location (``[*parent_path, index]``); a conditional uses it to build the
-        branch prefix for its then/else sub-steps.
+        branch prefix for its then/else sub-steps, and ``_failures`` is the
+        run's tally, handed on so a step that fails inside one of those
+        branches counts toward the run rather than being swallowed at the
+        branch boundary.
 
         Returns ``None``, or ``(error, message)`` for a failure the step
         handled itself instead of raising -- only ``group.command`` does that,
@@ -944,7 +1003,23 @@ class MacroEngine:
         elif action == "macro":
             sub_macro_id = step.get("macro", "")
             log.debug(f"  Macro step: call macro '{sub_macro_id}'")
-            await self.execute(sub_macro_id, context, _call_chain=_call_chain)
+            outcome = await self.execute(sub_macro_id, context, _call_chain=_call_chain)
+            if outcome == "failed" and _failures is not None:
+                # The subroutine ran to the end and its own stop_on_error said
+                # to carry on past what failed, so it returned rather than
+                # raising -- and that policy is ITS call, not ours to override
+                # (a child's `stop_on_error: false` must not halt a parent that
+                # asked to continue). But the run that called it did not get
+                # what it asked for, and saying nothing is how a blocked
+                # nesting-depth call could sit under ten macros each reporting
+                # completed.
+                #
+                # Counted, and NOT announced: the failure already emitted its
+                # own `macro.step_error` down where it happened, naming the
+                # step and carrying the call chain up to here. A second frame
+                # per level would turn one dead projector into ten, and none of
+                # them would name the step that actually failed.
+                _failures.append(f"macro '{sub_macro_id}' reported failed steps")
 
         elif action == "event.emit":
             event_name = step.get("event", "")
@@ -998,6 +1073,7 @@ class MacroEngine:
                         _conditional_depth=_conditional_depth + 1,
                         _call_chain=_call_chain,
                         _path_prefix=[*step_path, "then"],
+                        _failures=_failures,
                     )
             else:
                 else_steps = step.get("else_steps") or []
@@ -1009,6 +1085,7 @@ class MacroEngine:
                         _conditional_depth=_conditional_depth + 1,
                         _call_chain=_call_chain,
                         _path_prefix=[*step_path, "else"],
+                        _failures=_failures,
                     )
                 else:
                     log.debug("  Conditional: false, no else-steps")

@@ -719,7 +719,11 @@ def test_a_macro_this_panel_did_not_start_says_nothing(macro_panel) -> None:
         Request(f"{macro_panel.base_url}/api/macros/system_on/execute", method="POST"),
         timeout=10.0,
     ) as resp:
-        assert json.loads(resp.read().decode("utf-8"))["status"] == "executed"
+        # `failed`, not `completed`: this macro's whole point is a step that
+        # cannot reach a dead device, and the door now says so. It is the
+        # precondition for the rest of the test -- a run that went cleanly
+        # would have nothing to stay quiet about.
+        assert json.loads(resp.read().decode("utf-8"))["status"] == "failed"
 
     _eventually(lambda: macro_panel.state("var.macro_ran") == "yes",
                 "the macro never ran, so a silent panel proves nothing")

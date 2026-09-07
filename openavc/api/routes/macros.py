@@ -17,7 +17,15 @@ router = APIRouter()
 
 @router.post("/macros/{macro_id}/execute")
 async def execute_macro(macro_id: str) -> dict[str, Any]:
-    """Execute a macro by ID."""
+    """Execute a macro by ID.
+
+    ``status`` is how the run ended: ``completed``, ``failed`` (at least one
+    step did not run, whether or not the macro carried on past it),
+    ``cancelled``, ``skipped`` (the macro's own overlap/cooldown guard refused
+    the start), or ``running`` when it is still going after the operator wait.
+    All of those are a 200 — the request succeeded; what it reports is how the
+    macro went. A 4xx/5xx here means the request itself could not be served.
+    """
     # Same runaway guard as /triggers/{id}/test: the only callers are the
     # IDE's manual "run this macro" buttons, so debounce rapid re-firing of
     # the same macro (runtime automation never uses this endpoint).

@@ -157,4 +157,4 @@ async def test_get_project(running_app):
 async def test_execute_macro(running_app):
     resp = running_app.post("/api/macros/system_on/execute")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "executed"
+    assert resp.json()["status"] == "completed"

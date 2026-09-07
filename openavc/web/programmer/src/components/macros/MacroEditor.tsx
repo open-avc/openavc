@@ -458,7 +458,19 @@ export function MacroEditor({
           throw new Error(saved.error || "Save the project before testing this macro.");
         }
       }
-      await api.executeMacro(macro.id);
+      const { status } = await api.executeMacro(macro.id);
+      // A run that went wrong is not a failed REQUEST, so it arrives as a
+      // normal 200 and used to be dropped on the floor here -- the button
+      // went back to idle and said nothing whether the macro did everything
+      // or nothing. `running` and `debounced` stay quiet on purpose: the
+      // first is shown live by the progress bar, the second is this button
+      // being pressed twice.
+      const trouble: Record<string, string> = {
+        failed: "The macro ran, but some of its steps didn't. The log says which ones and why.",
+        cancelled: "The macro was cancelled before it finished, so its later steps didn't run.",
+        skipped: "The macro didn't start — it's already running, or it's still in its cooldown.",
+      };
+      if (trouble[status]) showError(trouble[status]);
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
     } finally {

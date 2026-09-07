@@ -11,8 +11,8 @@ Pinned here:
 - both doors answer while the macro is still waiting, and say `running`
 - the macro is NOT cancelled by the door answering, and finishes normally
   when its condition is finally met
-- an ordinary macro still answers `executed`, so the bound did not turn every
-  run into a shrug
+- an ordinary macro still answers with its real outcome (`completed`), so the
+  bound did not turn every run into a shrug
 - a macro that does not exist is still a 404 / an error, which only works
   because the refusal happens at the door rather than inside the task
 - the automation doors are deliberately unchanged: a trigger, a script, a
@@ -101,7 +101,7 @@ async def test_answering_does_not_cancel_the_macro(engine):
         await _drain(engine)
 
 
-async def test_an_ordinary_macro_still_answers_executed(engine):
+async def test_an_ordinary_macro_still_answers_its_outcome(engine):
     """Guard the guard: a bound that answered "running" for everything would
     satisfy the tests above and tell nobody anything."""
     engine.load_macros([{
@@ -110,7 +110,7 @@ async def test_an_ordinary_macro_still_answers_executed(engine):
         "steps": [{"action": "state.set", "key": "var.done", "value": True}],
     }])
     try:
-        assert await engine.execute_detached("m_quick", wait_seconds=5) == "executed"
+        assert await engine.execute_detached("m_quick", wait_seconds=5) == "completed"
         assert engine.state.get("var.done") is True
     finally:
         await _drain(engine)
@@ -195,7 +195,7 @@ def test_the_rest_door_answers_while_the_macro_waits(client, engine, monkeypatch
     assert resp.json() == {"status": "running", "macro_id": "m_wait"}
 
 
-def test_the_rest_door_still_says_executed_for_an_ordinary_macro(client, engine):
+def test_the_rest_door_still_answers_for_an_ordinary_macro(client, engine):
     engine.load_macros([{
         "id": "m_quick",
         "name": "Quick",
@@ -203,7 +203,7 @@ def test_the_rest_door_still_says_executed_for_an_ordinary_macro(client, engine)
     }])
     resp = client.post("/api/macros/m_quick/execute")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "executed", "macro_id": "m_quick"}
+    assert resp.json() == {"status": "completed", "macro_id": "m_quick"}
 
 
 def test_the_rest_door_still_404s_an_unknown_macro(client, engine):
@@ -245,7 +245,7 @@ async def test_the_ai_door_answers_while_the_macro_waits(
         await _drain(engine)
 
 
-async def test_the_ai_door_still_says_executed_and_carries_no_note(
+async def test_the_ai_door_still_answers_and_carries_no_note(
     macro_tools, engine
 ):
     engine.load_macros([{
@@ -254,7 +254,7 @@ async def test_the_ai_door_still_says_executed_and_carries_no_note(
         "steps": [{"action": "state.set", "key": "var.done", "value": True}],
     }])
     result = await macro_tools._execute_macro({"macro_id": "m_quick"})
-    assert result == {"status": "executed", "macro_id": "m_quick"}
+    assert result == {"status": "completed", "macro_id": "m_quick"}
 
 
 async def test_the_ai_door_still_reports_an_unknown_macro(macro_tools, engine):

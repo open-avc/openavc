@@ -391,7 +391,7 @@ def test_execute_macro_success(client):
     }])
     resp = c.post("/api/macros/test_macro/execute")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "executed"
+    assert resp.json()["status"] == "completed"
 
 
 def test_execute_macro_is_rate_limited(client):
