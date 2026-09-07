@@ -38,14 +38,22 @@ deleting on purpose. The cost of that choice, stated plainly: a caller that
 ignores the response body gets nothing -- but such a caller ignores a refusal's
 body too, so the refusal would buy only the status code.
 
-What is deliberately NOT here
------------------------------
-Removing anything. This module reports; it never edits the project. Sweeping a
-deleted id back out of ``device_groups`` is a separate missing cleanup and is
-tracked on its own. Monitors are the one exception already handled at the
-doors, which drop them outright -- a monitor whose key can never report again is
-a tile reading "--" forever, and there is nothing for a human to decide about
-it.
+Reporting, and the one thing that is swept instead
+--------------------------------------------------
+Almost everything here is reported and left alone, because what to do about a
+macro step or a bound control is the author's call and only they can make it.
+Device-group membership is the exception, and ``drop_device_from_groups`` is
+it: a group is a list of ids with no other content, so an id left in one after
+its device is gone has nothing a person could decide about it. It cannot be
+repaired, only removed, and until it is the group reports the ghost as an
+offline device forever. The same reasoning the doors already apply to
+monitors, which they drop outright -- a monitor whose key can never report
+again is a tile reading "--" forever.
+
+A group emptied by the sweep is kept, not deleted. An empty group is a legal
+and useful state (the fan-out skips it cleanly), and deleting one because its
+last member went would throw away a name, a place in the IDE and every macro
+step and binding that points at it.
 """
 
 from __future__ import annotations
@@ -278,6 +286,25 @@ def find_device_references(project: Any, device_id: str) -> list[DeviceReference
             refs.append(ref)
 
     return refs
+
+
+def drop_device_from_groups(groups: Any, device_id: str) -> list[Any]:
+    """Every group with ``device_id`` removed from its membership.
+
+    Returns the new list; groups that did not list it come back untouched, and
+    a group left empty is kept rather than deleted (see the module docstring).
+    Mirrors ``monitors.drop_monitors_for_device``, which every delete door
+    already calls beside this one.
+    """
+    swept: list[Any] = []
+    for group in groups or []:
+        members = list(group.device_ids or [])
+        if device_id in members:
+            group = group.model_copy(
+                update={"device_ids": [d for d in members if d != device_id]}
+            )
+        swept.append(group)
+    return swept
 
 
 def find_script_references(project: Any, scripts_dir: Path, ref_id: str) -> list[dict[str, Any]]:

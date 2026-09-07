@@ -96,6 +96,7 @@ class MacroEngine:
         devices: DeviceManager,
         broadcast_ws: BroadcastWS | None = None,
         help_requests: Any = None,
+        project_device_ids: Callable[[], set[str] | None] | None = None,
     ):
         self.state = state
         self.events = events
@@ -108,8 +109,20 @@ class MacroEngine:
         # None in test/plugin-harness contexts; the step logs and no-ops
         # rather than failing when not wired.
         self._broadcast_ws = broadcast_ws
+        # Answers "is this id a device in the project", for the group fan-out.
+        # A callable rather than a loaded set because the answer changes on
+        # every device edit, and it asks the PROJECT rather than the device
+        # manager on purpose: update_device removes and re-adds, clearing both
+        # the config entry and every device.<id>.* state key while it awaits a
+        # disconnect, so a runtime oracle would call a device that is merely
+        # being edited a device that does not exist. Returning None means the
+        # question cannot be answered here -- unwired in the plugin and test
+        # harnesses, where the check is skipped rather than guessed, the same
+        # posture _broadcast_ws and _help take.
+        self._project_device_ids = project_device_ids
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
         self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
+        self._group_names: dict[str, str] = {}  # group_id -> display name
         # macro_id -> set of currently-running tasks. A set (not a single
         # task) so that overlap: allow, REST/WS racing, and concurrent
         # script/plugin/AI dispatch all leave every in-flight invocation
@@ -270,10 +283,15 @@ class MacroEngine:
     def load_groups(self, groups: list[dict[str, Any]]) -> None:
         """Register device group definitions from the project config."""
         self._groups.clear()
+        self._group_names.clear()
         for group in groups:
             group_id = group.get("id", "")
             if group_id:
                 self._groups[group_id] = group.get("device_ids", [])
+                # Kept so a fan-out can name the group the way the IDE lists
+                # it. The id is what the macro step carries; the name is what
+                # somebody scanning the Groups list will recognise.
+                self._group_names[group_id] = group.get("name", "") or group_id
         if self._groups:
             log.info(f"Loaded {len(self._groups)} device group(s)")
 
@@ -930,11 +948,33 @@ class MacroEngine:
             if not device_ids:
                 log.debug(f"  Macro step: group '{group_id}' is empty, skipping")
                 return None
+            known_device_ids = (
+                self._project_device_ids() if self._project_device_ids else None
+            )
             # Send to all online devices concurrently
             sent_ids = []
             tasks = []
             skipped_ids = []
+            missing_ids = []
             for did in device_ids:
+                # A member id that names nothing is not an offline device, and
+                # until this branch existed it read as one: state.get returns
+                # None for a device that was never configured, None is falsy,
+                # and the group reported "Device offline" forever. An
+                # integrator who typo'd a member id, or whose device was
+                # deleted months ago, then goes looking for a network problem
+                # on a device that does not exist. Asked of the device configs
+                # rather than the live drivers on purpose -- a disabled or
+                # orphaned device has no driver instance but is very much in
+                # the project, and calling it missing would be the same lie
+                # pointed the other way.
+                if known_device_ids is not None and did not in known_device_ids:
+                    log.warning(
+                        f"  Group command: group '{group_id}' lists device "
+                        f"'{did}', which is not in this project"
+                    )
+                    missing_ids.append(did)
+                    continue
                 connected = self.state.get(f"device.{did}.connected")
                 if not connected:
                     log.debug(f"  Group command: skipping offline device '{did}'")
@@ -972,6 +1012,21 @@ class MacroEngine:
                     "device_id": did, "name": device_name, "success": False,
                     "error": "Device offline",
                     "message": self._device_error_message(did, offline),
+                }
+            for did in missing_ids:
+                # The one place a group can say more than device.command can:
+                # it knows WHICH group holds the dead id, and that is the fact
+                # somebody needs to go and fix it. The error code stays aligned
+                # with what a device.command step raises for the same cause, so
+                # anything matching on the code sees one answer.
+                group_name = self._group_names.get(group_id) or group_id
+                outcome[did] = {
+                    "device_id": did, "name": did, "success": False,
+                    "error": "Device not found",
+                    "message": (
+                        f"Device '{did}' is listed in group '{group_name}' but is not in "
+                        f"this project. Remove it from the group, or add the device back."
+                    ),
                 }
             device_results = [outcome[did] for did in device_ids if did in outcome]
             if macro_id:

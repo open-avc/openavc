@@ -144,6 +144,11 @@ class DeviceToolsMixin:
             project.connections.pop(device_id, None)
             from openavc.core.monitors import drop_monitors_for_device
             project.monitors = drop_monitors_for_device(project.monitors, device_id)
+            # And the id out of every device group, for the same reason the
+            # REST door does it: a dangling member can only be removed, and
+            # until it is the group calls it an offline device forever.
+            from openavc.core.device_references import drop_device_from_groups
+            project.device_groups = drop_device_from_groups(project.device_groups, device_id)
 
         # The devices reconcile removes the runtime device and sweeps its
         # orphaned device.<id>.* state keys; the revision bump means a stale

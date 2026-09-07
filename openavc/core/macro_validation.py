@@ -349,6 +349,15 @@ def validate_macro(
         macro_ids = {m.id for m in project.macros} if hasattr(project, "macros") else set()
         device_ids = {d.id for d in project.devices} if hasattr(project, "devices") else set()
         group_ids = {g.id for g in project.device_groups} if hasattr(project, "device_groups") else set()
+        # A group's MEMBERS are ids too, and nothing anywhere checked them: the
+        # project save is shape-only, so a group listing a device that does not
+        # exist saves silently and the fan-out then reports the ghost as an
+        # offline device. Same soft-warning treatment as the ids beside it —
+        # a group may legitimately be built before its devices are added.
+        group_members = (
+            {g.id: list(g.device_ids or []) for g in project.device_groups}
+            if hasattr(project, "device_groups") else {}
+        )
 
         def _check_step_refs(step: dict, path: str) -> None:
             action = step.get("action", "")
@@ -358,6 +367,13 @@ def validate_macro(
             if action == "group.command" and step.get("group"):
                 if step["group"] not in group_ids:
                     warnings.append(f"{path}: device group '{step['group']}' not found in project")
+                else:
+                    for member in group_members.get(step["group"], []):
+                        if member not in device_ids:
+                            warnings.append(
+                                f"{path}: device group '{step['group']}' lists device "
+                                f"'{member}', which is not in the project"
+                            )
             if action == "macro" and step.get("macro"):
                 if step["macro"] not in macro_ids:
                     warnings.append(f"{path}: macro '{step['macro']}' not found in project")

@@ -283,6 +283,7 @@ async def delete_device(device_id: str) -> dict[str, Any]:
         # this delete was not applied to would be worse than none.
         from openavc.core.device_references import (
             as_reference_report,
+            drop_device_from_groups,
             find_device_references,
             find_script_references,
         )
@@ -295,6 +296,12 @@ async def delete_device(device_id: str) -> dict[str, Any]:
 
         # Clean up connections table entry
         project.connections.pop(device_id, None)
+
+        # ...and the id itself out of every device group. Read for the report
+        # above, then removed here: a group is a list of ids and nothing else,
+        # so a dangling one cannot be repaired, only dropped — and left in, the
+        # group's fan-out reports it as an offline device forever.
+        project.device_groups = drop_device_from_groups(project.device_groups, device_id)
 
         # ...and anything the project said to watch on it. A monitor whose key
         # can never report again is a tile that reads "—" forever.

@@ -94,6 +94,12 @@ class Engine:
         self.macros = MacroEngine(
             self.state, self.events, self.devices,
             broadcast_ws=self.broadcast_ws, help_requests=self.help,
+            # None before a project is loaded, so the group fan-out's
+            # does-this-device-exist check stays quiet rather than calling
+            # every member missing.
+            project_device_ids=lambda: (
+                {d.id for d in self.project.devices} if self.project else None
+            ),
         )
         self.triggers = TriggerEngine(self.state, self.events, self.macros)
         self.scripts: ScriptEngine | None = None
