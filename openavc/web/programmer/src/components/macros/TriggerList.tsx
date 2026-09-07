@@ -3,13 +3,62 @@
  * Placed above the steps section in MacroEditor.
  */
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play, AlertTriangle, XCircle } from "lucide-react";
 import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
 import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
 import { issuesAt, issueLabel, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
+import { isFailedRun } from "./triggerRuns";
 import { useLogStore } from "../../store/logStore";
+import type { TriggerRun } from "../../store/logStore";
+import { showSuccess, showError, showInfo } from "../../store/toastStore";
 import * as api from "../../api/restClient";
+
+/** What the card says about a trigger's last automatic fire.
+ *
+ *  A trigger that errors every night used to be indistinguishable from one
+ *  doing its job: the card flashed the same colour and the only stored tell,
+ *  `last_fired`, is set BEFORE the macro runs, so failing looked fresh.
+ *
+ *  A clean run says so too rather than showing nothing, because "it ran and it
+ *  worked" is the answer somebody opens this card to get. */
+const RUN_LABELS: Record<TriggerRun["outcome"], string> = {
+  completed: "Ran OK",
+  failed: "Last run failed",
+  error: "Last run failed",
+  cancelled: "Last run cancelled",
+  skipped: "Last run skipped",
+};
+
+/** "4m ago" — how long since it last fired, in the coarsest unit that still
+ *  says something. Precision past the minute is noise here. */
+function timeAgo(seconds: number): string {
+  const delta = Date.now() / 1000 - seconds;
+  if (delta < 60) return "just now";
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+  return `${Math.floor(delta / 86400)}d ago`;
+}
+
+/** What the person who pressed Fire now is told. The button reported nothing
+ *  at all for a macro whose every step failed. */
+const FIRE_NOW_RESULTS: Record<string, { message: string; kind: "ok" | "bad" | "info" }> = {
+  completed: { message: "Trigger fired. The macro completed.", kind: "ok" },
+  failed: {
+    message: "Trigger fired, but the macro failed. Open the macro to see which step.",
+    kind: "bad",
+  },
+  cancelled: {
+    message: "Trigger fired. Something cancelled the macro part-way through.",
+    kind: "info",
+  },
+  skipped: {
+    message:
+      "Trigger fired, but the macro did not start — its own Overlap or Cooldown setting refused the run.",
+    kind: "info",
+  },
+  running: { message: "Trigger fired. The macro is still running.", kind: "info" },
+};
 
 interface TriggerListProps {
   triggers: TriggerConfig[];
@@ -33,6 +82,11 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
   // flash). Subscribing to this one slice re-renders only when a trigger fires,
   // not on every log entry.
   const recentlyFired = useLogStore((s) => s.recentlyFired);
+
+  // How each trigger's last fire ENDED, seeded from the server by
+  // useTriggerRuns and kept current by trigger.completed. Outlives the flash
+  // above, which is the point: the failure happened at 6am.
+  const triggerRuns = useLogStore((s) => s.triggerRuns);
 
   // Poll for trigger pending state every 1s
   useEffect(() => {
@@ -214,14 +268,22 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
             const isFired = trigger.id in recentlyFired;
             const pending = pendingTriggers[trigger.id];
             const lintIssues = issuesAt(issues, "trigger", i);
+            const lastRun = triggerRuns[trigger.id];
+            const runLabel = lastRun ? RUN_LABELS[lastRun.outcome] : null;
+            // THE shared rule, so this card and the dashboard cannot disagree.
+            const runFailed = isFailedRun(lastRun?.outcome);
 
             return (
               <div
                 key={trigger.id}
                 style={{
+                  // A failing trigger keeps a red border once the fire flash
+                  // has passed. The flash is what a fire looks like; this is
+                  // what it came to.
                   border: `1px solid ${
                     isFired ? typeInfo?.color ?? "var(--accent)"
                     : pending ? "#f59e0b"
+                    : runFailed ? "#ef4444"
                     : "var(--border-color)"
                   }`,
                   borderRadius: "var(--border-radius)",
@@ -229,6 +291,8 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                     ? `${typeInfo?.color ?? "var(--accent)"}11`
                     : pending
                     ? "rgba(245,158,11,0.06)"
+                    : runFailed
+                    ? "rgba(239,68,68,0.06)"
                     : "var(--bg-surface)",
                   transition: "border-color 0.3s, background 0.3s",
                   opacity: trigger.enabled ? 1 : 0.5,
@@ -308,6 +372,36 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                       )}
                     </span>
                   )}
+                  {/* How the last fire ended. Nothing at all until it has
+                      fired once: never run is not the same as run and fine. */}
+                  {runLabel && !pending && (
+                    <span
+                      title={
+                        [
+                          lastRun.error,
+                          lastRun.firedAt ? `Fired ${timeAgo(lastRun.firedAt)}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join("\n") || undefined
+                      }
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        fontSize: 10,
+                        fontWeight: runFailed ? 600 : 400,
+                        color: runFailed ? "#ef4444" : "var(--text-muted)",
+                        background: runFailed ? "rgba(239,68,68,0.15)" : "transparent",
+                        padding: runFailed ? "0 5px" : 0,
+                        borderRadius: 3,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {runFailed && <XCircle size={10} />}
+                      {runLabel}
+                      {!runFailed && lastRun.firedAt ? ` ${timeAgo(lastRun.firedAt)}` : ""}
+                    </span>
+                  )}
                   {/* Will not fire as built */}
                   {lintIssues.length > 0 && (
                     <span
@@ -338,7 +432,25 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   >
                     <button
                       onClick={async () => {
-                        try { await api.testTrigger(trigger.id); } catch (e) { console.error("Fire trigger failed:", e); }
+                        try {
+                          // It answered the same whatever the macro did, so
+                          // pressing this on a broken trigger looked like it
+                          // had worked.
+                          const { status } = await api.testTrigger(trigger.id);
+                          const result = FIRE_NOW_RESULTS[status];
+                          if (!result) {
+                            showInfo("Trigger fired.");
+                          } else if (result.kind === "ok") {
+                            showSuccess(result.message);
+                          } else if (result.kind === "bad") {
+                            showError(result.message);
+                          } else {
+                            showInfo(result.message);
+                          }
+                        } catch (e) {
+                          showError("Could not fire the trigger.");
+                          console.error("Fire trigger failed:", e);
+                        }
                       }}
                       style={{ ...iconBtnStyle, color: "var(--accent)" }}
                       title="Fire now (bypasses conditions)"

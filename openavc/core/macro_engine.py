@@ -538,9 +538,10 @@ class MacroEngine:
     ) -> str:
         """Run a macro in its own task, waiting only ``wait_seconds`` for it.
 
-        Returns ``"executed"`` when the macro finished inside that window and
-        ``"running"`` when it did not. The macro keeps going either way —
-        nothing here cancels it.
+        Returns what ``execute`` reported — ``completed``, ``failed``,
+        ``cancelled`` or ``skipped`` — when the macro finished inside that
+        window, and ``"running"`` when it did not. The macro keeps going
+        either way — nothing here cancels it.
 
         This is the shape the OPERATOR doors need: the IDE's run button and
         the cloud AI's ``run_macro``, where a person asked for a macro and is

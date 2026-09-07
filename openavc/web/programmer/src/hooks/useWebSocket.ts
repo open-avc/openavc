@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
-import type { LogEntry, StepPathSegment } from "../store/logStore";
+import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
@@ -358,6 +358,23 @@ export function useWebSocket() {
           useLogStore.getState().setTriggerFired(triggerId, false);
         }, TRIGGER_FIRED_FLASH_MS);
         firedClearTimers.set(triggerId, flashTimer);
+      }
+
+      // How that fire actually went. The flash above says only that something
+      // happened -- it looks identical for a trigger whose macro failed -- so
+      // this is what the card reads to say whether it worked.
+      if (msg.type === "trigger.completed") {
+        // A manual "Fire now" is marked `test` and deliberately does not
+        // become the trigger's record: the button reports its own result, and
+        // overwriting here would erase the overnight failure somebody opened
+        // the IDE to look at.
+        if (msg.trigger_type !== "test") {
+          useLogStore.getState().setTriggerRun(msg.trigger_id as string, {
+            outcome: msg.outcome as TriggerRun["outcome"],
+            error: msg.error as string | undefined,
+            firedAt: Date.now() / 1000,
+          });
+        }
       }
 
       // Discovery events

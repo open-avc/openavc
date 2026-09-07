@@ -320,6 +320,22 @@ Trigger safety features prevent runaway automation:
 
 Example: A "projector auto-off" trigger watches `device.projector_main.power` for `"on"`, with a guard condition that `var.room_active` equals `false`. This shuts down a projector that someone turned on manually without using the panel, but only if the room is not in active use.
 
+### How a trigger reports itself
+
+A trigger card shows how its last fire ended, using the same words as [a macro
+run](#how-the-run-reports-itself): **Ran OK** with how long ago, or **Last run
+failed** in red with the reason on hover. A trigger that has never fired says
+nothing, because that is not the same as one that fired and worked.
+
+This matters most for the automation nobody watches. A nightly shutdown whose
+projector command has been failing for a month still fires on time, so a
+trigger with no report at all looked exactly like one doing its job.
+
+**Fire Now** tells you the same thing straight away — whether the macro
+completed, failed, was cancelled, or never started because of its own Overlap
+or Cooldown setting. It does not overwrite the card's record, so you can test a
+trigger without losing the failure you opened it to look at.
+
 ## Scripts
 
 For logic that macros cannot express, write Python scripts using the **Code** view in the Programmer IDE. Scripts are stored in the active project's `scripts/` folder (`projects/default/scripts/`) as standard `.py` files.

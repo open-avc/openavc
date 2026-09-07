@@ -9,6 +9,35 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+#: What each outcome of a macro run means, for the AI reading it back. Keyed by
+#: the word `MacroEngine.execute` reports, and about the RUN rather than the
+#: door it was asked through -- so running the macro and firing the trigger that
+#: fires it get the same explanation instead of two drifting copies. A
+#: `completed` run has no entry on purpose: a note on every answer is a note
+#: nobody reads.
+_RUN_NOTES = {
+    "running": (
+        "The macro started and is still running — it is waiting on a step (a "
+        "delay, or a wait_until condition). This is not a failure. Check the "
+        "macro's state or the log for how it ends."
+    ),
+    "failed": (
+        "The macro ran and at least one of its steps did not. Read the log for "
+        "the step and the reason — each failed step logged which one it was "
+        "and why. Do not report this as a success."
+    ),
+    "cancelled": (
+        "Something cancelled the macro part-way through, so its later steps "
+        "never ran: either somebody cancelled it, or another macro in the same "
+        "cancel_group preempted it."
+    ),
+    "skipped": (
+        "The macro did not start at all — its own overlap or cooldown guard "
+        "refused this run. Nothing was sent to any device."
+    ),
+}
+
+
 def _set_monitored(project: Any, variable: Any, monitored: bool) -> None:
     """Add or remove this variable's entry on the project's monitor list.
 
@@ -326,31 +355,9 @@ class MacroToolsMixin:
             except ValueError as e:
                 return {"error": str(e)}
             result: dict = {"status": status, "macro_id": macro_id}
-            if status == "running":
-                result["note"] = (
-                    "The macro started and is still running — it is waiting on "
-                    "a step (a delay, or a wait_until condition). This is not a "
-                    "failure. Check the macro's state or the log for how it ends."
-                )
-            elif status == "failed":
-                result["note"] = (
-                    "The macro ran and at least one of its steps did not. Read "
-                    "the log for the step and the reason — each failed step "
-                    "logged which one it was and why. Do not report this as a "
-                    "success."
-                )
-            elif status == "cancelled":
-                result["note"] = (
-                    "Something cancelled the macro part-way through, so its "
-                    "later steps never ran: either somebody cancelled it, or "
-                    "another macro in the same cancel_group preempted it."
-                )
-            elif status == "skipped":
-                result["note"] = (
-                    "The macro did not start at all — its own overlap or "
-                    "cooldown guard refused this run. Nothing was sent to any "
-                    "device."
-                )
+            note = _RUN_NOTES.get(status)
+            if note:
+                result["note"] = note
             return result
         return {"error": "Macro engine not available"}
 
@@ -383,10 +390,17 @@ class MacroToolsMixin:
             return {"error": "Too many requests — wait a moment before testing the same trigger again."}
         engine = self._get_engine()
         if engine and engine.triggers:
-            ok = await engine.triggers.test_trigger(trigger_id)
-            if ok:
-                return {"status": "fired", "trigger_id": trigger_id}
-            return {"error": f"Trigger '{trigger_id}' not found"}
+            outcome = await engine.triggers.test_trigger(trigger_id)
+            if outcome is None:
+                return {"error": f"Trigger '{trigger_id}' not found"}
+            # Firing a trigger runs a macro, so how that run ended means the
+            # same thing here as it does through run_macro. This answered
+            # "fired" for a macro whose every step failed.
+            result: dict = {"status": outcome, "trigger_id": trigger_id}
+            note = _RUN_NOTES.get(outcome)
+            if note:
+                result["note"] = note
+            return result
         return {"error": "Trigger engine not available"}
 
     async def _check_references(self, input: dict) -> Any:

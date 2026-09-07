@@ -70,6 +70,8 @@ class _TriggerState:
         "macro_id",
         "macro_name",
         "last_fired",
+        "last_outcome",
+        "last_error",
         "debounce_task",
         "delay_task",
         "pending_queue",
@@ -80,6 +82,12 @@ class _TriggerState:
         self.macro_id = macro_id
         self.macro_name = macro_name
         self.last_fired: float = 0
+        # How the last automatic fire ended, and why if it did not end well.
+        # `last_fired` moves before the macro runs and never reads back what
+        # happened, so on its own a trigger whose macro fails every night
+        # shows a FRESH timestamp — which reads as working.
+        self.last_outcome: str | None = None
+        self.last_error: str | None = None
         self.debounce_task: asyncio.Task | None = None
         self.delay_task: asyncio.Task | None = None
         self.pending_queue: list[asyncio.Task] = []
@@ -125,6 +133,13 @@ class TriggerEngine:
         # process); absent only after a full restart, where the persisted
         # wall-clock timestamp is the fallback.
         self._last_fired_monotonic: dict[str, float] = {}
+        # trigger_id -> (outcome, error) of its last automatic fire, held here
+        # rather than only on the _TriggerState because load_triggers rebuilds
+        # those from scratch and the reconcile calls it on any device,
+        # connection, variable, plugin or macro edit. That rebuild advertises
+        # itself as loss-free; a record wiped by saving anything is a record
+        # nobody debugging a nightly failure can rely on.
+        self._last_run: dict[str, tuple[str, str | None]] = {}
         self._running = False
 
     def _spawn(self, coro: Any) -> asyncio.Task:
@@ -159,6 +174,9 @@ class TriggerEngine:
                     persisted = self.state.get(f"system.trigger.{trigger_id}.last_fired")
                     if persisted and isinstance(persisted, (int, float)):
                         ts.last_fired = float(persisted)
+                    last_run = self._last_run.get(trigger_id)
+                    if last_run is not None:
+                        ts.last_outcome, ts.last_error = last_run
                     self._triggers[trigger_id] = ts
                     count += 1
         # Drop cron-dedup / cooldown baselines for triggers that no longer
@@ -170,6 +188,11 @@ class TriggerEngine:
         }
         self._last_fired_monotonic = {
             k: v for k, v in self._last_fired_monotonic.items() if k in live_ids
+        }
+        # Dropped with the rest: a record for an id nobody has any more is a
+        # leak, and an id that comes back must not inherit a stranger's run.
+        self._last_run = {
+            k: v for k, v in self._last_run.items() if k in live_ids
         }
         if count:
             log.info(f"Loaded {count} trigger(s)")
@@ -730,13 +753,21 @@ class TriggerEngine:
         exec_task = asyncio.current_task()
         if exec_task is not None:
             self._macro_exec_tasks.add(exec_task)
+        # `execute` REPORTS how the run ended rather than raising, so the
+        # catch-all below is only reached by a macro that does not exist —
+        # a trigger left pointing at a deleted one. Either way the trigger
+        # pipeline is isolated from the macro's failure, which is the design;
+        # what it stops doing is throwing the answer away.
+        outcome = "error"
+        error: str | None = None
         try:
             # Pass the trigger context (event payload / state-change snapshot)
             # so the macro can resolve $trigger.<field> refs and branch on what
             # fired it. Direct/REST/script runs pass no context (refs -> None).
-            await self.macros.execute(macro_id, context=context)
-        except Exception:  # Catch-all: isolates macro execution errors from trigger pipeline
+            outcome = await self.macros.execute(macro_id, context=context)
+        except Exception as e:  # Catch-all: isolates macro execution errors from trigger pipeline
             log.exception(f"Trigger {trigger_id} macro execution failed")
+            error = str(e)
         finally:
             if exec_task is not None:
                 self._macro_exec_tasks.discard(exec_task)
@@ -745,6 +776,22 @@ class TriggerEngine:
                 self._active_trigger_depth[trigger_id] = remaining
             else:
                 self._active_trigger_depth.pop(trigger_id, None)
+
+        # The LAST run, not a sticky fault: a trigger somebody has fixed has to
+        # be able to come back to healthy on its own.
+        ts.last_outcome = outcome
+        ts.last_error = error
+        self._last_run[trigger_id] = (outcome, error)
+        payload = {
+            "trigger_id": trigger_id,
+            "macro_id": macro_id,
+            "macro_name": ts.macro_name,
+            "trigger_type": trigger_type,
+            "outcome": outcome,
+        }
+        if error is not None:
+            payload["error"] = error
+        await self.events.emit("trigger.completed", payload)
 
     # --- Condition evaluation ---
 
@@ -777,20 +824,36 @@ class TriggerEngine:
                 "macro_id": ts.macro_id,
                 "macro_name": ts.macro_name,
                 "last_fired": ts.last_fired if ts.last_fired > 0 else None,
+                # How that fire ended. `last_fired` alone cannot say: it moves
+                # before the macro runs, so a trigger that errors every time
+                # carries a fresh timestamp and reads as healthy.
+                "last_outcome": ts.last_outcome,
+                "last_error": ts.last_error,
                 "has_pending_delay": ts.delay_task is not None and not ts.delay_task.done() if ts.delay_task else False,
                 "has_pending_debounce": ts.debounce_task is not None and not ts.debounce_task.done() if ts.debounce_task else False,
             })
         return result
 
-    async def test_trigger(self, trigger_id: str) -> bool:
-        """Fire a trigger's macro immediately, bypassing conditions."""
+    async def test_trigger(self, trigger_id: str) -> str | None:
+        """Fire a trigger's macro immediately, bypassing conditions.
+
+        Returns how the run ended — ``completed``, ``failed``, ``cancelled``,
+        ``skipped``, or ``running`` when it is still going after the operator
+        wait — and ``None`` when there is nothing to fire, which is what the
+        doors answer 404 off. It said ``fired`` for a macro whose every step
+        failed, which is the same lie the macro door used to tell.
+        """
         ts = self._triggers.get(trigger_id)
         if not ts:
-            return False
+            return None
         # Emit trigger.fired so the Macro editor flashes the trigger card the same
         # as a real fire — this button is the primary "test automation" affordance.
         # The only listener forwards it to WS clients; deliberately no cooldown /
         # last_fired / depth bookkeeping so a manual test stays side-effect-free.
+        # The outcome is deliberately not recorded on the trigger either: this
+        # is the door somebody presses while debugging, and writing to the
+        # record would erase the failure they opened the IDE to look at. They
+        # get the answer in the response instead.
         await self.events.emit(
             "trigger.fired",
             {
@@ -801,8 +864,23 @@ class TriggerEngine:
             },
         )
         try:
-            await self.macros.execute(ts.macro_id)
+            # Detached, like the macro run button beside it: this is an
+            # OPERATOR door with a socket to lose, and awaiting the run inline
+            # meant a `wait_until` with no timeout — the documented shape for
+            # "wait for the projector" — held the request until the socket
+            # died. The macro keeps running either way.
+            outcome = await self.macros.execute_detached(ts.macro_id)
         except ValueError:
             log.warning(f"Trigger {trigger_id} test: macro '{ts.macro_id}' not found")
-            return False
-        return True
+            return None
+        await self.events.emit(
+            "trigger.completed",
+            {
+                "trigger_id": trigger_id,
+                "macro_id": ts.macro_id,
+                "macro_name": ts.macro_name,
+                "trigger_type": "test",
+                "outcome": outcome,
+            },
+        )
+        return outcome

@@ -77,6 +77,19 @@ export interface TriggerPending {
   timestamp: number;
 }
 
+/** How a trigger's last automatic fire ended.
+ *
+ *  Server-side truth, not a session flash: seeded from `GET /api/triggers` so
+ *  a trigger that failed overnight still says so when the IDE is opened in the
+ *  morning, then kept current by the `trigger.completed` message. `firedAt` is
+ *  the server's own `last_fired`, which moves BEFORE the macro runs -- on its
+ *  own it made a trigger that errors every time look freshly successful. */
+export interface TriggerRun {
+  outcome: "completed" | "failed" | "cancelled" | "skipped" | "error";
+  error?: string;
+  firedAt?: number;
+}
+
 interface LogStore {
   logEntries: LogEntry[];
   logPaused: boolean;
@@ -97,6 +110,10 @@ interface LogStore {
   // "just fired" highlight. Set from the trigger.fired WS message and auto-cleared
   // by useWebSocket after the flash.
   recentlyFired: Record<string, number>;
+  // How each trigger's last automatic fire ended (trigger_id -> run). Unlike
+  // the two above this is not a flash and is NOT cleared on disconnect: it is
+  // the server's record, seeded from GET /api/triggers and updated live.
+  triggerRuns: Record<string, TriggerRun>;
 
   addLogEntry: (entry: Omit<LogEntry, "id">) => void;
   addLogBatch: (entries: Omit<LogEntry, "id">[]) => void;
@@ -114,6 +131,8 @@ interface LogStore {
   finishMacroRun: (macroId: string, status: MacroLastRun["status"], error?: string) => void;
   setTriggerPending: (triggerId: string, pending: TriggerPending | null) => void;
   setTriggerFired: (triggerId: string, fired: boolean) => void;
+  setTriggerRun: (triggerId: string, run: TriggerRun) => void;
+  setTriggerRuns: (runs: Record<string, TriggerRun>) => void;
 }
 
 let nextLogEntryId = 1;
@@ -140,6 +159,7 @@ export const useLogStore = create<LogStore>((set, get) => ({
   lastRun: null,
   triggerPending: {},
   recentlyFired: {},
+  triggerRuns: {},
 
   addLogEntry: (entry) =>
     set((s) => {
@@ -241,4 +261,12 @@ export const useLogStore = create<LogStore>((set, get) => ({
       }
       return { recentlyFired: next };
     }),
+
+  setTriggerRun: (triggerId, run) =>
+    set((s) => ({ triggerRuns: { ...s.triggerRuns, [triggerId]: run } })),
+
+  // Replaces the map wholesale rather than merging: this is a re-read of the
+  // server's own list, so a trigger missing from it no longer exists and its
+  // record must go with it.
+  setTriggerRuns: (runs) => set({ triggerRuns: runs }),
 }));

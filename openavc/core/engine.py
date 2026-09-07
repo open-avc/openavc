@@ -375,6 +375,7 @@ class Engine:
         self._event_sub_ids.append(self.events.on("trigger.skipped", self._on_trigger_event))
         self._event_sub_ids.append(self.events.on("trigger.pending", self._on_trigger_event))
         self._event_sub_ids.append(self.events.on("trigger.queued", self._on_trigger_event))
+        self._event_sub_ids.append(self.events.on("trigger.completed", self._on_trigger_event))
 
         # Bridge script error events to WebSocket
         self._event_sub_ids.append(self.events.on("script.error", self._on_script_error))

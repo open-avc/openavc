@@ -67,6 +67,26 @@ export async function testTrigger(
   return request(`/triggers/${triggerId}/test`, { method: "POST" });
 }
 
+/** A trigger as the RUNTIME sees it, which the project file cannot say.
+ *
+ *  `last_fired` is set before the macro runs, so it is `last_outcome` that
+ *  separates a trigger doing its job from one that has been erroring every
+ *  night. */
+export interface TriggerStatus {
+  id: string;
+  type: string;
+  enabled: boolean;
+  macro_id: string;
+  macro_name: string;
+  last_fired: number | null;
+  last_outcome: "completed" | "failed" | "cancelled" | "skipped" | "error" | null;
+  last_error: string | null;
+}
+
+export async function listTriggers(): Promise<{ triggers: TriggerStatus[] }> {
+  return request("/triggers");
+}
+
 /** One problem the platform found with a macro, placed where the editor draws it.
  *
  *  `scope` is the list it belongs to and `index` its row in that list, so a

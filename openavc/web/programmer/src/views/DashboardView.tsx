@@ -8,6 +8,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import { useNavigationStore } from "../store/navigationStore";
+import { useTriggerRuns, isFailedRun } from "../components/macros/triggerRuns";
 import { StatusCardSlot } from "../components/plugins/PluginExtensions";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { showError } from "../store/toastStore";
@@ -609,6 +610,13 @@ export function DashboardView() {
     return () => clearInterval(interval);
   }, []);
 
+  // How each trigger's last fire ended, from the server. The list further down
+  // is "what this project asks for"; this is "and did it work". Both hooks sit
+  // ABOVE the loading return — putting them beside the list they feed made the
+  // hook count change between renders and took the whole view down.
+  useTriggerRuns();
+  const triggerRuns = useLogStore((s) => s.triggerRuns);
+
   if (!devices || !macros || !scripts || !variables) {
     return <ViewContainer title="Dashboard"><p style={{ color: "var(--text-muted)" }}>Loading...</p></ViewContainer>;
   }
@@ -655,6 +663,11 @@ export function DashboardView() {
     (m.triggers ?? []).filter(t => t.enabled !== false).map(t => ({
       macroName: String(m.name),
       triggerType: String(t.type),
+      // "Active" is a project fact; this is what happened when it last ran.
+      // Listing a trigger whose macro fails every night under a heading that
+      // says Active, with nothing else, is the same claim the card used to
+      // make.
+      failed: isFailedRun(triggerRuns[String(t.id)]?.outcome),
       detail: String(
         t.type === "schedule" ? t.cron ?? ""
           : t.type === "state_change" ? `${t.state_key ?? ""} ${t.state_operator ?? "any"}`
@@ -928,6 +941,25 @@ export function DashboardView() {
                       <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                         {t.detail}
                       </code>
+                    )}
+                    {t.failed && (
+                      <span
+                        style={{
+                          marginLeft: "auto",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 3,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "#ef4444",
+                          background: "rgba(239,68,68,0.15)",
+                          padding: "0 5px",
+                          borderRadius: 3,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <AlertTriangle size={10} /> Last run failed
+                      </span>
                     )}
                   </div>
                 ))}

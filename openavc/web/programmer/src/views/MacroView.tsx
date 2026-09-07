@@ -6,6 +6,7 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
 import { macroToScript, generateId, getConversionWarnings } from "../components/macros/macroHelpers";
 import { useMacroLint } from "../components/macros/macroLint";
+import { useTriggerRuns } from "../components/macros/triggerRuns";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
@@ -33,6 +34,10 @@ export function MacroView() {
   // the open editor: a macro that saves cleanly and then does nothing is
   // invisible precisely because nobody reopens it.
   const macroIssues = useMacroLint(macros);
+
+  // What the platform says already HAPPENED. The lint above is about a macro
+  // that cannot run; this is about one that ran and did not work.
+  useTriggerRuns();
 
   const handleAdd = useCallback(() => {
     if (!useProjectStore.getState().project) return;

@@ -637,8 +637,10 @@ async def test_test_trigger(trigger_engine, macro_engine, core):
         "triggers": [{"id": "trg_test", "type": "schedule", "enabled": True}],
     }])
 
-    ok = await trigger_engine.test_trigger("trg_test")
-    assert ok is True
+    # How the run ended, not the fact that it was dispatched — it used to
+    # answer True for a macro whose every step failed.
+    outcome = await trigger_engine.test_trigger("trg_test")
+    assert outcome == "completed"
     assert state.get("var.tested") is True
     # The "Fire now" button must emit trigger.fired so the Macro editor flashes
     # the trigger card the same as a real fire.
@@ -646,7 +648,7 @@ async def test_test_trigger(trigger_engine, macro_engine, core):
     assert fired[0]["trigger_type"] == "test"
 
     not_ok = await trigger_engine.test_trigger("nonexistent")
-    assert not_ok is False
+    assert not_ok is None
     # A nonexistent trigger fires nothing new.
     assert len(fired) == 1
 

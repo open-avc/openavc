@@ -128,17 +128,29 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
 
 @router.get("/triggers")
 async def list_triggers() -> dict[str, Any]:
-    """List all triggers with status."""
+    """List all triggers with status.
+
+    Each entry carries `last_fired` and, alongside it, `last_outcome` /
+    `last_error` — how that fire actually ended. `last_fired` moves before
+    the macro runs, so on its own a trigger whose macro fails every night
+    shows a fresh timestamp and reads as healthy.
+    """
     engine = _get_engine()
     return {"triggers": engine.triggers.list_triggers()}
 
 
 @router.post("/triggers/{trigger_id}/test")
 async def test_trigger(trigger_id: str) -> dict[str, Any]:
-    """Fire a trigger's macro immediately, bypassing conditions."""
+    """Fire a trigger's macro immediately, bypassing conditions.
+
+    ``status`` is how the run ended — the same words `POST
+    /macros/{id}/execute` answers with, for the same reason: this said
+    ``fired`` for a macro whose every step failed. A 404 means there was
+    nothing to fire.
+    """
     _rate_limit_test(f"test_trigger:{trigger_id}")
     engine = _get_engine()
-    ok = await engine.triggers.test_trigger(trigger_id)
-    if not ok:
+    outcome = await engine.triggers.test_trigger(trigger_id)
+    if outcome is None:
         raise HTTPException(status_code=404, detail=f"Trigger '{trigger_id}' not found")
-    return {"status": "fired", "trigger_id": trigger_id}
+    return {"status": outcome, "trigger_id": trigger_id}
