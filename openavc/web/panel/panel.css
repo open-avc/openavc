@@ -55,9 +55,26 @@ input:focus-visible {
 }
 
 /* Reset native <button> chrome so it doesn't fight the theme. Background and
-   color come from .panel-button (theme-driven via --panel-button-bg / -text). */
+   color come from .panel-button (theme-driven via --panel-button-bg / -text).
+ *
+ * SIZE IS NOT CHROME, so it is not reset here. This used to say `font: inherit`,
+ * and that one shorthand is why button text was the thing everybody noticed as
+ * too small. `font` resets font-size along with the family, this selector is
+ * (0,1,1), and panel.css loads after the panel-elements.css it imports -- so it
+ * beat BOTH `.panel-element` and `.panel-button` and no rule written for a
+ * button could ever set its size. Buttons silently took the root rem instead,
+ * which is 14px on a 1280x800 panel, and stayed there however the element
+ * stylesheet was edited.
+ *
+ * So reset the things that ARE native chrome, by name, and leave font-size to
+ * the cascade. tests/e2e/test_control_label_size.py pins that a button ends up at
+ * the size .panel-button asks for. */
 button.panel-element {
-    font: inherit;
+    font-family: inherit;
+    font-style: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
     cursor: pointer;
     /* Border is set by .panel-button; don't reset to none here or we'd hide the themed border. */
 }
