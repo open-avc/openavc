@@ -18,6 +18,7 @@ import { Play } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ProjectConfig } from "../../api/types";
 import * as api from "../../api/restClient";
+import { parseApiError } from "../../api/errors";
 import { showSuccess, showError } from "../../store/toastStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { ActionPicker } from "../ui-builder/BindingEditor/ActionPicker";
@@ -58,7 +59,7 @@ async function runTestAction(action: Record<string, unknown>) {
       showError("Cannot test this action type");
     }
   } catch (e) {
-    showError(`Test failed: ${e}`);
+    showError(`Test failed: ${parseApiError(e)}`);
   }
 }
 

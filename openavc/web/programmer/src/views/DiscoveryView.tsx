@@ -24,6 +24,7 @@ import { useDiscoveryStore } from "../store/discoveryStore";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
+import { parseApiError } from "../api/errors";
 import type { DriverInfo, CommunityDriver } from "../api/types";
 import type { DeviceState, DiscoveryEvidence } from "../api/discoveryClient";
 import { showError } from "../store/toastStore";
@@ -348,7 +349,7 @@ export function DiscoveryPanel() {
       setStatus("running");
     } catch (e) {
       setStatus("idle");
-      showError(String(e));
+      showError(parseApiError(e));
     }
   }, [extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings]);
 
@@ -373,7 +374,7 @@ export function DiscoveryPanel() {
       setStatus("running");
     } catch (e) {
       setStatus("idle");
-      showError(String(e));
+      showError(parseApiError(e));
     }
   }, [adapterSubnets, extraSubnet, snmpEnabled, snmpCommunity, gentleMode, scanDepth, maxSubnetSize, setStatus, setWarnings]);
 
@@ -408,7 +409,7 @@ export function DiscoveryPanel() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      showError(`Export failed: ${e}`);
+      showError(`Export failed: ${parseApiError(e)}`);
     }
   }, []);
 

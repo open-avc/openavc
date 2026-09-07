@@ -18,6 +18,7 @@ import { useUiFilesStore } from "../store/uiFilesStore";
 import { extractScriptRuntimeErrors, latestScriptErrorId } from "../components/scripts/scriptRuntimeErrors";
 import { useScriptLint } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
+import { parseApiError } from "../api/errors";
 import {
   deleteCustomUiFile,
   listCustomUiFiles,
@@ -310,7 +311,7 @@ export function ScriptView() {
       setOriginalSource(source);
     } catch (e) {
       console.error(`Failed to save ${selectedType}:`, e);
-      showError(`Save failed: ${e}`);
+      showError(`Save failed: ${parseApiError(e)}`);
     } finally {
       setSaving(false);
     }
@@ -328,7 +329,7 @@ export function ScriptView() {
         await api.saveScriptSource(selectedId, source);
         setOriginalSource(source);
       } catch (e) {
-        showError(`Save failed: ${e}`);
+        showError(`Save failed: ${parseApiError(e)}`);
         setSaving(false);
         return;
       }
@@ -366,7 +367,7 @@ export function ScriptView() {
         });
       }
     } catch (e) {
-      showError(`Script reload failed: ${e}`);
+      showError(`Script reload failed: ${parseApiError(e)}`);
       useLogStore.getState().addLogEntry({
         timestamp: Date.now() / 1000,
         level: "ERROR",
@@ -405,7 +406,7 @@ export function ScriptView() {
         }
         setOriginalSource(source);
       } catch (e) {
-        showError(`Save failed: ${e}`);
+        showError(`Save failed: ${parseApiError(e)}`);
         setSaving(false);
         return;
       }
@@ -456,7 +457,7 @@ export function ScriptView() {
       // Refresh driver list
       await loadPythonDrivers();
     } catch (e) {
-      showError(`Driver reload failed: ${e}`);
+      showError(`Driver reload failed: ${parseApiError(e)}`);
       useLogStore.getState().addLogEntry({
         timestamp: Date.now() / 1000,
         level: "ERROR",
@@ -498,7 +499,7 @@ export function ScriptView() {
         await load();
         doSelect(id, "script");
       } catch (e) {
-        showError(`Create failed: ${e}`);
+        showError(`Create failed: ${parseApiError(e)}`);
       }
     },
     [load, doSelect]
@@ -512,7 +513,7 @@ export function ScriptView() {
         setShowCreateDriver(false);
         doSelect(id, "driver");
       } catch (e) {
-        showError(`Create failed: ${e}`);
+        showError(`Create failed: ${parseApiError(e)}`);
       }
     },
     [loadPythonDrivers, doSelect]
@@ -654,7 +655,7 @@ export function ScriptView() {
               setOriginalSource("");
             }
           } catch (e) {
-            showError(`Delete failed: ${e}`);
+            showError(`Delete failed: ${parseApiError(e)}`);
           }
         },
       });
@@ -685,7 +686,7 @@ export function ScriptView() {
               setOriginalSource("");
             }
           } catch (e) {
-            showError(`Delete failed: ${e}`);
+            showError(`Delete failed: ${parseApiError(e)}`);
           }
         },
       });

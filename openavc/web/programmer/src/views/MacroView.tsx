@@ -10,6 +10,7 @@ import { useTriggerRuns } from "../components/macros/triggerRuns";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import * as api from "../api/restClient";
+import { parseApiError } from "../api/errors";
 import type { MacroConfig } from "../api/types";
 import { showError, showInfo } from "../store/toastStore";
 
@@ -111,7 +112,7 @@ export function MacroView() {
         `before enabling the script.`
       );
     } catch (e) {
-      showError(`Failed to create script: ${e}`);
+      showError(`Failed to create script: ${parseApiError(e)}`);
     }
   }, [scriptPreview, selectedMacro]);
 
