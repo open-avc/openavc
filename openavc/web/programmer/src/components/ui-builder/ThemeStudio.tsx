@@ -341,7 +341,9 @@ function buildGalleryPage(): UIPage {
       id: "g_header",
       type: "label",
       text: "Theme Preview Gallery",
-      style: { font_size: 16 / REM_BASE_PX, text_align: "center", font_weight: 700 },
+      // A title, so bigger than the controls under it, which start at the
+      // panel's own text default (28px on the reference).
+      style: { font_size: 36 / REM_BASE_PX, text_align: "center", font_weight: 700 },
       bindings: {},
     },
     {

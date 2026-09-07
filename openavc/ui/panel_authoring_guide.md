@@ -48,11 +48,11 @@ the container instead when the element sits in one.
 
 | Type | Smallest box | Of a full page | What does not shrink |
 |---|---|---|---|
-| fader | 72 x 102 px | 5.62% x 12.75% | fader-handle 44 x 44, fader-scale 28 wide |
-| level_meter | 13 x 81 px | 1.02% x 10.12% | meter-segment 2 tall |
-| keypad | 86 x 222 px | 6.72% x 27.75% | keypad-key 36 tall (font-driven) |
-| select | 44 x 52 px | 3.44% x 6.5% | native control 30 tall (font-driven) |
-| text_input | 44 x 52 px | 3.44% x 6.5% | native control 30 tall (font-driven) |
+| fader | 88 x 177 px | 6.88% x 22.12% | fader-handle 44 x 44, fader-scale 42 wide (font-driven) |
+| level_meter | 13 x 98 px | 1.02% x 12.25% | meter-segment 2 tall |
+| keypad | 100 x 266 px | 7.81% x 33.25% | keypad-key 36 tall (font-driven) |
+| select | 44 x 84 px | 3.44% x 10.5% | native control 46 tall (font-driven) |
+| text_input | 44 x 85 px | 3.44% x 10.62% | native control 46 tall (font-driven) |
 
 ## A status LED's floor changes when it draws a caption
 
@@ -82,8 +82,8 @@ authored value by 14 before working one out.
 
 | Type | Floor | Authored by | Default | Of a full page at the default |
 |---|---|---|---|---|
-| slider | 24 + thumb_size wide, 38 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 82 px | 5.31% x 10.25% |
-| list | 28 wide, 34 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 78 px | 2.19% x 9.75% |
+| slider | 24 + thumb_size wide, 55 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 99 px | 5.31% x 12.38% |
+| list | 28 wide, 51 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 95 px | 2.19% x 11.88% |
 
 ## The matrix, whose floor is a function of the grid you asked for
 
@@ -101,9 +101,9 @@ two across and four down portrait.
 
 | Type and `matrix_style` | Floor |
 |---|---|
-| matrix (crosspoint) | 95 + sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall |
-| matrix (list) | 148 wide, 9 + destinations x 34 tall |
-| matrix (tiles) | 10 + columns x 126 wide, 10 + rows x 70 tall |
+| matrix (crosspoint) | 95 + sources x (cell + 1) wide, 84 + destinations x (cell + 1) tall |
+| matrix (list) | 148 wide, 9 + destinations x 48 tall |
+| matrix (tiles) | 10 + columns x 126 wide, 10 + rows x 97 tall |
 
 `cell` is 44px unless `style.cell_size` authors another size, in which case the
 slope moves with it. **That value is in rem** -- px / 14, like every other style
@@ -113,18 +113,18 @@ Then add, for each of these the matrix actually has:
 
 | Part | Adds |
 |---|---|
-| a `label` | 23px, on the height |
-| `presets` | 36px, on the height |
-| the lock column (`show_lock`, off unless asked for) | 45px in `crosspoint`, 32px in `list`, on the width |
-| the mute column (`show_mute` plus a `do.mute_route` binding) | 45px in `crosspoint`, 28px in `list`, on the width |
+| a `label` | 40px, on the height |
+| `presets` | 50px, on the height |
+| the lock column (`show_lock`, off unless asked for) | 45px in `crosspoint`, 49px in `list`, on the width |
+| the mute column (`show_mute` plus a `do.mute_route` binding) | 45px in `crosspoint`, 37px in `list`, on the width |
 
 Worked, for a matrix with a label:
 
 | Grid | crosspoint | list | tiles |
 |---|---|---|---|
-| 4x4 | 275 x 266 px | 148 x 168 px | 262 x 173 px |
-| 8x8 | 455 x 446 px | 148 x 304 px | 514 x 173 px |
-| 16x16 | 815 x 806 px | 148 x 576 px | 514 x 313 px |
+| 4x4 | 275 x 304 px | 148 x 241 px | 262 x 244 px |
+| 8x8 | 455 x 484 px | 148 x 433 px | 514 x 244 px |
+| 16x16 | 815 x 844 px | 148 x 817 px | 514 x 438 px |
 
 The tiles column ignores the source count in those rows, because a tile wall has
 no source axis: `4x4`, `8x8` and `16x16` are four, eight and sixteen destinations.
@@ -136,9 +136,9 @@ put one list on each axis and are the same rectangle either way round. On a
 
 | Grid | tiles, portrait |
 |---|---|
-| 4x4 | 262 x 173 px |
-| 8x8 | 262 x 313 px |
-| 16x16 | 514 x 313 px |
+| 4x4 | 262 x 244 px |
+| 8x8 | 262 x 438 px |
+| 16x16 | 514 x 438 px |
 
 Which is the same area stood on its end, and it is a different rectangle from the
 landscape one -- a box that clears the floor above can be under this one. The
@@ -158,7 +158,7 @@ whatever the sources are called, scrolling if there are more than fit. A tile's 
 names ellipsise inside it. A floor that held any name anyone typed would be a floor
 whose value is whatever they typed, and nothing in this file sizes text.
 
-**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 95 + sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number.
+**matrix (crosspoint)** -- A function of the counts, which is the whole point of it: 95 + sources x (cell + 1) wide, 84 + destinations x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number.
 
 **matrix (list)** -- A list matrix is one dropdown per destination, so its width does not move with the input count at all -- sixteen sources are sixteen options, not sixteen columns. Recording the crosspoint floor for both styles is what the old constant did, and it told a 16-input list it needed 792px when it needs 180. The lock and mute buttons differ in width here because they are glyphs rather than grid tracks, and an unlock glyph is wider than an M.
 
@@ -170,7 +170,7 @@ whose value is whatever they typed, and nothing in this file sizes text.
 Where a floor is not what the shape of the control suggests.
 
 - **list** -- Row height does not change how wide a list has to be.
-- **keypad** -- 86 wide rather than the 84 first recorded. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so this is the widest of the machines measured: 84 is right where that glyph is narrow and two pixels short where it is not. A keypad can never floor below 84 on any machine, because that is where three equal columns reach 20px.
+- **keypad** -- 100 wide rather than the 98 measured here. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so the two pixels are the allowance the first measurement showed between machines: 84 was right where that glyph was narrow and two short where it was not, at the 18px digits the keys used to draw.
 
 ## Types with no floor at all
 
@@ -187,14 +187,18 @@ plus the finger rule below where the type is one you touch.
 
 ## Some numbers above are the theme's, not a declared size
 
-- **matrix-list-row 28 tall** -- matrix (list)
+- **fader-scale 42 wide** -- fader
+- **matrix-list-row 42 tall** -- matrix (list)
+- **matrix-tile 120 x 91** -- matrix (tiles)
 - **keypad-key 36 tall** -- keypad
-- **native control 30 tall** -- select, text_input
+- **native control 46 tall** -- select, text_input
 
-None of these has a declared floor anywhere. They fall out of the theme's font
-size plus padding, so the value recorded above is what the **default theme**
-produces and a theme with larger type moves it. They are in the tables anyway: a
-keypad crushed under its own keys is a worse outcome than a floor that can move.
+None of these has a declared floor anywhere. They fall out of the panel's text
+default plus padding, so the value recorded above is what that default produces
+in the default theme's font, and an element's own `font_size` moves it: every
+text inside a control is a proportion of the control's text size, so a keypad
+given bigger type gets taller keys. They are in the tables anyway: a keypad
+crushed under its own keys is a worse outcome than a floor that can move.
 
 ## The finger rule
 

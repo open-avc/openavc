@@ -104,9 +104,9 @@ def test_a_fader_narrower_than_its_handle_and_scale_names_both():
     )
     findings, _ = review_page(page)
     message = _of_kind(findings, "too_small_for_contents")[0].message
-    assert "needs 72px" in message
+    assert "needs 88px" in message
     assert "fader-handle is 44px" in message
-    assert "fader-scale is 28px" in message
+    assert "fader-scale is 42px" in message
 
 
 def test_types_with_no_fixed_internals_are_never_too_small():

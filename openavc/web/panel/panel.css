@@ -25,7 +25,11 @@
    viewport: the builder previewing an overlay in a 400px iframe hands us the
    screen preset's vmin so preview type matches runtime. It lives here, on the
    document root, because rem resolves against the root -- and this file is
-   loaded only by the panel document, so it cannot reach the IDE's own chrome. */
+   loaded only by the panel document, so it cannot reach the IDE's own chrome.
+
+   This is the LAYOUT unit. The size a control's TEXT starts at is a separate
+   token, --panel-font-size in panel-elements.css, so the two can move apart:
+   raising the text default does not widen a matrix cell or a fader handle. */
 :root {
     font-size: calc(var(--panel-type-scale, 1.75) * var(--panel-vmin, 1vmin));
 }

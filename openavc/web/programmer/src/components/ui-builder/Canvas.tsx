@@ -176,16 +176,33 @@ export function Canvas({
   // is invisible out here and invisible on a wall panel. The panel shows what
   // it can in the element's box and forwards it; this is the half that puts it
   // in front of the person who wrote it.
+  //
+  // The same channel carries what the panel drew each element's text at
+  // (`openavc:editor-text-defaults`, posted after every render). The Style
+  // panel shows that number as the Font Size placeholder; nothing on this side
+  // knows the panel's default any other way.
+  const setTextDefaultsRem = useUIBuilderStore((s) => s.setTextDefaultsRem);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
-      const msg = event.data as { type?: string; elementId?: string; message?: string };
+      const msg = event.data as {
+        type?: string;
+        elementId?: string;
+        message?: string;
+        fontSizeRem?: Record<string, number>;
+      };
+      if (msg?.type === "openavc:editor-text-defaults") {
+        if (msg.fontSizeRem && typeof msg.fontSizeRem === "object") {
+          setTextDefaultsRem(msg.fontSizeRem);
+        }
+        return;
+      }
       if (msg?.type !== "openavc:element-error") return;
       showError(`${msg.elementId || "Custom control"}: ${msg.message || "failed"}`);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [setTextDefaultsRem]);
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;

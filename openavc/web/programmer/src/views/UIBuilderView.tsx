@@ -240,12 +240,12 @@ export function UIBuilderView() {
           }
         }
 
-        // CSS baseline defaults that every element inherits if nothing else is set
-        // The stylesheet's base size, in the rem every stored measurement now
-        // uses — 1rem IS 14px at the reference, so this is the same baseline it
-        // always was. The Style panel converts it back to px for its
-        // placeholder; a bare 14 here would advertise a 196px default.
-        const cssBaseline: Record<string, unknown> = { font_size: 1 };
+        // CSS baseline defaults that every element inherits if nothing else is
+        // set. NOT font_size: that used to be a hard-coded 1rem here, which was
+        // the Builder's private idea of the panel's text default and drifted
+        // from the stylesheet's. The panel canvas now reports what it actually
+        // drew (uiBuilderStore.textDefaultsRem) and the Style panel shows that.
+        const cssBaseline: Record<string, unknown> = {};
         if (vars.border_radius) cssBaseline.border_radius = vars.border_radius;
         if (vars.font_family) cssBaseline.font_family = vars.font_family;
         for (const t of Object.keys(synthesized)) {

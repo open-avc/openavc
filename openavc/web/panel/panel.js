@@ -138,8 +138,15 @@ const MATRIX_LABEL_MIN_PX = 80;
 // to it in large type. These are its floor -- it grows into whatever room the
 // element has (the tracks are minmax(floor, 1fr)) and never shrinks past them,
 // for the same reason a crosspoint does not.
-const MATRIX_TILE_MIN_W_PX = 120;
-const MATRIX_TILE_MIN_H_PX = 64;
+//
+// In em of the matrix's text, not px, because a tile exists to hold two lines
+// of that text: the destination's name at 0.7857em and what is routed to it at
+// 1.2857em, plus its own padding. At the default text size that is 120x91px;
+// a matrix given a larger font_size gets taller tiles rather than tiles that
+// cut their second line. openavc/ui/control_minimums.py records the px this
+// resolves to at the default, as it does for every font-driven part.
+const MATRIX_TILE_MIN_W_EM = 4.2857;
+const MATRIX_TILE_MIN_H_EM = 3.25;
 
 /**
  * How many columns and rows a wall of `count` tiles is drawn in.
@@ -2071,7 +2078,40 @@ class PanelApp {
         // to jump to its section in the editor. Hover shows an outline + type label.
         if (this.editMode) {
             this._setupThemeStudioInteraction(surface);
+            this._reportTextDefaults();
         }
+    }
+
+    /**
+     * Tell the Builder what size each element's text STARTS at: the value the
+     * cascade gives it before the element's own font_size, if it has one, is
+     * applied inline. The Style panel shows that as the Font Size placeholder,
+     * so the number a person reads there is the number on the canvas, whatever
+     * the stylesheet, the theme or a project class decided it. The Builder
+     * keeps no copy of the panel's default; this message is how it knows.
+     *
+     * Read by clearing the inline size, asking, and putting it back. There is
+     * no other way to ask the cascade what it would have said, and nothing
+     * transitions font-size, so the read is exact and nothing flickers.
+     *
+     * In rem, the unit a project stores and the Builder converts for display.
+     * Pixels here would be the canvas preset's pixels, not the panel's.
+     */
+    _reportTextDefaults() {
+        if (window.parent === window) return;
+        const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+        if (!rootPx) return;
+        const fontSizeRem = {};
+        for (const el of this.root.querySelectorAll('[data-element-id]')) {
+            const own = el.style.fontSize;
+            if (own) el.style.fontSize = '';
+            const px = parseFloat(getComputedStyle(el).fontSize);
+            if (own) el.style.fontSize = own;
+            // Four decimals, the precision a project stores measurements at, so
+            // a size that IS the default compares equal to it in the Builder.
+            if (Number.isFinite(px)) fontSizeRem[el.dataset.elementId] = Math.round(px / rootPx * 1e4) / 1e4;
+        }
+        this._postToParent({ type: 'openavc:editor-text-defaults', fontSizeRem });
     }
 
     /**
@@ -3368,6 +3408,11 @@ class PanelApp {
 
             const overlay = document.createElement('div');
             overlay.className = 'matrix-chooser';
+            // The sheet lives on document.body, so nothing this matrix was
+            // given reaches it by inheritance. Pin it to the size the matrix
+            // resolved to and the sheet's em sizes follow an authored
+            // font_size the same way the tiles do.
+            overlay.style.fontSize = getComputedStyle(el).fontSize;
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) this._closeMatrixChooser();
             });
@@ -3569,9 +3614,9 @@ class PanelApp {
                 // minmax(floor, 1fr): a tile never draws below the floor the
                 // review states, and takes the whole box when there is more.
                 wall.style.gridTemplateColumns =
-                    `repeat(${tileCols}, minmax(${MATRIX_TILE_MIN_W_PX}px, 1fr))`;
+                    `repeat(${tileCols}, minmax(${MATRIX_TILE_MIN_W_EM}em, 1fr))`;
                 wall.style.gridTemplateRows =
-                    `repeat(${tileRows}, minmax(${MATRIX_TILE_MIN_H_PX}px, 1fr))`;
+                    `repeat(${tileRows}, minmax(${MATRIX_TILE_MIN_H_EM}em, 1fr))`;
             }
 
             for (let o = 0; o < outputCount; o++) {
@@ -3661,6 +3706,19 @@ class PanelApp {
             // The stylesheet's `justify-content: start` keeps the auto label
             // column from swallowing that spare room first.
             const cellTrack = `minmax(${cellMinPx}px, ${cellMaxPx}px)`;
+            // The COLUMNS are flexible rather than capped per track, and the
+            // cap moves to the grid's own max-width (label floor + every cell at
+            // its ceiling + the extra columns + the gaps). Same ceiling, different
+            // order of service: a grid hands spare room out equally to every
+            // track that can still grow, so with a capped cell track the eight
+            // dot columns and the one name column each took a ninth, and the
+            // names lost to the dots they label -- "Right Proj" at the panel's
+            // text size truncated in a box with 100px to spare. A flexible
+            // track is sized LAST, after the name column has grown to its
+            // longest name out of the free space, so the names are served
+            // first and the dots take what is left, never less than the floor.
+            // An authored cell_size still pins the track at exactly that size.
+            const colTrack = authoredCellPx ? cellTrack : `minmax(${cellMinPx}px, 1fr)`;
             // The label column keeps MATRIX_LABEL_MIN_PX and grows to the longest
             // name when there is room. It was `auto`, whose base size is
             // min-content -- and .matrix-header is `overflow: hidden`, which makes
@@ -3670,11 +3728,17 @@ class PanelApp {
             // repeat(0, ...) is not valid CSS, and an unresolved or empty matrix
             // is now reachable -- the counts come from lists rather than from a
             // default of four.
-            const cellCols = inputCount > 0 ? `repeat(${inputCount}, ${cellTrack})` : '';
+            const cellCols = inputCount > 0 ? `repeat(${inputCount}, ${colTrack})` : '';
             table.style.gridTemplateColumns =
                 `${labelTrack} ${cellCols} ${extraColDefs.join(' ')}`.replace(/\s+/g, ' ').trim();
             table.style.gridTemplateRows = outputCount > 0
                 ? `auto repeat(${outputCount}, ${cellTrack})` : 'auto';
+            if (!authoredCellPx) {
+                // One 1px gap between each pair of tracks (.matrix-grid gap).
+                const gaps = inputCount + extraColDefs.length;
+                table.style.maxWidth = `${MATRIX_LABEL_MIN_PX + inputCount * cellMaxPx
+                    + extraColDefs.length * MATRIX_CELL_MIN_PX + gaps}px`;
+            }
 
             // Top-left corner cell
             const corner = document.createElement('div');
@@ -3699,14 +3763,14 @@ class PanelApp {
                 const lockHdr = document.createElement('div');
                 lockHdr.className = 'matrix-header';
                 lockHdr.textContent = '\uD83D\uDD12';
-                lockHdr.style.fontSize = '0.7143rem';
+                lockHdr.style.fontSize = '0.7143em';
                 table.appendChild(lockHdr);
             }
             if (showMute) {
                 const muteHdr = document.createElement('div');
                 muteHdr.className = 'matrix-header';
                 muteHdr.textContent = 'M';
-                muteHdr.style.fontSize = '0.7143rem';
+                muteHdr.style.fontSize = '0.7143em';
                 table.appendChild(muteHdr);
             }
 
@@ -5470,25 +5534,31 @@ class PanelApp {
         el.style.color = 'var(--panel-text)';
         el.style.textAlign = 'center';
         el.style.padding = '4px';
+        // The sizes go on the text, in em, and never on `el`: it is a
+        // .panel-element, so its own font-size is the panel's text default (or
+        // the author's font_size, applied below) and these are proportions of
+        // that, like every other piece of text inside a control.
         if (detail === undefined) {
             // Unconfigured: one line, no border — it is not a stand-in for
             // something that would otherwise draw.
             el.style.opacity = '0.5';
-            el.style.fontSize = '0.8571rem';
-            el.textContent = label;
+            const line = document.createElement('div');
+            line.textContent = label;
+            line.style.fontSize = '0.8571em';
+            el.appendChild(line);
             return el;
         }
         el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
         el.style.borderRadius = '4px';
         el.style.opacity = '0.4';
-        el.style.fontSize = '11px';
         const title = document.createElement('div');
         title.textContent = label;
         title.style.fontWeight = '600';
+        title.style.fontSize = '0.7857em';
         const sub = document.createElement('div');
         sub.textContent = detail;
         sub.style.opacity = '0.8';
-        sub.style.fontSize = '10px';
+        sub.style.fontSize = '0.7143em';
         el.appendChild(title);
         el.appendChild(sub);
         this.applyStyle(el, this.getThemedStyle(styleType, element.style));

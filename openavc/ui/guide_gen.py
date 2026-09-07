@@ -309,10 +309,12 @@ FONT_DRIVEN_INTRO = """\
 
 %(rows)s
 
-None of these has a declared floor anywhere. They fall out of the theme's font
-size plus padding, so the value recorded above is what the **default theme**
-produces and a theme with larger type moves it. They are in the tables anyway: a
-keypad crushed under its own keys is a worse outcome than a floor that can move.
+None of these has a declared floor anywhere. They fall out of the panel's text
+default plus padding, so the value recorded above is what that default produces
+in the default theme's font, and an element's own `font_size` moves it: every
+text inside a control is a proportion of the control's text size, so a keypad
+given bigger type gets taller keys. They are in the tables anyway: a keypad
+crushed under its own keys is a worse outcome than a floor that can move.
 """
 
 NOTES_INTRO = """\

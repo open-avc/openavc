@@ -138,7 +138,8 @@ ASSERT_JS = r"""
       if (wr.height < hr.height - TOL) return bad('track shorter than the handle');
       if (scale) {
         const sr = R(scale);
-        if (sr.width < 28 - TOL) return bad(`scale column shrank to ${sr.width.toFixed(1)}`);
+        // 1.5em of the fader's text: 42px at the default text size.
+        if (sr.width < 42 - TOL) return bad(`scale column shrank to ${sr.width.toFixed(1)}`);
         if (sr.height < 1) return bad('scale column crushed to zero height');
       }
       if (!inside(handle)) return bad('handle outside the box');
@@ -213,7 +214,8 @@ ASSERT_JS = r"""
       } else if (tiles.length) {
         for (const t of tiles) {
           const r = R(t);
-          if (r.width < 120 - TOL || r.height < 64 - TOL)
+          // 4.2857em by 3.25em of the matrix's text: 120x91 at the default.
+          if (r.width < 120 - TOL || r.height < 91 - TOL)
             return bad(`a tile shrank to ${r.width.toFixed(1)}x${r.height.toFixed(1)}`);
         }
       } else return bad('no cells, rows or tiles');

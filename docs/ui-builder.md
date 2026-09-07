@@ -489,6 +489,7 @@ The **Style** section has subsections for fine-grained control over element appe
 - **Shadow**: presets: `sm`, `md`, `lg`, `glow`, `inset`
 - **Gradient**: two-color linear gradient (start color, end color, direction)
 - **Padding**: all sides, or horizontal/vertical independently
+- **Font Size**: the size of the element's text, in pixels on the reference panel. Every piece of text inside a control follows it: a keypad's keys and display, a fader's scale and readout, a matrix's tiles and column numbers. Leave it empty to use the panel's default, shown greyed in the box; that number is the size the panel is drawing. A gauge's readout is the one exception: it is sized to its dial.
 - **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height
 - **Background Image**: select an image asset with controls for size, position, and opacity (see Asset Management below)
 - **Overflow**: control how content that exceeds the element bounds is handled (visible, hidden, scroll)

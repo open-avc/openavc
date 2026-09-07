@@ -20,6 +20,15 @@
  *
  * Font size, line height and letter spacing always scale. Tracking never has
  * to render as a visible line, so it belongs with the type it sits in.
+ *
+ * TEXT SIZE IS ONE TOKEN. --panel-font-size, on :root below, is the size every
+ * control's own text starts at: .panel-element takes it, and no other rule in
+ * this file sets a control's text size in rem. Text INSIDE a control -- a
+ * keypad's keys, a fader's scale, a matrix tile's source name -- is em, a
+ * proportion of the control it sits in. So raising the token moves every
+ * control, and an element's own font_size (inline, from the Builder) moves
+ * every piece of text in that element. Writing a rem font-size on any part of
+ * a control breaks both of those and is a bug.
  */
 
 /* Default theme variables (overridden by active theme on the panel or builder canvas).
@@ -39,6 +48,12 @@
     --panel-surface: #2a2a4a;
     --panel-surface-border: #3a3a5c;
     --panel-border-radius: 0.5714rem;
+    /* The size a control's text starts at when nothing sets one; an element's
+       own font_size overrides it, inline. 2rem is 28px on the 1280x800
+       reference, a 3.4mm cap height on a 10" panel; the 1rem it replaced was
+       1.7mm. Change the default HERE and nowhere else: the Builder carries no
+       copy of it, it shows what the panel actually drew. */
+    --panel-font-size: 2rem;
 }
 
 /* ===== Base Element ===== */
@@ -49,39 +64,9 @@
     justify-content: center;
     border-radius: var(--panel-border-radius);
     overflow: hidden;
-    font-size: 1rem;
+    font-size: var(--panel-font-size);
     color: var(--panel-text);
     transition: background-color 0.2s, color 0.2s, opacity 0.2s, transform 0.1s, box-shadow 0.2s, border-color 0.2s;
-}
-
-/* The default a control's own label is drawn at.
- *
- * Deliberately NOT on .panel-element, which is the base every control carries.
- * The panel is authored in rem, so raising the base raises the whole design --
- * matrix cells, keypad keys, list rows and level-meter segments are all sized
- * from it, and their BOX is a fixed percentage of the page. A panel with an
- * 8x8 matrix on it would need four times the area for the same grid and simply
- * would not fit any more. Measured, not assumed: doubling the base put 31 of
- * the 40 control-minimum cases into failure.
- *
- * So this names the types whose whole content IS their label -- the ones
- * control_minimums.py excludes for exactly that reason, because there is no
- * fixed internal to starve. Their box is a percentage of the page and the text
- * is centred in it, so bigger type costs nothing but legibility.
- *
- * 14px was the old inherited default. On a 10.1" 1280x800 panel that is a
- * 1.7mm cap height, which subtends about 10 arcminutes at arm's length -- above
- * the threshold where you cannot read it, which is why it never looked broken,
- * and well below the 16-22 that reads comfortably. 28px is ~20. Verified on
- * panel hardware before it was chosen.
- *
- * camera_preset is absent because it renders as .panel-button (panel.js). */
-.panel-button,
-.panel-label,
-.panel-page-nav,
-.panel-clock,
-.panel-gauge {
-    font-size: 2rem;
 }
 
 /* Thin scrollbars for panel elements */
@@ -452,11 +437,15 @@
     min-height: 0;
 }
 /* Crosspoint grid.
-   The cell tracks are minmax(floor, ceiling) (panel.js renderMatrix), so the
-   grid has to be told it may use the whole wrapper before there is any spare
-   room for them to grow into -- hence 100% on both axes rather than the
-   fit-content it used to be, which pinned every cell at its floor no matter
-   how much of the page the matrix had been given.
+   The cell rows are minmax(floor, ceiling) and the cell columns minmax(floor,
+   1fr) under a max-width that is the same ceiling summed (panel.js
+   renderMatrix), so the grid has to be told it may use the whole wrapper
+   before there is any spare room for them to grow into -- hence 100% on both
+   axes rather than the fit-content it used to be, which pinned every cell at
+   its floor no matter how much of the page the matrix had been given. The
+   columns are flexible so the destination-name column, which grows to its
+   longest name, is served before the dots rather than sharing equally with
+   them.
    `justify-content`/`align-content: start` are what stop the auto label
    tracks from absorbing that spare room first: an auto track stretches under
    the default `normal`, so the destination-name column would have eaten every
@@ -498,8 +487,10 @@
        minimum. Declared rather than left to the line box on purpose: this is
        the one bit of text in the control that is generated rather than
        authored, so it can be a number the floor states rather than a font the
-       floor guesses at. */
-    min-height: 1.7857rem;
+       floor guesses at. max() keeps that declared floor and lets the digits'
+       own line box (1.25em) win above it, so a matrix given a larger
+       font_size grows this row instead of cutting its numbers. */
+    min-height: max(1.7857rem, 1.25em);
 }
 .panel-matrix .matrix-output-header {
     justify-content: flex-end;
@@ -568,8 +559,8 @@
     gap: 0.5714rem;
     flex-shrink: 0;
     overflow-x: auto;
-    font-size: 0.7857rem;
-    line-height: 1.2rem;
+    font-size: 0.7857em;
+    line-height: 1.5;
 }
 .panel-matrix .matrix-legend-item {
     display: flex;
@@ -677,7 +668,7 @@
 .panel-matrix .matrix-tile-dest {
     flex: 1;
     min-width: 0;
-    font-size: 0.7857rem;
+    font-size: 0.7857em;
     opacity: 0.75;
     overflow: hidden;
     white-space: nowrap;
@@ -687,7 +678,7 @@
    across the room. It is one line and ellipsises, for the same reason nothing
    else in the control sizes itself to text. */
 .panel-matrix .matrix-tile-source {
-    font-size: 1.2857rem;
+    font-size: 1.2857em;
     font-weight: 600;
     line-height: 1.3;
     overflow: hidden;
@@ -716,6 +707,10 @@
     position: fixed;
     inset: 0;
     z-index: 900;
+    /* On document.body, so no control's font-size reaches it by inheritance:
+       the token is its base, and panel.js pins it to the matrix that opened it
+       so an authored font_size on that matrix carries into its chooser. */
+    font-size: var(--panel-font-size);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -736,7 +731,7 @@
     color: var(--panel-text);
 }
 .matrix-chooser-title {
-    font-size: 1.1429rem;
+    font-size: 1.1429em;
     font-weight: 600;
     flex-shrink: 0;
 }
@@ -754,7 +749,7 @@
     border: 1px solid var(--panel-button-border);
     background: var(--panel-button-bg);
     color: var(--panel-button-text);
-    font-size: 1rem;
+    font-size: 1em;
     cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -769,7 +764,7 @@
     border: 1px solid var(--panel-surface-border);
     background: none;
     color: inherit;
-    font-size: 1rem;
+    font-size: 1em;
     cursor: pointer;
 }
 /* Lock/mute toggles — derive states from theme semantic colors. */
@@ -779,7 +774,7 @@
     border-radius: 0.2857rem;
     color: var(--panel-text);
     opacity: 0.55;
-    font-size: 0.7857rem;
+    font-size: 0.7857em;
     cursor: pointer;
     padding: 2px 0.2857rem;
     transition: all 0.15s;
@@ -804,19 +799,19 @@
    "A≠V" badge whose meaning lived in a title attribute -- which is a tooltip,
    and a touch panel has no pointer to hover one with. */
 .matrix-audio-source {
-    font-size: 0.7143rem;
+    font-size: 0.7143em;
     color: var(--panel-warning, #d4a017);
     margin-left: 0.2857rem;
-    line-height: 1rem;
+    line-height: 1.4;
 }
 /* And what the DEVICE says is routed, when it is not one of the sources listed.
    Same warning colour, because both are "this is not what the page describes". */
 .matrix-unlisted {
-    font-size: 0.7143rem;
+    font-size: 0.7143em;
     font-style: italic;
     color: var(--panel-warning, #d4a017);
     margin-left: 0.2857rem;
-    line-height: 1rem;
+    line-height: 1.4;
 }
 /* Presets — one strip that scrolls sideways, for the same reason the legend is
    (see .matrix-legend): wrapped rows come out of the grid's height, and a bar
@@ -839,7 +834,7 @@
     border: 1px solid var(--panel-button-border);
     background: var(--panel-button-bg);
     color: var(--panel-button-text);
-    font-size: 0.7857rem;
+    font-size: 0.7857em;
     cursor: pointer;
     transition: background 0.15s, filter 0.15s;
 }
@@ -968,8 +963,13 @@
     flex-direction: column;
     justify-content: space-between;
     position: relative;
-    width: 2rem;
+    /* As wide as three of its own digits need, so it follows the text: 2rem
+       held "100" at the old 9px marks and cut it in half at 18px. */
+    width: 1.5em;
     flex-shrink: 0;
+    /* The same half-handle margin as the track wrap below, so a mark at 0%
+       and 100% stays level with the handle's centre at min and max. */
+    margin: 1.5714rem 0;
 }
 .panel-fader .fader-mark {
     font-size: 0.65em;
@@ -988,6 +988,14 @@
     justify-content: center;
     cursor: pointer;
     touch-action: none;
+    /* The handle is centred on the wrap's edge at min and max, so half of it
+       hangs past the wrap. MARGIN, not padding: the handle positions against
+       the padding box, so padding only moved the track and left the overhang
+       where it was -- on top of the label above and the readout below, which
+       at the old 12px readout hid the "%" behind the handle and at 24px hides
+       the number. The drag maths reads the wrap's own rect, so the handle's
+       0..100% and the finger's agree with or without the margin. */
+    margin: 1.5714rem 0;
 }
 .panel-fader .fader-track {
     width: 0.4286rem;
@@ -1039,9 +1047,12 @@
 }
 .panel-fader.horizontal .fader-scale {
     flex-direction: row;
-    width: 100%;
-    height: 1.1429rem;
+    width: auto;
+    /* Tall enough for a mark's own line box (0.65em of the fader, plus the
+       2px it sits down from the top); 1.1429rem was for 9px marks. */
+    height: 1.25em;
     justify-content: space-between;
+    margin: 0 1.5714rem;
 }
 .panel-fader.horizontal .fader-mark {
     right: auto;
@@ -1052,10 +1063,12 @@
 }
 .panel-fader.horizontal .fader-track-wrap {
     flex-direction: row;
-    width: 100%;
+    width: auto;
     align-items: center;
     justify-content: flex-start;
-    padding: 0 1.5714rem;
+    /* Margin for the same reason as the vertical wrap: as padding, the handle
+       at 0% was centred on the control's edge and clipped by it. */
+    margin: 0 1.5714rem;
 }
 .panel-fader.horizontal .fader-track {
     width: 100%;
@@ -1079,7 +1092,9 @@
 }
 .panel-group .group-label {
     position: absolute;
-    font-size: inherit;
+    /* A caption on a region, set smaller than the controls inside it; still a
+       proportion of the group's text size, so an authored font_size moves it. */
+    font-size: 0.75em;
     color: inherit;
     opacity: 0.55;
     text-transform: uppercase;
@@ -1123,9 +1138,15 @@
     font-family: 'Courier New', monospace;
     text-align: right;
     color: inherit;
-    min-height: 2rem;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
+}
+/* An empty display is as tall as a full one. Without a line box it fell to a
+   min-height sized for the old 18px digits, and the whole key grid jumped
+   down when the first digit landed. A zero-width space is a line box and
+   nothing else: no text the keypad's own code has to know about. */
+.panel-keypad .keypad-display::after {
+    content: 'B';
 }
 .panel-keypad .keypad-grid {
     display: grid;
@@ -1144,7 +1165,7 @@
     color: var(--panel-button-text);
     border: 1px solid var(--panel-button-border);
     border-radius: 0.4286rem;
-    font-size: 1.2857rem;
+    font-size: 1.2857em;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s, filter 0.15s;

@@ -92,7 +92,9 @@ def _make_project():
             ], layouts=[Layout(id="landscape", orientation="landscape", primary=True, placements={
                 "btn_on": Placement(x=0.625, y=1.0, w=15.9375, h=11.375),
                 "btn_off": Placement(x=17.1875, y=1.0, w=15.9375, h=11.375),
-                "vol_slider": Placement(x=0.625, y=26.5, w=48.4375, h=11.375),
+                # 12.5% is 100px on the reference: a horizontal slider is a
+                # 28px label over a 44px thumb, and its floor is 98.
+                "vol_slider": Placement(x=0.625, y=26.5, w=48.4375, h=12.5),
             })]),
             UIPage(id="settings", name="Settings", elements=[]),
         ]),

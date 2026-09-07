@@ -43,11 +43,14 @@ disagree the larger wins.
 
 Seven of the floors below are consequently a pixel or two above what this
 machine measures, and are marked where they sit: ``fader``, ``slider``,
-``list``, ``level_meter``, ``keypad``, ``select`` and ``text_input`` are the
-Playwright container's numbers rather than the ones a dev box or the CI runner
-reports. Re-measuring one of those locally and tightening it to what came back
-is how they go short again -- the machine that needs the extra pixel is not the
-one you are on, and it will not be the one that notices.
+``list``, ``level_meter``, ``keypad``, ``select`` and ``text_input`` carry the
+allowance the Playwright container first showed over a dev box (two pixels on
+the fader, one on the rest). When the panel's text default moved they were
+re-measured on a Windows box and that allowance was kept rather than
+re-derived; the container leg says so if it needs more. Re-measuring one of
+those locally and tightening it to what came back is how they go short again
+-- the machine that needs the extra pixel is not the one you are on, and it
+will not be the one that notices.
 
 What stops "largest" from sliding into "add ten and stop thinking" is
 ``TIGHTNESS_SLACK_PX`` in the e2e test: it tolerates the disagreement that has
@@ -69,13 +72,17 @@ Two kinds of number live here, and the difference matters when one changes:
                 the 20px dot, the 44px fader handle, the 28px scale column,
                 the 2px meter segment. These move only when someone edits
                 that constant.
-  * font-driven the size falls out of the theme's font size plus padding:
-                a keypad key, a select's native control. There is no declared
-                floor for these, so the value below is what the DEFAULT theme
-                produces. They are still here -- a keypad is the second-largest
-                trap on the list and leaving it out would be worse -- but a
-                theme with a larger font moves them, and the test is what
-                catches that rather than a promise in a comment.
+  * font-driven the size falls out of the panel's text default plus padding:
+                a keypad key, a select's native control, a fader's scale
+                column, a matrix tile. That default is one token,
+                ``--panel-font-size`` in panel-elements.css, and every text
+                inside a control is em of it, so there is no declared floor
+                for these: the value below is what the default produces in the
+                default theme's font family. They are still here -- a keypad is
+                the second-largest trap on the list and leaving it out would be
+                worse -- but an element's own ``font_size``, a theme's font
+                family or a change to the token moves them, and the test is
+                what catches that rather than a promise in a comment.
 """
 
 from __future__ import annotations
@@ -175,10 +182,10 @@ def _blame(internals: tuple[FixedInternal, ...], axis: str) -> str:
 
 _DOT = FixedInternal("led-dot", 20, 20, "declared", "panel-elements.css .led-dot 1.4286rem")
 _HANDLE = FixedInternal("fader-handle", 44, 44, "declared", "panel-elements.css .fader-handle 3.1429rem")
-_SCALE = FixedInternal("fader-scale", 28, None, "declared", "panel-elements.css .fader-scale 2rem")
+_SCALE = FixedInternal("fader-scale", 42, None, "font-driven", "panel-elements.css .fader-scale 1.5em of the fader's text")
 _SEGMENT = FixedInternal("meter-segment", None, 2, "declared", "panel-elements.css .meter-segment min-height")
-_KEY = FixedInternal("keypad-key", None, 36, "font-driven", "panel-elements.css .keypad-key font-size 1.2857rem + padding")
-_CONTROL = FixedInternal("native control", None, 30, "font-driven", "panel-elements.css select/input padding + inherited font")
+_KEY = FixedInternal("keypad-key", None, 36, "font-driven", "panel-elements.css .keypad-key 1.2857em of the keypad's text, line-height 1")
+_CONTROL = FixedInternal("native control", None, 46, "font-driven", "panel-elements.css select/input padding + the element's text")
 
 
 def _has_caption(element: Mapping[str, Any]) -> bool:
@@ -389,23 +396,23 @@ class MinimumRule:
 # is one row tall whatever the names are, and scrolls sideways.
 _MATRIX_LIST = MinimumRule(
     148, 9,
-    (FixedInternal("matrix-list-row", None, 28, "font-driven",
-                   "panel-elements.css .matrix-list-select padding + inherited font"),),
+    (FixedInternal("matrix-list-row", None, 42, "font-driven",
+                   "panel-elements.css .matrix-list-select padding + 0.9em of the matrix's text"),),
     repeated=(
         RepeatedInternal(
-            "matrix-list-row", 28, 6, "destinations", "matrix_config", 0, "height",
+            "matrix-list-row", 42, 6, "destinations", "matrix_config", 0, "height",
             origin="font-driven",
             source="panel-elements.css .matrix-list gap 0.4286rem + row height",
         ),
     ),
     conditionals=(
-        ConditionalPart("matrix-label", "height", 23, "label", "font-driven",
+        ConditionalPart("matrix-label", "height", 40, "label", "font-driven",
                         "panel-elements.css .panel-matrix gap + .matrix-label line box"),
-        ConditionalPart("matrix-presets", "height", 36, "presets", "font-driven",
+        ConditionalPart("matrix-presets", "height", 50, "presets", "font-driven",
                         "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
-        ConditionalPart("matrix-lock-btn", "width", 32, "lock_column", "font-driven",
+        ConditionalPart("matrix-lock-btn", "width", 49, "lock_column", "font-driven",
                         "panel-elements.css .matrix-lock-btn + .matrix-list-row gap"),
-        ConditionalPart("matrix-mute-btn", "width", 28, "mute_column", "font-driven",
+        ConditionalPart("matrix-mute-btn", "width", 37, "mute_column", "font-driven",
                         "panel-elements.css .matrix-mute-btn + .matrix-list-row gap"),
     ),
     note="A list matrix is one dropdown per destination, so its width does not "
@@ -425,24 +432,29 @@ _MATRIX_TILES = MinimumRule(
     # INSIDE a tile as glyphs rather than taking a column, so neither is a
     # conditional here.
     10, 10,
-    (FixedInternal("matrix-tile", 120, 64, "declared",
-                   "panel.js MATRIX_TILE_MIN_W_PX / MATRIX_TILE_MIN_H_PX"),),
+    # A tile's floor is em of the matrix's text (panel.js), because a tile is
+    # two lines of that text: 4.2857em by 3.25em, which at the default text
+    # size is the 120x91 recorded here.
+    (FixedInternal("matrix-tile", 120, 91, "font-driven",
+                   "panel.js MATRIX_TILE_MIN_W_EM / MATRIX_TILE_MIN_H_EM at the default text size"),),
     repeated=(
         RepeatedInternal(
             "matrix-tile", 120, 6, "destinations", "matrix_config", 0, "width",
-            source="panel.js MATRIX_TILE_MIN_W_PX + .matrix-tiles gap",
+            origin="font-driven",
+            source="panel.js MATRIX_TILE_MIN_W_EM + .matrix-tiles gap",
             layout="grid_columns",
         ),
         RepeatedInternal(
-            "matrix-tile", 64, 6, "destinations", "matrix_config", 0, "height",
-            source="panel.js MATRIX_TILE_MIN_H_PX + .matrix-tiles gap",
+            "matrix-tile", 91, 6, "destinations", "matrix_config", 0, "height",
+            origin="font-driven",
+            source="panel.js MATRIX_TILE_MIN_H_EM + .matrix-tiles gap",
             layout="grid_rows",
         ),
     ),
     conditionals=(
-        ConditionalPart("matrix-label", "height", 23, "label", "font-driven",
+        ConditionalPart("matrix-label", "height", 40, "label", "font-driven",
                         "panel-elements.css .panel-matrix gap + .matrix-label line box"),
-        ConditionalPart("matrix-presets", "height", 36, "presets", "font-driven",
+        ConditionalPart("matrix-presets", "height", 50, "presets", "font-driven",
                         "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
     ),
     note="ONE list across both axes: a tile per destination, and the sources "
@@ -458,16 +470,18 @@ _MATRIX_TILES = MinimumRule(
 
 _MATRIX_CROSSPOINT = MinimumRule(
     # 95 of that width is the element's padding, the grid gaps and the 80px
-    # destination-name column (panel.js MATRIX_LABEL_MIN_PX); 63 of the height
-    # is padding, gaps and the 25px column-number row
-    # (.matrix-input-header min-height 1.7857rem). BOTH of those are declared
-    # rather than left to their content, and for the same reason: .matrix-header
-    # sets `overflow: hidden`, which makes a grid track's min-content ZERO. The
-    # name column started at its 12px of padding and then took an equal share of
-    # the spare room alongside eight cell tracks -- so "Main LCD" drew as "M"
-    # even in a box with room to spare -- and the number row compressed to 8px
-    # and cut the digits in half at exactly the size this file calls the minimum.
-    95, 63,
+    # destination-name column (panel.js MATRIX_LABEL_MIN_PX); 84 of the height
+    # is padding, gaps, the column-number row and the one-line source legend.
+    # The name column and the number row's floor are DECLARED rather than left
+    # to their content, and for the same reason: .matrix-header sets
+    # `overflow: hidden`, which makes a grid track's min-content ZERO. The name
+    # column started at its 12px of padding and then took an equal share of the
+    # spare room alongside eight cell tracks -- so "Main LCD" drew as "M" even
+    # in a box with room to spare -- and the number row compressed to 8px and
+    # cut the digits in half at exactly the size this file calls the minimum.
+    # The number row (min-height max(1.7857rem, 1.25em), 30px at the default
+    # text) and the legend (33px at it) are what the text default moves.
+    95, 84,
     (FixedInternal("matrix-cell", 44, 44, "declared", "panel.js MATRIX_CELL_MIN_PX"),),
     repeated=(
         RepeatedInternal(
@@ -482,9 +496,9 @@ _MATRIX_CROSSPOINT = MinimumRule(
         ),
     ),
     conditionals=(
-        ConditionalPart("matrix-label", "height", 23, "label", "font-driven",
+        ConditionalPart("matrix-label", "height", 40, "label", "font-driven",
                         "panel-elements.css .panel-matrix gap + .matrix-label line box"),
-        ConditionalPart("matrix-presets", "height", 36, "presets", "font-driven",
+        ConditionalPart("matrix-presets", "height", 50, "presets", "font-driven",
                         "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
         ConditionalPart("lock column", "width", 45, "lock_column", "declared",
                         "panel.js renderMatrix extraColDefs + .matrix-grid gap"),
@@ -495,7 +509,7 @@ _MATRIX_CROSSPOINT = MinimumRule(
     styles={"list": _MATRIX_LIST, "tiles": _MATRIX_TILES},
     style_default="crosspoint",
     note="A function of the counts, which is the whole point of it: 95 + "
-         "sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall, plus "
+         "sources x (cell + 1) wide, 84 + destinations x (cell + 1) tall, plus "
          "the lock and mute columns and the element's own label row. The cell is "
          "44 -- the touch floor it will not go below, whatever room it is "
          "given -- unless style.cell_size authors another size, in which case "
@@ -518,38 +532,37 @@ RULES: dict[str, MinimumRule] = {
              "sliver of text, so a labelled LED needs 29 before any of the "
              "caption is legible; how much more is content, not a minimum.",
     ),
-    "fader": MinimumRule(72, 102, (_HANDLE, _SCALE)),  # +2 (container)
-    "slider": MinimumRule(  # +1 (container)
-        24, 38,
+    "fader": MinimumRule(88, 177, (_HANDLE, _SCALE)),  # +2 (container)
+    "slider": MinimumRule(  # +1 tall (container)
+        24, 55,
         scales_with=ScalingInternal(
             "slider thumb", "thumb_size", 44.0, 1.0, 1.0,
             "panel.js:1696 / --thumb-size (a ::-webkit-slider-thumb pseudo-element)",
             from_theme=True,
         ),
     ),
-    "list": MinimumRule(  # +1 (container)
-        28, 34,
+    "list": MinimumRule(  # +1 tall (container)
+        28, 51,
         scales_with=ScalingInternal(
             "list-item", "item_height", 44.0, 0.0, 1.0, "panel.js:2099 item_height",
         ),
         note="Row height does not change how wide a list has to be.",
     ),
     "matrix": _MATRIX_CROSSPOINT,
-    "level_meter": MinimumRule(13, 81, (_SEGMENT,)),  # +1 (container)
-    "keypad": MinimumRule(  # +1 tall (container)
-        86, 222, (_KEY,),
-        note="86 wide rather than the 84 first recorded. The enter key's glyph "
+    "level_meter": MinimumRule(13, 98, (_SEGMENT,)),  # +1 tall (container)
+    "keypad": MinimumRule(  # +2 wide, +1 tall (container)
+        100, 266, (_KEY,),
+        note="100 wide rather than the 98 measured here. The enter key's glyph "
              "is wider than a digit, so the grid's three equal columns stop "
              "being equal -- that column takes the room it needs and the two "
              "digit columns divide what is left, which is what actually gets "
-             "crushed. How much it needs depends on the font, so this is the "
-             "widest of the machines measured: 84 is right where that glyph is "
-             "narrow and two pixels short where it is not. A keypad can never "
-             "floor below 84 on any machine, because that is where three equal "
-             "columns reach 20px.",
+             "crushed. How much it needs depends on the font, so the two "
+             "pixels are the allowance the first measurement showed between "
+             "machines: 84 was right where that glyph was narrow and two short "
+             "where it was not, at the 18px digits the keys used to draw.",
     ),
-    "select": MinimumRule(44, 52, (_CONTROL,)),  # +1 (container)
-    "text_input": MinimumRule(44, 52, (_CONTROL,)),  # +1 (container)
+    "select": MinimumRule(44, 84, (_CONTROL,)),  # +1 tall (container)
+    "text_input": MinimumRule(44, 85, (_CONTROL,)),  # +1 tall (container)
 }
 
 

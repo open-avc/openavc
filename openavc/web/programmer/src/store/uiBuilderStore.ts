@@ -49,6 +49,13 @@ interface UIBuilderStore {
    *  data, but it lives here rather than in the panel so it survives switching
    *  to the palette tab and back. */
   collapsedOutlineIds: string[];
+  /** The size the panel canvas draws each element's text at before the
+   *  element's own font_size, in rem, by element id. The panel iframe posts it
+   *  after every render (`openavc:editor-text-defaults`) and the Style panel
+   *  shows it as the Font Size placeholder. It is the ONLY source the Builder
+   *  has for that number: the panel's default is one CSS token, and a copy of
+   *  it here is exactly the drift this replaced. */
+  textDefaultsRem: Record<string, number>;
 
   selectPage: (id: string | null) => void;
   selectLayout: (layoutId: string | null) => void;
@@ -83,6 +90,7 @@ interface UIBuilderStore {
   setPaletteDragPreview: (
     preview: UIBuilderStore["paletteDragPreview"],
   ) => void;
+  setTextDefaultsRem: (textDefaultsRem: Record<string, number>) => void;
   toggleLock: (elementId: string) => void;
   toggleOutlineCollapse: (elementId: string) => void;
 }
@@ -107,6 +115,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   activeDragSource: null,
   paletteDragPreview: null,
   collapsedOutlineIds: [],
+  textDefaultsRem: {},
 
   // Switching pages drops back to the primary layout: a layout id belongs to
   // one page, so carrying it across would point at nothing.
@@ -255,6 +264,8 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   setActiveDragSource: (activeDragSource) => set({ activeDragSource }),
 
   setPaletteDragPreview: (paletteDragPreview) => set({ paletteDragPreview }),
+
+  setTextDefaultsRem: (textDefaultsRem) => set({ textDefaultsRem }),
 
   // Lock lives in the project, not here: a lock that evaporates on reload is
   // worse than none, because you only find out after something has moved.

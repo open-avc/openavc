@@ -133,8 +133,8 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": "Dot is 20 and never shrinks. A caption adds an 8px gap plus a sliver of text, so a labelled LED needs 29 before any of the caption is legible; how much more is content, not a minimum."
   },
   "fader": {
-    "baseWidthPx": 72,
-    "baseHeightPx": 102,
+    "baseWidthPx": 88,
+    "baseHeightPx": 177,
     "internals": [
       {
         "part": "fader-handle",
@@ -145,10 +145,10 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       },
       {
         "part": "fader-scale",
-        "widthPx": 28,
+        "widthPx": 42,
         "heightPx": null,
-        "origin": "declared",
-        "source": "panel-elements.css .fader-scale 2rem"
+        "origin": "font-driven",
+        "source": "panel-elements.css .fader-scale 1.5em of the fader's text"
       }
     ],
     "scalesWith": null,
@@ -162,7 +162,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "slider": {
     "baseWidthPx": 24,
-    "baseHeightPx": 38,
+    "baseHeightPx": 55,
     "internals": [],
     "scalesWith": {
       "part": "slider thumb",
@@ -183,7 +183,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "list": {
     "baseWidthPx": 28,
-    "baseHeightPx": 34,
+    "baseHeightPx": 51,
     "internals": [],
     "scalesWith": {
       "part": "list-item",
@@ -204,7 +204,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "matrix": {
     "baseWidthPx": 95,
-    "baseHeightPx": 63,
+    "baseHeightPx": 84,
     "internals": [
       {
         "part": "matrix-cell",
@@ -248,7 +248,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       {
         "part": "matrix-label",
         "axis": "height",
-        "sizePx": 23,
+        "sizePx": 40,
         "when": "label",
         "origin": "font-driven",
         "source": "panel-elements.css .panel-matrix gap + .matrix-label line box"
@@ -256,7 +256,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       {
         "part": "matrix-presets",
         "axis": "height",
-        "sizePx": 36,
+        "sizePx": 50,
         "when": "presets",
         "origin": "font-driven",
         "source": "panel-elements.css .matrix-presets padding + .matrix-preset-btn"
@@ -287,9 +287,9 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-list-row",
             "widthPx": null,
-            "heightPx": 28,
+            "heightPx": 42,
             "origin": "font-driven",
-            "source": "panel-elements.css .matrix-list-select padding + inherited font"
+            "source": "panel-elements.css .matrix-list-select padding + 0.9em of the matrix's text"
           }
         ],
         "scalesWith": null,
@@ -297,7 +297,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "repeated": [
           {
             "part": "matrix-list-row",
-            "sizePx": 28,
+            "sizePx": 42,
             "gapPx": 6,
             "countKey": "destinations",
             "countIn": "matrix_config",
@@ -313,7 +313,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-label",
             "axis": "height",
-            "sizePx": 23,
+            "sizePx": 40,
             "when": "label",
             "origin": "font-driven",
             "source": "panel-elements.css .panel-matrix gap + .matrix-label line box"
@@ -321,7 +321,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-presets",
             "axis": "height",
-            "sizePx": 36,
+            "sizePx": 50,
             "when": "presets",
             "origin": "font-driven",
             "source": "panel-elements.css .matrix-presets padding + .matrix-preset-btn"
@@ -329,7 +329,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-lock-btn",
             "axis": "width",
-            "sizePx": 32,
+            "sizePx": 49,
             "when": "lock_column",
             "origin": "font-driven",
             "source": "panel-elements.css .matrix-lock-btn + .matrix-list-row gap"
@@ -337,7 +337,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-mute-btn",
             "axis": "width",
-            "sizePx": 28,
+            "sizePx": 37,
             "when": "mute_column",
             "origin": "font-driven",
             "source": "panel-elements.css .matrix-mute-btn + .matrix-list-row gap"
@@ -355,9 +355,9 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-tile",
             "widthPx": 120,
-            "heightPx": 64,
-            "origin": "declared",
-            "source": "panel.js MATRIX_TILE_MIN_W_PX / MATRIX_TILE_MIN_H_PX"
+            "heightPx": 91,
+            "origin": "font-driven",
+            "source": "panel.js MATRIX_TILE_MIN_W_EM / MATRIX_TILE_MIN_H_EM at the default text size"
           }
         ],
         "scalesWith": null,
@@ -372,21 +372,21 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
             "defaultCount": 0,
             "axis": "width",
             "sizeProperty": "",
-            "origin": "declared",
-            "source": "panel.js MATRIX_TILE_MIN_W_PX + .matrix-tiles gap",
+            "origin": "font-driven",
+            "source": "panel.js MATRIX_TILE_MIN_W_EM + .matrix-tiles gap",
             "layout": "grid_columns"
           },
           {
             "part": "matrix-tile",
-            "sizePx": 64,
+            "sizePx": 91,
             "gapPx": 6,
             "countKey": "destinations",
             "countIn": "matrix_config",
             "defaultCount": 0,
             "axis": "height",
             "sizeProperty": "",
-            "origin": "declared",
-            "source": "panel.js MATRIX_TILE_MIN_H_PX + .matrix-tiles gap",
+            "origin": "font-driven",
+            "source": "panel.js MATRIX_TILE_MIN_H_EM + .matrix-tiles gap",
             "layout": "grid_rows"
           }
         ],
@@ -394,7 +394,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-label",
             "axis": "height",
-            "sizePx": 23,
+            "sizePx": 40,
             "when": "label",
             "origin": "font-driven",
             "source": "panel-elements.css .panel-matrix gap + .matrix-label line box"
@@ -402,7 +402,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-presets",
             "axis": "height",
-            "sizePx": 36,
+            "sizePx": 50,
             "when": "presets",
             "origin": "font-driven",
             "source": "panel-elements.css .matrix-presets padding + .matrix-preset-btn"
@@ -415,11 +415,11 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
       }
     },
     "styleDefault": "crosspoint",
-    "note": "A function of the counts, which is the whole point of it: 95 + sources x (cell + 1) wide, 63 + destinations x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number."
+    "note": "A function of the counts, which is the whole point of it: 95 + sources x (cell + 1) wide, 84 + destinations x (cell + 1) tall, plus the lock and mute columns and the element's own label row. The cell is 44 -- the touch floor it will not go below, whatever room it is given -- unless style.cell_size authors another size, in which case the slope moves with it and stays exact. Everything that is TEXT is declared rather than measured from the text: the name column keeps 80px and ellipsises past it, the source legend is one strip that scrolls sideways rather than a block that wraps, and so is the preset bar. Otherwise every one of them would put somebody's typing in this number."
   },
   "level_meter": {
     "baseWidthPx": 13,
-    "baseHeightPx": 81,
+    "baseHeightPx": 98,
     "internals": [
       {
         "part": "meter-segment",
@@ -439,15 +439,15 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": ""
   },
   "keypad": {
-    "baseWidthPx": 86,
-    "baseHeightPx": 222,
+    "baseWidthPx": 100,
+    "baseHeightPx": 266,
     "internals": [
       {
         "part": "keypad-key",
         "widthPx": null,
         "heightPx": 36,
         "origin": "font-driven",
-        "source": "panel-elements.css .keypad-key font-size 1.2857rem + padding"
+        "source": "panel-elements.css .keypad-key 1.2857em of the keypad's text, line-height 1"
       }
     ],
     "scalesWith": null,
@@ -457,18 +457,18 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "styleProperty": "",
     "styles": {},
     "styleDefault": "",
-    "note": "86 wide rather than the 84 first recorded. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so this is the widest of the machines measured: 84 is right where that glyph is narrow and two pixels short where it is not. A keypad can never floor below 84 on any machine, because that is where three equal columns reach 20px."
+    "note": "100 wide rather than the 98 measured here. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so the two pixels are the allowance the first measurement showed between machines: 84 was right where that glyph was narrow and two short where it was not, at the 18px digits the keys used to draw."
   },
   "select": {
     "baseWidthPx": 44,
-    "baseHeightPx": 52,
+    "baseHeightPx": 84,
     "internals": [
       {
         "part": "native control",
         "widthPx": null,
-        "heightPx": 30,
+        "heightPx": 46,
         "origin": "font-driven",
-        "source": "panel-elements.css select/input padding + inherited font"
+        "source": "panel-elements.css select/input padding + the element's text"
       }
     ],
     "scalesWith": null,
@@ -482,14 +482,14 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "text_input": {
     "baseWidthPx": 44,
-    "baseHeightPx": 52,
+    "baseHeightPx": 85,
     "internals": [
       {
         "part": "native control",
         "widthPx": null,
-        "heightPx": 30,
+        "heightPx": 46,
         "origin": "font-driven",
-        "source": "panel-elements.css select/input padding + inherited font"
+        "source": "panel-elements.css select/input padding + the element's text"
       }
     ],
     "scalesWith": null,

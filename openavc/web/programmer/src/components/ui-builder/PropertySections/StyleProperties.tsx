@@ -216,17 +216,18 @@ export function StyleProperties({
               e.target.value ? Number(e.target.value) : undefined,
             )
           }
-          placeholder={shownDefault("font_size") || "28"}
+          placeholder={shownDefault("font_size")}
           min={8}
           max={72}
           style={{ width: 64, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
         />
-        {/* Presets, centred on the 28px default rather than below it: the old
-            ladder ran 12-28, so four of its six rungs were at or under a
-            default that has since doubled and the useful sizes were the two on
-            the end. They are also a real click target now -- at 2px/4px of
-            padding around 10px text each one was about 20x15, which is fiddly
-            on a trackpad and the reason they got reached for by typing. */}
+        {/* Presets bracket the panel's default (the placeholder above, read
+            from the canvas) rather than sitting under it: the old ladder ran
+            12-28 against a default that has since doubled, so four of its six
+            rungs were sizes nobody wanted. They are also a real click target
+            now -- at 2px/4px of padding around 10px text each one was about
+            20x15, which is fiddly on a trackpad and the reason they got reached
+            for by typing. */}
         <div style={{ display: "flex", gap: 3 }}>
           {[20, 24, 28, 36, 48, 64].map((size) => (
             <button

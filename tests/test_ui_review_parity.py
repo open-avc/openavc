@@ -870,7 +870,7 @@ CASES["portrait"] = _project([
             "p_btn_ok": _pct_box(60, 0, 30, 10),
             "p_led": _p_box(0, 15, 60, 44),
             "p_wall": _pct_box(0, 25, 50, 20),
-            "p_wall_ok": _pct_box(0, 50, 50, 30),
+            "p_wall_ok": _pct_box(0, 50, 50, 35),
         })],
     ),
 ])
@@ -1722,7 +1722,7 @@ def test_a_portrait_arrangement_is_measured_against_portrait_glass(verdicts) -> 
     Both halves are named. The reference box: 5% of an 800px width is 40px and
     under the finger rule, where the same 5% of 1280 is 64px and passes. And the
     tile wall's shape: eight destinations are 2x4 here rather than 4x2, so the
-    floor is 262x290 instead of 514x150 and a 400x256px box is under it -- the
+    floor is 262x398 instead of 514x203 and a 400x256px box is under it -- the
     same box that clears the landscape floor comfortably.
     """
     python_side, builder_side = verdicts["portrait"]
@@ -1740,8 +1740,8 @@ def test_a_portrait_arrangement_is_measured_against_portrait_glass(verdicts) -> 
     assert by_id["p_wall"]["kind"] == "too_small_for_contents"
     assert by_id["p_wall"]["message"] == (
         "p_wall (matrix) is 400x256px at the 800x1280 reference, too small for what "
-        "it draws: 256px tall, needs 290px (matrix-tile is 64px). Give it h at least "
-        "22.66% of the page."
+        "it draws: 256px tall, needs 398px (matrix-tile is 91px). Give it h at least "
+        "31.09% of the page."
     )
 
 

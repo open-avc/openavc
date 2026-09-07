@@ -62,6 +62,24 @@ interface PropertiesPanelProps {
   onOpenStylesheet?: () => void;
 }
 
+/**
+ * The theme's defaults for an element's type, with the text size the panel
+ * canvas actually drew that element at standing in for font_size.
+ *
+ * The theme never carries a font size and the Builder holds no default of its
+ * own; the panel reports what its stylesheet resolved to, per element, after
+ * every render (uiBuilderStore.textDefaultsRem). Until the first report lands
+ * the key is simply absent and the Font Size box shows no placeholder, which
+ * is honest: it does not know yet.
+ */
+function withTextDefault(
+  defaults: Record<string, unknown> | undefined,
+  textRem: number | undefined,
+): Record<string, unknown> | undefined {
+  if (textRem == null) return defaults;
+  return { ...(defaults ?? {}), font_size: textRem };
+}
+
 export function PropertiesPanel({
   element,
   selectedElementIds,
@@ -84,6 +102,12 @@ export function PropertiesPanel({
   // one happens to be primary. Read before the early returns below so the hook
   // order never changes.
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
+  // What the panel canvas drew each element's text at, before any font_size of
+  // its own. The stored object itself, not a fresh one per render.
+  const textDefaultsRem = useUIBuilderStore((s) => s.textDefaultsRem);
+  const styleDefaults = element
+    ? withTextDefault(themeDefaults?.[element.type], textDefaultsRem[element.id])
+    : undefined;
   // What the project stylesheet defines, so the Style section can offer its
   // classes instead of asking the author to remember them.
   const stylesheetClasses = stylesheetClassNames(project?.ui?.custom_css);
@@ -133,7 +157,11 @@ export function PropertiesPanel({
     // may be different types) resolves to the same default — otherwise there's
     // no single effective value to show as a placeholder.
     const getCommonThemeDefault = (prop: string): unknown => {
-      const defs = selectedElements.map((el) => themeDefaults?.[el.type]?.[prop]);
+      const defs = selectedElements.map((el) =>
+        prop === "font_size" && textDefaultsRem[el.id] != null
+          ? textDefaultsRem[el.id]
+          : themeDefaults?.[el.type]?.[prop],
+      );
       const first = defs[0];
       return defs.every((d) => d === first) ? first : undefined;
     };
@@ -358,8 +386,8 @@ export function PropertiesPanel({
 
       <Section title="Style" defaultOpen>
         {/* Theme override indicator (12.7) */}
-        {themeDefaults?.[element.type] && (() => {
-          const td = themeDefaults[element.type];
+        {styleDefaults && (() => {
+          const td = styleDefaults;
           const overrideKeys = Object.keys(td).filter(
             (k) => element.style[k] != null && element.style[k] !== td[k]
           );
@@ -395,7 +423,7 @@ export function PropertiesPanel({
         <StyleProperties
           element={element}
           onChange={handleChange}
-          themeDefaults={themeDefaults?.[element.type]}
+          themeDefaults={styleDefaults}
           stylesheetClasses={stylesheetClasses}
           customCss={project?.ui?.custom_css ?? ""}
           onOpenStylesheet={onOpenStylesheet}
@@ -441,6 +469,7 @@ function MasterElementProperties({
   // — so the arrangement being authored on this page is what says which key an
   // edit lands on.
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
+  const textDefaultRem = useUIBuilderStore((s) => s.textDefaultsRem[masterElement.id]);
   const masterOrientation = layoutOrientation(page, activeLayoutId);
   const pagesValue = masterElement.pages;
   const isAllPages = pagesValue === "*";
@@ -556,7 +585,7 @@ function MasterElementProperties({
         <StyleProperties
           element={masterElement}
           onChange={handleElementChange}
-          themeDefaults={themeDefaults?.[masterElement.type]}
+          themeDefaults={withTextDefault(themeDefaults?.[masterElement.type], textDefaultRem)}
           stylesheetClasses={stylesheetClasses}
           customCss={project?.ui?.custom_css ?? ""}
           onOpenStylesheet={onOpenStylesheet}
