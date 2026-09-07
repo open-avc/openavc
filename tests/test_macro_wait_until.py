@@ -159,6 +159,48 @@ async def test_wait_until_timeout_fail_continues_without_stop_on_error(engine, s
     assert state.get("var.done") is True
 
 
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("description, expected", [
+    (None, "The requested status was not reached in time. Check the system and try again."),
+    ("  ", "The requested status was not reached in time. Check the system and try again."),
+    ("Waiting for the display.", "Timed out: Waiting for the display. Check the system and try again."),
+])
+async def test_wait_timeout_panel_message(engine, state, events, nested, description, expected):
+    """An unmet condition is not a device transport failure, including inside a subroutine."""
+    errors = []
+
+    async def capture(_event, data):
+        errors.append(data)
+
+    events.on("macro.step_error.*", capture)
+    state.set("var.ready", False)
+    state.set("var.done", False)
+    wait = {
+        "action": "wait_until",
+        "description": description,
+        "condition": {"key": "var.ready", "operator": "eq", "value": True},
+        "timeout": 0.01,
+        "on_timeout": "fail",
+    }
+    engine.load_macros([
+        {"id": "wait", "name": "Wait", "stop_on_error": True, "steps": [wait]},
+        {
+            "id": "start", "name": "Start", "stop_on_error": True,
+            "steps": [
+                {"action": "macro", "macro": "wait"} if nested else wait,
+                {"action": "state.set", "key": "var.done", "value": True},
+            ],
+        },
+    ])
+
+    assert await engine.execute("start") == "failed"
+    assert state.get("var.done") is False
+    assert errors[0]["message"] == expected
+    assert "wait_until timed out" in errors[0]["error"]
+    assert "var.ready" in errors[0]["error"]
+    assert "start" in errors[0]["call_chain"]
+
+
 async def test_wait_until_timeout_continue(engine, state):
     """on_timeout=continue: no error raised, sequence continues."""
     state.set("var.ready", False)

@@ -778,6 +778,15 @@ class MacroEngine:
         direct press failure are the same failure and must not read two
         different ways because of which control ran them.
         """
+        if step.get("action") == "wait_until" and isinstance(exc, TimeoutError):
+            # This timer watches a condition, which may be a variable rather
+            # than device feedback. It does not establish a connection failure.
+            description = str(step.get("description") or "").strip().rstrip(".")
+            message = (
+                f"Timed out: {description}." if description
+                else "The requested status was not reached in time."
+            )
+            return f"{message} Check the system and try again."
         return self._device_error_message(str(step.get("device") or ""), exc)
 
     def _device_error_message(self, device_id: str, exc: Exception) -> str:

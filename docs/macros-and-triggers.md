@@ -100,6 +100,12 @@ Fields:
 - **Timeout** — seconds to wait before giving up. Check **Never time out** to wait indefinitely.
 - **If timeout** — when a timeout fires, either **Fail the macro** (default) or **Continue anyway**. Failing is the safer default for hardware waits, since the next step is usually something that depends on the device being ready.
 
+Give the step a description that makes sense to the person using the panel, such
+as “Waiting for the display to turn on.” If the wait fails, the panel's failure
+message includes that description. Without one, it says the requested status was
+not reached in time. A wait timeout does not by itself prove a network failure;
+the condition and timing details remain in the Programmer's diagnostics.
+
 Example: a projector warmup that no longer guesses a delay.
 
 | Step | Type | Details |
