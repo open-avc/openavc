@@ -258,16 +258,40 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
 
 @router.delete("/devices/{device_id}")
 async def delete_device(device_id: str) -> dict[str, Any]:
-    """Remove a device from the project and runtime."""
+    """Remove a device from the project and runtime.
+
+    Reports what still pointed at the device rather than refusing: the same
+    rule the AI door already followed, and the IDE's confirm dialog lists the
+    references before it ever calls this. See ``core/device_references``.
+    """
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
 
+    references: dict[str, Any] = {}
+
     def mutate(project):
+        nonlocal references
         original_count = len(project.devices)
         project.devices = [d for d in project.devices if d.id != device_id]
         if len(project.devices) == original_count:
             raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+
+        # What still names the device, read from the copy this edit is applied
+        # to rather than from engine.project before the lock — apply_project_edit
+        # says project reads belong in here, and a report describing a project
+        # this delete was not applied to would be worse than none.
+        from openavc.core.device_references import (
+            as_reference_report,
+            find_device_references,
+            find_script_references,
+        )
+        references = as_reference_report(
+            find_device_references(project, device_id),
+            find_script_references(
+                project, engine.project_path.parent / "scripts", device_id
+            ),
+        )
 
         # Clean up connections table entry
         project.connections.pop(device_id, None)
@@ -280,7 +304,10 @@ async def delete_device(device_id: str) -> dict[str, Any]:
     # The reconcile removes the runtime device AND sweeps its orphaned
     # device.{id}.* state keys (the old direct remove_device left them).
     await engine.apply_project_edit(mutate)
-    return {"status": "deleted", "device_id": device_id}
+    result: dict[str, Any] = {"status": "deleted", "device_id": device_id}
+    if references:
+        result["references"] = references
+    return result
 
 
 @router.post("/devices/{device_id}/test")

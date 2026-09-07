@@ -126,6 +126,14 @@ export function findDeviceReferences(project: ProjectConfig, deviceId: string): 
     }
   }
 
+  // Master elements carry their own bindings and are repeated across pages, so
+  // one of them naming the device binds it on every page it appears on.
+  for (const master of project.ui?.master_elements ?? []) {
+    if (treeReferencesDevice(master.bindings, deviceId, project)) {
+      refs.push(`UI master element "${master.label || master.id}"`);
+    }
+  }
+
   return refs;
 }
 

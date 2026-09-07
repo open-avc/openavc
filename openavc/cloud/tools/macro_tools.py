@@ -421,23 +421,14 @@ class MacroToolsMixin:
         (engine.project_path), NOT under a fixed projects/default path —
         every non-dev deployment sets OPENAVC_PROJECT elsewhere, and a wrong
         base dir silently under-reports references before destructive
-        deletes. Paths are containment-checked like the scripts API route.
+        deletes. The grep itself lives in ``core/device_references`` so the
+        REST delete door runs exactly the same scan.
         """
-        from openavc.utils.paths import safe_path_within
+        from openavc.core.device_references import find_script_references
 
-        hits: list[dict] = []
-        scripts_dir = engine.project_path.parent / "scripts"
-        for s in engine.project.scripts:
-            try:
-                script_path = safe_path_within(scripts_dir, s.file)
-                if script_path is None or not script_path.exists():
-                    continue
-                content = script_path.read_text(encoding="utf-8")
-                if ref_id in content:
-                    hits.append({"script_id": s.id, "file": s.file})
-            except (OSError, UnicodeDecodeError):
-                log.debug("Failed to read script '%s' for reference check", s.file)
-        return hits
+        return find_script_references(
+            engine.project, engine.project_path.parent / "scripts", ref_id
+        )
 
     def _find_references(self, ref_type: str, ref_id: str) -> dict:
         """Find all references to a macro, device, variable, or script in the project."""
@@ -470,26 +461,21 @@ class MacroToolsMixin:
             result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
 
         elif ref_type == "device":
-            # Check macros for device commands
-            for m in p.macros:
-                for step in m.steps:
-                    step_dict = step.model_dump(mode="json") if hasattr(step, "model_dump") else step
-                    if isinstance(step_dict, dict) and step_dict.get("device") == ref_id:
-                        result["macros"].append({"macro_id": m.id, "macro_name": m.name})
-                        break
-            # Check UI bindings
-            for page in p.ui.pages:
-                for el in page.elements:
-                    bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
-                    if isinstance(bindings, dict):
-                        for slot, binding in bindings.items():
-                            actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
-                            for act in actions:
-                                if isinstance(act, dict) and act.get("device") == ref_id:
-                                    result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
-                                    break
-            # Check scripts
-            result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
+            # The one device walk, shared with DELETE /api/devices/{id} and
+            # pinned against the Builder's delete dialog. What used to be here
+            # read step["device"] at the top level of a macro and an action's
+            # "device" key, so it missed device groups, conditional branches,
+            # every trigger and every show binding on a device.<id>.<prop> key
+            # -- and reported an empty impact for all of them, which is worse
+            # than reporting nothing.
+            from openavc.core.device_references import (
+                as_reference_report,
+                find_device_references,
+            )
+            return as_reference_report(
+                find_device_references(p, ref_id),
+                self._scan_scripts_for_ref(engine, ref_id),
+            )
 
         elif ref_type == "variable":
             state_key = f"var.{ref_id}"
