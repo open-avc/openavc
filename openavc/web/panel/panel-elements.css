@@ -54,6 +54,36 @@
     transition: background-color 0.2s, color 0.2s, opacity 0.2s, transform 0.1s, box-shadow 0.2s, border-color 0.2s;
 }
 
+/* The default a control's own label is drawn at.
+ *
+ * Deliberately NOT on .panel-element, which is the base every control carries.
+ * The panel is authored in rem, so raising the base raises the whole design --
+ * matrix cells, keypad keys, list rows and level-meter segments are all sized
+ * from it, and their BOX is a fixed percentage of the page. A panel with an
+ * 8x8 matrix on it would need four times the area for the same grid and simply
+ * would not fit any more. Measured, not assumed: doubling the base put 31 of
+ * the 40 control-minimum cases into failure.
+ *
+ * So this names the types whose whole content IS their label -- the ones
+ * control_minimums.py excludes for exactly that reason, because there is no
+ * fixed internal to starve. Their box is a percentage of the page and the text
+ * is centred in it, so bigger type costs nothing but legibility.
+ *
+ * 14px was the old inherited default. On a 10.1" 1280x800 panel that is a
+ * 1.7mm cap height, which subtends about 10 arcminutes at arm's length -- above
+ * the threshold where you cannot read it, which is why it never looked broken,
+ * and well below the 16-22 that reads comfortably. 28px is ~20. Verified on
+ * panel hardware before it was chosen.
+ *
+ * camera_preset is absent because it renders as .panel-button (panel.js). */
+.panel-button,
+.panel-label,
+.panel-page-nav,
+.panel-clock,
+.panel-gauge {
+    font-size: 2rem;
+}
+
 /* Thin scrollbars for panel elements */
 .panel-element::-webkit-scrollbar {
     width: 0.2857rem;

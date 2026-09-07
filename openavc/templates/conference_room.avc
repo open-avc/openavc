@@ -1,517 +1,517 @@
 {
-    "openavc_version": "0.8.0",
-    "project": {
-        "id": "conference_room",
-        "name": "Conference Room",
-        "description": "Projector, DSP audio, and PTZ camera with source selection.",
-        "created": "2026-04-06T00:00:00",
-        "modified": "2026-04-06T00:00:00"
+  "openavc_version": "0.8.0",
+  "project": {
+    "id": "conference_room",
+    "name": "Conference Room",
+    "description": "Projector, DSP audio, and PTZ camera with source selection.",
+    "created": "2026-04-06T00:00:00",
+    "modified": "2026-04-06T00:00:00"
+  },
+  "devices": [
+    {
+      "id": "projector1",
+      "driver": "pjlink_class1",
+      "name": "Projector",
+      "config": {},
+      "child_entities": {}
     },
-    "devices": [
+    {
+      "id": "dsp1",
+      "driver": "generic_tcp",
+      "name": "DSP",
+      "config": {},
+      "child_entities": {}
+    },
+    {
+      "id": "camera1",
+      "driver": "generic_tcp",
+      "name": "PTZ Camera",
+      "config": {},
+      "child_entities": {}
+    }
+  ],
+  "variables": [
+    {
+      "id": "system_power",
+      "type": "string",
+      "default": "off",
+      "label": "System Power"
+    },
+    {
+      "id": "current_source",
+      "type": "string",
+      "default": "laptop",
+      "label": "Active Source"
+    },
+    {
+      "id": "volume",
+      "type": "integer",
+      "default": 50,
+      "label": "Volume"
+    },
+    {
+      "id": "projector_status",
+      "type": "string",
+      "default": "Off",
+      "label": "Projector Status Text"
+    }
+  ],
+  "macros": [
+    {
+      "id": "system_on",
+      "name": "System On",
+      "steps": [
         {
-            "id": "projector1",
-            "driver": "pjlink_class1",
-            "name": "Projector",
-            "config": {},
-            "child_entities": {}
+          "action": "device.command",
+          "device": "projector1",
+          "command": "power_on"
         },
         {
-            "id": "dsp1",
-            "driver": "generic_tcp",
-            "name": "DSP",
-            "config": {},
-            "child_entities": {}
-        },
-        {
-            "id": "camera1",
-            "driver": "generic_tcp",
-            "name": "PTZ Camera",
-            "config": {},
-            "child_entities": {}
+          "action": "state.set",
+          "key": "var.system_power",
+          "value": "on"
         }
-    ],
-    "variables": [
+      ]
+    },
+    {
+      "id": "system_off",
+      "name": "System Off",
+      "steps": [
         {
-            "id": "system_power",
-            "type": "string",
-            "default": "off",
-            "label": "System Power"
+          "action": "device.command",
+          "device": "projector1",
+          "command": "power_off"
         },
         {
-            "id": "current_source",
-            "type": "string",
-            "default": "laptop",
-            "label": "Active Source"
-        },
-        {
-            "id": "volume",
-            "type": "integer",
-            "default": 50,
-            "label": "Volume"
-        },
-        {
-            "id": "projector_status",
-            "type": "string",
-            "default": "Off",
-            "label": "Projector Status Text"
+          "action": "state.set",
+          "key": "var.system_power",
+          "value": "off"
         }
-    ],
-    "macros": [
+      ]
+    },
+    {
+      "id": "select_laptop",
+      "name": "Select Laptop",
+      "steps": [
         {
-            "id": "system_on",
-            "name": "System On",
-            "steps": [
-                {
-                    "action": "device.command",
-                    "device": "projector1",
-                    "command": "power_on"
-                },
-                {
-                    "action": "state.set",
-                    "key": "var.system_power",
-                    "value": "on"
-                }
-            ]
+          "action": "device.command",
+          "device": "projector1",
+          "command": "set_input",
+          "params": {
+            "input": "hdmi1"
+          }
         },
         {
-            "id": "system_off",
-            "name": "System Off",
-            "steps": [
-                {
-                    "action": "device.command",
-                    "device": "projector1",
-                    "command": "power_off"
-                },
-                {
-                    "action": "state.set",
-                    "key": "var.system_power",
-                    "value": "off"
-                }
-            ]
-        },
-        {
-            "id": "select_laptop",
-            "name": "Select Laptop",
-            "steps": [
-                {
-                    "action": "device.command",
-                    "device": "projector1",
-                    "command": "set_input",
-                    "params": {
-                        "input": "hdmi1"
-                    }
-                },
-                {
-                    "action": "state.set",
-                    "key": "var.current_source",
-                    "value": "laptop"
-                }
-            ]
-        },
-        {
-            "id": "select_wireless",
-            "name": "Select Wireless",
-            "steps": [
-                {
-                    "action": "device.command",
-                    "device": "projector1",
-                    "command": "set_input",
-                    "params": {
-                        "input": "hdmi2"
-                    }
-                },
-                {
-                    "action": "state.set",
-                    "key": "var.current_source",
-                    "value": "wireless"
-                }
-            ]
+          "action": "state.set",
+          "key": "var.current_source",
+          "value": "laptop"
         }
-    ],
-    "ui": {
-        "settings": {
-            "theme": "dark",
-            "accent_color": "#2196F3"
+      ]
+    },
+    {
+      "id": "select_wireless",
+      "name": "Select Wireless",
+      "steps": [
+        {
+          "action": "device.command",
+          "device": "projector1",
+          "command": "set_input",
+          "params": {
+            "input": "hdmi2"
+          }
         },
-        "pages": [
-            {
-                "id": "main",
-                "name": "Main",
-                "elements": [
-                    {
-                        "id": "lbl_title",
-                        "type": "label",
-                        "text": "Conference Room",
-                        "style": {
-                            "font_size": 1.2857,
-                            "text_align": "center"
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "btn_on",
-                        "type": "button",
-                        "label": "System On",
-                        "bindings": {
-                            "show": {
-                                "look": {
-                                    "key": "var.system_power",
-                                    "condition": {
-                                        "equals": "on"
-                                    },
-                                    "style_active": {
-                                        "bg_color": "#4CAF50"
-                                    },
-                                    "style_inactive": {
-                                        "bg_color": "#424242"
-                                    }
-                                }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "macro",
-                                        "macro": "system_on"
-                                    }
-                                ]
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "btn_off",
-                        "type": "button",
-                        "label": "System Off",
-                        "bindings": {
-                            "show": {
-                                "look": {
-                                    "key": "var.system_power",
-                                    "condition": {
-                                        "equals": "off"
-                                    },
-                                    "style_active": {
-                                        "bg_color": "#F44336"
-                                    },
-                                    "style_inactive": {
-                                        "bg_color": "#424242"
-                                    }
-                                }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "macro",
-                                        "macro": "system_off"
-                                    }
-                                ]
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "btn_laptop",
-                        "type": "button",
-                        "label": "Laptop",
-                        "bindings": {
-                            "show": {
-                                "look": {
-                                    "key": "var.current_source",
-                                    "condition": {
-                                        "equals": "laptop"
-                                    },
-                                    "style_active": {
-                                        "bg_color": "#2196F3"
-                                    },
-                                    "style_inactive": {
-                                        "bg_color": "#424242"
-                                    }
-                                }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "macro",
-                                        "macro": "select_laptop"
-                                    }
-                                ]
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "btn_wireless",
-                        "type": "button",
-                        "label": "Wireless",
-                        "bindings": {
-                            "show": {
-                                "look": {
-                                    "key": "var.current_source",
-                                    "condition": {
-                                        "equals": "wireless"
-                                    },
-                                    "style_active": {
-                                        "bg_color": "#2196F3"
-                                    },
-                                    "style_inactive": {
-                                        "bg_color": "#424242"
-                                    }
-                                }
-                            },
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "macro",
-                                        "macro": "select_wireless"
-                                    }
-                                ]
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "sld_volume",
-                        "type": "slider",
-                        "label": "Volume",
-                        "min": 0,
-                        "max": 100,
-                        "step": 1,
-                        "bindings": {
-                            "show": {
-                                "value": {
-                                    "source": "state",
-                                    "key": "var.volume",
-                                    "write_back": true
-                                }
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "lbl_proj_status",
-                        "type": "label",
-                        "text": "",
-                        "style": {
-                            "font_size": 0.8571,
-                            "text_align": "center"
-                        },
-                        "bindings": {
-                            "show": {
-                                "value": {
-                                    "key": "var.projector_status",
-                                    "format": "Projector: {value}"
-                                }
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "nav_camera",
-                        "type": "page_nav",
-                        "label": "Camera Controls",
-                        "target_page": "camera",
-                        "parent": null
-                    }
-                ],
-                "snap": {
-                    "enabled": true,
-                    "x": 8.3333,
-                    "y": 12.5
-                },
-                "layouts": [
-                    {
-                        "id": "landscape",
-                        "orientation": "landscape",
-                        "primary": true,
-                        "inherits": null,
-                        "placements": {
-                            "lbl_title": {
-                                "x": 0.625,
-                                "y": 1.0,
-                                "w": 65.625,
-                                "h": 23.75
-                            },
-                            "btn_on": {
-                                "x": 66.875,
-                                "y": 1.0,
-                                "w": 15.9375,
-                                "h": 23.75
-                            },
-                            "btn_off": {
-                                "x": 83.4375,
-                                "y": 1.0,
-                                "w": 15.9375,
-                                "h": 23.75
-                            },
-                            "btn_laptop": {
-                                "x": 0.625,
-                                "y": 25.75,
-                                "w": 49.0625,
-                                "h": 23.75
-                            },
-                            "btn_wireless": {
-                                "x": 50.3125,
-                                "y": 25.75,
-                                "w": 49.0625,
-                                "h": 23.75
-                            },
-                            "sld_volume": {
-                                "x": 0.625,
-                                "y": 50.5,
-                                "w": 98.75,
-                                "h": 23.75
-                            },
-                            "lbl_proj_status": {
-                                "x": 0.625,
-                                "y": 75.25,
-                                "w": 49.0625,
-                                "h": 23.75
-                            },
-                            "nav_camera": {
-                                "x": 50.3125,
-                                "y": 75.25,
-                                "w": 49.0625,
-                                "h": 23.75
-                            }
-                        },
-                        "hidden": []
-                    }
-                ]
+        {
+          "action": "state.set",
+          "key": "var.current_source",
+          "value": "wireless"
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "settings": {
+      "theme": "dark",
+      "accent_color": "#2196F3"
+    },
+    "pages": [
+      {
+        "id": "main",
+        "name": "Main",
+        "elements": [
+          {
+            "id": "lbl_title",
+            "type": "label",
+            "text": "Conference Room",
+            "style": {
+              "font_size": 2.5714,
+              "text_align": "center"
             },
-            {
-                "id": "camera",
-                "name": "Camera",
-                "elements": [
-                    {
-                        "id": "lbl_camera",
-                        "type": "label",
-                        "text": "Camera Presets",
-                        "style": {
-                            "font_size": 1.2857,
-                            "text_align": "center"
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "preset_1",
-                        "type": "camera_preset",
-                        "label": "Wide",
-                        "preset_number": 1,
-                        "bindings": {
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "device.command",
-                                        "device": "camera1",
-                                        "command": "recall_preset",
-                                        "params": {
-                                            "preset": 1
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "preset_2",
-                        "type": "camera_preset",
-                        "label": "Presenter",
-                        "preset_number": 2,
-                        "bindings": {
-                            "do": {
-                                "press": [
-                                    {
-                                        "action": "device.command",
-                                        "device": "camera1",
-                                        "command": "recall_preset",
-                                        "params": {
-                                            "preset": 2
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        "parent": null
-                    },
-                    {
-                        "id": "nav_main",
-                        "type": "page_nav",
-                        "label": "Back to Main",
-                        "target_page": "main",
-                        "parent": null
-                    }
-                ],
-                "snap": {
-                    "enabled": true,
-                    "x": 8.3333,
-                    "y": 12.5
-                },
-                "layouts": [
-                    {
-                        "id": "landscape",
-                        "orientation": "landscape",
-                        "primary": true,
-                        "inherits": null,
-                        "placements": {
-                            "lbl_camera": {
-                                "x": 0.625,
-                                "y": 1.0,
-                                "w": 98.75,
-                                "h": 32.0
-                            },
-                            "preset_1": {
-                                "x": 0.625,
-                                "y": 34.0,
-                                "w": 49.0625,
-                                "h": 32.0
-                            },
-                            "preset_2": {
-                                "x": 50.3125,
-                                "y": 34.0,
-                                "w": 49.0625,
-                                "h": 32.0
-                            },
-                            "nav_main": {
-                                "x": 0.625,
-                                "y": 67.0,
-                                "w": 98.75,
-                                "h": 32.0
-                            }
-                        },
-                        "hidden": []
-                    }
+            "parent": null
+          },
+          {
+            "id": "btn_on",
+            "type": "button",
+            "label": "System On",
+            "bindings": {
+              "show": {
+                "look": {
+                  "key": "var.system_power",
+                  "condition": {
+                    "equals": "on"
+                  },
+                  "style_active": {
+                    "bg_color": "#4CAF50"
+                  },
+                  "style_inactive": {
+                    "bg_color": "#424242"
+                  }
+                }
+              },
+              "do": {
+                "press": [
+                  {
+                    "action": "macro",
+                    "macro": "system_on"
+                  }
                 ]
-            }
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "btn_off",
+            "type": "button",
+            "label": "System Off",
+            "bindings": {
+              "show": {
+                "look": {
+                  "key": "var.system_power",
+                  "condition": {
+                    "equals": "off"
+                  },
+                  "style_active": {
+                    "bg_color": "#F44336"
+                  },
+                  "style_inactive": {
+                    "bg_color": "#424242"
+                  }
+                }
+              },
+              "do": {
+                "press": [
+                  {
+                    "action": "macro",
+                    "macro": "system_off"
+                  }
+                ]
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "btn_laptop",
+            "type": "button",
+            "label": "Laptop",
+            "bindings": {
+              "show": {
+                "look": {
+                  "key": "var.current_source",
+                  "condition": {
+                    "equals": "laptop"
+                  },
+                  "style_active": {
+                    "bg_color": "#2196F3"
+                  },
+                  "style_inactive": {
+                    "bg_color": "#424242"
+                  }
+                }
+              },
+              "do": {
+                "press": [
+                  {
+                    "action": "macro",
+                    "macro": "select_laptop"
+                  }
+                ]
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "btn_wireless",
+            "type": "button",
+            "label": "Wireless",
+            "bindings": {
+              "show": {
+                "look": {
+                  "key": "var.current_source",
+                  "condition": {
+                    "equals": "wireless"
+                  },
+                  "style_active": {
+                    "bg_color": "#2196F3"
+                  },
+                  "style_inactive": {
+                    "bg_color": "#424242"
+                  }
+                }
+              },
+              "do": {
+                "press": [
+                  {
+                    "action": "macro",
+                    "macro": "select_wireless"
+                  }
+                ]
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "sld_volume",
+            "type": "slider",
+            "label": "Volume",
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "bindings": {
+              "show": {
+                "value": {
+                  "source": "state",
+                  "key": "var.volume",
+                  "write_back": true
+                }
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "lbl_proj_status",
+            "type": "label",
+            "text": "",
+            "style": {
+              "font_size": 1.7142,
+              "text_align": "center"
+            },
+            "bindings": {
+              "show": {
+                "value": {
+                  "key": "var.projector_status",
+                  "format": "Projector: {value}"
+                }
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "nav_camera",
+            "type": "page_nav",
+            "label": "Camera Controls",
+            "target_page": "camera",
+            "parent": null
+          }
+        ],
+        "snap": {
+          "enabled": true,
+          "x": 8.3333,
+          "y": 12.5
+        },
+        "layouts": [
+          {
+            "id": "landscape",
+            "orientation": "landscape",
+            "primary": true,
+            "inherits": null,
+            "placements": {
+              "lbl_title": {
+                "x": 0.625,
+                "y": 1.0,
+                "w": 65.625,
+                "h": 23.75
+              },
+              "btn_on": {
+                "x": 66.875,
+                "y": 1.0,
+                "w": 15.9375,
+                "h": 23.75
+              },
+              "btn_off": {
+                "x": 83.4375,
+                "y": 1.0,
+                "w": 15.9375,
+                "h": 23.75
+              },
+              "btn_laptop": {
+                "x": 0.625,
+                "y": 25.75,
+                "w": 49.0625,
+                "h": 23.75
+              },
+              "btn_wireless": {
+                "x": 50.3125,
+                "y": 25.75,
+                "w": 49.0625,
+                "h": 23.75
+              },
+              "sld_volume": {
+                "x": 0.625,
+                "y": 50.5,
+                "w": 98.75,
+                "h": 23.75
+              },
+              "lbl_proj_status": {
+                "x": 0.625,
+                "y": 75.25,
+                "w": 49.0625,
+                "h": 23.75
+              },
+              "nav_camera": {
+                "x": 50.3125,
+                "y": 75.25,
+                "w": 49.0625,
+                "h": 23.75
+              }
+            },
+            "hidden": []
+          }
         ]
-    },
-    "scripts": [
-        {
-            "id": "room_scripts",
-            "file": "room_scripts.py",
-            "enabled": true,
-            "description": "Volume mapping and projector status updates"
-        }
-    ],
-    "isc": {
-        "shared_state": [],
-        "auth_key": ""
-    },
-    "connections": {
-        "projector1": {
-            "host": "192.168.1.100",
-            "port": 4352
+      },
+      {
+        "id": "camera",
+        "name": "Camera",
+        "elements": [
+          {
+            "id": "lbl_camera",
+            "type": "label",
+            "text": "Camera Presets",
+            "style": {
+              "font_size": 2.5714,
+              "text_align": "center"
+            },
+            "parent": null
+          },
+          {
+            "id": "preset_1",
+            "type": "camera_preset",
+            "label": "Wide",
+            "preset_number": 1,
+            "bindings": {
+              "do": {
+                "press": [
+                  {
+                    "action": "device.command",
+                    "device": "camera1",
+                    "command": "recall_preset",
+                    "params": {
+                      "preset": 1
+                    }
+                  }
+                ]
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "preset_2",
+            "type": "camera_preset",
+            "label": "Presenter",
+            "preset_number": 2,
+            "bindings": {
+              "do": {
+                "press": [
+                  {
+                    "action": "device.command",
+                    "device": "camera1",
+                    "command": "recall_preset",
+                    "params": {
+                      "preset": 2
+                    }
+                  }
+                ]
+              }
+            },
+            "parent": null
+          },
+          {
+            "id": "nav_main",
+            "type": "page_nav",
+            "label": "Back to Main",
+            "target_page": "main",
+            "parent": null
+          }
+        ],
+        "snap": {
+          "enabled": true,
+          "x": 8.3333,
+          "y": 12.5
         },
-        "dsp1": {
-            "host": "192.168.1.101",
-            "port": 23
-        },
-        "camera1": {
-            "host": "192.168.1.102",
-            "port": 5678
-        }
+        "layouts": [
+          {
+            "id": "landscape",
+            "orientation": "landscape",
+            "primary": true,
+            "inherits": null,
+            "placements": {
+              "lbl_camera": {
+                "x": 0.625,
+                "y": 1.0,
+                "w": 98.75,
+                "h": 32.0
+              },
+              "preset_1": {
+                "x": 0.625,
+                "y": 34.0,
+                "w": 49.0625,
+                "h": 32.0
+              },
+              "preset_2": {
+                "x": 50.3125,
+                "y": 34.0,
+                "w": 49.0625,
+                "h": 32.0
+              },
+              "nav_main": {
+                "x": 0.625,
+                "y": 67.0,
+                "w": 98.75,
+                "h": 32.0
+              }
+            },
+            "hidden": []
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": [
+    {
+      "id": "room_scripts",
+      "file": "room_scripts.py",
+      "enabled": true,
+      "description": "Volume mapping and projector status updates"
+    }
+  ],
+  "isc": {
+    "shared_state": [],
+    "auth_key": ""
+  },
+  "connections": {
+    "projector1": {
+      "host": "192.168.1.100",
+      "port": 4352
     },
-    "driver_dependencies": [],
-    "plugins": {},
-    "plugin_dependencies": [],
-    "device_groups": []
+    "dsp1": {
+      "host": "192.168.1.101",
+      "port": 23
+    },
+    "camera1": {
+      "host": "192.168.1.102",
+      "port": 5678
+    }
+  },
+  "driver_dependencies": [],
+  "plugins": {},
+  "plugin_dependencies": [],
+  "device_groups": []
 }
