@@ -10,11 +10,29 @@ import { useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { invalidatePluginMacroActions } from "../components/macros/pluginMacroActions";
 import { showSuccess, showInfo, showError } from "../store/toastStore";
+import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
 
 // How long the "just fired" highlight stays lit on a trigger card after a
 // trigger.fired message.
 const TRIGGER_FIRED_FLASH_MS = 1500;
+
+// The project was just replaced by a refetch. Drop the UI Builder's undo
+// history only if the refetch moved a section those entries would overwrite,
+// and say so when it does.
+//
+// The engine broadcasts project.reloaded on every apply and every bookkeeping
+// persist, so this runs for a device's learned config, a discovery add, a
+// fleet push and a plain reconnect as much as for an edit made elsewhere.
+// Clearing on all of them left the user with a Ctrl+Z that reverted an older
+// change instead of the one they had just made.
+function dropStaleUndoHistory(before: ProjectConfig | null) {
+  const after = useProjectStore.getState().project;
+  const cleared = useUIBuilderStore.getState().clearUndoHistoryIfStale(before, after);
+  if (cleared) {
+    showInfo("Project modified externally. Undo history was cleared, so Ctrl+Z starts from here");
+  }
+}
 
 export function useWebSocket() {
   const setConnected = useConnectionStore((s) => s.setConnected);
@@ -40,15 +58,17 @@ export function useWebSocket() {
       // external changes with stale local data
       const store = useProjectStore.getState();
       const wasDirty = store.dirty;
+      const before = store.project;
       store.load().then((refetched) => {
         // load() resolves false when it skipped the refetch because of
         // local unsaved changes — the project was NOT replaced, so a
         // network blip mid-edit must not wipe undo history or claim a
         // reload happened.
         if (!refetched) return;
-        // Project replaced from server — UI Builder undo snapshots reference
-        // stale pages/settings/master_elements that no longer match.
-        useUIBuilderStore.getState().clearUndoHistory();
+        // Project replaced from server. Only the UI Builder snapshots whose
+        // section actually moved are stale; a reconnect that refetches an
+        // unchanged project must leave the history alone.
+        dropStaleUndoHistory(before);
         if (wasDirty) {
           showSuccess("Project reloaded from server. Local changes may need to be re-applied");
         }
@@ -74,11 +94,12 @@ export function useWebSocket() {
     const debouncedProjectReload = () => {
       if (reloadTimer) clearTimeout(reloadTimer);
       reloadTimer = setTimeout(() => {
+        const before = useProjectStore.getState().project;
         useProjectStore.getState().load().then((refetched) => {
           // Same guard as syncOnConnect: the user may have started editing
           // during the debounce window, making load() skip the refetch.
           if (refetched) {
-            useUIBuilderStore.getState().clearUndoHistory();
+            dropStaleUndoHistory(before);
           }
         });
       }, 300);

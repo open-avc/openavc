@@ -32,6 +32,50 @@ export interface UndoEntry {
   snapshot: UndoScope;
 }
 
+// Where each undo scope writes when it is rolled back. Keep in step with
+// computeRollbackPatch below — a scope that writes somewhere this map does
+// not name would survive an external change to the section it overwrites.
+const SCOPE_SECTIONS: Record<keyof UndoScope, (p: ProjectConfig) => unknown> = {
+  pages: (p) => p.ui.pages,
+  settings: (p) => p.ui.settings,
+  master_elements: (p) => p.ui.master_elements ?? [],
+  custom_css: (p) => p.ui.custom_css ?? "",
+  page_groups: (p) => p.ui.page_groups ?? [],
+  macros: (p) => p.macros,
+  variables: (p) => p.variables,
+};
+
+// Has an external change made these undo/redo entries unsafe to apply?
+//
+// Only the sections the entries would actually overwrite matter. The project
+// is refetched whenever anything else touches it — a device's bookkeeping
+// write, a discovery add, a fleet config push — and none of those touch the
+// UI, so a stack of page edits stays valid across them. An entry IS stale
+// once the section it writes has moved underneath it: rolling back would
+// then overwrite somebody else's change with a snapshot taken before it.
+//
+// Both projects come from the same server serializer, so a field-order-only
+// difference cannot happen and comparing the serialized form is safe.
+export function undoHistoryIsStale(
+  entries: UndoEntry[],
+  before: ProjectConfig | null,
+  after: ProjectConfig | null,
+): boolean {
+  if (!before || !after) return true;
+  const touched = new Set<keyof UndoScope>();
+  for (const entry of entries) {
+    for (const key of Object.keys(entry.snapshot) as (keyof UndoScope)[]) {
+      touched.add(key);
+    }
+  }
+  for (const key of touched) {
+    const read = SCOPE_SECTIONS[key];
+    if (!read) return true;
+    if (JSON.stringify(read(before)) !== JSON.stringify(read(after))) return true;
+  }
+  return false;
+}
+
 export interface BuilderSelection {
   selectedPageId: string | null;
   selectedElementIds: string[];

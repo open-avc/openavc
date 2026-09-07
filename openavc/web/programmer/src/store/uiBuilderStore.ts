@@ -1,9 +1,10 @@
 import { create } from "zustand";
-import type { UIElement, Placement } from "../api/types";
+import type { UIElement, Placement, ProjectConfig } from "../api/types";
 import { useProjectStore } from "./projectStore";
 import {
   computeRollbackPatch,
   selectionAfterRollback,
+  undoHistoryIsStale,
   type UndoEntry,
   type UndoScope,
 } from "./uiBuilderStore.helpers";
@@ -69,7 +70,14 @@ interface UIBuilderStore {
   pushUndo: (snapshot: UndoScope, description: string) => void;
   undo: () => void;
   redo: () => void;
-  clearUndoHistory: () => void;
+  /** Drop the history only when an external project change actually moved a
+   *  section the pending entries would overwrite. Returns whether it did, so
+   *  the caller can say so — a stack that vanishes silently is worse than one
+   *  that is kept, because the next Ctrl+Z then reverts an older change. */
+  clearUndoHistoryIfStale: (
+    before: ProjectConfig | null,
+    after: ProjectConfig | null,
+  ) => boolean;
   touchMutation: () => void;
   setActiveDragSource: (source: string | null) => void;
   setPaletteDragPreview: (
@@ -228,7 +236,13 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
     projectStore.debouncedSave(100);
   },
 
-  clearUndoHistory: () => set({ undoStack: [], redoStack: [] }),
+  clearUndoHistoryIfStale: (before, after) => {
+    const { undoStack, redoStack } = get();
+    if (undoStack.length === 0 && redoStack.length === 0) return false;
+    if (!undoHistoryIsStale([...undoStack, ...redoStack], before, after)) return false;
+    set({ undoStack: [], redoStack: [] });
+    return true;
+  },
 
   touchMutation: () => {
     set({ lastMutationTime: Date.now() });
