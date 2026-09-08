@@ -41,6 +41,11 @@ function App() {
   const [authState, setAuthState] = useState<AuthState>(() =>
     hasSession() ? "ready" : "checking",
   );
+  // Why the sign-in screen is showing, and whether the user had edits in
+  // flight when it appeared. Captured at the 401 rather than read at render,
+  // so it describes the moment the session ended.
+  const [expired, setExpired] = useState(false);
+  const [unsavedWork, setUnsavedWork] = useState(false);
 
   // On first mount with no cached session, ask the server which screen to show:
   // a first-run setup (unclaimed shipped instance), the login screen (a
@@ -59,9 +64,19 @@ function App() {
     };
   }, [authState]);
 
-  // Drop back to the login screen if any /api request comes back 401.
+  // Drop back to the login screen if any /api request comes back 401. The
+  // usual cause is a restart, which ends every session in memory, and the
+  // usual first casualty is the autosave carrying the user's work — so the
+  // sign-in screen says the work is still here rather than leaving them to
+  // guess.
   useEffect(() => {
-    const handler = () => setAuthState("needed");
+    const handler = () => {
+      setUnsavedWork(
+        useProjectStore.getState().dirty || useDriverBuilderStore.getState().dirty,
+      );
+      setExpired(true);
+      setAuthState("needed");
+    };
     window.addEventListener(AUTH_REQUIRED_EVENT, handler);
     return () => window.removeEventListener(AUTH_REQUIRED_EVENT, handler);
   }, []);
@@ -73,7 +88,17 @@ function App() {
     return <Setup onComplete={() => setAuthState("ready")} />;
   }
   if (authState === "needed") {
-    return <Login onSuccess={() => setAuthState("ready")} />;
+    return (
+      <Login
+        expired={expired}
+        unsavedWork={unsavedWork}
+        onSuccess={() => {
+          setExpired(false);
+          setUnsavedWork(false);
+          setAuthState("ready");
+        }}
+      />
+    );
   }
   return <AuthedApp />;
 }
@@ -209,6 +234,10 @@ function AuthedApp() {
   const conflictDetected = useProjectStore((s) => s.conflictDetected);
   const forceReload = useProjectStore((s) => s.forceReload);
   const dismissConflict = useProjectStore((s) => s.dismissConflict);
+  // The server's own sentence, which is the only one that knows whether
+  // another session saved over this one or the system restarted since this
+  // page loaded the project. The generic wording is the fallback.
+  const conflictMessage = useProjectStore((s) => s.error);
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
@@ -223,7 +252,9 @@ function AuthedApp() {
             fontSize: 13, color: "#ef4444", flexShrink: 0,
           }}>
             <span>
-              <strong>Conflict:</strong> The project was modified by another session. Your changes could not be saved.
+              <strong>Conflict:</strong>{" "}
+              {conflictMessage
+                || "The project was modified by another session. Your changes could not be saved."}
             </span>
             <div style={{ display: "flex", gap: "var(--space-sm)" }}>
               <button

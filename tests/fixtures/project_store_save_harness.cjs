@@ -35,6 +35,10 @@ function makeDeps(overrides) {
     saveProject: async () => ({ etag: '"2"' }),
     isConflict: (e) => Boolean(e && e.__conflict),
     conflictMessage: (e) => e.message,
+    // The real one unwraps an ApiError and gives an expired session its own
+    // sentence (projectStore.saveFailureMessage, covered by the vitest suite).
+    // Here it only has to be a function of the thrown value.
+    failureMessage: (e) => String(e),
     setState: (patch) => Object.assign(state, patch),
     sleep: async (ms) => { sleeps.push(ms); },
     ...overrides,

@@ -3,9 +3,14 @@ import { loginWithPassword } from "../api/auth";
 
 interface LoginProps {
   onSuccess: () => void;
+  /** The session ended while the app was open, rather than this being a
+   *  first sign-in. */
+  expired?: boolean;
+  /** There were unsaved edits in the tab when the session ended. */
+  unsavedWork?: boolean;
 }
 
-export function Login({ onSuccess }: LoginProps) {
+export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
   const [user, setUser] = useState("admin");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,8 +74,13 @@ export function Login({ onSuccess }: LoginProps) {
         <div style={{ textAlign: "center", marginBottom: 8 }}>
           <h2 style={{ margin: 0, fontSize: 20 }}>OpenAVC Programmer</h2>
           <p style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
-            Sign in to continue
+            {expired ? "Your session ended. Sign in to continue." : "Sign in to continue"}
           </p>
+          {expired && unsavedWork && (
+            <p style={{ marginTop: 8, fontSize: 13, color: "#8AB493" }}>
+              Your unsaved changes are still open in this tab.
+            </p>
+          )}
         </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>

@@ -108,8 +108,9 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await get().load();
       await syncProjectStore();
     } catch (e) {
-      set({ error: String(e) });
-      showError(`Couldn't enable plugin "${pluginId}": ${String(e)}`);
+      const detail = parseApiError(e);
+      set({ error: detail });
+      showError(`Couldn't enable plugin "${pluginId}": ${detail}`);
     }
   },
 
@@ -119,8 +120,9 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await get().load();
       await syncProjectStore();
     } catch (e) {
-      set({ error: String(e) });
-      showError(`Couldn't disable plugin "${pluginId}": ${String(e)}`);
+      const detail = parseApiError(e);
+      set({ error: detail });
+      showError(`Couldn't disable plugin "${pluginId}": ${detail}`);
     }
   },
 
@@ -150,8 +152,9 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       // its revision) are untouched, so the store's ETag stays valid.
       await get().load();
     } catch (e) {
-      set({ error: String(e) });
-      showError(`Couldn't activate plugin "${pluginId}": ${String(e)}`);
+      const detail = parseApiError(e);
+      set({ error: detail });
+      showError(`Couldn't activate plugin "${pluginId}": ${detail}`);
     }
   },
 
@@ -164,8 +167,9 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await get().load();
       await syncProjectStore();
     } catch (e) {
-      set({ error: String(e) });
-      showError(`Couldn't remove plugin config for "${pluginId}": ${String(e)}`);
+      const detail = parseApiError(e);
+      set({ error: detail });
+      showError(`Couldn't remove plugin config for "${pluginId}": ${detail}`);
     }
   },
 

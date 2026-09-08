@@ -20,8 +20,17 @@ const SRC = join(__dirname, "..");
 
 // `showError(`... ${e}`)` / `showError(String(e))` and the same for the other
 // toasts, for the conventional error identifiers.
-const RAW_ERROR_TOAST =
-  /show(?:Error|Info|Success)\(\s*(?:`[^`]*\$\{\s*(?:e|err|error)\s*\}|String\(\s*(?:e|err|error)\s*\))/;
+//
+// `String(e)` counts inside a template too. The first version of this guard
+// only knew the bare `${e}` form, so six toasts written as
+// `${String(e)}` — four of them siblings of one that unwrapped properly —
+// sat in the tree with the guard reporting green over them.
+const RAW = String.raw`(?:e|err|error)`;
+const RAW_ERROR_TOAST = new RegExp(
+  String.raw`show(?:Error|Info|Success)\(\s*(?:` +
+    String.raw`\`[^\`]*\$\{\s*(?:${RAW}\s*\}|String\(\s*${RAW}\s*\))` +
+    String.raw`|String\(\s*${RAW}\s*[\s)])`,
+);
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -65,8 +74,14 @@ describe("error rendering", () => {
     expect(files.some((f) => f.endsWith("ActionListEditor.tsx"))).toBe(true);
     expect(RAW_ERROR_TOAST.test("    showError(`Test failed: ${e}`);")).toBe(true);
     expect(RAW_ERROR_TOAST.test("      showError(String(e));")).toBe(true);
+    expect(RAW_ERROR_TOAST.test("    showError(`Install failed: ${String(e)}`);")).toBe(true);
+    expect(
+      RAW_ERROR_TOAST.test("    showError(String(e instanceof Error ? e.message : e));"),
+    ).toBe(true);
     expect(RAW_ERROR_TOAST.test("    showError(`Test failed: ${parseApiError(e)}`);")).toBe(
       false,
     );
+    expect(RAW_ERROR_TOAST.test("    showError(`Saved ${errorCount} of them`);")).toBe(false);
+    expect(RAW_ERROR_TOAST.test("    showError(parseApiError(e));")).toBe(false);
   });
 });

@@ -273,6 +273,10 @@ export function UIBuilderView() {
   // Autosave is driven by useProjectStore.debouncedSave, called from
   // touchMutation() on every UI Builder mutation. See store/uiBuilderStore.ts.
   const error = useProjectStore((s) => s.error);
+  // A version conflict already has its own banner, above the whole app, saying
+  // the same sentence with the only two answers that can work. This one would
+  // repeat it and offer Retry beside them, which can only conflict again.
+  const conflictDetected = useProjectStore((s) => s.conflictDetected);
 
   // Flush pending save before the tab unloads so the 2 s debounce window
   // can't lose the last edit.
@@ -1211,7 +1215,7 @@ export function UIBuilderView() {
         }}
       >
         {/* Save error banner */}
-        {error && (
+        {error && !conflictDetected && (
           <div
             style={{
               display: "flex",

@@ -1,7 +1,27 @@
 import { create } from "zustand";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
+import { ApiError, parseApiError } from "../api/errors";
 import { runSaveWithRetry } from "./projectStoreSave";
+
+/**
+ * The sentence a failed save shows the user, rendered by the UI Builder as
+ * "Save failed: <this>".
+ *
+ * A 401 gets its own, because it is the one failure the user has already
+ * lived through by the time they read it: the fetch interceptor shows the
+ * sign-in screen on the first 401, so this banner is what greets them after
+ * they sign back in, and the server's "Authentication required" then reads as
+ * a demand rather than an explanation. Everything else is the server's own
+ * sentence, unwrapped from the `ApiError: API 500: {"detail":...}` envelope
+ * that `String(e)` used to print here.
+ */
+export function saveFailureMessage(e: unknown): string {
+  if (e instanceof ApiError && e.status === 401) {
+    return "Your session had ended. The change is still here, so you can save it again.";
+  }
+  return parseApiError(e);
+}
 
 interface UndoEntry {
   description: string;
@@ -91,7 +111,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         return false;
       }
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: parseApiError(e), loading: false });
       return false;
     }
   },
@@ -120,6 +140,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           saveProject: api.saveProject,
           isConflict: (e) => e instanceof api.ConflictError,
           conflictMessage: (e) => (e as Error).message,
+          failureMessage: saveFailureMessage,
           setState: (patch) => set(patch),
           sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
         },
@@ -214,7 +235,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const revision = etag ? etag.replace(/"/g, "") : null;
       set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false, undoStack: [], redoStack: [] });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: parseApiError(e), loading: false });
     }
   },
 

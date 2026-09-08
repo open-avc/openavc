@@ -3,6 +3,7 @@ import { Dialog } from "./Dialog";
 import type { MissingDriver } from "../../api/deviceClient";
 import { installMissingDrivers } from "../../api/deviceClient";
 import { showSuccess, showError } from "../../store/toastStore";
+import { parseApiError } from "../../api/errors";
 
 interface MissingDriversModalProps {
   missing: MissingDriver[];
@@ -53,7 +54,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
         onInstalled();
       }
     } catch (e) {
-      showError(`Install failed: ${String(e)}`);
+      showError(`Install failed: ${parseApiError(e)}`);
     } finally {
       setInstalling(false);
     }

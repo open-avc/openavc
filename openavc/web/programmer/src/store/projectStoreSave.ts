@@ -27,6 +27,11 @@ export interface SaveAttemptDeps {
   /** True for a version conflict (409) — never retried; the user must reload. */
   isConflict: (e: unknown) => boolean;
   conflictMessage: (e: unknown) => string;
+  /** The sentence a give-up failure shows the user. Injected like
+   *  conflictMessage, and for the same reason: unwrapping a thrown value is
+   *  the transport's business, and this file stays free of value imports so
+   *  the esbuild harness in tests/ can load it on its own. */
+  failureMessage: (e: unknown) => string;
   setState: (patch: SaveStatePatch) => void;
   /** Backoff sleep, injected so tests don't wait real seconds. */
   sleep: (ms: number) => Promise<void>;
@@ -79,7 +84,7 @@ export async function runSaveWithRetry(
         await deps.sleep(delay);
         continue;
       }
-      deps.setState({ error: String(e), saving: false });
+      deps.setState({ error: deps.failureMessage(e), saving: false });
       return "failed";
     }
   }

@@ -9,6 +9,7 @@ import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
+import { parseApiError } from "../api/errors";
 import type { SystemConfig, NetworkAdapter, TlsStatus, TlsUploadResult, SshStatus } from "../api/restClient";
 import type { ProjectConfig } from "../api/types";
 
@@ -712,7 +713,7 @@ export function SystemSettingsView() {
             : ""),
       );
     } catch (e) {
-      showError(String(e instanceof Error ? e.message : e));
+      showError(parseApiError(e));
     } finally {
       setUploading(false);
     }

@@ -1,4 +1,5 @@
-import { AUTH_REQUIRED_EVENT, clearSession, getAuthSubprotocols } from "./auth";
+import { AUTH_REQUIRED_EVENT, clearSession, getAuthSubprotocols, hasSession } from "./auth";
+import { BASE } from "./base";
 
 type MessageHandler = (msg: Record<string, unknown>) => void;
 type LifecycleHandler = () => void;
@@ -40,6 +41,32 @@ function requestLogin(code: number): void {
   console.warn(`[WS] Connection rejected (code ${code}); requesting login`);
   clearSession();
   window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+}
+
+/**
+ * Ask REST whether this tab's session is still good, after a reconnect failed.
+ *
+ * A reconnect that fails once we have been connected is ambiguous in the same
+ * way a pre-open failure is: the server may be restarting, or it may be back up
+ * and refusing this tab because the restart dropped every in-memory session
+ * token. The browser cannot tell them apart. The server rejects an
+ * unauthenticated upgrade before accepting it, so the handshake ends as a plain
+ * HTTP 403 and the browser reports close code 1006 with no message, which is
+ * also what an unreachable port produces.
+ *
+ * A REST call answers with a status code instead. The fetch interceptor in
+ * api/auth.ts turns a 401 into the sign-in screen, so one authenticated GET is
+ * the whole mechanism; a server that is still down rejects the fetch, which
+ * says nothing about the session and is ignored. Without this the tab retries
+ * the handshake forever behind a red status dot, and the user learns the
+ * session died from whatever they do next, usually the autosave carrying their
+ * work.
+ */
+function probeSession(): void {
+  if (!hasSession()) return;
+  fetch(`${BASE}/system/version`).catch(() => {
+    /* server unreachable — not an answer about the session */
+  });
 }
 
 export function connect(): void {
@@ -114,6 +141,11 @@ export function connect(): void {
         requestLogin(ev.code);
         return;
       }
+    }
+    // Once we have been connected there is no close code that tells us the
+    // session died, so ask REST instead of retrying blind — see probeSession.
+    if (everConnected) {
+      probeSession();
     }
     console.log(`[WS] Disconnected (code ${ev.code}), reconnecting in ${reconnectDelay / 1000}s...`);
     reconnectTimer = setTimeout(connect, reconnectDelay);
