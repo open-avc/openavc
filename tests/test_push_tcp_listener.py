@@ -30,8 +30,19 @@ def _make_driver(definition: dict, config: dict | None = None, device_id: str = 
 
 
 def _free_tcp_port() -> int:
+    """A port that was free on the address the listener will actually bind.
+
+    The probe binds the wildcard because ``TcpListener.open`` does. Asking
+    loopback instead answered a different question: a port already held on
+    another interface came back "free", and the wildcard bind under test then
+    failed with an address-in-use that had nothing to do with the test.
+
+    It narrows the window rather than closing it — the socket is released
+    before the caller takes the port, so this reports what was free a moment
+    ago and never reserves it.
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
+    s.bind(("", 0))
     port = s.getsockname()[1]
     s.close()
     return port
