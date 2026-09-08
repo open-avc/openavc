@@ -135,11 +135,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     }
     const cmd = draft.commands[selectedCommand];
     if (!cmd) return;
-    const seeded: Record<string, string> = {};
-    for (const [name, def] of Object.entries(cmd.params ?? {})) {
-      seeded[name] = def.default !== undefined ? String(def.default) : "";
-    }
-    setParamValues(seeded);
+    setParamValues(seedParamValues(cmd));
   }, [selectedCommand, draft.commands]);
 
   // A81 — pre-flight conflict check. Many AV devices accept only one TCP
@@ -1137,7 +1133,9 @@ const pillButtonStyle: React.CSSProperties = {
  * driver builds the command against a transport that records instead of
  * transmitting, so what is shown is what would be sent, down to the byte.
  */
-function CommandPreview({
+/** Exported for tests: the parameter form plus the wire preview under it,
+  * which is where the two have to agree about what the form holds. */
+export function CommandPreview({
   command,
   paramValues,
   shapeMismatch,
@@ -1338,6 +1336,24 @@ function WirePreview({
   );
 }
 
+/** What the parameter form starts with when a command is chosen.
+ *
+ *  A param that declares a default starts there. One that does NOT starts
+ *  EMPTY and has to stay that way: seeding it with the first enum option would
+ *  put a value in the form the author never picked, and this harness sends to
+ *  real hardware over a socket it opens itself. An unchosen required param is
+ *  supposed to stop the send — that is what the wire preview is for.
+ */
+export function seedParamValues(
+  command: DriverCommandDef,
+): Record<string, string> {
+  const seeded: Record<string, string> = {};
+  for (const [name, def] of Object.entries(command.params ?? {})) {
+    seeded[name] = def.default !== undefined ? String(def.default) : "";
+  }
+  return seeded;
+}
+
 function ParamInput({
   def,
   value,
@@ -1351,6 +1367,18 @@ function ParamInput({
     // Options may be plain strings or {value, label} — show the label, send
     // the wire value (the preview + runtime both work off the value).
     const options = normalizeOptionList(def.values);
+    // A native <select> always displays SOME option. With no empty option
+    // present, a param that is unset ("" — every required enum that declares
+    // no default) matched nothing, so the browser fell back to options[0] and
+    // the control showed a real, plausible value this form did not hold: the
+    // picker read "Mic" while the wire preview under it said 'source' is
+    // required. The placeholder is what lets the control say "unset" out loud.
+    //
+    // It is NOT the optional param's "(none)". That is a genuine choice —
+    // clear this and send nothing. This one is disabled and present only until
+    // something is chosen, so a required param still has no way to be emptied,
+    // which is the rule `shared/ParamInput.tsx` already follows.
+    const unset = !value;
     return (
       <select
         value={value}
@@ -1358,6 +1386,11 @@ function ParamInput({
         style={{ width: "100%" }}
       >
         {!def.required && <option value="">(none)</option>}
+        {def.required && unset && (
+          <option value="" disabled>
+            Select...
+          </option>
+        )}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
