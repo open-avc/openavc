@@ -178,6 +178,12 @@ export function CanvasElement({
         </>
       )}
 
+      {/* The badge takes the pointer, or its title can never be read: a tooltip
+          on something the mouse cannot reach never appears, and a control that
+          says "!" with no way to ask why is worse than no badge. It sits under
+          the resize grips (z 15 against their 20) so the corner grip still wins
+          the few pixels they share, and a press on it bubbles to the element,
+          so grabbing the badge still drags the control. */}
       {warning && !previewMode && (
         <div
           title={warning}
@@ -195,9 +201,9 @@ export function CanvasElement({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 25,
+            zIndex: 15,
             lineHeight: 1,
-            pointerEvents: "none",
+            cursor: "help",
           }}
         >
           !
@@ -218,9 +224,9 @@ export function CanvasElement({
             fontSize: 9,
             fontWeight: 600,
             letterSpacing: "0.02em",
-            zIndex: 25,
+            zIndex: 15,
             lineHeight: 1.6,
-            pointerEvents: "none",
+            cursor: "help",
             whiteSpace: "nowrap",
           }}
         >
