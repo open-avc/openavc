@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from openavc.api._engine import _get_engine
-from openavc.api.errors import api_error as _api_error
+from openavc.api.errors import api_error as _api_error, validation_failed
 from openavc.api.models import (
     LibraryDuplicateRequest,
     LibraryOpenRequest,
@@ -332,6 +332,10 @@ async def save_project_config(request: Request) -> dict[str, Any]:
         from openavc.core.project_migration import migrate_project
         body, _ = migrate_project(body)
         project = ProjectConfig(**body)
+    except ValidationError as e:
+        # The field list is the whole repair story for whoever sent this --
+        # a person, an integration, or the AI writing a project section.
+        raise validation_failed(422, "Invalid project configuration", e)
     except Exception as e:
         raise _api_error(422, "Invalid project configuration", e)
     # Compare-and-set runs inside the engine, under the same lock that
@@ -558,6 +562,10 @@ async def import_library_project(request: Request) -> dict[str, Any]:
             f"Project Library first, then import again.",
             e,
         )
+    except ValidationError as e:
+        # Pydantic's ValidationError IS a ValueError, so this branch has to sit
+        # above the one below or the field list is swallowed with it.
+        raise validation_failed(422, f"Invalid project file '{filename}'", e)
     except ValueError as e:
         raise _api_error(422, f"Invalid project file '{filename}'", e)
 
@@ -599,7 +607,7 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
         # A stored project that no longer validates even after migration —
         # surface a friendly 422 instead of a raw 500 (the pre-open backup of
         # the current project has already been taken and stays available).
-        raise _api_error(
+        raise validation_failed(
             422,
             f"Saved project '{data.library_id}' is not a valid project file",
             e,

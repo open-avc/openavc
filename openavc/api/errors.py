@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from openavc.utils.logger import get_logger
 
@@ -59,6 +60,28 @@ class StructuredApiError(HTTPException):
         self.fields = fields
 
 
+def validation_failed(
+    status_code: int, heading: str, exc: ValidationError
+) -> StructuredApiError:
+    """Refuse a body this door validated itself, naming every field at fault.
+
+    A door that hands a raw dict to a Pydantic model catches the
+    ``ValidationError`` itself, so FastAPI's request-validation handler never
+    sees it and the field list is the caller's only repair information. Turning
+    it into a fixed sentence leaves them to retry blind or bisect the payload by
+    hand, which is what ``PUT /api/project`` did.
+
+    ``detail`` carries the heading and the problems, one per line, so a client
+    that reads only ``detail`` still shows every field to fix; the same lines
+    ride in ``errors`` for anything rendering them individually. Same shape as
+    the driver-definition refusal in ``routes/drivers.py``.
+    """
+    lines = validation_error_lines(exc.errors())
+    log.error(f"API error ({status_code}): {heading} — {type(exc).__name__}: {exc}")
+    detail = f"{heading}:\n" + "\n".join(lines) if lines else heading
+    return StructuredApiError(status_code, detail, errors=lines)
+
+
 async def structured_api_error_handler(request: Request, exc: StructuredApiError) -> JSONResponse:
     """Render a :class:`StructuredApiError` as ``{"detail": <str>, **fields}``."""
     return JSONResponse(
@@ -66,6 +89,31 @@ async def structured_api_error_handler(request: Request, exc: StructuredApiError
         content={"detail": exc.detail, **exc.fields},
         headers=exc.headers,
     )
+
+
+def validation_error_lines(errors: list) -> list[str]:
+    """One ``"<field>: <msg>"`` line per validation error, in Pydantic's order.
+
+    Takes the ``{"loc", "msg", "type"}`` dicts that both FastAPI's
+    ``RequestValidationError.errors()`` and a bare Pydantic
+    ``ValidationError.errors()`` produce, so a door that validates a body itself
+    names its fields exactly the way a typed endpoint does.
+
+    Only ``loc`` and ``msg`` are read. Pydantic also carries ``input_value``,
+    which is the caller's own data and does not belong in a response.
+    """
+    lines: list[str] = []
+    for err in errors:
+        loc = list(err.get("loc", ()))
+        # Drop the leading location marker (body/query/path/header/cookie) so
+        # the field reads as the user named it; keep any nested path after it.
+        # A bare Pydantic error has no such marker and is unaffected.
+        if loc and loc[0] in ("body", "query", "path", "header", "cookie"):
+            loc = loc[1:]
+        field = ".".join(str(part) for part in loc) if loc else "request"
+        message = err.get("msg") or "invalid value"
+        lines.append(f"{field}: {message}")
+    return lines
 
 
 def format_request_validation_errors(errors: list) -> str:
@@ -77,17 +125,8 @@ def format_request_validation_errors(errors: list) -> str:
     ``HTTPException(status, "message")`` — a single string ``detail`` the
     frontend error extractor already understands.
     """
-    parts: list[str] = []
-    for err in errors:
-        loc = list(err.get("loc", ()))
-        # Drop the leading location marker (body/query/path/header/cookie) so
-        # the field reads as the user named it; keep any nested path after it.
-        if loc and loc[0] in ("body", "query", "path", "header", "cookie"):
-            loc = loc[1:]
-        field = ".".join(str(part) for part in loc) if loc else "request"
-        message = err.get("msg") or "invalid value"
-        parts.append(f"{field}: {message}")
-    return "; ".join(parts) if parts else "Invalid request"
+    lines = validation_error_lines(errors)
+    return "; ".join(lines) if lines else "Invalid request"
 
 
 async def request_validation_exception_handler(
