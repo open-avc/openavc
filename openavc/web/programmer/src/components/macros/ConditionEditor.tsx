@@ -6,8 +6,8 @@ import { useProjectStore } from "../../store/projectStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 
 const OPERATORS = [
-  { value: "eq", label: "equals", hint: "Matches exactly (case-sensitive for text)" },
-  { value: "ne", label: "not equals", hint: "True when the value is anything except this" },
+  { value: "eq", label: "equals", hint: "Matches the value (text ignores case)" },
+  { value: "ne", label: "not equals", hint: "Matches a different reported value (text ignores case)" },
   { value: "gt", label: "greater than", hint: "Numeric comparison: value > target" },
   { value: "lt", label: "less than", hint: "Numeric comparison: value < target" },
   { value: "gte", label: "greater or equal", hint: "Numeric comparison: value >= target" },
