@@ -765,7 +765,7 @@ export function VariablesSubTab() {
                 </div>
               )}
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                When a value is set outside these rules, a warning appears in the Activity log.
+                Values outside these rules are still saved. Warnings appear here and in System Log.
               </div>
               {selectedLiveValue !== undefined && (() => {
                 const v = selectedVar.validation;
