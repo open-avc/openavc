@@ -439,7 +439,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": ""
   },
   "keypad": {
-    "baseWidthPx": 100,
+    "baseWidthPx": 102,
     "baseHeightPx": 266,
     "internals": [
       {
@@ -457,7 +457,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "styleProperty": "",
     "styles": {},
     "styleDefault": "",
-    "note": "100 wide rather than the 98 measured here. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed. How much it needs depends on the font, so the two pixels are the allowance the first measurement showed between machines: 84 was right where that glyph was narrow and two short where it was not, at the 18px digits the keys used to draw."
+    "note": "102 wide: 98 measured on a Windows box, 101 on the ubuntu CI runner, and a pixel in hand for the Playwright container, which needed two more than a dev box at the old 18px digits. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed -- and how much it needs depends on the font, which is why this floor differs by machine more than any other."
   },
   "select": {
     "baseWidthPx": 44,
