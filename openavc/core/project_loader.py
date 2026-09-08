@@ -195,6 +195,12 @@ class MonitorConfig(_ForwardCompatModel):
     #: A number's normal range. Either end alone is a one-sided limit.
     normal_min: float | None = None
     normal_max: float | None = None
+    #: Decimal places for a numeric reading, the same word and the same meaning
+    #: the panel's slider/fader/gauge/label carry. Unset is "as reported", not
+    #: zero: a float32 crossing a float64 wire reads 0.08000000566244125, and
+    #: the room that cares says so once, here, for the tile, the cloud health
+    #: card and the alert together.
+    display_decimals: int | None = None
     #: Value -> word, and which values are normal (booleans, enums, strings).
     states: dict[str, MonitorStateEntry] = Field(default_factory=dict)
     #: How long the reading must be outside normal before it fires. 0 fires at

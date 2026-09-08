@@ -75,6 +75,9 @@ export interface MonitorConfig {
   type?: string;
   normal_min?: number | null;
   normal_max?: number | null;
+  /** Decimal places for a numeric reading. Unset is "as reported", not zero.
+   *  Same word and same meaning as the UI element property below. */
+  display_decimals?: number | null;
   states?: Record<string, MonitorStateEntry>;
   duration_seconds?: number;
 }

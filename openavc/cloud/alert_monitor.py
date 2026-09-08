@@ -21,7 +21,7 @@ from openavc.cloud.protocol import (
     build_active_alerts_payload, build_alert_payload,
     build_alert_resolved_payload, build_monitors_payload,
 )
-from openavc.core.monitors import compile_alert_rules
+from openavc.core.monitors import compile_alert_rules, monitor_reading
 from openavc.utils.logger import get_logger
 from openavc.utils.regex_safety import regex_safety_error
 
@@ -319,7 +319,8 @@ class AlertMonitor:
             category=rule.get("category", "device"),
             device_id=_extract_device_id(key),
             message=_clip_message(
-                f"{rule['name']}: {key} {operator} {threshold} (current: {value})"
+                f"{rule['name']}: {key} {operator} {threshold} "
+                f"(current: {_reads_as(rule, value)})"
             ),
             detail={"rule_id": rule["id"], "key": key, "value": value,
                     "threshold": threshold},
@@ -378,7 +379,7 @@ class AlertMonitor:
             category=rule.get("category", "device"),
             device_id=_extract_device_id(key),
             message=_clip_message(
-                f"{rule['name']}: {key} is {value}{held}"
+                f"{rule['name']}: {key} is {_reads_as(rule, value)}{held}"
             ),
             detail={"rule_id": rule["id"], "key": key, "value": value,
                     "duration_seconds": duration},
@@ -683,6 +684,25 @@ class AlertMonitor:
 # makes PostgreSQL reject the insert (error 22001) and silently drops the
 # alert — it passes on SQLite but fails in production. Clip before sending.
 _MAX_MESSAGE_LEN = 2000
+
+
+def _reads_as(rule: dict, value: Any) -> str:
+    """The value as a person reads it, for a rule that carries a declaration.
+
+    A project monitor compiles with a ``display`` block (unit, decimals, the
+    author's words), so the sentence on somebody's phone quotes the same string
+    the Dashboard tile and the cloud health card show. One declaration stands
+    behind all three surfaces, and it has to hold in the words as well as in
+    the verdict.
+
+    A rule pushed from the portal has no declaration behind it and renders
+    exactly as it always did. ``detail["value"]`` stays the raw reading either
+    way: that is data for the cloud, not a sentence for a person.
+    """
+    display = rule.get("display")
+    if not isinstance(display, dict):
+        return str(value)
+    return monitor_reading(display, value)
 
 
 def _clip_message(message: str) -> str:

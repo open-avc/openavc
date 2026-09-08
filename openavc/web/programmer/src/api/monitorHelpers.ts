@@ -143,14 +143,52 @@ export function monitorLabel(monitor: MonitorConfig): string {
   return monitor.key ?? "";
 }
 
+/** The clamp on a declared decimal place count, copied from the panel's
+ *  `_displayDecimals`: `toFixed` throws a RangeError outside 0..100, and a
+ *  stray project value must not take a tile down mid-render. */
+const MAX_DECIMALS = 20;
+
+/** Above this `toFixed` returns exponential notation; past it both sides print
+ *  the number as it reads, so they cannot disagree. */
+const TOFIXED_EXPONENTIAL_AT = 1e21;
+
+/** How many decimals this reading is shown to, or null for as-reported.
+ *  Unset is not zero — a reading nobody rounded prints as it arrived. */
+export function displayDecimals(monitor: MonitorConfig): number | null {
+  const raw = monitor.display_decimals;
+  if (raw === undefined || raw === null || typeof raw === "boolean") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(MAX_DECIMALS, Math.trunc(n)));
+}
+
 /** Value plus unit, as a tile shows it. "—" when nothing has reported —
- *  no value is not zero. */
+ *  no value is not zero.
+ *
+ *  A number is rounded to the declared decimals; the author's word for a value
+ *  and any text the device reports are shown exactly as they are, the same
+ *  rule the panel's Label follows. `toFixed` is the spelling BOTH sides use —
+ *  monitors.py reimplements it with Decimal rather than Python's own format,
+ *  which rounds halves the other way (see `_to_fixed` there). */
 export function monitorReading(monitor: MonitorConfig, value: unknown): string {
   if (value === undefined || value === null) return "—";
   const word = monitorWord(monitor, value);
   if (word) return word;
+  let shown = String(value);
+  const decimals = displayDecimals(monitor);
+  if (decimals !== null) {
+    const num = asNumber(value);
+    // Past the threshold it is `String(num)`, not `String(value)`: a numeric
+    // STRING that big would otherwise keep its own spelling here and take the
+    // float's on the server, which is the divergence this guard exists to close.
+    if (num !== null) {
+      shown = Math.abs(num) >= TOFIXED_EXPONENTIAL_AT
+        ? String(num)
+        : num.toFixed(decimals);
+    }
+  }
   const unit = monitor.unit?.trim();
-  return unit ? `${String(value)} ${unit}` : String(value);
+  return unit ? `${shown} ${unit}` : shown;
 }
 
 // --- Keeping the list honest (mirrors monitors.py) ---

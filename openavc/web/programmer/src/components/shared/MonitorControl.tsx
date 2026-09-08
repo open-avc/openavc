@@ -301,14 +301,45 @@ function MonitorLimits({
           />
         </Field>
         {numeric && (
-          <Field label="Unit" width={90}>
-            <input
-              value={monitor.unit ?? ""}
-              placeholder={declared?.unit || ""}
-              onChange={(e) => patch({ unit: e.target.value }, `Monitor unit for ${monitor.key}`)}
-              style={inputStyle}
-            />
-          </Field>
+          <>
+            <Field label="Unit" width={90}>
+              <input
+                value={monitor.unit ?? ""}
+                placeholder={declared?.unit || ""}
+                onChange={(e) => patch({ unit: e.target.value }, `Monitor unit for ${monitor.key}`)}
+                style={inputStyle}
+              />
+            </Field>
+            {/* Only offered on a number, beside the unit, because rounding is a
+                statement about a quantity — on a boolean or an enum it would be
+                a control that does nothing. Empty is "as reported", NOT zero,
+                which is why the placeholder says so: a blank box next to "Unit"
+                otherwise reads as 0 decimal places. */}
+            <Field label="Decimals" width={110}>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                step={1}
+                value={monitor.display_decimals ?? ""}
+                placeholder="As reported"
+                onChange={(e) => patch(
+                  {
+                    // Truncated because the field is an integer on the server
+                    // and Pydantic refuses a float with a fraction — a "2.5"
+                    // typed here would fail the whole project's next load, over
+                    // a display hint. A number input still hands back "2.5"
+                    // when its step says otherwise.
+                    display_decimals: e.target.value === ""
+                      ? null
+                      : Math.trunc(Number(e.target.value)),
+                  },
+                  `Monitor decimals for ${monitor.key}`,
+                )}
+                style={inputStyle}
+              />
+            </Field>
+          </>
         )}
       </div>
 

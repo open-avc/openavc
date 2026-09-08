@@ -481,6 +481,10 @@ function MonitorRow({ monitor, value, first }: {
   first: boolean;
 }) {
   const status = monitorStatus(monitor, value);
+  // With no label declared, `monitorLabel` falls back to the key — and the row
+  // then printed the same 47-character key twice, once as the title and once
+  // underneath it. Show it once.
+  const labelled = monitorLabel(monitor) !== monitor.key;
   const tone = status === ABNORMAL ? "var(--status-error, #ef4444)"
     : status === NORMAL ? "var(--accent)"
     : value === undefined || value === null ? "var(--text-muted)"
@@ -497,17 +501,45 @@ function MonitorRow({ monitor, value, first }: {
         borderTop: first ? undefined : "1px solid var(--border-color)",
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: "var(--font-size-sm)",
+          fontWeight: 500,
+          // Not ellipsis. When nothing named the reading this line IS the state
+          // key, and a state key is identified by its TAIL — two readings on one
+          // device share every character up to the property, so an end-ellipsis
+          // would draw them identically.
+          wordBreak: "break-all",
+        }}>
           {monitorLabel(monitor)}
         </div>
-        <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-          {monitor.key}
-        </code>
+        {labelled && (
+          <code style={{
+            // `display: block` is the whole fix on this line: a `<code>` is
+            // inline, so it contributed no width to the column and no overflow
+            // rule could apply to it — it simply painted across the value and
+            // out through the right edge of the card.
+            display: "block",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
+            wordBreak: "break-all",
+          }}>
+            {monitor.key}
+          </code>
+        )}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-xs)",
+        flexShrink: 0,
+        // The value is the point of the row, so it is never truncated — but it
+        // is not allowed to push the reading's name out of the card either.
+        maxWidth: "60%",
+      }}>
         {status === ABNORMAL && (
-          <AlertTriangle size={13} style={{ color: tone }} />
+          <AlertTriangle size={13} style={{ color: tone, flexShrink: 0 }} />
         )}
         <div style={{
           fontSize: "var(--font-size-sm)",
@@ -517,6 +549,8 @@ function MonitorRow({ monitor, value, first }: {
           background: "var(--bg-hover)",
           padding: "2px 8px",
           borderRadius: "var(--border-radius)",
+          minWidth: 0,
+          wordBreak: "break-all",
         }}>
           {monitorReading(monitor, value)}
         </div>

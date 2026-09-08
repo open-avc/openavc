@@ -93,6 +93,14 @@ The delay matters more than it looks. A projector that is off is perfectly norma
 
 The label, unit, type and range are filled in from what the driver or the variable already declares, so most readings need nothing typed. All of it stays editable: a driver's 0–10000 hour lamp range is the lamp's range, not the point at which you want telling.
 
+### Rounding a number
+
+A number is shown exactly as the device reports it, which is usually what you want and occasionally reads as `0.08000000566244125 A`. That is not a fault: plenty of gear reports a reading at one precision and it reaches the software at another, and every digit of it is genuinely what arrived.
+
+Set **Decimals** on the monitor to say how many places to show. It changes what is displayed and nothing else — the Dashboard tile, the health card in the cloud and the sentence in the alert all read it, so all three say the same thing. Leave it blank to show the reading as it arrives.
+
+Rounding never changes the judgement. A reading outside its limits that happens to round to a value inside them is still outside them, and the tile still says so. It applies to numbers only: a word you have given a value, a yes/no reading and text the device reports are all shown as they are.
+
 ### Words instead of raw values
 
 A reading with a handful of possible values can carry a word for each one, so a panel or a card reads "Occupied" rather than `true`, or "No Signal" rather than `none`. Naming a value does not say anything about whether it is healthy. That is the tick beside it.

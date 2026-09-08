@@ -32,6 +32,7 @@ in the engine.
 
 from __future__ import annotations
 
+import decimal
 import re
 from typing import Any
 
@@ -197,19 +198,102 @@ def monitor_word(monitor: dict[str, Any], value: Any) -> str | None:
     return None
 
 
+#: The clamp on a declared decimal place count, copied from the panel's
+#: ``_displayDecimals`` rather than re-decided: ``toFixed`` throws a RangeError
+#: outside 0..100, and a stray project value must never take a tile down. The
+#: two must agree, because one author sets ``display_decimals`` on a Label and
+#: on the monitor of the same reading and is entitled to the same answer.
+_MAX_DECIMALS = 20
+
+#: Above this, ``toFixed`` gives up on positional notation and returns
+#: exponential ("1e+21"). Nothing a room reports goes near it, but pinning the
+#: hand-off point is what stops the two sides printing different strings for
+#: the same absurd value: past it, both print the number as it reads.
+_TOFIXED_EXPONENTIAL_AT = 1e21
+
+
+def display_decimals(monitor: dict[str, Any]) -> int | None:
+    """How many decimals this reading is shown to, or ``None`` for as-reported.
+
+    Unset is not zero. A reading nobody rounded prints exactly as it arrived --
+    which is what every monitor did before this field existed, and what the
+    parity corpus pins so no existing tile shifts under an author who never
+    asked for anything.
+    """
+    raw = monitor.get("display_decimals")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        n = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(_MAX_DECIMALS, n))
+
+
+def _to_fixed(num: float, decimals: int) -> str:
+    """``num`` at ``decimals`` places, spelled exactly as JavaScript spells it.
+
+    This is deliberately NOT ``f"{num:.{decimals}f}"``. Python's format rounds
+    halves to even and ``Number.prototype.toFixed`` rounds them away from zero,
+    so the two disagree on values a fader reaches constantly: 2.5 at 0 places is
+    "2" one side and "3" the other, and -6.5 is "-6" against "-7". The IDE tile
+    is rendered by the mirror and the cloud health card by the vendored copy of
+    this module, so a divergence here is two screens showing one reading two
+    ways -- the exact failure this module exists to prevent.
+
+    ``Decimal(float)`` is the *exact* binary value, so 2.675 still rounds to
+    "2.67" the way both languages do; only genuine ties are decided here.
+    """
+    if abs(num) >= _TOFIXED_EXPONENTIAL_AT:
+        return str(num)
+    with decimal.localcontext() as ctx:
+        # Well clear of a 20-place render of a large reading; the default 28
+        # would raise on one rather than print it.
+        ctx.prec = 60
+        ctx.rounding = decimal.ROUND_HALF_UP
+        return format(decimal.Decimal(num), f".{decimals}f")
+
+
 def monitor_reading(monitor: dict[str, Any], value: Any) -> str:
     """Value plus unit, as a tile shows it.
 
     "--" when nothing has reported: no value is not zero, and a key that has
     never spoken must not be drawn as one that answered 0.
+
+    A number is rounded to the declared ``display_decimals``. Only a number:
+    the author's word for a value and any text the device reports are shown
+    exactly as they are, the same rule the panel's Label follows, because
+    rounding is a statement about a quantity and nothing else is one.
     """
     if value is None:
         return "—"
     word = monitor_word(monitor, value)
     if word:
         return word
+    shown = str(value)
+    decimals = display_decimals(monitor)
+    if decimals is not None:
+        num = as_number(value)
+        if num is not None:
+            shown = _to_fixed(num, decimals)
     unit = str(monitor.get("unit") or "").strip()
-    return f"{value} {unit}" if unit else str(value)
+    return f"{shown} {unit}" if unit else shown
+
+
+def display_fields(monitor: dict[str, Any]) -> dict[str, Any]:
+    """The part of a declaration that decides how a value READS, on its own.
+
+    ``monitor_reading`` asks a monitor three things -- its words, its unit and
+    its decimals -- and nothing else. Handing those three to something that
+    renders a value (the alert does) keeps the limits, the key and the duration
+    out of a place that has no business with them, while still guaranteeing the
+    same string the tile shows.
+    """
+    return {
+        "unit": monitor.get("unit") or "",
+        "display_decimals": monitor.get("display_decimals"),
+        "states": monitor.get("states") or {},
+    }
 
 
 def monitor_label(monitor: dict[str, Any]) -> str:
@@ -303,6 +387,14 @@ def compile_alert_rules(monitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "enabled": True,
             "severity": _SEVERITY,
             "category": "device" if key.startswith("device.") else "system",
+            # What the reading READS as, carried so the alert can say the same
+            # thing the tile says. One declaration stands behind all three
+            # surfaces, and an alert quoting 0.08000000566244125 beside a tile
+            # reading "0.08 A" breaks that just as surely as a wrong verdict
+            # would. Only a rule compiled from a project monitor has this; a
+            # rule pushed from the portal has no declaration behind it and is
+            # rendered exactly as it always was.
+            "display": display_fields(monitor),
         }
         allowed = normal_values(monitor)
         if allowed:

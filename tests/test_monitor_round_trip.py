@@ -39,6 +39,7 @@ def _body() -> dict:
                 "unit": "hours",
                 "type": "number",
                 "normal_max": 2000,
+                "display_decimals": 1,
                 "duration_seconds": 300,
             },
             {
@@ -86,7 +87,8 @@ def test_every_monitor_field_is_declared():
     declared = set(MonitorConfig.model_fields)
     assert declared == {
         "key", "label", "unit", "type",
-        "normal_min", "normal_max", "states", "duration_seconds",
+        "normal_min", "normal_max", "display_decimals", "states",
+        "duration_seconds",
     }
     monitor = MonitorConfig(**_body()["monitors"][0])
     assert not monitor.model_extra

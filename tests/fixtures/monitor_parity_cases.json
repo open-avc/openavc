@@ -320,6 +320,174 @@
       "status": "abnormal",
       "word": null,
       "reading": "faulted"
+    },
+
+    {
+      "name": "decimals unset prints the float exactly as it arrived",
+      "monitor": { "key": "device.lea.ac_line_current", "unit": "A", "type": "number" },
+      "value": 0.08000000566244125,
+      "status": "unset",
+      "word": null,
+      "reading": "0.08000000566244125 A"
+    },
+    {
+      "name": "decimals rounds the float32-widened reading that caused this",
+      "monitor": { "key": "device.lea.ac_line_current", "unit": "A", "type": "number", "display_decimals": 2 },
+      "value": 0.08000000566244125,
+      "status": "unset",
+      "word": null,
+      "reading": "0.08 A"
+    },
+    {
+      "name": "decimals with no unit",
+      "monitor": { "key": "var.temp", "type": "number", "display_decimals": 1 },
+      "value": 121.30000305175781,
+      "status": "unset",
+      "word": null,
+      "reading": "121.3"
+    },
+    {
+      "name": "decimals zero is a real setting, not unset",
+      "monitor": { "key": "var.temp", "unit": "C", "type": "number", "display_decimals": 0 },
+      "value": 21.6,
+      "status": "unset",
+      "word": null,
+      "reading": "22 C"
+    },
+    {
+      "name": "a numeric STRING rounds too -- the cloud stores every value as text",
+      "monitor": { "key": "device.lea.ac_line_current", "unit": "A", "type": "number", "display_decimals": 2 },
+      "value": "0.08000000566244125",
+      "status": "unset",
+      "word": null,
+      "reading": "0.08 A"
+    },
+    {
+      "name": "decimals pads a short value out to the declared places",
+      "monitor": { "key": "var.temp", "unit": "V", "type": "number", "display_decimals": 3 },
+      "value": 121.3,
+      "status": "unset",
+      "word": null,
+      "reading": "121.300 V"
+    },
+
+    {
+      "name": "tie rounds away from zero, not to even (positive, 0 places)",
+      "monitor": { "key": "var.n", "type": "number", "display_decimals": 0 },
+      "value": 2.5,
+      "status": "unset",
+      "word": null,
+      "reading": "3"
+    },
+    {
+      "name": "tie rounds away from zero, not to even (negative fader, 0 places)",
+      "monitor": { "key": "device.amp.channel.01.fader", "unit": "dB", "type": "number", "display_decimals": 0 },
+      "value": -6.5,
+      "status": "unset",
+      "word": null,
+      "reading": "-7 dB"
+    },
+    {
+      "name": "tie at one place (a 0.25 dB step is a real fader step)",
+      "monitor": { "key": "device.amp.channel.01.fader", "unit": "dB", "type": "number", "display_decimals": 1 },
+      "value": 0.25,
+      "status": "unset",
+      "word": null,
+      "reading": "0.3 dB"
+    },
+    {
+      "name": "not a tie in binary, however it looks in decimal",
+      "monitor": { "key": "var.n", "type": "number", "display_decimals": 2 },
+      "value": 2.675,
+      "status": "unset",
+      "word": null,
+      "reading": "2.67"
+    },
+
+    {
+      "name": "decimals never touch the author's word for a value",
+      "monitor": {
+        "key": "device.proj.power",
+        "type": "enum",
+        "display_decimals": 2,
+        "states": { "1": { "label": "Warming", "normal": true } }
+      },
+      "value": 1,
+      "status": "normal",
+      "word": "Warming",
+      "reading": "Warming"
+    },
+    {
+      "name": "decimals never touch a boolean",
+      "monitor": { "key": "device.proj.faulted", "type": "boolean", "display_decimals": 2 },
+      "value": true,
+      "status": "unset",
+      "word": "Yes",
+      "reading": "Yes"
+    },
+    {
+      "name": "decimals never touch text the device reports",
+      "monitor": { "key": "device.proj.model", "type": "string", "display_decimals": 2 },
+      "value": "NP-PA653U",
+      "status": "unset",
+      "word": null,
+      "reading": "NP-PA653U"
+    },
+    {
+      "name": "decimals say nothing about health -- the judgement reads the raw value",
+      "monitor": {
+        "key": "device.lea.ac_line_current",
+        "unit": "A",
+        "type": "number",
+        "display_decimals": 0,
+        "normal_min": 0.5,
+        "normal_max": 10
+      },
+      "value": 10.4,
+      "status": "abnormal",
+      "word": null,
+      "reading": "10 A"
+    },
+
+    {
+      "name": "a stray decimals value is clamped, never handed to toFixed raw",
+      "monitor": { "key": "var.n", "type": "number", "display_decimals": 999 },
+      "value": 1.5,
+      "status": "unset",
+      "word": null,
+      "reading": "1.50000000000000000000"
+    },
+    {
+      "name": "a negative decimals value clamps to zero",
+      "monitor": { "key": "var.n", "type": "number", "display_decimals": -3 },
+      "value": 1.5,
+      "status": "unset",
+      "word": null,
+      "reading": "2"
+    },
+    {
+      "name": "a non-numeric decimals value is no declaration at all",
+      "monitor": { "key": "var.n", "type": "number", "display_decimals": "two" },
+      "value": 1.5,
+      "status": "unset",
+      "word": null,
+      "reading": "1.5"
+    },
+    {
+      "name": "past toFixed's exponential threshold both sides print the NUMBER, not the text",
+      "monitor": { "key": "var.n", "type": "number", "display_decimals": 2 },
+      "value": "1e21",
+      "status": "unset",
+      "word": null,
+      "reading": "1e+21"
+    },
+    {
+      "name": "decimals on a key that has never reported is still a dash",
+      "monitor": { "key": "var.n", "unit": "A", "type": "number", "display_decimals": 2 },
+      "value": null,
+      "status": "unset",
+      "word": null,
+      "reading": "\u2014"
     }
   ]
 }
