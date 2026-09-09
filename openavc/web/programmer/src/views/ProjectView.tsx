@@ -36,6 +36,14 @@ function libraryId(raw: string): string {
     .toLowerCase();
 }
 
+/** A backup named the way its row names it, on one line: the reason and the
+ *  time, never the zip path. What is about to replace the running project has
+ *  to be recognisable as the row the user just pressed. */
+function backupLabel(b: api.BackupInfo): string {
+  const when = b.timestamp ? new Date(b.timestamp).toLocaleString() : "Unknown";
+  return `${b.reason}, ${when}`;
+}
+
 export function ProjectView() {
   const meta = useProjectStore((s) => s.project?.project);
   const openavcVersion = useProjectStore((s) => s.project?.openavc_version);
@@ -61,7 +69,10 @@ export function ProjectView() {
   // Backup state
   const [backups, setBackups] = useState<api.BackupInfo[]>([]);
   const [backupsLoading, setBackupsLoading] = useState(false);
-  const [restoreConfirm, setRestoreConfirm] = useState<string | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState<api.BackupInfo | null>(null);
+  // The backup currently being restored, so its own row can say so. `busy`
+  // cannot: it is shared with import, Save As and the rest of this view.
+  const [restoring, setRestoring] = useState<string | null>(null);
   const [creatingBackup, setCreatingBackup] = useState(false);
 
   // Assets section filter (image/audio/all)
@@ -329,16 +340,18 @@ export function ProjectView() {
     input.click();
   };
 
-  const handleRestore = async (filename: string) => {
+  const handleRestore = async (backup: api.BackupInfo) => {
     setBusy(true);
+    setRestoring(backup.filename);
     try {
-      await api.restoreBackup(filename);
+      await api.restoreBackup(backup.filename);
       await forceReloadProject();
-      showSuccess("Project restored successfully.");
+      showSuccess(`Restored from ${backupLabel(backup)}.`);
       await refreshBackups();
     } catch (e) {
       showError(parseApiError(e));
     } finally {
+      setRestoring(null);
       setBusy(false);
     }
   };
@@ -732,17 +745,18 @@ export function ProjectView() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setRestoreConfirm(b.filename)}
+                  onClick={() => setRestoreConfirm(b)}
                   disabled={busy}
                   style={{
                     padding: "var(--space-xs) var(--space-md)",
                     borderRadius: "var(--border-radius)",
                     background: "var(--bg-hover)",
                     fontSize: "var(--font-size-sm)",
-                    cursor: "pointer",
+                    cursor: busy ? "default" : "pointer",
+                    opacity: busy ? 0.6 : 1,
                   }}
                 >
-                  Restore
+                  {restoring === b.filename ? "Restoring..." : "Restore"}
                 </button>
               </div>
             ))
@@ -856,9 +870,9 @@ export function ProjectView() {
       {restoreConfirm && (
         <ConfirmDialog
           title="Restore Backup"
-          message={`Restore from "${restoreConfirm}"? This will replace the current project.`}
+          message={`Restore from "${backupLabel(restoreConfirm)}"? This will replace the current project.`}
           confirmLabel="Restore"
-          onConfirm={() => { const f = restoreConfirm; setRestoreConfirm(null); handleRestore(f); }}
+          onConfirm={() => { const b = restoreConfirm; setRestoreConfirm(null); handleRestore(b); }}
           onCancel={() => setRestoreConfirm(null)}
         />
       )}
