@@ -146,16 +146,47 @@ def test_validate_json_response_requires_field_map():
     assert any("json response needs" in e for e in errors)
 
 
-def test_validate_json_response_rejects_child_set():
+def test_validate_json_response_rejects_a_capture_ref_in_child_set():
+    # A json rule routes to children by literal id and reads by JSON path.
+    # A capture ref borrowed from a regex rule would write nothing at all.
     defn = {
         **VALID_DEFINITION,
+        "child_entity_types": {
+            "output": {
+                "id_format": {"type": "integer", "min": 1, "max": 8},
+                "state_variables": {"input": {"type": "integer"}},
+                "instances": {"count": 2},
+            },
+        },
         "responses": [
             {"json": True, "set": {"power": "power"},
-             "child_set": [{"type": "output", "id": "$1", "state": {}}]},
+             "child_set": [
+                 {"type": "output", "id": "$1", "state": {"input": "a.b"}}
+             ]},
         ],
     }
     errors = validate_driver_definition(defn)
-    assert any("child_set is not supported on json responses" in e for e in errors)
+    assert any("id must be a literal child id" in e for e in errors)
+
+
+def test_validate_accepts_a_literal_id_json_child_set():
+    defn = {
+        **VALID_DEFINITION,
+        "child_entity_types": {
+            "output": {
+                "id_format": {"type": "integer", "min": 1, "max": 8},
+                "state_variables": {"input": {"type": "integer"}},
+                "instances": {"count": 2},
+            },
+        },
+        "responses": [
+            {"json": True,
+             "child_set": [
+                 {"type": "output", "id": 1, "state": {"input": "outputs.0.src"}}
+             ]},
+        ],
+    }
+    assert validate_driver_definition(defn) == []
 
 
 # --- frame_parser validation (H-062: reject at load, not at connect) ---

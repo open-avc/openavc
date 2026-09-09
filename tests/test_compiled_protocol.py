@@ -305,9 +305,12 @@ def test_compile_driver_builds_all_three_tables():
     assert addr == "/dev/A/level"
     assert osc_mappings == [{"arg": 0, "state": "volume"}]
 
-    json_mappings, _throttle2, require, _json_gate = compiled.json_responses[0]
+    (
+        json_mappings, _throttle2, require, _json_gate, json_children,
+    ) = compiled.json_responses[0]
     assert require == ("serial",)
     assert json_mappings == [{"state": "volume", "key": "vol", "type": "integer"}]
+    assert json_children == []
 
 
 def test_compile_driver_copies_mapping_lists_per_call():
@@ -352,6 +355,72 @@ def test_compile_driver_files_after_json_rules_into_their_own_table():
     assert [p.pattern for p, *_r in compiled.after_json_responses] == ["ERR (.+)"]
     # Same tuple object, so one throttle window serves both paths.
     assert compiled.after_json_responses[0] is compiled.responses[1]
+
+
+
+def test_compile_driver_compiles_a_json_child_set_by_literal_id_and_path():
+    definition = {
+        "state_variables": {"power": {"type": "boolean"}},
+        "child_entity_types": {
+            "zone": {
+                "state_variables": {
+                    "level": {"type": "integer"},
+                    "enabled": {"type": "boolean"},
+                },
+            },
+        },
+        "responses": [
+            {
+                "json": True,
+                "child_set": [
+                    {
+                        "type": "zone",
+                        "id": 2,
+                        "state": {
+                            "level": "zones.1.level",
+                            "enabled": {"key": "zones.1.on", "map": {"yes": "true"}},
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    compiled = compile_driver(definition, {})
+
+    assert compiled.json_responses[0][4] == [
+        {
+            "type": "zone",
+            "id": ("literal", 2),
+            "props": [
+                {"prop": "level", "key": "zones.1.level", "type": "integer"},
+                {
+                    "prop": "enabled",
+                    "key": "zones.1.on",
+                    "type": "boolean",
+                    "map": {"yes": "true"},
+                },
+            ],
+        }
+    ]
+
+
+def test_compile_driver_drops_a_json_child_set_that_cannot_route():
+    """A capture ref has nothing to read on a json rule; the loader rejects it
+    up front, and a hand-installed file is skipped rather than half-applied."""
+    definition = {
+        "child_entity_types": {"zone": {"state_variables": {"level": {"type": "integer"}}}},
+        "responses": [
+            {
+                "json": True,
+                "child_set": [
+                    {"type": "zone", "id": "$1", "state": {"level": "a"}},
+                    {"type": "nope", "id": 1, "state": {"level": "a"}},
+                ],
+            },
+        ],
+    }
+    compiled = compile_driver(definition, {})
+    assert compiled.json_responses[0][4] == []
 
 
 # ── send_param_groups ──

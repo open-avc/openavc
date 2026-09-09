@@ -781,7 +781,7 @@
     },
     "childSetEntry": {
       "type": "object",
-      "description": "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. Values coerce by the child property's declared type.",
+      "description": "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. json: true rules (platform 0.34.0+): id must be a literal (a JSON body carries no capture to route on, so one entry per child), and state values are JSON paths into the body — the same strings a json set: takes, plain or as {key, type, map}. Values coerce by the child property's declared type.",
       "required": [
         "type",
         "id",
@@ -793,7 +793,7 @@
           "description": "A declared child_entity_types name."
         },
         "id": {
-          "description": "A capture ref ($1, regex rules), {segment: N} (OSC rules), a literal child id, or the map long form to translate a wire id (0-based channels, ST codes) to the local child id.",
+          "description": "A capture ref ($1, regex rules), {segment: N} (OSC rules), a literal child id (the only form a json: true rule takes), or the map long form to translate a wire id (0-based channels, ST codes) to the local child id.",
           "oneOf": [
             {
               "type": "string"
@@ -872,7 +872,7 @@
         "state": {
           "type": "object",
           "minProperties": 1,
-          "description": "Child property -> capture ref or literal (regex rules); {arg: N[, map, type]}, {value: ...}, or literal (OSC rules)."
+          "description": "Child property -> capture ref or literal (regex rules); {arg: N[, map, type]}, {value: ...}, or literal (OSC rules); a JSON path, or {key[, type, map]}, (json: true rules)."
         }
       },
       "additionalProperties": false
@@ -1406,7 +1406,7 @@
         "child_set": {
           "type": "array",
           "minItems": 1,
-          "description": "Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; the OSC form needs platform 0.23.0) — not json: true. May coexist with set/mappings on the same entry. Requires platform 0.22.0.",
+          "description": "Route a matched response into child-entity state. Works on regex responses (captures), OSC address rules (address segments + positional args; the OSC form needs platform 0.23.0) and json: true rules (a literal id per entry, values read by JSON path; needs platform 0.34.0). May coexist with set/mappings on the same entry. Requires platform 0.22.0. Alongside \"json\", requires platform 0.34.0.",
           "items": {
             "$ref": "#/$defs/childSetEntry"
           }

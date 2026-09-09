@@ -106,6 +106,7 @@ SCENARIOS = [
     "json_duplicate_states_fall_back_to_mappings",
     "json_number_float_equivalence",
     "after_json_rides_along_and_drops_on_json",
+    "json_child_set_survives_and_prop_round_trips",
 ]
 
 

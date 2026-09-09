@@ -24,6 +24,8 @@ import {
   getJsonRows,
   getMappings,
   getPattern,
+  jsonChildPropFromText,
+  jsonChildPropToText,
   oscChildIdFromParts,
   oscChildIdToText,
   oscChildPropFromText,
@@ -99,9 +101,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
   };
 
   /** Convert a rule between text (regex) and JSON body, confirming before
-   *  authored content is dropped. Throttle survives the switch; child_set
-   *  and after_json do not survive to JSON (the validator rejects both
-   *  there). */
+   *  authored content is dropped. Throttle survives the switch; after_json
+   *  does not survive to JSON, and neither does child_set — both kinds route
+   *  to children, but a capture ref means nothing in a JSON body. */
   const switchKind = (index: number, kind: string) => {
     const resp = responses[index];
     const wasJson = resp.address === undefined && !!resp.json;
@@ -117,7 +119,10 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
         dropped.push("its capture mappings");
       }
       if ((resp.child_set?.length ?? 0) > 0) {
-        dropped.push("its child entity routing (not supported on JSON rules)");
+        dropped.push(
+          "its child entity routing (a JSON rule routes by literal ID and " +
+            "JSON path, not by capture)",
+        );
       }
       if (resp.after_json) {
         dropped.push("its after-JSON ordering (a JSON rule reads the body itself)");
@@ -677,13 +682,22 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               updateResponse(i, next);
             }}
           />
-          {!isJson && Object.keys(draft.child_entity_types ?? {}).length > 0 && (
+          {Object.keys(draft.child_entity_types ?? {}).length > 0 && (
             <ChildSetEditor
-              mode={draft.transport === "osc" ? "osc" : "regex"}
+              mode={
+                isJson ? "json" : draft.transport === "osc" ? "osc" : "regex"
+              }
               entries={resp.child_set ?? []}
               childTypes={draft.child_entity_types ?? {}}
               onChange={(entries) => {
-                const rebuilt = buildResponse(pattern, mappings, resp, stateVars);
+                const rebuilt = isJson
+                  ? buildJsonResponse(
+                      resp,
+                      jsonRows,
+                      requireToList(resp.require),
+                      stateVars,
+                    )
+                  : buildResponse(pattern, mappings, resp, stateVars);
                 if (entries.length) {
                   rebuilt.child_set = entries;
                 } else {
@@ -781,7 +795,7 @@ function ChildSetEditor({
   childTypes,
   onChange,
 }: {
-  mode: "regex" | "osc";
+  mode: "regex" | "osc" | "json";
   entries: DriverChildSetEntry[];
   childTypes: Record<string, DriverChildEntityType>;
   onChange: (entries: DriverChildSetEntry[]) => void;
@@ -789,6 +803,10 @@ function ChildSetEditor({
   const [open, setOpen] = useState(entries.length > 0);
   const typeNames = Object.keys(childTypes);
   const isOsc = mode === "osc";
+  // A JSON body carries no capture and no address, so there is nothing in it
+  // to route on: the ID is a literal, one entry per child, and each value is
+  // a path into the body.
+  const isJsonMode = mode === "json";
   const idToText = isOsc ? oscChildIdToText : childIdToText;
 
   const updateEntry = (idx: number, updated: DriverChildSetEntry) => {
@@ -800,7 +818,11 @@ function ChildSetEditor({
   const addEntry = () => {
     onChange([
       ...entries,
-      { type: typeNames[0] ?? "", id: isOsc ? { segment: 1 } : "$1", state: {} },
+      {
+        type: typeNames[0] ?? "",
+        id: isOsc ? { segment: 1 } : isJsonMode ? 1 : "$1",
+        state: {},
+      },
     ]);
     setOpen(true);
   };
@@ -840,7 +862,9 @@ function ChildSetEditor({
           marginBottom: "var(--space-xs)",
         }}
       >
-        Route captured values into child entities:
+        {isJsonMode
+          ? "Route JSON fields into child entities — one entry per child:"
+          : "Route captured values into child entities:"}
       </div>
       {entries.map((entry, idx) => {
         const props = Object.keys(
@@ -892,11 +916,19 @@ function ChildSetEditor({
                       : childIdFromParts(e.target.value, childIdMap(entry.id)),
                   });
                 }}
-                placeholder={isOsc ? "seg:1 or literal" : "$1 or a number"}
+                placeholder={
+                  isOsc
+                    ? "seg:1 or literal"
+                    : isJsonMode
+                      ? "a child ID"
+                      : "$1 or a number"
+                }
                 title={
                   isOsc
                     ? "Which address segment holds the child ID (seg:1 = the second /-separated part, 0-based), or a literal ID when the address is specific to one child"
-                    : "Which capture group holds the child ID ($1, $2, ...), or a literal ID when the pattern is specific to one child"
+                    : isJsonMode
+                      ? "The child this entry writes to. A JSON body has nothing to route on, so the ID is always written out here -- add one entry per child."
+                      : "Which capture group holds the child ID ($1, $2, ...), or a literal ID when the pattern is specific to one child"
                 }
                 style={{
                   width: 110,
@@ -959,22 +991,38 @@ function ChildSetEditor({
                   =
                 </span>
                 <input
-                  value={isOsc ? oscChildPropToText(expr) : String(expr ?? "")}
+                  value={
+                    isOsc
+                      ? oscChildPropToText(expr)
+                      : isJsonMode
+                        ? jsonChildPropToText(expr)
+                        : String(expr ?? "")
+                  }
                   onChange={(e) => {
                     const nextValue = isOsc
                       ? oscChildPropFromText(e.target.value, expr)
-                      : e.target.value;
+                      : isJsonMode
+                        ? jsonChildPropFromText(e.target.value, expr)
+                        : e.target.value;
                     const nextState = { ...entry.state, [prop]: nextValue };
                     updateEntry(idx, { ...entry, state: nextState });
                   }}
-                  placeholder={isOsc ? "arg:0 or literal" : "$2 or literal"}
+                  placeholder={
+                    isOsc
+                      ? "arg:0 or literal"
+                      : isJsonMode
+                        ? "zones.0.level"
+                        : "$2 or literal"
+                  }
                   title={
                     isOsc
                       ? "A positional OSC argument (arg:0 is the first) or a literal value; coerced by the property's declared type"
-                      : "A capture group ($2) or a literal value; coerced by the property's declared type"
+                      : isJsonMode
+                        ? "The JSON field to read, as a dot path into the reply body (list positions count too: zones.0.level); coerced by the property's declared type"
+                        : "A capture group ($2) or a literal value; coerced by the property's declared type"
                   }
                   style={{
-                    width: 110,
+                    width: isJsonMode ? 160 : 110,
                     fontFamily: "var(--font-mono)",
                     fontSize: "var(--font-size-sm)",
                   }}
@@ -998,7 +1046,7 @@ function ChildSetEditor({
                   ...entry,
                   state: {
                     ...entry.state,
-                    [unused ?? ""]: isOsc ? { arg: 0 } : "$2",
+                    [unused ?? ""]: isOsc ? { arg: 0 } : isJsonMode ? "" : "$2",
                   },
                 });
               }}

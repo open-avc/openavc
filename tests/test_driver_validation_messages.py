@@ -187,8 +187,74 @@ CASES: dict[str, Any] = {
         match="OK", set={"power": "$1"}, after_json=True
     ),
     "response_osc_address_no_slash": _d(transport="osc", responses=[{"address": "zone"}]),
-    "response_json_with_child_set": _resp(json=True, set={"power": "$.p"}, child_set=[{}]),
+    "response_json_child_set_entry_not_mapping": _resp(
+        json=True, set={"power": "$.p"}, child_set=["zone"]
+    ),
     "response_json_without_set_or_mappings": _resp(json=True),
+    # child_set on a json rule routes by literal id and reads by JSON path.
+    # Every borrowed shape (a capture ref, an OSC {arg}, the {group} long
+    # form) writes nothing at runtime, so each is refused by name.
+    "response_json_child_set_id_is_capture_ref": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[
+            {
+                "json": True,
+                "child_set": [
+                    {"type": "zone", "id": "$1", "state": {"level": "a.b"}}
+                ],
+            }
+        ],
+    ),
+    "response_json_child_set_id_missing": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[
+            {"json": True, "child_set": [{"type": "zone", "state": {"level": "a"}}]}
+        ],
+    ),
+    "response_json_child_set_id_not_an_integer": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[
+            {
+                "json": True,
+                "child_set": [
+                    {"type": "zone", "id": "main", "state": {"level": "a"}}
+                ],
+            }
+        ],
+    ),
+    "response_json_child_set_state_is_capture_ref": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[
+            {
+                "json": True,
+                "child_set": [{"type": "zone", "id": 1, "state": {"level": "$2"}}],
+            }
+        ],
+    ),
+    "response_json_child_set_state_is_an_osc_arg": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[
+            {
+                "json": True,
+                "child_set": [
+                    {"type": "zone", "id": 1, "state": {"level": {"arg": 0}}}
+                ],
+            }
+        ],
+    ),
+    "response_json_child_set_state_is_a_literal": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[
+            {
+                "json": True,
+                "child_set": [{"type": "zone", "id": 1, "state": {"level": 5}}],
+            }
+        ],
+    ),
+    "response_json_child_set_state_missing": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"json": True, "child_set": [{"type": "zone", "id": 1}]}],
+    ),
     "response_missing_pattern": _resp(set={"power": "$1"}),
     # Retired alias: `pattern:` was once accepted for `match:` — a rule
     # carrying only the old spelling must fail like any match-less rule.

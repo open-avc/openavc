@@ -311,6 +311,14 @@ def is_multicast_group(value: str) -> bool:
 #   since_values  per-value floors for an enum whose members did not all
 #               land together, e.g. {"table": "0.23.0"} on a config field's
 #               type. Applies on top of the node's own `since`.
+#   since_with  per-context floors, a tuple of {keys, version}: this field
+#               needs that version when the entry ALSO carries those sibling
+#               keys. For a field that grew a second form later than the
+#               field itself — child_set: has worked on regex rules since
+#               0.22.0 and on a json: true rule only since 0.34.0, and the
+#               difference is not visible in the field's own value. Rendered
+#               into the published description like `since`, and applied on
+#               top of it by platform_requirements().
 #   req         top-level requiredness tier: "platform" (loader rejects
 #               without it) or "catalog" (community publishing requires it)
 #   fields      child fields of an object (ordered dict of nodes)
@@ -966,14 +974,14 @@ DEFS = {
     },
     'childSetEntry': {
         'type': 'object',
-        'doc': "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. Values coerce by the child property's declared type.",
+        'doc': "Routes a matched response into one child's state. Regex rules: id is a capture ref ($1), a literal, or {group, map}; state values are capture refs or literals. OSC rules (platform 0.23.0+): id is {segment: N} (0-based index into the /-split address) or a literal; state values are {arg: N} positional-argument specs or literals. json: true rules (platform 0.34.0+): id must be a literal (a JSON body carries no capture to route on, so one entry per child), and state values are JSON paths into the body — the same strings a json set: takes, plain or as {key, type, map}. Values coerce by the child property's declared type.",
         'fields': {
             'type': {
                 'type': 'string',
                 'doc': 'A declared child_entity_types name.',
             },
             'id': {
-                'doc': 'A capture ref ($1, regex rules), {segment: N} (OSC rules), a literal child id, or the map long form to translate a wire id (0-based channels, ST codes) to the local child id.',
+                'doc': 'A capture ref ($1, regex rules), {segment: N} (OSC rules), a literal child id (the only form a json: true rule takes), or the map long form to translate a wire id (0-based channels, ST codes) to the local child id.',
                 'one_of': (
                     {
                         'type': 'string',
@@ -1048,7 +1056,7 @@ DEFS = {
             'state': {
                 'type': 'object',
                 'min_props': 1,
-                'doc': 'Child property -> capture ref or literal (regex rules); {arg: N[, map, type]}, {value: ...}, or literal (OSC rules).',
+                'doc': 'Child property -> capture ref or literal (regex rules); {arg: N[, map, type]}, {value: ...}, or literal (OSC rules); a JSON path, or {key[, type, map]}, (json: true rules).',
             },
         },
         'required': ('type', 'id', 'state'),
@@ -1509,8 +1517,11 @@ DEFS = {
             'child_set': {
                 'type': 'array',
                 'min_items': 1,
-                'doc': 'Route a matched response into child-entity state. Works on regex responses (captures) and OSC address rules (address segments + positional args; the OSC form needs platform 0.23.0) — not json: true. May coexist with set/mappings on the same entry.',
+                'doc': 'Route a matched response into child-entity state. Works on regex responses (captures), OSC address rules (address segments + positional args; the OSC form needs platform 0.23.0) and json: true rules (a literal id per entry, values read by JSON path; needs platform 0.34.0). May coexist with set/mappings on the same entry.',
                 'since': '0.22.0',
+                'since_with': (
+                    {'keys': ('json',), 'version': '0.34.0'},
+                ),
                 'items': {
                     'ref': 'childSetEntry',
                 },
@@ -2613,6 +2624,9 @@ def node_doc(node: dict) -> str | None:
         parts.append(f"Requires platform {node['since']}.")
     for value, version in sorted((node.get("since_values") or {}).items()):
         parts.append(f'Value "{value}" requires platform {version}.')
+    for gate in node.get("since_with") or ():
+        named = ", ".join(f'"{k}"' for k in gate["keys"])
+        parts.append(f"Alongside {named}, requires platform {gate['version']}.")
     return " ".join(parts) or None
 
 
@@ -2721,6 +2735,15 @@ def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
             for key, sub in value.items():
                 where = f"{loc}.{key}" if loc else str(key)
                 if key in fields:
+                    # A `since_with` floor is decided by the SIBLING keys, so
+                    # it is read here, where the whole entry is in hand, and
+                    # recorded under its own location — the field's plain
+                    # `since` is a different (lower) floor at `where`, and
+                    # record() keeps the minimum per location.
+                    for gate in fields[key].get("since_with") or ():
+                        if all(k in value for k in gate["keys"]):
+                            named = " + ".join(gate["keys"])
+                            record(f"{where} with {named}", gate["version"])
                     walk(fields[key], sub, where, depth + 1)
                 elif isinstance(extra, dict):
                     walk(extra, sub, where, depth + 1)

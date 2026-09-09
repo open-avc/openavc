@@ -2084,9 +2084,12 @@ class ConfigurableDriver(BaseDriver):
         """Apply all JSON-body response rules to one response/message body.
 
         Parses ``text`` as a JSON object and, for every json rule mapping whose
-        key resolves, coerces and stores the value. Returns True if at least one
-        state was set (so the caller stops before regex matching). json rules are
-        additive: a rule whose keys are absent from this body just sets nothing.
+        key resolves, coerces and stores the value. A rule's ``child_set:``
+        entries are resolved from the same parsed body and written to their
+        children in the same pass. Returns True if at least one state was set
+        (so the caller stops before regex matching, unless a rule declares
+        ``after_json``). json rules are additive: a rule whose keys are absent
+        from this body just sets nothing.
 
         A single-element top-level array (``[{...}]``) is unwrapped to its one
         object — several device protocols wrap every reply that way (per-unit
@@ -2103,7 +2106,9 @@ class ConfigurableDriver(BaseDriver):
             return False
         applied = False
         throttled = False
-        for mappings, tstate, require, condition in self._json_responses:
+        for (
+            mappings, tstate, require, condition, child_mappings,
+        ) in self._json_responses:
             if not self._rule_applies(condition):
                 continue
             # A rule scoped by `require:` applies only to bodies carrying all
@@ -2127,9 +2132,12 @@ class ConfigurableDriver(BaseDriver):
                 if value is _JSON_PATH_MISSING:
                     continue
                 resolved.append((mapping, value))
-            if not resolved:
+            child_writes = self._resolve_json_child_mappings(obj, child_mappings)
+            if not resolved and not child_writes:
                 continue
-            if self._throttle_skip(tstate):
+            if self._throttle_skip(
+                tstate, self._json_throttle_scope(child_mappings)
+            ):
                 # Matched but inside the throttle window: consume the body
                 # (return True below) without writing state.
                 throttled = True
@@ -2144,12 +2152,69 @@ class ConfigurableDriver(BaseDriver):
                     coerced = self._coerce_json_value(value, mapping.get("type", "string"))
                 self.set_state(mapping["state"], coerced)
                 applied = True
+            for ctype, local_id, updates in child_writes:
+                self.set_child_state_batch(ctype, local_id, updates)
+                applied = True
         if applied:
             log.debug(
                 f"[{self.device_id}] JSON response applied "
                 f"({len(self._json_responses)} rule(s))"
             )
         return applied or throttled
+
+    @staticmethod
+    def _json_throttle_scope(child_mappings: list[dict[str, Any]]) -> str:
+        """Throttle bucket for a json rule, the regex path's rule read against
+        literal ids: the children this rule routes to. A json rule's ids are
+        fixed, so the bucket is constant — but a rule that routes to children
+        and one that only writes flat state are then not sharing a window,
+        which is what the scope is for."""
+        if not child_mappings:
+            return ""
+        return "|".join(
+            f"{cm['type']}:{cm['id'][1]}" for cm in child_mappings
+        )
+
+    def _resolve_json_child_mappings(
+        self, obj: Any, child_mappings: list[dict[str, Any]]
+    ) -> list[tuple[str, Any, dict[str, Any]]]:
+        """Read a json rule's ``child_set:`` entries out of one parsed body.
+
+        Resolved, not written: a body that carries none of a rule's paths must
+        neither apply nor stamp the rule's throttle window, so the caller
+        decides after seeing what came back. Unregistered ids are skipped
+        quietly — a device legitimately answers for units beyond a
+        user-configured roster."""
+        writes: list[tuple[str, Any, dict[str, Any]]] = []
+        for cm in child_mappings:
+            ctype = cm["type"]
+            local_id = self._coerce_child_local_id(ctype, cm["id"][1])
+            if local_id is None:
+                continue
+            if not self.is_child_registered(ctype, local_id):
+                log.debug(
+                    f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
+                    f"registered — skipping"
+                )
+                continue
+            updates: dict[str, Any] = {}
+            for pm in cm["props"]:
+                value = self._extract_json_path(obj, pm["key"])
+                if value is _JSON_PATH_MISSING:
+                    continue
+                value_map = pm.get("map")
+                value_type = pm.get("type", "string")
+                if value_map and str(value) in value_map:
+                    updates[pm["prop"]] = self._coerce_value(
+                        str(value_map[str(value)]), value_type
+                    )
+                else:
+                    updates[pm["prop"]] = self._coerce_json_value(
+                        value, value_type
+                    )
+            if updates:
+                writes.append((ctype, local_id, updates))
+        return writes
 
     # Shared coercers (see compiled_protocol module docs). Non-primitive JSON
     # values have already been collapsed to a length by ``_extract_json_path``

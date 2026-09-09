@@ -524,4 +524,37 @@ const jsonVars = {
   };
 }
 
+{
+  // A json rule's child_set survives a field-row edit, and its prop helpers
+  // round-trip a bare path while keeping a type/map the spec carried.
+  const original = {
+    json: true,
+    set: { power: "status.power" },
+    child_set: [
+      { type: "zone", id: 1, state: { level: "zones.0.level" } },
+    ],
+  };
+  const rebuilt = H.buildJsonResponse(
+    original,
+    H.getJsonRows(original, { power: { type: "boolean" } }),
+    [],
+    { power: { type: "boolean" } },
+  );
+  const bare = H.jsonChildPropFromText(" zones.1.level ", "zones.0.level");
+  const kept = H.jsonChildPropFromText("zones.1.on", {
+    key: "zones.0.on",
+    type: "boolean",
+    map: { yes: "true" },
+  });
+  results.json_child_set_survives_and_prop_round_trips = {
+    pass:
+      eq(rebuilt.child_set, original.child_set) &&
+      H.jsonChildPropToText({ key: "a.b", type: "integer" }) === "a.b" &&
+      H.jsonChildPropToText("a.b") === "a.b" &&
+      bare === "zones.1.level" &&
+      eq(kept, { key: "zones.1.on", type: "boolean", map: { yes: "true" } }),
+    detail: { rebuilt, bare, kept },
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

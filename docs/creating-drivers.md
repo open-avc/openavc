@@ -765,7 +765,7 @@ responses:
       - { type: output, id: 2, state: { input: $2 } }
 ```
 
-A response entry can carry `set:` (flat state) and `child_set:` together; first-match-wins dispatch is unchanged. A routed ID that isn't registered is skipped quietly — devices legitimately answer for ports beyond a configured roster. `child_set` works on regex responses (TCP, serial, UDP, HTTP text) and on OSC address rules (see below); it is not supported on `json:` responses.
+A response entry can carry `set:` (flat state) and `child_set:` together; first-match-wins dispatch is unchanged. A routed ID that isn't registered is skipped quietly — devices legitimately answer for ports beyond a configured roster. `child_set` works on regex responses (TCP, serial, UDP, HTTP text), on OSC address rules and on `json: true` rules (both below).
 
 When the protocol's channel numbers differ from your child IDs — a 0-based wire where children are 1-based, or a special code for a stereo channel — use the long ID form to translate the captured wire ID:
 
@@ -801,6 +801,38 @@ responses:
     child_set:
       - { type: main, id: st, state: { fader: { arg: 0 } } }
 ```
+
+**JSON drivers** route with `child_set:` as well, from platform 0.34.0. A JSON body carries no capture and no address, so there is nothing in it to route *on*: the ID is always a **literal**, one entry per child, and each state value is a **JSON path** into the same body — the strings a json `set:` takes, plain or as `{ key, type, map }`. The path is what says which child the value belongs to:
+
+```yaml
+responses:
+  # One status reply carries every zone as an array element. Each zone is its
+  # own entry, reading its own slot.
+  - json: true
+    set:
+      pickup_mode: { key: audio.pickup.mode }        # flat state, same rule
+    child_set:
+      - type: zone
+        id: 1
+        state:
+          enabled:   audio.zones.0.enabled
+          elevation: audio.zones.0.angles.1
+      - type: zone
+        id: 2
+        state:
+          enabled:   audio.zones.1.enabled
+          elevation: audio.zones.1.angles.1
+  # The device reports a word where the child models a boolean — map + coerce,
+  # the same {key, type, map} spec a json set: value takes:
+  - json: true
+    child_set:
+      - type: channel
+        id: rx1
+        state:
+          mute: { key: rx1.audio.mute, map: { "on": "true", "off": "false" } }
+```
+
+Everything else about the rule is unchanged: `require:`, `only_when:` and `throttle:` apply as they do to any json rule, a flat `set:` can sit alongside, and an ID that isn't registered is skipped quietly. A driver using it needs `min_platform_version: "0.34.0"`.
 
 Poll each child with an `each_child:` entry in `polling.queries` (also allowed in `on_connect`). It expands to one query per registered child, substituting `{child_id}` with the unpadded local ID — format specs work, so `{child_id:02d}` zero-pads for padded-address protocols:
 

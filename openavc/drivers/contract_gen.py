@@ -78,7 +78,7 @@ _HANDLED_KEYS = frozenset(
         # Platform floors are rendered into the description (spec.node_doc)
         # rather than emitted as keywords of their own — JSON Schema has no
         # way to say "reading this field needs a newer platform".
-        "since", "since_values",
+        "since", "since_values", "since_with",
     }
 )
 

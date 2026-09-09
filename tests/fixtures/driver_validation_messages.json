@@ -602,11 +602,33 @@
  "response_after_json_without_a_json_rule": [
   "Response 0: after_json has no effect \u2014 no response rule in this driver is json: true"
  ],
- "response_json_with_child_set": [
-  "Response 0: child_set is not supported on json responses"
+ "response_json_child_set_entry_not_mapping": [
+  "Response 0: child_set[0]: must be a mapping"
+ ],
+ "response_json_child_set_id_is_capture_ref": [
+  "Response 0: child_set[0]: a json rule has no captures or address segments \u2014 id must be a literal child id (got '$1')"
+ ],
+ "response_json_child_set_id_missing": [
+  "Response 0: child_set[0]: missing 'id' (a literal child id \u2014 a json body has no captures to route on, so write one entry per child)"
+ ],
+ "response_json_child_set_id_not_an_integer": [
+  "Response 0: child_set[0]: id 'main' is not an integer (zone declares integer ids)"
+ ],
+ "response_json_child_set_state_is_a_literal": [
+  "Response 0: child_set[0]: state 'level' must be a JSON path (a literal value has nothing to read)"
+ ],
+ "response_json_child_set_state_is_an_osc_arg": [
+  "Response 0: child_set[0]: state 'level' needs a JSON path: \"a.b\" or {key: a.b}",
+  "Response 0: child_set[0]: state 'level' has ['arg'], which a json rule does not read \u2014 the spec is {key, type, map}"
+ ],
+ "response_json_child_set_state_is_capture_ref": [
+  "Response 0: child_set[0]: state 'level' \u2014 a json rule has no capture groups; use a JSON path"
+ ],
+ "response_json_child_set_state_missing": [
+  "Response 0: child_set[0]: missing 'state' mapping (prop -> JSON path)"
  ],
  "response_json_without_set_or_mappings": [
-  "Response 0: json response needs a 'set' map or a 'mappings' list"
+  "Response 0: json response needs a 'set' map, a 'mappings' list or a 'child_set'"
  ],
  "response_legacy_pattern_alias": [
   "Response 0: missing match or address",

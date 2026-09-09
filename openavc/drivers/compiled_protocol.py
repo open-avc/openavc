@@ -847,7 +847,8 @@ class CompiledProtocol:
     2. ``osc_responses`` — OSC address rules (address, mappings, child_set,
        throttle)
     3. ``json_responses`` — JSON-body rules applied together from one parsed
-       object (mappings, throttle, require-keys scope)
+       object (mappings, throttle, require-keys scope, condition, compiled
+       child_set entries)
 
     Plus one view: ``after_json_responses`` holds the same tuple objects as
     the ``responses`` entries whose rule declared ``after_json: true``, in
@@ -906,6 +907,7 @@ class CompiledProtocol:
             dict[str, Any] | None,
             tuple[str, ...],
             dict[str, Any] | None,
+            list[dict[str, Any]],
         ]
     ] = field(default_factory=list)
 
@@ -1184,6 +1186,89 @@ def compile_osc_child_set(
     return compiled
 
 
+def compile_json_child_set(
+    resp: dict[str, Any],
+    child_types: dict[str, Any],
+    device_id: str = "",
+) -> list[dict[str, Any]]:
+    """Compile a ``json: true`` response entry's ``child_set:`` list — route
+    fields of one parsed body into child-entity state.
+
+    A JSON body carries no capture and no address, so there is nothing in it
+    to route ON: the child id is a **literal**, one entry per child, and the
+    prop values are JSON paths into the same body (``zones.4.enabled``) — the
+    strings a json ``set:`` takes, plain or as ``{key, type, map}``. That is
+    what makes a five-zone device five entries rather than one rule with a
+    wildcard: the body says which zone by *where* the value sits, which the
+    path already expresses.
+
+    Value coercion uses the child type's declared ``state_variables``, like
+    every other ``child_set`` form. Malformed entries are skipped with a
+    warning; the loader validates the same shape up-front.
+    """
+    raw = resp.get("child_set")
+    if not isinstance(raw, list):
+        return []
+    compiled: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        ctype = entry.get("type")
+        tdef = child_types.get(ctype)
+        if not isinstance(tdef, dict):
+            log.warning(
+                f"[{device_id}] child_set: unknown child type "
+                f"{ctype!r}; skipping entry"
+            )
+            continue
+        # Declared vars PLUS the reserved keys the platform injects — same
+        # reason as the regex form: without it `online` compiles as a string
+        # and "false" is truthy, so the one child that is down stays green.
+        cvars = {
+            **CHILD_RESERVED_PROP_SCHEMA,
+            **(tdef.get("state_variables") or {}),
+        }
+        cid = entry.get("id")
+        if cid is None or (isinstance(cid, str) and cid.startswith("$")):
+            log.warning(
+                f"[{device_id}] child_set: a json rule has no captures — "
+                f"id must be a literal child id (got {cid!r}); skipping entry"
+            )
+            continue
+        state_map = entry.get("state")
+        if not isinstance(state_map, dict):
+            continue
+        props: list[dict[str, Any]] = []
+        for prop, expr in state_map.items():
+            var_def = cvars.get(prop, {})
+            var_type = (
+                var_def.get("type", "string")
+                if isinstance(var_def, dict)
+                else "string"
+            )
+            if isinstance(expr, dict):
+                key = expr.get("key", expr.get("path"))
+                if key is None:
+                    continue
+                pm: dict[str, Any] = {
+                    "prop": prop,
+                    "key": str(key),
+                    "type": expr.get("type", var_type),
+                }
+                if isinstance(expr.get("map"), dict):
+                    pm["map"] = expr["map"]
+                props.append(pm)
+            else:
+                props.append(
+                    {"prop": prop, "key": str(expr), "type": var_type}
+                )
+        if props:
+            compiled.append(
+                {"type": ctype, "id": ("literal", cid), "props": props}
+            )
+    return compiled
+
+
 def build_json_mappings(
     resp: dict[str, Any], state_variables: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -1264,6 +1349,7 @@ def compile_driver(
                     build_throttle(resp),
                     require,
                     rule_condition(resp),
+                    compile_json_child_set(resp, child_types, device_id),
                 )
             )
             continue

@@ -926,20 +926,114 @@ def validate_driver_definition(
 
         # json-body rules parse the whole reply as JSON and map fields by
         # key/path — they carry no regex pattern, so exempt them from the
-        # pattern requirement. They need a set map or mappings list to do
-        # anything, and child_set doesn't apply (no capture groups).
+        # pattern requirement. They need a set map, a mappings list or a
+        # child_set to do anything.
         if resp.get("json"):
-            if resp.get("child_set") is not None:
-                errors.append(
-                    f"Response {i}: child_set is not supported on json responses"
-                )
-            if not isinstance(resp.get("set"), dict) and not isinstance(
-                resp.get("mappings"), list
+            json_child_set = resp.get("child_set")
+            if (
+                not isinstance(resp.get("set"), dict)
+                and not isinstance(resp.get("mappings"), list)
+                and json_child_set is None
             ):
                 errors.append(
-                    f"Response {i}: json response needs a 'set' map or a "
-                    f"'mappings' list"
+                    f"Response {i}: json response needs a 'set' map, a "
+                    f"'mappings' list or a 'child_set'"
                 )
+            # child_set on a json rule routes by LITERAL id (a body carries no
+            # capture and no address to route on) and reads its values by JSON
+            # path, like the rule's own set:. A misdeclared entry would
+            # silently never write child state, so enforce the shape here.
+            if json_child_set is not None:
+                if not isinstance(json_child_set, list) or not json_child_set:
+                    errors.append(
+                        f"Response {i}: child_set must be a non-empty list"
+                    )
+                    continue
+                for j, entry in enumerate(json_child_set):
+                    where = f"Response {i}: child_set[{j}]"
+                    if not isinstance(entry, dict):
+                        errors.append(f"{where}: must be a mapping")
+                        continue
+                    ctype = entry.get("type")
+                    if not isinstance(ctype, str) or ctype not in child_types_map:
+                        errors.append(
+                            f"{where}: type {ctype!r} is not a declared "
+                            f"child_entity_type"
+                        )
+                        continue
+                    tdef = child_types_map.get(ctype)
+                    tdef = tdef if isinstance(tdef, dict) else {}
+                    cvars = _child_writable_props(tdef)
+                    id_fmt = tdef.get("id_format")
+                    id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
+                    id_type = id_fmt.get("type", "integer")
+                    cid = entry.get("id")
+                    if cid is None:
+                        errors.append(
+                            f"{where}: missing 'id' (a literal child id — a "
+                            f"json body has no captures to route on, so write "
+                            f"one entry per child)"
+                        )
+                    elif isinstance(cid, dict) or (
+                        isinstance(cid, str) and cid.startswith("$")
+                    ):
+                        errors.append(
+                            f"{where}: a json rule has no captures or address "
+                            f"segments — id must be a literal child id "
+                            f"(got {cid!r})"
+                        )
+                    elif isinstance(cid, bool) or not isinstance(cid, (str, int)):
+                        errors.append(
+                            f"{where}: id must be a literal child id "
+                            f"(got {cid!r})"
+                        )
+                    elif id_type == "integer":
+                        try:
+                            int(str(cid).strip())
+                        except ValueError:
+                            errors.append(
+                                f"{where}: id {cid!r} is not an integer "
+                                f"({ctype} declares integer ids)"
+                            )
+                    state_map = entry.get("state")
+                    if not isinstance(state_map, dict) or not state_map:
+                        errors.append(
+                            f"{where}: missing 'state' mapping "
+                            f"(prop -> JSON path)"
+                        )
+                        continue
+                    for prop, expr in state_map.items():
+                        if prop not in cvars:
+                            errors.append(
+                                f"{where}: state prop '{prop}' is not "
+                                f"declared in child_entity_types.{ctype}."
+                                f"state_variables"
+                            )
+                        if isinstance(expr, dict):
+                            key = expr.get("key", expr.get("path"))
+                            if not isinstance(key, str) or not key.strip():
+                                errors.append(
+                                    f"{where}: state '{prop}' needs a JSON "
+                                    f"path: \"a.b\" or {{key: a.b}}"
+                                )
+                            unknown = set(expr) - {"key", "path", "type", "map"}
+                            if unknown:
+                                errors.append(
+                                    f"{where}: state '{prop}' has "
+                                    f"{sorted(unknown)}, which a json rule "
+                                    f"does not read — the spec is "
+                                    f"{{key, type, map}}"
+                                )
+                        elif isinstance(expr, str) and expr.startswith("$"):
+                            errors.append(
+                                f"{where}: state '{prop}' — a json rule has "
+                                f"no capture groups; use a JSON path"
+                            )
+                        elif not isinstance(expr, str) or not expr.strip():
+                            errors.append(
+                                f"{where}: state '{prop}' must be a JSON path "
+                                f"(a literal value has nothing to read)"
+                            )
             continue
 
         pattern = resp.get("match", "")

@@ -527,11 +527,12 @@ def test_loader_rejects_capture_ref_out_of_range():
     assert any("exceeds the pattern's" in e for e in _errors_for(mutate))
 
 
-def test_loader_rejects_child_set_on_json_response():
+def test_loader_rejects_capture_ref_in_a_json_child_set():
+    """A json body has nothing to capture — a `$1` there would silently never
+    write, which is the whole reason the shape is checked."""
     def mutate(d):
         d["responses"].append(
             {
-                "match": "unused",
                 "json": True,
                 "child_set": [
                     {"type": "output", "id": 1, "state": {"input": "$1"}}
@@ -539,7 +540,10 @@ def test_loader_rejects_child_set_on_json_response():
             }
         )
 
-    assert any("not supported on json responses" in e for e in _errors_for(mutate))
+    assert any(
+        "a json rule has no capture groups; use a JSON path" in e
+        for e in _errors_for(mutate)
+    )
 
 
 def test_loader_rejects_each_child_without_placeholder():
@@ -1171,3 +1175,199 @@ async def test_a_yaml_driver_writing_online_reaches_the_state_store():
     await driver.on_data_received(b"Out2 false")
     assert driver.state.get("device.dev1.output.02.online") is False
     assert driver.state.get("device.dev1.output.02.offline_reason") == "not_responding"
+
+
+# ---------------------------------------------------------------------------
+# child_set on a json: true rule — literal ids, values read by JSON path
+# ---------------------------------------------------------------------------
+# The shape a JSON protocol with indexed sub-units answers in: one status
+# reply carrying every zone as an array element. There is nothing in the body
+# to route on, so each child is its own entry reading its own slot.
+
+
+def _json_children_definition(**rule_extra):
+    import copy
+
+    d = copy.deepcopy(ACME_MATRIX)
+    d["id"] = "acme_json_matrix"
+    d["responses"] = [
+        {
+            "json": True,
+            "set": {"power": {"key": "system.on", "type": "boolean"}},
+            "child_set": [
+                {
+                    "type": "output",
+                    "id": 1,
+                    "state": {
+                        "input": "outputs.0.source",
+                        "mute": {"key": "outputs.0.audio", "map": {"off": "true", "on": "false"}},
+                    },
+                },
+                {
+                    "type": "output",
+                    "id": 2,
+                    "state": {"input": "outputs.1.source"},
+                },
+            ],
+            **rule_extra,
+        },
+    ]
+    return d
+
+
+async def test_json_child_set_routes_every_child_from_one_body():
+    driver = _make_driver(_json_children_definition())
+    driver._register_declared_children()
+
+    await driver.on_data_received(
+        b'{"system":{"on":true},"outputs":[{"source":5,"audio":"off"},'
+        b'{"source":6}]}'
+    )
+
+    assert driver.get_state("power") is True          # flat half of the rule
+    assert driver.state.get("device.dev1.output.01.input") == 5
+    assert driver.state.get("device.dev1.output.01.mute") is True   # mapped
+    assert driver.state.get("device.dev1.output.02.input") == 6
+
+
+async def test_json_child_set_coerces_by_the_child_prop_type():
+    """A JSON string where the child declares an integer still stores an
+    integer — the child type's schema decides, as on every other rule."""
+    driver = _make_driver(_json_children_definition())
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"outputs":[{"source":"7"},{"source":8}]}')
+
+    assert driver.state.get("device.dev1.output.01.input") == 7
+
+
+async def test_json_child_set_skips_a_path_the_body_does_not_carry():
+    """A partial body writes what it carries and leaves the rest alone."""
+    driver = _make_driver(_json_children_definition())
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"outputs":[{"source":5}]}')
+
+    assert driver.state.get("device.dev1.output.01.input") == 5
+    assert driver.state.get("device.dev1.output.02.input") is None
+
+
+async def test_json_child_set_skips_an_unregistered_child():
+    d = _json_children_definition()
+    d["child_entity_types"]["output"]["instances"] = {"count": 1}
+    driver = _make_driver(d)
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"outputs":[{"source":5},{"source":6}]}')
+
+    assert driver.state.get("device.dev1.output.01.input") == 5
+    assert driver.state.get("device.dev1.output.02.input") is None
+
+
+async def test_a_child_only_json_rule_consumes_the_body():
+    """No flat set: at all — the rule still applies, and the frame is spent
+    (a regex rule below it does not get a second read)."""
+    d = _json_children_definition()
+    d["responses"] = [
+        {
+            "json": True,
+            "child_set": [
+                {"type": "output", "id": 1, "state": {"input": "outputs.0.source"}},
+            ],
+        },
+        {"match": r'"source":(\d+)', "set": {"power": "$1"}},
+    ]
+    driver = _make_driver(d)
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"outputs":[{"source":5}]}')
+
+    assert driver.state.get("device.dev1.output.01.input") == 5
+    assert driver.get_state("power") is None
+
+
+async def test_a_body_carrying_none_of_the_rule_falls_through_to_regex():
+    """Nothing resolved is nothing applied: the body is not consumed."""
+    d = _json_children_definition()
+    d["responses"].append({"match": r'"other":(\d+)', "set": {"power": "$1"}})
+    driver = _make_driver(d)
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"other":1}')
+
+    assert driver.get_state("power") is True
+
+
+async def test_json_child_rule_honours_require_and_only_when():
+    d = _json_children_definition(require="outputs")
+    driver = _make_driver(d)
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"system":{"on":true}}')
+    assert driver.state.get("device.dev1.output.01.input") is None
+
+    await driver.on_data_received(b'{"outputs":[{"source":5}]}')
+    assert driver.state.get("device.dev1.output.01.input") == 5
+
+
+async def test_json_child_rule_throttles_without_starving_the_flat_half():
+    """A throttled child rule stamps its own bucket, not the flat one — the
+    scope rule the regex path uses, read against literal ids."""
+    d = _json_children_definition(throttle=60)
+    driver = _make_driver(d)
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"outputs":[{"source":5}]}')
+    await driver.on_data_received(b'{"outputs":[{"source":9}]}')
+
+    assert driver.state.get("device.dev1.output.01.input") == 5
+
+
+async def test_json_child_rule_reopens_after_its_window():
+    d = _json_children_definition(throttle=0.02)
+    driver = _make_driver(d)
+    driver._register_declared_children()
+
+    await driver.on_data_received(b'{"outputs":[{"source":5}]}')
+    await asyncio.sleep(0.05)
+    await driver.on_data_received(b'{"outputs":[{"source":9}]}')
+
+    assert driver.state.get("device.dev1.output.01.input") == 9
+
+
+def test_a_json_child_rule_is_valid_and_sets_the_platform_floor():
+    from openavc.drivers.spec import platform_requirements
+
+    definition = _json_children_definition()
+    assert [e for e in validate_driver_definition(definition) if "child_set" in e] == []
+    assert ("responses[0].child_set with json", "0.34.0") in platform_requirements(
+        definition
+    )
+
+
+def test_loader_rejects_a_non_literal_id_on_a_json_child_set():
+    def mutate(d):
+        d["responses"] = _json_children_definition()["responses"]
+        d["responses"][0]["child_set"][0]["id"] = {"group": 1}
+
+    assert any(
+        "id must be a literal child id" in e for e in _errors_for(mutate)
+    )
+
+
+def test_loader_rejects_a_json_child_prop_that_is_not_declared():
+    def mutate(d):
+        d["responses"] = _json_children_definition()["responses"]
+        d["responses"][0]["child_set"][0]["state"] = {"gain": "outputs.0.gain"}
+
+    assert any("state prop 'gain'" in e for e in _errors_for(mutate))
+
+
+def test_loader_rejects_an_arg_spec_borrowed_from_an_osc_rule():
+    def mutate(d):
+        d["responses"] = _json_children_definition()["responses"]
+        d["responses"][0]["child_set"][0]["state"] = {"input": {"arg": 0}}
+
+    assert any(
+        "the spec is {key, type, map}" in e for e in _errors_for(mutate)
+    )

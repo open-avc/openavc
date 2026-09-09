@@ -236,9 +236,10 @@ export function getJsonRows(
  *  {key, type?, map?} object; blank/duplicate state names (which a set map
  *  can't carry) fall back to the explicit mappings list with type spelled
  *  out (the mappings form defaults to "string", not the declared type).
- *  Unknown keys on the original rule (and throttle) ride through verbatim;
- *  child_set and after_json are dropped — the validator rejects both on a
- *  json rule (a json rule reads the body itself; there is nothing to run
+ *  Unknown keys on the original rule (and throttle) ride through verbatim,
+ *  child_set included — a json rule routes to children by literal id and
+ *  JSON path, so an edit to the field rows must not drop it. after_json is
+ *  dropped (a json rule reads the body itself; there is nothing to run
  *  after). */
 export function buildJsonResponse(
   original: DriverResponseDef,
@@ -252,11 +253,14 @@ export function buildJsonResponse(
   delete next.set;
   delete next.mappings;
   delete next.require;
-  delete next.child_set;
   delete next.after_json;
 
   if (requireKeys.length === 1) next.require = requireKeys[0];
   else if (requireKeys.length > 1) next.require = [...requireKeys];
+
+  // A rule that only routes to children keeps its YAML clean — no empty
+  // set: key — the way a child_set-only regex rule grows no empty mappings.
+  if (rows.length === 0 && (next.child_set?.length ?? 0) > 0) return next;
 
   const canUseSet =
     rows.every((r) => r.state) &&
@@ -445,4 +449,30 @@ export function oscChildPropFromText(text: string, original: unknown): unknown {
     return { arg };
   }
   return text;
+}
+
+/** The text shown in a json child_set property input: a {key, type, map}
+ *  spec renders as its JSON path; a plain path renders verbatim. */
+export function jsonChildPropToText(expr: unknown): string {
+  if (expr !== null && typeof expr === "object") {
+    const spec = expr as { key?: unknown; path?: unknown };
+    return String(spec.key ?? spec.path ?? "");
+  }
+  return String(expr ?? "");
+}
+
+/** Rebuild a json child_set property from its input text: the path alone
+ *  when nothing else is carried, otherwise {key, ...} keeping the type
+ *  override and value map the original spec had (the editor has no rows for
+ *  either; editing the path must not drop them). */
+export function jsonChildPropFromText(text: string, original: unknown): unknown {
+  const key = text.trim();
+  if (original !== null && typeof original === "object") {
+    const spec = original as { type?: unknown; map?: unknown };
+    const extra: Record<string, unknown> = {};
+    if (typeof spec.type === "string") extra.type = spec.type;
+    if (spec.map !== null && typeof spec.map === "object") extra.map = spec.map;
+    if (Object.keys(extra).length > 0) return { key, ...extra };
+  }
+  return key;
 }
