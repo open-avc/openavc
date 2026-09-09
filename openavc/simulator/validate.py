@@ -1390,14 +1390,15 @@ def _check_notifications(
         push_def.get("type") in ("multicast", "tcp_listener", "http_listener")
         or (push_def.get("type") == "sse" and transport == "http")
     )
-    if transport not in ("tcp", "serial") and not has_push_channel:
+    # TCP/serial push to every connected client; a UDP device pushes to the
+    # last peer it heard from. HTTP and OSC have no control-link push.
+    if transport not in ("tcp", "serial", "udp") and not has_push_channel:
         result.warning(
             "notifications",
             f"notifications: has no effect for transport '{transport}' — only "
-            f"line-based TCP/serial simulators push notification messages "
-            f"(unless the driver declares a multicast, SSE, TCP dial-back, "
-            f"or HTTP-listener "
-            f"push: block)"
+            f"TCP, serial and UDP simulators push notification messages on "
+            f"the control link (unless the driver declares a multicast, SSE, "
+            f"TCP dial-back, or HTTP-listener push: block)"
         )
 
     response_patterns = _compile_response_patterns(responses, driver_def)

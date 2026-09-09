@@ -46,6 +46,45 @@ def test_notification_unknown_key_warns(tmp_path):
     assert any("'powr'" in m for m in msgs), msgs
 
 
+def test_notification_on_udp_is_not_warned(tmp_path):
+    # A UDP simulator pushes to the last peer that spoke to it, so the
+    # templates are delivered; only HTTP and OSC have no control-link push.
+    r = _validate(tmp_path, """\
+        id: acme_widget
+        transport: udp
+        state_variables:
+          power: {type: boolean}
+        responses:
+          - match: 'PWR ([01])'
+            set: {power: '$1'}
+        simulator:
+          initial_state: {power: false}
+          notifications:
+            power:
+              'true': 'PWR 1'
+              'false': 'PWR 0'
+    """)
+    msgs = _messages(r, "notifications", "warning")
+    assert not any("no effect" in m for m in msgs), msgs
+
+
+def test_notification_on_http_still_warns(tmp_path):
+    r = _validate(tmp_path, """\
+        id: acme_widget
+        transport: http
+        state_variables:
+          power: {type: boolean}
+        simulator:
+          initial_state: {power: false}
+          notifications:
+            power:
+              'true': '{"power":true}'
+              'false': '{"power":false}'
+    """)
+    msgs = _messages(r, "notifications", "warning")
+    assert any("no effect" in m for m in msgs), msgs
+
+
 def test_notification_boolean_value_template_is_error(tmp_path):
     r = _validate(tmp_path, """\
         id: acme_widget
@@ -102,10 +141,12 @@ def test_notification_round_trip_against_response_patterns(tmp_path):
     assert any("matches no" in m for m in msgs), msgs
 
 
-def test_notification_on_non_tcp_transport_warns(tmp_path):
+def test_notification_on_osc_transport_warns(tmp_path):
+    # OSC pushes through its address map (push_state), never through
+    # notifications: templates, so a template there is dead.
     r = _validate(tmp_path, """\
         id: acme_widget
-        transport: udp
+        transport: osc
         state_variables:
           level: {type: integer}
         simulator:
