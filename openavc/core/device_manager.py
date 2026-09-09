@@ -23,6 +23,7 @@ from openavc.core.connection_fault import (
     classify_connection_fault,
     is_permanent_fault,
     no_simulator_fault,
+    restarting_message,
     typed_fault_from_exc,
 )
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
@@ -67,6 +68,24 @@ class DeviceNotFoundError(ValueError):
     WebSocket — are unchanged. The doors catch THIS to say "not found", and
     everything else answers for itself.
     """
+
+
+def device_restarting(device_id: str, seconds_left: int) -> ConnectionError:
+    """The "we asked it to restart, it is not back yet" refusal.
+
+    A sibling of :func:`not_connected` rather than the same error, because the
+    two send the reader to different places: "not connected" means go and look
+    at the device, and this means wait. Both carry ``device_id`` so a surface
+    can name the device the way somebody in the room knows it;
+    ``restart_seconds`` is what ``friendly_error`` turns into the sentence, and
+    is checked as an attribute rather than sniffed out of the message.
+    """
+    exc = ConnectionError(
+        f"Device '{device_id}' is restarting ({seconds_left}s left)"
+    )
+    exc.device_id = device_id
+    exc.restart_seconds = max(1, int(seconds_left))
+    return exc
 
 
 def not_connected(device_id: str) -> ConnectionError:
@@ -140,6 +159,18 @@ _MAX_FLAP_ESCALATIONS = 4  # 5s -> 10 -> 20 -> 40 -> 80, then holds
 # into both the ring buffer and the log file; the recovery is always logged.
 _RECONNECT_LOG_FIRST = 3
 _RECONNECT_LOG_EVERY = 60  # roughly every 5 minutes at the default interval
+
+# The longest a driver's `restarts_device_for` may hold back a real fault.
+# The contract caps the declared value at the same figure, so this is the
+# second of the two gates rather than the only one: a driver dropped straight
+# into driver_repo/ skips catalog validation, and a window with no ceiling
+# would let a typo'd 6000 hide a genuinely dead device for most of an hour.
+_MAX_RESTART_WINDOW_SECONDS = 600.0
+
+# How often to re-dial a device that is inside a commanded-restart window.
+# Bounded by the site's own interval where that is already tighter (see
+# _reconnect_delay for why this one case earns a shorter wait at all).
+_RESTART_RECONNECT_INTERVAL = 2.0
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -260,6 +291,15 @@ class DeviceManager:
         # watcher that decides whether a queued write actually landed before
         # the queue is cleared (see _confirm_pending_settings).
         self._pending_confirm_tasks: dict[str, asyncio.Task] = {}
+        # Commanded-restart windows: device id -> monotonic deadline, armed by
+        # a successful send of a command declaring `restarts_device_for`.
+        #
+        # A LATENT permission, not a state: arming writes nothing, and the
+        # `restarting` key only appears if the device actually goes away
+        # (_set_offline_reason). A driver that over-declares the field on a
+        # command the device shrugs off therefore costs nothing visible, which
+        # is the right way round for a number an author is estimating.
+        self._restart_windows: dict[str, float] = {}
         # Set by SimulationManager while a simulated bench is running: given a
         # device id, returns its driver id when that device has no simulator
         # and so was never redirected. Such a device fails against its REAL
@@ -610,6 +650,10 @@ class DeviceManager:
         # its first reconnect mysteriously slow.
         self._last_connect_at.pop(device_id, None)
         self._flap_counts.pop(device_id, None)
+        # Same reasoning for a restart window: a device re-added under this id
+        # while the old one's window was open would inherit a suppression it
+        # never asked for.
+        self._restart_windows.pop(device_id, None)
         # Forget this device's credentials, so a password that is no longer
         # configured anywhere stops masking text in an unrelated device's log.
         get_secret_registry().forget(device_id)
@@ -718,17 +762,75 @@ class DeviceManager:
             # who send it are standing at a panel with no access to the IDE —
             # so retry now instead of leaving them to wait out the interval.
             self.kick_reconnect(device_id)
+            # Inside a commanded-restart window the refusal is the same refusal
+            # but a different sentence: "not connected" sends the reader to look
+            # at the device, and the honest instruction here is to wait.
+            remaining = self.restart_seconds_left(device_id)
+            if remaining is not None:
+                raise device_restarting(device_id, remaining)
             raise not_connected(device_id)
         try:
             params = self._coerce_child_id_params(driver, command, params)
             params = self._validate_command_params(driver, command, params)
-            return await driver.send_command(command, params)
+            result = await driver.send_command(command, params)
         except Exception as exc:
             await self.events.emit(
                 f"device.error.{device_id}",
                 {"device_id": device_id, "error": str(exc)},
             )
             raise
+        # Armed only on a send that did not raise. A command that never left
+        # the building has not restarted anything, and arming on the attempt
+        # would suppress the very fault that stopped it.
+        self._arm_restart_window(device_id, driver, command)
+        return result
+
+    def _arm_restart_window(
+        self, device_id: str, driver: BaseDriver, command: str
+    ) -> None:
+        """Open the commanded-restart window for a command that declares one.
+
+        Reads the instance-level DRIVER_INFO, like the ``available_offline``
+        gate above, so a runtime-populated command set is covered too.
+        """
+        info = getattr(driver, "DRIVER_INFO", {}) or {}
+        cmd_def = (info.get("commands") or {}).get(command)
+        if not isinstance(cmd_def, dict):
+            return
+        try:
+            seconds = float(cmd_def.get("restarts_device_for") or 0)
+        except (TypeError, ValueError):
+            return
+        if seconds <= 0:
+            return
+        seconds = min(seconds, _MAX_RESTART_WINDOW_SECONDS)
+        self._restart_windows[device_id] = time.monotonic() + seconds
+        log.info(
+            "[%s] %s restarts the device; holding the offline fault for %.0fs",
+            device_id, command, seconds,
+        )
+
+    def restart_seconds_left(self, device_id: str) -> int | None:
+        """Seconds remaining in this device's commanded-restart window.
+
+        ``None`` when no window is open, which is the answer every caller
+        branches on. Expiry is read from the clock rather than fired by a
+        timer: the only thing that happens at the end of a window is that the
+        next classification stops being suppressed, and the reconnect loop is
+        already the thing that produces one.
+        """
+        deadline = self._restart_windows.get(device_id)
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            self._restart_windows.pop(device_id, None)
+            return None
+        return max(1, int(round(remaining)))
+
+    def _end_restart_window(self, device_id: str) -> None:
+        """Drop the window without waiting for it to expire."""
+        self._restart_windows.pop(device_id, None)
 
     @staticmethod
     def _check_command_declared(
@@ -1646,8 +1748,34 @@ class DeviceManager:
                 last_error=last_error, exc=exc,
                 host=host, port=port, transport=transport,
             )
+        # A commanded restart is absence we asked for, so for as long as the
+        # driver said it would last the device reports a window instead of a
+        # fault: a sentence in `offline_detail`, `restarting` true, and
+        # `offline_reason` left None. None is what does the work — the cloud's
+        # error tally, every alert rule and every `offline_reason` condition go
+        # quiet without one of them learning a new value.
+        #
+        # A permanent fault breaks the window on the spot. Those mean the
+        # device is REACHABLE and refusing us (a rejected login, a certificate
+        # nobody trusts), which is positive evidence that it is not still
+        # booting; the classified code is still returned either way, because
+        # the reconnect policy hinges on this failure rather than on what is
+        # published about it.
+        remaining = self.restart_seconds_left(device_id)
+        if remaining is not None and not is_permanent_fault(fault.code):
+            self.state.set_batch(
+                {
+                    f"device.{device_id}.restarting": True,
+                    f"device.{device_id}.offline_reason": None,
+                    f"device.{device_id}.offline_detail": restarting_message(remaining),
+                },
+                source="device_manager",
+            )
+            return fault.code
+        self._end_restart_window(device_id)
         self.state.set_batch(
             {
+                f"device.{device_id}.restarting": None,
                 f"device.{device_id}.offline_reason": fault.code,
                 f"device.{device_id}.offline_detail": fault.message,
             },
@@ -1656,9 +1784,15 @@ class DeviceManager:
         return fault.code
 
     def _clear_offline_reason(self, device_id: str) -> None:
-        """Clear both offline-reason keys after a successful (re)connect."""
+        """Clear the offline-reason keys after a successful (re)connect.
+
+        Also ends any commanded-restart window: the device came back, which is
+        the outcome the window existed to wait for.
+        """
+        self._end_restart_window(device_id)
         self.state.set_batch(
             {
+                f"device.{device_id}.restarting": None,
                 f"device.{device_id}.offline_reason": None,
                 f"device.{device_id}.offline_detail": None,
             },
@@ -1884,8 +2018,13 @@ class DeviceManager:
 
         bridge_name = self.state.get(f"device.{bridge_id}.name") or bridge_id
         fault = bridge_offline_fault(str(bridge_name))
+        # The bridge being down is about a different box, so it outranks any
+        # window this device happened to have open: no amount of waiting for
+        # this device to finish booting fixes the one carrying its traffic.
+        self._end_restart_window(device_id)
         self.state.set_batch(
             {
+                f"device.{device_id}.restarting": None,
                 f"device.{device_id}.offline_reason": fault.code,
                 f"device.{device_id}.offline_detail": fault.message,
             },
@@ -1924,7 +2063,21 @@ class DeviceManager:
 
         Short ramp to catch a blip, then the steady interval forever. The only
         thing that stretches it is flapping, never absence.
+
+        Inside a commanded-restart window it is tighter, and that is the one
+        case where a tighter cadence is defensible rather than just keener: the
+        steady interval is what it is because continuous SYNs to an address
+        that is not answering look like a port scan to somebody's IDS, and a
+        device we just told to reboot is one we have positive reason to expect
+        back within a known handful of seconds. It is also the moment a person
+        is standing at a panel watching for it. Flap escalation is skipped for
+        the same reason -- a device that went away because it was asked to has
+        not flapped, and doubling the wait for it would punish the room for
+        using the button.
         """
+        if self.restart_seconds_left(device_id) is not None:
+            base = min(_RESTART_RECONNECT_INTERVAL, self._reconnect_interval())
+            return base * (1.0 + random.uniform(-_RECONNECT_JITTER, _RECONNECT_JITTER))
         if attempt < len(_RECONNECT_RAMP_SECONDS):
             base = _RECONNECT_RAMP_SECONDS[attempt]
         else:

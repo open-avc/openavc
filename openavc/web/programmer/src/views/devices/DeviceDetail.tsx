@@ -202,6 +202,10 @@ export function DeviceDetail({
   // Paused for driver testing (device.<id>.paused) — auto-reconnect is
   // suspended until a resume, a manual reconnect, or the server's pause TTL.
   const paused = Boolean(liveState[`device.${deviceId}.paused`]);
+  // Away because a command restarted it. `offline_reason` is deliberately null
+  // for the whole window (core/device_manager.py), so the offline banner below
+  // never fires and this one takes its place.
+  const restarting = Boolean(liveState[`device.${deviceId}.restarting`]);
   // Server-built, human-readable offline reason (device.<id>.offline_detail).
   // The taxonomy lives server-side; this view only renders the message.
   const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
@@ -328,6 +332,7 @@ export function DeviceDetail({
             connected={connected}
             orphaned={Boolean(liveState[`device.${deviceId}.orphaned`])}
             paused={Boolean(liveState[`device.${deviceId}.paused`])}
+            restarting={restarting}
             size={12}
           />
           <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{deviceName}</h2>
@@ -503,6 +508,34 @@ export function DeviceDetail({
         />
       )}
 
+      {/* Restarting banner — a command took the device away on purpose and it
+          is expected back. Not the offline banner in a different colour: that
+          one names a fault and tells somebody to go and check something, and
+          here the honest instruction is to wait. `offline_detail` carries the
+          sentence (and counts down), so the wording lives in
+          core/connection_fault.py with every other thing that key can say. */}
+      {restarting && !orphaned && !paused && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            marginBottom: "var(--space-md)",
+            fontSize: "var(--font-size-sm)",
+            background: "rgba(245, 158, 11, 0.1)",
+            border: "1px solid var(--color-warning, #f59e0b)",
+            color: "var(--color-warning, #f59e0b)",
+          }}
+        >
+          <RefreshCw size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>
+            {offlineDetail || "Restarting."}
+          </span>
+        </div>
+      )}
+
       {/* Paused banner — the device was paused for driver testing (Driver
           Builder test panel). Auto-reconnect is suspended; offer Resume so a
           pause left behind by a closed test session is recoverable here. */}
@@ -564,7 +597,7 @@ export function DeviceDetail({
       )}
 
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
-      {!connected && isEnabled && !orphaned && !paused && offlineDetail && (
+      {!connected && isEnabled && !orphaned && !paused && !restarting && offlineDetail && (
         <OfflineBanner
           detail={offlineDetail}
           reason={offlineReason}

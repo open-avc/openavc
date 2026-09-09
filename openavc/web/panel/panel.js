@@ -210,6 +210,20 @@ const FIRST_THEME_WAIT_MS = 1000;
 const DEVICE_PLATFORM_PROPS = new Set([
     'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
     'orphan_reason', 'orphaned', 'paused', 'reconnect_attempt', 'reconnect_failed',
+    'restarting',
+]);
+
+// The same set, for a child entity's reserved props. A child carries the
+// platform's own account of itself under `device.<id>.<type>.<local>.<prop>`,
+// and those four keep telling the truth while the parent is away exactly as
+// the device's own pair does -- so a label bound to one must keep rendering.
+//
+// Until this existed the split rule was accidental rather than decided: the
+// device's `offline_reason` is three segments and was exempt, its child's is
+// five and was not, so a panel bound to a child's fault drew `--` at precisely
+// the moment the child had something to say.
+const CHILD_PLATFORM_PROPS = new Set([
+    'online', 'offline_reason', 'offline_detail', 'label',
 ]);
 
 class PanelApp {
@@ -6089,6 +6103,10 @@ class PanelApp {
         const parts = key.split('.');
         if (parts.length < 3) return null;
         if (parts.length === 3 && DEVICE_PLATFORM_PROPS.has(parts[2])) return null;
+        // `device.<id>.<type>.<local>.<prop>` — the child's own reserved props
+        // are the platform's account of the child, not a reading from the far
+        // end of the wire, so they are exempt for the same reason.
+        if (parts.length === 5 && CHILD_PLATFORM_PROPS.has(parts[4])) return null;
         return parts[1] || null;
     }
 
@@ -6160,6 +6178,47 @@ class PanelApp {
         const tally = host._offlineBindings || (host._offlineBindings = new Set());
         if (offline) tally.add(b); else tally.delete(b);
         host.classList.toggle('device-offline', tally.size > 0);
+    }
+
+    /**
+     * Mark controls whose ACTIONS cannot land, which is a different statement
+     * from a reading that cannot be trusted and gets a lighter treatment.
+     *
+     * The two axes, and why they are not the same mark:
+     *
+     * - A `show` binding on an unreachable device means "this number is not
+     *   worth believing": the value is masked and the element is drained of
+     *   colour, because a confident-looking reading is the lie.
+     * - A `do` action on an unreachable device means "pressing this will be
+     *   refused": the label, the colour and the artwork are all still correct,
+     *   and only the availability is not. It gets the same dashed edge and
+     *   keeps everything else, which is what stops a page going grey because
+     *   one device is rebooting.
+     *
+     * ANY vs ALL is the other difference, and it matters most on the button
+     * somebody actually built the page around. A reading is spoiled by ONE bad
+     * source, so `_bindingOffline` marks on any. An action still does
+     * something as long as one target is there -- a System On macro touching
+     * eight devices is not unavailable because a display is off -- so this
+     * marks only when NOTHING it can reach is up.
+     *
+     * `action_devices` is resolved on the server (`ui/action_devices.py`);
+     * following a macro into a group is not something the renderer can do.
+     */
+    evaluateActionAvailability() {
+        for (const entry of Object.values(this.elementMap)) {
+            const el = entry?.el;
+            const devices = entry?.elementDef?.action_devices;
+            if (!el || !el.classList || !Array.isArray(devices) || !devices.length) continue;
+            const stranded = devices.every(id => this._deviceOffline(id));
+            // Never both: an element already carrying the reading mark has
+            // been drained, and adding a second dashed edge over it would draw
+            // the border twice.
+            el.classList.toggle(
+                'action-offline',
+                stranded && !el.classList.contains('device-offline'),
+            );
+        }
     }
 
     /**
@@ -6260,6 +6319,11 @@ class PanelApp {
                 console.error('Binding error:', e);
             }
         }
+
+        // Controls whose ACTIONS cannot land. Not a binding, so it is not in
+        // the loop above: an action-only button pushes nothing onto
+        // this.bindings, which is exactly why it used to carry no mark at all.
+        this.evaluateActionAvailability();
 
         // Apply ui.* state overrides (set by macros/scripts)
         // These take priority over feedback bindings for direct control.

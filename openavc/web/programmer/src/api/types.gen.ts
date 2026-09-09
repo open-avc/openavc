@@ -127,7 +127,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   queryEntry: new Set(["query_for", "send", "when"]),
   paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
-  commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "send", "sets"]),
+  commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "group", "json_path", "map", "state", "type", "value"]),
@@ -374,6 +374,23 @@ export interface DriverCommandDef {
    * regardless of connection state. Requires platform 0.24.0.
    */
   available_offline?: boolean;
+  /**
+   * Seconds this command takes the device's control channel away for, because
+   * sending it restarts the device. The mirror of available_offline: that one
+   * says a command works while the device is away, this one says a command
+   * MAKES it go away. While the window is open the platform reports the device
+   * as restarting rather than as a fault — no offline_reason is published, so
+   * nothing counts it as an error or alerts on it, and the panel says it is
+   * coming back instead of telling somebody to check the network. The window
+   * ends the moment the device reconnects, when the seconds run out, or
+   * immediately if a fault appears that a person has to fix (a rejected login,
+   * an untrusted certificate). Set it only from a MEASURED window on real
+   * hardware, round up, and leave it unset when the control channel survives
+   * the command — a device that stays reachable in standby, or a projector
+   * that reports a warming state, needs nothing here. Requires platform
+   * 0.34.0.
+   */
+  restarts_device_for?: number;
 }
 
 export interface DriverResponseMapping {

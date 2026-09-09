@@ -58,6 +58,18 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
     # General connection error (catch-all for ConnectionError subclasses)
     if isinstance(exc, ConnectionError):
         msg = str(exc)
+        # A commanded restart, refused while the device is still coming back.
+        # Same refusal as "not connected" and a different instruction: nobody
+        # needs to go and look at anything, they need to wait. Read off the
+        # attribute rather than the message so the sentence can be reworded
+        # without this branch quietly stopping to match.
+        restart_seconds = getattr(exc, "restart_seconds", None)
+        if restart_seconds is not None:
+            unit = "second" if restart_seconds == 1 else "seconds"
+            return (
+                f"{device} is restarting. It should be back in about "
+                f"{restart_seconds} {unit}."
+            ) if device else msg
         # Our own refusal is already a sentence somebody can read -- the device
         # manager raises "Device 'x' is not connected" when a command is sent
         # to a device that is not there. Wrapping that produced "Connection

@@ -798,3 +798,29 @@ def no_simulator_fault(driver_id: str = "") -> ConnectionFault:
         f"(a Python driver needs a companion _sim.py file), or stop "
         f"simulation to reach the real device.",
     )
+
+
+# --- Restarting: absence we asked for, which is not a fault -----------------
+#
+# A command declaring `restarts_device_for` takes the control channel away on
+# purpose, so for that window the device is absent without anything being
+# wrong. It gets a sentence but deliberately NO code: `offline_reason` stays
+# None, which is what keeps the cloud's error tally, every alert rule and every
+# `offline_reason` condition quiet without one of them having to learn a new
+# value. `paused` established that shape; this is the second user of it.
+#
+# The sentence lives here because this module owns what `offline_detail` may
+# say, and a second home for that string is how the frontend ends up wording
+# its own.
+
+
+def restarting_message(seconds_left: int) -> str:
+    """What ``offline_detail`` says while a commanded restart is in progress.
+
+    ``seconds_left`` is what remains of the driver's declared window, not the
+    window it declared: a card opened twenty seconds in should not still be
+    promising the original figure.
+    """
+    remaining = max(1, int(seconds_left))
+    unit = "second" if remaining == 1 else "seconds"
+    return f"Restarting. It should be back in about {remaining} {unit}."

@@ -27,6 +27,9 @@ export function DeviceListItem({
   const paused = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.paused`] as boolean | undefined
   );
+  const restarting = useConnectionStore(
+    (s) => s.liveState[`device.${deviceId}.restarting`] as boolean | undefined
+  );
 
   return (
     <button
@@ -49,6 +52,7 @@ export function DeviceListItem({
         connected={connected ?? false}
         orphaned={orphaned ?? false}
         paused={paused ?? false}
+        restarting={restarting ?? false}
       />
       <div style={{ minWidth: 0 }}>
         <div

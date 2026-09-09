@@ -1166,6 +1166,12 @@
         "available_offline": {
           "type": "boolean",
           "description": "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state. Requires platform 0.24.0."
+        },
+        "restarts_device_for": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600,
+          "description": "Seconds this command takes the device's control channel away for, because sending it restarts the device. The mirror of available_offline: that one says a command works while the device is away, this one says a command MAKES it go away. While the window is open the platform reports the device as restarting rather than as a fault — no offline_reason is published, so nothing counts it as an error or alerts on it, and the panel says it is coming back instead of telling somebody to check the network. The window ends the moment the device reconnects, when the seconds run out, or immediately if a fault appears that a person has to fix (a rejected login, an untrusted certificate). Set it only from a MEASURED window on real hardware, round up, and leave it unset when the control channel survives the command — a device that stays reachable in standby, or a projector that reports a warming state, needs nothing here. Requires platform 0.34.0."
         }
       },
       "additionalProperties": false,

@@ -103,7 +103,7 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
 _PLATFORM_DEVICE_PROPERTIES = frozenset({
     "connected", "enabled", "host", "name", "offline_detail", "offline_reason",
     "orphan_reason", "orphaned", "paused", "reconnect_attempt", "reconnect_failed",
-    "online", "status", "last_seen", "error",
+    "restarting", "online", "status", "last_seen", "error",
 })
 
 

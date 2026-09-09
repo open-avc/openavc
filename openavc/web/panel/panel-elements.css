@@ -1203,13 +1203,31 @@
    inline value beats a class every time. */
 .panel-element.device-offline {
     filter: grayscale(0.8) brightness(0.72);
+}
+
+/* Two marks, one vocabulary. The dashed edge means "unavailable" and goes on
+   both; only the reading mark also drains the colour.
+
+   `.device-offline` is a control whose READING cannot be believed, so the
+   design is replaced: masked value, no handle, drained. `.action-offline` is a
+   control whose ACTION cannot land while its label, colour and artwork are all
+   still correct -- a button is not wrong about what it does because the device
+   is away, it is only unavailable. Draining that one too is what made a page
+   go grey the moment a single display rebooted, and it is why an author's
+   colours survive here.
+
+   Never both on one element (panel.js `evaluateActionAvailability`): the edge
+   would be drawn twice. */
+.panel-element.device-offline,
+.panel-element.action-offline {
     /* The layout engine places most elements absolutely, but an aspect-locked
        one sits statically inside a wrapper box -- without this the outline
        below would anchor to the page and draw across the whole panel. An
        inline `position: absolute` still wins where there is one. */
     position: relative;
 }
-.panel-element.device-offline::after {
+.panel-element.device-offline::after,
+.panel-element.action-offline::after {
     content: '';
     position: absolute;
     inset: 0;

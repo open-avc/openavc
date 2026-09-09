@@ -354,6 +354,57 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   </span>
                 </label>
 
+                {/* The mirror of the flag above: that one says a command works
+                    while the device is away, this says a command MAKES it go
+                    away. Transport independent for the same reason. */}
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "var(--font-size-sm)",
+                    color: "var(--text-secondary)",
+                    marginBottom: "var(--space-md)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Restarts the device for
+                    <input
+                      type="number"
+                      min={1}
+                      max={600}
+                      placeholder="seconds"
+                      value={cmd.restarts_device_for ?? ""}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        const n = Number(raw);
+                        updateCommand(name, {
+                          restarts_device_for:
+                            raw === "" || !Number.isFinite(n) || n <= 0
+                              ? undefined
+                              : Math.min(600, Math.round(n)),
+                        });
+                      }}
+                      style={{ width: 90 }}
+                    />
+                    seconds
+                  </span>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-muted)",
+                      marginTop: "var(--space-xs)",
+                    }}
+                  >
+                    Leave this empty unless sending the command restarts the
+                    device and takes its control channel off the network with
+                    it. For that long the device is reported as restarting
+                    instead of as a fault: nothing alerts on it, and a panel
+                    says it is coming back rather than telling somebody to check
+                    the network. Measure the gap on real hardware and round up.
+                    A device that stays reachable in standby, or a projector
+                    that reports a warming state, needs nothing here.
+                  </div>
+                </label>
+
                 <ParamEditor
                   params={cmd.params}
                   childTypes={Object.keys(draft.child_entity_types ?? {})}

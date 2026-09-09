@@ -44,6 +44,7 @@ from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.ui_events import UIEventRuntime
 from openavc.core.ws_hub import WSHub
 from openavc.discovery import network_scanner
+from openavc.ui.action_devices import annotate_action_devices
 from openavc.ui.matrix_model import resolve_ui
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -1328,10 +1329,22 @@ class Engine:
         ``/api/project`` deliberately does NOT go through this: it is what the
         Builder edits and saves back, and resolving there would materialise
         somebody's `count: 128` into 128 rows on their next save.
+
+        Two resolutions now, on the same reasoning. The second stamps each
+        element with the devices its ``do`` actions can reach
+        (``ui/action_devices.py``), which is how the panel marks a control that
+        will be refused on press. It needs the project's macros and groups —
+        a press runs a macro, which commands a group — so the renderer could
+        not work it out from the page it is given even if we wanted it to.
         """
         if not self.project:
             return {}
-        return resolve_ui(self.project.ui.model_dump(mode="json"))
+        ui = resolve_ui(self.project.ui.model_dump(mode="json"))
+        return annotate_action_devices(
+            ui,
+            [m.model_dump(mode="json") for m in self.project.macros],
+            [g.model_dump(mode="json") for g in self.project.device_groups],
+        )
 
     def _load_project_safe(self) -> ProjectConfig:
         """Load project.avc with corruption recovery.
