@@ -1116,10 +1116,10 @@ class PanelApp {
      * is deliberately no test for that here: each value renderer already
      * refuses to overwrite a live gesture (`handle._dragging`, a slider's
      * `_dragging`, a cursor in a text box) and a second copy of that judgement
-     * in this loop is the one that would drift. `force` says the refusal is of
-     * the operator's OWN command, which lifts exactly one of those guards --
-     * see evaluateSliderValue. Nothing is lost by waiting: the release sends
-     * again, so a refusal of that send is what puts the control back.
+     * in this loop is the one that would drift. Nothing is lost by waiting:
+     * the release sends again, so a refusal of that send is what puts the
+     * control back. A numeric control retaining keyboard focus after release
+     * is no longer an active gesture.
      */
     _revertRefusedInteraction(elementId) {
         const id = elementId || this._lastTouchedElementId;
@@ -1129,7 +1129,7 @@ class PanelApp {
             for (const k of Object.keys(b)) {
                 if (k.startsWith('_last')) delete b[k];
             }
-            try { this._evaluateBinding(b, true); }
+            try { this._evaluateBinding(b); }
             catch (e) { console.error('Binding error:', e); }
         }
     }
@@ -6375,11 +6375,9 @@ class PanelApp {
      * Draw one binding from current state.
      *
      * Shared with the refusal revert, which needs exactly this and none of the
-     * incremental filtering around it. `force` says the operator's own command
-     * was rejected, which is the one time a renderer may overwrite a value
-     * they are still sitting on.
+     * incremental filtering around it. Each renderer protects active gestures.
      */
-    _evaluateBinding(b, force) {
+    _evaluateBinding(b) {
         switch (b.type) {
             case 'visible_when':
                 this.evaluateVisibleWhen(b);
@@ -6400,7 +6398,7 @@ class PanelApp {
                 this.evaluateColor(b);
                 break;
             case 'slider_value':
-                this.evaluateSliderValue(b, force);
+                this.evaluateSliderValue(b);
                 break;
             case 'select_value':
                 this.evaluateSelectValue(b);
@@ -7002,15 +7000,14 @@ class PanelApp {
         }
     }
 
-    evaluateSliderValue(b, force) {
+    evaluateSliderValue(b) {
         const { element, elementDef, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull, steps, unit, valueToPos, fmtValue } = b;
         // Don't yank the thumb out from under an operator who is actively
-        // dragging it (or has it focused) when a device echo / another panel's
-        // change arrives mid-gesture. `force` is the refusal of this panel's
-        // own command, and there the focus half has to be ignored: a range
-        // input keeps focus after the drag that set it, so honouring it would
-        // mean the rejected value never goes back. The drag half still holds.
-        if (element._dragging || (!force && document.activeElement === element)) return;
+        // dragging it when a device echo or another panel's change arrives.
+        // A native range input keeps keyboard focus after pointer release or
+        // a committed arrow-key change. Focus alone must not suppress later
+        // readings or disconnection feedback; only an active drag does.
+        if (element._dragging) return;
         const rawValue = this.state[binding.key];
         const offline = this._bindingOffline(b);
         if (b._lastSliderRaw === rawValue && b._lastSliderOffline === offline) return;

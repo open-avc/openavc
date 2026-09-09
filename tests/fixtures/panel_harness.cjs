@@ -2670,9 +2670,68 @@ const tests = {
             `an unnamed refusal falls back to the last control touched, got ${readout('b').textContent}`);
     },
 
-    // A range input keeps focus after the drag that set it, and the renderer
-    // refuses to touch a focused input -- so honouring that guard here would
-    // mean a slider is the one control that never goes back.
+    slider_keeps_receiving_feedback_after_pointer_release() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'level', type: 'slider', min: 0, max: 100, unit: '%',
+                send_on_release: true, style: { show_value: true },
+                bindings: { show: { value: { key: 'device.amp.level' } } },
+            }],
+            placements: { level: { x: 5, y: 5, w: 40, h: 15 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.level': 35 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="level"]');
+        const input = el.querySelector('input[type=range]');
+        const readout = el.querySelector('.slider-value');
+        input.focus();
+        input.dispatchEvent(new window.Event('pointerdown'));
+        input.value = '43';
+        input.dispatchEvent(new window.Event('input'));
+        app.handleMessage({ type: 'state.update', changes: { 'device.amp.level': 37 } });
+        assert(readout.textContent === '43 %', 'an active drag keeps its selected value');
+        input.dispatchEvent(new window.Event('change'));
+        input.dispatchEvent(new window.Event('pointerup'));
+        app.handleMessage({ type: 'state.update', changes: { 'device.amp.level': 27 } });
+        assert(document.activeElement === input, 'release retains keyboard focus');
+        assert(readout.textContent === '27 %', `released control follows the device, got ${readout.textContent}`);
+        assert(input.value === '27', 'the thumb follows the external change too');
+        app.handleMessage({ type: 'state.update', changes: { 'device.amp.connected': false } });
+        assert(readout.textContent === '-- %', 'focus cannot preserve a reading after disconnection');
+        assert(input.classList.contains('no-reading'), 'the unavailable thumb is hidden');
+    },
+
+    slider_keeps_receiving_feedback_after_keyboard_change() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'level', type: 'slider', min: 0, max: 100, unit: '%',
+                send_on_release: true, style: { show_value: true },
+                bindings: { show: { value: { key: 'device.amp.level' } } },
+            }],
+            placements: { level: { x: 5, y: 5, w: 40, h: 15 } },
+        });
+        app.state = { 'device.amp.connected': true, 'device.amp.level': 35 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="level"]');
+        const input = el.querySelector('input[type=range]');
+        const readout = el.querySelector('.slider-value');
+        input.focus();
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight' }));
+        input.value = '36'; // jsdom does not implement the native range default action.
+        input.dispatchEvent(new window.Event('input'));
+        input.dispatchEvent(new window.Event('change'));
+        input.dispatchEvent(new window.KeyboardEvent('keyup', { key: 'ArrowRight' }));
+        app.handleMessage({ type: 'state.update', changes: { 'device.amp.level': 36 } });
+        app.handleMessage({ type: 'state.update', changes: { 'device.amp.level': 22 } });
+        assert(document.activeElement === input, 'the control stays available to the keyboard');
+        assert(readout.textContent === '22 %', `keyboard focus must not suppress later feedback, got ${readout.textContent}`);
+        assert(input.value === '22', 'the next key press starts from the actual level');
+    },
+
+    // A range input retains focus after a drag. A refusal must restore the
+    // reported value without requiring the operator to move focus elsewhere.
     q206_a_refused_slider_goes_back_even_though_it_still_has_focus() {
         const app = mkApp();
         const proj = project({
