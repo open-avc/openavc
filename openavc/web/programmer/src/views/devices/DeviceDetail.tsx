@@ -1340,7 +1340,11 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                           borderRadius: "var(--border-radius)",
                           background: "var(--accent-dim)",
                         }}
-                        title={`Pending: ${String(pendingSettings[key])}, will be applied when device connects`}
+                        title={
+                          connected
+                            ? `Pending: ${String(pendingSettings[key])}. Sent, but the device has not reported it back yet. It will be sent again on the next connection.`
+                            : `Pending: ${String(pendingSettings[key])}, will be applied when device connects`
+                        }
                       >
                         pending
                       </span>

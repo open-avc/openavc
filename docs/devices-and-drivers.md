@@ -188,7 +188,7 @@ If a driver defines device settings, they appear in a **Device Settings** sectio
 
 - Each setting shows its current value (read from the device via polling), label, and help text
 - Click a setting to edit it. The new value is pushed directly to the device.
-- If the device is offline, settings are queued as "pending" and automatically applied when the device reconnects
+- If the device is offline, settings are queued as "pending" and sent when the device reconnects. A pending setting stays pending until the device reports the new value back, so a write that never reached the hardware is sent again on the next connection instead of being dropped
 - Settings marked as `setup` in the driver are prompted when you first add the device to the project
 
 ## Bulk Operations

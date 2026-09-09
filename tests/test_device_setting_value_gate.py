@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from openavc.core import device_manager
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -183,12 +184,13 @@ async def test_pending_apply_failure_emits_device_error(core):
     assert dm._device_configs["dev3"]["pending_settings"] == {"brightness": 50}
 
 
-async def test_pending_apply_coerces_uncoerced_values(core):
+async def test_pending_apply_coerces_uncoerced_values(core, monkeypatch):
     """A pending setting can reach the queue by a path that bypasses
     store_pending_settings' intake coercion — a project reload of a
     hand-edited file. _apply_pending_settings must coerce against the schema
     before the value reaches the driver (set_device_setting itself doesn't),
     not push the raw string through."""
+    monkeypatch.setattr(device_manager, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
     state, events = core
     dm = DeviceManager(state, events)
     driver = _SettingsDriver("dev4", {}, state, events)
@@ -202,8 +204,11 @@ async def test_pending_apply_coerces_uncoerced_values(core):
 
     # Coerced to a real int, not the raw string.
     assert driver.writes == [("brightness", 75)]
-    # Applied cleanly → cleared from the queue.
-    assert "pending_settings" not in dm._device_configs["dev4"]
+    # This driver reports nothing back, so the write is held rather than
+    # cleared — see tests/test_pending_setting_confirmation.py for the
+    # read-back rule this test is not about.
+    await dm._pending_confirm_tasks["dev4"]
+    assert dm._device_configs["dev4"]["pending_settings"] == {"brightness": "75"}
 
 
 # ── child_id param coercion (platform-side, was per-driver folklore) ─────────
