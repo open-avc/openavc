@@ -14,7 +14,10 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api._engine import _get_engine
 from openavc.api.auth import _basic, programmer_auth_satisfied
-from openavc.utils.request_origin import is_local_console_request
+from openavc.utils.request_origin import (
+    is_local_console_request,
+    is_tunneled_request,
+)
 
 router = APIRouter()
 open_router = APIRouter()
@@ -49,9 +52,19 @@ async def get_status(
     gets the non-sensitive subset so this open endpoint can't be used for LAN
     reconnaissance; on an open (dev / anonymous-allowed) instance everything
     is already public, so the full set is returned.
+
+    ``tunneled`` says this request arrived over the cloud remote-UI tunnel.
+    The IDE asks because every address in its Panel Access card is a LAN
+    address, and a reader on the far side of the tunnel is not on that LAN.
+    It is a fact about the caller's own connection rather than a host
+    identifier, so it is not gated with the set above. The page cannot work
+    it out for itself: in subdomain tunnel mode the browser's own origin is
+    the right one to publish, and in path mode it is not.
     """
     include_sensitive = programmer_auth_satisfied(request, credentials)
-    return _get_engine().get_status(include_sensitive=include_sensitive)
+    status = _get_engine().get_status(include_sensitive=include_sensitive)
+    status["tunneled"] = is_tunneled_request(request)
+    return status
 
 
 @open_router.get("/health")

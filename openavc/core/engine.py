@@ -179,7 +179,8 @@ class Engine:
 
         # Cached (local_ip, hostname, all_ips) for get_status. Detection does
         # blocking adapter-enumeration / gethostname syscalls; they rarely
-        # change, so compute once.
+        # change, so compute once. Stays None until a detection finds an
+        # address -- see _detect_network_info.
         self._network_info: tuple[str, str, list[str]] | None = None
 
     async def start(self) -> None:
@@ -1856,6 +1857,15 @@ class Engine:
         single right answer, so the setup screen shows the whole list. Both
         syscall paths block the event loop and the values rarely change over a
         process's lifetime, hence the cache.
+
+        A detection that found nothing is NOT cached. Finding nothing means
+        the host had no address at the moment we looked, which is what a
+        server started before its adapter comes up sees — at boot, or ahead
+        of DHCP. Caching that answer pinned ``local_ip`` to 127.0.0.1 for the
+        life of the process, and the Dashboard then published loopback as the
+        address to type at a panel. Re-detecting costs one adapter
+        enumeration and a routeless UDP connect, and only on a host that
+        still has no address.
         """
         if self._network_info is not None:
             return self._network_info
@@ -1865,8 +1875,10 @@ class Engine:
             hostname = socket.gethostname()
         except OSError:
             hostname = ""
-        self._network_info = (local_ip, hostname, all_ips)
-        return self._network_info
+        info = (local_ip, hostname, all_ips)
+        if all_ips:
+            self._network_info = info
+        return info
 
     def refresh_network_info(self) -> tuple[str, str, list[str]]:
         """Re-detect (and re-cache) the local addresses and hostname.

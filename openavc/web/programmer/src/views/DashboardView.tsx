@@ -14,6 +14,7 @@ import { copyToClipboard } from "../components/shared/clipboard";
 import { showError } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { CloudStatus, TlsStatus } from "../api/restClient";
+import { panelAccess } from "./panelAccessUrls";
 import type { MonitorConfig } from "../api/types";
 import {
   ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
@@ -262,69 +263,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
   const [qrOpen, setQrOpen] = useState(false);
   if (!systemStatus) return null;
 
-  const localIp = String(systemStatus.local_ip ?? "");
-  const hostname = String(systemStatus.hostname ?? "");
-  const httpPort = Number(systemStatus.http_port ?? 8080);
-  const port80 = systemStatus.port80_active === true;
-  const bindAddress = String(systemStatus.bind_address ?? "127.0.0.1");
-
-  const isLocalOnly = bindAddress === "127.0.0.1" || bindAddress === "::1";
-
-  const tlsEnabled = tlsStatus?.enabled === true;
-  const tlsPort = Number(tlsStatus?.port ?? 8443);
-  const redirectHttp = tlsStatus?.redirect_http !== false;
-  const cloudCert = tlsStatus?.cloud_cert;
-  const certSuffix = cloudCert?.active && cloudCert.hostname_suffix ? cloudCert.hostname_suffix : "";
-
-  // The address the browser is actually using is ground truth. On multi-homed
-  // machines (VPN, virtual/second adapters) the server's auto-detected local_ip
-  // can be an interface panels can't reach, so prefer the current origin's IP
-  // and only fall back to the detected IP on loopback (admin on the box itself)
-  // or when the origin isn't an IPv4 (hostname or tunnel).
-  const loc = window.location;
-  const ipv4Re = /^\d{1,3}(\.\d{1,3}){3}$/;
-  const isLoopbackHost = loc.hostname === "localhost" || loc.hostname === "127.0.0.1"
-    || loc.hostname === "::1" || loc.hostname === "[::1]";
-  const lanIp = !isLoopbackHost && ipv4Re.test(loc.hostname) ? loc.hostname : localIp;
-
-  // Short typed form: the HTTP listener (port-less when the port-80 listener is
-  // up). With TLS on, the redirect listener upgrades it — to the certified name
-  // when a trusted cert is active — so this is both the easiest URL to type and
-  // the most durable one to encode in a QR/poster (it keeps landing right
-  // through cert enroll/lapse/renewal). Only TLS-on-without-redirect has no
-  // working http form.
-  const shortBase = lanIp
-    ? (tlsEnabled && !redirectHttp
-      ? `https://${lanIp}:${tlsPort}`
-      : `http://${lanIp}${port80 ? "" : `:${httpPort}`}`)
-    : "";
-
-  // Certified (green-lock) address: the browser-facing IPv4 dash-encoded under
-  // the trusted cert's wildcard — same derivation as the Settings card.
-  const certifiedBase = certSuffix && lanIp
-    ? `https://${lanIp.split(".").join("-")}.${certSuffix}:${tlsPort}`
-    : "";
-
-  // Primary display URL: certified when active; otherwise the browser's own
-  // origin when it's not loopback; otherwise scheme-and-port matched from the
-  // detected IP (never glue the page scheme onto the HTTP port).
-  const originBase = !isLoopbackHost
-    ? loc.origin
-    : (lanIp ? (tlsEnabled ? `https://${lanIp}:${tlsPort}` : `http://${lanIp}${port80 ? "" : `:${httpPort}`}`) : "");
-  const primaryBase = certifiedBase || originBase;
-
-  const panelUrl = primaryBase && !isLocalOnly ? `${primaryBase}/panel` : "";
-  const shortPanelUrl = shortBase && !isLocalOnly && shortBase !== primaryBase ? `${shortBase}/panel` : "";
-  const qrBase = shortBase || primaryBase;
-  const pairUrl = qrBase && !isLocalOnly ? `${qrBase}/pair` : "";
-  const qrPanelUrl = qrBase && !isLocalOnly ? `${qrBase}/panel` : "";
-  // Name-based fallback that survives IP changes. ".local" resolves via mDNS
-  // on phones and tablets (a bare machine name only resolves Windows-to-Windows).
-  const hostnameUrl = hostname && hostname !== localIp && !isLocalOnly
-    ? (tlsEnabled && !redirectHttp
-      ? `https://${hostname}.local:${tlsPort}/panel`
-      : `http://${hostname}.local${port80 ? "" : `:${httpPort}`}/panel`)
-    : "";
+  const access = panelAccess(systemStatus, tlsStatus, window.location);
 
   const cardStyle: React.CSSProperties = {
     background: "var(--bg-surface)",
@@ -350,7 +289,18 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
         </span>
       </h3>
       <div style={cardStyle}>
-        {isLocalOnly ? (
+        {access.tunneled ? (
+          <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+            <div style={{ marginBottom: "var(--space-sm)" }}>
+              Panel addresses are on the space&rsquo;s own network and cannot be reached from this
+              remote session.
+            </div>
+            <div>
+              To open the panel, go to Remote Access in the cloud portal, close this session, then
+              choose Remote Panel.
+            </div>
+          </div>
+        ) : access.localOnly ? (
           <div style={{ fontSize: "var(--font-size-sm)" }}>
             <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
               The server is set to local-only access. To open the panel from anywhere else on the network, go to{" "}
@@ -368,7 +318,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
             <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
               Open this URL from anywhere on the same network:
             </div>
-            {panelUrl && (
+            {access.panelUrl && (
               <div style={{
                 display: "flex",
                 alignItems: "center",
@@ -376,14 +326,14 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 background: "var(--bg-elevated, var(--bg-hover))",
                 borderRadius: "var(--border-radius)",
                 padding: "var(--space-sm) var(--space-md)",
-                marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-xs)" : 0,
+                marginBottom: access.shortPanelUrl || access.hostnameUrl ? "var(--space-xs)" : 0,
               }}>
                 <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
-                  {panelUrl}
+                  {access.panelUrl}
                 </code>
-                <CopyButton text={panelUrl} />
+                <CopyButton text={access.panelUrl} />
                 <a
-                  href={panelUrl}
+                  href={access.panelUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Open in new tab"
@@ -393,12 +343,12 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 </a>
               </div>
             )}
-            {certifiedBase && panelUrl && (
-              <div style={{ color: "var(--color-success, var(--accent))", fontSize: 11, marginBottom: shortPanelUrl || hostnameUrl ? "var(--space-sm)" : 0 }}>
+            {access.certified && (
+              <div style={{ color: "var(--color-success, var(--accent))", fontSize: 11, marginBottom: access.shortPanelUrl || access.hostnameUrl ? "var(--space-sm)" : 0 }}>
                 Trusted address: opens with no browser warnings.
               </div>
             )}
-            {shortPanelUrl && (
+            {access.shortPanelUrl && (
               <>
                 <div style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 2 }}>
                   Or type this short address, which forwards to the one above:
@@ -410,16 +360,16 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                   background: "var(--bg-elevated, var(--bg-hover))",
                   borderRadius: "var(--border-radius)",
                   padding: "var(--space-sm) var(--space-md)",
-                  marginBottom: hostnameUrl ? "var(--space-xs)" : 0,
+                  marginBottom: access.hostnameUrl ? "var(--space-xs)" : 0,
                 }}>
                   <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
-                    {shortPanelUrl}
+                    {access.shortPanelUrl}
                   </code>
-                  <CopyButton text={shortPanelUrl} />
+                  <CopyButton text={access.shortPanelUrl} />
                 </div>
               </>
             )}
-            {hostnameUrl && hostname !== localIp && (
+            {access.hostnameUrl && (
               <div style={{
                 display: "flex",
                 alignItems: "center",
@@ -429,12 +379,12 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
                 padding: "var(--space-sm) var(--space-md)",
               }}>
                 <code style={{ flex: 1, fontSize: 13, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
-                  {hostnameUrl}
+                  {access.hostnameUrl}
                 </code>
-                <CopyButton text={hostnameUrl} />
+                <CopyButton text={access.hostnameUrl} />
               </div>
             )}
-            {panelUrl && (
+            {access.panelUrl && (
               <button
                 type="button"
                 onClick={() => setQrOpen(true)}
@@ -459,7 +409,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
           </div>
         )}
       </div>
-      {qrOpen && pairUrl && qrPanelUrl && <QRCodeDialog pairUrl={pairUrl} panelUrl={qrPanelUrl} roomName={roomName} onClose={() => setQrOpen(false)} />}
+      {qrOpen && access.pairUrl && access.qrPanelUrl && <QRCodeDialog pairUrl={access.pairUrl} panelUrl={access.qrPanelUrl} roomName={roomName} onClose={() => setQrOpen(false)} />}
     </div>
   );
 }
