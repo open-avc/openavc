@@ -129,6 +129,7 @@ def test_a_button_draws_the_state_label_it_was_given(panel_page) -> None:
     )})
     assert "feedback" in result["registered"]
     assert result["text"] == "ONLINE"
+    assert panel_page.get_by_role("button", name="ONLINE", exact=True).count() == 1
 
 
 def test_a_label_draws_the_state_label_too(panel_page) -> None:

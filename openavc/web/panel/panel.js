@@ -2286,7 +2286,8 @@ class PanelApp {
         el.className = 'panel-element panel-button';
         el.textContent = element.label || '';
         el.dataset.elementId = element.id;
-        el.setAttribute('aria-label', element.label || element.id);
+        el._baseAccessibleName = element.label || element.id;
+        el.setAttribute('aria-label', el._baseAccessibleName);
 
         // Apply static styles (theme defaults merged)
         const themedStyle = this.getThemedStyle('button', element.style);
@@ -7621,11 +7622,17 @@ class PanelApp {
     /**
      * Set or replace an element's label text without touching element children
      * (icons, image layer). Removes existing text nodes and appends a new one.
+     * A button's accessible name follows its words, retaining its configured
+     * name when the visible label is empty.
      */
     _setLabelText(el, text) {
         this._removeTextNodes(el);
         if (text != null && text !== '') {
             el.appendChild(document.createTextNode(String(text)));
+        }
+        if (el.tagName === 'BUTTON') {
+            el.setAttribute('aria-label', text != null && text !== ''
+                ? String(text) : (el._baseAccessibleName || ''));
         }
     }
 

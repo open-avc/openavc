@@ -2862,9 +2862,11 @@ const tests = {
         renderProject(app, proj);
         const el = app.root.querySelector('[data-element-id="mute"]');
         assert(el.textContent === 'MUTE', `off word, got "${el.textContent}"`);
+        assert(el.getAttribute('aria-label') === 'MUTE', 'accessible name follows the off label');
         app.state['device.amp.mute'] = true;
         app.evaluateAllBindings(['device.amp.mute']);
         assert(el.textContent === 'MUTED', `on word, got "${el.textContent}"`);
+        assert(el.getAttribute('aria-label') === 'MUTED', 'accessible name follows the on label');
 
         // Only one of the two named: the other state keeps the button's name.
         const app2 = mkApp();
@@ -2903,6 +2905,14 @@ const tests = {
         assert(el.textContent === 'From a macro',
             `and the toggle lighting up does not take them, got "${el.textContent}"`);
         assert(el.classList.contains('toggle-on'), 'while the look still tracks the state');
+        assert(el.getAttribute('aria-label') === 'From a macro', 'accessible name follows the override');
+        app.state['ui.mute.label'] = '';
+        app.evaluateAllBindings(['ui.mute.label']);
+        assert(el.textContent === '', 'an empty override clears the visible label');
+        assert(el.getAttribute('aria-label') === 'mute', 'a blank button retains its configured name');
+        delete app.state['ui.mute.label'];
+        app.evaluateAllBindings(['ui.mute.label']);
+        assert(el.getAttribute('aria-label') === el.textContent, 'clearing the override restores both names');
     },
 
     // The author's own appearance binding takes the whole job. Two bindings
@@ -2925,6 +2935,7 @@ const tests = {
         assert(el.style.backgroundColor === 'rgb(46, 125, 50)',
             `the author's colour, not the accent, got ${el.style.backgroundColor}`);
         assert(el.textContent === 'MUTED', `and the author's word, got "${el.textContent}"`);
+        assert(el.getAttribute('aria-label') === 'MUTED', 'appearance labels are accessible too');
         assert(!el.classList.contains('toggle-on'),
             'and no lit ring underneath it');
     },
@@ -2949,6 +2960,7 @@ const tests = {
         assert(el.textContent === 'Mute Ch 1',
             `offline: its own name, not "MUTE" -- which would claim it is unmuted, got "${el.textContent}"`);
         assert(el.classList.contains('device-offline'), 'offline: and reads as unavailable');
+        assert(el.getAttribute('aria-label') === 'Mute Ch 1', 'offline restores the configured accessible name');
 
         app.state['device.amp.connected'] = true;
         app.evaluateAllBindings(['device.amp.connected']);
