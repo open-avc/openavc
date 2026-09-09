@@ -320,6 +320,54 @@ async def test_master_element_counts_as_panel_content(claimed, remote_client):
         Path(tmp_path).unlink(missing_ok=True)
 
 
+async def test_custom_page_counts_as_panel_content(claimed, remote_client):
+    """A custom page fills the screen from the author's own file and carries
+    no elements, so counting elements alone left an integrator who builds the
+    room entirely out of their own pages with a finished panel that no
+    appliance display would ever switch to."""
+    project = dict(EMPTY_PROJECT)
+    project["ui"] = {
+        "pages": [
+            {
+                "id": "main",
+                "name": "Main",
+                "elements": [],
+                "render_mode": "custom",
+                "custom_file": "room/index.html",
+            }
+        ]
+    }
+    engine, tmp_path = _make_engine(project)
+    rest.set_engine(engine)
+    try:
+        body = remote_client.get("/api/setup/status").json()
+        assert body["panel_has_content"] is True
+    finally:
+        rest.set_engine(claimed)
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def test_custom_page_with_no_file_is_still_empty(claimed, remote_client):
+    """Guards the guard. `render_mode: custom` with nothing to load draws
+    nothing, the same as `panel.js::_isCustomPage`, so it must not take an
+    appliance off the setup screen. Without this a fix that read only
+    `render_mode` would pass."""
+    project = dict(EMPTY_PROJECT)
+    project["ui"] = {
+        "pages": [
+            {"id": "main", "name": "Main", "elements": [], "render_mode": "custom"}
+        ]
+    }
+    engine, tmp_path = _make_engine(project)
+    rest.set_engine(engine)
+    try:
+        body = remote_client.get("/api/setup/status").json()
+        assert body["panel_has_content"] is False
+    finally:
+        rest.set_engine(claimed)
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 # --- Unclaimed instance ---
 
 

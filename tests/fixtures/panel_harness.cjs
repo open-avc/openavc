@@ -801,6 +801,119 @@ const tests = {
             'dismissing takes the frame bridge listener with it');
     },
 
+    // ---- Q-160: a page nobody has built yet ---------------------------------
+
+    // The seed project ships one empty page, so opening /panel right after
+    // claiming an instance drew the connection badge on black and nothing
+    // else, which reads as a broken system rather than an unbuilt one.
+    q160_an_empty_page_says_so() {
+        const app = mkApp();
+        renderProject(app, project({}));
+        const notice = app.root.querySelector('.panel-page-empty');
+        assert(notice, 'an empty page draws the notice');
+        assert(notice.textContent === 'This page has no controls yet.',
+            `and says only that, got ${JSON.stringify(notice.textContent)}`);
+        // A wall panel shows this same document, and the reader there is an end
+        // user. Nothing may send them to the IDE.
+        assert(!/programmer|programme|sign in|admin/i.test(notice.textContent),
+            'and points nobody at the Programmer');
+    },
+
+    // Guards the guard: a page with a control on it must stay silent, or the
+    // notice would print over every panel in the field.
+    q160_a_page_with_a_control_says_nothing() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [el('b1', 'button')],
+            placements: { b1: { x: 10, y: 10, w: 20, h: 10 } },
+        }));
+        assert(!app.root.querySelector('.panel-page-empty'),
+            'a page with an element draws no notice');
+    },
+
+    // A page whose only content is a master element is a real design -- a
+    // landing page whose one control is the nav bar -- and it is what the
+    // server already counts as panel content, so an appliance display IS on
+    // this page. Counting `page.elements` alone would print the notice over a
+    // working nav bar.
+    q160_a_master_element_on_the_page_is_content() {
+        const app = mkApp();
+        const proj = project({});
+        proj.ui.master_elements = [{
+            id: 'home', type: 'button', label: 'Home', pages: '*',
+            placements: { landscape: { x: 0, y: 0, w: 12, h: 8 } },
+        }];
+        setViewport(1280, 800);
+        renderProject(app, proj);
+        assert(app.root.querySelector('[data-element-id="home"]'), 'the master element draws');
+        assert(!app.root.querySelector('.panel-page-empty'),
+            'so the page is not empty and says nothing');
+    },
+
+    // ...but a master element that does not name this page draws nowhere on
+    // it, so the page really is blank and the notice belongs. The render loop
+    // reads `pages` exactly this way; the check must not be looser.
+    q160_a_master_element_on_another_page_is_not_content() {
+        const app = mkApp();
+        for (const pages of [['other'], undefined]) {
+            const proj = project({});
+            proj.ui.master_elements = [{
+                id: 'home', type: 'button', label: 'Home', pages,
+                placements: { landscape: { x: 0, y: 0, w: 12, h: 8 } },
+            }];
+            renderProject(app, proj);
+            assert(app.root.querySelector('.panel-page-empty'),
+                `a master element scoped to ${JSON.stringify(pages)} leaves this page blank`);
+        }
+    },
+
+    // A hidden master element draws nothing, same as one scoped elsewhere.
+    q160_a_hidden_master_element_is_not_content() {
+        const app = mkApp();
+        const proj = project({});
+        proj.ui.master_elements = [{
+            id: 'home', type: 'button', label: 'Home', pages: '*', hidden: true,
+            placements: { landscape: { x: 0, y: 0, w: 12, h: 8 } },
+        }];
+        renderProject(app, proj);
+        assert(app.root.querySelector('.panel-page-empty'), 'a hidden master leaves the page blank');
+    },
+
+    // A custom page carries no elements by design -- the author's file fills
+    // the screen. Printing "no controls yet" over a finished custom room would
+    // be the notice calling a working panel broken.
+    q160_a_custom_page_says_nothing() {
+        const app = mkApp();
+        const proj = project({});
+        Object.assign(proj.ui.pages[0], {
+            render_mode: 'custom', custom_file: 'room/index.html',
+        });
+        renderProject(app, proj);
+        assert(app.root.querySelector('.panel-custom'), 'the author page draws');
+        assert(!app.root.querySelector('.panel-page-empty'), 'and the notice does not');
+    },
+
+    // The Builder canvas embeds this document with `edit=1`. An author who has
+    // just made a page is one drop away from their first control and does not
+    // need to be told the page is empty.
+    q160_the_designer_shows_no_notice() {
+        const app = mkApp();
+        app.editMode = true;
+        renderProject(app, project({}));
+        assert(!app.root.querySelector('.panel-page-empty'), 'no notice on the design canvas');
+        app.editMode = false;
+    },
+
+    // The notice must never be mistaken for a control or eat a press meant for
+    // something under it.
+    q160_the_notice_takes_no_touches() {
+        const app = mkApp();
+        renderProject(app, project({}));
+        const notice = app.root.querySelector('.panel-page-empty');
+        assert(!notice.dataset.elementId, 'it is not an element');
+        assert(!notice.onclick && !notice.getAttribute('onclick'), 'and handles no press');
+    },
+
     // Navigating from inside a frame tells the server, exactly as the page-nav
     // button does. It used to move the panel silently, so a trigger bound to
     // `ui.page.<id>` never fired for anyone who got there from a control.

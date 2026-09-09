@@ -150,6 +150,22 @@ button.panel-element {
     z-index: 2;
 }
 
+/* What a page with nothing on it says. Muted and centred: it is a statement of
+   fact on a working panel, not a fault, and on a wall display it is read by
+   whoever walks up. Pointer events pass through so it can never be mistaken for
+   a control. */
+.panel-page-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 5%;
+    text-align: center;
+    pointer-events: none;
+    color: color-mix(in srgb, var(--panel-text, #fff) 55%, transparent);
+    font-size: clamp(0.9rem, 2.2vmin, 1.25rem);
+}
+
 /* An aspect-locked element sits inside a placement box: the box takes the
    layout rect, the element shrinks to its ratio within it and stays centred,
    never spilling past. Pointer events pass through the box so the gap around

@@ -91,9 +91,16 @@ def _panel_has_content(engine) -> bool:
     """Whether the loaded project has anything for the panel to show.
 
     This is the signal an appliance display uses to decide between the setup
-    screen and the panel: at least one UI element on a page (or a master
-    element). The shipped seed project has a single empty page, so a fresh
-    appliance stays on the setup screen until the integrator builds UI.
+    screen and the panel. Three things count, because three things draw: an
+    element on a page, a master element, and a custom page, which fills the
+    screen from the author's own file and carries no elements at all. The
+    shipped seed project has a single empty page, so a fresh appliance stays
+    on the setup screen until the integrator builds UI.
+
+    The custom-page arm is what keeps a finished project off the setup
+    screen: without it an integrator who builds the room entirely out of
+    their own pages has a working panel that no appliance display will show.
+    ``panel.js::_isCustomPage`` reads the same two fields.
     """
     project = getattr(engine, "project", None)
     if project is None:
@@ -101,8 +108,11 @@ def _panel_has_content(engine) -> bool:
     ui = getattr(project, "ui", None)
     if ui is None:
         return False
-    if any(page.elements for page in ui.pages):
-        return True
+    for page in ui.pages:
+        if page.elements:
+            return True
+        if getattr(page, "render_mode", "") == "custom" and getattr(page, "custom_file", None):
+            return True
     return bool(ui.master_elements)
 
 

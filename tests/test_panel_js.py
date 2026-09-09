@@ -191,6 +191,15 @@ SCENARIOS = [
     "q163_a_password_above_latin1_does_not_break_the_request",
     "q163_no_stored_credential_attaches_no_header",
     "q139_a_connection_level_refusal_is_not_put_on_the_glass",
+    # A page nobody has built yet says so, without sending anyone to the IDE.
+    "q160_an_empty_page_says_so",
+    "q160_a_page_with_a_control_says_nothing",
+    "q160_a_master_element_on_the_page_is_content",
+    "q160_a_master_element_on_another_page_is_not_content",
+    "q160_a_hidden_master_element_is_not_content",
+    "q160_a_custom_page_says_nothing",
+    "q160_the_designer_shows_no_notice",
+    "q160_the_notice_takes_no_touches",
 ]
 
 

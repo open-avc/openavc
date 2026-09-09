@@ -2084,6 +2084,19 @@ class PanelApp {
             this._renderPageElements(page, surface, { entryAnimation, staggerMs });
         }
 
+        // A page nobody has put anything on says so, in the room's own terms.
+        // Deliberately says nothing about the Programmer: this same document is
+        // what a wall panel shows, and on a kiosk display the reader is an end
+        // user who has no business being sent to the IDE. Not in edit mode --
+        // the Builder canvas embeds this page with `edit=1`, and an empty page
+        // there is an author one drop away from their first control.
+        if (!this.editMode && this._pageDrawsNothing(page)) {
+            const notice = document.createElement('div');
+            notice.className = 'panel-page-empty';
+            notice.textContent = 'This page has no controls yet.';
+            surface.appendChild(notice);
+        }
+
         this.root.appendChild(surface);
         this._applyCoordinateSpaces(surface);
         this.evaluateAllBindings();
@@ -5449,6 +5462,34 @@ class PanelApp {
      *  half way through setting it up. */
     _isCustomPage(page) {
         return !!page && page.render_mode === 'custom' && !!page.custom_file;
+    }
+
+    /** Will this page draw nothing at all?
+     *
+     *  Three things draw: the page's own elements, a master element that names
+     *  the page, and a custom page's frame. None of the three is a black
+     *  screen, and a black screen reads as a broken system rather than an
+     *  unbuilt one -- which is what the seed project's single empty page looked
+     *  like to anyone opening /panel to see what their client sees.
+     *
+     *  The same three are what `api/routes/setup.py::_panel_has_content` counts
+     *  before an appliance display leaves the setup screen for /panel. That one
+     *  asks the question of the whole project; this asks it of one page, so
+     *  they are not interchangeable, but they must agree on what "draws".
+     *
+     *  The master test is copied from the render loop rather than simplified:
+     *  a master element with no `pages` draws nowhere, and guessing otherwise
+     *  here would suppress the notice on a page that really is blank. */
+    _pageDrawsNothing(page) {
+        if (!page) return false;
+        if (this._isCustomPage(page)) return false;
+        const elements = Array.isArray(page.elements) ? page.elements : [];
+        if (elements.length) return false;
+        return !(this.uiDef?.master_elements || []).some(mEl => {
+            if (!mEl || mEl.hidden) return false;
+            const on = mEl.pages;
+            return on === '*' || (Array.isArray(on) && on.includes(page.id));
+        });
     }
 
     /** Is anything on screen right now drawn from a file in `ui/`?
