@@ -31,6 +31,8 @@ Point the element at `room_map/index.html`. Everything beside it loads with rela
 
 Allowed file types are the ones a browser needs: HTML, CSS, JavaScript, images, fonts, JSON, and a few others. Anything else is refused when you upload it, and the message says which files were skipped.
 
+A file a page or a control still points at cannot be deleted, and the message names them. Point them at another file, or delete them first, and the file can go. Deleting a control's whole folder is refused the same way while anything inside it is in use.
+
 **Anything in `ui/` is readable by anyone who can reach the server.** A wall panel presents no password, so these files are served without one. Keep credentials, customer data and anything else you would not hand out of this folder.
 
 ## The shape of a control

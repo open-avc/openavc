@@ -367,6 +367,98 @@ def test_delete_removes_a_whole_control(client, project_dir):
     assert not (project_dir / "ui" / "room_map").exists()
 
 
+# --- Deleting a file something still shows ------------------------------------
+#
+# The AI's delete tool has always refused this and named what still points at
+# the file; the REST door behind the IDE's Code view deleted it and answered
+# "deleted". The panel is honest about the aftermath, but the integrator finds
+# out from the wall. Both doors now ask the same walk.
+
+
+def _showing(**kwargs):
+    """A project whose one page shows a custom file, as an element or as the
+    whole page."""
+    from openavc.core.project_loader import (
+        Layout, Placement, ProjectConfig, ProjectMeta, UIConfig, UIElement, UIPage,
+    )
+    if "element_file" in kwargs:
+        page = UIPage(
+            id="main", name="Main",
+            elements=[UIElement(
+                id="room_map", type="custom", custom_file=kwargs["element_file"],
+            )],
+            layouts=[Layout(id="landscape", primary=True, placements={
+                "room_map": Placement(x=0, y=0, w=50, h=50),
+            })],
+        )
+    else:
+        page = UIPage(
+            id="dash", name="Dashboard",
+            render_mode="custom", custom_file=kwargs["page_file"],
+        )
+    return ProjectConfig(
+        project=ProjectMeta(id="p", name="Test Room"),
+        ui=UIConfig(pages=[page]),
+    )
+
+
+def _load(project):
+    from openavc.api._engine import get_engine_optional
+    get_engine_optional().project = project
+
+
+def test_delete_refuses_a_file_an_element_still_shows(client, project_dir):
+    client.put("/api/projects/default/ui/room_map/index.html", json={"content": "a"})
+    _load(_showing(element_file="room_map/index.html"))
+
+    resp = client.delete("/api/projects/default/ui/room_map/index.html")
+
+    assert resp.status_code == 409
+    assert "element 'room_map' on page 'main'" in resp.json()["detail"]
+    assert (project_dir / "ui" / "room_map" / "index.html").is_file()
+
+
+def test_delete_refuses_the_folder_of_a_control_still_in_use(client, project_dir):
+    client.put("/api/projects/default/ui/room_map/index.html", json={"content": "a"})
+    _load(_showing(element_file="room_map/index.html"))
+
+    resp = client.delete("/api/projects/default/ui/room_map")
+
+    assert resp.status_code == 409
+    assert (project_dir / "ui" / "room_map").is_dir()
+
+
+def test_delete_refuses_a_file_a_whole_page_is_drawn_from(client, project_dir):
+    client.put("/api/projects/default/ui/dash.html", json={"content": "a"})
+    _load(_showing(page_file="dash.html"))
+
+    resp = client.delete("/api/projects/default/ui/dash.html")
+
+    assert resp.status_code == 409
+    assert "page 'dash'" in resp.json()["detail"]
+
+
+def test_a_file_that_is_already_gone_is_not_found_rather_than_in_use(client):
+    """A page pointing at a name nothing wrote is the renamed-file case, and it
+    answers the way the AI's door answers it: not there, rather than in use."""
+    _load(_showing(element_file="room_map/index.html"))
+
+    assert client.delete(
+        "/api/projects/default/ui/room_map/index.html"
+    ).status_code == 404
+
+
+def test_delete_goes_ahead_when_nothing_points_at_the_file(client, project_dir):
+    client.put("/api/projects/default/ui/room_map/index.html", json={"content": "a"})
+    client.put("/api/projects/default/ui/notes.md", json={"content": "scratch"})
+    _load(_showing(element_file="room_map/index.html"))
+
+    resp = client.delete("/api/projects/default/ui/notes.md")
+
+    assert resp.status_code == 200
+    assert not (project_dir / "ui" / "notes.md").exists()
+
+
 def test_write_routes_require_a_claimed_instance():
     """Custom UI is code somebody's panel runs. The gate must be declared.
 

@@ -49,7 +49,7 @@ from openavc.core.custom_ui_review import (
     stylesheet_class_names,
     stylesheet_class_usage,
 )
-from openavc.ui.page_references import custom_file_references
+from openavc.ui.page_references import custom_file_references, custom_file_users
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
@@ -432,19 +432,14 @@ class CustomUIToolsMixin:
         # A file still on a panel is not a file to delete. The element keeps
         # drawing and its box comes up empty, with nothing on the glass to say
         # why -- so this is the one refusal in the folder that is about the
-        # PROJECT rather than about the path.
-        still_shown = [
-            (page, use) for page, use in self._uses_of(engine.project)
-            if use.file == rel or use.file.startswith(rel + "/")
-        ]
+        # PROJECT rather than about the path. The REST door the Code view
+        # deletes through asks the same walk and refuses in the same words; only
+        # the way out differs, because the tools named here are this caller's.
+        still_shown = custom_file_users(engine.project, rel)
         if still_shown:
-            who = ", ".join(sorted(
-                f"page '{use.holder_id}'" if use.what == "page"
-                else f"element '{use.holder_id}' on page '{getattr(page, 'id', '?')}'"
-                for page, use in still_shown
-            ))
             return {
-                "error": f"'{rel}' is still shown by {who}. Point them at another file "
+                "error": f"'{rel}' is still shown by {', '.join(still_shown)}. "
+                         f"Point them at another file "
                          f"(update_ui_element / update_ui_page) or delete them first, "
                          f"then this file can go."
             }

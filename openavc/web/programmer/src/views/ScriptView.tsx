@@ -650,7 +650,10 @@ export function ScriptView() {
     (path: string) => {
       setPendingConfirm({
         title: "Delete File",
-        message: `Delete "${path}"? Any custom control or page pointing at it will stop drawing.`,
+        // A file a page or control still shows is refused by the server, which
+        // names them — so this says what happens rather than promising the
+        // delete goes through.
+        message: `Delete "${path}"? A file a page or custom control still points at cannot be deleted.`,
         confirmLabel: "Delete",
         onConfirm: async () => {
           setPendingConfirm(null);
@@ -665,7 +668,7 @@ export function ScriptView() {
               setOriginalSource("");
             }
           } catch (e) {
-            showError(`Delete failed: ${e instanceof Error ? e.message : String(e)}`);
+            showError(`Delete failed: ${parseApiError(e)}`);
           }
         },
       });

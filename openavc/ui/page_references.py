@@ -301,6 +301,37 @@ def custom_file_references(page: Any) -> list[CustomFileUse]:
     return found
 
 
+def custom_file_users(project: Any, file_path: str) -> list[str]:
+    """Who still shows ``file_path``, named the way a refusal reads.
+
+    THE answer every door that deletes out of ``ui/`` asks before it unlinks
+    anything: the AI's ``delete_ui_file`` and the REST door the IDE's Code view
+    deletes through. Both used to be able to disagree about whether a control was
+    still in use, and one of them did -- the REST door asked nothing at all and
+    deleted a file an element was still drawing, which the panel then reports
+    from the wall rather than at delete time.
+
+    ``file_path`` may name a control's whole folder, so a use inside it counts:
+    deleting ``room_map/`` takes ``room_map/index.html`` with it.
+
+    Each phrase reads mid-sentence -- "page 'lights'", "element 'roomMap' on
+    page 'main'" -- and the list is sorted so a refusal is stable to read.
+    Empty means nothing points at it and the delete may go ahead.
+    """
+    wanted = str(file_path).replace("\\", "/").strip("/")
+    who: set[str] = set()
+    for page in getattr(getattr(project, "ui", None), "pages", None) or []:
+        for use in custom_file_references(page):
+            named = use.file.replace("\\", "/").strip("/")
+            if named != wanted and not named.startswith(wanted + "/"):
+                continue
+            who.add(
+                f"page '{use.holder_id}'" if use.what == "page"
+                else f"element '{use.holder_id}' on page '{getattr(page, 'id', '?')}'"
+            )
+    return sorted(who)
+
+
 def _custom_file_finding(
     what: str, holder_id: str, page_id: str, named: Any, ui_files: set[str] | None,
 ) -> Finding | None:

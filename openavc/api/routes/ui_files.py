@@ -43,6 +43,7 @@ from openavc.core.custom_ui import (
     tree_totals,
 )
 from openavc.core.custom_ui_review import review_saved_file
+from openavc.ui.page_references import custom_file_users
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
@@ -229,16 +230,39 @@ async def write_ui_file(project_id: str, file_path: str, request: Request) -> di
     dependencies=[Depends(require_claimed_auth)],
 )
 async def delete_ui_file(project_id: str, file_path: str) -> dict[str, str]:
-    """Delete a custom UI file, or a whole control folder."""
+    """Delete a custom UI file, or a whole control folder.
+
+    A file something still shows is not a file to delete, so this asks the same
+    walk the AI's ``delete_ui_file`` asks (``ui/page_references.custom_file_users``)
+    and refuses with the pages and elements named. The panel is honest about the
+    aftermath -- an element whose file is gone draws "This file is not in the
+    project." -- but finding out from the wall is not finding out in time.
+    """
     _require_active_project(project_id)
     rel = _validated(file_path, require_extension=False)
     target = _target(_ui_dir(), rel)
+    if not (target.is_dir() or target.is_file()):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Asked after the file is known to exist, so a page pointing at a name that
+    # is already gone answers "not found" here and at the AI's door alike.
+    project = _get_engine().project
+    if project is not None:
+        still_shown = custom_file_users(project, rel)
+        if still_shown:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"'{rel}' is still shown by {', '.join(still_shown)}. "
+                    f"Point them at another file, or delete them first, "
+                    f"then this file can go."
+                ),
+            )
+
     if target.is_dir():
         shutil.rmtree(target)
-    elif target.is_file():
-        target.unlink()
     else:
-        raise HTTPException(status_code=404, detail="File not found")
+        target.unlink()
     log.info("Custom UI file deleted: %s", rel)
     await announce_ui_files_changed(rel)
     return {"status": "deleted", "path": rel}
