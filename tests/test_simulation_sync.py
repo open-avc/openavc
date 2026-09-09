@@ -257,3 +257,63 @@ async def test_sync_does_not_reconnect_a_paused_device():
 
     assert driver.config == {"host": "127.0.0.1", "port": 19001}
     assert dm.reconnected == []
+
+
+# ── A continuing device whose config changed gets its simulator restarted ───
+
+@pytest.mark.asyncio
+async def test_sync_restarts_a_device_whose_config_changed(monkeypatch):
+    """A device page save that changes what the simulator was started with
+    (a declared-module table here) stops the old instance, starts a new one
+    from the current payload and reconnects the driver to it. Before this,
+    the simulated device kept answering for the design the project no
+    longer described, and every module the save added was refused."""
+    driver = _FakeDriver(host="127.0.0.1", port=19001)
+    dm = _FakeDeviceManager(
+        device_configs={"dev1": {"driver": "acme", "config": {"modules": [{"name": "Mix"}]}}},
+        devices={"dev1": driver},
+    )
+    mgr = _active_manager(dm)
+    mgr._sim_ports = {"dev1": 19001}
+    mgr._sim_payloads = {"dev1": mgr._device_sim_payload(
+        "dev1", {"driver": "acme", "config": {"modules": []}})}
+
+    def handler(method, url, body):
+        if url.endswith("/stop"):
+            return _FakeResp(200)
+        if url.endswith("/start"):
+            assert body["config"] == {"modules": [{"name": "Mix"}]}
+            return _FakeResp(200, {"port": 19007})
+        raise AssertionError(url)
+
+    calls = _install_fake_aiohttp(monkeypatch, handler)
+    await mgr.sync()
+
+    assert [u.rsplit("/", 1)[1] for _, u in calls] == ["stop", "start"]
+    assert driver.config["host"] == "127.0.0.1" and driver.config["port"] == 19007
+    assert dm.reconnected == ["dev1"]
+    assert mgr._sim_ports == {"dev1": 19007}
+    assert mgr._sim_payloads["dev1"]["config"] == {"modules": [{"name": "Mix"}]}
+
+
+@pytest.mark.asyncio
+async def test_sync_leaves_an_unchanged_or_unrecorded_device_alone(monkeypatch):
+    """Same payload: nothing is sent. No recorded payload (an instance adopted
+    from an earlier run): nothing is sent either, since restarting it would
+    only lose its state for no known change."""
+    cfg = {"driver": "acme", "config": {"modules": [{"name": "Mix"}]}}
+    driver1 = _FakeDriver(host="127.0.0.1", port=19001)
+    driver2 = _FakeDriver(host="127.0.0.1", port=19002)
+    dm = _FakeDeviceManager(
+        device_configs={"dev1": dict(cfg), "dev2": dict(cfg)},
+        devices={"dev1": driver1, "dev2": driver2},
+    )
+    mgr = _active_manager(dm)
+    mgr._sim_ports = {"dev1": 19001, "dev2": 19002}
+    mgr._sim_payloads = {"dev1": mgr._device_sim_payload("dev1", cfg)}
+
+    calls = _install_fake_aiohttp(monkeypatch, lambda *a: _FakeResp(500))
+    await mgr.sync()
+
+    assert calls == []
+    assert dm.reconnected == []

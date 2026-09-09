@@ -290,6 +290,12 @@ class SimulationManager:
         # https device keeps its scheme while redirected (see
         # _apply_sim_redirect).
         self._sim_tls: dict[str, bool] = {}
+        # device_id → the payload its simulator was started with. sync()
+        # compares the device's current payload against it: a device whose
+        # config changed (a declared-module table, a channel count, a
+        # credential) gets its simulator restarted with the new one, so the
+        # simulated device is the one the project now describes.
+        self._sim_payloads: dict[str, dict] = {}
         self._active = False
         self._sim_ui_url: str | None = None
         self._starting = False  # prevents concurrent start attempts
@@ -339,6 +345,7 @@ class SimulationManager:
             await self._cleanup_process()
             self._active = False
             self._sim_ports.clear()
+            self._sim_payloads.clear()
             self._sim_tls.clear()
             raise
         finally:
@@ -397,7 +404,9 @@ class SimulationManager:
             if not cfg:
                 log.warning("Device %s not found, skipping simulation", device_id)
                 continue
-            devices_config.append(self._device_sim_payload(device_id, cfg))
+            payload = self._device_sim_payload(device_id, cfg)
+            devices_config.append(payload)
+            self._sim_payloads[device_id] = payload
 
         if not devices_config:
             raise RuntimeError("No devices to simulate")
@@ -765,6 +774,7 @@ class SimulationManager:
         await self._cleanup_process()
 
         self._sim_ports.clear()
+        self._sim_payloads.clear()
         self._sim_tls.clear()
         self._original_configs.clear()
         self._sim_ui_url = None
@@ -790,6 +800,7 @@ class SimulationManager:
                     self._drain_tasks = []
                     self._process = None
                     self._sim_ports.clear()
+                    self._sim_payloads.clear()
                     self._sim_tls.clear()
                     self._original_configs.clear()
                     self._sim_ui_url = None
@@ -1001,9 +1012,21 @@ class SimulationManager:
         # Removed devices that need cleanup
         removed = simulated_ids - current_device_ids
 
+        # A continuing device whose config changed since its simulator was
+        # started (a declared-module table, a channel count, a credential)
+        # needs that simulator restarted with the new payload, or the
+        # simulated device keeps answering for the design the project no
+        # longer describes. It goes through the remove and add paths below,
+        # so it is left out of the redirect-and-reconnect pass here (the add
+        # path reconnects it once, on its new port).
+        changed = {
+            device_id for device_id in simulated_ids & current_device_ids
+            if self._payload_changed(device_id)
+        }
+
         # Re-apply redirects to existing simulated devices whose driver
         # instances may have been replaced by _sync_devices() during reload
-        continuing = simulated_ids & current_device_ids
+        continuing = (simulated_ids & current_device_ids) - changed
         to_reconnect: list[str] = []
         for device_id in continuing:
             driver = dm._devices.get(device_id)
@@ -1026,7 +1049,7 @@ class SimulationManager:
                 to_reconnect.append(device_id)
         await self._reconnect_all(to_reconnect, "to simulator after reload")
 
-        if not added and not removed:
+        if not added and not removed and not changed:
             return
 
         import aiohttp
@@ -1034,15 +1057,36 @@ class SimulationManager:
         sim_api = self._sim_ui_url  # e.g., http://localhost:19500
 
         async with aiohttp.ClientSession() as session:
+            # Stops before starts: a changed device's old instance must be
+            # gone before its new one asks the simulator for the id.
             await asyncio.gather(
                 *(self._sync_remove_device(session, sim_api, device_id)
-                  for device_id in removed),
+                  for device_id in removed | changed),
+                return_exceptions=True,
+            )
+            await asyncio.gather(
                 *(self._sync_add_device(session, sim_api, device_id)
-                  for device_id in added),
+                  for device_id in added | changed),
                 return_exceptions=True,
             )
 
-        log.info("Simulation sync complete: +%d -%d devices", len(added), len(removed))
+        log.info(
+            "Simulation sync complete: +%d -%d ~%d devices",
+            len(added), len(removed), len(changed),
+        )
+
+    def _payload_changed(self, device_id: str) -> bool:
+        """Has this simulated device's launch payload drifted from the
+        project's current config? False when nothing was recorded (a
+        simulator adopted from an earlier run has no baseline to compare
+        against, and restarting it would only lose its state)."""
+        recorded = self._sim_payloads.get(device_id)
+        if recorded is None:
+            return False
+        cfg = self.engine.devices._device_configs.get(device_id)
+        if not cfg:
+            return False
+        return self._device_sim_payload(device_id, cfg) != recorded
 
     async def _sync_remove_device(
         self, session: Any, sim_api: str, device_id: str
@@ -1081,6 +1125,7 @@ class SimulationManager:
         if stopped:
             self._original_configs.pop(device_id, None)
             self._sim_ports.pop(device_id, None)
+            self._sim_payloads.pop(device_id, None)
 
     async def _sync_add_device(
         self, session: Any, sim_api: str, device_id: str
@@ -1097,7 +1142,8 @@ class SimulationManager:
         cfg = dm._device_configs.get(device_id)
         if not cfg:
             return
-        payload = self._device_sim_payload(device_id, cfg)
+        recorded = self._device_sim_payload(device_id, cfg)
+        payload = dict(recorded)
         payload.pop("device_id", None)  # carried in the URL path
         log.info("Simulation sync: adding %s (driver=%s)", device_id, payload["driver_id"])
         started_ok = False
@@ -1109,6 +1155,7 @@ class SimulationManager:
             )
             if resp.status == 200:
                 started_ok = True
+                self._sim_payloads[device_id] = recorded
                 data = await resp.json()
                 sim_port = data.get("port", 0)
                 if sim_port:
