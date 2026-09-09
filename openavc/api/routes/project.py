@@ -262,6 +262,20 @@ async def reload_project() -> dict[str, Any]:
     return {"status": "reloaded"}
 
 
+@router.post("/project/recovery/dismiss")
+async def dismiss_recovery_notice() -> dict[str, Any]:
+    """Clear the notice left by a project recovery at startup.
+
+    The record stays through restarts until this is called, so dismissing is
+    the acknowledgement that somebody has read it.
+    """
+    from openavc.core import project_recovery
+
+    engine = _get_engine()
+    cleared = project_recovery.dismiss(engine.state, engine.project_path.parent)
+    return {"status": "dismissed", "cleared": cleared}
+
+
 @router.put("/project")
 async def save_project_config(request: Request) -> dict[str, Any]:
     """Save a full project configuration, then reload.

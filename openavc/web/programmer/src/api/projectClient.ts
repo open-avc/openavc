@@ -147,6 +147,12 @@ export async function reloadProject(): Promise<{ status: string }> {
   return request("/project/reload", { method: "POST" });
 }
 
+/** Clear the notice a startup recovery left. The record survives restarts
+ *  until this is called, so dismissing is the acknowledgement it was read. */
+export async function dismissRecoveryNotice(): Promise<{ status: string; cleared: boolean }> {
+  return request("/project/recovery/dismiss", { method: "POST" });
+}
+
 // --- Backups ---
 
 export interface BackupInfo {

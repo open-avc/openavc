@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Save,
   Download,
@@ -15,6 +15,7 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Dialog } from "../components/shared/Dialog";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
 import { useProjectStore } from "../store/projectStore";
+import { useNavigationStore } from "../store/navigationStore";
 import { importParsedProject } from "./projectImport";
 import * as api from "../api/restClient";
 import type { LibraryProject, ProjectConfig } from "../api/types";
@@ -74,6 +75,7 @@ export function ProjectView() {
   // cannot: it is shared with import, Save As and the rest of this view.
   const [restoring, setRestoring] = useState<string | null>(null);
   const [creatingBackup, setCreatingBackup] = useState(false);
+  const backupsRef = useRef<HTMLDivElement>(null);
 
   // Assets section filter (image/audio/all)
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all");
@@ -122,6 +124,16 @@ export function ProjectView() {
   useEffect(() => {
     refreshBackups();
   }, [refreshBackups]);
+
+  // Arriving from the Dashboard's recovery notice, which says "Review backups"
+  // and means it: the section is below the library and the assets, so landing
+  // at the top of this view is landing nowhere.
+  useEffect(() => {
+    const focus = useNavigationStore.getState().consumeFocus();
+    if (focus?.type === "backups") {
+      backupsRef.current?.scrollIntoView({ block: "start" });
+    }
+  }, []);
 
   // Close overflow menu on outside click
   useEffect(() => {
@@ -678,7 +690,7 @@ export function ProjectView() {
       </div>
 
       {/* Backups */}
-      <div style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>
+      <div ref={backupsRef} style={{ marginTop: "var(--space-2xl)", maxWidth: 600 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-md)" }}>
           <h3 style={{ fontSize: "var(--font-size-base)", color: "var(--text-secondary)", margin: 0 }}>
             Backups

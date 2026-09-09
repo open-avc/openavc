@@ -286,6 +286,11 @@ class Engine:
 
         # Load project — with corruption recovery
         self.project = self._load_project_safe()
+        # Whatever that had to do to get a project, say so. Published from the
+        # record on disk rather than from this boot, so a notice nobody has
+        # dismissed survives the restart that would otherwise bury it.
+        from openavc.core import project_recovery
+        project_recovery.publish(self.state, self.project_path.parent)
         self._apply_project_settings()
         self.state.set("system.project_name", self.project.project.name, source="system")
 
@@ -1334,16 +1339,25 @@ class Engine:
         If the project file is missing, corrupted, or fails validation:
         1. Try restoring from the most recent backup
         2. If no backup works, create a minimal empty project so the server starts
+
+        Anything but the happy path leaves a record for ``project_recovery`` to
+        publish, because a room that came up on two-minute-old settings has to
+        say so to the person whose newer edit is not in it.
         """
+        from openavc.core import project_recovery
         from openavc.core.backup_manager import list_backups, restore_from_backup
         from openavc.system_config import get_seed_project_path
 
         project_dir = self.project_path.parent
+        # Which way the project file failed, for the notice. Set by whichever
+        # except branch fires below.
+        failure = ""
 
         # Happy path — load normally
         try:
             return load_project(self.project_path)
         except FileNotFoundError:
+            failure = project_recovery.MISSING
             log.warning(f"Project file not found: {self.project_path}")
             # The configured project doesn't exist yet. This is the normal
             # first-boot state when install-time seeding didn't reach this path
@@ -1363,8 +1377,10 @@ class Engine:
                 except Exception as e:
                     log.warning(f"Failed to seed project from {seed}: {e}")
         except json.JSONDecodeError as e:
+            failure = project_recovery.UNREADABLE
             log.error(f"Project file is corrupted (invalid JSON): {e}")
         except Exception as e:
+            failure = project_recovery.UNREADABLE
             log.error(f"Project file failed to load: {e}")
 
         # Try restoring from backups, newest first
@@ -1376,6 +1392,13 @@ class Engine:
                 restore_from_backup(backup_path, project_dir)
                 project = load_project(self.project_path)
                 log.info(f"Successfully restored project from backup: {backup.filename}")
+                project_recovery.record(
+                    project_dir,
+                    outcome=project_recovery.RESTORED,
+                    reason=failure or project_recovery.UNREADABLE,
+                    backup=backup.filename,
+                    cutoff=backup.timestamp,
+                )
                 return project
             except Exception as e:
                 log.warning(f"Backup restore failed ({backup.filename}): {e}")
@@ -1383,6 +1406,15 @@ class Engine:
 
         # No backups worked — create minimal empty project
         log.warning("No backups available. Creating empty recovery project.")
+        # A project file that was simply absent, with nothing to restore, is a
+        # first boot rather than a loss, so it gets no notice. Only a project
+        # that existed and could not be read is worth interrupting somebody for.
+        if failure == project_recovery.UNREADABLE:
+            project_recovery.record(
+                project_dir,
+                outcome=project_recovery.RESET,
+                reason=project_recovery.UNREADABLE,
+            )
         from datetime import datetime, timezone
         empty = ProjectConfig(
             project=ProjectMeta(
