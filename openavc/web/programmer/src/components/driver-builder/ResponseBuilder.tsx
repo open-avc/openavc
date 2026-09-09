@@ -53,6 +53,12 @@ interface ResponseBuilderProps {
 
 export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
   const responses = draft.responses ?? [];
+  // `after_json` only means something where a JSON rule can read the body
+  // first — the validator rejects it otherwise, so the box only appears once
+  // the driver actually has one.
+  const hasJsonRule = responses.some(
+    (r) => r.address === undefined && !!r.json,
+  );
   const stateVars = draft.state_variables;
 
   const addResponse = () => {
@@ -94,7 +100,8 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
 
   /** Convert a rule between text (regex) and JSON body, confirming before
    *  authored content is dropped. Throttle survives the switch; child_set
-   *  does not survive to JSON (the runtime rejects it there). */
+   *  and after_json do not survive to JSON (the validator rejects both
+   *  there). */
   const switchKind = (index: number, kind: string) => {
     const resp = responses[index];
     const wasJson = resp.address === undefined && !!resp.json;
@@ -111,6 +118,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
       }
       if ((resp.child_set?.length ?? 0) > 0) {
         dropped.push("its child entity routing (not supported on JSON rules)");
+      }
+      if (resp.after_json) {
+        dropped.push("its after-JSON ordering (a JSON rule reads the body itself)");
       }
       if (
         dropped.length > 0 &&
@@ -450,6 +460,31 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                   Invalid regex: {String(e).replace("SyntaxError: ", "")}
                 </div>
               ); } })()}
+              {hasJsonRule && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-xs)",
+                    fontSize: "11px",
+                    color: "var(--text-muted)",
+                    marginTop: "var(--space-xs)",
+                  }}
+                  title="A JSON body rule normally finishes with the reply, and no text rule sees it. Tick this on the one rule that has to read something the JSON rows don't -- an error field arriving alongside the readings."
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!resp.after_json}
+                    onChange={(e) => {
+                      const next = { ...resp };
+                      if (e.target.checked) next.after_json = true;
+                      else delete next.after_json;
+                      updateResponse(i, next);
+                    }}
+                  />
+                  Also run after JSON rules
+                </label>
+              )}
             </div>
           )}
 

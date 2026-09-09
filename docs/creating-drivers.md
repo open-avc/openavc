@@ -174,7 +174,7 @@ Example for an Extron switcher:
 
 The **set:** shorthand is also supported (`set: {mute: "$1"}` for capture-group references, `set: {signal: true}` for static literals). The builder preserves whichever form was loaded so byte-equal round-trips stay byte-equal.
 
-A response rule can also switch its kind to **JSON body** for devices that reply with JSON (most HTTP APIs): rows map a JSON field path (`status.power`, dot paths and list indices allowed) to a state variable, with optional type coercion and value map, and **Only when body has key(s)** scopes the rule to bodies carrying a named key — useful when different endpoints reuse a field name. All rows of a JSON rule apply to a matching body, so one reply can populate many variables.
+A response rule can also switch its kind to **JSON body** for devices that reply with JSON (most HTTP APIs): rows map a JSON field path (`status.power`, dot paths and list indices allowed) to a state variable, with optional type coercion and value map, and **Only when body has key(s)** scopes the rule to bodies carrying a named key — useful when different endpoints reuse a field name. All rows of a JSON rule apply to a matching body, so one reply can populate many variables. Once a JSON rule has read a body the text rules don't see it; a text rule that must read something the JSON rows don't — an error field arriving beside the readings — is marked **Also run after JSON rules** (below its pattern, shown once the driver has a JSON rule).
 
 **Polling** — periodic queries that keep state fresh on devices that don't push updates. List the command names (or raw query strings) to send each cycle. The cadence (seconds) is the **Poll Interval** field, stored as `default_config.poll_interval`.
 
@@ -1202,6 +1202,24 @@ responses:
 ```
 
 Rules whose mapped keys are unique across the device's replies don't need it.
+
+**Reading something the JSON rules don't.** As soon as a `json: true` rule resolves one of its keys, the reply is finished with — your regex rules don't see it. That is right while the json rules read everything the body carries. Some devices bundle in something they don't: a reply that answers two methods at once, one accepted and one refused, carries the accepted value *and* an error envelope, and no json key reads the error. Mark the one regex rule that has to see such a body with `after_json: true`:
+
+```yaml
+responses:
+  - json: true
+    set:
+      volume: { key: audio.out.level, type: integer }
+
+  # The same reply can also carry {"error": [406, {"desc": "..."}]}. Only a
+  # rule marked after_json is still eligible once a json rule has read it.
+  - match: '"error":\[.*?(\d{3}),\{"desc":"([^"]*)"'
+    after_json: true
+    mappings:
+      - { group: 2, state: last_error }
+```
+
+The flag changes eligibility and nothing else: the rule still has to match, still honours `only_when:` and `throttle:`, and first-match-wins still applies among the rules that are eligible. Rules without the flag keep stopping at a json rule, so adding one doesn't open the frame to the rest of the table. It only means something on a `match:` rule in a driver that has `json: true` rules; anywhere else the driver is rejected rather than quietly ignoring it. Needs platform 0.34.0.
 
 Response patterns (and the `auth` prompt regexes) are validated when the driver loads: an invalid regex, or one with nested/overlapping quantifiers that can cause catastrophic backtracking against hostile device input (for example `(.+)+`, `(a|a)+`, `(foo|foobar)*`), is rejected and the driver won't load. Anchor and bound your patterns instead.
 

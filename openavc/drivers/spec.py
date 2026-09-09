@@ -1536,6 +1536,11 @@ DEFS = {
                     'min_len': 1,
                 },
             },
+            'after_json': {
+                'type': 'boolean',
+                'doc': "Regex rules only, and only on a driver that has json: true rules. Keep this rule eligible after a json rule has read the same body. Normally the first json rule to resolve a key consumes the frame and no regex rule sees it, which is right while the json rules read everything the body carries; set this on the one rule that reads something they do not — an error field arriving alongside the values, say. Eligibility is all it changes: the rule still matches, gates and throttles exactly as it would have, and rules that do not declare it still stop at a json rule. Default false.",
+                'since': '0.34.0',
+            },
         },
         'extra': False,
         'any_of': (

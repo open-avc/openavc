@@ -95,9 +95,10 @@ export function canUseSetShorthand(
 
 /** Build a response def, preserving the original form (set: shorthand or
  *  mappings:) of the loaded response when the new mappings still fit.
- *  `child_set`, `throttle`, and the json-rule keys (`json`, `require`) ride
- *  along untouched — rebuilding from a pattern/mapping edit must never drop
- *  the child routing, the rate limit, or the rule's body-parsing mode. */
+ *  `child_set`, `throttle`, `after_json`, and the json-rule keys (`json`,
+ *  `require`) ride along untouched — rebuilding from a pattern/mapping edit
+ *  must never drop the child routing, the rate limit, the rule's place in
+ *  the json/regex order, or its body-parsing mode. */
 export function buildResponse(
   pattern: string,
   mappings: DriverResponseMapping[],
@@ -111,6 +112,9 @@ export function buildResponse(
     ...(original.throttle !== undefined ? { throttle: original.throttle } : {}),
     ...(original.json !== undefined ? { json: original.json } : {}),
     ...(original.require !== undefined ? { require: original.require } : {}),
+    ...(original.after_json !== undefined
+      ? { after_json: original.after_json }
+      : {}),
   };
   // OSC responses use mappings + address; child_set rides along (the id is
   // an address segment / literal there — no capture groups). A child_set-only
@@ -233,7 +237,9 @@ export function getJsonRows(
  *  can't carry) fall back to the explicit mappings list with type spelled
  *  out (the mappings form defaults to "string", not the declared type).
  *  Unknown keys on the original rule (and throttle) ride through verbatim;
- *  child_set is dropped — the runtime rejects it on json rules. */
+ *  child_set and after_json are dropped — the validator rejects both on a
+ *  json rule (a json rule reads the body itself; there is nothing to run
+ *  after). */
 export function buildJsonResponse(
   original: DriverResponseDef,
   rows: JsonRuleRow[],
@@ -247,6 +253,7 @@ export function buildJsonResponse(
   delete next.mappings;
   delete next.require;
   delete next.child_set;
+  delete next.after_json;
 
   if (requireKeys.length === 1) next.require = requireKeys[0];
   else if (requireKeys.length > 1) next.require = [...requireKeys];

@@ -234,6 +234,7 @@ class ConfigurableDriver(BaseDriver):
         self._compiled_responses = compiled.responses
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
+        self._after_json_responses = compiled.after_json_responses
 
     def set_project_child_entities(
         self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,
@@ -1732,12 +1733,23 @@ class ConfigurableDriver(BaseDriver):
         # JSON-body responses (multi-field): parse once, apply every json rule
         # key-scoped. Additive — if the body isn't a JSON object or none of the
         # declared keys are present, fall through to regex matching below.
+        # A body a json rule read is normally finished with: the json rules are
+        # the ones that understand this device's replies, and letting the regex
+        # table loose on the same text afterwards would double-write.
+        # `after_json` is the opt-in for the case that breaks — a body carrying
+        # values AND something no json key reads (an error field beside the
+        # readings), where exactly one regex rule has to see it. Only those
+        # rules are eligible then, so first-match-wins is decided among them
+        # and no other rule in the driver moves.
+        eligible = self._compiled_responses
         if self._json_responses and self._apply_json_responses(text):
-            return
+            if not self._after_json_responses:
+                return
+            eligible = self._after_json_responses
 
         for (
             pattern, mappings, child_mappings, tstate, condition,
-        ) in self._compiled_responses:
+        ) in eligible:
             match = pattern.search(text)
             if match:
                 # Before anything is written, and before the throttle: a rule

@@ -494,4 +494,34 @@ const jsonVars = {
   };
 }
 
+{
+  // after_json rides along a regex rebuild untouched, and is dropped when the
+  // rule is rebuilt as a json rule (the validator refuses it there).
+  const vars = {};
+  const original = {
+    match: 'ERR (\\d+)',
+    set: { last_error: "$1" },
+    after_json: true,
+  };
+  const rebuilt = H.buildResponse(
+    'ERR (\\d+)',
+    H.getMappings(original, vars),
+    original,
+    vars,
+  );
+  const asJson = H.buildJsonResponse(
+    { json: true, after_json: true, set: { power: "p" } },
+    [{ state: "power", path: "p", type: "string" }],
+    [],
+    {},
+  );
+  results.after_json_rides_along_and_drops_on_json = {
+    pass:
+      rebuilt.after_json === true &&
+      !!rebuilt.set &&
+      !("after_json" in asJson),
+    detail: { rebuilt, asJson },
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

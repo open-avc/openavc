@@ -105,6 +105,7 @@ SCENARIOS = [
     "json_require_shapes",
     "json_duplicate_states_fall_back_to_mappings",
     "json_number_float_equivalence",
+    "after_json_rides_along_and_drops_on_json",
 ]
 
 

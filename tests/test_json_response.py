@@ -287,3 +287,147 @@ async def test_dispatch_query_command_name_runs_command(driver):
     driver.send_command = fake_send
     await driver._dispatch_query("query_status")
     assert called == ["query_status"]
+
+
+# ── after_json: one regex rule kept alive past the json rules ──────────────
+# The shape: a reply that carries readings AND a field no json key reads. The
+# json rules resolve, consume the frame, and the error field is never seen —
+# so the driver's `last_error` stays at whatever it was while the device is
+# telling it something went wrong.
+
+
+def _error_reader_driver(driver_id="acme_err", after_json=True):
+    """Invented device whose replies bundle values with an error envelope."""
+    definition = dict(JSON_DEFINITION, id=driver_id)
+    definition["state_variables"] = {
+        **JSON_DEFINITION["state_variables"],
+        "last_error": {"type": "string"},
+    }
+    error_rule = {
+        "match": r'"error":\[.*?(\d{3}),\{"desc":"([^"]*)"',
+        "mappings": [{"group": 2, "state": "last_error"}],
+    }
+    if after_json:
+        error_rule["after_json"] = True
+    definition["responses"] = JSON_DEFINITION["responses"] + [error_rule]
+    cls = create_configurable_driver_class(definition)
+
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+
+    events = EventBus()
+    st = StateStore()
+    st.set_event_bus(events)
+    return cls(driver_id, {"host": "127.0.0.1"}, st, events)
+
+
+async def test_after_json_rule_reads_a_body_the_json_rules_consumed():
+    drv = _error_reader_driver()
+    body = '{"sessions":3,"error":[406,{"desc":"value out of range"}]}'
+    await drv.on_data_received(body.encode("utf-8"))
+    assert drv.get_state("sessions") == 3          # json rule still applied
+    assert drv.get_state("last_error") == "value out of range"
+
+
+async def test_without_the_flag_the_json_rules_still_consume_the_body():
+    """The default is unchanged: no flag, no regex rule after a json rule."""
+    drv = _error_reader_driver(driver_id="acme_err2", after_json=False)
+    body = '{"sessions":3,"error":[406,{"desc":"value out of range"}]}'
+    await drv.on_data_received(body.encode("utf-8"))
+    assert drv.get_state("sessions") == 3
+    assert drv.get_state("last_error") is None
+
+
+async def test_after_json_rule_still_matches_when_no_json_rule_applied():
+    """The flag adds eligibility, it never removes it: a body no json rule
+    reads reaches the rule the ordinary way."""
+    drv = _error_reader_driver(driver_id="acme_err3")
+    await drv.on_data_received(b'{"error":[404,{"desc":"no such method"}]}')
+    assert drv.get_state("last_error") == "no such method"
+    assert drv.get_state("sessions") is None
+
+
+async def test_plain_regex_rules_are_still_skipped_past_a_json_rule():
+    """One flagged rule does not open the gate for the rest of the table."""
+    definition = dict(JSON_DEFINITION, id="acme_err4")
+    definition["state_variables"] = {
+        **JSON_DEFINITION["state_variables"],
+        "last_error": {"type": "string"},
+        "banner": {"type": "string"},
+    }
+    definition["responses"] = JSON_DEFINITION["responses"] + [
+        # Ordered first, matches the same body, and carries no flag: it must
+        # stay skipped so the flagged rule below is what reads the frame.
+        {"match": r'"(sessions)"', "mappings": [{"group": 1, "state": "banner"}]},
+        {
+            "match": r'"error":\[.*?(\d{3}),\{"desc":"([^"]*)"',
+            "mappings": [{"group": 2, "state": "last_error"}],
+            "after_json": True,
+        },
+    ]
+    cls = create_configurable_driver_class(definition)
+
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+
+    events = EventBus()
+    st = StateStore()
+    st.set_event_bus(events)
+    drv = cls("err4", {"host": "127.0.0.1"}, st, events)
+
+    await drv.on_data_received(
+        b'{"sessions":3,"error":[406,{"desc":"refused"}]}'
+    )
+    assert drv.get_state("banner") is None
+    assert drv.get_state("last_error") == "refused"
+
+
+def test_loader_validates_after_json():
+    from openavc.drivers.driver_loader import validate_driver_definition
+
+    base = dict(JSON_DEFINITION, id="acme_af")
+    base["name"] = "Acme AF"
+    base["author"] = "Test"
+    base["description"] = "x"
+    base["source_url"] = "https://example.com"
+
+    ok = dict(base)
+    ok["responses"] = JSON_DEFINITION["responses"] + [
+        {"match": r"ERR (\d+)", "set": {"mode": "$1"}, "after_json": True},
+    ]
+    assert not [e for e in validate_driver_definition(ok) if "after_json" in e]
+
+    for responses, expect in [
+        (
+            [{"json": True, "set": {"mode": "m"}, "after_json": True}],
+            "a json: true rule already reads the body",
+        ),
+        (
+            [
+                {"json": True, "set": {"mode": "m"}},
+                {"address": "/mode", "after_json": True},
+            ],
+            "an OSC address rule never runs after a json rule",
+        ),
+        (
+            [{"match": "ERR", "set": {"mode": "x"}, "after_json": True}],
+            "no response rule in this driver is json: true",
+        ),
+    ]:
+        d = dict(base)
+        d["responses"] = responses
+        errors = validate_driver_definition(d)
+        assert any(expect in e for e in errors), (responses, errors)
+
+
+def test_after_json_sets_the_platform_floor():
+    """A driver taking the flag cannot install on a release that ignores it."""
+    from openavc.drivers.spec import platform_requirements
+
+    definition = dict(JSON_DEFINITION, id="acme_floor")
+    definition["responses"] = JSON_DEFINITION["responses"] + [
+        {"match": r"ERR (\d+)", "set": {"mode": "$1"}, "after_json": True},
+    ]
+    assert ("responses[1].after_json", "0.34.0") in platform_requirements(
+        definition
+    )

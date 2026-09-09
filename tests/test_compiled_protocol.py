@@ -290,6 +290,7 @@ def test_compile_driver_builds_all_three_tables():
     assert mappings == [{"group": 1, "state": "power", "type": "boolean"}]
     assert child_mappings == []
     assert throttle == {"window": 2.0, "last": {}}
+    assert compiled.after_json_responses == []  # none declared the flag
     zone_routing = compiled.responses[1][2]
     assert zone_routing == [
         {
@@ -333,6 +334,24 @@ def test_compile_driver_skips_invalid_regex_and_keeps_rule_order():
     }
     compiled = compile_driver(definition, {})
     assert [p.pattern for p, *_rest in compiled.responses] == ["OK(\\d+)"]
+
+
+def test_compile_driver_files_after_json_rules_into_their_own_table():
+    definition = {
+        "state_variables": {"v": {"type": "integer"}, "err": {"type": "string"}},
+        "responses": [
+            {"json": True, "set": {"v": "value"}},
+            {"match": "OK(\\d+)", "set": {"v": "$1"}},
+            {"match": "ERR (.+)", "set": {"err": "$1"}, "after_json": True},
+        ],
+    }
+    compiled = compile_driver(definition, {})
+    # The flagged rule stays in the ordinary table (it is eligible when no
+    # json rule applied) and is the only entry in the after-json view.
+    assert [p.pattern for p, *_r in compiled.responses] == ["OK(\\d+)", "ERR (.+)"]
+    assert [p.pattern for p, *_r in compiled.after_json_responses] == ["ERR (.+)"]
+    # Same tuple object, so one throttle window serves both paths.
+    assert compiled.after_json_responses[0] is compiled.responses[1]
 
 
 # ── send_param_groups ──

@@ -171,6 +171,21 @@ CASES: dict[str, Any] = {
     "response_require_empty_string": _resp(json=True, set={"power": "$.p"}, require=" "),
     "response_require_bad_list_entry": _resp(json=True, set={"power": "$.p"}, require=[""]),
     "response_require_wrong_type": _resp(json=True, set={"power": "$.p"}, require=5),
+    # `after_json:` keeps a regex rule eligible after a json rule read the
+    # body. On anything else it is inert, and inert reads as working.
+    "response_after_json_on_json_rule": _resp(
+        json=True, set={"power": "$.p"}, after_json=True
+    ),
+    "response_after_json_on_osc_rule": _d(
+        transport="osc",
+        responses=[
+            {"json": True, "set": {"power": "p"}},
+            {"address": "/power", "after_json": True},
+        ],
+    ),
+    "response_after_json_without_a_json_rule": _resp(
+        match="OK", set={"power": "$1"}, after_json=True
+    ),
     "response_osc_address_no_slash": _d(transport="osc", responses=[{"address": "zone"}]),
     "response_json_with_child_set": _resp(json=True, set={"power": "$.p"}, child_set=[{}]),
     "response_json_without_set_or_mappings": _resp(json=True),

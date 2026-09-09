@@ -692,6 +692,11 @@ def validate_driver_definition(
     if not isinstance(responses, list):
         errors.append("responses: must be a list")
         responses = []
+    # `after_json:` only means something where a json rule can consume the
+    # frame first, so the whole list decides whether it is inert.
+    any_json_rule = any(
+        isinstance(r, dict) and r.get("json") for r in responses
+    )
     for i, resp in enumerate(responses):
         errors.ctx = f"responses[{i}]"
         if not isinstance(resp, dict):
@@ -744,6 +749,26 @@ def validate_driver_definition(
                 errors.append(
                     f"Response {i}: require must be a JSON key name or a "
                     f"list of them"
+                )
+        # `after_json:` keeps a regex rule eligible after a json rule has read
+        # the body. Everywhere else it is silently inert — the flag reads as a
+        # promise the runtime never made, and the value the author expected to
+        # be published never appears.
+        if resp.get("after_json"):
+            if resp.get("json"):
+                errors.append(
+                    f"Response {i}: after_json applies to regex rules — a "
+                    f"json: true rule already reads the body"
+                )
+            elif "address" in resp:
+                errors.append(
+                    f"Response {i}: after_json applies to regex rules — an "
+                    f"OSC address rule never runs after a json rule"
+                )
+            elif not any_json_rule:
+                errors.append(
+                    f"Response {i}: after_json has no effect — no response "
+                    f"rule in this driver is json: true"
                 )
         # A `set:` value on a regex or OSC rule is a capture reference ("$1")
         # or a static — never a {group, map} spec. That spec shape IS valid in

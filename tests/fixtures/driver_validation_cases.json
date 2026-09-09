@@ -5427,6 +5427,84 @@
   },
   "transport": "tcp"
  },
+ "response_after_json_on_json_rule": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "after_json": true,
+    "json": true,
+    "set": {
+     "power": "$.p"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "response_after_json_on_osc_rule": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "json": true,
+    "set": {
+     "power": "p"
+    }
+   },
+   {
+    "address": "/power",
+    "after_json": true
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
+ "response_after_json_without_a_json_rule": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "after_json": true,
+    "match": "OK",
+    "set": {
+     "power": "$1"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "response_json_with_child_set": {
   "commands": {
    "noop": {

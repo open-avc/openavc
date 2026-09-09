@@ -131,7 +131,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "group", "json_path", "map", "state", "type", "value"]),
-  responseEntry: new Set(["address", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
+  responseEntry: new Set(["address", "after_json", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
   authBlock: new Set(["failure_pattern", "line_ending", "password_field", "password_prompt", "skip_if_empty", "success_pattern", "timeout_seconds", "type", "username_field", "username_prompt"]),
   livenessBlock: new Set(["args", "expect", "interval", "max_failures", "send", "timeout"]),
   frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
@@ -487,6 +487,18 @@ export interface DriverResponseDef {
    * Requires platform 0.23.0.
    */
   require?: string | string[];
+  /**
+   * Regex rules only, and only on a driver that has json: true rules. Keep
+   * this rule eligible after a json rule has read the same body. Normally the
+   * first json rule to resolve a key consumes the frame and no regex rule sees
+   * it, which is right while the json rules read everything the body carries;
+   * set this on the one rule that reads something they do not — an error field
+   * arriving alongside the values, say. Eligibility is all it changes: the
+   * rule still matches, gates and throttles exactly as it would have, and
+   * rules that do not declare it still stop at a json rule. Default false.
+   * Requires platform 0.34.0.
+   */
+  after_json?: boolean;
 }
 
 /**

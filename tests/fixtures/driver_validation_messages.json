@@ -593,6 +593,15 @@
  "quick_actions_not_list": [
   "quick_actions: must be a list of command ids"
  ],
+ "response_after_json_on_json_rule": [
+  "Response 0: after_json applies to regex rules \u2014 a json: true rule already reads the body"
+ ],
+ "response_after_json_on_osc_rule": [
+  "Response 1: after_json applies to regex rules \u2014 an OSC address rule never runs after a json rule"
+ ],
+ "response_after_json_without_a_json_rule": [
+  "Response 0: after_json has no effect \u2014 no response rule in this driver is json: true"
+ ],
  "response_json_with_child_set": [
   "Response 0: child_set is not supported on json responses"
  ],

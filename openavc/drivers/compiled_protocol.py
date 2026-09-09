@@ -849,6 +849,14 @@ class CompiledProtocol:
     3. ``json_responses`` — JSON-body rules applied together from one parsed
        object (mappings, throttle, require-keys scope)
 
+    Plus one view: ``after_json_responses`` holds the same tuple objects as
+    the ``responses`` entries whose rule declared ``after_json: true``, in
+    authored order. A regex rule normally never sees a body a json rule has
+    already read; the flagged ones do, and this is the table the runtime walks
+    in that case — so first-match-wins is decided among them alone, and an
+    unflagged rule cannot pick up a frame the json rules were meant to own.
+    Rules appear in both tables because they are eligible in both situations.
+
     Every entry carries an optional throttle state ({window, last} or None) —
     a rule with ``throttle: <seconds>`` skips re-fires inside its window
     (drop-style; built for continuous push telemetry like audio level meters,
@@ -866,6 +874,15 @@ class CompiledProtocol:
     """
 
     responses: list[
+        tuple[
+            re.Pattern[str],
+            list[dict[str, Any]],
+            list[dict[str, Any]],
+            dict[str, Any] | None,
+            dict[str, Any] | None,
+        ]
+    ] = field(default_factory=list)
+    after_json_responses: list[
         tuple[
             re.Pattern[str],
             list[dict[str, Any]],
@@ -1316,15 +1333,20 @@ def compile_driver(
                         })
 
             child_mappings = compile_child_set(resp, child_types, device_id)
-            compiled.responses.append(
-                (
-                    pattern,
-                    mappings,
-                    child_mappings,
-                    build_throttle(resp),
-                    rule_condition(resp),
-                )
+            entry = (
+                pattern,
+                mappings,
+                child_mappings,
+                build_throttle(resp),
+                rule_condition(resp),
             )
+            compiled.responses.append(entry)
+            # Same tuple, second table: `after_json` does not change how the
+            # rule matches, only whether it is still eligible once a json rule
+            # has read the body. Sharing the entry keeps one throttle window
+            # per rule however the frame reached it.
+            if resp.get("after_json"):
+                compiled.after_json_responses.append(entry)
         except re.error as e:
             log.warning(
                 f"[{device_id}] Invalid response pattern "
