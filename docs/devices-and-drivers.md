@@ -166,7 +166,9 @@ The device detail panel includes several management actions:
 
 ### When a device won't connect
 
-An offline device shows the reason on its card and detail view (unreachable, connection refused, login rejected, and so on), and OpenAVC keeps retrying in the background with increasing delays for about an hour.
+An offline device shows the reason on its card and detail view (unreachable, connection refused, login rejected, and so on), and OpenAVC keeps retrying in the background for as long as the device is in the project. There is no cut-off: a display unplugged on Friday comes back by itself on Monday without anyone opening the Programmer. The first couple of attempts are a second or two apart and it then settles to one every five seconds.
+
+**A device that was told to restart is not reported as a fault.** Some equipment drops off the network when you power it on, reboot it or reset it, and a driver can declare how long that takes. For that long the card says the device is restarting and counts down instead of showing an offline reason, nothing counts it as an error, and no alert fires. It clears the moment the device answers again. If the device does not come back, the countdown ends and the real reason appears; if something turns up that a person has to fix, like a rejected login, that appears immediately.
 
 The exception is a **rejected login**: retrying the same credentials can't succeed, and many devices lock out the controller's IP address after a few failed attempts — so after one failed try OpenAVC stops and waits instead of retrying. Fix the username or password in the device's settings (that triggers a fresh attempt), or press **Reconnect** to try once more. Drivers that ship with a vendor's default credentials still get that first try automatically.
 

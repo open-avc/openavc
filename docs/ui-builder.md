@@ -576,6 +576,21 @@ draws dimmed with a dashed edge, and where it would print a number it prints
 dark, a dropdown shows nothing, and a button bound to a device state goes back
 to its own label and colour rather than claiming the device is on or muted.
 
+**A button that only sends a command gets a lighter version of the same mark.**
+It keeps its colour, its label and its artwork -- none of those are wrong just
+because the device is away -- and takes the dashed edge on its own, so you can
+see before pressing that it will not do anything. It appears only when *nothing*
+the button reaches is up: a System On button that drives eight devices is not
+marked because one display is off, since pressing it still does the other seven.
+Whatever the button runs is followed through to find that out, including a macro
+that calls another macro and a group command.
+
+**A device that was told to restart says so instead.** Some equipment goes off
+the network when you power it on or reboot it, and its driver can say how long
+that takes. While that is happening the panel says it is restarting and counts
+down rather than reporting a fault, and a press is answered with the same
+sentence instead of "check the IP address and network".
+
 This matters most on the controls that carry a number somebody acts on. A fader
 sitting at the top of its travel over `0.0 dB`, for an amplifier nobody can
 reach, is not a neutral wrong answer.
