@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
 import math
 import re
@@ -74,6 +75,13 @@ _SAFE_HANDLER_BUILTINS: dict[str, Any] = {
     "re": re, "format": format, "range": range, "list": list,
     "dict": dict, "set": set, "tuple": tuple, "sorted": sorted,
     "enumerate": enumerate,
+    # A JSON protocol is the one shape a handler cannot fake with `re`:
+    # nesting, escaping and number formats all have to come out right, so
+    # without these a JSON device's simulator carries its own reader and
+    # writer -- eighty lines of parser standing between a driver and the
+    # replies it is being tested against. `isinstance` comes with them
+    # because walking a parsed body means asking what each node is.
+    "json": json, "isinstance": isinstance,
     "True": True, "False": False, "None": None,
     # Common exception types — make try/except branches work under the
     # emptied __builtins__ sandbox.
