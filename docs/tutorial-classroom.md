@@ -177,7 +177,7 @@ async def system_on(event):
 
 The `try` block attempts the command. If it fails, Python jumps to the `except` block, where you log the error and update the status label. The `return` statement exits the handler early so it does not continue sending commands to a projector that is not responding.
 
-Even without `try`/`except`, a script error will never crash the server. OpenAVC logs the error and keeps running. But error handling lets you show useful feedback to the person operating the panel.
+Even without `try`/`except`, a script error will never crash the server. OpenAVC logs the error, marks the script in the Code view with the number of times it has failed, and keeps running. But error handling lets you show useful feedback to the person operating the panel.
 
 ## Step 7: Timers
 
