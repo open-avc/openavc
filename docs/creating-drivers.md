@@ -601,7 +601,7 @@ A `boolean` setting arrives as a real true/false, and `integer` / `number` as a 
 - **Boolean flag byte** (`1` / `0`): `{value:d}` — for example `send: 'TALLY{value:d}\r'` or `path: /cgi?cmd=TAE{value:d}`. Plain `{value}` on a boolean would send `True` / `False`, which most devices reject.
 - **Zero-padded number**: `{value:03d}` sends `63` as `063` for fixed-width fields.
 
-Every device setting needs a `state_key` that polling actually populates. That polled value is the read-back shown in the editor. If a setting can be written but never read, leave it as a command instead, so the UI never shows a stale value.
+Every device setting needs a `state_key` that polling actually populates. That polled value is the read-back shown in the editor, and it is what the platform waits for before clearing a setting that was queued while the device was offline: the queued write is sent on connect and held until the device reports the new value back. If a setting can be written but never read, leave it as a command instead, so the UI never shows a stale value.
 
 **Python drivers** override `set_device_setting(key, value)` instead of using `write` definitions:
 
