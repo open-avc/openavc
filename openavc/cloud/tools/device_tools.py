@@ -891,6 +891,39 @@ class DeviceToolsMixin:
                 return {"error": f"Script file not found: {s.file}"}
         return {"error": f"Script '{script_id}' not found"}
 
+    async def _get_script_health(self, input: dict) -> Any:
+        """Which scripts are failing right now, in the three ways they can.
+
+        The same three stores ``GET /api/scripts/errors`` answers the Scripts
+        view from, and for the same reason: "the button does nothing" is asked
+        of the assistant at least as often as it is looked up in the view, and
+        until this the assistant's only route to the answer was the raw log --
+        which is the state that door was built to end.
+
+        ``script_id`` narrows it to one script; without it the whole project is
+        reported. A healthy project answers with three empty maps rather than
+        an error, because "nothing is broken" is the answer to the question.
+        """
+        engine = self._get_engine()
+        if not engine:
+            return {"error": "No project loaded"}
+        if not engine.scripts:
+            return {"errors": {}, "abandoned": {}, "runtime": {}}
+
+        health = {
+            "errors": engine.scripts.get_load_errors(),
+            "abandoned": engine.scripts.get_abandoned_loads(),
+            "runtime": engine.scripts.get_runtime_errors(),
+        }
+        script_id = str(input.get("script_id", "") or "")
+        if script_id:
+            health = {
+                kind: {script_id: found[script_id]}
+                for kind, found in health.items()
+                if script_id in found
+            } or {"errors": {}, "abandoned": {}, "runtime": {}}
+        return health
+
     async def _create_script(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -992,6 +1025,12 @@ class DeviceToolsMixin:
         path = safe_path_within(scripts_dir, cfg.file)
         if path is None:
             return {"error": "Invalid script filename"}
+
+        # Read before the file goes: what is about to be stranded, in the same
+        # shape delete_device / delete_macro / delete_variable hand back. The
+        # delete still succeeds -- the impact is what to tell the user to fix.
+        impact = self._find_references("script", script_id)
+
         if path.exists():
             path.unlink()
 
@@ -1005,4 +1044,7 @@ class DeviceToolsMixin:
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
-        return {"status": "deleted"}
+        result: dict[str, Any] = {"status": "deleted"}
+        if impact:
+            result["impact"] = impact
+        return result

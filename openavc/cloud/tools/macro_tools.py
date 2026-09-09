@@ -499,5 +499,34 @@ class MacroToolsMixin:
             # Check scripts
             result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
 
+        elif ref_type == "script":
+            # There was no branch here at all, so every ask fell through to the
+            # empty result below and the answer was always "nothing references
+            # this" -- the same all-clear-from-silence Q-168 fixed for devices.
+            # The walk lives in core/script_references; what a bare function
+            # name reaches is the script engine's own answer, because that is
+            # what the press resolves through.
+            from openavc.core.event_references import project_script_sources
+            from openavc.core.script_references import (
+                as_reference_report,
+                find_references_to_script,
+            )
+
+            def defines_function(script_id: str, name: str) -> bool:
+                if not getattr(engine, "scripts", None):
+                    return False
+                return any(
+                    found_id == script_id
+                    for found_id, _ in engine.scripts.find_callable(name)
+                )
+
+            return as_reference_report(find_references_to_script(
+                p, ref_id,
+                defines_function=defines_function,
+                sources=project_script_sources(
+                    p, engine.project_path.parent / "scripts"
+                ),
+            ))
+
         # Remove empty lists
         return {k: v for k, v in result.items() if v}
