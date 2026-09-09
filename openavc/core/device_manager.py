@@ -268,6 +268,12 @@ class DeviceManager:
         # A callable rather than an import, so the device manager goes on
         # knowing nothing about simulation; None whenever it isn't running.
         self.unsimulated_driver: Callable[[str], str | None] | None = None
+        # Set by the engine to its bring-up scheduler. reload_driver re-adds a
+        # driver's devices registered-but-not-dialed and asks for a round, so
+        # the engine puts the simulation redirect in place BEFORE the first
+        # connect, the same order a project save gets; without it (tests, a
+        # bare manager) reload_driver dials the devices itself.
+        self.request_bringup: Callable[[], None] | None = None
 
         # Auto-reconnect when a device transport drops mid-session
         self.events.on(
@@ -1166,7 +1172,13 @@ class DeviceManager:
                 # the panel's own user does next.
                 carry_pause = self._pause_remaining(device_id)
                 await self.remove_device(device_id)
-                await self.add_device(config, carry_pause=carry_pause)
+                # Registered, not dialed: the bring-up round below opens the
+                # connection, after the engine has re-applied any simulation
+                # redirect to the new instance. Dialing here sent a simulated
+                # device to its REAL address on every driver update.
+                await self.add_device(
+                    config, carry_pause=carry_pause, defer_connect=True
+                )
                 reconnected.append(device_id)
                 log.info(
                     f"Reconnected device '{device_id}' after driver reload"
@@ -1176,6 +1188,12 @@ class DeviceManager:
                 )
             except Exception:
                 log.exception(f"Failed to reconnect '{device_id}' after driver reload")
+
+        if reconnected:
+            if self.request_bringup is not None:
+                self.request_bringup()
+            else:
+                await self.bring_up()
 
         # Retry orphaned devices that were waiting for this driver
         orphaned_for_driver = [

@@ -89,6 +89,9 @@ class Engine:
         # Panel interaction runtime (peer of the macro engine, see ui_events)
         self.ui_events = UIEventRuntime(self)
         self.devices = DeviceManager(self.state, self.events)
+        # A driver reload re-adds its devices undialed and asks for a bring-up
+        # round, so the simulation redirect lands before the first connect.
+        self.devices.request_bringup = self._schedule_device_bringup
         # "Ask for help" — raised by a macro step, never a stock control.
         self.help = HelpRequests(self)
         self.macros = MacroEngine(
