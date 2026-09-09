@@ -1280,7 +1280,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         """Execute a script handler (match: + handler: with inline Python).
 
         Scripts get: match (regex match), state (proxy dict that notifies on
-        writes), config (device config), respond(text) (send response).
+        writes), config (device config), respond(text) (send response) and
+        notify(text) (send an unsolicited message on the device's push
+        channel — see _deliver_notification).
         """
         response_data: list[str] = []
 
@@ -1295,6 +1297,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             "state": state_proxy,
             "config": self.config,
             "respond": respond,
+            # An unsolicited message on the device's push channel — the
+            # frame a real device emits AFTER acknowledging a write. respond()
+            # answers the request; notify() is everything else the device
+            # says because of it.
+            "notify": self._deliver_notification,
             # http_listener push: a handler matching the device's
             # registration command records where to deliver notifications
             # (e.g. the ServerUrl a codec's feedback registration carries).
@@ -2360,7 +2367,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             self._udp_transport.sendto(push_data, self._last_client_addr)
             self.log_protocol("out", push_data)
 
-        # Manual TCP notification (legacy: explicit notifications: section in simulator YAML)
+        # Explicit `notifications:` templates (simulator: section), delivered
+        # on whatever channel this device pushes on.
         if not self._notification_map or key not in self._notification_map:
             return
 
@@ -2375,7 +2383,19 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if not template:
             return
 
-        msg = self._render_notification(template, key, value)
+        self._deliver_notification(self._render_notification(template, key, value))
+
+    def _deliver_notification(self, msg: str) -> None:
+        """Send one unsolicited message the way this device pushes.
+
+        The one door for every notification a simulator emits: a rendered
+        ``notifications:`` template on a state change, or a script handler's
+        ``notify(text)``. The channel is the driver's declared push shape
+        (multicast group, SSE stream, dial-back subscribers, webhook
+        callbacks); a driver with none pushes on the control link — every
+        connected TCP client, or the last UDP peer that spoke to the device
+        (the peer a real UDP server answers, and the only one it knows).
+        """
         delimiter = self._get_delimiter()
         data = (msg + delimiter).encode()
 
@@ -2408,6 +2428,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     url, msg,
                     headers={"Content-Type": self._callback_content_type(msg)},
                 ))
+        elif self._is_udp and not self._is_osc:
+            # Connectionless: the device can only push to a peer it has
+            # heard from, so the last sender is the subscriber.
+            if self._last_client_addr and self._udp_transport:
+                self._udp_transport.sendto(data, self._last_client_addr)
+                self.log_protocol("out", data)
         elif self._clients:
             asyncio.ensure_future(self.push(data))
 
