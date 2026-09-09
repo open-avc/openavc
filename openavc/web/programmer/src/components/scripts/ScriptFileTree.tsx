@@ -21,6 +21,13 @@ interface ScriptFileTreeProps {
    *  top-level code is STILL going and only a restart will clear it -- the
    *  state that used to show up as devices flapping and nothing else. */
   abandonedLoads?: Record<string, { attempts: number; running: boolean }>;
+  /** Scripts that loaded fine and then threw while running. On the LIST for
+   *  the same reason as the rest: a handler that raises leaves a dead button
+   *  and, until this, a scripts view with nothing wrong on it. */
+  runtimeErrors?: Record<
+    string,
+    { count: number; handler: string; event: string; error: string }
+  >;
   onSelectScript: (id: string) => void;
   onSelectDriver: (id: string) => void;
   onSelectUiFile: (path: string) => void;
@@ -46,6 +53,7 @@ export function ScriptFileTree({
   loadErrors = {},
   deadHandlers = {},
   abandonedLoads = {},
+  runtimeErrors = {},
   onSelectScript,
   onSelectDriver,
   onSelectUiFile,
@@ -248,12 +256,14 @@ export function ScriptFileTree({
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", minWidth: 0 }}>
-                      {loadErrors[s.id] || abandonedLoads[s.id]?.running ? (
+                      {loadErrors[s.id] || abandonedLoads[s.id]?.running || runtimeErrors[s.id] ? (
                         <span
                           title={
                             loadErrors[s.id]
                               ? `Load error: ${loadErrors[s.id]}`
-                              : "A thread of this script's top-level code is still running"
+                              : abandonedLoads[s.id]?.running
+                                ? "A thread of this script's top-level code is still running"
+                                : `${runtimeErrors[s.id].handler}: ${runtimeErrors[s.id].error}`
                           }
                         >
                           <AlertTriangle size={14} style={{ color: "var(--danger, #ef4444)", flexShrink: 0 }} />
@@ -291,6 +301,19 @@ export function ScriptFileTree({
                             title="Its top-level code timed out. The load was stopped."
                           >
                             Load timed out and was stopped
+                          </div>
+                        ) : runtimeErrors[s.id] ? (
+                          <div
+                            style={errorDescStyle}
+                            title={
+                              `${runtimeErrors[s.id].handler} failed on ` +
+                              `${runtimeErrors[s.id].event}: ${runtimeErrors[s.id].error}. ` +
+                              "Open the script to see where."
+                            }
+                          >
+                            {runtimeErrors[s.id].count === 1
+                              ? "Failed once while running"
+                              : `Failed ${runtimeErrors[s.id].count} times while running`}
                           </div>
                         ) : deadHandlers[s.id] ? (
                           <div

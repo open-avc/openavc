@@ -145,6 +145,12 @@ class ScriptEngine:
         # anything downstream say a runaway exists -- nothing did, and only a
         # restart cleared it.
         self._abandoned_loads: dict[str, dict[str, Any]] = {}
+        # script_id -> {"count", "handler", "event", "error", "traceback", "at"}
+        # for failures AFTER the script loaded: a handler that threw, one that
+        # timed out, a function a control called. A load error means the script
+        # is not running; one of these means it IS running and does not work,
+        # which is the state that used to reach the raw log and nowhere else.
+        self._runtime_errors: dict[str, dict[str, Any]] = {}
 
     def install(self) -> None:
         """Wire the script-API proxies to the real subsystems.
@@ -168,6 +174,7 @@ class ScriptEngine:
         """
         handler_count = 0
         self._load_errors.clear()
+        self._runtime_errors.clear()
         for script_cfg in scripts:
             if not script_cfg.get("enabled", True):
                 log.info(f"Script '{script_cfg['id']}' is disabled, skipping")
@@ -220,6 +227,40 @@ class ScriptEngine:
     def get_load_errors(self) -> dict[str, str]:
         """Return dict of script_id -> error message for scripts that failed to load."""
         return dict(self._load_errors)
+
+    def _record_runtime_error(
+        self, script_id: str, handler: str, event: str, error: str, tb: str,
+    ) -> None:
+        """Remember that a loaded script failed while running.
+
+        Synchronous and never optional: the emit that goes with it needs an
+        event loop and a listener, and this record is what answers the scripts
+        view whether anyone was watching at the time. Keeps a count and the
+        LAST failure rather than a list -- a handler that throws throws every
+        time it fires, so the hundredth occurrence says nothing the first did
+        not, and the count is what tells an integrator the button is dead
+        rather than flaky.
+        """
+        record = self._runtime_errors.setdefault(script_id, {"count": 0})
+        record["count"] += 1
+        record["handler"] = handler
+        record["event"] = event
+        record["error"] = error
+        record["traceback"] = tb
+        record["at"] = time.time()
+
+    def get_runtime_errors(self) -> dict[str, dict[str, Any]]:
+        """Per script, how many times it has failed while running and the last one.
+
+        Cleared when the script is reloaded or unloaded, because both mean the
+        code that failed is no longer the code that is running. Nothing else
+        clears it: a failure the integrator never saw must still be there when
+        they open the view.
+        """
+        return {
+            script_id: dict(record)
+            for script_id, record in self._runtime_errors.items()
+        }
 
     def handler_count(self) -> int:
         """Total registered handlers across all loaded scripts (event + state)."""
@@ -496,6 +537,7 @@ class ScriptEngine:
         self._state_sub_ids.clear()
         self._loaded_modules.clear()
         self._handler_names.clear()
+        self._runtime_errors.clear()
 
         # Cancel all dynamic timers
         timer_count = script_api.cancel_all_timers()
@@ -521,6 +563,12 @@ class ScriptEngine:
         if module_name:
             sys.modules.pop(module_name, None)
         self._handler_names.pop(script_id, None)
+        # Whatever this version failed at, it is no longer registered to fail
+        # again. A single-script reload comes through here between importing
+        # the new version and registering it, so a successful reload starts
+        # clean while a failed one keeps the record of the version still
+        # running.
+        self._runtime_errors.pop(script_id, None)
 
         timer_count = script_api.cancel_script_timers(script_id)
         if count or timer_count:
@@ -674,7 +722,13 @@ class ScriptEngine:
     async def _emit_script_error(
         self, script_id: str, handler: str, event: str, error: str, tb: str,
     ) -> None:
-        """Report a script failure on the bus, and never fail doing it."""
+        """Record a script failure, report it on the bus, and never fail doing it.
+
+        The record comes first because it is the half that outlives the moment:
+        the event reaches whoever happens to be listening, the record answers
+        the scripts view whenever it is next asked.
+        """
+        self._record_runtime_error(script_id, handler, event, error, tb)
         try:
             await self.events.emit("script.error", {
                 "script_id": script_id,
@@ -748,8 +802,6 @@ class ScriptEngine:
         accept one was already refused at import time by
         ``_check_event_handler_signatures``.
         """
-        events_ref = self.events
-
         async def wrapped(event: str, payload: dict[str, Any]) -> None:
             with script_api.current_script_context(script_id):
                 try:
@@ -772,32 +824,19 @@ class ScriptEngine:
                         f"after {self.HANDLER_TIMEOUT}s for event '{event}'"
                     )
                     log.error(msg)
-                    try:
-                        await events_ref.emit("script.error", {
-                            "script_id": script_id,
-                            "handler": handler_name,
-                            "event": event,
-                            "error": msg,
-                            "traceback": "",
-                        })
-                    except Exception:
-                        pass
+                    await self._emit_script_error(
+                        script_id, handler_name, event, msg, ""
+                    )
                 except Exception as exc:  # Catch-all: isolates user script errors from engine
                     handler_name = getattr(handler, "__name__", "anonymous")
                     log.exception(
                         f"Error in script '{script_id}' event handler "
                         f"for '{event}'"
                     )
-                    try:
-                        await events_ref.emit("script.error", {
-                            "script_id": script_id,
-                            "handler": handler_name,
-                            "event": event,
-                            "error": str(exc),
-                            "traceback": traceback.format_exc(),
-                        })
-                    except Exception:  # Catch-all: error event emission must not raise
-                        pass
+                    await self._emit_script_error(
+                        script_id, handler_name, event, str(exc),
+                        traceback.format_exc(),
+                    )
 
         wrapped.__name__ = getattr(handler, "__name__", "anonymous")
         wrapped.__qualname__ = f"{script_id}.{wrapped.__name__}"
@@ -904,12 +943,21 @@ class ScriptEngine:
     def _schedule_state_error(
         self, script_id: str, handler: Callable, key: str, error: str, tb: str
     ) -> None:
-        """Schedule a state-handler ``script.error`` emit from a sync context."""
+        """Schedule a state-handler ``script.error`` emit from a sync context.
+
+        A state listener runs on whichever thread called ``state.set``, so
+        there may be no loop to emit on. The record is not conditional on one:
+        it is written here in that case, which is exactly when nothing else
+        will ever say the handler failed.
+        """
         handler_name = getattr(handler, "__name__", "anonymous")
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            return  # no loop (sync test) — nothing to emit on
+            self._record_runtime_error(
+                script_id, handler_name, f"state_change:{key}", error, tb
+            )
+            return  # no loop — nothing to emit on
         loop.create_task(
             self._emit_state_error_async(script_id, handler_name, key, error, tb)
         )
@@ -917,14 +965,7 @@ class ScriptEngine:
     async def _emit_state_error_async(
         self, script_id: str, handler_name: str, key: str, error: str, tb: str
     ) -> None:
-        """Emit ``script.error`` for a state handler; never raises."""
-        try:
-            await self.events.emit("script.error", {
-                "script_id": script_id,
-                "handler": handler_name,
-                "event": f"state_change:{key}",
-                "error": error,
-                "traceback": tb,
-            })
-        except Exception:  # Catch-all: error event emission must not raise
-            pass
+        """Record and emit ``script.error`` for a state handler; never raises."""
+        await self._emit_script_error(
+            script_id, handler_name, f"state_change:{key}", error, tb
+        )

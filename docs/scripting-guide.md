@@ -540,7 +540,7 @@ async def stop_polling(event):
 ## Tips
 
 - **All handler functions must be `async`**. Use `await` for device commands and delays.
-- **Script errors**: if a handler throws an unhandled exception, the error is logged and a `script.error` event is broadcast to all WebSocket clients with `script_id`, `handler`, `event`, `error`, and `traceback` fields. The system continues running. One broken handler does not take down the server.
+- **Script errors**: if a handler throws an unhandled exception, the error is logged, a `script.error` event is broadcast to all WebSocket clients with `script_id`, `handler`, `event`, `error`, and `traceback` fields, and the script's row in the Scripts list says how many times it has failed since it last loaded. Open the script and the editor marks the line that raised. The system continues running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
 - **Hot reload**: click Run in the Script Editor to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).

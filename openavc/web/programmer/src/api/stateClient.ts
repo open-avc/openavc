@@ -199,6 +199,8 @@ export async function reloadScripts(): Promise<{
   status: string;
   handlers: number;
   errors?: Record<string, string>;
+  abandoned?: Record<string, AbandonedScriptLoad>;
+  runtime?: Record<string, ScriptRuntimeError>;
 }> {
   return request("/scripts/reload", { method: "POST" });
 }
@@ -209,6 +211,8 @@ export async function reloadScript(id: string): Promise<{
   error?: string;
   old_script_preserved?: boolean;
   errors?: Record<string, string>;
+  abandoned?: Record<string, AbandonedScriptLoad>;
+  runtime?: Record<string, ScriptRuntimeError>;
 }> {
   return request(`/scripts/${id}/reload`, { method: "POST" });
 }
@@ -221,15 +225,33 @@ export interface AbandonedScriptLoad {
   since: number;
 }
 
+/** A script that loaded fine and then threw while doing its job: a handler
+ *  that raised, one that timed out, a function a control called. `count` is
+ *  every failure since it last loaded; the rest describe the most recent one. */
+export interface ScriptRuntimeError {
+  count: number;
+  handler: string;
+  event: string;
+  error: string;
+  traceback: string;
+  at: number;
+}
+
 export async function getScriptErrors(): Promise<{
   errors: Record<string, string>;
   abandoned: Record<string, AbandonedScriptLoad>;
+  runtime: Record<string, ScriptRuntimeError>;
 }> {
   const data = await request<{
     errors: Record<string, string>;
     abandoned?: Record<string, AbandonedScriptLoad>;
+    runtime?: Record<string, ScriptRuntimeError>;
   }>("/scripts/errors");
-  return { errors: data.errors ?? {}, abandoned: data.abandoned ?? {} };
+  return {
+    errors: data.errors ?? {},
+    abandoned: data.abandoned ?? {},
+    runtime: data.runtime ?? {},
+  };
 }
 
 export async function getScriptReferences(): Promise<ScriptReference[]> {

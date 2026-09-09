@@ -81,4 +81,107 @@ const results = {};
   };
 }
 
+// --- markerFromStoredError (the server's record, which the log ring loses) ---
+const stored = (over) => Object.assign({
+  count: 1, handler: "handle", event: "custom.boom",
+  error: "kaboom", traceback: "", at: 0,
+}, over);
+
+{
+  const r = H.markerFromStoredError(stored({
+    traceback:
+      'Traceback (most recent call last):\n' +
+      '  File "/srv/openavc/core/script_engine.py", line 759, in wrapped\n' +
+      '  File "/data/projects/demo/scripts/room_logic.py", line 12, in handle\n' +
+      'ValueError: kaboom\n',
+  }), "room_logic.py");
+  results.stored_marker_takes_the_line_in_this_file = {
+    pass: r !== null && r.line === 12 && r.message === "handle: ValueError: kaboom", detail: r,
+  };
+}
+{
+  // A handler that fails inside a helper it called has two frames in the file.
+  // The one worth opening the editor at is the one that actually raised.
+  const r = H.markerFromStoredError(stored({
+    traceback:
+      '  File "/data/projects/demo/scripts/room_logic.py", line 12, in handle\n' +
+      '  File "/data/projects/demo/scripts/room_logic.py", line 30, in helper\n' +
+      'ValueError: kaboom\n',
+  }), "room_logic.py");
+  results.stored_marker_takes_the_deepest_frame = {
+    pass: r !== null && r.line === 30, detail: r,
+  };
+}
+{
+  // The record is written on the server, so its paths are the server's -- a
+  // Windows host reports backslashes to a browser that knows only the name.
+  const r = H.markerFromStoredError(stored({
+    traceback: '  File "C:\\\\ProgramData\\\\openavc\\\\scripts\\\\room_logic.py", line 7, in handle\n',
+  }), "room_logic.py");
+  results.stored_marker_matches_a_windows_path = {
+    pass: r !== null && r.line === 7, detail: r,
+  };
+}
+{
+  const r = H.markerFromStoredError(stored({
+    traceback: '  File "/data/projects/demo/scripts/other.py", line 12, in handle\n',
+  }), "room_logic.py");
+  results.stored_marker_ignores_another_file = { pass: r === null, detail: r };
+}
+{
+  // A timeout has no traceback at all. Guessing a line would be worse than
+  // leaving the editor unmarked -- the list row still says it failed.
+  const r = H.markerFromStoredError(stored({ error: "timed out after 30s" }), "room_logic.py");
+  results.stored_marker_silent_without_a_traceback = { pass: r === null, detail: r };
+}
+{
+  const r = H.markerFromStoredError(undefined, "room_logic.py");
+  results.stored_marker_silent_without_a_record = { pass: r === null, detail: r };
+}
+
+// --- describeStoredError (str(exc) is not always a sentence) ---
+{
+  // A KeyError stringifies to the key alone. On its own the author is told
+  // `'laptop'` and learns nothing about what went wrong.
+  const r = H.describeStoredError(stored({
+    error: "'laptop'",
+    traceback: '  File "x.py", line 7, in handle\nKeyError: \'laptop\'\n',
+  }));
+  results.described_error_puts_the_type_in_front = {
+    pass: r === "KeyError: 'laptop'", detail: r,
+  };
+}
+{
+  // A timeout has no traceback, and its message is already a sentence.
+  const r = H.describeStoredError(stored({
+    error: "timed out after 30s", traceback: "",
+  }));
+  results.described_error_falls_back_without_a_traceback = {
+    pass: r === "timed out after 30s", detail: r,
+  };
+}
+{
+  // Only the traceback's own last line qualifies, and only when it really is
+  // this error with a type in front -- never some other line of a frame.
+  const r = H.describeStoredError(stored({
+    error: "kaboom",
+    traceback: '  File "x.py", line 7, in handle\n    raise ValueError("nope")\n',
+  }));
+  results.described_error_refuses_an_unrelated_last_line = {
+    pass: r === "kaboom", detail: r,
+  };
+}
+{
+  const r = H.markerFromStoredError(stored({
+    error: "'laptop'",
+    traceback:
+      '  File "/data/projects/demo/scripts/room_logic.py", line 7, in select_source\n' +
+      "KeyError: 'laptop'\n",
+    handler: "select_source",
+  }), "room_logic.py");
+  results.stored_marker_carries_the_readable_error = {
+    pass: r !== null && r.message === "select_source: KeyError: 'laptop'", detail: r,
+  };
+}
+
 process.stdout.write(JSON.stringify(results));

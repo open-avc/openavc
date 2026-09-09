@@ -86,6 +86,19 @@ SCENARIOS = [
     "m309_extract_message_first_line",
     "m309_latest_id_returns_last_script_error",
     "m309_latest_id_zero_when_none",
+    # The server's own record of a runtime failure, which outlives the log ring
+    # the extraction above reads: a handler that threw before this IDE was
+    # opened leaves no log line here to mark.
+    "stored_marker_takes_the_line_in_this_file",
+    "stored_marker_takes_the_deepest_frame",
+    "stored_marker_matches_a_windows_path",
+    "stored_marker_ignores_another_file",
+    "stored_marker_silent_without_a_traceback",
+    "stored_marker_silent_without_a_record",
+    "stored_marker_carries_the_readable_error",
+    "described_error_puts_the_type_in_front",
+    "described_error_falls_back_without_a_traceback",
+    "described_error_refuses_an_unrelated_last_line",
 ]
 
 

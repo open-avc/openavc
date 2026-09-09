@@ -1026,3 +1026,362 @@ async def test_the_count_goes_back_down_when_a_load_unwinds(
 
     await asyncio.sleep(0.4)
     assert state.get("system.abandoned_script_loads") == 0
+
+
+# ===== A loaded script that fails while running is recorded, not just logged =====
+#
+# The engine kept load errors and nothing else. A handler that threw was
+# `log.exception`-ed and emitted on the bus, so an integrator whose button
+# handler blew up saw a dead button and a scripts view with nothing wrong on
+# it -- the failure existed only in the raw log, and only until the ring
+# buffer rolled over.
+
+
+async def test_a_thrown_event_handler_is_recorded(engine, subsystems, script_dir):
+    """The reported case: the handler runs, throws, and nothing above the log
+    can say which script is broken or what it said."""
+    _, events, _ = subsystems
+
+    _write_script(script_dir, "thrower.py", """\
+        from openavc import on_event
+
+        @on_event("custom.boom")
+        async def handle(event):
+            raise ValueError("kaboom")
+    """)
+    engine.load_scripts([{"id": "thrower", "file": "thrower.py", "enabled": True}])
+    await events.emit("custom.boom", {})
+
+    reported = engine.get_runtime_errors()
+    assert "thrower" in reported, reported
+    entry = reported["thrower"]
+    assert entry["count"] == 1
+    assert entry["error"] == "kaboom"
+    assert entry["handler"] == "handle"
+    assert entry["event"] == "custom.boom"
+    assert "ValueError" in entry["traceback"]
+    # The script loaded fine -- the two stores must not be confused for each
+    # other, because they mean opposite things about whether it is running.
+    assert engine.get_load_errors() == {}
+
+
+async def test_every_failure_is_counted_and_the_last_one_kept(
+    engine, subsystems, script_dir
+):
+    """A handler that throws throws every time it fires. The count is what
+    separates a dead button from a flaky one."""
+    _, events, _ = subsystems
+
+    _write_script(script_dir, "counter.py", """\
+        from openavc import on_event
+
+        @on_event("custom.again")
+        async def handle(event):
+            raise RuntimeError(event.get("which", "?"))
+    """)
+    engine.load_scripts([{"id": "counter", "file": "counter.py", "enabled": True}])
+    await events.emit("custom.again", {"which": "first"})
+    await events.emit("custom.again", {"which": "second"})
+    await events.emit("custom.again", {"which": "third"})
+
+    entry = engine.get_runtime_errors()["counter"]
+    assert entry["count"] == 3
+    assert entry["error"] == "third"
+
+
+async def test_a_thrown_state_handler_is_recorded(engine, subsystems, script_dir):
+    """The other half of the handler surface. Its event is written so the view
+    can say what the handler was reacting to."""
+    state, _, _ = subsystems
+
+    _write_script(script_dir, "state_thrower.py", """\
+        from openavc import on_state_change
+
+        @on_state_change("var.trip")
+        def handle(key, old_value, new_value):
+            raise KeyError("no such thing")
+    """)
+    engine.load_scripts(
+        [{"id": "state_thrower", "file": "state_thrower.py", "enabled": True}]
+    )
+    state.set("var.trip", "go")
+    await asyncio.sleep(0.05)
+
+    entry = engine.get_runtime_errors()["state_thrower"]
+    assert entry["count"] == 1
+    assert entry["event"] == "state_change:var.trip"
+    assert entry["handler"] == "handle"
+
+
+async def test_a_thrown_async_state_handler_is_recorded(
+    engine, subsystems, script_dir
+):
+    """An async state handler fails inside a fire-and-forget task, which is the
+    path furthest from anything a person is watching."""
+    state, _, _ = subsystems
+
+    _write_script(script_dir, "async_thrower.py", """\
+        from openavc import on_state_change
+
+        @on_state_change("var.trip2")
+        async def handle(key, old_value, new_value):
+            raise ValueError("async kaboom")
+    """)
+    engine.load_scripts(
+        [{"id": "async_thrower", "file": "async_thrower.py", "enabled": True}]
+    )
+    state.set("var.trip2", "go")
+    await asyncio.sleep(0.05)
+
+    entry = engine.get_runtime_errors()["async_thrower"]
+    assert entry["error"] == "async kaboom"
+    assert entry["event"] == "state_change:var.trip2"
+
+
+async def test_a_state_handler_that_fails_off_the_loop_is_still_recorded(
+    engine, subsystems, script_dir
+):
+    """State listeners run on whichever thread called `state.set`, so there may
+    be no loop to emit the error on. That is precisely when the record is the
+    only thing that will ever report it, so it must not be conditional on one."""
+    state, _, _ = subsystems
+
+    _write_script(script_dir, "off_loop.py", """\
+        from openavc import on_state_change
+
+        @on_state_change("var.offloop")
+        def handle(key, old_value, new_value):
+            raise ValueError("thrown off the loop")
+    """)
+    engine.load_scripts([{"id": "off_loop", "file": "off_loop.py", "enabled": True}])
+
+    done = threading.Event()
+
+    def writer():
+        state.set("var.offloop", "go")
+        done.set()
+
+    threading.Thread(target=writer, daemon=True).start()
+    await asyncio.get_running_loop().run_in_executor(None, done.wait, 5)
+
+    entry = engine.get_runtime_errors()["off_loop"]
+    assert entry["error"] == "thrown off the loop"
+    assert entry["event"] == "state_change:var.offloop"
+
+
+async def test_a_function_a_control_called_is_recorded(
+    engine, subsystems, script_dir
+):
+    """A button calling a script function is the third way in, and the one the
+    person pressing it is standing in front of."""
+    from openavc.core.script_engine import ScriptCallError
+
+    _write_script(script_dir, "presser.py", """\
+        from openavc import state
+
+        def do_the_thing():
+            raise ZeroDivisionError("nope")
+    """)
+    engine.load_scripts([{"id": "presser", "file": "presser.py", "enabled": True}])
+
+    with pytest.raises(ScriptCallError):
+        await engine.call_function("do_the_thing")
+
+    entry = engine.get_runtime_errors()["presser"]
+    assert entry["error"] == "nope"
+    assert entry["handler"] == "do_the_thing"
+    assert entry["event"] == "script.call.do_the_thing"
+
+
+async def test_a_handler_that_times_out_is_recorded(engine, subsystems, script_dir):
+    """A handler that never returns fails as surely as one that throws, and the
+    message is the only thing that says which."""
+    _, events, _ = subsystems
+    engine.HANDLER_TIMEOUT = 0.1
+
+    _write_script(script_dir, "slow.py", """\
+        import asyncio
+        from openavc import on_event
+
+        @on_event("custom.slow")
+        async def handle(event):
+            await asyncio.sleep(30)
+    """)
+    engine.load_scripts([{"id": "slow", "file": "slow.py", "enabled": True}])
+    await events.emit("custom.slow", {})
+
+    entry = engine.get_runtime_errors()["slow"]
+    assert entry["count"] == 1
+    assert "timed out" in entry["error"]
+    assert entry["traceback"] == ""
+
+
+async def test_a_working_script_is_reported_against_for_nothing(
+    engine, subsystems, script_dir
+):
+    """Guard the guard: a handler that runs is not a handler that failed, and a
+    view that cries wolf is worth less than the one that said nothing."""
+    state, events, _ = subsystems
+
+    _write_script(script_dir, "fine_handler.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.fine")
+        async def handle(event):
+            state.set("var.fine_ran", 1)
+    """)
+    engine.load_scripts(
+        [{"id": "fine_handler", "file": "fine_handler.py", "enabled": True}]
+    )
+    await events.emit("custom.fine", {})
+
+    assert state.get("var.fine_ran") == 1
+    assert engine.get_runtime_errors() == {}
+
+
+async def test_one_scripts_failure_is_not_reported_against_another(
+    engine, subsystems, script_dir
+):
+    """Both handlers hear the same event. Only the one that threw is marked."""
+    _, events, _ = subsystems
+
+    _write_script(script_dir, "bad_listener.py", """\
+        from openavc import on_event
+
+        @on_event("custom.shared")
+        async def handle(event):
+            raise ValueError("mine")
+    """)
+    _write_script(script_dir, "good_listener.py", """\
+        from openavc import on_event, state
+
+        @on_event("custom.shared")
+        async def handle(event):
+            state.set("var.good_saw", 1)
+    """)
+    engine.load_scripts([
+        {"id": "bad_listener", "file": "bad_listener.py", "enabled": True},
+        {"id": "good_listener", "file": "good_listener.py", "enabled": True},
+    ])
+    await events.emit("custom.shared", {})
+
+    reported = engine.get_runtime_errors()
+    assert "bad_listener" in reported
+    assert "good_listener" not in reported
+
+
+async def test_reloading_a_script_clears_its_record(engine, subsystems, script_dir):
+    """The record is about the code that is running. Once the author has
+    replaced it, a stale count would send them hunting for a fixed bug."""
+    _, events, _ = subsystems
+
+    path = _write_script(script_dir, "fixable.py", """\
+        from openavc import on_event
+
+        @on_event("custom.fixme")
+        async def handle(event):
+            raise ValueError("broken")
+    """)
+    cfg = {"id": "fixable", "file": "fixable.py", "enabled": True}
+    engine.load_scripts([cfg])
+    await events.emit("custom.fixme", {})
+    assert engine.get_runtime_errors()["fixable"]["count"] == 1
+
+    path.write_text(
+        "from openavc import on_event\n\n"
+        "@on_event('custom.fixme')\n"
+        "async def handle(event):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    assert engine.reload_script(cfg)["status"] == "reloaded"
+
+    assert engine.get_runtime_errors() == {}
+
+
+async def test_a_failed_reload_keeps_the_record_of_what_is_still_running(
+    engine, subsystems, script_dir
+):
+    """A reload that does not import leaves the old version registered and
+    still failing, so clearing its record would erase a live fault."""
+    _, events, _ = subsystems
+
+    path = _write_script(script_dir, "half_fixed.py", """\
+        from openavc import on_event
+
+        @on_event("custom.halffix")
+        async def handle(event):
+            raise ValueError("still broken")
+    """)
+    cfg = {"id": "half_fixed", "file": "half_fixed.py", "enabled": True}
+    engine.load_scripts([cfg])
+    await events.emit("custom.halffix", {})
+
+    path.write_text("this is not python(", encoding="utf-8")
+    result = engine.reload_script(cfg)
+    assert result["status"] == "error"
+    assert result["old_script_preserved"] is True
+
+    assert engine.get_runtime_errors()["half_fixed"]["error"] == "still broken"
+
+
+async def test_unloading_a_script_clears_its_record(engine, subsystems, script_dir):
+    """Deleting or disabling a script unregisters the handlers that were
+    failing. Nothing is left that can fail, so nothing is left to report."""
+    _, events, _ = subsystems
+
+    _write_script(script_dir, "goner.py", """\
+        from openavc import on_event
+
+        @on_event("custom.gone")
+        async def handle(event):
+            raise ValueError("bye")
+    """)
+    engine.load_scripts([{"id": "goner", "file": "goner.py", "enabled": True}])
+    await events.emit("custom.gone", {})
+    assert "goner" in engine.get_runtime_errors()
+
+    engine.unload_script("goner")
+
+    assert engine.get_runtime_errors() == {}
+
+
+async def test_the_record_survives_until_something_replaces_the_code(
+    engine, subsystems, script_dir
+):
+    """Nothing times it out or clears it on read: a failure that happened at
+    3am must still be there when the integrator opens the view at 9."""
+    _, events, _ = subsystems
+
+    _write_script(script_dir, "overnight.py", """\
+        from openavc import on_event
+
+        @on_event("custom.overnight")
+        async def handle(event):
+            raise ValueError("at 3am")
+    """)
+    engine.load_scripts([{"id": "overnight", "file": "overnight.py", "enabled": True}])
+    await events.emit("custom.overnight", {})
+
+    assert engine.get_runtime_errors()["overnight"]["error"] == "at 3am"
+    assert engine.get_runtime_errors()["overnight"]["error"] == "at 3am"
+
+
+async def test_the_report_is_a_copy(engine, subsystems, script_dir):
+    """A caller holding the engine's own record could edit the count it is
+    being told about."""
+    _, events, _ = subsystems
+
+    _write_script(script_dir, "copied.py", """\
+        from openavc import on_event
+
+        @on_event("custom.copy")
+        async def handle(event):
+            raise ValueError("x")
+    """)
+    engine.load_scripts([{"id": "copied", "file": "copied.py", "enabled": True}])
+    await events.emit("custom.copy", {})
+
+    engine.get_runtime_errors()["copied"]["count"] = 999
+
+    assert engine.get_runtime_errors()["copied"]["count"] == 1

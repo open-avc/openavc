@@ -220,6 +220,7 @@ def test_script_errors_endpoint_reports_abandoned_loads(client, mock_engine):
     mock_engine.scripts.get_abandoned_loads = MagicMock(
         return_value={"test_script": {"attempts": 2, "running": True, "since": 1.0}}
     )
+    mock_engine.scripts.get_runtime_errors = MagicMock(return_value={})
 
     body = client.get("/api/scripts/errors").json()
 
@@ -228,10 +229,40 @@ def test_script_errors_endpoint_reports_abandoned_loads(client, mock_engine):
     assert body["abandoned"]["test_script"]["attempts"] == 2
 
 
-def test_script_errors_endpoint_says_nothing_when_all_is_well(client, mock_engine):
+def test_script_errors_endpoint_reports_runtime_failures(client, mock_engine):
+    """The third fact on the same door: the script loaded, and then threw while
+    doing its job. Nothing above the raw log used to say so, so the integrator
+    saw a dead button and a scripts view with nothing wrong on it."""
     mock_engine.scripts.get_load_errors = MagicMock(return_value={})
     mock_engine.scripts.get_abandoned_loads = MagicMock(return_value={})
+    mock_engine.scripts.get_runtime_errors = MagicMock(
+        return_value={
+            "test_script": {
+                "count": 4,
+                "handler": "on_press",
+                "event": "ui.press.btn1",
+                "error": "division by zero",
+                "traceback": 'File "test_script.py", line 12\nZeroDivisionError',
+                "at": 1.0,
+            }
+        }
+    )
 
     body = client.get("/api/scripts/errors").json()
 
-    assert body == {"errors": {}, "abandoned": {}}
+    entry = body["runtime"]["test_script"]
+    assert entry["count"] == 4
+    assert entry["error"] == "division by zero"
+    assert entry["handler"] == "on_press"
+    assert entry["event"] == "ui.press.btn1"
+    assert "line 12" in entry["traceback"]
+
+
+def test_script_errors_endpoint_says_nothing_when_all_is_well(client, mock_engine):
+    mock_engine.scripts.get_load_errors = MagicMock(return_value={})
+    mock_engine.scripts.get_abandoned_loads = MagicMock(return_value={})
+    mock_engine.scripts.get_runtime_errors = MagicMock(return_value={})
+
+    body = client.get("/api/scripts/errors").json()
+
+    assert body == {"errors": {}, "abandoned": {}, "runtime": {}}

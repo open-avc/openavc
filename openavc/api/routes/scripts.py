@@ -260,6 +260,7 @@ async def reload_scripts() -> dict[str, Any]:
         "handlers": count,
         "errors": errors,
         "abandoned": engine.scripts.get_abandoned_loads(),
+        "runtime": engine.scripts.get_runtime_errors(),
     }
 
 
@@ -280,23 +281,28 @@ async def reload_single_script(script_id: str) -> dict[str, Any]:
     result = engine.scripts.reload_script(cfg)
     result["errors"] = engine.scripts.get_load_errors()
     result["abandoned"] = engine.scripts.get_abandoned_loads()
+    result["runtime"] = engine.scripts.get_runtime_errors()
     return result
 
 
 @router.get("/scripts/errors")
 async def get_script_errors() -> dict[str, Any]:
-    """Load errors, plus any load this engine gave up on.
+    """Every way a script can be failing, on one door.
 
-    The two are different things and both belong here. An error means the
+    The three are different things and all belong here. A load error means the
     script is not running; an abandoned load means its top-level code timed
     out and, if `running` is still true, a thread of it is STILL GOING and
     only a restart will clear it -- which is the state nothing used to report
-    anywhere, while the damage surfaced as devices flapping.
+    anywhere, while the damage surfaced as devices flapping; a `runtime` entry
+    means the script loaded fine and then threw while doing its job, which
+    reached the raw log and nothing else -- the integrator saw a dead button
+    and a scripts view with nothing wrong on it.
     """
     engine = _get_engine()
     if not engine.scripts:
-        return {"errors": {}, "abandoned": {}}
+        return {"errors": {}, "abandoned": {}, "runtime": {}}
     return {
         "errors": engine.scripts.get_load_errors(),
         "abandoned": engine.scripts.get_abandoned_loads(),
+        "runtime": engine.scripts.get_runtime_errors(),
     }

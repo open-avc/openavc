@@ -15,7 +15,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
-import { extractScriptRuntimeErrors, latestScriptErrorId } from "../components/scripts/scriptRuntimeErrors";
+import { describeStoredError, extractScriptRuntimeErrors, latestScriptErrorId, markerFromStoredError } from "../components/scripts/scriptRuntimeErrors";
 import { useScriptLint } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
@@ -52,6 +52,10 @@ export function ScriptView() {
   // running, AND if `running` is true a thread of its top-level code still is,
   // until the server restarts.
   const [abandonedLoads, setAbandonedLoads] = useState<Record<string, api.AbandonedScriptLoad>>({});
+  // A script that loaded and then threw. Asked of the server rather than read
+  // off the log ring, because the ring is bounded and this IDE may have been
+  // opened hours after the button went dead.
+  const [scriptRuntimeErrors, setScriptRuntimeErrors] = useState<Record<string, api.ScriptRuntimeError>>({});
   const [pythonDrivers, setPythonDrivers] = useState<PythonDriverInfo[]>([]);
   const [driverReloadErrors, setDriverReloadErrors] = useState<RuntimeError[]>([]);
   const [uiFiles, setUiFiles] = useState<CustomUiFile[]>([]);
@@ -66,14 +70,21 @@ export function ScriptView() {
   const driverFileInputRef = useRef<HTMLInputElement>(null);
   const uiFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch script load errors and Python drivers on mount
-  useEffect(() => {
+  // Every way a script can be failing, on one door: it did not load, its load
+  // was abandoned, or it loaded and then threw.
+  const refreshScriptErrors = useCallback(() => {
     api.getScriptErrors()
-      .then(({ errors, abandoned }) => {
+      .then(({ errors, abandoned, runtime }) => {
         setScriptLoadErrors(errors);
         setAbandonedLoads(abandoned);
+        setScriptRuntimeErrors(runtime);
       })
       .catch(() => {});
+  }, []);
+
+  // Fetch script load errors and Python drivers on mount
+  useEffect(() => {
+    refreshScriptErrors();
     loadPythonDrivers();
     void loadUiFiles();
   }, []);
@@ -126,15 +137,46 @@ export function ScriptView() {
   // marker memo below then, which a plain getState() read never did.
   const scriptErrorId = useLogStore((s) => latestScriptErrorId(s.logEntries));
 
+  // The same trigger re-asks the server. The log line and the server's record
+  // are written by the same failure, so a script going bad while this view is
+  // open marks its row without anyone reaching for Reload.
+  useEffect(() => {
+    if (scriptErrorId) refreshScriptErrors();
+  }, [scriptErrorId, refreshScriptErrors]);
+
   // Extract runtime errors from log entries for the selected item.
   const runtimeErrors = useMemo((): RuntimeError[] => {
     if (!selectedId) return [];
     if (selectedType === "ui") return [];
     if (selectedType === "driver") return driverReloadErrors;
     const scriptFile = scripts.find((s) => s.id === selectedId)?.file ?? selectedId;
-    return extractScriptRuntimeErrors(useLogStore.getState().logEntries, selectedId, scriptFile);
+    const fromLog = extractScriptRuntimeErrors(
+      useLogStore.getState().logEntries, selectedId, scriptFile,
+    );
+    // The server's record covers what the log ring no longer holds -- a handler
+    // that threw before this IDE was opened leaves no log line here at all.
+    // Only add it when the log has not already marked that line.
+    const stored = markerFromStoredError(scriptRuntimeErrors[selectedId], scriptFile);
+    if (stored && !fromLog.some((e) => e.line === stored.line)) fromLog.push(stored);
+    return fromLog;
     // scriptErrorId is the reactive trigger: a new script error bumps it, re-running this memo.
-  }, [selectedId, selectedType, scripts, driverReloadErrors, scriptErrorId]);
+  }, [selectedId, selectedType, scripts, driverReloadErrors, scriptErrorId, scriptRuntimeErrors]);
+
+  // The list rows want the same readable error the editor marker gets, and
+  // nothing else the record carries -- so the tree is handed the sentence
+  // rather than the traceback to work it out from.
+  const runtimeErrorRows = useMemo(() => {
+    const rows: Record<string, { count: number; handler: string; event: string; error: string }> = {};
+    for (const [id, record] of Object.entries(scriptRuntimeErrors)) {
+      rows[id] = {
+        count: record.count,
+        handler: record.handler,
+        event: record.event,
+        error: describeStoredError(record),
+      };
+    }
+    return rows;
+  }, [scriptRuntimeErrors]);
 
   // Handlers waiting for an event nothing in this project emits. Asked of the
   // platform rather than worked out here: the answer depends on every macro,
@@ -342,6 +384,11 @@ export function ScriptView() {
     try {
       const result = await api.reloadScript(selectedId);
       setScriptLoadErrors(result.errors ?? {});
+      // A reload replaces the code that was failing, so the server has dropped
+      // its record. Take the fresh set from the same response, or the row keeps
+      // reporting a fault the author has just fixed.
+      setAbandonedLoads(result.abandoned ?? {});
+      setScriptRuntimeErrors(result.runtime ?? {});
       if (result.status === "error") {
         const preserved = result.old_script_preserved
           ? " The previously loaded version is still active."
@@ -869,6 +916,7 @@ export function ScriptView() {
             selectedType={selectedType}
             loadErrors={scriptLoadErrors}
             abandonedLoads={abandonedLoads}
+            runtimeErrors={runtimeErrorRows}
             deadHandlers={deadHandlerCounts}
             onSelectScript={handleSelectScript}
             onSelectDriver={handleSelectDriver}
