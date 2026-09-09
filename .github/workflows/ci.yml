@@ -92,6 +92,11 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           pip install -e ".[dev]"
+          # Playwright installs its own Chromium; the Google Chrome apt source
+          # the runner image ships is not needed, and its index goes out of
+          # sync with its packages during a publish (a Hash Sum mismatch
+          # that fails apt-get update, and with it this whole job).
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
           python -m playwright install --with-deps chromium
 
       - name: Build the Programmer UI for the browser tests
