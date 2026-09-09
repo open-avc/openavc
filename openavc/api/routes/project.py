@@ -708,17 +708,20 @@ async def list_backups_endpoint() -> dict[str, Any]:
 @router.post("/backups/create")
 async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     """Create a manual backup of the current project."""
-    from openavc.core.backup_manager import create_backup
+    from openavc.core.backup_manager import backup_id, create_backup
 
     engine = _get_engine()
+    project_dir = engine.project_path.parent
     body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
     reason = body.get("reason", "Manual backup")
 
     import asyncio
-    path = await asyncio.to_thread(create_backup, engine.project_path.parent, reason)
+    path = await asyncio.to_thread(create_backup, project_dir, reason)
     if not path:
         raise HTTPException(status_code=404, detail="No project to back up")
-    return {"status": "created", "filename": path.name}
+    # The same name GET /backups lists and POST /backups/{filename}/restore
+    # takes, so this answer can be fed straight back in (backup_manager.backup_id).
+    return {"status": "created", "filename": backup_id(project_dir, path)}
 
 
 @router.post("/backups/{filename:path}/restore")

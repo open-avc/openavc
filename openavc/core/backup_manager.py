@@ -162,6 +162,21 @@ class BackupInfo:
     format: str           # "zip" or "legacy"
 
 
+def backup_id(project_dir: Path, backup_path: Path) -> str:
+    """THE name a backup is known by outside this module: its path relative to
+    the project directory, POSIX-separated.
+
+    A ZIP lives in ``{project_dir}/backups/`` and is therefore
+    ``backups/backup_….zip``; a legacy ``.avc.bak`` sits beside the project file
+    and is a bare name. Every door that hands a backup out or takes one back in
+    uses this form — the list endpoint, the recovery record, and the restore
+    endpoint, which resolves it with ``project_dir / filename``. Create used to
+    answer with a bare ``path.name``, which restore then could not find, so a
+    caller could not feed one door's answer into the next.
+    """
+    return backup_path.relative_to(project_dir).as_posix()
+
+
 def _backup_dir(project_dir: Path) -> Path:
     """Return the backups subdirectory, creating it if needed."""
     d = project_dir / "backups"
@@ -283,7 +298,7 @@ def list_backups(project_dir: Path) -> list[BackupInfo]:
             try:
                 meta = _read_zip_meta(f)
                 results.append(BackupInfo(
-                    filename=f"backups/{f.name}",
+                    filename=backup_id(project_dir, f),
                     reason=meta.get("reason", "Backup"),
                     timestamp=meta.get("timestamp", ""),
                     project_name=meta.get("project_name", ""),
@@ -307,7 +322,7 @@ def list_backups(project_dir: Path) -> list[BackupInfo]:
             stat = f.stat()
             ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
             results.append(BackupInfo(
-                filename=f.name,
+                filename=backup_id(project_dir, f),
                 reason="Legacy backup",
                 timestamp=ts,
                 project_name="",
@@ -323,7 +338,7 @@ def list_backups(project_dir: Path) -> list[BackupInfo]:
             stat = f.stat()
             ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
             results.append(BackupInfo(
-                filename=f.name,
+                filename=backup_id(project_dir, f),
                 reason="Pre-restore backup",
                 timestamp=ts,
                 project_name="",
