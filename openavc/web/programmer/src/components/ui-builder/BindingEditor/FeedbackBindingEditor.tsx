@@ -9,7 +9,7 @@
  *   - Active/inactive color pickers with preview
  *   - Conditional label text (active/inactive)
  */
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useProjectStore } from "../../../store/projectStore";
 import { useConnectionStore } from "../../../store/connectionStore";
@@ -232,6 +232,8 @@ export function FeedbackBindingEditor({
   const isMultiState = !!(current.states as Record<string, unknown> | undefined);
   const statesMap = (current.states as Record<string, Record<string, unknown>>) || {};
   const defaultState = String(current.default_state ?? "");
+  const [renameError, setRenameError] = useState<{ key: string; message: string } | null>(null);
+  const renameErrorId = useId();
 
   const suggestedStates = useMemo(() => {
     return observedValues.filter((v) => !statesMap[v]);
@@ -289,14 +291,22 @@ export function FeedbackBindingEditor({
   };
 
   const handleRenameState = (oldKey: string, newKey: string) => {
-    if (newKey === oldKey || !newKey) return;
-    const next: Record<string, Record<string, unknown>> = {};
-    for (const [k, v] of Object.entries(statesMap)) {
-      next[k === oldKey ? newKey : k] = v;
+    setRenameError(null);
+    if (newKey === oldKey) return true;
+    if (!newKey || Object.prototype.hasOwnProperty.call(statesMap, newKey)) {
+      setRenameError({
+        key: oldKey,
+        message: newKey ? "That state name is already in use." : "Enter a state name.",
+      });
+      return false;
     }
+    const next = Object.fromEntries(
+      Object.entries(statesMap).map(([k, v]) => [k === oldKey ? newKey : k, v]),
+    );
     const patch: Record<string, unknown> = { states: next };
     if (defaultState === oldKey) patch.default_state = newKey;
     handleChange(patch);
+    return true;
   };
 
   const switchToMultiState = () => {
@@ -474,8 +484,17 @@ export function FeedbackBindingEditor({
                 {/* State key row */}
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <input
-                    value={sk}
-                    onBlur={(e) => handleRenameState(sk, e.target.value.trim())}
+                    aria-label={`State name: ${sk}`}
+                    aria-invalid={renameError?.key === sk || undefined}
+                    aria-describedby={renameError?.key === sk ? renameErrorId : undefined}
+                    // Keep a draft until blur; committing each keystroke would
+                    // remount this state card (keyed by name) and lose focus.
+                    defaultValue={sk}
+                    onChange={() => { if (renameError?.key === sk) setRenameError(null); }}
+                    onBlur={(e) => {
+                      const name = e.currentTarget.value.trim();
+                      e.currentTarget.value = handleRenameState(sk, name) ? name : sk;
+                    }}
                     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                     style={{ flex: 1, padding: "3px 6px", fontSize: 12, fontWeight: 600, borderRadius: 3, border: "1px solid var(--border-color)" }}
                   />
@@ -502,6 +521,12 @@ export function FeedbackBindingEditor({
                     <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>LIVE</span>
                   )}
                 </div>
+
+                {renameError?.key === sk && (
+                  <div id={renameErrorId} role="alert" style={{ color: "var(--danger)", fontSize: 12 }}>
+                    {renameError.message}
+                  </div>
+                )}
 
                 {/* Appearance editors */}
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
