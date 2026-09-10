@@ -53,6 +53,7 @@ export function ProjectView() {
   const save = useProjectStore((s) => s.save);
   const updateProject = useProjectStore((s) => s.updateProject);
   const forceReloadProject = useProjectStore((s) => s.forceReload);
+  const loadGeneration = useProjectStore((s) => s.loadGeneration);
 
   // Library state
   const [library, setLibrary] = useState<LibraryProject[]>([]);
@@ -123,7 +124,7 @@ export function ProjectView() {
 
   useEffect(() => {
     refreshBackups();
-  }, [refreshBackups]);
+  }, [refreshBackups, loadGeneration]);
 
   // Arriving from the Dashboard's recovery notice, which says "Review backups"
   // and means it: the section is below the library and the assets, so landing
@@ -359,7 +360,6 @@ export function ProjectView() {
       await api.restoreBackup(backup.filename);
       await forceReloadProject();
       showSuccess(`Restored from ${backupLabel(backup)}.`);
-      await refreshBackups();
     } catch (e) {
       showError(parseApiError(e));
     } finally {

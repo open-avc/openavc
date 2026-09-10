@@ -50,6 +50,7 @@ interface ProjectStore {
   error: string | null;
   dirty: boolean;
   revision: string | null;  // kept for WebSocket project.reloaded detection
+  loadGeneration: number;  // invalidates project resources after an accepted load
   etag: string | null;  // ETag for optimistic concurrency
   conflictDetected: boolean;  // true when 409 received
 
@@ -83,6 +84,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   error: null,
   dirty: false,
   revision: null,
+  loadGeneration: 0,
   etag: null,
   conflictDetected: false,
 
@@ -104,7 +106,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // server agreed with.
       const revision = etag ? etag.replace(/"/g, "") : null;
       if (!get().dirty) {
-        set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false });
+        set({ project: raw, loading: false, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false });
         return true;
       } else {
         set({ loading: false });
@@ -233,7 +235,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // at 0 every boot, so a tab left open across a restart held one the
       // server agreed with.
       const revision = etag ? etag.replace(/"/g, "") : null;
-      set({ project: raw, loading: false, dirty: false, etag, revision, conflictDetected: false, undoStack: [], redoStack: [] });
+      set({ project: raw, loading: false, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false, undoStack: [], redoStack: [] });
     } catch (e) {
       set({ error: parseApiError(e), loading: false });
     }

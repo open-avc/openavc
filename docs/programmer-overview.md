@@ -87,6 +87,8 @@ The **Project Library** (visible at the bottom of the Program view) stores saved
 
 OpenAVC automatically creates a backup before important operations like opening a different project, creating a blank project, AI changes, and cloud config pushes. Backups are ZIP files that include the project file, scripts, assets, custom controls, custom themes, and persisted variable state. Restoring replaces these files with the saved snapshot. An older bundle or backup that did not include its custom theme cannot recover that theme; import the original `.avctheme` file through Theme Studio.
 
+The Assets and Backups lists refresh when a project is opened, imported or restored, including another copy with the same project ID. Creating a blank project also shows the backup of the preceding project.
+
 ### Backups
 
 The **Backups** section at the bottom of the Program view lists your backup history with the reason each was created. Click **Restore** on any backup to replace the current project with that snapshot. You can also click **Create Backup** to save a manual checkpoint at any time. A periodic auto-backup runs every 30 minutes if the project has been modified.

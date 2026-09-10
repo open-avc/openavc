@@ -18,9 +18,10 @@ const storeState = {
   dirty: false,
   saving: false,
   etag: "1",
+  loadGeneration: 0,
   save: vi.fn(),
   updateProject: vi.fn(),
-  forceReload: vi.fn(async () => {}),
+  forceReload: vi.fn(async () => { storeState.loadGeneration += 1; }),
 };
 
 vi.mock("../store/projectStore", () => ({
@@ -100,6 +101,7 @@ beforeEach(() => {
   showSuccess.mockClear();
   showError.mockClear();
   storeState.forceReload.mockClear();
+  storeState.loadGeneration = 0;
 });
 
 describe("the restore confirm dialog", () => {

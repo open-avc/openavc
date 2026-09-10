@@ -61,6 +61,7 @@ export function AssetBrowser({
   showFilterChips = false,
   onFilterChange,
 }: AssetBrowserProps) {
+  const loadGeneration = useProjectStore((s) => s.loadGeneration);
   const [assets, setAssets] = useState<api.AssetInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -113,7 +114,7 @@ export function AssetBrowser({
 
   useEffect(() => {
     loadAssets();
-  }, [loadAssets]);
+  }, [loadAssets, loadGeneration]);
 
   const visibleAssets = useMemo(() => {
     let list = assets;
@@ -379,7 +380,7 @@ export function AssetBrowser({
                   >
                     <span>
                       {fmtSize(asset.size)}
-                      {asset.type === "image" && !usedImageAssets.has(asset.name) && (
+                      {asset.type === "image" && asset.used_by?.length === 0 && !usedImageAssets.has(asset.name) && (
                         <span style={{ marginLeft: 4, color: "#f59e0b", fontWeight: 500 }} title="Not referenced by any element">
                           unused
                         </span>
