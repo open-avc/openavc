@@ -129,10 +129,16 @@ def _render_control(page, element: dict) -> None:
             // Every frame the panel writes to the room, so a refusal is the
             // absence of an entry rather than something nobody looked at.
             window.__sent = [];
-            app.ws = { readyState: 1, send: (m) => window.__sent.push(JSON.parse(m)) };
-            // Navigation never touches the socket, so watching only __sent
-            // would report "nothing reached the room" while the panel walked
-            // off the page somebody was using.
+            app.ws = { readyState: 1, send: (raw) => {
+                const msg = JSON.parse(raw);
+                window.__sent.push(msg);
+                if (msg.type === 'ui.page') {
+                    queueMicrotask(() => app.handleMessage({
+                        type: 'ui.navigate', page_id: msg.page_id,
+                    }));
+                }
+            } };
+            // Record both the request and the move on the server's reply.
             window.__navigated = [];
             app.navigateToPage = (p) => window.__navigated.push(p);
             box.appendChild(app.renderElement(el));

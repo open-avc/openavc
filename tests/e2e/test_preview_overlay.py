@@ -105,7 +105,18 @@ def _panel_html() -> str:
   <div id="offline-overlay"></div><div id="loading-state"></div>
 <script>
   window.fetch = async () => ({{ ok: false, json: async () => ({{}}) }});
-  class FakeWS {{ constructor() {{ this.readyState = 1; }} send() {{}} close() {{}} }}
+  class FakeWS {{
+    constructor() {{ this.readyState = 1; }}
+    send(raw) {{
+      const msg = JSON.parse(raw);
+      if (msg.type === 'ui.page') {{
+        queueMicrotask(() => this.onmessage?.({{
+          data: JSON.stringify({{type: 'ui.navigate', page_id: msg.page_id}})
+        }}));
+      }}
+    }}
+    close() {{}}
+  }}
   FakeWS.OPEN = 1; window.WebSocket = FakeWS;
 </script>
 <script>{panel_js}</script>

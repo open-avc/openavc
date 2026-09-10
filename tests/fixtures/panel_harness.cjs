@@ -150,7 +150,53 @@ function openingPanel(pages, query = '') {
     return app;
 }
 
+// Match the server's ui.page reply. A no-op send stub hides double navigation.
+function navigationPanel() {
+    const pages = ['home', 'details', 'help'].map(startupPage);
+    pages[2].page_type = 'overlay';
+    const app = openingPanel(pages);
+    app.ws = { readyState: 1, send(raw) {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'ui.page') {
+            app.handleMessage({ type: 'ui.navigate', page_id: msg.page_id });
+        }
+    } };
+    return app;
+}
+
 const tests = {
+    page_nav_opens_one_overlay_per_press() {
+        const app = navigationPanel();
+        app.renderPageNav(el('help_nav', 'page_nav', { target_page: 'help' })).click();
+        assert(app.overlayStack.length === 1, 'one tap must open one overlay');
+        assert(document.querySelectorAll('.panel-overlay').length === 1,
+            'the reply must not draw a second copy');
+        app.dismissAllOverlays();
+    },
+
+    page_nav_back_dismisses_without_leaving_the_page_behind() {
+        const app = navigationPanel();
+        app.navigateToPage('details');
+        app.navigateToPage('help');
+        app.renderPageNav(el('back_nav', 'page_nav', { target_page: '$back' })).click();
+        assert(app.overlayStack.length === 0, 'Back dismisses the overlay');
+        assert(app.currentPage === 'details', 'Back must not also pop page history');
+        assert(app.pageHistory.join() === 'home', 'the previous page remains in history');
+        app.dismissAllOverlays();
+    },
+
+    custom_navigation_opens_one_overlay_per_request() {
+        const app = navigationPanel();
+        const control = app.renderCustomElement({
+            id: 'help_control', type: 'custom', custom_file: 'help/index.html',
+            grant: { navigate: true },
+        });
+        control._pluginMessageHandler({ source: control._pluginIframe.contentWindow,
+            data: { type: 'openavc:navigate', page: 'help' } });
+        assert(app.overlayStack.length === 1, 'one frame request must open one overlay');
+        app.dismissAllOverlays();
+    },
+
     startup_uses_the_home_page_even_when_main_exists() {
         const app = openingPanel([startupPage('camera'), startupPage('main')]);
         assert(app.currentPage === 'camera', 'the first regular page is home');
@@ -715,6 +761,10 @@ const tests = {
         assert(app.ws.sent.length === 1 && app.ws.sent[0].type === 'macro.execute' &&
             app.ws.sent[0].macro_id === 'lights_up', 'the macro runs with the switch on');
         fireOn({ type: 'openavc:navigate', page: 'admin' });
+        assert(app.ws.sent[1].type === 'ui.page' && app.ws.sent[1].page_id === 'admin',
+            'the permitted navigation reaches the server');
+        assert(navigatedTo === null, 'navigation waits for the server reply');
+        app.handleMessage({ type: 'ui.navigate', page_id: 'admin' });
         assert(navigatedTo === 'admin', 'the page changes with the switch on');
     },
 

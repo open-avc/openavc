@@ -2785,7 +2785,9 @@ class PanelApp {
             el.textContent = element.label || element.target_page;
             el.setAttribute('aria-label', `Navigate to ${element.label || element.target_page}`);
             el.addEventListener('click', () => {
-                this.navigateToPage(element.target_page);
+                // The server replies with ui.navigate to this panel only.
+                // Moving here too opens overlays twice and consumes two Back
+                // steps. All moves use the reply handler, including $back.
                 this.send({ type: 'ui.page', page_id: element.target_page });
             });
         } else {
@@ -5901,13 +5903,8 @@ class PanelApp {
                     // off it.
                     if (this.editMode) break;
                     if (!msg.page) break;
-                    this.navigateToPage(msg.page);
-                    // Tell the server too, exactly as the page-nav button does
-                    // (renderPageNav). It turns this into the `ui.page.<id>`
-                    // event triggers fire on, so a room that dims its lights
-                    // when somebody lands on a page behaves the same whether
-                    // they got there by button or from inside a frame. Without
-                    // it the trigger simply never runs, and nothing says why.
+                    // Use the same server round trip as a page-nav button:
+                    // emit ui.page.<id>, then navigate once on its reply.
                     this.send({ type: 'ui.page', page_id: msg.page });
                     break;
             }

@@ -63,6 +63,9 @@ def harness_results() -> dict:
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
+    "page_nav_opens_one_overlay_per_press",
+    "page_nav_back_dismisses_without_leaving_the_page_behind",
+    "custom_navigation_opens_one_overlay_per_request",
     "startup_uses_the_home_page_even_when_main_exists",
     "startup_keeps_main_when_it_is_home",
     "startup_honors_an_explicit_page_link",
