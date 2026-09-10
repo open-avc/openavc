@@ -79,12 +79,18 @@ vi.mock("../api/restClient", () => ({
 
 import { ProjectView } from "./ProjectView";
 
-/** Render, wait for the backups list, and open the restore confirm dialog. */
+/** Render, wait for the backups list, and open the restore confirm dialog.
+ *
+ * Waits for the ROW, not for the call: `listBackups` having been called says
+ * nothing about its promise having resolved and the list having rendered, and
+ * `getByRole` does not retry. On a loaded CI box the click landed in that gap
+ * and every test in the file failed with "Unable to find an accessible element
+ * with the role button and name Restore".
+ */
 async function openRestoreDialog() {
   render(<ProjectView />);
-  await waitFor(() => expect(listBackups).toHaveBeenCalled());
-  await userEvent.click(screen.getByRole("button", { name: "Restore" }));
-  return within(screen.getByRole("alertdialog", { name: "Restore Backup" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
+  return within(await screen.findByRole("alertdialog", { name: "Restore Backup" }));
 }
 
 beforeEach(() => {
