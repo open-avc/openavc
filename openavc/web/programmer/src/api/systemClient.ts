@@ -140,6 +140,13 @@ export interface AssetInfo {
   type: AssetType;
   /** File extension without the leading dot (e.g. "png", "mp3") */
   extension: string;
+  /**
+   * Who still shows this asset, in the words the delete refuses in --
+   * "element 'hero' on page 'main'", "theme 'midnight'". Present only for the
+   * active project, because nothing else is loaded to be asked; absent is "no
+   * answer", which is not the same claim as an empty list.
+   */
+  used_by?: string[];
 }
 
 export async function listAssets(): Promise<{ assets: AssetInfo[]; total_size: number }> {

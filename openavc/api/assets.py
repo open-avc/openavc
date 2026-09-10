@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
 from openavc.api.auth import require_programmer_auth
+from openavc.core.asset_references import asset_users
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -243,11 +244,24 @@ async def list_assets(project_id: str) -> dict[str, Any]:
     ``default`` lists the active project; any other id lists that saved
     library project's assets. A project with no assets directory yields an
     empty list rather than an error.
+
+    Each entry for the ACTIVE project also carries ``used_by``: who still shows
+    it, in the words the delete refuses in, so the Asset Browser can say what a
+    file is for before somebody presses delete rather than after. A library
+    project is not loaded, so nothing can be said about what uses its assets
+    and the key is left off entirely -- an empty list there would read as "used
+    by nothing", which is a different claim.
     """
     assets_dir = _assets_dir_for(project_id)
     if not assets_dir.is_dir():
         return {"assets": [], "total_size": 0}
     assets = _list_assets_metadata(assets_dir)
+    engine = _get_engine()
+    project = getattr(engine, "project", None) if engine else None
+    if project is not None and project_id in ("", "default"):
+        themes = _installed_themes()
+        for asset in assets:
+            asset["used_by"] = asset_users(project, asset["name"], themes=themes)
     return {"assets": assets, "total_size": _get_total_size(assets_dir)}
 
 
@@ -303,9 +317,41 @@ async def upload_asset(project_id: str, file: UploadFile = File(...)) -> dict[st
     }
 
 
+def _installed_themes() -> list[dict[str, Any]]:
+    """Every theme a panel could be running, built-in and custom alike.
+
+    A theme's ``page_defaults.background_image`` resolves through the same
+    ``assets://`` path an element's does, so an asset only a theme names is
+    still an asset in use -- and losing it takes the background off every page
+    running that theme rather than one. Asked of ``api.themes``' own reader
+    rather than re-globbing the two directories here: a second answer to "which
+    themes exist" is how one door would come to disagree with the other.
+    """
+    from openavc.api.themes import _list_all_themes
+
+    try:
+        return _list_all_themes()
+    except Exception:
+        # Deliberately everything, including the HTTPException that reader
+        # raises when the themes module has no engine: whether themes can be
+        # read is not a reason to refuse a delete or to answer 503 to a
+        # listing. The consequence is a narrower answer, not a wrong one.
+        log.debug("Themes unavailable for the asset reference check", exc_info=True)
+        return []
+
+
 @router.delete("/projects/{project_id}/assets/{filename}")
 async def delete_asset(project_id: str, filename: str) -> dict[str, str]:
-    """Delete an asset file."""
+    """Delete an asset file.
+
+    A file something still shows is not a file to delete, so this asks the same
+    walk the AI's ``delete_asset`` asks (``core/asset_references.asset_users``)
+    and refuses with the pages and elements named. The aftermath is the reason
+    it refuses rather than warns: unlike a device or a script, a deleted asset
+    leaves nothing behind to point somewhere else, and the panel says nothing
+    at all -- a background that has gone draws the colour underneath and an
+    icon that has gone draws nothing.
+    """
     _require_active_project(project_id)
     safe_name = _sanitize_filename(filename)
     assets_dir = _assets_dir()
@@ -313,6 +359,22 @@ async def delete_asset(project_id: str, filename: str) -> dict[str, str]:
 
     if not path.exists():
         raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Asked after the file is known to exist, so an element pointing at a name
+    # that is already gone answers "not found" here and at the AI's door alike.
+    engine = _get_engine()
+    project = getattr(engine, "project", None) if engine else None
+    if project is not None:
+        still_shown = asset_users(project, safe_name, themes=_installed_themes())
+        if still_shown:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"'{safe_name}' is still shown by {', '.join(still_shown)}. "
+                    f"Point them at another file, or delete them first, "
+                    f"then this asset can go."
+                ),
+            )
 
     path.unlink()
     log.info(f"Asset deleted: {safe_name}")

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import apply_tool_edit
+from openavc.core.asset_references import asset_users
 from openavc.utils.log_redaction import (
     MIN_SECRET_LEN,
     is_secret_key,
@@ -349,7 +350,16 @@ class SystemToolsMixin:
         return {"status": "applied", "theme_id": theme_id}
 
     async def _list_assets(self, input: dict) -> Any:
-        from openavc.api.assets import _assets_dir, ALLOWED_EXTENSIONS
+        """The uploaded files, and who still shows each one.
+
+        ``used_by`` is the same walk the delete refuses on, carried here for
+        the same reason ``list_ui_files`` carries it: the assistant is the one
+        surface that cannot see the panel, so the only way it knows a file is
+        load-bearing is being told.
+        """
+        from openavc.api.assets import (
+            _assets_dir, _installed_themes, ALLOWED_EXTENSIONS,
+        )
 
         try:
             assets_dir = _assets_dir()
@@ -357,19 +367,37 @@ class SystemToolsMixin:
             log.debug("Assets directory not available", exc_info=True)
             return {"assets": [], "total_size": 0}
 
+        engine = self._get_engine()
+        project = getattr(engine, "project", None) if engine else None
+        themes = _installed_themes() if project is not None else None
+
         assets = []
         for f in sorted(assets_dir.iterdir()):
             if f.is_file() and f.suffix.lower() in ALLOWED_EXTENSIONS:
-                assets.append({
+                entry = {
                     "name": f.name,
                     "size": f.stat().st_size,
                     "type": f.suffix.lower().lstrip("."),
-                })
+                }
+                if project is not None:
+                    entry["used_by"] = asset_users(project, f.name, themes=themes)
+                assets.append(entry)
         total_size = sum(a["size"] for a in assets)
         return {"assets": assets, "total_size": total_size}
 
     async def _delete_asset(self, input: dict) -> Any:
-        from openavc.api.assets import _assets_dir
+        """Delete an uploaded asset, unless something still shows it.
+
+        Refuses rather than reports, which is the opposite of the device and
+        script deletes beside it and the same call ``delete_ui_file`` makes: a
+        stranded device reference can be pointed somewhere else afterwards, and
+        a deleted asset leaves nothing to point -- there is no tool here that
+        uploads one back, so the bytes are gone until somebody finds the
+        original. The panel does not report it either; a background that has
+        gone draws the colour underneath and an icon that has gone draws
+        nothing at all.
+        """
+        from openavc.api.assets import _assets_dir, _installed_themes
 
         filename = input.get("filename", "")
         if not filename:
@@ -386,6 +414,25 @@ class SystemToolsMixin:
         path = assets_dir / safe_name
         if not path.exists():
             return {"error": f"Asset '{safe_name}' not found"}
+
+        # Asked after the file is known to exist, so an element pointing at a
+        # name that is already gone answers "not found" here and at the REST
+        # door alike.
+        engine = self._get_engine()
+        project = getattr(engine, "project", None) if engine else None
+        if project is not None:
+            still_shown = asset_users(
+                project, safe_name, themes=_installed_themes()
+            )
+            if still_shown:
+                return {
+                    "error": (
+                        f"'{safe_name}' is still shown by "
+                        f"{', '.join(still_shown)}. Point them at another file, "
+                        f"or delete them first, then this asset can go."
+                    ),
+                    "still_shown_by": still_shown,
+                }
 
         path.unlink()
         return {"status": "deleted", "name": safe_name}

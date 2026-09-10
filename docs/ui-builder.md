@@ -508,6 +508,7 @@ Projects can include uploaded image assets (PNG, JPG, SVG, etc.) stored in the p
 - The Asset Picker shows thumbnails of all uploaded images with search by filename
 - A warning appears when uploading images larger than 500KB with a suggestion to compress
 - Unused assets (not referenced by any element) are flagged so you can clean up
+- Deleting an asset something still shows is refused, and the message names what shows it — a page background, a control, a master element, a theme or a plugin. Point those somewhere else first. There is no undo: the only way back is uploading the file again
 - Assets are included automatically when you export a project as `.zip`
 
 ## Preview Mode

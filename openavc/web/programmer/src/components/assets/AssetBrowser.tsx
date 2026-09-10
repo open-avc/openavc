@@ -3,6 +3,7 @@ import { Trash2, X, Image as ImageIcon, Music, FolderOpen } from "lucide-react";
 import * as api from "../../api/restClient";
 import { useProjectStore } from "../../store/projectStore";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
+import { parseApiError } from "../../api/errors";
 import { Modal } from "../shared/Modal";
 
 export type AssetFilter = "all" | "image" | "audio";
@@ -178,7 +179,10 @@ export function AssetBrowser({
       await api.deleteAsset(name);
       await loadAssets();
     } catch (e) {
-      setError(String(e));
+      // The server refuses (409) while anything still shows the file, and its
+      // sentence names them. String(e) would print "ApiError: {\"detail\":...}"
+      // over the one thing worth reading.
+      setError(parseApiError(e));
     }
   };
 
@@ -431,7 +435,7 @@ export function AssetBrowser({
       {pendingDeleteAsset && (
         <ConfirmDialog
           title="Delete Asset"
-          message={`Delete "${pendingDeleteAsset}"? This cannot be undone.`}
+          message={deleteMessage(pendingDeleteAsset, assets)}
           confirmLabel="Delete"
           destructive
           onConfirm={confirmDeleteAsset}
@@ -439,6 +443,29 @@ export function AssetBrowser({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * What the delete dialog says, which depends on whether anything still shows
+ * the file.
+ *
+ * `used_by` is the server's answer -- the same walk the delete itself refuses
+ * on -- so the dialog and the refusal can never disagree about what is in use.
+ * Saying it here rather than only in the error means somebody finds out before
+ * they press a destructive button, not after. An asset the server has no
+ * opinion about (`used_by` absent) keeps the plain warning rather than
+ * claiming nothing uses it.
+ */
+export function deleteMessage(name: string, assets: api.AssetInfo[]): string {
+  const users = assets.find((a) => a.name === name)?.used_by;
+  if (!users || users.length === 0) {
+    return `Delete "${name}"? This cannot be undone.`;
+  }
+  return (
+    `"${name}" is still shown by ${users.join(", ")}. ` +
+    `Deleting it will be refused until those point somewhere else. ` +
+    `There is no undo: the file would have to be uploaded again.`
   );
 }
 
