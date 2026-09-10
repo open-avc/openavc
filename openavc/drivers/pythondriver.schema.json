@@ -68,7 +68,7 @@
         "mqtt",
         "snmp"
       ],
-      "description": "Transport the driver uses to reach the device. Use \"bridge\" for a device that has no address of its own and emits through a live bridge instance (an IR device on an emitter port); it opens no socket and routes commands via the bridge."
+      "description": "Transport the driver uses to reach the device. Use \"bridge\" for a device that has no address of its own and emits through a live bridge instance (an IR device on an emitter port); it opens no socket and routes commands via the bridge. Value \"snmp\" requires platform 0.34.0."
     },
     "transports": {
       "type": "array",

@@ -708,7 +708,9 @@ def _render_member(
     if "req" in override:
         required = override["req"]
     ts = override.get("type") or _mechanical_ts(node)
-    doc = override.get("doc", spec.node_doc(node))
+    # The Builder edits .avcdriver files, so a member's floors are the YAML
+    # enum's -- never python_enum's, whose values it cannot offer.
+    doc = override.get("doc", spec.node_doc(node, node.get("enum")))
     out = _doc_block(doc, "  ") if doc else ""
     opt = "" if required else "?"
     return out + f"  {name}{opt}: {ts};\n"

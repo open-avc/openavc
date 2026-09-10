@@ -44,12 +44,16 @@ def test_committed_artifact_matches_registry(rel_path: str) -> None:
 
 def test_python_variant_differs_only_in_the_python_tier() -> None:
     """The Python-driver schema is the YAML schema plus exactly the
-    Python-tier widenings: ssh/mqtt transports and kind:"setup" actions."""
+    Python-tier widenings: the Python-only transports, kind:"setup" actions,
+    and the platform floors that belong to a Python-only value."""
     yaml_schema = build_schema("yaml")
     python_schema = build_schema("python")
 
     t = yaml_schema["properties"]["transport"]
     t["enum"] = t["enum"] + list(spec.PYTHON_ONLY_TRANSPORTS)
+    # A since_values floor is rendered only for a value the surface publishes,
+    # so the widened enum carries floors the YAML schema must not mention.
+    t["description"] = spec.node_doc(spec.FIELDS["transport"], t["enum"])
     kind = yaml_schema["$defs"]["actionEntry"]["properties"]["kind"]
     kind["enum"] = list(spec.ACTION_KINDS)
     yaml_schema["$id"] = python_schema["$id"]
@@ -57,6 +61,28 @@ def test_python_variant_differs_only_in_the_python_tier() -> None:
     yaml_schema["description"] = python_schema["description"]
 
     assert yaml_schema == python_schema
+
+
+def test_a_floor_is_only_rendered_for_a_value_the_surface_publishes() -> None:
+    """A value floor belongs to the enum it is a member of.
+
+    `transport` is the field where the two tiers differ: "snmp" is a
+    Python-only transport with a platform floor, and a `.avcdriver` author
+    reading "Value \"snmp\" requires platform 0.34.0" would take it as
+    something they could declare on that release, which they cannot.
+    """
+    node = spec.FIELDS["transport"]
+    assert node.get("since_values"), "this test needs a field with value floors"
+    floored = next(iter(node["since_values"]))
+
+    yaml_doc = spec.node_doc(node, node["enum"])
+    python_doc = spec.node_doc(node, node["python_enum"])
+
+    assert floored not in node["enum"] and floored in node["python_enum"]
+    assert f'Value "{floored}"' not in (yaml_doc or "")
+    assert f'Value "{floored}"' in (python_doc or "")
+    # Unscoped stays as it was: every floor, for a caller that knows no enum.
+    assert f'Value "{floored}"' in (spec.node_doc(node) or "")
 
 
 def test_yaml_schema_required_matches_the_tier_tables() -> None:

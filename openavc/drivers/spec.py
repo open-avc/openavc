@@ -389,6 +389,7 @@ FIELDS = {
         'type': 'string',
         'enum': YAML_TRANSPORTS,
         'python_enum': YAML_TRANSPORTS + PYTHON_ONLY_TRANSPORTS,
+        'since_values': {'snmp': '0.34.0'},
         'doc': 'Transport the driver uses to reach the device. Use "bridge" for a device that has no address of its own and emits through a live bridge instance (an IR device on an emitter port); it opens no socket and routes commands via the bridge.',
     },
     'transports': {
@@ -2656,18 +2657,27 @@ def block_has_fixed_keys(node: dict) -> bool:
     return True
 
 
-def node_doc(node: dict) -> str | None:
+def node_doc(node: dict, values: object = None) -> str | None:
     """A registry node's documentation, its platform floor appended.
 
     The floor is written once as ``since`` and rendered from there into
     every published surface (both JSON Schemas, the Builder's types), so
     the sentence an author reads and the version the catalog enforces are
     the same annotation and cannot drift apart.
+
+    ``values`` is the enum the caller is publishing. A field whose Python
+    and YAML enums differ would otherwise carry a floor for a value the
+    surface being generated does not offer -- the YAML schema telling a
+    `.avcdriver` author what version "snmp" needs, when a YAML driver
+    cannot declare it at all.
     """
     parts = [node["doc"]] if node.get("doc") else []
     if node.get("since"):
         parts.append(f"Requires platform {node['since']}.")
+    published = None if values is None else set(values)
     for value, version in sorted((node.get("since_values") or {}).items()):
+        if published is not None and value not in published:
+            continue
         parts.append(f'Value "{value}" requires platform {version}.')
     for gate in node.get("since_with") or ():
         named = ", ".join(f'"{k}"' for k in gate["keys"])

@@ -98,12 +98,13 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
         if reg_key in node:
             value = node[reg_key]
             out[schema_key] = list(value) if isinstance(value, tuple) else value
+    enum = None
     if "enum" in node:
         enum = node["enum"]
         if tier == "python" and "python_enum" in node:
             enum = node["python_enum"]
         out["enum"] = list(enum)
-    doc = spec.node_doc(node)
+    doc = spec.node_doc(node, enum)
     if doc:
         out["description"] = doc
     if "required" in node:
