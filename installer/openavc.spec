@@ -118,6 +118,8 @@ hiddenimports = [
     'openavc.transport.osc_codec',
     'openavc.transport.ssh',
     'openavc.transport.mqtt',
+    'openavc.transport.snmp',
+    'openavc.transport.snmp_codec',
     'openavc.transport.frame_parsers',
     'openavc.transport.binary_helpers',
     'openavc.transport.wire_log',

@@ -9,7 +9,7 @@
 export const YAML_TRANSPORTS = ["tcp", "serial", "udp", "http", "osc", "bridge"] as const;
 
 /** Transports that need a Python driver (no YAML surface). */
-export const PYTHON_ONLY_TRANSPORTS = ["ssh", "mqtt"] as const;
+export const PYTHON_ONLY_TRANSPORTS = ["ssh", "mqtt", "snmp"] as const;
 
 /** Values allowed in the transports: interchangeable list. */
 export const INTERCHANGEABLE_TRANSPORTS = ["tcp", "serial", "udp", "http", "osc"] as const;

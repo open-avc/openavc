@@ -64,6 +64,7 @@ from openavc.transport import (
     mqtt,
     osc,
     serial_transport,
+    snmp,
     ssh,
     tcp,
     udp,
@@ -101,6 +102,7 @@ _TRANSPORTS = (
     osc.OSCTransport,
     mqtt.MQTTTransport,
     ssh.SSHTransport,
+    snmp.SNMPTransport,
 )
 
 # Calls that consume a coroutine without awaiting it here. Handing a coroutine

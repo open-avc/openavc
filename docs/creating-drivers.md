@@ -2353,6 +2353,81 @@ The transport exposes `await self.transport.publish(topic, payload)`, `await sel
 
 To test an MQTT driver without hardware, pair it with a `_sim.py` that subclasses `MQTTSimulator` (a minimal broker) — see the simulator guide.
 
+### SNMP Drivers (Python)
+
+Rack and infrastructure gear usually speaks **SNMP** instead of a control protocol: switched PDUs, UPSes, managed switches, environmental sensors, and some projectors and displays. Rather than sending command strings, you read and write numbered values called OIDs, which the manufacturer lists in a MIB file.
+
+SNMP is a **Python-only transport** (like SSH and MQTT). A request is a list of OIDs, not a send string, so there is nothing for the Driver Builder or an `.avcdriver` file to substitute into. Set `"transport": "snmp"` in a Python driver's `DRIVER_INFO` and the platform builds the connection for you.
+
+**SNMP v2c only.** Version 3, which adds authentication and encryption, is not supported.
+
+```python
+from openavc.drivers.base import BaseDriver
+
+OUTLET_STATE = "1.3.6.1.4.1.99999.2.1.3"   # <outlet index> appended
+LOAD_TENTHS = "1.3.6.1.4.1.99999.3.1.0"
+
+
+class MyPduDriver(BaseDriver):
+    DRIVER_INFO = {
+        "id": "my_pdu",
+        "name": "My Rack PDU",
+        "manufacturer": "Example",
+        "category": "power",
+        "version": "1.0.0",
+        "description": "Controls a switched rack PDU over SNMP.",
+        "transport": "snmp",
+        "default_config": {
+            "port": 161,
+            "community": "public",
+            "write_community": "private",
+        },
+    }
+
+    async def _post_connect(self) -> None:
+        # Enumerate the outlet table instead of assuming a count.
+        self._outlets = [
+            row.oid.rsplit(".", 1)[-1]
+            for row in await self.transport.walk(OUTLET_STATE)
+        ]
+
+    async def poll(self) -> None:
+        answered = await self.transport.get([LOAD_TENTHS])
+        load = answered[LOAD_TENTHS]
+        if not load.is_exception:
+            self.set_state("load_amps", load.value / 10)
+
+    async def send_command(self, command, params=None):
+        params = params or {}
+        if command == "outlet_on":
+            await self.transport.set(
+                [(f"{OUTLET_STATE}.{params['outlet']}", "integer", 1)]
+            )
+```
+
+Recognized config keys: `host`, `port` (161 unless the device was moved), `community`, `write_community`, `timeout`, `retries`, and `inter_command_delay`. Most devices ship a **separate write community** and refuse writes under the read one, so declare `write_community` in `default_config` for any driver that writes. When it is left out, writes go under the read community.
+
+The transport exposes:
+
+| Method | What it does |
+|--------|--------------|
+| `await self.transport.get(oids)` | Read one OID or a list. Returns varbinds keyed by OID. |
+| `await self.transport.get_value(oid)` | Read one OID and return just its value, or `None` if the device has no such object. |
+| `await self.transport.get_next(oids)` | One step past the given OID — the building block of a walk. |
+| `await self.transport.walk(root_oid)` | Enumerate a whole subtree, in device order. This is how you read a table of outlets, ports or sensors without hard-coding how many there are. |
+| `await self.transport.set(bindings)` | Write `(oid, type, value)` triples. A write carrying several values is applied all-or-nothing by the device. |
+
+Values keep their type. Each varbind carries `.oid`, `.type` and `.value`, where the type is the MIB spelling: `integer`, `string`, `oid`, `gauge32`, `counter32`, `counter64`, `timeticks` or `ip_address`. Counters and gauges are unsigned, so a byte counter past 2.1 billion reads as the number it is.
+
+An OID the device does not have is **not an error** — MIBs vary between models in a family, and asking for five values and getting four is a normal result. Those come back as varbinds with `.is_exception` set and `.value` of `None`; `get_value()` returns `None` for them. Check `.is_exception` before using a value if the OID is one an older model might lack.
+
+Two failures are worth handling differently:
+
+- **The device refuses.** A read-only OID, a value of the wrong type, a community string without write access. This raises `SnmpError`, and `str(error)` is a sentence you can show the user. The device is healthy; the request was wrong.
+- **Nothing answers.** The device is unreachable, the datagram was lost, or the community string is wrong — SNMP agents ignore a request with a bad community rather than refusing it, so a wrong community and an unplugged device look identical. After its retries the transport raises the platform's standard no-response fault and the device goes offline.
+
+To test an SNMP driver without hardware, pair it with a `_sim.py` that subclasses `SNMPSimulator` and declares a MIB — see the simulator guide.
+
 ### Creating Python Drivers in the Code View
 
 The easiest way to create a Python driver is in the Programmer IDE:

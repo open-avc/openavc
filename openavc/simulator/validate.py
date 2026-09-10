@@ -929,7 +929,7 @@ def _check_type_consistency(
 
 # Transports the simulator serves with a server of its own — one module each
 # under openavc/simulator/ (tcp_simulator, http_simulator, udp_simulator, osc_simulator,
-# mqtt_simulator, websocket_simulator). Anything else is a raw byte pipe with no
+# mqtt_simulator, websocket_simulator, snmp_simulator). Anything else is a raw byte pipe with no
 # simulator server, so it is simulated over TCP instead. That substitution is
 # the platform's own: SimulationManager._apply_sim_redirect flips a serial
 # device's transport to tcp for the duration of a simulation run precisely
@@ -939,7 +939,7 @@ def _check_type_consistency(
 # on it asks the author to break a working simulator to satisfy a string
 # comparison.
 _SIMULATOR_SERVED_TRANSPORTS = frozenset(
-    {"tcp", "http", "udp", "osc", "mqtt", "websocket"}
+    {"tcp", "http", "udp", "osc", "mqtt", "websocket", "snmp"}
 )
 
 

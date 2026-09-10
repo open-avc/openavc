@@ -25,6 +25,7 @@ from openavc.simulator.http_simulator import HTTPSimulator
 from openavc.simulator.udp_simulator import UDPSimulator
 from openavc.simulator.osc_simulator import OSCSimulator
 from openavc.simulator.mqtt_simulator import MQTTSimulator
+from openavc.simulator.snmp_simulator import SNMPSimulator
 from openavc.simulator.websocket_simulator import WebSocketSimulator
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from openavc.simulator.network_conditions import NetworkConditionLayer
@@ -167,7 +168,7 @@ class SimulatorManager:
         for _name, obj in inspect.getmembers(module, inspect.isclass):
             if (
                 issubclass(obj, BaseSimulator)
-                and obj not in (BaseSimulator, TCPSimulator, HTTPSimulator, UDPSimulator, OSCSimulator, MQTTSimulator, WebSocketSimulator)
+                and obj not in (BaseSimulator, TCPSimulator, HTTPSimulator, UDPSimulator, OSCSimulator, MQTTSimulator, WebSocketSimulator, SNMPSimulator)
                 and hasattr(obj, "SIMULATOR_INFO")
                 and obj.SIMULATOR_INFO.get("driver_id")
             ):

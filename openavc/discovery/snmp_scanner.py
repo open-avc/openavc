@@ -24,11 +24,42 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
-log = logging.getLogger("discovery.snmp")
+# The wire codec lives in the transport layer (`transport/snmp_codec.py`) so
+# the discovery sweep and the control transport share one BER implementation.
+# Re-exported here because this module was the codec's original home and is
+# still the import path the discovery tests and callers use.
+from openavc.transport.snmp_codec import (  # noqa: F401
+    ASN1_INTEGER,
+    ASN1_NULL,
+    ASN1_OCTET_STRING,
+    ASN1_OID,
+    ASN1_SEQUENCE,
+    SNMP_PORT,
+    SNMP_VERSION_2C,
+    SNMP_GET_REQUEST,
+    SNMP_GET_RESPONSE,
+    SNMP_GETNEXT_REQUEST,
+    ber_decode_any_value,
+    ber_decode_integer,
+    ber_decode_length,
+    ber_decode_oid,
+    ber_decode_string,
+    ber_encode_integer,
+    ber_encode_length,
+    ber_encode_null,
+    ber_encode_oid,
+    ber_encode_sequence,
+    ber_encode_string,
+    ber_encode_tagged,
+    ber_skip_tlv,
+    build_snmp_get,
+    build_snmp_getnext,
+    parse_snmp_request_id,
+    parse_snmp_response,
+)
 
-# SNMP constants
-SNMP_PORT = 161
-SNMP_VERSION_2C = 1  # version field value for v2c (0=v1, 1=v2c)
+
+log = logging.getLogger("discovery.snmp")
 
 # Standard MIB-II OIDs
 OIDS = {
@@ -57,391 +88,6 @@ ENT_PHYSICAL_CONTAINED_IN = "1.3.6.1.2.1.47.1.1.1.1.4"
 # almost always among the first table rows (indexes ascend from the chassis),
 # so this only guards against pathological agents with huge entity tables.
 ENTITY_WALK_LIMIT = 64
-
-# BER/ASN.1 tag constants
-ASN1_INTEGER = 0x02
-ASN1_OCTET_STRING = 0x04
-ASN1_NULL = 0x05
-ASN1_OID = 0x06
-ASN1_SEQUENCE = 0x30
-# SNMP-specific tags
-SNMP_GET_REQUEST = 0xA0
-SNMP_GETNEXT_REQUEST = 0xA1
-SNMP_GET_RESPONSE = 0xA2
-
-
-# --- BER Encoding ---
-
-
-def ber_encode_length(length: int) -> bytes:
-    """Encode a length in BER format."""
-    if length < 0x80:
-        return bytes([length])
-    elif length < 0x100:
-        return bytes([0x81, length])
-    elif length < 0x10000:
-        return bytes([0x82, (length >> 8) & 0xFF, length & 0xFF])
-    else:
-        return bytes([0x83, (length >> 16) & 0xFF, (length >> 8) & 0xFF, length & 0xFF])
-
-
-def ber_encode_integer(value: int, max_bytes: int = 4) -> bytes:
-    """Encode an integer as BER INTEGER.
-
-    Args:
-        value: Integer to encode.
-        max_bytes: Maximum byte length for the encoded value (default 4 for SNMP).
-    """
-    if value == 0:
-        payload = b"\x00"
-    elif value > 0:
-        payload = value.to_bytes((value.bit_length() + 8) // 8, "big")
-    else:
-        # Negative integers (not needed for SNMP GET, but complete)
-        byte_len = (value.bit_length() + 9) // 8
-        payload = (value + (1 << (byte_len * 8))).to_bytes(byte_len, "big")
-    if len(payload) > max_bytes:
-        raise ValueError(f"Integer too large for BER encoding: {len(payload)} bytes > {max_bytes}")
-    return bytes([ASN1_INTEGER]) + ber_encode_length(len(payload)) + payload
-
-
-def ber_encode_string(value: str) -> bytes:
-    """Encode a string as BER OCTET STRING."""
-    payload = value.encode("utf-8")
-    return bytes([ASN1_OCTET_STRING]) + ber_encode_length(len(payload)) + payload
-
-
-def ber_encode_null() -> bytes:
-    """Encode a BER NULL value."""
-    return bytes([ASN1_NULL, 0x00])
-
-
-def _encode_base128(value: int) -> list[int]:
-    """Encode one OID subidentifier in base-128 with continuation bits."""
-    if value < 0x80:
-        return [value]
-    encoded = [value & 0x7F]
-    value >>= 7
-    while value > 0:
-        encoded.append(0x80 | (value & 0x7F))
-        value >>= 7
-    encoded.reverse()
-    return encoded
-
-
-def ber_encode_oid(oid_str: str) -> bytes:
-    """Encode an OID string as BER OBJECT IDENTIFIER.
-
-    Example: '1.3.6.1.2.1.1.1.0' -> encoded bytes
-    """
-    parts = [int(p) for p in oid_str.split(".")]
-    if len(parts) < 2:
-        return bytes([ASN1_OID, 0x00])
-
-    # First two components combine into one subidentifier, (40 * first) +
-    # second (X.690 8.19.4). Like every subidentifier it is base-128
-    # encoded — under arc 2 the combined value can be >= 128.
-    payload = _encode_base128(40 * parts[0] + parts[1])
-
-    # Remaining components use base-128 encoding
-    for p in parts[2:]:
-        payload.extend(_encode_base128(p))
-
-    data = bytes(payload)
-    return bytes([ASN1_OID]) + ber_encode_length(len(data)) + data
-
-
-def ber_encode_sequence(items: list[bytes]) -> bytes:
-    """Encode items as a BER SEQUENCE."""
-    payload = b"".join(items)
-    return bytes([ASN1_SEQUENCE]) + ber_encode_length(len(payload)) + payload
-
-
-def ber_encode_tagged(tag: int, items: list[bytes]) -> bytes:
-    """Encode items with a context-specific tag (for SNMP PDU types)."""
-    payload = b"".join(items)
-    return bytes([tag]) + ber_encode_length(len(payload)) + payload
-
-
-# --- BER Decoding ---
-
-
-def ber_decode_length(data: bytes, offset: int) -> tuple[int, int]:
-    """Decode a BER length. Returns (length, new_offset)."""
-    if offset >= len(data):
-        return 0, offset
-
-    first = data[offset]
-    offset += 1
-
-    if first < 0x80:
-        return first, offset
-    elif first == 0x81:
-        if offset >= len(data):
-            return 0, offset
-        return data[offset], offset + 1
-    elif first == 0x82:
-        if offset + 1 >= len(data):
-            return 0, offset
-        return (data[offset] << 8) | data[offset + 1], offset + 2
-    elif first == 0x83:
-        if offset + 2 >= len(data):
-            return 0, offset
-        return (data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2], offset + 3
-    return 0, offset
-
-
-def ber_decode_integer(data: bytes, offset: int) -> tuple[int, int]:
-    """Decode a BER INTEGER. Returns (value, new_offset)."""
-    if offset >= len(data) or data[offset] != ASN1_INTEGER:
-        return 0, offset
-    offset += 1
-    length, offset = ber_decode_length(data, offset)
-    if offset + length > len(data):
-        return 0, offset
-    value = int.from_bytes(data[offset:offset + length], "big", signed=True)
-    return value, offset + length
-
-
-def ber_decode_string(data: bytes, offset: int) -> tuple[str, int]:
-    """Decode a BER OCTET STRING. Returns (string, new_offset)."""
-    if offset >= len(data) or data[offset] != ASN1_OCTET_STRING:
-        return "", offset
-    offset += 1
-    length, offset = ber_decode_length(data, offset)
-    if offset + length > len(data):
-        return "", offset
-    value = data[offset:offset + length].decode("utf-8", errors="replace")
-    return value, offset + length
-
-
-def ber_decode_oid(data: bytes, offset: int) -> tuple[str, int]:
-    """Decode a BER OID. Returns (oid_string, new_offset)."""
-    if offset >= len(data) or data[offset] != ASN1_OID:
-        return "", offset
-    offset += 1
-    length, offset = ber_decode_length(data, offset)
-    if length == 0 or offset + length > len(data):
-        return "", offset
-
-    oid_bytes = data[offset:offset + length]
-    end_offset = offset + length
-
-    # Decode base-128 subidentifiers (the first one may be multi-byte too)
-    subids: list[int] = []
-    i = 0
-    while i < len(oid_bytes):
-        value = 0
-        while i < len(oid_bytes):
-            byte = oid_bytes[i]
-            value = (value << 7) | (byte & 0x7F)
-            i += 1
-            if byte & 0x80 == 0:
-                break
-        subids.append(value)
-
-    # First subidentifier encodes the first two OID components as
-    # (40 * first) + second; only arc 2 allows a second component >= 40
-    # (X.690 8.19.4).
-    first = subids[0]
-    if first < 40:
-        parts = [0, first]
-    elif first < 80:
-        parts = [1, first - 40]
-    else:
-        parts = [2, first - 80]
-    parts.extend(subids[1:])
-
-    return ".".join(str(p) for p in parts), end_offset
-
-
-def ber_skip_tlv(data: bytes, offset: int) -> int:
-    """Skip over a TLV (type-length-value) element. Returns new offset."""
-    if offset >= len(data):
-        return offset
-    offset += 1  # Skip tag
-    length, offset = ber_decode_length(data, offset)
-    return offset + length
-
-
-def ber_decode_any_value(data: bytes, offset: int) -> tuple[str, int]:
-    """Decode any BER value as a string for display. Returns (string, new_offset)."""
-    if offset >= len(data):
-        return "", offset
-
-    tag = data[offset]
-
-    if tag == ASN1_OCTET_STRING:
-        return ber_decode_string(data, offset)
-    elif tag == ASN1_INTEGER:
-        val, new_off = ber_decode_integer(data, offset)
-        return str(val), new_off
-    elif tag == ASN1_OID:
-        return ber_decode_oid(data, offset)
-    elif tag == ASN1_NULL:
-        return "", offset + 2
-    else:
-        # Unknown type — skip it
-        offset += 1
-        length, offset = ber_decode_length(data, offset)
-        if offset + length <= len(data):
-            raw = data[offset:offset + length]
-            # Try decoding as UTF-8 string
-            try:
-                return raw.decode("utf-8", errors="replace"), offset + length
-            except (UnicodeDecodeError, LookupError):
-                return raw.hex(), offset + length
-        return "", offset + length
-
-
-# --- SNMP Packet Building ---
-
-
-def _build_snmp_request(
-    pdu_type: int, community: str, oid_strs: list[str], request_id: int,
-) -> bytes:
-    """Build an SNMP v2c request packet with the given PDU type."""
-    # Build variable bindings: list of (OID, NULL) pairs
-    varbinds = []
-    for oid_str in oid_strs:
-        varbind = ber_encode_sequence([
-            ber_encode_oid(oid_str),
-            ber_encode_null(),
-        ])
-        varbinds.append(varbind)
-
-    varbind_list = ber_encode_sequence(varbinds)
-
-    pdu = ber_encode_tagged(pdu_type, [
-        ber_encode_integer(request_id),
-        ber_encode_integer(0),   # error-status
-        ber_encode_integer(0),   # error-index
-        varbind_list,
-    ])
-
-    # Build message: SEQUENCE { version, community, PDU }
-    message = ber_encode_sequence([
-        ber_encode_integer(SNMP_VERSION_2C),
-        ber_encode_string(community),
-        pdu,
-    ])
-
-    return message
-
-
-def build_snmp_get(community: str, oid_strs: list[str], request_id: int) -> bytes:
-    """Build an SNMP v2c GET-REQUEST packet.
-
-    Args:
-        community: SNMP community string (e.g., 'public')
-        oid_strs: List of OID strings to query
-        request_id: Unique request identifier
-
-    Returns:
-        Complete SNMP packet bytes.
-    """
-    return _build_snmp_request(SNMP_GET_REQUEST, community, oid_strs, request_id)
-
-
-def build_snmp_getnext(community: str, oid_strs: list[str], request_id: int) -> bytes:
-    """Build an SNMP v2c GETNEXT-REQUEST packet (one step of a walk)."""
-    return _build_snmp_request(SNMP_GETNEXT_REQUEST, community, oid_strs, request_id)
-
-
-def parse_snmp_response(data: bytes) -> dict[str, str]:
-    """Parse an SNMP GET-RESPONSE and extract OID -> value pairs.
-
-    Returns dict of {oid_string: value_string}.
-    """
-    result: dict[str, str] = {}
-
-    try:
-        offset = 0
-
-        # Outer SEQUENCE
-        if offset >= len(data) or data[offset] != ASN1_SEQUENCE:
-            return result
-        offset += 1
-        _msg_len, offset = ber_decode_length(data, offset)
-
-        # Version (INTEGER)
-        _version, offset = ber_decode_integer(data, offset)
-
-        # Community (OCTET STRING)
-        _community, offset = ber_decode_string(data, offset)
-
-        # PDU — should be GetResponse (0xA2)
-        if offset >= len(data) or data[offset] != SNMP_GET_RESPONSE:
-            return result
-        offset += 1
-        _pdu_len, offset = ber_decode_length(data, offset)
-
-        # Request ID
-        _req_id, offset = ber_decode_integer(data, offset)
-
-        # Error status
-        error_status, offset = ber_decode_integer(data, offset)
-        if error_status != 0:
-            return result
-
-        # Error index
-        _error_index, offset = ber_decode_integer(data, offset)
-
-        # VarBindList (SEQUENCE)
-        if offset >= len(data) or data[offset] != ASN1_SEQUENCE:
-            return result
-        offset += 1
-        varbind_list_len, offset = ber_decode_length(data, offset)
-        varbind_end = offset + varbind_list_len
-
-        # Parse each VarBind (SEQUENCE { OID, value })
-        while offset < varbind_end and offset < len(data):
-            if data[offset] != ASN1_SEQUENCE:
-                break
-            offset += 1
-            _vb_len, offset = ber_decode_length(data, offset)
-
-            # OID
-            oid_str, offset = ber_decode_oid(data, offset)
-
-            # Value (any type)
-            value_str, offset = ber_decode_any_value(data, offset)
-
-            if oid_str:
-                result[oid_str] = value_str
-
-    except (ValueError, IndexError, KeyError):
-        log.debug("Failed to parse SNMP response", exc_info=True)
-
-    return result
-
-
-def parse_snmp_request_id(data: bytes) -> int | None:
-    """Extract the request-id from an SNMP GET-RESPONSE packet.
-
-    Returns None if the packet isn't a parseable GET-RESPONSE. Used to
-    match responses to in-flight requests so stale, duplicated, or
-    spoofed datagrams can't be attributed to the wrong query.
-    """
-    try:
-        offset = 0
-        if offset >= len(data) or data[offset] != ASN1_SEQUENCE:
-            return None
-        offset += 1
-        _msg_len, offset = ber_decode_length(data, offset)
-        _version, offset = ber_decode_integer(data, offset)
-        _community, offset = ber_decode_string(data, offset)
-        if offset >= len(data) or data[offset] != SNMP_GET_RESPONSE:
-            return None
-        offset += 1
-        _pdu_len, offset = ber_decode_length(data, offset)
-        if offset >= len(data) or data[offset] != ASN1_INTEGER:
-            return None
-        request_id, _ = ber_decode_integer(data, offset)
-        return request_id
-    except (ValueError, IndexError):
-        return None
-
 
 # --- IANA Private Enterprise Number extraction ---
 # sysObjectID format: 1.3.6.1.4.1.{PEN}.<rest>. Core does not ship a

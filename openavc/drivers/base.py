@@ -1245,6 +1245,34 @@ class BaseDriver(ABC):
             self.transport = await MQTTTransport.create(
                 **self._transport_kwargs(transport_type, kwargs)
             )
+        elif transport_type == "snmp":
+            from openavc.transport.snmp import SNMPTransport
+            from openavc.transport.snmp_codec import SNMP_PORT
+
+            host = self.config.get("host", "")
+            port = int(self.config.get("port", SNMP_PORT) or SNMP_PORT)
+
+            # Request/response only: SNMP has no inbound byte stream, so
+            # there is no on_data. A device that also sends traps needs a
+            # push listener, which is a separate channel from this one.
+            # `write_community` defaults to the read community inside the
+            # transport, because most agents ship them separate and a driver
+            # that only reads should not have to declare both.
+            kwargs = dict(
+                host=host,
+                port=port,
+                community=self.config.get("community", "public"),
+                write_community=self.config.get("write_community") or None,
+                timeout=float(self.config.get("timeout", 2.0) or 2.0),
+                retries=int(self.config.get("retries", 1) or 0),
+                on_disconnect=self._handle_transport_disconnect,
+                inter_command_delay=self.config.get("inter_command_delay", 0.0),
+                name=self.device_id,
+            )
+            self.transport = SNMPTransport(
+                **self._transport_kwargs(transport_type, kwargs)
+            )
+            await self.transport.open(local_addr=control_ip or None)
         else:
             raise ValueError(f"Unsupported transport type: {transport_type}")
 

@@ -58,7 +58,11 @@ YAML_TRANSPORTS: tuple[str, ...] = ("tcp", "serial", "udp", "http", "osc", "brid
 
 # Transports only a Python driver can use — they need driver code (message
 # routing hooks, session handling) that the declarative runtime doesn't model.
-PYTHON_ONLY_TRANSPORTS: tuple[str, ...] = ("ssh", "mqtt")
+# "snmp" is here because a request is an OID list, not a send string: the
+# declarative command/response model has nothing to substitute into and no
+# reply text to match, so a YAML mapping would be a different grammar rather
+# than a new value for this field.
+PYTHON_ONLY_TRANSPORTS: tuple[str, ...] = ("ssh", "mqtt", "snmp")
 
 # Transports a driver may list in its `transports:` interchangeable set (a
 # text protocol whose wire strings are byte-identical over the network or a
