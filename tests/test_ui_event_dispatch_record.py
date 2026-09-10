@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from openavc.core.engine import Engine
@@ -98,7 +99,13 @@ async def test_a_command_that_raised_is_not_reported_as_sent(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_failure_with_nothing_to_say_still_says_something(tmp_path) -> None:
+@pytest.mark.parametrize("timeout_type", [
+    TimeoutError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout,
+])
+@pytest.mark.parametrize("host", ["10.0.0.9", ""])
+async def test_a_failure_with_nothing_to_say_still_says_something(
+    tmp_path, timeout_type, host,
+) -> None:
     """A bare timeout stringifies to nothing at all.
 
     The record is the last trace of the failure -- the action list carries on
@@ -114,10 +121,11 @@ async def test_a_failure_with_nothing_to_say_still_says_something(tmp_path) -> N
         ]}},
     }])
     engine.state.set("device.acme_projector.name", "Ceiling Projector", source="test")
-    engine.state.set("device.acme_projector.host", "10.0.0.9", source="test")
+    if host:
+        engine.state.set("device.acme_projector.host", host, source="test")
 
     async def send(device_id, command, params):
-        raise TimeoutError
+        raise timeout_type("")
 
     engine.devices.send_command = send
 
@@ -129,7 +137,10 @@ async def test_a_failure_with_nothing_to_say_still_says_something(tmp_path) -> N
     # The device is named the way the room names it, not by its id, and the
     # address is there because that is what somebody has to go and check.
     assert "Ceiling Projector" in message
-    assert "10.0.0.9" in message
+    if host:
+        assert host in message
+    assert "did not respond in time" in message
+    assert "retry" in message
 
 
 @pytest.mark.asyncio

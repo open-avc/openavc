@@ -10,6 +10,8 @@ from __future__ import annotations
 import errno
 import re
 
+import httpx
+
 
 def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
     """
@@ -34,11 +36,14 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
         )
 
     # Timeout
-    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+    if isinstance(exc, (
+        TimeoutError, asyncio.TimeoutError,
+        httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout,
+    )):
+        target = f"{device} ({host})" if device and host else device or host or "The device"
         return (
-            f"Connection timed out for{device_label}. "
-            f"The device at {host_label} is not responding. "
-            "Check the network connection and that the correct port is configured."
+            f"{target} did not respond in time. "
+            "Check its power, network connection and configured port, then retry."
         )
 
     # Connection reset / broken pipe

@@ -534,6 +534,9 @@ went wrong. It moves out of the way of the control that was just pressed, one
 message shows at a time however many times somebody presses, and a tap clears
 it early.
 
+If a device does not respond in time, the message names it and asks you to check
+its power, network connection and configured port before retrying.
+
 It only appears when something failed. A control that works is silent, and the
 rest of a press still runs when one action in it fails, so a button that turns
 on a projector and dims the lights still dims the lights.
