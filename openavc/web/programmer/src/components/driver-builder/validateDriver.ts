@@ -82,13 +82,13 @@ const PLACEHOLDER_RE = /\{(\w+)\}/g;
 
 // ── Transport ↔ command-shape routing ──────────────────────────────────
 // The runtime routes each command/setting-write by SHAPE, not by the
-// driver's transport (configurable.py): anything with an `address` goes to
-// the OSC sender, else `path`/`method` goes to HTTP, else the raw `send`
-// string. These helpers give the editor the same routing knowledge, so the
+// driver's transport (configurable.py): a `udp` block goes out as a datagram
+// beside the transport, else anything with an `address` goes to the OSC
+// sender, else `path`/`method` goes to HTTP, else the raw `send` string. These helpers give the editor the same routing knowledge, so the
 // Live Test panel can say which sender a command will reach and a transport
 // switch can strip the fields the new sender would ignore.
 
-export type CommandRoute = "osc" | "http" | "raw";
+export type CommandRoute = "osc" | "http" | "raw" | "udp";
 
 /** Fields that route a definition to a specific sender, or ride along with it. */
 const OSC_SHAPE_FIELDS = ["address", "args"] as const;
@@ -101,7 +101,11 @@ export function commandRoute(cmd: {
   address?: string;
   path?: string;
   method?: string;
+  udp?: unknown;
 }): CommandRoute {
+  // A udp: block is a datagram beside the transport, on any transport, and
+  // the runtime takes it before it looks at the other shapes.
+  if (cmd.udp !== undefined && cmd.udp !== null) return "udp";
   if (cmd.address !== undefined) return "osc";
   if (cmd.path !== undefined || cmd.method !== undefined) return "http";
   return "raw";

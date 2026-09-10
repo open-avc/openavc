@@ -953,6 +953,7 @@ set_input:
 - `raw`: Optional. Set `raw: true` to send this command's `send` string exactly as written, skipping the driver's `command_prefix` / `command_suffix` framing (below). Use it for the odd command that doesn't share the common frame.
 - `available_offline`: Optional. Set `available_offline: true` to let the command run while the device is offline. By default a command sent to a disconnected device is refused, which is right for anything that talks over the control link. Use it only where the command needs no live connection: the standard case is a Wake-on-LAN power on, which sends a magic packet so a macro, schedule, or panel button can wake a device that is fully off the network. Parameter validation still runs, and a Quick Action button promoted from the command stays available while the device is offline instead of hiding. Requires platform 0.24.0.
 - `restarts_device_for`: Optional, seconds (1-600). The mirror of `available_offline`: that one says a command works while the device is away, this one says a command *makes* it go away. Set it when sending the command restarts the device and takes its control channel off the network with it, which a signage display doing a full boot on power-on will, and a reboot or factory-reset command almost always does. For that long the platform reports the device as restarting rather than as a fault: no `offline_reason` is published, so nothing counts it as an error or alerts on it, the device card says it is coming back, and a panel control bound to it says the same instead of telling somebody to check the network. The window ends the moment the device reconnects, when the seconds run out, or immediately if a fault appears that a person has to fix (a rejected login, an untrusted certificate). Measure the gap on real hardware and round up; leave it unset when the control channel survives the command, as it does on a display that stays reachable in standby or a projector that reports a warming state. Requires platform 0.34.0.
+- `udp`: Optional. Send this command as one UDP datagram beside the driver's main transport instead of over it: a Wake-on-LAN packet to a display in standby, or a message to a signage presentation's UDP receiver. A command declares `udp` *or* `send` / `path` / `address`, never two of them. The block and its two forms are under **Sending a UDP datagram beside the main transport** below. Requires platform 0.34.0.
 - `help`: Optional description of what the command does. Shown in the Programmer IDE command testing panel, macro editor, UI builder, and used by the AI assistant to understand commands.
 
 > **Command framing.** When a text protocol wraps every command in a fixed header and terminator, declare them once at the driver level with `command_prefix` and `command_suffix` and author bare `send` strings. For example, `command_prefix: "!1"` and `command_suffix: "\r"` turn a command whose `send` is `PWR01` into `!1PWR01\r` on the wire. Both are opt-in and byte-stream only (TCP/serial/UDP); an OSC or HTTP command is never framed, and a single command can opt out with `raw: true`. To poll a framed command, list its **name** in `polling.queries` (it runs as that command, so the frame is applied and the response is matched) rather than re-typing the framed string.
@@ -1083,6 +1084,44 @@ get_status:
 On a command with exactly one `child_id` parameter, `sets` keys and `query_for` may instead name state variables **of that parameter's child type** — the simulator then applies the effect to the addressed child's own state and answers from it, so a `set_zone_level` command moves only the zone it names. Names the child type doesn't declare still resolve against the device-level variables.
 
 Declared semantics always beat name inference. Commands whose names already follow the conventions need nothing.
+
+**Sending a UDP datagram beside the main transport (`udp`).** Some devices take one message on a channel other than their control link: a display in standby has closed its LAN port and only a Wake-on-LAN packet brings it back, and a signage player's presentation listens for commands on a UDP port of its own while the player is controlled over HTTP. A command with a `udp` block sends one datagram from a socket opened for the send and closed after it (requires platform 0.34.0). It needs no connection, so paired with `available_offline: true` it runs while the device is unreachable, which is the whole point of a wake. The block takes one of two forms:
+
+```yaml
+# The wake-on-LAN recipe: a power_on that works while the display is off the network.
+default_config:
+  mac_address: ""            # typed in for a display that has never connected
+config_schema:
+  mac_address: { type: string, label: MAC Address, description: "Learned on every connection; fill in to wake a display that has never connected." }
+state_variables:
+  mac_address: { type: string, label: MAC Address }   # the driver learns it from the device
+commands:
+  power_on:
+    label: Power On
+    available_offline: true
+    udp:
+      magic_packet: mac_address   # the field holding the MAC: state first, then config
+    sets: { power: true }         # so the simulated display comes on too
+
+# A message to a presentation's UDP receiver, on a port that is a config field.
+config_schema:
+  udp_port: { type: integer, label: UDP Receiver Port, default: 5000 }
+commands:
+  send_udp_message:
+    label: Send UDP Message
+    udp:
+      port: "{udp_port}"
+      payload: "{message}"
+    params:
+      message: { type: string, required: true, label: Message }
+```
+
+- `magic_packet`: names the state variable or config field that holds the device's MAC address. A MAC the device reported (state) wins over one typed into config, so declare both a state variable and a config field of the same name to learn it on connect and still wake a device that has never connected. The packet (six `0xFF` bytes, then the MAC sixteen times) goes to the broadcast address *and* directly to `host`, so a switch that filters broadcast between subnets does not stop it. Port defaults to 9. A command run before any MAC is known is refused with a message that says so.
+- `payload`: the datagram bytes. `{param}` and `{config}` placeholders and the `\r`, `\n`, `\xHH` escapes work exactly as in `send`. The datagram is **not** framed by `command_prefix` / `command_suffix` or `send_frame`: the side channel speaks its own protocol. `port` is required, as a number or as a `{config_field}` placeholder so it can be set per device.
+- `host`: where the datagram goes. Defaults to the device's own host; a `{config_field}` works here too.
+- `broadcast: true`: send the payload to 255.255.255.255 instead of `host`. A magic packet always broadcasts as well as sending to the host.
+
+In the Driver Builder, tick **Send over UDP instead of the device connection** on the command and choose between a message and a magic packet. The Test tab's dry run shows the datagram and every address it goes to. In the simulator, a device with a `udp` command also listens for datagrams on its port: the datagram appears in the Simulator UI's protocol log, a payload runs through the same command pipeline as a line on the transport, and a magic packet applies the command's declared `sets`, so a simulated display wakes like a real one.
 
 #### `actions` (Quick Action buttons)
 
@@ -2663,14 +2702,50 @@ Everything else — the clean-slate reset, the connected declare and event, poll
 
 **Important**: If you do build a platform transport by hand anywhere, always pass `name=self.device_id` so sent and received data appears in the device log under the right device.
 
-### Custom Transport: UDP / Wake-on-LAN
+### A datagram beside the transport: `send_udp` and `wake_on_lan`
 
-For devices that don't use persistent connections, override both `connect()` and `disconnect()`:
+A Python driver that has to send one UDP datagram somewhere other than its control link, a Wake-on-LAN packet or a message to a presentation's UDP receiver, calls the two `BaseDriver` helpers instead of opening a socket of its own. Both open a socket for the send and close it after, need no connection, and put the bytes in the device log; while the device is simulated the platform points them at the simulator, so the datagram shows in the protocol log instead of leaving the box.
 
 ```python
-class WakeOnLANDriver(BaseDriver):
+class MyDisplayDriver(BaseDriver):
     DRIVER_INFO = {
-        "id": "wake_on_lan",
+        # ...
+        "commands": {
+            # Runs while the display is off the network: that is what a wake is for.
+            "power_on": {"label": "Power On", "available_offline": True},
+            "send_udp_message": {
+                "label": "Send UDP Message",
+                "params": {"message": {"type": "string", "required": True}},
+            },
+        },
+    }
+
+    async def send_command(self, command: str, params=None) -> Any:
+        params = params or {}
+        if command == "power_on":
+            # Six 0xFF bytes then the MAC sixteen times, to the broadcast address
+            # and directly to the host. Raises ValueError for a MAC that is not one;
+            # returns the MAC normalized to aa:bb:cc:dd:ee:ff.
+            mac = self.get_state("mac_address") or self.config.get("mac_address", "")
+            return await self.wake_on_lan(mac)
+        if command == "send_udp_message":
+            # One datagram to host:port (host defaults to the device's own).
+            await self.send_udp(
+                str(params["message"]).encode("utf-8"),
+                port=int(self.config.get("udp_port", 0)),
+            )
+            return True
+        ...
+```
+
+`send_udp(payload, host=None, port=None, broadcast=False)` sends `payload` to `host:port`, or to 255.255.255.255 with `broadcast=True`; a missing port or host is a `ValueError`. `wake_on_lan(mac, host=None, port=9)` builds the magic packet and sends it twice, broadcast and direct; the direct send is best effort, so an unroutable host is logged, not raised. `openavc.drivers.base.magic_packet(mac)` and `normalize_mac(value)` are the pieces, importable when a driver wants the bytes or the normalized address on its own.
+
+A driver whose *whole* protocol is datagrams (a video wall splicer, some lighting) uses the `udp` transport instead, where `self.transport` is a `UDPTransport` with a persistent target and `send_and_wait`. For a device with no persistent connection at all, override both `connect()` and `disconnect()`:
+
+```python
+class BeaconDriver(BaseDriver):
+    DRIVER_INFO = {
+        "id": "beacon",
         "transport": "udp",
         # ...
     }
@@ -2685,14 +2760,6 @@ class WakeOnLANDriver(BaseDriver):
         self._connected = False
         self.set_state("connected", False)
         await self.events.emit(f"device.disconnected.{self.device_id}")
-
-    async def send_command(self, command: str, params=None) -> Any:
-        if command == "wake":
-            # Create a temporary UDP socket, send, close
-            udp = UDPTransport(name=self.device_id)
-            await udp.open(allow_broadcast=True)
-            await udp.send(magic_packet, "255.255.255.255", 9)
-            udp.close()
 ```
 
 **Reachability for UDP drivers.** UDP is purely connectionless — there's no `verify()` probe and no socket-level disconnect signal. If your device is meant to be bidirectional (i.e., you poll status, not just fire-and-forget like Wake-on-LAN), declare a positive `poll_interval` in `default_config` and implement `poll()` to send a status query. A successful round-trip keeps `connected: True`; consecutive failures flip it to `False` and start auto-reconnect. Without polling, the platform has no way to know the device went away and `connected` stays `True` against a dead host. The Wake-on-LAN example above is the rare case where omitting polling is correct, because there's nothing to read back.
@@ -2971,6 +3038,8 @@ These are available on every driver via the `BaseDriver` base class:
 | `await self._verify_reachable(host, port)` | Returns True if a TCP connection opens within the timeout |
 | `await self.transport.send(data)` | Send raw bytes to the device |
 | `await self.transport.send_and_wait(data, timeout=5)` | Send and wait for the next response — see below |
+| `await self.send_udp(payload, host=None, port=None, broadcast=False)` | One UDP datagram beside the transport, from a socket opened for the send; needs no connection — see "A datagram beside the transport" above |
+| `await self.wake_on_lan(mac, host=None, port=9)` | The Wake-on-LAN magic packet for `mac`, to the broadcast address and to the host; returns the MAC normalized |
 | `self.device_id` | The device's ID (e.g., `"projector1"`) |
 | `self.config` | The device's config dict from project.avc |
 | `self.events` | The EventBus instance (for emitting custom events) |

@@ -127,7 +127,8 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   queryEntry: new Set(["query_for", "send", "when"]),
   paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
-  commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets"]),
+  udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
+  commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "group", "json_path", "map", "state", "type", "value"]),
@@ -310,8 +311,48 @@ export interface DriverParamDef {
 }
 
 /**
- * A command must declare one of: send (TCP/serial/UDP), path/method (HTTP), or
- * address (OSC).
+ * Send this command as one UDP datagram beside the driver's main transport,
+ * from a socket opened for the send and closed after it. Needs no connection,
+ * so with available_offline it runs while the device is unreachable: the wake
+ * a display in standby needs, or a message to a signage presentation's UDP
+ * receiver. Declare payload or magic_packet, never both. The datagram is not
+ * framed by command_prefix / command_suffix or send_frame; the side channel
+ * speaks its own protocol.
+ */
+export interface DriverUdpSend {
+  /**
+   * Where the datagram goes. Default: the device's own host. {config}
+   * placeholders are substituted.
+   */
+  host?: string;
+  /**
+   * UDP port to send to: a number, or a {config} placeholder naming a config
+   * field that holds one. Required with payload; a magic_packet defaults to 9.
+   */
+  port?: number | string;
+  /**
+   * The datagram bytes. {param} and {config} placeholders and the \xHH, \r, \n
+   * escapes work as in send.
+   */
+  payload?: string;
+  /**
+   * Send a Wake-on-LAN magic packet instead of a payload. Names the state
+   * variable or config field holding the device's MAC address; a value the
+   * device reported (state) wins over one typed into config. The packet goes
+   * to the broadcast address and directly to host.
+   */
+  magic_packet?: string;
+  /**
+   * Send the payload to the broadcast address (255.255.255.255) instead of
+   * host. Default false. A magic packet always broadcasts as well as sending
+   * to host.
+   */
+  broadcast?: boolean;
+}
+
+/**
+ * A command must declare one of: send (TCP/serial/UDP), path/method (HTTP),
+ * address (OSC), or udp (a datagram beside the main transport).
  */
 export interface DriverCommandDef {
   label: string;
@@ -374,6 +415,8 @@ export interface DriverCommandDef {
    * regardless of connection state. Requires platform 0.24.0.
    */
   available_offline?: boolean;
+  /** Requires platform 0.34.0. */
+  udp?: DriverUdpSend;
   /**
    * Seconds this command takes the device's control channel away for, because
    * sending it restarts the device. The mirror of available_offline: that one

@@ -1325,6 +1325,7 @@ function WirePreview({
   }
 
   const headers = Object.entries(preview.headers ?? {});
+  const targets = preview.udp_targets ?? [];
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
       {visibleBytes(preview.wire)}
@@ -1332,6 +1333,9 @@ function WirePreview({
         <span key={k}>{`\n${k}: ${v}`}</span>
       ))}
       {preview.body ? `\n${visibleBytes(preview.body)}` : ""}
+      {targets.length > 0 && (
+        <span style={muted}>{`\nas a UDP datagram to ${targets.join(" and ")}`}</span>
+      )}
     </span>
   );
 }

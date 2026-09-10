@@ -328,6 +328,39 @@ CASES: dict[str, Any] = {
     "commands_not_mapping": _d(commands=["noop"]),
     "command_not_dict": _d(commands={"noop": "NOOP\r"}),
     "command_without_send_path_address": _d(commands={"noop": {"label": "No-op"}}),
+    "command_two_shapes": _d(
+        commands={"wake": {"send": "PWR ON\r", "udp": {"magic_packet": "mac_address"}}},
+        config_schema={"mac_address": {"type": "string"}},
+    ),
+    "command_udp_not_mapping": _d(commands={"wake": {"udp": "mac_address"}}),
+    "command_udp_payload_and_magic_packet": _d(
+        commands={"wake": {"udp": {"port": 9, "payload": "WAKE", "magic_packet": "mac_address"}}},
+        config_schema={"mac_address": {"type": "string"}},
+    ),
+    "command_udp_neither_payload_nor_magic_packet": _d(
+        commands={"wake": {"udp": {"port": 9}}},
+    ),
+    "command_udp_payload_without_port": _d(
+        commands={"say": {"udp": {"payload": "HELLO"}}},
+    ),
+    "command_udp_port_out_of_range": _d(
+        commands={"say": {"udp": {"port": 70000, "payload": "HELLO"}}},
+    ),
+    "command_udp_port_not_a_number": _d(
+        commands={"say": {"udp": {"port": "nine", "payload": "HELLO"}}},
+    ),
+    "command_udp_port_undeclared_config_field": _d(
+        commands={"say": {"udp": {"port": "{udp_port}", "payload": "HELLO"}}},
+    ),
+    "command_udp_magic_packet_undeclared_field": _d(
+        commands={"wake": {"udp": {"magic_packet": "mac_address"}}},
+    ),
+    "command_udp_host_not_string": _d(
+        commands={"say": {"udp": {"host": 10, "port": 9, "payload": "HELLO"}}},
+    ),
+    "command_udp_broadcast_not_bool": _d(
+        commands={"say": {"udp": {"port": 9, "payload": "HELLO", "broadcast": "yes"}}},
+    ),
     # Retired alias: `string:` was once accepted for `send:` — a command
     # carrying only the old spelling must fail like any send-less command.
     "command_legacy_string_alias": _d(commands={"noop": {"string": "NOOP\r"}}),

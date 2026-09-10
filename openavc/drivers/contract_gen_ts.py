@@ -32,6 +32,7 @@ BANNER = """\
 DEF_TS_NAMES: dict[str, str] = {
     "enumValue": "EnumOption",
     "commandEntry": "DriverCommandDef",
+    "udpSendEntry": "DriverUdpSend",
     "paramEntry": "DriverParamDef",
     "oscArg": "DriverOscArg",
     "mappingEntry": "DriverResponseMapping",
@@ -182,6 +183,14 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
             "map": _D(type="Record<string, string | number>"),
         },
         _D(),
+    ),
+    (
+        "DriverUdpSend",
+        lambda: spec.DEFS["udpSendEntry"],
+        {
+            "port": _D(type="number | string"),
+        },
+        _D(all_optional=True),
     ),
     (
         "DriverCommandDef",

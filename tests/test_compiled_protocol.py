@@ -142,6 +142,21 @@ def test_send_regex_bare_placeholders_and_escaping():
     assert send_regex("1Z", {}) == "1Z"
 
 
+def test_send_regex_escapes_literal_parentheses():
+    # A protocol whose command codes include '(' and ')' (a display's
+    # backlight-off is "s(000"): the parentheses are wire bytes, not groups.
+    # The old scan took the first '(' as the start of an inserted capture
+    # and left it unescaped, so the auto-generated simulator handler for
+    # such a command could never match it.
+    assert send_regex("s(000", {}) == r"s\(000"
+    assert send_regex("s){mode}", {"mode": {"type": "string"}}) == r"s\)(.+)"
+    import re as _re
+    assert _re.fullmatch(send_regex("s(000", {}), "s(000")
+    assert _re.fullmatch(send_regex("s){mode}", {"mode": {"type": "string"}}), "s)001")
+    # An undeclared {token} stays literal text, braces and all.
+    assert send_regex("SET {x}", {}) == r"SET \{x\}"
+
+
 def test_send_regex_handles_format_spec_placeholders():
     # {name:spec} tokens invert the same as bare ones. This pins the fix for
     # the sim's old private copy, which left them as literal text so the

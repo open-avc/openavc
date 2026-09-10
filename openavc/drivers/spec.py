@@ -1254,9 +1254,36 @@ DEFS = {
         },
         'extra': False,
     },
+    'udpSendEntry': {
+        'type': 'object',
+        'doc': "Send this command as one UDP datagram beside the driver's main transport, from a socket opened for the send and closed after it. Needs no connection, so with available_offline it runs while the device is unreachable: the wake a display in standby needs, or a message to a signage presentation's UDP receiver. Declare payload or magic_packet, never both. The datagram is not framed by command_prefix / command_suffix or send_frame; the side channel speaks its own protocol.",
+        'fields': {
+            'host': {
+                'type': 'string',
+                'doc': "Where the datagram goes. Default: the device's own host. {config} placeholders are substituted.",
+            },
+            'port': {
+                'type': ['integer', 'string'],
+                'doc': 'UDP port to send to: a number, or a {config} placeholder naming a config field that holds one. Required with payload; a magic_packet defaults to 9.',
+            },
+            'payload': {
+                'type': 'string',
+                'doc': 'The datagram bytes. {param} and {config} placeholders and the \\xHH, \\r, \\n escapes work as in send.',
+            },
+            'magic_packet': {
+                'type': 'string',
+                'doc': "Send a Wake-on-LAN magic packet instead of a payload. Names the state variable or config field holding the device's MAC address; a value the device reported (state) wins over one typed into config. The packet goes to the broadcast address and directly to host.",
+            },
+            'broadcast': {
+                'type': 'boolean',
+                'doc': 'Send the payload to the broadcast address (255.255.255.255) instead of host. Default false. A magic packet always broadcasts as well as sending to host.',
+            },
+        },
+        'extra': False,
+    },
     'commandEntry': {
         'type': 'object',
-        'doc': 'A command must declare one of: send (TCP/serial/UDP), path/method (HTTP), or address (OSC).',
+        'doc': 'A command must declare one of: send (TCP/serial/UDP), path/method (HTTP), address (OSC), or udp (a datagram beside the main transport).',
         'fields': {
             'label': {
                 'type': 'string',
@@ -1329,6 +1356,10 @@ DEFS = {
                 'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state.",
                 'since': '0.24.0',
             },
+            'udp': {
+                'ref': 'udpSendEntry',
+                'since': '0.34.0',
+            },
             'restarts_device_for': {
                 'type': 'integer',
                 'min': 1,
@@ -1350,6 +1381,9 @@ DEFS = {
             },
             {
                 'required': ('address',),
+            },
+            {
+                'required': ('udp',),
             },
         ),
     },

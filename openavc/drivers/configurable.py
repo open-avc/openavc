@@ -24,6 +24,7 @@ from openavc.core.condition_eval import _coerce_bool, eval_operator
 from openavc.core.state_store import VALID_KEY_PREFIXES
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
+    WAKE_ON_LAN_PORT,
     BaseDriver,
     ConnectionFaultError,
     UnknownDeviceSettingError,
@@ -1231,6 +1232,19 @@ class ConfigurableDriver(BaseDriver):
                 {"pronto": ir.get("pronto", ""), "repeat": ir.get("repeat", 1)},
             )
 
+        # UDP side-send: one datagram beside the main transport (a Wake-on-LAN
+        # magic packet from a display driver, a message to a presentation's
+        # UDP receiver). It needs no connection, so it too is handled before
+        # the connected gate: the whole point of ``available_offline`` on a
+        # wake is that the control link is down. Params are validated and
+        # wire-mapped exactly as on the transport branches below.
+        if isinstance(cmd_def, dict) and isinstance(cmd_def.get("udp"), dict):
+            params = _normalize_and_validate_command_params(
+                command, cmd_def.get("params", {}), params
+            )
+            params = self._apply_param_wire_maps(cmd_def.get("params", {}), params)
+            return await self._send_udp_command(command, cmd_def, params)
+
         if not self.transport or not self.transport.connected:
             raise ConnectionError(f"[{self.device_id}] Not connected")
 
@@ -1324,6 +1338,91 @@ class ConfigurableDriver(BaseDriver):
         # Encode (handle explicit escape sequences only — safe subset), then
         # wrap in the send_frame packet header (no-op unless declared).
         return self._apply_send_frame(_safe_encode_escapes(formatted))
+
+    async def _send_udp_command(
+        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
+    ) -> Any:
+        """Send a command's ``udp:`` block as one datagram.
+
+        Two forms. ``payload`` is substituted ({param}, {config}) and
+        escape-decoded exactly like ``send``, but NOT framed: the driver's
+        command_prefix / command_suffix and send_frame belong to the main
+        transport's protocol, and the side channel speaks its own.
+        ``magic_packet`` names the state variable or config field holding the
+        device's MAC (state first, because a MAC the device reported on its
+        last connection beats one typed months ago) and sends the Wake-on-LAN
+        packet through :meth:`BaseDriver.wake_on_lan`.
+
+        ``host`` defaults to the device's own host and ``port`` may be a
+        literal or a {config} placeholder, so a receiver port that is a
+        device setting (a presentation's UDP port) stays a config field.
+        """
+        udp = cmd_def["udp"]
+        where = f"commands.{command}.udp"
+        all_params = {**self.config, **self._push_params(), **params}
+
+        host_raw = udp.get("host")
+        host = (
+            self._substitute_for_wire(f"{where}.host", str(host_raw), all_params)
+            if host_raw
+            else None
+        )
+
+        mac_field = udp.get("magic_packet")
+        if mac_field:
+            port = self._resolve_udp_port(
+                where, udp.get("port"), all_params, default=WAKE_ON_LAN_PORT
+            )
+            mac = self.get_state(str(mac_field))
+            if not mac:
+                mac = self.config.get(str(mac_field))
+            if not mac:
+                raise ValueError(
+                    f"[{self.device_id}] '{command}' cannot send a Wake-on-LAN "
+                    f"packet: no MAC address in '{mac_field}' yet. It is learned "
+                    f"when the device connects; until then, enter it under "
+                    f"Edit Device."
+                )
+            await self.wake_on_lan(str(mac), host=host, port=port)
+            log.debug(f"[{self.device_id}] Sent command '{command}': magic packet")
+            return True
+
+        port = self._resolve_udp_port(where, udp.get("port"), all_params)
+        formatted = self._substitute_for_wire(
+            f"{where}.payload", str(udp.get("payload") or ""), all_params
+        )
+        data = _safe_encode_escapes(formatted)
+        await self.send_udp(
+            data, host=host, port=port, broadcast=bool(udp.get("broadcast"))
+        )
+        log.debug(f"[{self.device_id}] Sent command '{command}' over UDP: {data!r}")
+        return True
+
+    def _resolve_udp_port(
+        self,
+        where: str,
+        raw: Any,
+        all_params: dict[str, Any],
+        default: int | None = None,
+    ) -> int:
+        """The port a ``udp:`` block names: a number, or a {config} placeholder."""
+        if raw is None or raw == "":
+            if default is not None:
+                return default
+            raise ValueError(f"[{self.device_id}] {where}: no port to send to")
+        text = self._substitute_for_wire(f"{where}.port", str(raw), all_params)
+        try:
+            port = int(str(text).strip())
+        except ValueError:
+            raise ValueError(
+                f"[{self.device_id}] {where}: port {text!r} is not a number"
+            ) from None
+        if not 1 <= port <= 65535:
+            raise ValueError(
+                f"[{self.device_id}] {where}: port {port} is not between 1 and "
+                f"65535"
+            )
+        return port
 
     @staticmethod
     def _apply_param_wire_maps(

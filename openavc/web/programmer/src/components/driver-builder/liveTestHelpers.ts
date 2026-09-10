@@ -19,6 +19,8 @@ export function commandShapeMismatch(
   const route = commandRoute(command);
   const expected = expectedRoute(transport);
   if (route === expected) return null;
+  // A datagram beside the transport sends on every transport.
+  if (route === "udp") return null;
   const tn = (transport || "tcp").toUpperCase();
   if (route === "osc") {
     return `This command has OSC fields (address/args) but the driver transport is ${tn}. The runtime refuses to send it. Remove the OSC fields in Behavior → Commands, or set the transport to OSC.`;

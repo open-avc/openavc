@@ -446,10 +446,22 @@ def _check_command_coverage(
     # Build compiled patterns from simulator handlers
     handler_patterns = _compile_handler_patterns(sim_handlers)
 
+    # A driver-level command_prefix is on the wire ahead of every command
+    # (a raw: true command excepted), and the simulator's auto handlers are
+    # built from the framed form, so the sample has to be framed too or a
+    # hand-written handler that expects the frame never matches it here.
+    prefix = driver_def.get("command_prefix") or ""
+
     for cmd_name, cmd_def in commands.items():
         send_template = cmd_def.get("send", "")
         if not send_template:
             continue
+        if (
+            prefix
+            and not cmd_def.get("raw")
+            and not send_template.startswith(prefix)
+        ):
+            send_template = prefix + send_template
 
         params = cmd_def.get("params", {})
 

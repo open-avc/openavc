@@ -2142,6 +2142,222 @@
   },
   "transport": "tcp"
  },
+ "command_two_shapes": {
+  "commands": {
+   "wake": {
+    "send": "PWR ON\r",
+    "udp": {
+     "magic_packet": "mac_address"
+    }
+   }
+  },
+  "config_schema": {
+   "mac_address": {
+    "type": "string"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_broadcast_not_bool": {
+  "commands": {
+   "say": {
+    "udp": {
+     "broadcast": "yes",
+     "payload": "HELLO",
+     "port": 9
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_host_not_string": {
+  "commands": {
+   "say": {
+    "udp": {
+     "host": 10,
+     "payload": "HELLO",
+     "port": 9
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_magic_packet_undeclared_field": {
+  "commands": {
+   "wake": {
+    "udp": {
+     "magic_packet": "mac_address"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_neither_payload_nor_magic_packet": {
+  "commands": {
+   "wake": {
+    "udp": {
+     "port": 9
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_not_mapping": {
+  "commands": {
+   "wake": {
+    "udp": "mac_address"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_payload_and_magic_packet": {
+  "commands": {
+   "wake": {
+    "udp": {
+     "magic_packet": "mac_address",
+     "payload": "WAKE",
+     "port": 9
+    }
+   }
+  },
+  "config_schema": {
+   "mac_address": {
+    "type": "string"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_payload_without_port": {
+  "commands": {
+   "say": {
+    "udp": {
+     "payload": "HELLO"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_port_not_a_number": {
+  "commands": {
+   "say": {
+    "udp": {
+     "payload": "HELLO",
+     "port": "nine"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_port_out_of_range": {
+  "commands": {
+   "say": {
+    "udp": {
+     "payload": "HELLO",
+     "port": 70000
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_udp_port_undeclared_config_field": {
+  "commands": {
+   "say": {
+    "udp": {
+     "payload": "HELLO",
+     "port": "{udp_port}"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_without_send_path_address": {
   "commands": {
    "noop": {

@@ -109,18 +109,21 @@ export interface DryRunResult {
   success: boolean;
   error: string | null;
   /** Which sender the command's declared fields route it to. */
-  route: "raw" | "osc" | "http" | null;
+  route: "raw" | "osc" | "http" | "udp" | null;
   /**
    * raw: the decoded bytes. osc: address and typed args, read back from the
-   * encoded packet. http: the request line.
+   * encoded packet. http: the request line. udp: the datagram's decoded bytes.
    */
   wire: string;
-  /** The exact bytes, for raw and OSC. Null on the HTTP route. */
+  /** The exact bytes, for raw, OSC and UDP. Null on the HTTP route. */
   wire_hex: string | null;
   /** HTTP only. */
   headers: Record<string, string> | null;
   /** HTTP only. */
   body: string | null;
+  /** UDP only: every host:port the datagram went to (a magic packet goes to
+   *  the broadcast address and to the device). */
+  udp_targets?: string[] | null;
 }
 
 export interface TestCommandRequest {

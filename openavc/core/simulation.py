@@ -871,6 +871,8 @@ class SimulationManager:
     ) -> None:
         """Point one live driver at the simulator on 127.0.0.1:sim_port and
         record its original connection so _restore_original_config can undo it.
+        The driver's UDP side-sends (``BaseDriver.send_udp``) are pointed at
+        the same place through ``udp_redirect``, and restored with the rest.
 
         A driver whose transport has no simulator server (serial, ssh) is
         flipped to TCP for the duration: the simulator serves TCP, so the
@@ -899,6 +901,11 @@ class SimulationManager:
         }
         driver.config["host"] = "127.0.0.1"
         driver.config["port"] = sim_port
+        # A datagram the driver sends beside its transport (a wake-on-LAN
+        # packet, a message to a presentation's UDP receiver) follows the
+        # redirect too: the simulator listens for it on the same port number,
+        # so it shows in the protocol log instead of leaving the box.
+        driver.udp_redirect = ("127.0.0.1", sim_port)
         if self._driver_transport_needs_tcp_stand_in(driver):
             driver.config["transport"] = "tcp"
         if driver.config.get("ssl"):
@@ -912,6 +919,7 @@ class SimulationManager:
         """Restore a driver's saved connection (host, port, transport, ssl)."""
         driver.config["host"] = orig.get("host", "")
         driver.config["port"] = orig.get("port", 0)
+        driver.udp_redirect = None
         # Only touch a key we actually recorded. A None value means there was
         # no explicit setting before the redirect — remove the one we added so
         # the driver's own default applies again (its DRIVER_INFO transport,

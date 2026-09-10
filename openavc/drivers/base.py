@@ -48,6 +48,7 @@ from openavc.drivers.spec import (
 )
 from openavc.core.state_store import StateStore
 from openavc.transport.frame_parsers import FrameParser
+from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import collect_secret_values, get_secret_registry
 from openavc.utils.logger import get_logger
 
@@ -549,6 +550,39 @@ def _ssh_option_list(value: object) -> list[str]:
         if opt:
             out.append(opt)
     return out
+
+
+#: The port a Wake-on-LAN magic packet is sent to unless a driver says otherwise
+#: (the "discard" port; 7 is the other convention, and a listener honours both).
+WAKE_ON_LAN_PORT = 9
+
+
+def normalize_mac(value: Any) -> str | None:
+    """``aa:bb:cc:dd:ee:ff`` for any usual spelling of a MAC, else None.
+
+    Accepts colons, hyphens, dots or nothing between the bytes and any case.
+    Twelve hex digits are the whole test; the all-zero address a device
+    reports before it knows its own is not a MAC anyone can wake.
+    """
+    digits = re.sub(r"[^0-9A-Fa-f]", "", str(value or "")).lower()
+    if len(digits) != 12 or digits == "000000000000":
+        return None
+    return ":".join(digits[i:i + 2] for i in range(0, 12, 2))
+
+
+def magic_packet(mac: str) -> bytes:
+    """The Wake-on-LAN magic packet for ``mac``: six 0xFF, then the MAC sixteen times.
+
+    Raises ValueError when ``mac`` is not a MAC address, with the message a
+    person fixing the config field needs to read.
+    """
+    normalized = normalize_mac(mac)
+    if normalized is None:
+        raise ValueError(
+            f"'{mac}' is not a MAC address (expected six hex pairs, "
+            f"like aa:bb:cc:dd:ee:ff)"
+        )
+    return b"\xff" * 6 + bytes.fromhex(normalized.replace(":", "")) * 16
 
 
 class BaseDriver(ABC):
@@ -1506,6 +1540,109 @@ class BaseDriver(ABC):
                 f"[{self.device_id}] bridge routing unavailable"
             )
         return await self._bridge_router(bridge_id, port_id, kind, payload)
+
+    # --- UDP beside the transport ---
+
+    #: Where a datagram this driver sends beside its transport actually goes
+    #: while the device is simulated: the simulator's own UDP receiver, set
+    #: by core/simulation.py together with the connection redirect and cleared
+    #: with it. None means the datagram goes where the driver aimed it. A
+    #: simulated display's wake therefore lands in the Simulator UI's protocol
+    #: log instead of waking whatever real display owns that MAC.
+    udp_redirect: tuple[str, int] | None = None
+
+    async def _open_udp(self) -> Any:
+        """An opened ad-hoc UDP socket for one side-send.
+
+        A method so the Driver Builder's dry run can hand back a transport
+        that records instead of transmitting; nothing else overrides it.
+        """
+        udp = UDPTransport(name=self.device_id)
+        await udp.open(allow_broadcast=True)
+        return udp
+
+    async def send_udp(
+        self,
+        payload: bytes,
+        host: str | None = None,
+        port: int | None = None,
+        broadcast: bool = False,
+    ) -> list[tuple[str, int]]:
+        """Send one UDP datagram beside the driver's main transport.
+
+        Opens a socket, sends, closes: the side channel holds nothing open and
+        needs no connection, so it works while the device is offline (pair the
+        command with ``available_offline``). ``host`` defaults to the device's
+        own host; ``broadcast`` sends to 255.255.255.255 instead. The bytes are
+        in the device log as the transport's TX line. Returns the addresses the
+        datagram went to.
+
+        This is the primitive under a YAML command's ``udp:`` block and under
+        :meth:`wake_on_lan`; a Python driver that needs a datagram beside its
+        transport (a message to a signage presentation's UDP receiver, say)
+        calls it rather than opening its own socket.
+        """
+        if port is None or int(port) <= 0:
+            raise ValueError(
+                f"[{self.device_id}] send_udp needs a port to send to"
+            )
+        port = int(port)
+        if broadcast:
+            host = "255.255.255.255"
+        else:
+            host = str(host or self.config.get("host") or "").strip()
+            if not host:
+                raise ValueError(
+                    f"[{self.device_id}] send_udp needs a host: the device has "
+                    f"no host configured and none was given"
+                )
+        target = (host, port)
+        if self.udp_redirect is not None:
+            target = self.udp_redirect
+        udp = await self._open_udp()
+        try:
+            await udp.send_to(bytes(payload), target[0], target[1])
+        finally:
+            await udp.close()
+        log.info(
+            f"[{self.device_id}] Sent {len(payload)} bytes over UDP to "
+            f"{target[0]}:{target[1]}"
+        )
+        return [target]
+
+    async def wake_on_lan(
+        self,
+        mac: str,
+        host: str | None = None,
+        port: int = WAKE_ON_LAN_PORT,
+    ) -> str:
+        """Send the Wake-on-LAN magic packet for ``mac``.
+
+        Goes to the broadcast address and directly to ``host`` (default: the
+        device's own host), which is what wakes a display whether or not a
+        switch between here and there passes broadcast. The direct send is
+        best effort: an unroutable host is logged, not raised, because the
+        broadcast already went out. Raises ValueError for a MAC that is not
+        one. Returns the MAC in normalized form.
+        """
+        packet = magic_packet(mac)
+        normalized = normalize_mac(mac) or mac
+        sent = await self.send_udp(packet, port=port, broadcast=True)
+        direct = str(host or self.config.get("host") or "").strip()
+        if self.udp_redirect is not None:
+            direct = ""  # both sends land on the simulator; one is enough
+        if direct:
+            try:
+                sent += await self.send_udp(packet, host=direct, port=port)
+            except OSError as exc:
+                log.warning(
+                    f"[{self.device_id}] Wake-on-LAN direct send to "
+                    f"{direct}:{port} failed ({exc}); the broadcast went out"
+                )
+        log.info(
+            f"[{self.device_id}] Wake-on-LAN magic packet sent for {normalized}"
+        )
+        return normalized
 
     # --- Optional overrides ---
 

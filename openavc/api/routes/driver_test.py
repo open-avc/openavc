@@ -392,6 +392,19 @@ class _CaptureTransport:
         return None
 
 
+class _CaptureUdp:
+    """Stands in for the ad-hoc UDP socket BaseDriver.send_udp opens."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[bytes, str, int]] = []
+
+    async def send_to(self, data: bytes, host: str, port: int) -> None:
+        self.sent.append((bytes(data), host, port))
+
+    async def close(self) -> None:
+        return None
+
+
 def _capture_osc_transport() -> Any:
     """OSC capture double.
 
@@ -510,12 +523,24 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     # from the command's declared fields — not from the driver's transport.
     # The panel reports a shape/transport mismatch on its own; here we follow
     # the command so the author still sees what the command would build.
+    udp_capture: _CaptureUdp | None = None
     if "address" in cmd_def:
         route = "osc"
         capture = _capture_osc_transport()
     elif "path" in cmd_def or "method" in cmd_def:
         route = "http"
         capture = _capture_http_transport()
+    elif isinstance(cmd_def.get("udp"), dict):
+        # The side channel never touches driver.transport: the driver opens
+        # a socket for the send. Hand it one that records instead.
+        route = "udp"
+        capture = _CaptureTransport()
+        udp_capture = _CaptureUdp()
+
+        async def _open_capture() -> _CaptureUdp:
+            return udp_capture
+
+        driver._open_udp = _open_capture  # type: ignore[method-assign]
     else:
         route = "raw"
         capture = _CaptureTransport()
@@ -545,6 +570,17 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
             result["wire"] = f"{sent['method']} {sent['target']}"
             result["headers"] = sent["headers"]
             result["body"] = sent["body"]
+        return result
+
+    if route == "udp":
+        # One command, one datagram (a magic packet is sent twice, to the
+        # broadcast address and to the host; the bytes are the same).
+        if udp_capture is None or not udp_capture.sent:
+            return result
+        data = udp_capture.sent[0][0]
+        result["wire"] = data.decode("utf-8", errors="replace")
+        result["wire_hex"] = data.hex()
+        result["udp_targets"] = [f"{h}:{p}" for _, h, p in udp_capture.sent]
         return result
 
     if not capture.frames:

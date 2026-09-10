@@ -4,6 +4,7 @@ import type {
   DriverCommandDef,
   DriverDefinition,
   DriverParamDef,
+  DriverUdpSend,
 } from "../../api/types";
 import { EnumValuesEditor } from "../shared/EnumValuesEditor";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
@@ -228,7 +229,13 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   </div>
                 </div>
 
-                {draft.transport === "osc" ? (
+                {cmd.udp ? (
+                  <UdpSendFields
+                    udp={cmd.udp}
+                    draft={draft}
+                    onChange={(udp) => updateCommand(name, { udp })}
+                  />
+                ) : draft.transport === "osc" ? (
                   <div style={{ marginBottom: "var(--space-md)" }}>
                     <label style={labelStyle}>OSC Address</label>
                     <input
@@ -311,6 +318,60 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                     )}
                   </div>
                 )}
+
+                {/* A datagram beside the transport. Transport independent:
+                    the runtime takes a udp block before it looks at the
+                    other shapes, so this swaps the block above rather than
+                    adding to it. Toggling it on keeps the command's params
+                    and drops the send string the runtime would ignore. */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    fontSize: "var(--font-size-sm)",
+                    color: "var(--text-secondary)",
+                    marginBottom: "var(--space-md)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!cmd.udp}
+                    onChange={(e) =>
+                      updateCommand(
+                        name,
+                        e.target.checked
+                          ? {
+                              udp: { payload: "" },
+                              send: undefined,
+                              method: undefined,
+                              path: undefined,
+                              body: undefined,
+                              address: undefined,
+                              args: undefined,
+                            }
+                          : { udp: undefined, send: "" },
+                      )
+                    }
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    Send over UDP instead of the device connection
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        marginTop: "var(--space-xs)",
+                      }}
+                    >
+                      One datagram from a socket opened for the send, with no
+                      connection needed: a Wake-on-LAN packet to a display in
+                      standby, or a message to a signage presentation&apos;s UDP
+                      receiver. Pair it with the offline setting below when the
+                      device is unreachable at the time.
+                    </div>
+                  </span>
+                </label>
 
                 {/* Lift the connected-gate for this one command. Transport
                     independent, so unlike the raw-framing flag above it shows
@@ -765,6 +826,224 @@ function CommandSemanticsEditor({
 }
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+/** Where a command's MAC address can come from: the driver's state variables
+ *  (a MAC the device reports on connect) and its config fields (one typed in
+ *  under Edit Device). The runtime reads state first, then config. */
+export function macFieldOptions(
+  draft: Pick<DriverDefinition, "state_variables" | "config_schema" | "default_config">,
+): { value: string; label: string }[] {
+  const stateKeys = Object.keys(draft.state_variables ?? {});
+  const configKeys = Array.from(
+    new Set([
+      ...Object.keys(draft.config_schema ?? {}),
+      ...Object.keys(draft.default_config ?? {}),
+    ]),
+  ).filter((k) => !stateKeys.includes(k));
+  return [
+    ...stateKeys.map((k) => ({ value: k, label: `${k} (state variable)` })),
+    ...configKeys.map((k) => ({ value: k, label: `${k} (config field)` })),
+  ];
+}
+
+/** The fields of a command's udp block: what goes out and where. Exactly one
+ *  of payload / magic packet, chosen up front, because the runtime refuses a
+ *  block carrying both. */
+export function UdpSendFields({
+  udp,
+  draft,
+  onChange,
+}: {
+  udp: DriverUdpSend;
+  draft: DriverDefinition;
+  onChange: (udp: DriverUdpSend) => void;
+}) {
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginBottom: 2,
+  };
+  const hintStyle: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginTop: "var(--space-xs)",
+  };
+  const isMagic = udp.magic_packet !== undefined;
+  const macOptions = macFieldOptions(draft);
+  const update = (partial: Partial<DriverUdpSend>) => {
+    const next: Record<string, unknown> = { ...udp, ...partial };
+    for (const k of Object.keys(next)) {
+      if (next[k] === undefined) delete next[k];
+    }
+    onChange(next as DriverUdpSend);
+  };
+
+  return (
+    <div
+      style={{
+        marginBottom: "var(--space-md)",
+        padding: "var(--space-sm)",
+        border: "1px solid var(--border-color)",
+        borderRadius: "var(--border-radius)",
+      }}
+    >
+      <label style={labelStyle}>Send over UDP</label>
+      <div
+        style={{
+          display: "flex",
+          gap: "var(--space-md)",
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+          marginBottom: "var(--space-sm)",
+        }}
+      >
+        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="radio"
+            name="udp-form"
+            checked={!isMagic}
+            onChange={() =>
+              update({ magic_packet: undefined, payload: udp.payload ?? "" })
+            }
+          />
+          A message
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="radio"
+            name="udp-form"
+            checked={isMagic}
+            onChange={() =>
+              update({
+                payload: undefined,
+                broadcast: undefined,
+                magic_packet: udp.magic_packet ?? macOptions[0]?.value ?? "",
+              })
+            }
+          />
+          A Wake-on-LAN magic packet
+        </label>
+      </div>
+
+      {isMagic ? (
+        <div style={{ marginBottom: "var(--space-sm)" }}>
+          <label style={labelStyle}>MAC address from</label>
+          <select
+            aria-label="MAC address from"
+            value={udp.magic_packet ?? ""}
+            onChange={(e) => update({ magic_packet: e.target.value })}
+            style={{ width: "100%" }}
+          >
+            {!macOptions.some((o) => o.value === (udp.magic_packet ?? "")) && (
+              <option value={udp.magic_packet ?? ""}>
+                {udp.magic_packet ? udp.magic_packet : "Pick a field"}
+              </option>
+            )}
+            {macOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <div style={hintStyle}>
+            The state variable or config field that holds the device&apos;s MAC
+            address. A MAC the device reported wins over one typed into
+            config. The packet goes to the broadcast address and straight to
+            the device; declare both a state variable and a config field of the
+            same name to learn it on connect and still wake a device that has
+            never connected.
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom: "var(--space-sm)" }}>
+          <label style={labelStyle}>Message</label>
+          <input
+            aria-label="UDP message"
+            value={udp.payload ?? ""}
+            onChange={(e) => update({ payload: e.target.value })}
+            placeholder="e.g., {variable}:{value}"
+            style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+          />
+          <div style={hintStyle}>
+            Sent exactly as written, without the driver&apos;s command framing.
+            Use {"{param_name}"} for parameter placeholders and \r, \n or
+            \xHH for control characters.
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "var(--space-md)",
+        }}
+      >
+        <div>
+          <label style={labelStyle}>Host</label>
+          <input
+            aria-label="UDP host"
+            value={udp.host ?? ""}
+            onChange={(e) => update({ host: e.target.value || undefined })}
+            placeholder="the device's host"
+            style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+          />
+          <div style={hintStyle}>
+            Leave empty to send to the device. A {"{config_field}"} works here
+            too.
+          </div>
+        </div>
+        <div>
+          <label style={labelStyle}>Port</label>
+          <input
+            aria-label="UDP port"
+            value={udp.port === undefined ? "" : String(udp.port)}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              const n = Number(raw);
+              update({
+                port:
+                  raw === ""
+                    ? undefined
+                    : /^\d+$/.test(raw) && Number.isFinite(n)
+                      ? n
+                      : raw,
+              });
+            }}
+            placeholder={isMagic ? "9" : "e.g., 5000 or {udp_port}"}
+            style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+          />
+          <div style={hintStyle}>
+            {isMagic
+              ? "Wake-on-LAN listens on 9 unless the device says otherwise."
+              : "A number, or a {config_field} holding one, so the port can be set per device."}
+          </div>
+        </div>
+      </div>
+
+      {!isMagic && (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: "var(--font-size-sm)",
+            color: "var(--text-secondary)",
+            marginTop: "var(--space-sm)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={!!udp.broadcast}
+            onChange={(e) => update({ broadcast: e.target.checked || undefined })}
+          />
+          Broadcast to the whole network instead of the host
+        </label>
+      )}
+    </div>
+  );
+}
 
 function HttpCommandFields({
   cmd,

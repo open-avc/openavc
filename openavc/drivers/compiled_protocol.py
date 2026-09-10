@@ -179,28 +179,36 @@ def send_regex(template: str, params: dict[str, Any]) -> str:
     result = template.strip()
     while result.endswith(("\\r", "\\n")):
         result = result[:-2].rstrip()
-    for name, pdef in params.items():
-        ptype = pdef.get("type", "string") if isinstance(pdef, dict) else "string"
-        result = _placeholder_re(name).sub(
-            lambda m, _t=ptype: _capture_for(_t, m.group(1) or ""), result
-        )
-    # Escape regex specials outside the capture groups just inserted.
-    escaped = ""
-    depth = 0
-    for char in result:
-        if char == "(":
-            depth += 1
-            escaped += char
-        elif char == ")":
-            depth -= 1
-            escaped += char
-        elif depth > 0:
-            escaped += char
-        elif char in r"*+?.[]{}|^$":
-            escaped += "\\" + char
+    # Escape the literal text BEFORE the capture groups go in, so a literal
+    # parenthesis in the protocol (a display whose backlight code is '(')
+    # is matched as itself rather than read as a group of its own. Only a
+    # placeholder naming a declared param becomes a capture; any other
+    # {token} is literal text, braces included.
+    types = {
+        name: (pdef.get("type", "string") if isinstance(pdef, dict) else "string")
+        for name, pdef in params.items()
+    }
+    out: list[str] = []
+    pos = 0
+    for m in _ANY_PLACEHOLDER.finditer(result):
+        out.append(_escape_literal(result[pos:m.start()]))
+        name = m.group(1)
+        if name in types:
+            out.append(_capture_for(types[name], m.group(2) or ""))
         else:
-            escaped += char
-    return escaped
+            out.append(_escape_literal(m.group(0)))
+        pos = m.end()
+    out.append(_escape_literal(result[pos:]))
+    return "".join(out)
+
+
+#: Any {name} / {name:spec} token, declared or not.
+_ANY_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
+
+
+def _escape_literal(text: str) -> str:
+    """Regex-escape the characters a send template can carry literally."""
+    return "".join("\\" + c if c in r"()*+?.[]{}|^$" else c for c in text)
 
 
 def send_param_specs(template: str, params: dict[str, Any]) -> dict[str, str]:

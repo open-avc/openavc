@@ -214,6 +214,18 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
                             _CMD_SOURCES,
                         )
                     )
+            udp = cmd.get("udp")
+            if isinstance(udp, dict):
+                for field in ("payload", "host", "port"):
+                    if isinstance(udp.get(field), str):
+                        errors.extend(
+                            _unresolved_substitutions(
+                                f"commands.{name}.udp.{field}",
+                                udp[field],
+                                resolvable,
+                                _CMD_SOURCES,
+                            )
+                        )
 
     # A response pattern is substituted against the config alone — it is
     # matched long after any command's params are gone.
@@ -249,6 +261,79 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
             )
 
     return errors
+
+
+_UDP_CONFIG_PLACEHOLDER = re.compile(r"^\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+def _validate_udp_send(
+    where: str, udp_def: Any, driver_def: dict[str, Any], errors: list[str]
+) -> None:
+    """The rules of a command's ``udp:`` block.
+
+    Exactly one of payload / magic_packet; a payload needs a port (a number
+    in range, or a {config_field} placeholder); a magic_packet names a state
+    variable or config field that can hold the MAC. A block that passes here
+    is one the runtime can always turn into a datagram, so the only thing
+    left to fail at send time is a MAC the device has not reported yet.
+    """
+    if not isinstance(udp_def, dict):
+        errors.append(f"{where}: 'udp' must be a mapping (host, port, payload or magic_packet)")
+        return
+    payload = udp_def.get("payload")
+    mac_field = udp_def.get("magic_packet")
+    if payload and mac_field:
+        errors.append(
+            f"{where}: 'udp' declares both 'payload' and 'magic_packet'; a "
+            f"datagram is one or the other"
+        )
+    elif not payload and not mac_field:
+        errors.append(
+            f"{where}: 'udp' needs a 'payload' (the datagram) or a "
+            f"'magic_packet' (the field holding the MAC to wake)"
+        )
+    host = udp_def.get("host")
+    if host is not None and not isinstance(host, str):
+        errors.append(f"{where}: 'udp.host' must be a string")
+    port = udp_def.get("port")
+    if port is None or port == "":
+        if payload and not mac_field:
+            errors.append(
+                f"{where}: 'udp.port' is required with a payload (a number, or "
+                f"a {{config_field}} placeholder)"
+            )
+    elif isinstance(port, bool) or not isinstance(port, (int, str)):
+        errors.append(f"{where}: 'udp.port' must be a number or a {{config_field}} placeholder")
+    elif isinstance(port, int):
+        if not 1 <= port <= 65535:
+            errors.append(f"{where}: 'udp.port' must be between 1 and 65535, got {port}")
+    else:
+        m = _UDP_CONFIG_PLACEHOLDER.match(port.strip())
+        if m is None:
+            if not port.strip().isdigit():
+                errors.append(
+                    f"{where}: 'udp.port' {port!r} is neither a number nor a "
+                    f"{{config_field}} placeholder"
+                )
+            elif not 1 <= int(port.strip()) <= 65535:
+                errors.append(f"{where}: 'udp.port' must be between 1 and 65535, got {port}")
+        elif m.group(1) not in _config_substitution_names(driver_def):
+            errors.append(
+                f"{where}: 'udp.port' names config field '{m.group(1)}', which "
+                f"the driver does not declare"
+            )
+    if mac_field is not None:
+        state_vars = driver_def.get("state_variables")
+        state_names = set(state_vars) if isinstance(state_vars, dict) else set()
+        if not isinstance(mac_field, str) or not mac_field:
+            errors.append(f"{where}: 'udp.magic_packet' must name a state variable or config field")
+        elif mac_field not in state_names and mac_field not in _config_substitution_names(driver_def):
+            errors.append(
+                f"{where}: 'udp.magic_packet' names '{mac_field}', which is "
+                f"neither a declared state variable nor a config field"
+            )
+    if "broadcast" in udp_def and not isinstance(udp_def.get("broadcast"), bool):
+        errors.append(f"{where}: 'udp.broadcast' must be true or false")
 
 
 def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
@@ -1171,17 +1256,40 @@ def validate_driver_definition(
         if not isinstance(cmd_def, dict):
             errors.append(f"Command '{cmd_name}': must be a dict")
             continue
-        # TCP/serial commands need send, HTTP need path/method, OSC needs address
+        # A command sends one way: send (TCP/serial/UDP transport), path /
+        # method (HTTP), address (OSC), udp (a datagram beside the transport)
+        # or ir (a bridge's emitter). An empty send is the Builder's seed, not
+        # a shape.
         has_send = cmd_def.get("send")
         has_http = cmd_def.get("path") or cmd_def.get("method")
         has_osc = cmd_def.get("address") is not None
-        if not has_send and not has_http and not has_osc:
+        has_udp = cmd_def.get("udp") is not None
+        has_ir = cmd_def.get("ir") is not None
+        shapes = [
+            name for name, present in (
+                ("send", has_send), ("path/method", has_http),
+                ("address", has_osc), ("udp", has_udp), ("ir", has_ir),
+            ) if present
+        ]
+        if not shapes:
             errors.append(
                 f"Command '{cmd_name}': must have 'send' (TCP/serial), "
-                f"'path'/'method' (HTTP), or 'address' (OSC)"
+                f"'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a "
+                f"datagram beside the main transport)"
+            )
+        elif len(shapes) > 1:
+            errors.append(
+                f"Command '{cmd_name}': declares {' and '.join(shapes)}, but a "
+                f"command sends one way. Keep one of 'send' (TCP/serial), "
+                f"'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a "
+                f"datagram beside the main transport)"
             )
         if has_osc:
             _validate_osc_args(f"Command '{cmd_name}'", cmd_def.get("args"), errors)
+        if has_udp:
+            _validate_udp_send(
+                f"Command '{cmd_name}'", cmd_def.get("udp"), driver_def, errors
+            )
         _validate_param_option_providers(
             f"Command '{cmd_name}'", cmd_def.get("params"), errors,
         )

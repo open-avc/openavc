@@ -234,6 +234,21 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         self._is_osc = transport == "osc"
         self._is_http = transport == "http"
 
+        # Commands that send a datagram BESIDE the main transport (a udp:
+        # block: a wake-on-LAN magic packet, a message to a presentation's
+        # UDP receiver). A TCP or HTTP device that declares one also gets a
+        # UDP receiver on its own port number, so the datagram shows in the
+        # protocol log and its declared state effect applies, instead of
+        # vanishing into a port nothing listens on.
+        self._udp_side_commands: dict[str, dict] = {
+            name: cmd["udp"]
+            for name, cmd in (driver_def.get("commands") or {}).items()
+            if isinstance(cmd, dict) and isinstance(cmd.get("udp"), dict)
+        }
+        self._side_receiver = bool(self._udp_side_commands) and not (
+            self._is_udp or self._is_osc
+        )
+
         # HTTPS-only devices: the driver dials https:// when its config says
         # ssl, so the simulator terminates TLS and the driver connects here
         # exactly as it connects in the field (see self_signed_tls.py). The
@@ -763,7 +778,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             logger.warning("Could not open multicast sender: %s", e)
 
     async def start(self, port: int) -> None:
-        """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP)."""
+        """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP).
+
+        A device with udp: side-send commands and a stream transport also
+        listens for datagrams on the same port number (UDP and TCP ports are
+        separate namespaces, so nothing collides).
+        """
         if self._push_multicast:
             self._open_multicast_sender()
         if self._is_http:
@@ -772,6 +792,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             await self.start_datagram_server(port)
         else:
             await super().start(port)
+        if self._side_receiver:
+            await self.start_datagram_server(port)
+            logger.info(
+                "%s also receives UDP side-sends on port %d", self.name, port
+            )
 
     async def stop(self) -> None:
         """Stop whichever server start() ran."""
@@ -782,6 +807,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             except OSError:
                 pass
             self._mcast_sock = None
+        if self._side_receiver:
+            await self.stop_datagram_server()
         if self._is_http:
             await self.stop_http_server()
         elif self._is_udp or self._is_osc:
@@ -841,12 +868,21 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
     # ── UDP / OSC transport ──
 
+    #: What every Wake-on-LAN magic packet starts with.
+    _MAGIC_PACKET_PREFIX = b"\xff" * 6
+
     async def dispatch_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Route a datagram to the OSC or the plain command pipeline.
 
         Which one is a per-instance fact here (the driver's transport), where
-        for a Python simulator it is the class it subclassed.
+        for a Python simulator it is the class it subclassed. A datagram that
+        arrives beside a stream transport is a side-send: it is applied and
+        never answered, because the sender's socket closed with the send and a
+        real device answers on its control link, not the side channel.
         """
+        if self._side_receiver:
+            self._apply_side_datagram(data)
+            return
         if not self._is_osc:
             await self.dispatch_command_datagram(data, addr)
             return
@@ -857,6 +893,31 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             await self.dispatch_osc_datagram(data, addr)
         finally:
             self._handling_osc = False
+
+    def _apply_side_datagram(self, data: bytes) -> None:
+        """Apply one udp: side-send to state. Already in the protocol log.
+
+        A magic packet applies the ``sets`` of every magic_packet command (a
+        wake declares ``sets: {power: on}`` and the simulated display comes
+        on, like the real one); a payload runs through the command pipeline
+        the way a line on the stream would, its reply discarded.
+        """
+        if data.startswith(self._MAGIC_PACKET_PREFIX) and len(data) >= 102:
+            for cmd_name, udp_def in self._udp_side_commands.items():
+                if not udp_def.get("magic_packet"):
+                    continue
+                cmd_def = (self._driver_def.get("commands") or {}).get(cmd_name) or {}
+                sets = cmd_def.get("sets")
+                if isinstance(sets, dict):
+                    for var_name, value in sets.items():
+                        if isinstance(value, str) and re.fullmatch(r"\{[^{}]+\}", value):
+                            continue  # a magic packet carries no params
+                        self.set_state(var_name, value)
+            return
+        try:
+            self.handle_command(data)
+        except Exception:
+            logger.exception("%s: error applying UDP side-send", self.name)
 
     def handle_message(
         self, address: str, args: list[tuple[str, Any]]
@@ -1455,10 +1516,18 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
         for cmd_name, cmd_def in commands.items():
             send_template = cmd_def.get("send", "")
+            # A udp: payload is matched like a send string, but unframed:
+            # the side channel never carries the main protocol's prefix.
+            side_send = False
+            udp_def = cmd_def.get("udp")
+            if not send_template and isinstance(udp_def, dict):
+                send_template = udp_def.get("payload") or ""
+                side_send = True
             if not send_template:
                 continue
             if (
                 prefix
+                and not side_send
                 and not cmd_def.get("raw")
                 and not send_template.startswith(prefix)
             ):

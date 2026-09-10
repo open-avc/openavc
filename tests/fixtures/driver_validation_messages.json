@@ -181,7 +181,7 @@
   "child_entity_types: type name 'zone*' must not contain glob metacharacters (*) \u2014 they break state-change dispatch"
  ],
  "command_legacy_string_alias": [
-  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), or 'address' (OSC)",
+  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)",
   "commands.noop: unknown key 'string'"
  ],
  "command_not_dict": [
@@ -226,8 +226,41 @@
  "command_suffix_not_string": [
   "command_suffix: must be a string"
  ],
+ "command_two_shapes": [
+  "Command 'wake': declares send and udp, but a command sends one way. Keep one of 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)"
+ ],
+ "command_udp_broadcast_not_bool": [
+  "Command 'say': 'udp.broadcast' must be true or false"
+ ],
+ "command_udp_host_not_string": [
+  "Command 'say': 'udp.host' must be a string"
+ ],
+ "command_udp_magic_packet_undeclared_field": [
+  "Command 'wake': 'udp.magic_packet' names 'mac_address', which is neither a declared state variable nor a config field"
+ ],
+ "command_udp_neither_payload_nor_magic_packet": [
+  "Command 'wake': 'udp' needs a 'payload' (the datagram) or a 'magic_packet' (the field holding the MAC to wake)"
+ ],
+ "command_udp_not_mapping": [
+  "Command 'wake': 'udp' must be a mapping (host, port, payload or magic_packet)"
+ ],
+ "command_udp_payload_and_magic_packet": [
+  "Command 'wake': 'udp' declares both 'payload' and 'magic_packet'; a datagram is one or the other"
+ ],
+ "command_udp_payload_without_port": [
+  "Command 'say': 'udp.port' is required with a payload (a number, or a {config_field} placeholder)"
+ ],
+ "command_udp_port_not_a_number": [
+  "Command 'say': 'udp.port' 'nine' is neither a number nor a {config_field} placeholder"
+ ],
+ "command_udp_port_out_of_range": [
+  "Command 'say': 'udp.port' must be between 1 and 65535, got 70000"
+ ],
+ "command_udp_port_undeclared_config_field": [
+  "Command 'say': 'udp.port' names config field 'udp_port', which the driver does not declare"
+ ],
  "command_without_send_path_address": [
-  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), or 'address' (OSC)"
+  "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)"
  ],
  "commands_not_mapping": [
   "commands: must be a mapping"
