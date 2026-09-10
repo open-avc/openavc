@@ -699,6 +699,10 @@ If the container does not light up, the control is not entirely inside it yet an
 
 A container cannot be moved inside itself or inside anything already inside it, so the Outline refuses those drops. Deleting a container does not delete its contents: they come back out to the level above, keeping the position they had.
 
+**Duplicating a container copies its contents.** Right-click a container and choose Duplicate, or press Ctrl+D, and you get the container, every control inside it, and anything nested deeper, each holding the position it had in the original. The copy lands down and right of the original. Build one card, duplicate it seven times, and you have eight. Bindings between controls in the copy point at the copy, so the second card reads the second card's state rather than the first card's. One Ctrl+Z takes the whole copy back.
+
+Copy and paste behave the same way. Copying a container puts its contents on the clipboard with it, and pasting rebuilds them inside the pasted container. Copy a control without its container and you get that control on its own, pasted onto the page at the size it was drawn.
+
 **Z-order inside a container** is the order of its own contents, not of the whole page. The up and down arrows on a selected row in the Outline move it among its neighbours under the same parent.
 
 ## Page Groups
@@ -721,6 +725,8 @@ Multi-selected elements show a dashed blue outline (vs. solid for single selecti
 - Right-click for a context menu with Delete All, Duplicate All, and alignment options
 
 Dragging any element in the selection moves the whole selection together. If you have a container and something inside it selected at the same time, only the container moves: its contents are positioned relative to it, so they come along automatically.
+
+Duplicate All follows the same rule. Each container is copied with its contents, so selecting a container and something inside it gives you one copy of that control, in the copied container, rather than two.
 
 ## Alignment Tools
 
@@ -947,6 +953,7 @@ Press **Ctrl+/** anywhere in the Programmer IDE to open the keyboard shortcuts r
 | Ctrl+Z | Undo |
 | Ctrl+Y | Redo |
 | Ctrl+C / Ctrl+V | Copy / Paste element |
+| Ctrl+D | Duplicate element (a container comes with its contents) |
 | Delete | Remove selected element |
 | Arrow keys | Nudge position (Shift for a larger step) |
 | Alt / Option (held) | Ignore snapping for this drag, resize or nudge |

@@ -1632,6 +1632,60 @@ export function moveElementsInPage(
   );
 }
 
+/**
+ * An element and everything living inside it, in page order.
+ *
+ * Page order is z-order, so carrying it across is what makes a copy stack the
+ * way the original does instead of arriving reshuffled. The element itself
+ * leads: a container draws behind its own contents.
+ */
+function elementSubtree(page: UIPage, elementId: string): UIElement[] {
+  const root = page.elements.find((e) => e.id === elementId);
+  if (!root) return [];
+  const inside = descendantIds(page, elementId);
+  return [root, ...page.elements.filter((e) => e.id !== elementId && inside.has(e.id))];
+}
+
+/**
+ * Assign every element of a subtree a fresh id.
+ *
+ * The ids are drawn from outside `taken`, which holds every id already spoken
+ * for -- so a generated id can never be one of the originals, and the rewrite
+ * pass below can walk the whole map without a later pair catching an element an
+ * earlier pair already renamed.
+ */
+function freshIds(elements: UIElement[], taken: Set<string>): Map<string, string> {
+  const idMap = new Map<string, string>();
+  for (const el of elements) {
+    const id = generateId(el.type, taken);
+    taken.add(id);
+    idMap.set(el.id, id);
+  }
+  return idMap;
+}
+
+/**
+ * One element of a copied subtree, wired to the copy rather than the original.
+ *
+ * Every id in the subtree is rewritten, not just this element's own: a control
+ * bound to `ui.<sibling>.value` has to follow the copy, or eight duplicated
+ * cards all read the first card's state. `rewriteElement` carries the `parent`
+ * link across too, which is what puts each child inside the copied container.
+ */
+function cloneWithIds(el: UIElement, idMap: Map<string, string>): UIElement {
+  let clone = JSON.parse(JSON.stringify(el)) as UIElement;
+  for (const [oldId, newId] of idMap) clone = rewriteElement(clone, oldId, newId);
+  return clone;
+}
+
+/**
+ * Duplicate an element, and everything inside it.
+ *
+ * A container is its contents -- an author who copies a card wants the card,
+ * not an empty frame the same size. Only the top copy is nudged: a child's
+ * percentages are of its container, the container has already moved, and
+ * nudging them again would slide the contents around inside the copy.
+ */
 export function duplicateElementInPage(
   pages: UIPage[],
   pageId: string,
@@ -1641,15 +1695,15 @@ export function duplicateElementInPage(
 ): UIPage[] {
   const page = pages.find((p) => p.id === pageId);
   if (!page) return pages;
-  const element = page.elements.find((e) => e.id === elementId);
-  if (!element) return pages;
+  const subtree = elementSubtree(page, elementId);
+  if (!subtree.length) return pages;
 
   // Collect IDs from ALL pages to avoid cross-page collisions, plus any
   // reserved IDs (master_elements share the ui.<id> namespace) so a duplicate
   // can't be auto-named onto a master id.
-  const existingIds = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
-  for (const id of reservedIds) existingIds.add(id);
-  const newId = generateId(element.type, existingIds);
+  const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
+  for (const id of reservedIds) taken.add(id);
+  const idMap = freshIds(subtree, taken);
 
   // Place the copy down-right of the original, the nudge every design tool
   // uses, and pull it back inside the parent box if that would push it off.
@@ -1661,12 +1715,145 @@ export function duplicateElementInPage(
   if (nudge.x + nudge.w > 100) nudge.x = Math.max(0, 100 - nudge.w);
   if (nudge.y + nudge.h > 100) nudge.y = Math.max(0, 100 - nudge.h);
 
-  // Rewrite self-referencing ui.<oldId>.* state keys (bindings, visibility)
-  // to the duplicate's id — same machinery the rename path uses — so the
-  // copy is wired to its own state, not the original's.
-  const clone = JSON.parse(JSON.stringify(element)) as UIElement;
-  const rewritten = rewriteElement(clone, element.id, newId);
-  return addElementToPage(pages, pageId, rewritten, nudge);
+  let result = pages;
+  for (const el of subtree) {
+    const placement = el.id === elementId ? nudge : getPlacement(page, el.id, layoutId);
+    result = addElementToPage(result, pageId, cloneWithIds(el, idMap), placement);
+  }
+  return result;
+}
+
+/**
+ * Duplicate a whole selection in one go, without copying anything twice.
+ *
+ * A duplicate already carries everything inside the element, so a selection
+ * holding both a container and something in it would otherwise produce that
+ * child twice -- once in the copied container, once loose beside it. The
+ * ancestor's copy is the one that covers it.
+ */
+export function duplicateElementsInPage(
+  pages: UIPage[],
+  pageId: string,
+  elementIds: string[],
+  reservedIds: string[] = [],
+  layoutId?: string | null,
+): UIPage[] {
+  const page = pages.find((p) => p.id === pageId);
+  if (!page) return pages;
+  let result = pages;
+  for (const id of topmostSelection(page, elementIds)) {
+    result = duplicateElementInPage(result, pageId, id, reservedIds, layoutId);
+  }
+  return result;
+}
+
+/** What a copy carries: the elements, and the box each one is drawn at. */
+export interface ElementClipboard {
+  elements: UIElement[];
+  placements: Record<string, Placement>;
+}
+
+/**
+ * Fill the clipboard from a selection.
+ *
+ * The selection is widened to everything inside it, for the same reason a
+ * duplicate is: copying a container means copying what is in it.
+ *
+ * The boxes come back in two different spaces on purpose. An element whose
+ * container travelled with it keeps its container-relative percentages,
+ * because the paste will put it back inside that container. One whose
+ * container stayed behind comes back as the box the eye saw, in page space,
+ * because the paste ejects it to page level -- and the stored number would
+ * otherwise reinterpret half-a-container as half-a-page.
+ */
+export function clipboardForSelection(
+  page: UIPage,
+  elementIds: string[],
+  layoutId?: string | null,
+): ElementClipboard {
+  const wanted = new Set<string>();
+  for (const id of elementIds) {
+    if (!page.elements.some((e) => e.id === id)) continue;
+    wanted.add(id);
+    for (const child of descendantIds(page, id)) wanted.add(child);
+  }
+  const elements = page.elements.filter((e) => wanted.has(e.id));
+  const absolute = absolutePlacements(page, layoutId);
+  const placements: Record<string, Placement> = {};
+  for (const el of elements) {
+    placements[el.id] = keepsItsParent(el, wanted)
+      ? getPlacement(page, el.id, layoutId)
+      : absolute[el.id] ?? getPlacement(page, el.id, layoutId);
+  }
+  return { elements: JSON.parse(JSON.stringify(elements)) as UIElement[], placements };
+}
+
+/** Whether an element's container came along with it, and so survives the trip. */
+function keepsItsParent(el: UIElement, copied: Set<string>): boolean {
+  return !!el.parent && el.parent !== el.id && copied.has(el.parent);
+}
+
+/**
+ * Paste the clipboard onto a page.
+ *
+ * Whatever was copied out of a container goes back into one: an element whose
+ * own container travelled with it keeps that container, remapped to the
+ * container's copy, and keeps the container-relative box it was stored with.
+ * Everything else is a top of the copied structure and lands at page level,
+ * auto-placed, because a paste has no pointer to land under.
+ */
+export function pasteIntoPage(
+  pages: UIPage[],
+  pageId: string,
+  clipboard: ElementClipboard,
+  reservedIds: string[] = [],
+  layoutId?: string | null,
+): UIPage[] {
+  const page = pages.find((p) => p.id === pageId);
+  if (!page || clipboard.elements.length === 0) return pages;
+
+  // Page element ids and master ids share the ui.<id> runtime namespace, so a
+  // pasted element must avoid colliding with either.
+  const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
+  for (const id of reservedIds) taken.add(id);
+  // A clipboard id that is still free is kept, so a paste into a fresh page
+  // reads the way it was authored. Generated ids steer clear of every id on
+  // the clipboard as well, so one element can never be handed the id another
+  // is about to keep.
+  const copied = new Set(clipboard.elements.map((e) => e.id));
+  const avoid = new Set([...taken, ...copied]);
+  const idMap = new Map<string, string>();
+  for (const el of clipboard.elements) {
+    const id = taken.has(el.id) ? generateId(el.type, avoid) : el.id;
+    taken.add(id);
+    avoid.add(id);
+    idMap.set(el.id, id);
+  }
+
+  const snap = pageSnap(page);
+  const occupied = page.elements.map((el) => getPlacement(page, el.id, layoutId));
+  let ejected = 0;
+  let result = pages;
+  for (const src of clipboard.elements) {
+    const clone = cloneWithIds(src, idMap);
+    if (keepsItsParent(src, copied)) {
+      result = addElementToPage(
+        result,
+        pageId,
+        clone,
+        clipboard.placements[src.id] ?? { ...DEFAULT_PLACEMENT },
+      );
+      continue;
+    }
+    // Paste has no pointer, so it takes the auto-placement rule: the first
+    // free snap cell, or the page centre plus a cascade with snap off.
+    const size = clipboard.placements[src.id] ?? DEFAULT_PLACEMENT;
+    const placement = autoPlace(occupied, size, snap, ejected);
+    occupied.push(placement);
+    ejected++;
+    result = addElementToPage(result, pageId, { ...clone, parent: null }, placement);
+  }
+  return result;
 }
 
 export function reorderElement(

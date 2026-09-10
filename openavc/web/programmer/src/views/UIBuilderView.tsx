@@ -43,6 +43,10 @@ import {
   updateElementInPage,
   moveElementsInPage,
   duplicateElementInPage,
+  duplicateElementsInPage,
+  clipboardForSelection,
+  pasteIntoPage,
+  topmostSelection,
   reorderElement,
   swapElementsInOrder,
   reparentElement,
@@ -56,7 +60,6 @@ import {
   projectCommandActions,
   autoPlace,
   defaultElementSize,
-  absolutePlacements,
   getPlacement,
   lockedIdsFor,
   pageSnap,
@@ -444,14 +447,7 @@ export function UIBuilderView() {
           if (selectedElementIds.length === 1) {
             handleDuplicateElement(selectedElementIds[0]);
           } else {
-            const masterIds = masterElements.map((m) => m.id);
-            applyMutation((pages) => {
-              let result = pages;
-              for (const eid of selectedElementIds) {
-                result = duplicateElementInPage(result, currentPage.id, eid, masterIds, activeLayoutId);
-              }
-              return result;
-            }, `Duplicate ${selectedElementIds.length} elements`);
+            handleDuplicateSelection();
           }
         }
       }
@@ -549,6 +545,20 @@ export function UIBuilderView() {
     [currentPage, masterElements, applyMutation, activeLayoutId],
   );
 
+  // Duplicating a selection copies each container's contents with it, so a
+  // selection holding a container and something inside it produces one copy of
+  // that child, not two. The count in the label is what actually gets copied.
+  const handleDuplicateSelection = useCallback(() => {
+    if (!currentPage) return;
+    const masterIds = masterElements.map((m) => m.id);
+    const roots = topmostSelection(currentPage, selectedElementIds);
+    if (roots.length === 0) return;
+    applyMutation(
+      (p) => duplicateElementsInPage(p, currentPage.id, selectedElementIds, masterIds, activeLayoutId),
+      roots.length === 1 ? "Duplicate element" : `Duplicate ${roots.length} elements`,
+    );
+  }, [currentPage, masterElements, selectedElementIds, applyMutation, activeLayoutId]);
+
   // Hiding is per-arrangement: it writes to the layout being authored and leaves
   // every other one showing the control.
   const handleToggleHidden = useCallback(
@@ -571,61 +581,22 @@ export function UIBuilderView() {
   const handleCopyElement = useCallback(
     (elementIds: string[]) => {
       if (!currentPage) return;
-      const els = elementIds
-        .map((eid) => currentPage.elements.find((e) => e.id === eid))
-        .filter((e): e is UIElement => !!e);
-      if (els.length === 0) return;
-      // Capture the box the eye sees -- page space, not the stored value. A
-      // container child stores percentages OF ITS CONTAINER, and paste ejects
-      // to page level, so the raw number would reinterpret half-a-container as
-      // half-a-page.
-      const absolute = absolutePlacements(currentPage, activeLayoutId);
-      const placements: Record<string, Placement> = {};
-      for (const el of els) {
-        placements[el.id] = absolute[el.id] ?? getPlacement(currentPage, el.id, activeLayoutId);
-      }
-      setClipboard({ elements: JSON.parse(JSON.stringify(els)), placements });
+      const payload = clipboardForSelection(currentPage, elementIds, activeLayoutId);
+      if (payload.elements.length === 0) return;
+      setClipboard(payload);
     },
     [currentPage, activeLayoutId, setClipboard],
   );
 
   const handlePasteElement = useCallback(() => {
     if (!clipboard || clipboard.elements.length === 0 || !currentPage) return;
-    // Page element ids and master ids share the ui.<id> runtime namespace, so a
-    // pasted element must avoid colliding with either.
-    const existingIds = new Set([
-      ...pages.flatMap((p) => p.elements.map((e) => e.id)),
-      ...masterElements.map((m) => m.id),
-    ]);
-    const snap = pageSnap(currentPage);
-    const occupied = currentPage.elements.map((el) => getPlacement(currentPage, el.id, activeLayoutId));
-    const pasted: { element: UIElement; placement: Placement }[] = [];
-    for (const src of clipboard.elements) {
-      let id = src.id;
-      if (existingIds.has(id)) {
-        let counter = 1;
-        id = `${src.type}_${counter}`;
-        while (existingIds.has(id)) {
-          counter++;
-          id = `${src.type}_${counter}`;
-        }
-      }
-      existingIds.add(id);
-      // Paste has no pointer, so it takes the auto-placement rule: the first
-      // free snap cell, or the page centre plus a cascade with snap off.
-      const size = clipboard.placements[src.id] ?? { w: 25, h: 12.5 };
-      const placement = autoPlace(occupied, size, snap, pasted.length);
-      occupied.push(placement);
-      pasted.push({ element: { ...JSON.parse(JSON.stringify(src)), id, parent: null }, placement });
-    }
-    applyMutation((p) => {
-      let result = p;
-      for (const { element, placement } of pasted) {
-        result = addElementToPage(result, currentPage.id, element, placement);
-      }
-      return result;
-    }, `Paste ${pasted.length === 1 ? "element" : `${pasted.length} elements`}`);
-  }, [clipboard, currentPage, pages, masterElements, applyMutation, activeLayoutId]);
+    const masterIds = masterElements.map((m) => m.id);
+    const count = clipboard.elements.length;
+    applyMutation(
+      (p) => pasteIntoPage(p, currentPage.id, clipboard, masterIds, activeLayoutId),
+      `Paste ${count === 1 ? "element" : `${count} elements`}`,
+    );
+  }, [clipboard, currentPage, masterElements, applyMutation, activeLayoutId]);
 
   const handleBringToFront = useCallback(
     (elementId: string) => {
@@ -1572,18 +1543,7 @@ export function UIBuilderView() {
               selectElement(null);
             }
           }}
-          onDuplicateAll={() => {
-            if (currentPage) {
-              const masterIds = masterElements.map((m) => m.id);
-              applyMutation((pages) => {
-                let result = pages;
-                for (const eid of selectedElementIds) {
-                  result = duplicateElementInPage(result, currentPage.id, eid, masterIds, activeLayoutId);
-                }
-                return result;
-              }, `Duplicate ${selectedElementIds.length} elements`);
-            }
-          }}
+          onDuplicateAll={handleDuplicateSelection}
           onCopy={(ids) => handleCopyElement(selectedElementIds.length > 1 ? selectedElementIds : ids)}
           onPaste={handlePasteElement}
           onBringToFront={handleBringToFront}
