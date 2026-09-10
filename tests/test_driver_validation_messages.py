@@ -355,6 +355,10 @@ CASES: dict[str, Any] = {
     "command_udp_magic_packet_undeclared_field": _d(
         commands={"wake": {"udp": {"magic_packet": "mac_address"}}},
     ),
+    "command_udp_magic_packet_state_only": _d(
+        commands={"wake": {"udp": {"magic_packet": "mac_address"}}},
+        state_variables={"mac_address": {"type": "string", "label": "MAC"}},
+    ),
     "command_udp_host_not_string": _d(
         commands={"say": {"udp": {"host": 10, "port": 9, "payload": "HELLO"}}},
     ),

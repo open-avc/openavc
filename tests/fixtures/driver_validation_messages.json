@@ -235,8 +235,11 @@
  "command_udp_host_not_string": [
   "Command 'say': 'udp.host' must be a string"
  ],
+ "command_udp_magic_packet_state_only": [
+  "Command 'wake': 'udp.magic_packet' names 'mac_address', which is not a config field. Declare it in config_schema so the MAC can be typed in; a state variable of the same name is read first once the device reports one"
+ ],
  "command_udp_magic_packet_undeclared_field": [
-  "Command 'wake': 'udp.magic_packet' names 'mac_address', which is neither a declared state variable nor a config field"
+  "Command 'wake': 'udp.magic_packet' names 'mac_address', which is not a config field. Declare it in config_schema so the MAC can be typed in; a state variable of the same name is read first once the device reports one"
  ],
  "command_udp_neither_payload_nor_magic_packet": [
   "Command 'wake': 'udp' needs a 'payload' (the datagram) or a 'magic_packet' (the field holding the MAC to wake)"

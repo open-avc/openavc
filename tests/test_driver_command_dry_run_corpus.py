@@ -42,6 +42,10 @@ PLACEHOLDER = re.compile(r"\{(\w+)(?::([^{}]*))?\}")
 # Fields of a command that the send path substitutes and puts on the wire.
 TEMPLATE_FIELDS = ("send", "address", "path", "body")
 
+# A magic-packet command reads the MAC from a config field; the harness
+# supplies one the way an integrator types it in, so the packet can build.
+SAMPLE_MAC = "02:00:5e:00:53:01"
+
 
 def _discover_driver_files() -> list[Path]:
     """Every shipped .avcdriver: the built-in generics plus the library."""
@@ -64,7 +68,18 @@ def _templates(cmd: dict[str, Any]) -> list[str]:
         block = cmd.get(key)
         if isinstance(block, dict):
             out += [v for v in block.values() if isinstance(v, str)]
+    udp = cmd.get("udp")
+    if isinstance(udp, dict):
+        out += [udp[f] for f in ("payload", "host", "port") if isinstance(udp.get(f), str)]
     return out
+
+
+def _command_config(cmd: dict[str, Any]) -> dict[str, Any]:
+    """Config a command needs beyond the connection: the MAC a wake reads."""
+    udp = cmd.get("udp")
+    if isinstance(udp, dict) and isinstance(udp.get("magic_packet"), str):
+        return {udp["magic_packet"]: SAMPLE_MAC}
+    return {}
 
 
 def _synthesize(pdef: Any) -> Any:
@@ -140,7 +155,9 @@ def _previewable_commands(doc: dict[str, Any]) -> list[tuple[str, dict]]:
     return out
 
 
-async def _preview(doc: dict[str, Any], name: str, params: dict) -> dict:
+async def _preview(
+    doc: dict[str, Any], name: str, params: dict, config: dict | None = None
+) -> dict:
     return await _dry_run_command(
         TestCommandRequest(
             host="192.0.2.10",
@@ -149,6 +166,7 @@ async def _preview(doc: dict[str, Any], name: str, params: dict) -> dict:
             definition=doc,
             command_name=name,
             params=params,
+            config_overrides=config or {},
             dry_run=True,
         )
     )
@@ -183,7 +201,7 @@ async def test_every_command_previews_as_the_runtime_builds_it(driver_path: Path
         if missing:
             unsatisfiable.append(f"{name}({', '.join(missing)})")
             continue
-        result = await _preview(doc, name, params)
+        result = await _preview(doc, name, params, _command_config(cmd))
         if not result["success"]:
             failures.append(f"{name}: {result['error']}")
             continue

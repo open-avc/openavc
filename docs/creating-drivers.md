@@ -1100,7 +1100,7 @@ commands:
     label: Power On
     available_offline: true
     udp:
-      magic_packet: mac_address   # the field holding the MAC: state first, then config
+      magic_packet: mac_address   # the config field; the state variable of the same name is read first
     sets: { power: true }         # so the simulated display comes on too
 
 # A message to a presentation's UDP receiver, on a port that is a config field.
@@ -1116,7 +1116,7 @@ commands:
       message: { type: string, required: true, label: Message }
 ```
 
-- `magic_packet`: names the state variable or config field that holds the device's MAC address. A MAC the device reported (state) wins over one typed into config, so declare both a state variable and a config field of the same name to learn it on connect and still wake a device that has never connected. The packet (six `0xFF` bytes, then the MAC sixteen times) goes to the broadcast address *and* directly to `host`, so a switch that filters broadcast between subnets does not stop it. Port defaults to 9. A command run before any MAC is known is refused with a message that says so.
+- `magic_packet`: names the config field that holds the device's MAC address, so it can be typed in under Edit Device for a device that has never connected. Declare a state variable of the same name too and the MAC the device reports on connect is read first. The packet (six `0xFF` bytes, then the MAC sixteen times) goes to the broadcast address *and* directly to `host`, so a switch that filters broadcast between subnets does not stop it. Port defaults to 9. A command run before any MAC is known is refused with a message that says so.
 - `payload`: the datagram bytes. `{param}` and `{config}` placeholders and the `\r`, `\n`, `\xHH` escapes work exactly as in `send`. The datagram is **not** framed by `command_prefix` / `command_suffix` or `send_frame`: the side channel speaks its own protocol. `port` is required, as a number or as a `{config_field}` placeholder so it can be set per device.
 - `host`: where the datagram goes. Defaults to the device's own host; a `{config_field}` works here too.
 - `broadcast: true`: send the payload to 255.255.255.255 instead of `host`. A magic packet always broadcasts as well as sending to the host.

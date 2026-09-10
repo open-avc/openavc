@@ -323,14 +323,19 @@ def _validate_udp_send(
                 f"the driver does not declare"
             )
     if mac_field is not None:
-        state_vars = driver_def.get("state_variables")
-        state_names = set(state_vars) if isinstance(state_vars, dict) else set()
+        # A config field, so a display that has never connected can still be
+        # woken by typing its MAC in (and so the Builder's dry run can build
+        # the packet). A state variable of the same name is read first when
+        # the device has reported one; on its own it is a wake that cannot
+        # work until the first connect, which is the case the wake exists for.
         if not isinstance(mac_field, str) or not mac_field:
-            errors.append(f"{where}: 'udp.magic_packet' must name a state variable or config field")
-        elif mac_field not in state_names and mac_field not in _config_substitution_names(driver_def):
+            errors.append(f"{where}: 'udp.magic_packet' must name a config field")
+        elif mac_field not in _config_substitution_names(driver_def):
             errors.append(
-                f"{where}: 'udp.magic_packet' names '{mac_field}', which is "
-                f"neither a declared state variable nor a config field"
+                f"{where}: 'udp.magic_packet' names '{mac_field}', which is not "
+                f"a config field. Declare it in config_schema so the MAC can be "
+                f"typed in; a state variable of the same name is read first "
+                f"once the device reports one"
             )
     if "broadcast" in udp_def and not isinstance(udp_def.get("broadcast"), bool):
         errors.append(f"{where}: 'udp.broadcast' must be true or false")

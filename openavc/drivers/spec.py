@@ -1272,7 +1272,7 @@ DEFS = {
             },
             'magic_packet': {
                 'type': 'string',
-                'doc': "Send a Wake-on-LAN magic packet instead of a payload. Names the state variable or config field holding the device's MAC address; a value the device reported (state) wins over one typed into config. The packet goes to the broadcast address and directly to host.",
+                'doc': "Send a Wake-on-LAN magic packet instead of a payload. Names the config field holding the device's MAC address, so it can be typed in for a device that has never connected; a state variable of the same name is read first once the device reports one. The packet goes to the broadcast address and directly to host.",
             },
             'broadcast': {
                 'type': 'boolean',

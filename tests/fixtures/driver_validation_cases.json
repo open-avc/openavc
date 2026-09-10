@@ -2206,6 +2206,24 @@
   },
   "transport": "tcp"
  },
+ "command_udp_magic_packet_state_only": {
+  "commands": {
+   "wake": {
+    "udp": {
+     "magic_packet": "mac_address"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "mac_address": {
+    "label": "MAC",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_udp_magic_packet_undeclared_field": {
   "commands": {
    "wake": {

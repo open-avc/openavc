@@ -35,17 +35,18 @@ function draftWith(commands: DriverDefinition["commands"]): DriverDefinition {
 }
 
 describe("macFieldOptions", () => {
-  it("lists state variables first, then config fields, each once", () => {
+  it("lists config fields, each once, and says which the device also reports", () => {
     const options = macFieldOptions(draftWith({}));
     expect(options.map((o) => o.value)).toEqual([
-      "power",
-      "mac_address",
       "host",
+      "mac_address",
       "udp_port",
       "port",
     ]);
-    expect(options[1].label).toBe("mac_address (state variable)");
-    expect(options[3].label).toBe("udp_port (config field)");
+    expect(options[1].label).toBe(
+      "mac_address (config field, learned from the device once connected)",
+    );
+    expect(options[2].label).toBe("udp_port (config field)");
   });
 });
 
@@ -102,7 +103,7 @@ describe("Send over UDP", () => {
     fireEvent.click(screen.getByText("wake"));
     fireEvent.click(screen.getByLabelText("A Wake-on-LAN magic packet"));
     const written = onUpdate.mock.calls[0][0].commands.wake.udp;
-    expect(written).toEqual({ port: 9, magic_packet: "power" });
+    expect(written).toEqual({ port: 9, magic_packet: "host" });
   });
 
   it("a magic-packet command offers the MAC picker and no broadcast box", () => {
@@ -122,9 +123,9 @@ describe("Send over UDP", () => {
     expect(screen.queryByLabelText(/Broadcast to the whole network/)).toBeNull();
     expect(screen.queryByLabelText("UDP message")).toBeNull();
 
-    fireEvent.change(picker, { target: { value: "host" } });
+    fireEvent.change(picker, { target: { value: "udp_port" } });
     expect(onUpdate.mock.calls[0][0].commands.power_on.udp).toEqual({
-      magic_packet: "host",
+      magic_packet: "udp_port",
     });
   });
 

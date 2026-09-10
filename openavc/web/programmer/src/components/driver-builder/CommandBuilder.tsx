@@ -827,23 +827,26 @@ function CommandSemanticsEditor({
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
-/** Where a command's MAC address can come from: the driver's state variables
- *  (a MAC the device reports on connect) and its config fields (one typed in
- *  under Edit Device). The runtime reads state first, then config. */
+/** Where a command's MAC address comes from: a config field (one typed in
+ *  under Edit Device, so a device that has never connected can still be
+ *  woken). When a state variable of the same name exists, the runtime reads
+ *  that first once the device has reported its MAC, and the label says so. */
 export function macFieldOptions(
   draft: Pick<DriverDefinition, "state_variables" | "config_schema" | "default_config">,
 ): { value: string; label: string }[] {
-  const stateKeys = Object.keys(draft.state_variables ?? {});
+  const stateKeys = new Set(Object.keys(draft.state_variables ?? {}));
   const configKeys = Array.from(
     new Set([
       ...Object.keys(draft.config_schema ?? {}),
       ...Object.keys(draft.default_config ?? {}),
     ]),
-  ).filter((k) => !stateKeys.includes(k));
-  return [
-    ...stateKeys.map((k) => ({ value: k, label: `${k} (state variable)` })),
-    ...configKeys.map((k) => ({ value: k, label: `${k} (config field)` })),
-  ];
+  );
+  return configKeys.map((k) => ({
+    value: k,
+    label: stateKeys.has(k)
+      ? `${k} (config field, learned from the device once connected)`
+      : `${k} (config field)`,
+  }));
 }
 
 /** The fields of a command's udp block: what goes out and where. Exactly one
@@ -947,12 +950,11 @@ export function UdpSendFields({
             ))}
           </select>
           <div style={hintStyle}>
-            The state variable or config field that holds the device&apos;s MAC
-            address. A MAC the device reported wins over one typed into
-            config. The packet goes to the broadcast address and straight to
-            the device; declare both a state variable and a config field of the
-            same name to learn it on connect and still wake a device that has
-            never connected.
+            The config field that holds the device&apos;s MAC address, so it can
+            be typed in under Edit Device. Declare a state variable of the same
+            name too and the MAC the device reports on connect is used first.
+            The packet goes to the broadcast address and straight to the
+            device.
           </div>
         </div>
       ) : (

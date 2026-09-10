@@ -235,9 +235,16 @@ def test_a_payload_needs_a_port_and_a_magic_packet_does_not():
     assert _errors(commands={"wake": {"udp": {"magic_packet": "mac_address"}}}) == []
 
 
-def test_a_magic_packet_names_a_field_that_exists():
+def test_a_magic_packet_names_a_config_field():
     errs = _errors(commands={"wake": {"udp": {"magic_packet": "hw_addr"}}})
-    assert any("neither a declared state variable nor a config field" in e for e in errs), errs
+    assert any("not a config field" in e for e in errs), errs
+    # A state variable alone is a wake that cannot work before the first
+    # connect: the config field is required, the state variable optional.
+    errs = _errors(
+        commands={"wake": {"udp": {"magic_packet": "learned_mac"}}},
+        state_variables={"learned_mac": {"type": "string", "label": "MAC"}},
+    )
+    assert any("not a config field" in e for e in errs), errs
 
 
 def test_a_port_placeholder_names_a_declared_config_field():
