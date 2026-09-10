@@ -248,7 +248,9 @@ class PanelApp {
         this.state = {};
         this.uiDef = null;
         this.uiSettings = {};
-        this.currentPage = params.get('page') || 'main';
+        // Without an explicit page link, wait for the definition and use its
+        // home page. A page named "main" can exist without being home.
+        this.currentPage = params.get('page') || '';
         // The way round the arrangement currently being drawn is. Set per
         // render; seeded here so a renderer reached before any page is drawn
         // still has an answer rather than `undefined`.
@@ -1943,8 +1945,8 @@ class PanelApp {
         let page = pages.find(p => p.id === this.currentPage);
         if (!page) {
             if (pages.length > 0) {
-                this.currentPage = pages[0].id;
-                page = pages[0];
+                page = pages.find(p => (p.page_type || 'page') === 'page') || pages[0];
+                this.currentPage = page.id;
             } else {
                 this.root.textContent = '';
                 const emptyMsg = document.createElement('div');

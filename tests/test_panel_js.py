@@ -63,6 +63,12 @@ def harness_results() -> dict:
 
 # One pytest case per harness scenario, so a failure names the exact behaviour.
 SCENARIOS = [
+    "startup_uses_the_home_page_even_when_main_exists",
+    "startup_keeps_main_when_it_is_home",
+    "startup_honors_an_explicit_page_link",
+    "startup_skips_overlays_when_choosing_home",
+    "startup_does_not_reset_navigation_on_a_new_definition",
+    "startup_recovers_an_invalid_page_link_to_home",
     "h001_matrix_reeval",
     "h002_gauge_reset",
     "h002_meter_reset",

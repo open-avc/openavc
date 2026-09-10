@@ -132,7 +132,65 @@ function renderProject(app, proj) {
     app.renderCurrentPage();
 }
 
+function startupPage(id) {
+    const page = project({ elements: [el(`${id}_heading`, 'label', { text: `${id} heading` })] }).ui.pages[0];
+    return { ...page, id, name: id };
+}
+
+function openingPanel(pages, query = '') {
+    const previousUrl = window.location.href;
+    window.history.replaceState({}, '', '/panel/' + query);
+    const app = mkApp();
+    window.history.replaceState({}, '', previousUrl);
+    // Use the opening wire messages, without renderProject's explicit page
+    // selection. The theme is already settled so this render is synchronous.
+    app._firstThemeSettled = true;
+    app.handleMessage({ type: 'state.snapshot', state: {} });
+    app.handleMessage({ type: 'ui.definition', ui: { ...project({}).ui, pages } });
+    return app;
+}
+
 const tests = {
+    startup_uses_the_home_page_even_when_main_exists() {
+        const app = openingPanel([startupPage('camera'), startupPage('main')]);
+        assert(app.currentPage === 'camera', 'the first regular page is home');
+        assert(app.root.textContent.includes('camera heading'), 'the home page is drawn');
+        assert(!app.root.textContent.includes('main heading'), 'main does not override home');
+    },
+
+    startup_keeps_main_when_it_is_home() {
+        const app = openingPanel([startupPage('main'), startupPage('camera')]);
+        assert(app.currentPage === 'main', 'the usual Main-first project is unchanged');
+        assert(app.root.textContent.includes('main heading'), 'Main is drawn');
+    },
+
+    startup_honors_an_explicit_page_link() {
+        const app = openingPanel([startupPage('camera'), startupPage('main')], '?page=main');
+        assert(app.currentPage === 'main', 'the URL may request another valid page');
+        assert(app.root.textContent.includes('main heading'), 'the requested page is drawn');
+    },
+
+    startup_skips_overlays_when_choosing_home() {
+        const overlay = { ...startupPage('help'), page_type: 'overlay' };
+        const app = openingPanel([overlay, startupPage('camera'), startupPage('main')]);
+        assert(app.currentPage === 'camera', 'an overlay is not the home page');
+        assert(app.root.textContent.includes('camera heading'), 'the regular home page is drawn');
+    },
+
+    startup_does_not_reset_navigation_on_a_new_definition() {
+        const app = openingPanel([startupPage('camera'), startupPage('main')]);
+        app.navigateToPage('main');
+        app.handleMessage({ type: 'ui.definition', ui: app.uiDef });
+        assert(app.currentPage === 'main', 'a live definition keeps the page the operator chose');
+        assert(app.root.textContent.includes('main heading'), 'the selected page stays visible');
+    },
+
+    startup_recovers_an_invalid_page_link_to_home() {
+        const app = openingPanel([startupPage('camera'), startupPage('main')], '?page=removed');
+        assert(app.currentPage === 'camera', 'a missing requested page falls back to home');
+        assert(app.root.textContent.includes('camera heading'), 'the fallback is drawn');
+    },
+
     // H-001 — matrix routes re-evaluate on incremental state.update for any of
     // their key patterns (route / audio route / labels), not just on full render.
     h001_matrix_reeval() {

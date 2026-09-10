@@ -126,7 +126,7 @@ Click the **+** tab to add pages. Common patterns for AV rooms:
 - **Camera**: PTZ camera presets, directional controls
 - **Advanced**: Technical controls, diagnostics, IP info
 
-Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks. Right-click a page tab for options including **Set as Home Page**.
+Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks. Right-click a page tab for options including **Set as home page**. This moves the page first, and a newly opened panel starts there. An explicit `?page=` link can open a different page. Live project updates preserve the page the operator has already selected.
 
 ### A page you wrote yourself
 
