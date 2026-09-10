@@ -64,6 +64,25 @@ export function BasicProperties({
   onChange,
   onRename,
 }: BasicPropertiesProps) {
+  // Probe the committed source, using this render's patch callback. A callback
+  // retained by the picker would still hold the element from before selection.
+  // Cancel it when another edit, selection or unmount makes that render stale.
+  useEffect(() => {
+    if (element.type !== "image" || !element.src || element.aspect_lock != null) return;
+    const probe = new Image();
+    let cancelled = false;
+    probe.onload = () => {
+      if (cancelled || !probe.naturalWidth || !probe.naturalHeight) return;
+      onChange({
+        aspect_lock: Math.round((probe.naturalWidth / probe.naturalHeight) * 10000) / 10000,
+      });
+    };
+    probe.src = element.src.startsWith("assets://")
+      ? getAssetUrl(element.src.slice("assets://".length))
+      : element.src;
+    return () => { cancelled = true; };
+  }, [element, onChange]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       {/* ID — inline rename, with reference rewriting in onRename handler */}
@@ -412,19 +431,13 @@ export function BasicProperties({
           <FieldRow label="Image">
             <AssetPicker
               value={element.src || ""}
-              onChange={(v) => {
-                onChange({ src: v || undefined });
-                adoptIntrinsicAspect(v, element, onChange);
-              }}
+              onChange={(v) => onChange({ src: v || undefined })}
             />
           </FieldRow>
           <FieldRow label="URL">
             <input
               value={element.src?.startsWith("assets://") ? "" : (element.src || "")}
-              onChange={(e) => {
-                onChange({ src: e.target.value || undefined });
-                adoptIntrinsicAspect(e.target.value, element, onChange);
-              }}
+              onChange={(e) => onChange({ src: e.target.value || undefined })}
               placeholder="Or enter external URL..."
               style={{ flex: 1, fontSize: 11 }}
             />
@@ -1390,25 +1403,6 @@ function setMatrixFrom(
     if (value === undefined) delete from[key];
   }
   return { ...config, [axis]: { ...outer, from } };
-}
-
-function adoptIntrinsicAspect(
-  src: string | undefined,
-  element: UIElement,
-  onChange: (patch: Partial<UIElement>) => void,
-) {
-  if (!src || element.aspect_lock != null) return;
-  const url = src.startsWith("assets://")
-    ? getAssetUrl(src.slice("assets://".length))
-    : src;
-  const probe = new Image();
-  probe.onload = () => {
-    if (!probe.naturalWidth || !probe.naturalHeight) return;
-    onChange({
-      aspect_lock: Math.round((probe.naturalWidth / probe.naturalHeight) * 10000) / 10000,
-    });
-  };
-  probe.src = url;
 }
 
 function useRowKeys(length: number) {

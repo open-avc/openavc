@@ -39,6 +39,11 @@ Put controls where you want them. Position and size are stored as a percentage o
 
 **Aspect Lock** in the Layout section holds an element's shape when a screen stretches. A locked element shrinks to fit its box and stays centered, so a round indicator stays round and a camera image is not squashed. Status LEDs, camera presets and video elements get one automatically when you drop them.
 
+An Image without an aspect setting adopts its source image's proportions after
+the image loads. Selecting an asset or entering a URL preserves the source and
+any edits made while it loads. A ratio you set yourself, including turning the
+lock off, takes precedence over automatic sizing.
+
 ## Warnings on the canvas
 
 Some controls contain parts that are a fixed number of pixels and do not shrink with the box. A status LED's dot is 20 pixels whatever you size the element to; a fader's handle is 44 and its number scale another 28. Drag one of those smaller than the parts inside it and the control still draws, with its contents cut off, which reads like a styling bug rather than a sizing one.
