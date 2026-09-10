@@ -176,6 +176,62 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
     return merged, True
 
 
+#: The write template's own placeholder -- the one name the runtime always
+#: substitutes with the value being written, with or without a format spec.
+_VALUE_PLACEHOLDER = re.compile(r"\{value(?::[^{}]*)?\}")
+
+#: A setting's declared type, read as the command-parameter type whose capture
+#: matches the same wire form. `enum` and `float` have no param equivalent: an
+#: enum's members are wire tokens of any shape, so it captures like a string,
+#: and a float captures like a number.
+_SETTING_PARAM_TYPE: dict[str, str] = {
+    "string": "string",
+    "integer": "integer",
+    "number": "number",
+    "float": "number",
+    "boolean": "boolean",
+    "enum": "string",
+}
+
+
+def _settings_write_template(write: dict) -> str | None:
+    """The wire line a ``device_settings`` write puts on this transport.
+
+    Asked in the runtime's own order (``set_device_setting``): an ``address``
+    write is OSC and wins over everything, then ``path``/``method`` is HTTP,
+    and ``send`` is the byte-stream form last. Checking ``send`` first would
+    build a handler for a write the driver never sends that way.
+
+    **No ``command_prefix``.** A command is framed with the driver's prefix and
+    suffix on the way out; ``set_device_setting`` does no such thing -- it
+    substitutes, escape-decodes, applies ``send_frame`` and sends. Drivers know
+    it: the one prefixed driver in the catalog that declares settings spells
+    its prefix into every write string by hand. Adding one here would build a
+    pattern the wire never carries.
+
+    An HTTP write is built into the exact line ``respond_http`` synthesizes --
+    ``"METHOD /path|body"``, no body section when there is no body -- so one
+    handler chain still serves both transports, with POST the default method
+    the runtime uses.
+
+    Returns None for a write this chain never sees: OSC, and an empty one.
+    """
+    if write.get("address"):
+        # OSC never reaches the command chain; handle_message answers from the
+        # response address mappings instead.
+        return None
+    path = write.get("path")
+    if (isinstance(path, str) and path) or write.get("method"):
+        method = str(write.get("method") or "POST").upper()
+        line = f"{method} {path if isinstance(path, str) and path else '/'}"
+        body = write.get("body")
+        return f"{line}|{body}" if isinstance(body, str) and body else line
+    send = write.get("send")
+    if isinstance(send, str) and send:
+        return send
+    return None
+
+
 class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
 
@@ -264,6 +320,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
         self._build_state_responses()
         self._build_command_handlers()
+        # After the commands, so a command and a setting whose wire forms
+        # collide resolve to the command -- the thing the driver named.
+        self._build_settings_handlers()
         self._build_query_handlers()
 
         # Inline (Generic) devices: also match an incoming command against the
@@ -1734,6 +1793,131 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     "Auto-sim %s: could not infer behavior for command '%s'",
                     self.driver_id, cmd_name,
                 )
+
+    def _settings_wire_line(self, template: str) -> str | None:
+        """The one line of a settings write that actually carries the value.
+
+        Two things stand between the authored template and the line the
+        simulator sees, and both are visible in the catalog today.
+
+        A write may be more than one command: a set followed by a read-back
+        query, joined by the terminator, sent as one blob and arriving as
+        separate lines. Only the segment holding ``{value}`` is the write --
+        the query is a query, answered by the handlers that answer queries --
+        so a pattern built from the whole string could never match either
+        line.
+
+        And a write may carry ``{config_field}`` placeholders (a monitor id, a
+        unit address). The driver substitutes those before sending, so the
+        simulator has to as well or the pattern would look for the literal
+        braces. Same substitution ``_query_wire_line`` does for a raw poll
+        query, from the same two sources; ``{value}`` is not a config key and
+        is left alone for ``send_regex`` to turn into the capture.
+        """
+        segments = [
+            s for s in decode_delimiter(template).replace("\r", "\n").split("\n")
+            if s.strip()
+        ]
+        wire = next(
+            (s for s in segments if _VALUE_PLACEHOLDER.search(s)), None
+        )
+        if wire is None:
+            return None
+        if "{" in wire:
+            merged = dict(self._driver_def.get("default_config") or {})
+            merged.update(self.config or {})
+            merged.pop("value", None)
+            wire = safe_substitute(wire, merged)
+        return wire.strip() or None
+
+    def _build_settings_handlers(self) -> None:
+        """Answer a ``device_settings`` write the way a command is answered.
+
+        A setting's ``write`` carries the same templates a command's ``send``
+        does and its ``state_key`` names where the value lands, so the pair is
+        everything a handler needs -- and without one, a setting write reached
+        the end of the dispatch chain, logged *unrecognized command* and was
+        dropped. Nothing in the catalog shows it, because every driver that
+        declares settings also hand-writes a ``simulator:`` section whose
+        handlers happen to match its own write strings; a NEW driver written
+        without one got settings that did nothing in simulation.
+
+        **Reporting the value back is the point, not a nicety.** A setting
+        write now waits for the device to say the value took, so a handler
+        that changed state silently would leave the setting pending forever
+        and re-sent on every connect. ``response_var`` is the state key, and
+        the sentence comes from the same ``responses:`` rule the real driver
+        parses the device's report with -- which every such driver has, or it
+        could never learn the value either.
+
+        **Two of the three write forms are built here.** ``send`` is the wire
+        string. An HTTP write is built from ``method``/``path``/``body`` into
+        the line ``respond_http`` synthesizes, so one handler chain still
+        serves both transports. An OSC write (``address``/``args``) is NOT
+        built: OSC never reaches this chain -- ``handle_message`` answers from
+        the response address mappings instead -- and no driver in the catalog
+        writes a setting over OSC. A driver that does needs a rule there, and
+        gets today's behaviour until then rather than a handler that silently
+        never matches.
+        """
+        settings = self._driver_def.get("device_settings") or {}
+        if not isinstance(settings, dict):
+            return
+        built = 0
+
+        for name, entry in settings.items():
+            if not isinstance(entry, dict):
+                continue
+            write = entry.get("write")
+            if not isinstance(write, dict):
+                continue
+            template = _settings_write_template(write)
+            if not template:
+                continue
+            template = self._settings_wire_line(template)
+            if not template:
+                # Every segment was a query, or config substitution left
+                # nothing addressable. A handler with no {value} capture would
+                # set the state key to nothing on every match.
+                continue
+
+            # One parameter, always called `value` -- that is the placeholder
+            # the runtime substitutes -- typed from the setting so the capture
+            # matches what went on the wire. `enum` and `float` are settings
+            # types with no param equivalent: an enum's members are wire
+            # tokens of any shape, and a float captures like a number.
+            param_type = _SETTING_PARAM_TYPE.get(str(entry.get("type", "")), "string")
+            params = {"value": {"type": param_type}}
+
+            pattern_str = send_regex(template, params)
+            try:
+                pattern = re.compile(f"^{pattern_str}$")
+            except re.error:
+                logger.warning(
+                    "Invalid regex from setting '%s': %s", name, pattern_str
+                )
+                continue
+
+            state_key = str(entry.get("state_key") or name)
+            group_bases: dict[int, int] = {}
+            base = spec_int_base(send_param_specs(template, params).get("value", ""))
+            if base:
+                group_bases[1] = base
+
+            self._command_handlers.append(CommandHandler(
+                name=f"setting:{name}",
+                pattern=pattern,
+                state_changes={state_key: 1},
+                response_var=state_key,
+                group_bases=group_bases,
+            ))
+            built += 1
+
+        if built:
+            logger.debug(
+                "Auto-sim %s: %d device_settings write handlers",
+                self.driver_id, built,
+            )
 
     def _build_query_handlers(self) -> None:
         """Build query handlers from polling.queries (+ declared on_connect).
