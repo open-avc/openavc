@@ -515,13 +515,18 @@ Projects can include uploaded image assets (PNG, JPG, SVG, etc.) stored in the p
 
 Toggle preview mode (button at the top of the canvas) to hide the snap overlay and test your panel with live device state. Button presses send real commands, sliders move real faders, and state feedback updates in real time. Use this to verify your bindings before deploying to a production touch panel.
 
+Preview also applies the panel's lock code and idle settings. Enter the PIN to
+unlock it, then leave the panel untouched to test its idle return and relock.
+Exit Preview to continue designing; the design canvas stays unlocked and does
+not change pages when idle.
+
 ## Panel Settings
 
 Click the gear icon in the UI Builder toolbar to open Panel Settings:
 - **Theme**: select a theme from the Theme Picker (see below)
 - **Accent Color**: primary color used for buttons and highlights
 - **Font**: panel font family
-- **Lock Code**: optional PIN to prevent unauthorized access on a deployed panel
+- **Lock Code**: optional PIN required when the panel opens and after its idle timeout
 - **Idle Timeout**: seconds of inactivity before the panel returns to the idle page
 - **Idle Page**: which page to display when the idle timeout triggers
 - **Show a message when a control fails**: on unless you turn it off

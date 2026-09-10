@@ -567,6 +567,8 @@ class PanelApp {
                         // Preview: an overlay page has to go through the
                         // navigation path or it draws as a flat page.
                         this._showPageAsRuntimeWould(msg.pageId || this.currentPage);
+                        this._reconcileLockOnDefinition();
+                        this.resetIdleTimer();
                     }
                     this._postToParent({ type: 'openavc:editor-ready' });
                     break;
