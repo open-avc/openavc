@@ -18,6 +18,7 @@ from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.connection_fault import (
+    BRIDGE_OFFLINE,
     UNREACHABLE,
     ConnectionFaultError,
     classify_connection_fault,
@@ -1743,6 +1744,22 @@ class DeviceManager:
             fault = typed_fault_from_exc(exc, host=host, port=port)
         if fault is None and driver is not None:
             fault = getattr(driver, "last_fault", None)
+        # Before the classifier describes the socket: a device bound through a
+        # bridge dials the BRIDGE's pass-through address, so what the classifier
+        # would report is a host and port the integrator never typed ("Connection
+        # refused on 127.0.0.1:4999"). When the bridge carrying this device is
+        # down, that is the answer, and it is the same answer an IR device on the
+        # same bridge has always got -- including its precedence over a commanded
+        # restart window, which is why this delegates rather than building a
+        # fault of its own. It sits AFTER the typed faults deliberately: those
+        # mean the device itself answered, which pins a real failure to the
+        # device rather than to its carrier, and one of them (auth_failed) steers
+        # the reconnect policy.
+        if fault is None:
+            bridge_id = self._carrier_bridge_if_offline(device_id)
+            if bridge_id is not None:
+                self._set_bridge_offline_reason(device_id, bridge_id)
+                return BRIDGE_OFFLINE
         if fault is None:
             fault = classify_connection_fault(
                 last_error=last_error, exc=exc,
@@ -1910,12 +1927,36 @@ class DeviceManager:
         if len(parts) < 3:
             return
         device_id = parts[2]
+        # A bridge only configures its ports when a downstream is ADDED, so a
+        # bridge that was down then and heals now would carry that downstream's
+        # bytes at whatever its NVRAM holds -- the factory default, or the last
+        # job's baud -- while the device reads connected and every indicator is
+        # green. Re-prepare here, the one place we know the bridge is live, and
+        # before the mirror below so the line settings are on their way before
+        # anything is told the bridge is back.
+        await self._reprepare_bridge_ports(device_id)
         deps = self._bridge_routed_dependents(device_id)
         if deps:
             await self._mirror_bridge_state(device_id, True, deps)
         # A device that was unreachable at add time may only now be serving its
         # web UI; the probe's own "already detected" guard makes this idempotent.
         self._schedule_web_ui_probe(device_id)
+
+    async def _reprepare_bridge_ports(self, bridge_id: str) -> None:
+        """Re-run the port preparation for every device bound to this bridge.
+
+        A no-op unless ``bridge_id`` really is a live bridge with dependents,
+        which is what makes it safe on the connect path every device takes.
+        Each call is best-effort and never raises, exactly as at add time.
+        """
+        bridge = self._devices.get(bridge_id)
+        if bridge is None or not getattr(bridge, "is_bridge", False):
+            return
+        for dev_id in self._bridge_bound_dependents(bridge_id):
+            driver = self._devices.get(dev_id)
+            if driver is None:
+                continue
+            await self._prepare_bridge_for(dev_id, driver.config or {})
 
     def _schedule_web_ui_probe(self, device_id: str) -> None:
         """Kick off a one-shot Open Web UI probe for an auto-mode device.
@@ -1984,6 +2025,52 @@ class DeviceManager:
             if cfg.get("bridge") == bridge_id and cfg.get("transport") == "bridge":
                 out.append(dev_id)
         return out
+
+    def _bridge_bound_dependents(self, bridge_id: str) -> list[str]:
+        """Live device ids bound to a port on ``bridge_id``, of every port kind.
+
+        Wider than ``_bridge_routed_dependents``, which is only the devices
+        whose connected state MIRRORS the bridge. This is everything the bridge
+        has to configure a port for, including the serial pass-through devices
+        that dial the bridge themselves and so are nobody's mirror.
+        """
+        out: list[str] = []
+        for dev_id, dc in self._device_configs.items():
+            if dev_id not in self._devices:
+                continue
+            cfg = dc.get("config", {})
+            if cfg.get("bridge") == bridge_id and cfg.get("bridge_port"):
+                out.append(dev_id)
+        return out
+
+    def _carrier_bridge_if_offline(self, device_id: str) -> str | None:
+        """The id of the bridge carrying ``device_id``, when that bridge is down.
+
+        A serial device bound through a bridge has its connection rewritten to
+        the bridge's transparent pass-through (``resolve_bridge_binding``), which
+        overwrites host, port and transport but keeps ``bridge`` / ``bridge_port``
+        in the resolved config. Those markers are the only thing left tying the
+        failing socket back to the bridge, because the address it failed against
+        belongs to the bridge rather than to the device.
+
+        Both markers are required, matching the rewrite's own precondition: a
+        binding with no port was never rewritten, so that device is dialling its
+        own address and the bridge has nothing to do with the failure. ``None``
+        also when the bridge is UP -- a live bridge with an unreachable device
+        downstream is the device's own fault, and saying otherwise would point
+        the integrator at the wrong box.
+        """
+        cfg = self._device_configs.get(device_id, {}).get("config", {})
+        bridge_id = cfg.get("bridge")
+        if not bridge_id or not cfg.get("bridge_port"):
+            return None
+        bridge = self._devices.get(bridge_id)
+        # A bridge that is not registered at all (its driver is not installed
+        # yet) counts as down: the downstream is certainly not reaching anything
+        # through it, and naming the bridge beats describing a socket.
+        if bridge is not None and bridge.get_state("connected"):
+            return None
+        return str(bridge_id)
 
     async def _mirror_bridge_state(
         self, bridge_id: str, online: bool, deps: list[str]

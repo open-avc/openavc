@@ -75,10 +75,11 @@ A bridge device works on its own, too. Its card has the standard command sender,
 
 ## Troubleshooting
 
-- **The device will not connect.** Confirm the bridge itself is online (its own device card shows connected). Check the serial settings match the device's manual exactly, including baud rate and parity.
+- **The device will not connect.** If the bridge is down, the device says so itself: its card reads "The bridge '<name>' this device sends through is offline", and both come back on their own once the bridge is reachable again. If the bridge's own card shows connected, the problem is between the bridge and the device: check the serial settings match the device's manual exactly, including baud rate and parity, and check the cable.
 - **No response from the device.** This is almost always wiring or line settings. RS-232 needs the correct cable. If a straight-through cable gives nothing, try a null-modem (crossover) cable, or the reverse. Double-check baud rate, data bits, parity, and stop bits against the manual.
 - **The bridge is not in the bridge list.** Make sure the bridge device is added to the project first. The list shows project devices whose driver advertises bridge ports.
 - **Only one connection at a time.** A single serial pass-through port carries one connection. Bind one device per serial port.
+- **The bridge was power-cycled.** Nothing to do. A bridge that comes back re-applies the serial settings for every device bound to its ports, so a unit that lost them to a power cut is set up again without anyone opening the Programmer.
 - **An IR code does nothing.** Aim matters: the emitter has to sit over the device's remote sensor. Use the code's **Test** button while you position it. If a learned code is unreliable, learn it again holding the remote steady and close to the bridge's learning window.
 - **Learning will not capture.** Only one learn session runs per bridge at a time, and learning pauses while the bridge is busy. Close any other learn window, then try again.
 
