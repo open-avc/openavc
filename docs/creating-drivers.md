@@ -2218,7 +2218,7 @@ bridge:
       label: "RS-232 Port 1"
 ```
 
-A downstream device binds to a bridge from its own Connection settings (choose `Through a bridge`, then pick the bridge and port). For a serial port, the platform routes the downstream over the bridge's pass-through with no extra code. Pushing baud and parity to the hardware needs a Python driver that overrides `prepare_bridge_port` (see Method 3). The Global Cache iTach IP2SL driver in the community library is a complete example.
+A downstream device binds to a bridge from its own Connection settings (choose `Through a bridge`, then pick the bridge and port). For a serial port, the platform routes the downstream over the bridge's pass-through with no extra code. Pushing baud and parity to the hardware needs a Python driver that overrides `prepare_bridge_port` (see Method 3). Make that method idempotent: the platform calls it before a bound device connects, and again for every bound port whenever the bridge reconnects, so a bridge that was power-cycled sets its ports back up by itself. The second call can arrive while the bound device is already connected through the pass-through, so use the bridge's own command connection rather than anything that disturbs the data path. The Global Cache iTach IP2SL driver in the community library is a complete example.
 
 ### IR devices and IR bridges
 

@@ -44,7 +44,7 @@ NO_RESPONSE = "no_response"
 CLIENT_MISSING = "client_missing"
 INVALID_CONFIG = "invalid_config"  # bad connection settings (baud/parity/port/...)
 TRANSPORT_DISCONNECTED = "transport_disconnected"  # generic fallback
-BRIDGE_OFFLINE = "bridge_offline"  # a bridge-routed device whose bridge is down
+BRIDGE_OFFLINE = "bridge_offline"  # a device bound to a bridge port whose bridge is down
 NO_SIMULATOR = "no_simulator"  # simulating, but this driver ships no simulator
 
 
@@ -61,8 +61,8 @@ class ConnectionFault:
 
 
 # Codes a driver may declare on a ConnectionFaultError. bridge_offline is
-# excluded on purpose — it's assigned by the DeviceManager when it mirrors a
-# bridge's state onto dependents, never raised from inside a driver.
+# excluded on purpose — it is the DeviceManager's to assign, because only it
+# knows whether the bridge is up, and never raised from inside a driver.
 _DRIVER_FAULT_CODES = frozenset({
     AUTH_FAILED,
     CONNECTION_REFUSED,
@@ -751,14 +751,22 @@ def classify_connection_fault(
 
 
 def bridge_offline_fault(bridge_label: str = "") -> ConnectionFault:
-    """Offline reason for a bridge-routed device whose bridge is unavailable.
+    """Offline reason for a device bound to a bridge port whose bridge is down.
 
-    A device that emits through a bridge (an IR device on an emitter port) has
-    no transport of its own — it's reachable only while its bridge is online.
-    This isn't a connection failure to classify from an error string; the
-    device manager calls this directly when it mirrors a bridge's offline state
-    onto its dependents. ``bridge_label`` is the bridge's display name (falls
-    back to generic wording when empty).
+    Not a connection failure to classify from an error string either time it is
+    used, which is why the device manager calls this directly rather than going
+    through the classifier. It reaches two kinds of device:
+
+    * An IR device on an emitter port has no transport of its own and is
+      reachable only while its bridge is online, so the manager mirrors the
+      bridge's state onto it and publishes this on the way down.
+    * A serial device on a pass-through port DOES have a transport, dialled at
+      the bridge's own address. Left to itself it would report that socket —
+      a host and port the integrator never entered — so when its bridge is
+      known to be down this answers instead of the classifier.
+
+    ``bridge_label`` is the bridge's display name (falls back to generic
+    wording when empty).
     """
     who = (bridge_label or "").strip()
     if who:

@@ -1432,9 +1432,10 @@ class BaseDriver(ABC):
     # which OTHER devices connect *through* (the pro-AV port-binding model).
     # A bridge driver declares its ports in DRIVER_INFO["bridge"]["ports"].
     # The platform resolves a downstream device's connection to the bridge's
-    # pass-through endpoint (engine.resolved_device_config) and, just before
-    # that downstream connects, calls prepare_bridge_port() on the live bridge
-    # so the hardware is configured for the downstream first.
+    # pass-through endpoint (engine.resolved_device_config) and calls
+    # prepare_bridge_port() on the live bridge so the hardware is configured
+    # for the downstream first — before that downstream connects, and again
+    # whenever the bridge itself reconnects.
 
     @property
     def is_bridge(self) -> bool:
@@ -1444,8 +1445,7 @@ class BaseDriver(ABC):
     async def prepare_bridge_port(
         self, port_id: str, params: dict[str, Any]
     ) -> None:
-        """Configure one of this bridge's ports for a downstream device that is
-        about to connect through it.
+        """Configure one of this bridge's ports for a device bound to it.
 
         Called by the platform on the *bridge* driver. For a serial port a
         bridge pushes the downstream's baud/parity to the hardware here, so the
@@ -1456,6 +1456,14 @@ class BaseDriver(ABC):
         (IR / relay), does nothing. Raising does NOT block the downstream
         connect (the platform logs and proceeds), so a transient bridge-side
         failure can't strand the downstream device offline.
+
+        **Make it idempotent.** It runs before a downstream connects, and again
+        for every bound port whenever the bridge itself reconnects — otherwise
+        a bridge that lost its settings to a power cut would carry a device that
+        was added while it was down at whatever its memory held. That second
+        call can therefore arrive while the downstream is already connected
+        through the pass-through, so do the work on the bridge's own command
+        connection rather than anything that would disturb the data path.
         """
 
     # A bridge that emits commands for downstream devices (IR, and any future
