@@ -185,10 +185,33 @@ server log names the address it could not reach.
 | 49280 | TCP | Audio mixers | Yamaha RCP (CL/QL/TF/Rivage/DM3) |
 | 52000 | TCP | Audio DSPs | QSC Q-SYS |
 | 61000 | TCP | Wireless microphones | Shure DCS |
-| 161 | UDP | SNMP-managed devices | Read-only status query (discovery only) |
+| 161 | UDP | SNMP-managed devices | SNMP v2c status queries, and control writes on a device set up for them |
 | 5343 | TCP | Network-attached control surfaces | Elgato Network Dock, Stream Deck Studio (Stream Deck plugin) |
 
 An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 49152. If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
+
+**SNMP-controlled devices (port 161).** Rack PDUs, UPSes, managed switches
+and environmental sensors are usually controlled over SNMP rather than a
+control protocol. OpenAVC reads and writes those values on UDP 161 as an
+ordinary outbound device connection, to the addresses in the project and no
+others. Three things are worth knowing before you allow it:
+
+- **SNMP v2c has no encryption and no real authentication.** The community
+  string travels in cleartext in every request, so anyone who can see the
+  traffic can read it and reuse it. Treat a write community as a credential
+  that is exposed on the wire: keep SNMP on the control VLAN, and give OpenAVC
+  a community that reaches only the equipment it manages.
+- **Reading and writing are separate permissions**, and most equipment ships a
+  different community string for each. OpenAVC writes only the values an
+  installer has declared as writable for that device, so a device added for
+  monitoring has none to write. If you want that guaranteed by the network
+  rather than by the configuration, withhold the write community: the device
+  itself refuses a write attempted under a read-only community.
+- **Version 3 is not supported.** SNMPv3 adds per-user authentication and
+  encryption; OpenAVC speaks v2c only. A device that has been locked to v3 will
+  not answer, and will show as offline rather than as a permissions error,
+  because an SNMP agent ignores a request it will not serve instead of
+  refusing it.
 
 **Network-attached control surfaces (port 5343):** when the Stream Deck plugin is configured with a network-attached deck, the server keeps an outbound TCP connection to the unit on port 5343 and may send mDNS queries (UDP multicast 224.0.0.251:5353) to find it. This protocol has no authentication or encryption — any host on the segment can drive the unit — so place these devices on the control VLAN with the AV equipment. mDNS discovery does not cross VLANs, NAT, or Docker bridge networks; the surface is added by IP address there (a static IP on the unit is recommended).
 
