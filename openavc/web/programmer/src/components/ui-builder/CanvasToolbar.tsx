@@ -946,6 +946,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                           integer
                           min={1}
                           max={48}
+                          owner={`${selectedPageId}/snap.x`}
                           value={Math.round(100 / snap.x)}
                           onCommit={(v) => {
                             if (v !== undefined) handleSnapChange({ x: 100 / v });
@@ -962,6 +963,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
                           integer
                           min={1}
                           max={48}
+                          owner={`${selectedPageId}/snap.y`}
                           value={Math.round(100 / snap.y)}
                           onCommit={(v) => {
                             if (v !== undefined) handleSnapChange({ y: 100 / v });

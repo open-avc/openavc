@@ -346,6 +346,9 @@ export function PropertiesPanel({
       <Section title="Layout" defaultOpen>
         <LayoutProperties
           element={element}
+          // Geometry is per layout, so which layout is being authored is part
+          // of what these fields are typing into, not just which element is.
+          owner={`${page.id}/${element.id}/${activeLayoutId ?? ""}`}
           placement={getPlacement(page, element.id, activeLayoutId)}
           containers={containerChoices(page, element.id)}
           parentPx={referenceParentBox(page, element.id, activeLayoutId)}
@@ -549,6 +552,7 @@ function MasterElementProperties({
       <Section title="Layout" defaultOpen>
         <LayoutProperties
           element={masterElement}
+          owner={`master/${masterElement.id}/${masterOrientation}`}
           // A master's box is a percentage of the VIEWPORT, keyed by
           // orientation, so it is valid on every page it appears on whatever
           // those pages are arranged like. Which key you are editing follows the
@@ -871,6 +875,7 @@ function PageProperties({
                 before 0.8.0 wrote pixel-scale numbers into a percent field. */}
             <FieldRow label="Width">
               <NumericInput
+                owner={`${page.id}/overlay.width`}
                 value={overlay.width}
                 onCommit={(v) => updateOverlay({ width: v })}
                 allowEmpty
@@ -885,6 +890,7 @@ function PageProperties({
             {isOverlay && (
               <FieldRow label="Height">
                 <NumericInput
+                  owner={`${page.id}/overlay.height`}
                   value={overlay.height}
                   onCommit={(v) => updateOverlay({ height: v })}
                   allowEmpty
@@ -980,6 +986,7 @@ function PageProperties({
 
         <FieldRow label="Columns">
           <NumericInput
+            owner={`${page.id}/snap.x`}
             value={Math.round(100 / pageSnap(page).x)}
             onCommit={(v) => {
               if (v !== undefined) onChange({ snap: { ...pageSnap(page), x: 100 / v } });
@@ -993,6 +1000,7 @@ function PageProperties({
 
         <FieldRow label="Rows">
           <NumericInput
+            owner={`${page.id}/snap.y`}
             value={Math.round(100 / pageSnap(page).y)}
             onCommit={(v) => {
               if (v !== undefined) onChange({ snap: { ...pageSnap(page), y: 100 / v } });
@@ -1129,6 +1137,7 @@ function PageProperties({
             </FieldRow>
             <FieldRow label="Angle">
               <NumericInput
+                owner={`${page.id}/gradient.angle`}
                 value={bg.gradient?.angle ?? 180}
                 onCommit={(v) => {
                   if (v !== undefined) updateGradient({ angle: v });

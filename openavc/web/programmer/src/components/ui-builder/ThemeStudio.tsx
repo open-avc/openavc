@@ -1983,6 +1983,9 @@ interface ThemeGradient { from?: string; to?: string; angle?: number; }
 interface PageBackgroundSectionProps {
   pageDefaults: Record<string, unknown>;
   savedPageDefaults: Record<string, unknown>;
+  /** The theme being edited. Switching theme re-renders this section in place,
+   *  so the number fields have to be told or a half-typed one lands on it. */
+  owner: string;
   onChange: (next: Record<string, unknown>) => void;
 }
 
@@ -1997,7 +2000,7 @@ const IMAGE_SIZE_OPTIONS = [
 // every page that doesn't set its own. Writes the exact keys panel.js's
 // _themePageDefaultsToBackground consumes: background_color,
 // background_image[_size|_position|_opacity], background_gradient{from,to,angle}.
-function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: PageBackgroundSectionProps) {
+function PageBackgroundSection({ pageDefaults, savedPageDefaults, owner, onChange }: PageBackgroundSectionProps) {
   const pd = pageDefaults || {};
 
   // Apply a patch and drop any key cleared to undefined/null/"" so the saved
@@ -2149,6 +2152,7 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <label style={rowLabel}>Angle (deg)</label>
                 <NumericInput
+                  owner={`${owner}/page_defaults.gradient.angle`}
                   value={gradient.angle ?? 180}
                   min={0}
                   max={360}
@@ -2202,6 +2206,7 @@ function PageBackgroundSection({ pageDefaults, savedPageDefaults, onChange }: Pa
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <label style={rowLabel}>Opacity</label>
                 <NumericInput
+                  owner={`${owner}/page_defaults.background_image_opacity`}
                   value={imageOpacity}
                   min={0}
                   max={1}
@@ -2674,6 +2679,7 @@ function EditorColumn({
                       </>
                     ) : tok.type === "number" ? (
                       <NumericInput
+                        owner={`${working?.id ?? ""}/${tok.key}`}
                         // A numeric theme variable is a measurement, and the
                         // panel reads stored measurements as rem. Show px.
                         value={(displayStyleValue(tok.key, Number(val || 0)) as number) ?? 0}
@@ -2729,6 +2735,7 @@ function EditorColumn({
         <PageBackgroundSection
           pageDefaults={pageDefaults}
           savedPageDefaults={savedPageDefaults}
+          owner={working?.id ?? ""}
           onChange={onSetPageDefaults}
         />
 

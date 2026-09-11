@@ -1810,6 +1810,7 @@ function UISettingsDialog({
               <NumericInput
                 integer
                 min={0}
+                owner="panel-settings/idle_timeout_seconds"
                 value={draft.idle_timeout_seconds}
                 onCommit={(v) => {
                   if (v !== undefined) patch({ idle_timeout_seconds: v });
@@ -1874,6 +1875,7 @@ function UISettingsDialog({
                     min={50}
                     max={1000}
                     step={50}
+                    owner="panel-settings/page_transition_duration"
                     value={draft.page_transition_duration || 200}
                     onCommit={(v) => {
                       if (v !== undefined) patch({ page_transition_duration: v });
@@ -1925,6 +1927,7 @@ function UISettingsDialog({
                     min={10}
                     max={200}
                     step={10}
+                    owner="panel-settings/element_stagger_ms"
                     value={draft.element_stagger_ms || 30}
                     onCommit={(v) => {
                       if (v !== undefined) patch({ element_stagger_ms: v });

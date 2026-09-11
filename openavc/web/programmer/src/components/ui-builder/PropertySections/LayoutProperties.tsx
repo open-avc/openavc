@@ -11,6 +11,10 @@ import { NumericInput } from "../../shared/NumericInput";
 
 interface LayoutPropertiesProps {
   element: UIElement;
+  /** What the number fields below are typing into. The panel re-renders in
+   *  place when the selection changes, so the fields have to be told; and
+   *  geometry is stored per layout, so the element id alone is not it. */
+  owner: string;
   /** Where the element sits, as a percentage of its parent box. */
   placement: Placement;
   /** Containers on this page it could be parented to — never itself, and never
@@ -44,6 +48,7 @@ interface LayoutPropertiesProps {
 
 export function LayoutProperties({
   element,
+  owner,
   placement,
   containers,
   parentPx,
@@ -105,10 +110,10 @@ export function LayoutProperties({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
-        <NumberField label="X (%)" value={placement.x} onChange={(v) => handleChange("x", v)} />
-        <NumberField label="Y (%)" value={placement.y} onChange={(v) => handleChange("y", v)} />
-        <NumberField label="Width (%)" value={placement.w} min={0.1} onChange={(v) => handleChange("w", v)} />
-        <NumberField label="Height (%)" value={placement.h} min={0.1} onChange={(v) => handleChange("h", v)} />
+        <NumberField owner={`${owner}/x`} label="X (%)" value={placement.x} onChange={(v) => handleChange("x", v)} />
+        <NumberField owner={`${owner}/y`} label="Y (%)" value={placement.y} onChange={(v) => handleChange("y", v)} />
+        <NumberField owner={`${owner}/w`} label="Width (%)" value={placement.w} min={0.1} onChange={(v) => handleChange("w", v)} />
+        <NumberField owner={`${owner}/h`} label="Height (%)" value={placement.h} min={0.1} onChange={(v) => handleChange("h", v)} />
       </div>
 
       <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
@@ -180,6 +185,7 @@ export function LayoutProperties({
             step={0.01}
             min={0.01}
             disabled={lock === null}
+            owner={`${owner}/aspect_lock`}
             value={lock}
             onCommit={(v) => {
               if (v !== undefined) onChange({ aspect_lock: v });
@@ -259,11 +265,13 @@ const selectStyle: React.CSSProperties = {
 };
 
 function NumberField({
+  owner,
   label,
   value,
   min,
   onChange,
 }: {
+  owner: string;
   label: string;
   value: number;
   /** Size fields floor at 0.1 — a zero-width element can't be grabbed back.
@@ -277,6 +285,7 @@ function NumberField({
       <NumericInput
         step={0.1}
         min={min}
+        owner={owner}
         value={Number.isFinite(value) ? round(value) : 0}
         onCommit={(v) => {
           if (v !== undefined) onChange(v);
