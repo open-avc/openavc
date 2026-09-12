@@ -25,9 +25,17 @@ const SRC = join(__dirname, "..");
 // only knew the bare `${e}` form, so six toasts written as
 // `${String(e)}` — four of them siblings of one that unwrapped properly —
 // sat in the tree with the guard reporting green over them.
+//
+// The second version only knew the toasts. A view that keeps its failure in
+// state and renders it in a banner does the same thing to the same person, and
+// twelve `setError(String(e))` call sites across seven files sat under a green
+// guard — including the Cloud Connection page, whose whole job when pairing
+// fails is naming which cloud refused and why. `setError` and its
+// `setSomethingError` siblings are the same sink, so they are matched too.
 const RAW = String.raw`(?:e|err|error)`;
+const SINKS = String.raw`(?:show(?:Error|Info|Success)|set[A-Za-z]*Error)`;
 const RAW_ERROR_TOAST = new RegExp(
-  String.raw`show(?:Error|Info|Success)\(\s*(?:` +
+  SINKS + String.raw`\(\s*(?:` +
     String.raw`\`[^\`]*\$\{\s*(?:${RAW}\s*\}|String\(\s*${RAW}\s*\))` +
     String.raw`|String\(\s*${RAW}\s*[\s)])`,
 );
@@ -46,7 +54,7 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("error rendering", () => {
-  it("never puts a raw thrown error in a toast", () => {
+  it("never puts a raw thrown error in front of a user", () => {
     const offenders: string[] = [];
     for (const path of sourceFiles(SRC)) {
       readFileSync(path, "utf8")
@@ -60,7 +68,7 @@ describe("error rendering", () => {
 
     expect(
       offenders,
-      "these toasts render the raw ApiError envelope; wrap the value in "
+      "these render the raw ApiError envelope; wrap the value in "
         + "parseApiError(e) from api/errors so the user sees the server's sentence",
     ).toEqual([]);
   });
@@ -74,6 +82,11 @@ describe("error rendering", () => {
     expect(files.some((f) => f.endsWith("ActionListEditor.tsx"))).toBe(true);
     expect(RAW_ERROR_TOAST.test("    showError(`Test failed: ${e}`);")).toBe(true);
     expect(RAW_ERROR_TOAST.test("      showError(String(e));")).toBe(true);
+    expect(RAW_ERROR_TOAST.test("      setError(String(e));")).toBe(true);
+    expect(RAW_ERROR_TOAST.test("      setUninstallError(String(e));")).toBe(true);
+    expect(RAW_ERROR_TOAST.test("    setError(`Failed to queue: ${e}`);")).toBe(true);
+    expect(RAW_ERROR_TOAST.test("      setError(parseApiError(e));")).toBe(false);
+    expect(RAW_ERROR_TOAST.test("      setError(null);")).toBe(false);
     expect(RAW_ERROR_TOAST.test("    showError(`Install failed: ${String(e)}`);")).toBe(true);
     expect(
       RAW_ERROR_TOAST.test("    showError(String(e instanceof Error ? e.message : e));"),

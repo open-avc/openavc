@@ -10,6 +10,7 @@ import {
   cloudUnpair,
   type CloudStatus,
 } from "../api/restClient";
+import { parseApiError } from "../api/errors";
 
 function formatUptime(s: number): string {
   if (s < 60) return `${Math.floor(s)}s`;
@@ -106,7 +107,7 @@ export function CloudSettingsView() {
       const s = await getCloudStatus();
       setStatus(s);
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setLoading(false);
     }
@@ -131,11 +132,15 @@ export function CloudSettingsView() {
         // warning instead of an unqualified success.
         setError(result.warning ?? "Paired, but the cloud connection did not start. Check the server logs.");
       } else {
-        setSuccess(`Paired successfully! System ID: ${result.system_id}`);
+        setSuccess(
+          result.cloud
+            ? `Paired with ${result.cloud}. System ID: ${result.system_id}`
+            : `Paired successfully! System ID: ${result.system_id}`
+        );
       }
       await fetchStatus();
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setPairing(false);
     }
@@ -151,7 +156,7 @@ export function CloudSettingsView() {
       setSuccess("Unpaired successfully.");
       await fetchStatus();
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setUnpairing(false);
     }

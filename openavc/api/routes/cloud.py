@@ -124,6 +124,14 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
     engine = _get_engine()
 
     cloud_api_url = await _validate_cloud_api_url(data.cloud_api_url)
+    # Which cloud this went to, in every sentence that comes back. The URL
+    # defaults to the vendor's SaaS, so a person pairing to their own cloud can
+    # be refused by somebody else's and have no way to tell from the refusal --
+    # "Invalid or already used pairing token" reads as a bad token whoever said
+    # it. The scheme is dropped: the host (and port, when there is one) is the
+    # part that identifies the cloud.
+    from urllib.parse import urlparse
+    cloud_name = urlparse(cloud_api_url).netloc or cloud_api_url
 
     # Tell the cloud what this room is called, so it arrives in the portal
     # named rather than as one more "Unnamed System" in a list of them. The
@@ -151,13 +159,16 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
                     detail = resp.json().get("detail", "Pairing failed")
                 except Exception:
                     detail = resp.text or "Pairing failed"
-                raise HTTPException(status_code=resp.status_code, detail=detail)
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=f"{cloud_name} refused the pairing: {detail}",
+                )
             try:
                 pair_data = resp.json()
             except ValueError as e:
                 raise _api_error(502, "Cloud returned a non-JSON pairing response.", e)
     except httpx.HTTPError as e:
-        raise _api_error(502, "Failed to reach cloud API for pairing", e)
+        raise _api_error(502, f"Could not reach {cloud_name} to pair with it", e)
 
     # Guard the cross-service contract: a 200 with a partial or renamed body
     # must surface as a clean 502, not an opaque KeyError 500.
@@ -215,6 +226,7 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
         "status": "paired",
         "system_id": pair_data["system_id"],
         "endpoint": pair_data["endpoint"],
+        "cloud": cloud_name,
         "agent_started": agent_started,
     }
     if not agent_started:

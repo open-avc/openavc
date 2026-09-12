@@ -106,7 +106,7 @@ export function AssetBrowser({
       const data = await api.listAssets();
       setAssets(data.assets);
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setLoading(false);
     }
@@ -162,7 +162,7 @@ export function AssetBrowser({
       }
       await loadAssets();
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setUploading(false);
     }

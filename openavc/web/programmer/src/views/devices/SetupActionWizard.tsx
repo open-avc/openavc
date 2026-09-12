@@ -11,6 +11,7 @@ import {
   seedParamValues,
 } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
+import { parseApiError } from "../../api/errors";
 
 type Phase = "input" | "running" | "done" | "error";
 
@@ -108,7 +109,7 @@ export function SetupActionWizard({
       );
     } catch (e) {
       unsubRef.current?.();
-      setError(String(e));
+      setError(parseApiError(e));
       setPhase("error");
     }
   }, [deviceId, action, values]);

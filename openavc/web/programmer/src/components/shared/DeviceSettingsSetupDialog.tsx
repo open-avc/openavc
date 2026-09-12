@@ -126,7 +126,7 @@ export function DeviceSettingsSetupDialog({
         // applied online, so the dialog should still show their Saved/Queued
         // state instead of only the generic queue-failure banner.
         setResults(newResults);
-        setError(`Failed to queue settings: ${e}`);
+        setError(`Failed to queue settings: ${parseApiError(e)}`);
         setSaving(false);
         return;
       }

@@ -109,7 +109,7 @@ export function ChildEntities({
       });
       return resp;
     } catch (err) {
-      setLoadError(String(err));
+      setLoadError(parseApiError(err));
       return null;
     } finally {
       setLoading(false);

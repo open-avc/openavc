@@ -14,6 +14,7 @@ import {
   SERIAL_PICKER_FIELDS,
   IR_PICKER_FIELDS,
 } from "./deviceConfigCoerce";
+import { parseApiError } from "../../api/errors";
 
 // --- Typed Config Fields ---
 
@@ -1255,7 +1256,7 @@ export function EditDeviceDialog({
       onSaved();
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setSaving(false);
     }

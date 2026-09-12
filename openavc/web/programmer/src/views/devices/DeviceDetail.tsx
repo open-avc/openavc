@@ -30,6 +30,7 @@ import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
+import { parseApiError } from "../../api/errors";
 
 export function DeviceDetail({
   deviceId,
@@ -1893,7 +1894,7 @@ function OrphanBanner({
       // up the now-active state.
       onActivated();
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setInstalling(false);
     }

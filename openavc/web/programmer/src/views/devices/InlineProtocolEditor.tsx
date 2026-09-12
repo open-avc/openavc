@@ -11,6 +11,7 @@ import {
 import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import { CopyButton } from "../../components/shared/CopyButton";
+import { parseApiError } from "../../api/errors";
 
 // ── Row models (the editable shapes; config is built from these on save) ─────
 
@@ -420,7 +421,7 @@ export function InlineProtocolEditor({
       onSaved(); // refetch device info → Send Command card + Live State update
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
-      setSaveError(String(e));
+      setSaveError(parseApiError(e));
     } finally {
       setSaving(false);
     }

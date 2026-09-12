@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
 import * as api from "../../api/restClient";
+import { parseApiError } from "../../api/errors";
 
 // Generic device-page editor for a `type: "table"` config field. A driver
 // declares a repeatable typed-row config (the columns it wants) in its
@@ -177,7 +178,7 @@ export function ConfigTableEditor({
       onSaved();
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setSaving(false);
     }

@@ -1331,7 +1331,7 @@ function DriverAddRow({
           setError(`Driver installed but could not add device: ${result.error}`);
         }
       } catch (e) {
-        setError(String(e));
+        setError(parseApiError(e));
       } finally {
         setBusy(false);
       }
@@ -1363,7 +1363,7 @@ function DriverAddRow({
         onDeviceAdded({ name: result.name, deviceId: result.device_id });
       }
     } catch (e) {
-      setError(String(e));
+      setError(parseApiError(e));
     } finally {
       setBusy(false);
     }

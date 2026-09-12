@@ -9,6 +9,8 @@ still drives its endpoint through the real app.
 Covers the audit findings closed in the bug-fix campaign:
   - H-027  cloud_pair() partial/renamed cloud body -> clean 502 (not KeyError 500)
   - H-028  SSRF guard on cloud_api_url (link-local/loopback/bad-scheme)
+  - Which cloud answered: a misspelled `cloud_api_url` is refused rather than
+    silently defaulting to the vendor's SaaS, and every sentence names the host
   - M-048  save_cloud_config OSError -> clear 500, no silent success
   - M-049  agent-start failure surfaced as agent_started=false + warning
   - M-047/L-032  update channel mirrored to state on PATCH
@@ -213,6 +215,133 @@ def test_cloud_pair_non_json_body_is_502(client, monkeypatch):
     _fake_httpx(monkeypatch, _FakeResponse(200, _FakeResponse._RAISE))
     resp = c.post("/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"})
     assert resp.status_code == 502
+
+
+def _agent_starts(engine):
+    """A cloud agent that comes up, so the success path reaches its result."""
+    async def _start():
+        engine.cloud_agent = MagicMock()
+    return _start
+
+
+# ── Which cloud answered ──────────────────────────────────────────
+#
+# `cloud_api_url` defaults to the vendor's SaaS, so a pairing meant for a
+# self-hosted cloud can be answered by cloud.openavc.com. Its refusal reads
+# "Invalid or already used pairing token", which sounds like a bad token
+# whoever said it, so every sentence out of this route names the cloud.
+
+
+def test_a_refusal_names_the_cloud_that_refused(client, monkeypatch):
+    c, _ = client
+    _pair_env(monkeypatch)
+    _fake_httpx(
+        monkeypatch,
+        _FakeResponse(400, {"detail": "Invalid or already used pairing token"}),
+    )
+    resp = c.post(
+        "/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"}
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "cloud.test" in detail
+    # and the cloud's own sentence is still there, not replaced by ours
+    assert "Invalid or already used pairing token" in detail
+
+
+def test_an_unreachable_cloud_is_named_too(client, monkeypatch):
+    c, _ = client
+    _pair_env(monkeypatch)
+
+    class _Failing:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None):
+            raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Failing)
+    resp = c.post(
+        "/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"}
+    )
+    assert resp.status_code == 502
+    assert "cloud.test" in resp.json()["detail"]
+
+
+def test_success_says_which_cloud_it_paired_with(client, monkeypatch):
+    c, engine = client
+    _pair_env(monkeypatch)
+    engine._start_cloud_agent = _agent_starts(engine)
+    _fake_httpx(
+        monkeypatch,
+        _FakeResponse(
+            200, {"endpoint": "wss://x", "system_id": "s1", "system_key": "k"}
+        ),
+    )
+    resp = c.post(
+        "/api/cloud/pair",
+        json={"token": "t", "cloud_api_url": "https://cloud.test:8443"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["cloud"] == "cloud.test:8443"
+
+
+def test_a_misspelled_url_field_is_refused_not_sent_to_the_default(client, monkeypatch):
+    """The whole point: `cloud_url` must not quietly become the vendor's SaaS.
+
+    The model takes ``extra='forbid'``, so the typo is a 422 that names the
+    field. Nothing is posted anywhere -- checked, because the damage in the
+    original was the request being made at all.
+    """
+    c, _ = client
+    _pair_env(monkeypatch)
+    posted: list[str] = []
+
+    class _Recording:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None):
+            posted.append(url)
+            return _FakeResponse(200, {"endpoint": "e", "system_id": "s", "system_key": "k"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Recording)
+    resp = c.post(
+        "/api/cloud/pair",
+        json={"token": "t", "cloud_url": "http://my-cloud.lan:8000"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "cloud_url" in resp.text
+    assert posted == []
+
+
+def test_the_correctly_spelled_field_still_works(client, monkeypatch):
+    """The guard above is worthless if it now refuses a good body."""
+    c, engine = client
+    _pair_env(monkeypatch)
+    engine._start_cloud_agent = _agent_starts(engine)
+    _fake_httpx(
+        monkeypatch,
+        _FakeResponse(
+            200, {"endpoint": "wss://x", "system_id": "s1", "system_key": "k"}
+        ),
+    )
+    resp = c.post(
+        "/api/cloud/pair", json={"token": "t", "cloud_api_url": "https://cloud.test"}
+    )
+    assert resp.status_code == 200, resp.text
 
 
 # ── M-048: save failure -> clear 500, agent not started ─────────────────────

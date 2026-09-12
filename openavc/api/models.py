@@ -302,6 +302,19 @@ class PendingSettingsRequest(BaseModel):
 
 
 class CloudPairRequest(BaseModel):
+    """Pairing body. The one request model in this file that REFUSES an unknown
+    field, because the field it would swallow decides which cloud is contacted.
+
+    Everything else here takes Pydantic's default ``extra='ignore'``, which is
+    right when the cost of a misspelled field is that it does nothing.
+    ``cloud_api_url`` defaults to the vendor's SaaS, so a caller who writes
+    ``cloud_url`` instead does not get a no-op: the pairing token for their own
+    cloud is posted to cloud.openavc.com, which refuses it, and the refusal
+    reads like a bad token.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     token: str
     cloud_api_url: str = "https://cloud.openavc.com"
 

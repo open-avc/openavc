@@ -21,6 +21,8 @@ export interface CloudPairResult {
   status: string;
   system_id: string;
   endpoint: string;
+  /** Host (and port) of the cloud that answered, so the success line can name it. */
+  cloud?: string;
   agent_started?: boolean;
   warning?: string;
 }
