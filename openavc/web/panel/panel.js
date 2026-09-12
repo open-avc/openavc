@@ -2204,6 +2204,8 @@ class PanelApp {
         // button whose label a script is overriding has no authored source at
         // all. Runs after evaluateAllBindings, so the records have settled.
         const editableText = [];
+        const editableTypes = PanelApp.IN_PLACE_TEXT_TYPES;
+        const drawnTypes = this._drawnElementTypes();
         // Elements drawing words that are NOT the author's to edit here, and
         // why. Without this the Builder has only "editable or not" and a
         // double-click on the second kind is a silent no-op -- which is how a
@@ -2213,9 +2215,11 @@ class PanelApp {
         const textRefusals = {};
         for (const el of this.root.querySelectorAll('[data-element-id]')) {
             const id = el.dataset.elementId;
-            if (el.hasAttribute('data-avc-text-src')) {
+            const offerable = editableTypes.has(drawnTypes[id]);
+            if (offerable && el.hasAttribute('data-avc-text-src')) {
                 editableText.push(id);
-            } else if (this.state[`ui.${id}.label`] !== undefined
+            } else if (offerable
+                       && this.state[`ui.${id}.label`] !== undefined
                        && this.state[`ui.${id}.label`] !== null) {
                 textRefusals[id] = `This text is being set by a script or macro `
                     + `through ui.${id}.label, not by the element's Label. Change the `
@@ -2671,9 +2675,7 @@ class PanelApp {
             const label = document.createElement('label');
             label.className = 'led-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -2711,9 +2713,7 @@ class PanelApp {
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -2921,9 +2921,7 @@ class PanelApp {
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -2996,9 +2994,7 @@ class PanelApp {
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -3131,9 +3127,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'list-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -3465,9 +3459,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'matrix-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -4518,9 +4510,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'gauge-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -4616,9 +4606,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'meter-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -4743,9 +4731,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'fader-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -5159,9 +5145,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'group-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
 
             // Position
             if (labelPos.startsWith('top')) {
@@ -5404,9 +5388,7 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'keypad-label';
             label.textContent = element.label;
-            // On the element root, not the caption: the caption is not in the
-            // tree yet, so `closest` could not walk up to find it.
-            this._recordTextSource(el, ['label']);
+            this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
 
@@ -7986,6 +7968,78 @@ class PanelApp {
     // unnecessary.
 
     /**
+     * A caption: which field it came from, and which node holds it.
+     *
+     * Two facts, and only the renderer has either. The field goes on the
+     * element root (`_recordTextSource`); the node is marked here because a
+     * caption is NOT findable by class -- `.group-label`, `.gauge-label` and
+     * `.list-label` have one, but a fader's, a dropdown's, a keypad's and a
+     * status LED's are a bare <label> or <div> with none.
+     *
+     * Getting this wrong is not a near miss. Without the mark, the editor fell
+     * back to the element itself and opening a fader replaced the whole
+     * control -- track, thumb, scale marks, value readout -- with the caption
+     * text, then rebuilt it from saved HTML, which returns the nodes without
+     * the listeners that made it draggable.
+     */
+    _recordCaption(root, captionNode, path) {
+        this._recordTextSource(root, path);
+        if (this.editMode && captionNode) captionNode.dataset.avcTextHost = '1';
+    }
+
+    /**
+     * The controls whose text is edited on the canvas, and nothing else.
+     *
+     * Not every control that draws words belongs here. The gesture is for text
+     * somebody actually retypes: a button's words, a label, and the CAPTION on
+     * the controls that carry one -- a dropdown's label, a gauge's label, a
+     * fader's label. Those captions are a node of their own holding one field,
+     * which is what makes them safe.
+     *
+     * Deliberately absent:
+     *
+     * - `matrix`, whose row names come from a generator plus overrides and a
+     *   naming rule copied in four places. Its setup dialog owns them.
+     * - `camera_preset`, which draws `preset_number` and `label` joined by a
+     *   newline in ONE text node, so an edit would hand back "3\nWide Shot"
+     *   and have to parse it apart again.
+     * - `page_nav`, whose words fall back to the target page id, so committing
+     *   what is on screen would freeze a copy of a name that should follow the
+     *   page.
+     * - `clock`, `image`, `plugin` and `custom`, which draw computed values,
+     *   somebody else's markup, or no words at all.
+     *
+     * Checked at both doors: nothing outside this set is offered
+     * (`_reportTextDefaults`) and nothing outside it opens (`_beginTextEdit`),
+     * so a control cannot become editable as a side effect of gaining a
+     * binding -- which is exactly how a camera preset used to slip in, through
+     * `evaluateFeedback` recording a source its renderer never composed alone.
+     */
+    static get IN_PLACE_TEXT_TYPES() {
+        return new Set([
+            // Words that ARE the control.
+            'button', 'label',
+            // A caption beside the control, in a node of its own.
+            'group', 'status_led', 'slider', 'fader', 'level_meter',
+            'gauge', 'select', 'text_input', 'list', 'keypad',
+        ]);
+    }
+
+    /** The element type for every id currently drawn, for the two gates above. */
+    _drawnElementTypes() {
+        const types = {};
+        const pages = (this.uiDef && this.uiDef.pages) || [];
+        const page = pages.find(p => p && p.id === this.currentPage);
+        for (const el of (page && page.elements) || []) {
+            if (el && el.id) types[el.id] = el.type;
+        }
+        for (const el of (this.uiDef && this.uiDef.master_elements) || []) {
+            if (el && el.id) types[el.id] = el.type;
+        }
+        return types;
+    }
+
+    /**
      * The node whose text an author edits, which is not always the element.
      *
      * A bare button holds its words in text nodes directly (`_setLabelText`);
@@ -7993,8 +8047,11 @@ class PanelApp {
      * a group's sit in `.group-label`. Whoever holds them is who gets the caret.
      */
     _textHostFor(el) {
-        return el.querySelector(':scope > .panel-label-span')
-            || el.querySelector(':scope > .group-label')
+        // The caption the renderer marked, wherever it nested it; then a
+        // button's icon-adjacent span; then the element itself, which is right
+        // only for a control whose words ARE its whole content.
+        return el.querySelector('[data-avc-text-host]')
+            || el.querySelector(':scope > .panel-label-span')
             || el;
     }
 
@@ -8097,6 +8154,8 @@ class PanelApp {
         const entry = this._editableTarget(elementId);
         if (!entry) return;
         const { el, elementDef } = entry;
+        // A type outside the set is not edited here even if something asked.
+        if (!PanelApp.IN_PLACE_TEXT_TYPES.has(elementDef.type)) return;
         if (this._textEdit) this._finishTextEdit(true);
 
         const raw = el.getAttribute('data-avc-text-src');

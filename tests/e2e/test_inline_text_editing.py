@@ -37,6 +37,7 @@ RAIL_TIMEOUT = 20_000
 SEED_STATE = {
     "var.amp_draw": 0.076,
     "var.power": "on",
+    "var.temp": 31.4,
     "ui.btn_scripted.label": "SET BY A SCRIPT",
 }
 
@@ -79,6 +80,21 @@ def _project() -> dict[str, Any]:
         {"id": "grp", "type": "group", "label": "Audio"},
         # Words with no authored source: a script owns them at run time.
         {"id": "btn_scripted", "type": "button", "label": "Authored Word"},
+        # The caption-only family. Each of these draws far more text than the
+        # one field an edit may write, so the caret has to land in the caption
+        # and nowhere near the options, the readout or the scale.
+        {"id": "sel_input", "type": "select", "label": "Source",
+         "options": [{"label": "Laptop", "value": "1"}, {"label": "Room PC", "value": "2"}]},
+        {"id": "gau_temp", "type": "gauge", "label": "Rack Temp", "min": 0, "max": 60,
+         "unit": "C", "bindings": {"show": {"value": {"key": "var.temp"}}}},
+        {"id": "fad_mic", "type": "fader", "label": "Mic 1", "min": -60, "max": 10,
+         "unit": "dB", "style": {"show_value": True}},
+        # Deliberately NOT editable in place, each for its own reason.
+        {"id": "cam_wide", "type": "camera_preset", "label": "Wide Shot",
+         "preset_number": 3,
+         "bindings": {"show": {"look": {"key": "var.power", "condition": {"equals": "on"},
+                                        "style_active": {"bg_color": "#2e7d32"}}}}},
+        {"id": "nav_next", "type": "page_nav", "target_page": "main"},
     ]
     placements = {
         "btn_plain": {"x": 2, "y": 4, "w": 20, "h": 14},
@@ -88,6 +104,11 @@ def _project() -> dict[str, Any]:
         "btn_look": {"x": 26, "y": 24, "w": 20, "h": 14},
         "grp": {"x": 50, "y": 24, "w": 24, "h": 22},
         "btn_scripted": {"x": 2, "y": 52, "w": 24, "h": 14},
+        "sel_input": {"x": 28, "y": 52, "w": 22, "h": 14},
+        "gau_temp": {"x": 52, "y": 52, "w": 20, "h": 24},
+        "fad_mic": {"x": 74, "y": 52, "w": 12, "h": 24},
+        "cam_wide": {"x": 2, "y": 78, "w": 22, "h": 14},
+        "nav_next": {"x": 26, "y": 78, "w": 22, "h": 14},
     }
     return {
         "openavc_version": "0.13.0", "devices": [],
@@ -286,3 +307,64 @@ def test_a_double_click_never_moves_the_element(builder: Page) -> None:
         }"""
     )
     assert before == after
+
+
+# --- The caption-only family ---------------------------------------------
+#
+# A dropdown, a gauge and a fader draw a caption AND a pile of other text: the
+# options, the value readout, the scale marks. Only the caption is the
+# author's to retype here, so only the caption may take the caret.
+
+CAPTION_CASES = [
+    ("sel_input", "Source", "Laptop"),      # its options must stay put
+    ("gau_temp", "Rack Temp", "31.4"),      # its readout must stay put
+    ("fad_mic", "Mic 1", "-25.0 dB"),       # its readout and scale must stay put
+]
+
+
+@pytest.mark.parametrize("element_id,caption,untouched", CAPTION_CASES)
+def test_only_the_caption_takes_the_caret(
+    builder: Page, element_id: str, caption: str, untouched: str
+) -> None:
+    drawn_before = _drawn(builder, element_id)
+    assert untouched in drawn_before
+    # The caret opens on the caption alone, not on everything the control draws.
+    assert _open(builder, element_id) == caption
+    still = builder.evaluate(
+        """(id) => {
+            const doc = document.querySelector('iframe').contentDocument;
+            const el = doc.querySelector(`[data-element-id="${id}"]`);
+            const host = doc.querySelector('[data-avc-text-editing]');
+            return { hostIsWholeControl: host === el, drawn: el.innerText };
+        }""",
+        element_id,
+    )
+    # And the rest of the control is still standing WHILE the edit is open.
+    # Before the renderer marked its caption node, the editor fell back to the
+    # element itself: opening a fader replaced the track, thumb, scale and
+    # readout with the caption text, and restoring it from saved HTML handed
+    # back nodes without the listeners that made it draggable.
+    assert still["hostIsWholeControl"] is False
+    assert untouched in still["drawn"]
+    _type_and_commit(builder, "Renamed")
+    assert _stored(builder, element_id)["label"] == "Renamed"
+    assert untouched in _drawn(builder, element_id)
+
+
+@pytest.mark.parametrize("element_id", ["cam_wide", "nav_next"])
+def test_the_excluded_controls_are_not_offered(builder: Page, element_id: str) -> None:
+    """Not every control that draws words is edited here.
+
+    `camera_preset` joins `preset_number` and `label` with a newline in one
+    text node, and `page_nav` falls back to its target page id, so committing
+    what is on screen would freeze a copy of a name that should follow the
+    page. A camera preset used to slip in anyway whenever it carried a look
+    binding, because the evaluator recorded a source its renderer never
+    composed on its own — which is why the set is now explicit and checked at
+    both doors.
+    """
+    assert _open(builder, element_id) is None
+    before = _stored(builder, element_id)
+    builder.keyboard.type("Should not land")
+    builder.wait_for_timeout(300)
+    assert _stored(builder, element_id) == before
