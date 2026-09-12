@@ -26,13 +26,15 @@ import {
   withMasterPlacement,
   layoutOrientation,
   resolveHidden,
+  updateElementInPage,
+  patchForTextPath,
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useUiFilesStore } from "../../store/uiFilesStore";
-import { showError } from "../../store/toastStore";
+import { showError, showInfo } from "../../store/toastStore";
 
 interface CanvasProps {
   page: UIPage;
@@ -87,6 +89,8 @@ export function Canvas({
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
+  const editableTextIds = useUIBuilderStore((s) => s.editableTextIds);
+  const textRefusals = useUIBuilderStore((s) => s.textRefusals);
 
   // Lock lives on the element now, so it survives a reload. One set covering
   // page elements and masters alike, because every consumer only asks "can
@@ -174,6 +178,40 @@ export function Canvas({
     return () => { live = false; clearTimeout(timer); };
   }, [project, page.id, showGrid, uiFilesVersion]);
 
+  // Double-click on the overlay: ask the panel to make that element's own text
+  // node editable. The element goes over by id because the iframe takes no
+  // pointer events in edit mode, so the click never lands inside it.
+  const beginTextEdit = useCallback((elementId: string) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "openavc:editor-edit-text", elementId },
+      "*",
+    );
+  }, []);
+
+  // The other half: the panel hands back the authored path its renderer
+  // recorded, and this writes it. Once, on commit -- a write per keystroke
+  // would mark the project dirty, push an undo entry and trigger the 50ms
+  // repost whose re-render destroys the node being typed into.
+  const commitTextEdit = useCallback(
+    (elementId: string, path: (string | number)[], value: string) => {
+      const p = projectRef.current;
+      if (!p) return;
+      const element = (page.elements || []).find((e) => e.id === elementId);
+      if (!element) return;
+      const patch = patchForTextPath(element, path, value);
+      if (!patch) return;
+      pushUndo({ pages: p.ui.pages }, "Edit text");
+      update({
+        ui: {
+          ...p.ui,
+          pages: updateElementInPage(p.ui.pages, page.id, elementId, patch),
+        },
+      });
+      touchMutation();
+    },
+    [page, pushUndo, update, touchMutation],
+  );
+
   // A custom control runs in its own sandboxed frame, so a script error in it
   // is invisible out here and invisible on a wall panel. The panel shows what
   // it can in the element's box and forwards it; this is the half that puts it
@@ -184,6 +222,7 @@ export function Canvas({
   // panel shows that number as the Font Size placeholder; nothing on this side
   // knows the panel's default any other way.
   const setTextDefaultsRem = useUIBuilderStore((s) => s.setTextDefaultsRem);
+  const setEditableTextIds = useUIBuilderStore((s) => s.setEditableTextIds);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
@@ -191,12 +230,37 @@ export function Canvas({
         type?: string;
         elementId?: string;
         message?: string;
+        reason?: string;
+        path?: (string | number)[];
+        value?: string;
         fontSizeRem?: Record<string, number>;
+        editableText?: string[];
+        textRefusals?: Record<string, string>;
       };
       if (msg?.type === "openavc:editor-text-defaults") {
         if (msg.fontSizeRem && typeof msg.fontSizeRem === "object") {
           setTextDefaultsRem(msg.fontSizeRem);
         }
+        if (Array.isArray(msg.editableText)) {
+          setEditableTextIds(
+            new Set(msg.editableText),
+            (msg.textRefusals && typeof msg.textRefusals === "object")
+              ? msg.textRefusals
+              : {},
+          );
+        }
+        return;
+      }
+      if (msg?.type === "openavc:editor-text-commit") {
+        if (msg.elementId && Array.isArray(msg.path) && typeof msg.value === "string") {
+          commitTextEdit(msg.elementId, msg.path, msg.value);
+        }
+        return;
+      }
+      if (msg?.type === "openavc:editor-text-refused") {
+        // Not an error: the author double-clicked something whose words are not
+        // theirs to own here, and the sentence says where they are.
+        if (msg.reason) showInfo(msg.reason);
         return;
       }
       if (msg?.type !== "openavc:element-error") return;
@@ -204,7 +268,7 @@ export function Canvas({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [setTextDefaultsRem]);
+  }, [setTextDefaultsRem, setEditableTextIds, commitTextEdit]);
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;
@@ -1141,9 +1205,13 @@ export function Canvas({
                 hiddenIds={hiddenIds}
                 gestureKind={gesture?.kind ?? null}
                 adoptTargetId={gesture?.adoptInto ?? paletteDragPreview?.adoptInto ?? null}
+                editableTextIds={editableTextIds}
+                textRefusals={textRefusals}
                 onSelect={(id, shiftKey) => (shiftKey ? toggleSelectElement(id) : selectElement(id))}
                 onGestureStart={beginGesture}
                 onContextMenu={handleContextMenu}
+                onEditText={beginTextEdit}
+                onRefuseText={showInfo}
               />
             ))}
 

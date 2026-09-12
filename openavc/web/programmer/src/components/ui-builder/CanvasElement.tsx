@@ -19,6 +19,14 @@ interface CanvasElementProps {
   hiddenIds: Set<string>;
   /** Non-null while a gesture is in flight, which suppresses the handles. */
   gestureKind: "move" | "resize" | null;
+  /** Elements the panel reports as having text an author owns, so a
+   *  double-click on one opens the editor and a double-click on anything else
+   *  does nothing. Per element, not per type. */
+  editableTextIds: Set<string>;
+  /** Why an element's words cannot be edited in place, where that is worth
+   *  saying. A double-click on one of these explains itself instead of looking
+   *  broken; a control with no text at all is not listed and stays silent. */
+  textRefusals: Record<string, string>;
   /** The container the live drag would drop into. Lit up so you can see where
    *  a control is about to land before you let go of it. */
   adoptTargetId: string | null;
@@ -30,6 +38,8 @@ interface CanvasElementProps {
     e: React.PointerEvent,
   ) => void;
   onContextMenu: (e: React.MouseEvent, elementId: string) => void;
+  onEditText: (elementId: string) => void;
+  onRefuseText: (reason: string) => void;
 }
 
 export const HANDLE_SIZE = 12;
@@ -65,9 +75,13 @@ export function CanvasElement({
   hiddenIds,
   gestureKind,
   adoptTargetId,
+  editableTextIds,
+  textRefusals,
   onSelect,
   onGestureStart,
   onContextMenu,
+  onEditText,
+  onRefuseText,
 }: CanvasElementProps) {
   const box = placementFor(element.id);
   const selected = selectedIds.includes(element.id);
@@ -77,13 +91,31 @@ export function CanvasElement({
   const isAdoptTarget = adoptTargetId === element.id;
   const children = childrenByParent.get(element.id) ?? [];
 
+  const editable = editableTextIds.has(element.id);
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (previewMode || locked || e.button !== 0) return;
     // Select on the way down so a drag that starts on an unselected element
     // moves that element, not whatever was selected before.
     if (!selected) onSelect(element.id, e.shiftKey);
     else if (e.shiftKey) onSelect(element.id, true);
+    // The second press of a double-click arms no drag. Without this the text
+    // editor opens on top of a live gesture, and a hand tremor between the two
+    // clicks commits a real move (and an undo entry) on the way past -- which
+    // it does today whenever snapping is off, since the commit only checks
+    // that the box CHANGED, not that the pointer travelled.
+    if ((editable || textRefusals[element.id]) && e.detail >= 2) return;
     onGestureStart(element.id, "move", "", e);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (previewMode || locked) return;
+    const refusal = textRefusals[element.id];
+    if (!editable && !refusal) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (editable) onEditText(element.id);
+    else onRefuseText(refusal);
   };
 
   // Selection happens on pointer-down, but the click still has to be stopped
@@ -109,6 +141,7 @@ export function CanvasElement({
       data-canvas-element={element.id}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onContextMenu={handleRightClick}
       style={{
         position: "absolute",
@@ -153,9 +186,13 @@ export function CanvasElement({
           hiddenIds={hiddenIds}
           gestureKind={gestureKind}
           adoptTargetId={adoptTargetId}
+          editableTextIds={editableTextIds}
+          textRefusals={textRefusals}
           onSelect={onSelect}
           onGestureStart={onGestureStart}
           onContextMenu={onContextMenu}
+          onEditText={onEditText}
+          onRefuseText={onRefuseText}
         />
       ))}
 

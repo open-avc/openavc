@@ -56,6 +56,10 @@ interface UIBuilderStore {
    *  has for that number: the panel's default is one CSS token, and a copy of
    *  it here is exactly the drift this replaced. */
   textDefaultsRem: Record<string, number>;
+  editableTextIds: Set<string>;
+  /** Elements drawing words an author cannot edit in place, and the sentence
+   *  saying why. Only the cases worth explaining are listed. */
+  textRefusals: Record<string, string>;
 
   selectPage: (id: string | null) => void;
   selectLayout: (layoutId: string | null) => void;
@@ -91,6 +95,13 @@ interface UIBuilderStore {
     preview: UIBuilderStore["paletteDragPreview"],
   ) => void;
   setTextDefaultsRem: (textDefaultsRem: Record<string, number>) => void;
+  /** Elements whose text can be edited in place, as the panel last reported
+   *  them. Per element rather than per type: only the renderer knows whether a
+   *  given control is drawing words an author owns. */
+  setEditableTextIds: (
+    editableTextIds: Set<string>,
+    textRefusals: Record<string, string>,
+  ) => void;
   toggleLock: (elementId: string) => void;
   toggleOutlineCollapse: (elementId: string) => void;
 }
@@ -116,6 +127,8 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   paletteDragPreview: null,
   collapsedOutlineIds: [],
   textDefaultsRem: {},
+  editableTextIds: new Set<string>(),
+  textRefusals: {},
 
   // Switching pages drops back to the primary layout: a layout id belongs to
   // one page, so carrying it across would point at nothing.
@@ -266,6 +279,9 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   setPaletteDragPreview: (paletteDragPreview) => set({ paletteDragPreview }),
 
   setTextDefaultsRem: (textDefaultsRem) => set({ textDefaultsRem }),
+
+  setEditableTextIds: (editableTextIds, textRefusals) =>
+    set({ editableTextIds, textRefusals }),
 
   // Lock lives in the project, not here: a lock that evaporates on reload is
   // worse than none, because you only find out after something has moved.

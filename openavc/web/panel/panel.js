@@ -262,6 +262,50 @@ class PanelApp {
         this.statusEl = document.getElementById('connection-status');
         this.bindings = [];          // Active bindings to evaluate on state change
         this.elementMap = {};        // element_id -> {el, elementDef} for ui.* overrides
+        // The in-place text edit in flight, or null. Edit mode only. Held here
+        // rather than per-element so the freeze in `_setLabelText` is one
+        // comparison, and so opening a second edit closes the first.
+        this._textEdit = null;
+        // Bound once: add/removeEventListener only match on identity, and a
+        // fresh arrow per edit would leak a listener onto every node touched.
+        this._onTextEditKey = (e) => {
+            const edit = this._textEdit;
+            if (!edit) return;
+            // Mid-composition Enter belongs to the IME, not to us.
+            if (e.isComposing) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                this._finishTextEdit(false);
+                return;
+            }
+            if (e.key === 'Enter') {
+                // A label may hold several lines, so Enter alone commits and
+                // shift-Enter breaks the line -- the same bargain every editor
+                // of this shape makes. Single-line types commit on either.
+                if (edit.multiline && e.shiftKey) return;
+                e.preventDefault();
+                e.stopPropagation();
+                this._finishTextEdit(true);
+                return;
+            }
+            // Tab out rather than inserting one: a caret in a control's caption
+            // has nowhere to put a tab, and browsers insert a literal one.
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                this._finishTextEdit(true);
+                return;
+            }
+            // A text-only button holds its words in the <button> itself, and a
+            // button's own answer to the space bar is "press me" -- so a label
+            // typed as "Mic Mute" committed as "MicMute" and the space was
+            // gone with no sign it had been dropped. Insert it ourselves.
+            if (e.key === ' ' && edit.host.closest('button')) {
+                e.preventDefault();
+                this._insertTextAtCaret(' ');
+            }
+        };
+        this._onTextEditBlur = () => this._finishTextEdit(true);
         this.holdTimers = {};        // element_id -> interval for hold-repeat mode
         // A panel that goes to the background mid-press never sees the
         // release — end every hold-repeat rather than let it fire blind.
@@ -571,6 +615,19 @@ class PanelApp {
                         this.resetIdleTimer();
                     }
                     this._postToParent({ type: 'openavc:editor-ready' });
+                    break;
+                }
+                case 'openavc:editor-edit-text': {
+                    // A double-click on the Builder's overlay. The iframe takes
+                    // no pointer events in edit mode, so the element arrives by
+                    // id rather than by the click landing in here.
+                    if (this.editMode && msg.elementId) {
+                        this._beginTextEdit(String(msg.elementId));
+                    }
+                    break;
+                }
+                case 'openavc:editor-cancel-text': {
+                    if (this._textEdit) this._finishTextEdit(false);
                     break;
                 }
                 case 'openavc:editor-placements': {
@@ -1942,6 +1999,13 @@ class PanelApp {
 
     renderCurrentPage() {
         if (!this.uiDef) return;
+        // Everything below is about to be replaced, including whatever node an
+        // in-place edit was holding. Let go of it first: a commit from a
+        // detached node would write text the author can no longer see.
+        if (this._textEdit) {
+            this._textEdit = null;
+            this._postToParent({ type: 'openavc:editor-text-closed' });
+        }
 
         const pages = this.uiDef.pages || [];
         let page = pages.find(p => p.id === this.currentPage);
@@ -2133,7 +2197,30 @@ class PanelApp {
         const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
         if (!rootPx) return;
         const fontSizeRem = {};
+        // Which elements have text an author can edit in place. Reported rather
+        // than derived from a table of types, because the renderer is the only
+        // thing that knows: it is per ELEMENT, not per type -- an icon-only
+        // button draws no words, a bound label draws a format string, and a
+        // button whose label a script is overriding has no authored source at
+        // all. Runs after evaluateAllBindings, so the records have settled.
+        const editableText = [];
+        // Elements drawing words that are NOT the author's to edit here, and
+        // why. Without this the Builder has only "editable or not" and a
+        // double-click on the second kind is a silent no-op -- which is how a
+        // button whose label a script is setting would look simply broken.
+        // Only cases worth a sentence are listed: a control that draws no text
+        // at all says nothing, because nothing is expected of it.
+        const textRefusals = {};
         for (const el of this.root.querySelectorAll('[data-element-id]')) {
+            const id = el.dataset.elementId;
+            if (el.hasAttribute('data-avc-text-src')) {
+                editableText.push(id);
+            } else if (this.state[`ui.${id}.label`] !== undefined
+                       && this.state[`ui.${id}.label`] !== null) {
+                textRefusals[id] = `This text is being set by a script or macro `
+                    + `through ui.${id}.label, not by the element's Label. Change the `
+                    + `Label in Properties, or clear that key to show it again.`;
+            }
             const own = el.style.fontSize;
             if (own) el.style.fontSize = '';
             const px = parseFloat(getComputedStyle(el).fontSize);
@@ -2142,7 +2229,10 @@ class PanelApp {
             // a size that IS the default compares equal to it in the Builder.
             if (Number.isFinite(px)) fontSizeRem[el.dataset.elementId] = Math.round(px / rootPx * 1e4) / 1e4;
         }
-        this._postToParent({ type: 'openavc:editor-text-defaults', fontSizeRem });
+        this._postToParent({
+            type: 'openavc:editor-text-defaults', fontSizeRem, editableText,
+            textRefusals,
+        });
     }
 
     /**
@@ -2317,6 +2407,7 @@ class PanelApp {
         el.className = 'panel-element panel-button';
         el.textContent = element.label || '';
         el.dataset.elementId = element.id;
+        this._recordTextSource(el, ['label']);
         el._baseAccessibleName = element.label || element.id;
         el.setAttribute('aria-label', el._baseAccessibleName);
 
@@ -2333,6 +2424,9 @@ class PanelApp {
         // Clear label text for image-only/icon-only modes BEFORE content/layer rendering
         if (displayMode === 'image' || displayMode === 'icon_only') {
             el.textContent = '';
+            // The label still exists in data and is still the accessible name,
+            // but nothing is on screen to put a caret in.
+            this._recordTextSource(el, null);
         }
         if (displayMode === 'icon_only' && !element.icon_position) {
             element.icon_position = 'center';
@@ -2487,6 +2581,12 @@ class PanelApp {
                     value: pressBinding.toggle_value,
                     on_label: pressBinding.on_label,
                     off_label: pressBinding.off_label,
+                    // Where those two words are authored, so an in-place edit
+                    // writes the one the button is actually showing. The press
+                    // binding is an array whose first action carries the mode.
+                    _labelBase: Array.isArray(pressActions)
+                        ? ['bindings', 'do', 'press', 0]
+                        : ['bindings', 'do', 'press'],
                 },
             });
         }
@@ -2506,6 +2606,9 @@ class PanelApp {
         } else {
             el.textContent = text;
         }
+        // Rich or not, what the author owns is the source string -- markup and
+        // all -- so the path is the same and the editor reveals `**bold**`.
+        this._recordTextSource(el, ['text']);
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
         this.renderElementContent(el, element);
@@ -2523,6 +2626,7 @@ class PanelApp {
                 });
                 // Set initial idle text
                 el.textContent = textBinding.idle_text || '';
+                this._recordTextSource(el, ['bindings', 'show', 'value', 'idle_text']);
             } else {
                 this.bindings.push({
                     type: 'text',
@@ -2567,6 +2671,9 @@ class PanelApp {
             const label = document.createElement('label');
             label.className = 'led-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -2604,6 +2711,9 @@ class PanelApp {
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -2811,6 +2921,9 @@ class PanelApp {
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -2883,6 +2996,9 @@ class PanelApp {
         if (element.label) {
             const label = document.createElement('label');
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -3015,6 +3131,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'list-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -3346,6 +3465,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'matrix-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -4396,6 +4518,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'gauge-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -4491,6 +4616,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'meter-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -4615,6 +4743,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'fader-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -5028,6 +5159,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'group-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
 
             // Position
             if (labelPos.startsWith('top')) {
@@ -5270,6 +5404,9 @@ class PanelApp {
             const label = document.createElement('div');
             label.className = 'keypad-label';
             label.textContent = element.label;
+            // On the element root, not the caption: the caption is not in the
+            // tree yet, so `closest` could not walk up to find it.
+            this._recordTextSource(el, ['label']);
             el.appendChild(label);
         }
 
@@ -6110,8 +6247,12 @@ class PanelApp {
             if (running) {
                 const text = running.description || `Step ${running.step_index + 1} of ${running.total_steps}`;
                 b.element.textContent = text;
+                // The step description comes from the macro, not the author.
+                this._recordTextSource(b.element, null);
             } else {
                 b.element.textContent = b.binding.idle_text || '';
+                this._recordTextSource(b.element,
+                    ['bindings', 'show', 'value', 'idle_text']);
             }
         }
     }
@@ -6458,10 +6599,15 @@ class PanelApp {
             // Label override (preserve image layer and other element children)
             const labelOverride = this.state[prefix + 'label'];
             if (labelOverride !== undefined && labelOverride !== null) {
-                this._setLabelText(el, String(labelOverride));
+                // Runtime words with no authored home. The editor refuses these
+                // and says which key is setting them: writing the element's own
+                // label here would be a silent no-op, because this override
+                // would still be covering it.
+                this._setLabelText(el, String(labelOverride), null);
                 applied.add('label');
             } else if (applied.has('label')) {
-                this._setLabelText(el, base.label != null ? String(base.label) : '');
+                this._setLabelText(el, base.label != null ? String(base.label) : '',
+                    ['label']);
                 applied.delete('label');
             }
 
@@ -6567,34 +6713,49 @@ class PanelApp {
             this._clearStateColours(element, baseStyle);
             this.applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
             if (!elementDef.bindings?.show?.value && elementDef.text !== undefined) {
-                this._setLabelText(element, String(elementDef.text));
+                this._setLabelText(element, String(elementDef.text), ['text']);
             }
             return;
         }
 
         let appearance;
+        // Which authored slot the words below come from. Resolved alongside the
+        // appearance because only this branch knows which state matched.
+        let labelPath = null;
         if (binding.states) {
             const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
             appearance = binding.states[stateKey]
                 || binding.states[binding.default_state || '']
                 || {};
+            const matched = binding.states[stateKey] !== undefined
+                ? stateKey
+                : (binding.default_state || '');
+            labelPath = ['bindings', 'show', 'look', 'states', matched, 'label'];
         } else {
             // Legacy binary look, same shape the button honors.
             const condition = binding.condition || {};
             const isActive = stateValue !== undefined &&
                 String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
             appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
+            labelPath = ['bindings', 'show', 'look',
+                isActive ? 'style_active' : 'style_inactive', 'label'];
             const legacyText = isActive ? binding.label_active : binding.label_inactive;
             if (legacyText !== undefined && legacyText !== null) {
                 appearance = { ...appearance, label: legacyText };
+                labelPath = ['bindings', 'show', 'look',
+                    isActive ? 'label_active' : 'label_inactive'];
             }
         }
 
         this.applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
 
         if (appearance.label !== undefined) {
-            this._setLabelText(element, String(appearance.label));
+            this._setLabelText(element, String(appearance.label), labelPath);
         }
+        // No `else`: when a state names no label the text is left exactly as it
+        // was, and so is the record of where it came from. That is precisely
+        // why the source is recorded on write rather than re-derived -- nothing
+        // here could work out what is on screen.
     }
 
     evaluateFeedback(b) {
@@ -6623,11 +6784,12 @@ class PanelApp {
             if (baseStyle.bg_color) this.updateImageTint(element, baseStyle.bg_color);
             if (suppressLabel) {
                 this._removeTextNodes(element);
+                this._recordTextSource(element, null);
             } else {
                 // A state's WORD is a claim as much as its colour. A button
                 // with no name of its own is left blank rather than still
                 // reading MUTED for an amplifier nobody can reach.
-                this._setLabelText(element, elementDef.label || '');
+                this._setLabelText(element, elementDef.label || '', ['label']);
             }
             const baseIcon = elementDef.icon || elementDef.style?.icon;
             if (baseIcon) this.renderElementContent(element, elementDef);
@@ -6646,6 +6808,9 @@ class PanelApp {
         if (binding.states) {
             const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
             const appearance = binding.states[stateKey] || binding.states[binding.default_state || ''] || {};
+            const matched = binding.states[stateKey] !== undefined
+                ? stateKey
+                : (binding.default_state || '');
             const style = { ...baseStyle, ...appearance };
             this.applyStyle(element, style);
             // Re-apply frameless so state bg_color changes don't reintroduce chrome
@@ -6657,10 +6822,12 @@ class PanelApp {
             // Remove only text nodes so we don't wipe the image layer (an element child).
             if (suppressLabel) {
                 this._removeTextNodes(element);
+                this._recordTextSource(element, null);
             } else if (appearance.label !== undefined) {
-                this._setLabelText(element, String(appearance.label));
+                this._setLabelText(element, String(appearance.label),
+                    ['bindings', 'show', 'look', 'states', matched, 'label']);
             } else if (elementDef.label) {
-                this._setLabelText(element, elementDef.label);
+                this._setLabelText(element, elementDef.label, ['label']);
             }
 
             // Rebuild icon+text layout if element has any icon (from appearance or base element)
@@ -6719,14 +6886,23 @@ class PanelApp {
         // Remove only text nodes to preserve the image layer (an element child).
         if (suppressLabel) {
             this._removeTextNodes(element);
+            this._recordTextSource(element, null);
         } else if (isActive && binding.label_active) {
-            this._setLabelText(element, binding.label_active);
+            this._setLabelText(element, binding.label_active,
+                ['bindings', 'show', 'look', 'label_active']);
         } else if (!isActive && binding.label_inactive) {
-            this._setLabelText(element, binding.label_inactive);
+            this._setLabelText(element, binding.label_inactive,
+                ['bindings', 'show', 'look', 'label_inactive']);
         } else if (style.label !== undefined) {
-            this._setLabelText(element, style.label);
+            // A label living in the STYLE dict, which is a real read path here.
+            // Whichever half supplied it is the half an edit has to write.
+            const half = isActive ? activeStyle : inactiveStyle;
+            this._setLabelText(element, style.label,
+                half.label !== undefined
+                    ? ['bindings', 'show', 'look', isActive ? 'style_active' : 'style_inactive', 'label']
+                    : ['style', 'label']);
         } else if (elementDef.label) {
-            this._setLabelText(element, elementDef.label);
+            this._setLabelText(element, elementDef.label, ['label']);
         }
 
         // Rebuild icon+text layout if element has any icon (from feedback or base element)
@@ -6810,7 +6986,14 @@ class PanelApp {
         const named = binding.on_label != null || binding.off_label != null;
         if (named && !suppressLabel) {
             const word = offline ? null : (on ? binding.on_label : binding.off_label);
-            this._setLabelText(element, word != null && word !== '' ? word : (elementDef.label || ''));
+            const hasWord = word != null && word !== '';
+            // An empty on/off word falls back to the button's own label, so an
+            // edit of what is showing belongs to whichever one actually drew.
+            const labelBase = binding._labelBase || ['bindings', 'do', 'press', 0];
+            this._setLabelText(element, hasWord ? word : (elementDef.label || ''),
+                hasWord
+                    ? [...labelBase, on ? 'on_label' : 'off_label']
+                    : ['label']);
             const icon = elementDef.icon || elementDef.style?.icon;
             if (icon) this.renderElementContent(element, elementDef);
         }
@@ -6918,7 +7101,13 @@ class PanelApp {
         const value = this.state[binding.key];
         const useRich = elementDef?.style?.white_space;
 
-        const setText = (text) => {
+        // `path` names the authored field this text came from, rooted at the
+        // element definition, or null where what is drawn is not authored
+        // anywhere -- a bare value, or the "--" an unreachable device earns.
+        const setText = (text, path) => {
+            // An edit in flight owns these words; see _setLabelText.
+            if (this._textEdit && this._textEdit.el === element) return;
+            this._recordTextSource(element, path);
             if (b._lastText === text) return;
             b._lastText = text;
             if (useRich) {
@@ -6927,6 +7116,7 @@ class PanelApp {
                 element.textContent = text;
             }
         };
+        const FORMAT = ['bindings', 'show', 'value', 'format'];
 
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
@@ -6937,7 +7127,7 @@ class PanelApp {
             // amplifier drawing 0.076 A through a port that was broken.
             setText(binding.format
                 ? String(binding.format).split('{value}').join('--')
-                : '--');
+                : '--', binding.format ? FORMAT : null);
             return;
         }
 
@@ -6947,7 +7137,8 @@ class PanelApp {
             // silently failing the strict-=== check and sticking on text_false.
             const isMatch = value !== undefined && value !== null &&
                 String(value).toLowerCase() === String(binding.condition.equals).toLowerCase();
-            setText(isMatch ? (binding.text_true || '') : (binding.text_false || ''));
+            setText(isMatch ? (binding.text_true || '') : (binding.text_false || ''),
+                ['bindings', 'show', 'value', isMatch ? 'text_true' : 'text_false']);
             return;
         }
 
@@ -6958,7 +7149,7 @@ class PanelApp {
             // can see which reading is missing.
             setText(binding.format
                 ? String(binding.format).split('{value}').join('--')
-                : '--');
+                : '--', binding.format ? FORMAT : null);
             return;
         }
         const shown = this._labelValueText(value, elementDef);
@@ -6966,9 +7157,12 @@ class PanelApp {
             // split/join replaces every {value} and treats the value literally,
             // so device values containing $-sequences (track titles, paths)
             // aren't reinterpreted the way String.replace would.
-            setText(String(binding.format).split('{value}').join(shown));
+            setText(String(binding.format).split('{value}').join(shown), FORMAT);
         } else {
-            setText(shown);
+            // A bare value with no format around it is not authored text. The
+            // editor opens it seeded with the literal `{value}` instead, so
+            // typing a sentence around it CREATES the format.
+            setText(shown, null);
         }
     }
 
@@ -7723,12 +7917,49 @@ class PanelApp {
     }
 
     /**
+     * Record WHICH authored field produced the text now on screen.
+     *
+     * The Builder's in-place editor needs to answer "what do I write when
+     * somebody edits this?", and it cannot be re-derived after the fact:
+     * `evaluateLabelLook` deliberately DECLINES to write when a state names no
+     * label of its own, so the words on screen may have come from a previous
+     * state, from a `show.value` binding, or from the element's own `text`. The
+     * only moment the answer is known is the moment the text is written, so
+     * every writer states it here and the record is what the editor reads back.
+     *
+     * The path is a JSON array rather than a dotted string because a segment
+     * can be a state VALUE -- `show.look.states["2.5"].label` is a legal slot,
+     * and splitting that on dots loses it.
+     *
+     * `null` means the text is real but nothing authored it: a runtime
+     * `ui.<id>.label` override, a computed value, a positional fallback. The
+     * editor refuses those rather than writing somewhere that would not show.
+     *
+     * Edit mode only. A wall panel carries no editor and pays nothing for this.
+     */
+    _recordTextSource(el, path) {
+        if (!this.editMode || !el || el.nodeType !== Node.ELEMENT_NODE) return;
+        const host = el.closest ? (el.closest('[data-element-id]') || el) : el;
+        if (path == null) host.removeAttribute('data-avc-text-src');
+        else host.setAttribute('data-avc-text-src', JSON.stringify(path));
+    }
+
+    /**
      * Set or replace an element's label text without touching element children
      * (icons, image layer). Removes existing text nodes and appends a new one.
      * A button's accessible name follows its words, retaining its configured
      * name when the visible label is empty.
+     *
+     * `path` names the authored field this text came from, for the in-place
+     * editor. Every caller passes one, or null where the words are not
+     * authored anywhere (see `_recordTextSource`).
      */
-    _setLabelText(el, text) {
+    _setLabelText(el, text, path) {
+        // An edit in flight owns this element's words. Live state keeps arriving
+        // while somebody types -- the canvas seeds the real room's state and
+        // re-sends it on every repost -- and a write here would wipe the caret,
+        // or worse, swap the slot being edited out from under it.
+        if (this._textEdit && this._textEdit.el === el) return;
         this._removeTextNodes(el);
         if (text != null && text !== '') {
             el.appendChild(document.createTextNode(String(text)));
@@ -7737,6 +7968,286 @@ class PanelApp {
             el.setAttribute('aria-label', text != null && text !== ''
                 ? String(text) : (el._baseAccessibleName || ''));
         }
+        if (path !== undefined) this._recordTextSource(el, path);
+    }
+
+    // --- In-place text editing (edit mode only) ---
+    //
+    // The Builder's canvas IS this document, in an iframe, with a transparent
+    // overlay of hit boxes on top of it. A double-click out there arrives here
+    // as `openavc:editor-edit-text` naming an element, and the text the author
+    // is looking at becomes editable where it sits -- the real node, the real
+    // font, the real box, so nothing shifts when the edit commits.
+    //
+    // What is edited is always the authored SOURCE, never the rendered form. A
+    // label drawing "Amp draw: 0.08 A" opens as the literal
+    // "Amp draw: {value} A"; one drawing bold text opens as "**bold**". That is
+    // what makes plain-text editing correct everywhere and a rich-text editor
+    // unnecessary.
+
+    /**
+     * The node whose text an author edits, which is not always the element.
+     *
+     * A bare button holds its words in text nodes directly (`_setLabelText`);
+     * one with an icon holds them in `.panel-label-span` (`renderElementContent`);
+     * a group's sit in `.group-label`. Whoever holds them is who gets the caret.
+     */
+    _textHostFor(el) {
+        return el.querySelector(':scope > .panel-label-span')
+            || el.querySelector(':scope > .group-label')
+            || el;
+    }
+
+    /**
+     * Read the authored string at a recorded source path.
+     *
+     * Returns undefined when the path leads nowhere, which is the "author has
+     * not written this yet" case and opens an empty editor rather than refusing.
+     */
+    _authoredTextAt(elementDef, path) {
+        let node = elementDef;
+        for (const seg of path) {
+            if (node == null || typeof node !== 'object') return undefined;
+            node = node[seg];
+        }
+        return node == null ? undefined : String(node);
+    }
+
+    /**
+     * What to show behind an empty editor: the fallback the renderer would draw
+     * if this field stayed empty.
+     *
+     * A `page_nav` with no label draws its target page id, a `camera_preset`
+     * draws "Preset". Those are visible but NOT authored, and committing one as
+     * authored text freezes a copy -- rename the page afterwards and the button
+     * keeps the old word. So they open empty with the fallback as a placeholder:
+     * Enter-unchanged is a no-op, typing creates the field.
+     */
+    _textPlaceholderFor(elementDef) {
+        if (elementDef.type === 'page_nav') {
+            return elementDef.target_page || 'No Target';
+        }
+        if (elementDef.type === 'camera_preset') return 'Preset';
+        return '';
+    }
+
+    /**
+     * The rendered node and the authored definition for an id.
+     *
+     * Deliberately not `elementMap`: only eleven of the nineteen renderers
+     * register there, and `label` -- the type this feature exists for -- is not
+     * one of them. A page's elements are a flat array with parent references,
+     * so the def is a scan and the node is a query.
+     */
+    _editableTarget(elementId) {
+        // Document-scoped rather than #panel-root: an overlay page draws into
+        // its own surface, and only one page is in the document at a time.
+        const el = document.querySelector(
+            `[data-element-id="${CSS.escape(elementId)}"]`);
+        if (!el) return null;
+        const pages = (this.uiDef && this.uiDef.pages) || [];
+        const page = pages.find(p => p && p.id === this.currentPage);
+        const flat = (page && Array.isArray(page.elements)) ? page.elements : [];
+        const def = flat.find(e => e && e.id === elementId)
+            || ((this.uiDef && this.uiDef.master_elements) || [])
+                .find(e => e && e.id === elementId);
+        return def ? { el, elementDef: def } : null;
+    }
+
+    /**
+     * The caret ring and the placeholder, injected once and only in edit mode.
+     *
+     * Deliberately NOT in panel-elements.css: that stylesheet ships to real
+     * glass, where none of this exists. The snap overlay makes the same choice.
+     */
+    _installTextEditStyles() {
+        if (this._textEditStylesInstalled) return;
+        this._textEditStylesInstalled = true;
+        const style = document.createElement('style');
+        style.textContent = `
+            [data-avc-text-editing] {
+                outline: 2px solid #42a5f5;
+                outline-offset: 1px;
+                cursor: text;
+                min-width: 1ch;
+                white-space: pre-wrap;
+                /* What is being edited is the stored string, so it is shown as
+                   stored. A group caption is drawn uppercase by the panel
+                   stylesheet; typing "Audio" into a box reading "AUDIO" and
+                   watching it stay capitalised reads as the edit being
+                   ignored. The transform comes back on commit.
+
+                   !important because the rule it has to beat is a two-class
+                   selector (.panel-group .group-label) and this is one
+                   attribute. Scoped to an element mid-edit, in edit mode
+                   only, so it reaches nothing a panel ever draws. */
+                text-transform: none !important;
+            }
+            [data-avc-text-editing]:empty::before,
+            [data-avc-text-editing][data-avc-text-placeholder]:empty::before {
+                content: attr(data-avc-text-placeholder);
+                opacity: 0.4;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    _beginTextEdit(elementId) {
+        this._installTextEditStyles();
+        const entry = this._editableTarget(elementId);
+        if (!entry) return;
+        const { el, elementDef } = entry;
+        if (this._textEdit) this._finishTextEdit(true);
+
+        const raw = el.getAttribute('data-avc-text-src');
+        if (raw === null) {
+            // Nothing authored is drawing here. Either the renderer wrote text
+            // it computed (a value readout, a runtime override) or this type
+            // draws no editable text at all.
+            const override = this.state[`ui.${elementId}.label`];
+            this._postToParent({
+                type: 'openavc:editor-text-refused',
+                elementId,
+                reason: override !== undefined && override !== null
+                    ? `This text is being set by a script or macro through `
+                      + `ui.${elementId}.label, not by the element's Label. Change the `
+                      + `Label in Properties, or clear that key to show it again.`
+                    : 'These words come from the room, not from the element\'s own '
+                      + 'settings, so they cannot be changed here.',
+            });
+            return;
+        }
+
+        let path;
+        try {
+            path = JSON.parse(raw);
+        } catch {
+            return;
+        }
+        if (!Array.isArray(path)) return;
+
+        const host = this._textHostFor(el);
+        const source = this._authoredTextAt(elementDef, path);
+        const multiline = elementDef.type === 'label';
+
+        this._textEdit = {
+            elementId,
+            path,
+            host,
+            el,
+            // Everything the host was showing, so a cancel puts it back exactly
+            // rather than re-rendering the page around it.
+            restore: { html: host.innerHTML, editable: host.contentEditable },
+            before: source === undefined ? '' : source,
+            multiline,
+        };
+
+        // Plain text, and plaintext-only where the browser has it: what is being
+        // edited is a source string, so a pasted <b> has no meaning here.
+        host.contentEditable = 'plaintext-only';
+        if (host.contentEditable !== 'plaintext-only') host.contentEditable = 'true';
+        host.textContent = this._textEdit.before;
+        host.dataset.avcTextEditing = '1';
+        if (!this._textEdit.before) {
+            host.dataset.avcTextPlaceholder = this._textPlaceholderFor(elementDef);
+        }
+
+        host.focus();
+        const range = document.createRange();
+        range.selectNodeContents(host);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        host.addEventListener('keydown', this._onTextEditKey);
+        host.addEventListener('blur', this._onTextEditBlur);
+
+        this._postToParent({
+            type: 'openavc:editor-text-open',
+            elementId,
+            path,
+            source: this._textEdit.before,
+            multiline,
+        });
+    }
+
+    /**
+     * Put a string in at the caret, replacing any selection.
+     *
+     * `execCommand` first because it is the only insertion the browser folds
+     * into contenteditable's own undo stack, so ctrl+Z inside an edit still
+     * steps back through what was typed. The Selection path is the fallback for
+     * when that finally goes away.
+     */
+    _insertTextAtCaret(text) {
+        if (document.execCommand && document.execCommand('insertText', false, text)) {
+            return;
+        }
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const node = document.createTextNode(text);
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
+    /**
+     * What the author actually typed, read blind to the CSS.
+     *
+     * NOT `innerText`, which is CSS-aware: a group's caption is styled
+     * `text-transform: uppercase`, so `innerText` hands back "AUDIO" for a
+     * caption authored as "Audio" -- and committing that would have retyped
+     * every group caption in the project in capitals, once, permanently, the
+     * first time anybody edited one.
+     *
+     * `textContent` alone would lose the line breaks a multi-line label is
+     * allowed, so a `<br>` and a block the browser wrapped a line in each
+     * count as a newline.
+     */
+    _editedText(host) {
+        let out = '';
+        for (const node of host.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                out += node.textContent;
+            } else if (node.nodeName === 'BR') {
+                out += '\n';
+            } else {
+                if (out !== '' && !out.endsWith('\n')) out += '\n';
+                out += node.textContent;
+            }
+        }
+        return out;
+    }
+
+    _finishTextEdit(commit) {
+        const edit = this._textEdit;
+        if (!edit) return;
+        this._textEdit = null;
+
+        const { host } = edit;
+        host.removeEventListener('keydown', this._onTextEditKey);
+        host.removeEventListener('blur', this._onTextEditBlur);
+        const typed = this._editedText(host).replace(/\n$/, '');
+        host.contentEditable = edit.restore.editable || 'inherit';
+        delete host.dataset.avcTextEditing;
+        delete host.dataset.avcTextPlaceholder;
+        // Put the rendered form back either way. On a commit the Builder writes
+        // the project and the repost redraws this element properly; until that
+        // lands, what was on screen before is a truer picture than the source
+        // string the author was just typing into.
+        host.innerHTML = edit.restore.html;
+
+        if (!commit || typed === edit.before) return;
+        this._postToParent({
+            type: 'openavc:editor-text-commit',
+            elementId: edit.elementId,
+            path: edit.path,
+            value: typed,
+        });
     }
 
     /**

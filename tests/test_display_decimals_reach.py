@@ -61,8 +61,11 @@ def test_panel_label_rounds_through_the_shared_helper() -> None:
         "the label's text evaluator must round a numeric value; it printed "
         "String(value) raw, so a device float showed all 17 digits"
     )
-    # Both paths: the {value} placeholder AND the bare no-format case.
-    assert ".join(shown)" in src and "setText(shown)" in src, (
+    # Both paths: the {value} placeholder AND the bare no-format case. Matched
+    # without the closing paren because `setText` also carries the authored
+    # source path for in-place editing (`setText(shown, null)`); what is pinned
+    # here is that both paths pass the ROUNDED value, not the call's arity.
+    assert ".join(shown)" in src and "setText(shown" in src, (
         "both label paths (with and without a format string) must go through "
         "the rounding helper"
     )
