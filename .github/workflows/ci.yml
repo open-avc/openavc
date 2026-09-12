@@ -147,10 +147,16 @@ jobs:
       # the plugin, and nothing else runs in this job for it to collide with.
       # OPENAVC_REQUIRE_E2E is this job promising Playwright: without it, a
       # missing install would collect nothing and still report success.
+      #
+      # tests/e2e/perf holds wall-clock budgets for the same screens and is
+      # ignored here for the reason tests/perf is ignored in the unit job: a
+      # shared runner's speed is not the thing under test, and a stopwatch that
+      # gates every commit reports the runner. Run it on demand, on an idle
+      # machine, with `pytest tests/e2e/perf -o addopts=""`.
       - name: Run browser tests
         env:
           OPENAVC_REQUIRE_E2E: "1"
-        run: pytest tests/e2e -o addopts="" -v --tb=short
+        run: pytest tests/e2e -o addopts="" --ignore=tests/e2e/perf -v --tb=short
 
   dependency-audit:
     name: Dependency audit
