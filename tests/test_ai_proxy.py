@@ -3,6 +3,7 @@
 import json
 from unittest.mock import patch, AsyncMock, MagicMock
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient, ASGITransport
@@ -211,8 +212,75 @@ class TestErrorMessage:
         msg = _error_message(500, body)
         assert len(msg) <= 200
 
+    def test_relays_the_clouds_own_503_sentence(self):
+        """Q-176: every 503 read as "AI service is not available" — including a
+        plan refusal the customer could have acted on."""
+        body = json.dumps({"detail": "The AI assistant is paused on this account."}).encode()
+        assert _error_message(503, body) == "The AI assistant is paused on this account."
+
+    def test_relays_the_clouds_own_402_sentence(self):
+        body = json.dumps(
+            {"detail": "This account has used the allowance that comes with a free account."}
+        ).encode()
+        assert (
+            _error_message(402, body)
+            == "This account has used the allowance that comes with a free account."
+        )
+
+    def test_relays_the_clouds_own_429_sentence(self):
+        body = json.dumps({"detail": "Rate limit exceeded (60 requests/minute). Please wait."}).encode()
+        assert _error_message(429, body) == "Rate limit exceeded (60 requests/minute). Please wait."
+
+    def test_a_non_json_503_body_never_reaches_the_browser(self):
+        """An intermediary's HTML 503 is not the cloud's sentence."""
+        msg = _error_message(503, b"<html><body>502 Bad Gateway</body></html>")
+        assert msg == "AI service is not available."
+
+    def test_an_empty_detail_is_not_a_sentence(self):
+        assert _error_message(503, json.dumps({"detail": "   "}).encode()) == (
+            "AI service is not available."
+        )
+
+    def test_a_non_string_detail_is_not_a_sentence(self):
+        body = json.dumps({"detail": [{"loc": ["body"], "msg": "field required"}]}).encode()
+        assert _error_message(503, body) == "AI service is not available."
+
 
 # --- API endpoint tests ---
+
+
+def _connected_engine():
+    engine = MagicMock()
+    engine.cloud_agent.get_status.return_value = {"connected": True}
+    return engine
+
+
+def _paired_cfg(mock_cfg):
+    mock_cfg.CLOUD_ENABLED = True
+    mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
+    mock_cfg.CLOUD_SYSTEM_KEY = "aa" * 32
+    mock_cfg.CLOUD_ENDPOINT = "wss://cloud.openavc.com/agent/v1"
+
+
+def _cloud_get(status_code, json_body=None, raises=None):
+    """Patch context for one GET to the cloud."""
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    if json_body is None:
+        mock_response.json.side_effect = ValueError("not json")
+    else:
+        mock_response.json.return_value = json_body
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    if raises is not None:
+        mock_client.get = AsyncMock(side_effect=raises)
+    else:
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+    ctx = patch("httpx.AsyncClient")
+    return ctx, mock_client
 
 
 class TestAiStatusEndpoint:
@@ -224,6 +292,7 @@ class TestAiStatusEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["available"] is False
+        assert data["state"] == "unpaired"
 
     async def test_cloud_enabled_but_no_agent(self, client):
         with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
@@ -233,17 +302,19 @@ class TestAiStatusEndpoint:
             resp = await client.get("/api/ai/status")
         data = resp.json()
         assert data["available"] is False
+        assert data["state"] == "disconnected"
 
     async def test_cloud_agent_connected(self, client):
-        engine = MagicMock()
-        engine.cloud_agent.get_status.return_value = {"connected": True}
-        set_engine(engine)
+        set_engine(_connected_engine())
+        ctx, mock_client = _cloud_get(200, {"available": True, "reason": None})
         with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
-            mock_cfg.CLOUD_ENABLED = True
-            mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
-            resp = await client.get("/api/ai/status")
+            _paired_cfg(mock_cfg)
+            with ctx as mock_client_cls:
+                mock_client_cls.return_value = mock_client
+                resp = await client.get("/api/ai/status")
         data = resp.json()
         assert data["available"] is True
+        assert data["state"] == "available"
 
     async def test_cloud_agent_disconnected(self, client):
         engine = MagicMock()
@@ -255,6 +326,88 @@ class TestAiStatusEndpoint:
             resp = await client.get("/api/ai/status")
         data = resp.json()
         assert data["available"] is False
+        assert data["state"] == "disconnected"
+
+    async def test_connected_but_the_cloud_refuses_is_not_available(self, client):
+        """The finding: connected said available, and every prompt then 503'd."""
+        set_engine(_connected_engine())
+        ctx, mock_client = _cloud_get(
+            200,
+            {
+                "available": False,
+                "reason": "This account has used the AI assistant allowance.",
+            },
+        )
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+            _paired_cfg(mock_cfg)
+            with ctx as mock_client_cls:
+                mock_client_cls.return_value = mock_client
+                resp = await client.get("/api/ai/status")
+        data = resp.json()
+        assert data["available"] is False
+        assert data["state"] == "unavailable"
+        assert data["reason"] == "This account has used the AI assistant allowance."
+
+    async def test_refusal_without_a_sentence_still_gets_one(self, client):
+        set_engine(_connected_engine())
+        ctx, mock_client = _cloud_get(200, {"available": False})
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+            _paired_cfg(mock_cfg)
+            with ctx as mock_client_cls:
+                mock_client_cls.return_value = mock_client
+                resp = await client.get("/api/ai/status")
+        data = resp.json()
+        assert data["available"] is False
+        assert data["reason"]
+
+    async def test_older_cloud_without_the_route_stays_available(self, client):
+        """A 404 means we could not ask, not that the answer is no.
+
+        Every cloud in the field predates this route, so a probe that read a
+        404 as a refusal would switch the assistant off for everybody until the
+        cloud deploys.
+        """
+        set_engine(_connected_engine())
+        ctx, mock_client = _cloud_get(404, {"detail": "Not Found"})
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+            _paired_cfg(mock_cfg)
+            with ctx as mock_client_cls:
+                mock_client_cls.return_value = mock_client
+                resp = await client.get("/api/ai/status")
+        data = resp.json()
+        assert data["available"] is True
+        assert data["state"] == "available"
+
+    async def test_unreachable_status_door_stays_available(self, client):
+        set_engine(_connected_engine())
+        ctx, mock_client = _cloud_get(200, raises=httpx.TimeoutException("timed out"))
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+            _paired_cfg(mock_cfg)
+            with ctx as mock_client_cls:
+                mock_client_cls.return_value = mock_client
+                resp = await client.get("/api/ai/status")
+        assert resp.json()["available"] is True
+
+    async def test_unparseable_answer_stays_available(self, client):
+        set_engine(_connected_engine())
+        ctx, mock_client = _cloud_get(200, None)
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+            _paired_cfg(mock_cfg)
+            with ctx as mock_client_cls:
+                mock_client_cls.return_value = mock_client
+                resp = await client.get("/api/ai/status")
+        assert resp.json()["available"] is True
+
+    async def test_the_probe_never_500s_the_ide(self, client):
+        """Whatever the probe trips over, status still answers."""
+        set_engine(_connected_engine())
+        with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
+            mock_cfg.CLOUD_ENABLED = True
+            mock_cfg.CLOUD_SYSTEM_ID = "sys-123"
+            # left as MagicMocks: signing blows up on them
+            resp = await client.get("/api/ai/status")
+        assert resp.status_code == 200
+        assert resp.json()["available"] is True
 
 
 class TestAiChatEndpoint:

@@ -15,7 +15,9 @@ so a prompt someone spent minutes typing was gone the moment the request
 failed; optimistic message ids used bare Date.now() (a sub-ms double-send
 corrupted both bubbles); and the conversation list/select/delete paths
 surfaced raw 'AI API 500: {json}' strings instead of the friendly copy the
-streaming path already maps.
+streaming path already maps. Also that 402, 429 and 503 keep the sentence the
+cloud sent: they were each mapped to one fixed string, so an account past its
+allowance was told it needed a subscription.
 
 Two layers: the harness bundles the real ``aiErrors.ts`` with the esbuild
 in ``openavc/web/programmer/node_modules`` (skips when the Node toolchain is
@@ -84,6 +86,9 @@ SCENARIOS = [
     "limit_429",
     "subscription_402",
     "unavailable_503",
+    "relays_429_sentence",
+    "relays_402_sentence",
+    "relays_503_sentence",
     "detail_unwrapped",
     "non_json_falls_back",
     "empty_detail_falls_back",

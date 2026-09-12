@@ -143,21 +143,80 @@ async def _cloud_request(
 
 # --- Status ---
 
+# What the IDE is told when the cloud refuses but sends no sentence of its own.
+_GENERIC_REFUSAL = "The AI assistant is not available on this account."
+
+
+async def _cloud_ai_refusal() -> str | None:
+    """Why the cloud would refuse a chat turn from this system, or None.
+
+    A connected agent proves the cloud is reachable, and nothing more: the
+    assistant can be switched off at our end, paused on the account, or past a
+    free account's allowance, and every one of those answers a chat turn with a
+    refusal. This asks the question the connection cannot.
+
+    It fails OPEN, on purpose and in every direction -- an unreachable status
+    door, a non-200, an unparseable body, an older cloud that has no such route
+    at all -- because the only thing a failed probe establishes is that we do
+    not know. Answering "unavailable" from ignorance would take the assistant
+    away from someone whose account is fine. Only an explicit ``available:
+    false`` from the cloud closes the door.
+    """
+    try:
+        api_url, system_id, system_key = _check_cloud_ready()
+        headers = _sign_request(system_id, system_key, b"")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
+            resp = await client.get(
+                f"{api_url}/api/v1/ai/system/status", headers=headers
+            )
+        if resp.status_code != 200:
+            log.debug("Cloud AI status answered %d", resp.status_code)
+            return None
+        data = resp.json()
+    except Exception as e:
+        log.debug("Cloud AI status probe failed: %s", e)
+        return None
+
+    if not isinstance(data, dict) or data.get("available") is not False:
+        return None
+    reason = data.get("reason")
+    if isinstance(reason, str) and reason.strip():
+        return reason.strip()
+    return _GENERIC_REFUSAL
+
 
 @router.get("/status")
 async def ai_status() -> dict[str, Any]:
-    """Check if AI is available (cloud paired and connected)."""
+    """Whether the assistant can actually answer, not merely whether cloud is up.
+
+    ``state`` is what the IDE branches its copy on, because "pair this system"
+    is the wrong thing to tell somebody who paired it an hour ago and whose
+    account simply does not have the assistant. ``reason`` is the sentence to
+    show; it comes from the cloud whenever the cloud had one.
+    """
     if not cfg.CLOUD_ENABLED or not cfg.CLOUD_SYSTEM_ID:
-        return {"available": False, "reason": "Cloud not paired"}
+        return {"available": False, "state": "unpaired", "reason": "Cloud not paired"}
 
-    # Check if cloud agent is connected
-    if _engine and _engine.cloud_agent:
-        status = _engine.cloud_agent.get_status()
-        if status.get("connected"):
-            return {"available": True}
-        return {"available": False, "reason": "Cloud not connected"}
+    if not (_engine and _engine.cloud_agent):
+        return {
+            "available": False,
+            "state": "disconnected",
+            "reason": "Cloud agent not running",
+        }
 
-    return {"available": False, "reason": "Cloud agent not running"}
+    status = _engine.cloud_agent.get_status()
+    if not status.get("connected"):
+        return {
+            "available": False,
+            "state": "disconnected",
+            "reason": "Cloud not connected",
+        }
+
+    refusal = await _cloud_ai_refusal()
+    if refusal:
+        return {"available": False, "state": "unavailable", "reason": refusal}
+
+    return {"available": True, "state": "available"}
 
 
 # --- Chat ---
@@ -290,29 +349,57 @@ async def ai_get_usage():
     return resp.json()
 
 
+# What the browser is told for a refusal the cloud sent no sentence with —
+# an intermediary's HTML 503, a body that isn't JSON, an empty detail.
+_STATUS_FALLBACKS = {
+    429: "AI request limit reached. Please try again later or upgrade your plan.",
+    402: "AI features require an active subscription.",
+    503: "AI service is not available.",
+}
+
+
+def _cloud_detail(body: bytes) -> str | None:
+    """The cloud's own sentence out of an error body, or None if it sent none.
+
+    Only a JSON object's string ``detail`` counts. A body that is not JSON is
+    somebody else's page — an intermediary's 503, a proxy timeout — and must
+    not reach the browser as if the cloud had written it.
+    """
+    import json
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    detail = parsed.get("detail")
+    if isinstance(detail, str) and detail.strip():
+        return detail.strip()
+    return None
+
+
 def _error_message(status_code: int, body: bytes) -> str:
     """Map a cloud error response to a friendly, sanitized message.
 
     Never returns the raw cloud body verbatim — it extracts the JSON ``detail``
-    or a truncated snippet, and maps the common billing/limit statuses. Shared by
-    the streaming (_error_json) and non-streaming paths so both surface the same
-    message and neither leaks a full internal cloud body to the browser.
+    or a truncated snippet. Shared by the streaming (_error_json) and
+    non-streaming paths so both surface the same message and neither leaks a
+    full internal cloud body to the browser.
+
+    The cloud distinguishes its own refusals and they are not the same answer:
+    an account past its allowance is told what lifts it, an account whose
+    assistant is paused is told to get in touch, and a service that is briefly
+    down is told to come back. Collapsing all three into one fixed sentence per
+    status left "never going to work" and "try again in a minute" reading
+    identically, so the cloud's sentence is relayed whenever it sent one and the
+    fixed sentences are what answers when it did not.
     """
-    import json
-    try:
-        detail = json.loads(body)
-        msg = detail.get("detail", str(body[:200], "utf-8", errors="replace"))
-    except Exception:
-        msg = str(body[:200], "utf-8", errors="replace")
+    detail = _cloud_detail(body)
 
-    if status_code == 429:
-        msg = "AI request limit reached. Please try again later or upgrade your plan."
-    elif status_code == 402:
-        msg = "AI features require an active subscription."
-    elif status_code == 503:
-        msg = "AI service is not available."
+    if status_code in _STATUS_FALLBACKS:
+        return detail or _STATUS_FALLBACKS[status_code]
 
-    return msg
+    return detail or str(body[:200], "utf-8", errors="replace")
 
 
 def _error_json(status_code: int, body: bytes) -> str:

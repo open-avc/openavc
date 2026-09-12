@@ -49,9 +49,13 @@ export interface Message {
 }
 
 interface AIChatStore {
-  // AI availability (cloud paired + connected)
+  // Whether the assistant can actually answer, which is not the same question
+  // as whether the cloud connection is up: the assistant can be paused on an
+  // account, or past a free account's allowance, over a healthy connection.
   available: boolean;
   unavailableReason: string;
+  // What is in the way, so the pane can pick copy without reading the sentence.
+  unavailableState: "unpaired" | "disconnected" | "unavailable";
 
   // Conversations
   conversations: cloud.ConversationSummary[];
@@ -92,6 +96,7 @@ interface AIChatStore {
 export const useAIChatStore = create<AIChatStore>((set, get) => ({
   available: false,
   unavailableReason: "Checking...",
+  unavailableState: "unpaired",
   conversations: [],
   activeConversationId: null,
   messages: [],
@@ -107,12 +112,18 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
   checkAvailability: async () => {
     try {
       const status = await cloud.getAIStatus();
+      const state = status.state ?? (status.available ? "available" : "unpaired");
       set({
         available: status.available,
         unavailableReason: status.reason || "",
+        unavailableState: state === "available" ? "unpaired" : state,
       });
     } catch {
-      set({ available: false, unavailableReason: "Could not check AI status" });
+      set({
+        available: false,
+        unavailableReason: "Could not check AI status",
+        unavailableState: "disconnected",
+      });
     }
   },
 

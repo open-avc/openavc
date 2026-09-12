@@ -5,6 +5,8 @@
  * (established during pairing). No separate cloud login is needed.
  */
 
+import { aiMessageForStatus } from "./aiErrors";
+
 // Derive API base path so tunneled remote access works.
 function getBasePath(): string {
   const pathParts = window.location.pathname.split("/programmer");
@@ -41,6 +43,9 @@ async function aiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
 export interface AIStatus {
   available: boolean;
+  // What is in the way, so the pane can say the right thing rather than
+  // telling somebody who paired an hour ago to pair their system.
+  state?: "available" | "unpaired" | "disconnected" | "unavailable";
   reason?: string;
 }
 
@@ -182,27 +187,9 @@ export function streamChatMessage(
         clearInactivityTimer();
         const body = await res.text();
         receivedDoneOrError = true;
-        if (res.status === 429) {
-          callbacks.onError?.(
-            "AI request limit reached. Please try again later or upgrade your plan."
-          );
-        } else if (res.status === 402) {
-          callbacks.onError?.(
-            "AI features require an active subscription."
-          );
-        } else if (res.status === 503) {
-          callbacks.onError?.(
-            "AI is not available. Make sure this system is paired and connected to the cloud."
-          );
-        } else if (res.status === 502 || res.status === 504) {
-          // Reached over a remote connection that gave up before the answer
-          // came back. Nothing about the raw status tells anyone that.
-          callbacks.onError?.(
-            "The remote connection dropped before the AI answered."
-          );
-        } else {
-          callbacks.onError?.(`AI API ${res.status}: ${body}`);
-        }
+        callbacks.onError?.(
+          aiMessageForStatus(res.status, body, `AI API ${res.status}: ${body}`)
+        );
         return;
       }
 

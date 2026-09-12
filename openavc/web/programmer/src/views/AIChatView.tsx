@@ -32,6 +32,7 @@ function phaseLabel(phase: string | null, round: { current: number; max: number 
 export function AIChatView() {
   const available = useAIChatStore((s) => s.available);
   const unavailableReason = useAIChatStore((s) => s.unavailableReason);
+  const unavailableState = useAIChatStore((s) => s.unavailableState);
   const conversations = useAIChatStore((s) => s.conversations);
   const activeConversationId = useAIChatStore((s) => s.activeConversationId);
   const messages = useAIChatStore((s) => s.messages);
@@ -79,14 +80,18 @@ export function AIChatView() {
     }
   }, [available, loadConversations]);
 
-  // Periodically re-check availability (in case cloud connects/disconnects)
+  // Periodically re-check availability (in case cloud connects/disconnects).
+  // A connection comes back in seconds, so that case is worth watching closely.
+  // An account being un-paused or a plan changing takes as long as a phone
+  // call, and each of those checks costs a round trip to the cloud.
   useEffect(() => {
     if (available) return;
+    const everyMs = unavailableState === "unavailable" ? 60000 : 10000;
     const interval = setInterval(() => {
       checkAvailability();
-    }, 10000);
+    }, everyMs);
     return () => clearInterval(interval);
-  }, [available, checkAvailability]);
+  }, [available, unavailableState, checkAvailability]);
 
   // Auto-scroll on new content (only if user is at bottom)
   useEffect(() => {
@@ -134,8 +139,13 @@ export function AIChatView() {
     await revertAll();
   }, [undoStack, revertAll]);
 
-  // Not available — show connection message
+  // Not available. Which of the three is in the way decides what to say:
+  // telling somebody to pair a system they paired last month, when what is
+  // actually wrong is that their account's assistant is paused, leaves them
+  // re-pairing a working system.
   if (!available) {
+    const refused = unavailableState === "unavailable";
+    const paired = unavailableState !== "unpaired";
     return (
       <ViewContainer title="AI Assistant">
         <div
@@ -152,38 +162,70 @@ export function AIChatView() {
         >
           <CloudOff size={48} style={{ color: "var(--text-muted)" }} />
           <h2 style={{ fontSize: "var(--font-size-lg)" }}>AI Assistant</h2>
-          <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
-            AI features require a cloud connection. Pair this system with your
-            OpenAVC Cloud account to get started.
-          </p>
-          <p
-            style={{
-              color: "var(--text-muted)",
-              fontSize: "var(--font-size-sm)",
-              maxWidth: 400,
-              marginTop: "calc(-1 * var(--space-sm))",
-            }}
-          >
-            A free account includes one paired system, so you can try the
-            assistant and the other cloud features at no cost. On a free
-            account the assistant comes with a usage allowance.
-          </p>
+          {refused ? (
+            <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
+              {unavailableReason || "The assistant is not available on this account."}
+            </p>
+          ) : paired ? (
+            <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
+              This system is paired but not connected to OpenAVC Cloud right
+              now. Cloud Settings shows what the connection is doing.
+            </p>
+          ) : (
+            <>
+              <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
+                AI features require a cloud connection. Pair this system with
+                your OpenAVC Cloud account to get started.
+              </p>
+              <p
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "var(--font-size-sm)",
+                  maxWidth: 400,
+                  marginTop: "calc(-1 * var(--space-sm))",
+                }}
+              >
+                A free account includes one paired system, so you can try the
+                assistant and the other cloud features at no cost. On a free
+                account the assistant comes with a usage allowance.
+              </p>
+            </>
+          )}
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "center" }}>
-            <a
-              href="https://cloud.openavc.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: "var(--accent-bg)",
-                color: "#fff",
-                fontSize: "var(--font-size-sm)",
-                textDecoration: "none",
-              }}
-            >
-              Sign up at cloud.openavc.com
-            </a>
+            {!paired && (
+              <a
+                href="https://cloud.openavc.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: "var(--space-xs) var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--accent-bg)",
+                  color: "#fff",
+                  fontSize: "var(--font-size-sm)",
+                  textDecoration: "none",
+                }}
+              >
+                Sign up at cloud.openavc.com
+              </a>
+            )}
+            {refused && (
+              <a
+                href="https://cloud.openavc.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: "var(--space-xs) var(--space-md)",
+                  borderRadius: "var(--border-radius)",
+                  background: "var(--accent-bg)",
+                  color: "#fff",
+                  fontSize: "var(--font-size-sm)",
+                  textDecoration: "none",
+                }}
+              >
+                Open OpenAVC Cloud
+              </a>
+            )}
             <button
               onClick={() => useNavigationStore.getState().navigateTo("cloud")}
               style={{
@@ -199,7 +241,7 @@ export function AIChatView() {
               Open Cloud Settings
             </button>
           </div>
-          {unavailableReason && unavailableReason !== "Checking..." && (
+          {!refused && unavailableReason && unavailableReason !== "Checking..." && (
             <p style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
               {unavailableReason}
             </p>

@@ -27,13 +27,32 @@ const { friendlyAIError } = moduleObj.exports;
 const results = {};
 const FB = "Couldn't load conversations.";
 
-// Status-mapped copy — parity with the streaming path's inline mapping.
-results.limit_429 = friendlyAIError(new Error('AI API 429: {"detail":"x"}'), FB)
+// Status copy — parity with the streaming path, which maps through the same
+// helper. A refusal that carried no sentence gets the fixed copy.
+results.limit_429 = friendlyAIError(new Error("AI API 429: rate limited"), FB)
   .includes("request limit");
 results.subscription_402 = friendlyAIError(new Error("AI API 402: "), FB)
   .includes("subscription");
 results.unavailable_503 = friendlyAIError(new Error("AI API 503: down"), FB)
   .includes("paired and connected");
+
+// ...and a refusal that DID carry one keeps it. An account past its allowance
+// and a cloud that is briefly down used to read as the same fixed sentence.
+results.relays_429_sentence =
+  friendlyAIError(
+    new Error('AI API 429: {"detail":"Rate limit exceeded (60 requests/minute). Please wait."}'),
+    FB
+  ) === "Rate limit exceeded (60 requests/minute). Please wait.";
+results.relays_402_sentence =
+  friendlyAIError(
+    new Error('AI API 402: {"detail":"Adding a paid space lifts it."}'),
+    FB
+  ) === "Adding a paid space lifts it.";
+results.relays_503_sentence =
+  friendlyAIError(
+    new Error('AI API 503: {"detail":"The AI assistant is paused on this account."}'),
+    FB
+  ) === "The AI assistant is paused on this account.";
 
 // Other statuses: JSON detail is unwrapped, raw JSON never shown.
 results.detail_unwrapped =
