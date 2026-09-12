@@ -1156,6 +1156,8 @@ actions:
 
 Each promoted command id must name a declared command.
 
+Two other kinds exist. `kind: link` opens a URL in a new tab and sends the device nothing (see [`web_ui`](#web_ui-open-web-ui-button) below). `kind: setup` is a provisioning wizard that runs while the device is offline — Python drivers only, because it needs a handler; see [Setup actions](#setup-actions-provisioning-wizards).
+
 **Legacy form.** Older drivers may declare `quick_actions`, a flat list of command ids (`quick_actions: [power_on, power_off]`) — each becomes a button labelled by the command. It is still accepted and behaves the same at runtime, but write `actions` in new drivers; the Driver Builder shows a `quick_actions` list read-only with a one-click conversion. If an id appears in both, the `actions` entry wins.
 
 #### `web_ui` (Open Web UI button)
@@ -2250,7 +2252,7 @@ Python drivers give you full control. Use this method when:
 - The device's authentication scheme isn't a Telnet-style `Username:` / `Password:` prompt handshake. (Prompt-driven Telnet auth is supported declaratively via the `.avcdriver` `auth` section — use that first. Python is needed for `LOGIN <password>` command-style auth, JSON-RPC login, OAuth, challenge-response, etc.)
 - You need **complex state logic** that can't be expressed as regex patterns.
 - The device uses a **non-standard transport** (UDP, HTTP, etc.).
-- The device must be **provisioned before it will connect** — e.g. a control interface that ships switched off. A Python driver can declare a setup action (a Quick Action with `kind: "setup"`) and implement `run_setup_action`, a wizard that runs while the device is offline, talks to the device over its own connection, and can rewrite the device config and reconnect when done. See the driver development guide for the `run_setup_action` contract.
+- The device must be **provisioned before it will connect** — e.g. a control interface that ships switched off. A Python driver can declare a setup action (a Quick Action with `kind: "setup"`) and implement `run_setup_action`, a wizard that runs while the device is offline, talks to the device over its own connection, and can rewrite the device config and reconnect when done. See [Setup actions](#setup-actions-provisioning-wizards) below.
 
 ### Minimal Example: Simple TCP Device
 
@@ -2830,6 +2832,77 @@ class MatrixControllerDriver(BaseDriver):
 ```
 
 Commands that act on a specific child take a `child_id` parameter (see the [`commands`](#commands-entry) reference) — the platform substitutes the integer local ID into the wire template, so there's no separate per-child command surface.
+
+### Setup actions: provisioning wizards
+
+Some devices will not connect until somebody has set them up, and some
+connections are worth proving before a room is built on them. A **setup
+action** is a Quick Action with `kind: "setup"` — a wizard that runs *while the
+device is offline*, over a connection the handler opens itself, and that may
+rewrite the device's config and reconnect when it succeeds. Python drivers
+only; a YAML driver has nowhere to put the handler.
+
+Declare it beside your other actions, then implement `run_setup_action`:
+
+```python
+"actions": [
+    {
+        "id": "test_connection",
+        "kind": "setup",
+        "label": "Test Connection",
+        "icon": "search",
+        "availability": "always",   # this one is worth running online too
+    },
+],
+```
+
+```python
+async def run_setup_action(self, action_id, params, progress) -> dict:
+    if action_id != "test_connection":
+        raise ValueError(f"Unknown setup action: {action_id}")
+
+    host = str(self.config.get("host", "")).strip()
+    await progress(f"Connecting to {host}…", 20)          # a live line in the wizard
+    ...
+    return {"success": True, "message": f"Reached {model} with {n} inputs."}
+```
+
+`progress(step, pct=None)` is awaitable and writes one line to the wizard's
+step log; `pct` is an optional 0–100. Inside a run — and only inside one — you
+can also `await self.request_config_update({...})` to persist new connection
+settings and `await self.request_reconnect()` to bring the device up on them.
+
+**Write the message for the person who pressed the button.** It is the whole
+report: what you reached, and any count they should sanity-check before they
+build a room on it ("Found 5 endpoints — 2 encoders, 3 decoders"). The wizard
+shows it under the step log when the run finishes. A result with no `"message"`
+is allowed; the operator then has only the step log to go on.
+
+**Two ways to report failure, and they are not interchangeable:**
+
+| How | Use it when | What the operator sees |
+|---|---|---|
+| `raise` | The action could not run: the host was unreachable, a transport blew up, the action id means nothing to this driver. | The exception text, as a failure. A traceback goes in the log. |
+| `return {"success": False, "message": ...}` | The action ran and the answer is no: a community string the device ignores, a model this driver does not drive, a value the device has no answer for. | Your message, as a failure. No traceback — somebody typing the wrong address is not a crash. |
+
+Either way the wizard renders a failure, so pick by whether a traceback in the
+log would help anyone. What you must **not** do is return `{"success": True}`
+for a run that did not work: `success` is what the platform reads to decide
+whether the wizard shows a green check.
+
+Since the message is the whole report, say what to check next rather than just
+what went wrong:
+
+```python
+return {
+    "success": False,
+    "message": (
+        "No answer. Check the IP address, that SNMP is enabled on the "
+        "device, and that the read community string is correct — a device "
+        "ignores a request whose community it does not recognise."
+    ),
+}
+```
 
 ### Saying what is wrong with a sub-unit
 
