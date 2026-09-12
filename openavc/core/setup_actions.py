@@ -12,7 +12,10 @@ run generically — it never knows what an action *does*:
   - install a per-run context that backs ``driver.request_config_update`` /
     ``driver.request_reconnect``;
   - stream the handler's ``progress(step, pct)`` calls to the UI as
-    ``action.progress`` WebSocket events, plus a final ``done`` / ``error`` event;
+    ``action.progress`` WebSocket events, plus a final ``done`` / ``error``
+    event — a handler that returns ``{"success": False, ...}`` terminates as
+    ``error`` just like one that raises, so ``status`` is the whole answer to
+    "did this run work" and no client has to know the return convention;
   - run as a background task so a client disconnecting mid-flight can't abort a
     hardware-mutating provisioning step.
 
@@ -193,10 +196,29 @@ class SetupActionRunner:
             driver._set_setup_context(SetupActionContext(self._engine, device_id))
             await self._emit(device_id, action_id, run_id, "Starting…", 0, "running")
             result = await driver.run_setup_action(action_id, params, progress)
-            await self._emit(
-                device_id, action_id, run_id, "Done", 100, "done",
-                result=result if isinstance(result, dict) else {},
-            )
+            payload = result if isinstance(result, dict) else {}
+            if payload.get("success") is False:
+                # A handler that ran to completion and found the device wrong
+                # (bad community string, not the model this driver drives, a
+                # declared OID the device has no answer for). It reports that
+                # by returning success:false rather than raising, because the
+                # finding is a sentence for the operator, not a stack trace.
+                # The run still FAILED, so it terminates as "error" — `status`
+                # is the outcome every client branches on, and a reader that
+                # doesn't know this return convention must not be told a
+                # failed Test Connection succeeded.
+                message = str(payload.get("message") or "").strip()
+                await self._emit(
+                    device_id, action_id, run_id,
+                    message or "Setup action reported failure", None, "error",
+                    error=message or "Setup action reported failure",
+                    result=payload,
+                )
+            else:
+                await self._emit(
+                    device_id, action_id, run_id, "Done", 100, "done",
+                    result=payload,
+                )
         except NotImplementedError:
             await self._emit(
                 device_id, action_id, run_id,

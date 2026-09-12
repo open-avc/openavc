@@ -96,6 +96,29 @@ class _FailDriver(_ProvisionDriver):
         raise RuntimeError("the switch rejected the change")
 
 
+class _SoftFailDriver(_ProvisionDriver):
+    """Runs to completion and reports that the answer is no — the shape a
+    Test Connection takes when the address answers but the credential is
+    wrong. No exception, so no traceback; the message is the whole report.
+    """
+
+    async def run_setup_action(self, action_id, params, progress) -> dict:
+        await progress("Connecting", 10)
+        return {
+            "success": False,
+            "message": "Reached the address, but the password was refused.",
+        }
+
+
+class _QuietFailDriver(_ProvisionDriver):
+    """success:false with nothing to say — the platform still has to call it
+    a failure and put a sentence on screen.
+    """
+
+    async def run_setup_action(self, action_id, params, progress) -> dict:
+        return {"success": False}
+
+
 class _NoHandlerDriver(_ProvisionDriver):
     # Inherits the setup action declaration but not the handler.
     async def run_setup_action(self, action_id, params, progress) -> dict:
@@ -299,6 +322,61 @@ async def test_setup_action_error_emits_error_event():
 
     # end_setup resumed auto-reconnect for the still-offline device; cancel it
     # so the loop doesn't dangle past the test.
+    await dm._cancel_reconnect("dev1")
+
+
+async def test_setup_action_success_false_terminates_as_error():
+    # A handler that returns success:false FAILED. `status` is the outcome
+    # every client branches on, so it has to say so — a run that reported a
+    # refused password must never reach the wizard as a green check.
+    runner, engine, dm, driver = _make_env(driver_cls=_SoftFailDriver)
+    action = _setup_action(driver)
+
+    await runner.start("dev1", action, {"password": "wrong"})
+    await _drain(runner)
+
+    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
+    assert last["status"] == "error"
+    assert last["error"] == "Reached the address, but the password was refused."
+    # The step line carries it too, so the log reads as the failure it is.
+    assert last["step"] == "Reached the address, but the password was refused."
+    # The handler's own result still rides along for anything that wants it.
+    assert last["result"] == {
+        "success": False,
+        "message": "Reached the address, but the password was refused.",
+    }
+    await dm._cancel_reconnect("dev1")
+
+
+async def test_setup_action_success_false_without_a_message_still_says_something():
+    runner, engine, dm, driver = _make_env(driver_cls=_QuietFailDriver)
+    action = _setup_action(driver)
+
+    await runner.start("dev1", action, {"password": "x"})
+    await _drain(runner)
+
+    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
+    assert last["status"] == "error"
+    assert last["error"] == "Setup action reported failure"
+    await dm._cancel_reconnect("dev1")
+
+
+async def test_setup_action_success_true_still_completes_with_its_result():
+    # The other half of the branch: a truthy success is untouched, result and
+    # all, so the wizard has a message to show.
+    runner, engine, dm, driver = _make_env()
+    action = _setup_action(driver)
+
+    async def ok_handler(action_id, params, progress):
+        return {"success": True, "message": "Found 5 endpoints."}
+
+    driver.run_setup_action = ok_handler  # type: ignore[assignment]
+    await runner.start("dev1", action, {"password": "x"})
+    await _drain(runner)
+
+    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
+    assert last["status"] == "done"
+    assert last["result"] == {"success": True, "message": "Found 5 endpoints."}
     await dm._cancel_reconnect("dev1")
 
 

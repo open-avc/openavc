@@ -21,11 +21,29 @@ interface Step {
 }
 
 /**
+ * The sentence the handler wrote for the operator, out of the terminal event's
+ * `result` object. Drivers put their whole finding here — the model they
+ * reached, the firmware, the endpoint counts the operator is meant to
+ * sanity-check — so it is shown in full rather than summarised. A result with
+ * no message (or no result at all) is normal; the step log stands on its own.
+ */
+function resultMessage(result: unknown): string {
+  if (!result || typeof result !== "object") return "";
+  const message = (result as Record<string, unknown>).message;
+  return typeof message === "string" ? message.trim() : "";
+}
+
+/**
  * Setup-action wizard — runs a driver-declared provisioning action (kind:"setup")
  * that can execute while the device is offline. Collects any input params, fires
  * the action, then streams its `action.progress` WebSocket events as a live step
- * log until the run reports "done" or "error". The action's meaning lives in the
- * driver; this dialog only renders progress.
+ * log until the run reports "done" or "error", and shows the terminal event's
+ * `result.message` — the handler's own report of what it found. The action's
+ * meaning lives in the driver; this dialog only renders what it says.
+ *
+ * A failed run always arrives as status "error", whether the handler raised or
+ * returned success:false (the server decides that, see core/setup_actions.py),
+ * so "done" here means it worked.
  */
 export function SetupActionWizard({
   deviceId,
@@ -43,6 +61,7 @@ export function SetupActionWizard({
     seedParamValues(action.params),
   );
   const [steps, setSteps] = useState<Step[]>([]);
+  const [summary, setSummary] = useState<string>("");
   const [error, setError] = useState<string>("");
   const unsubRef = useRef<null | (() => void)>(null);
 
@@ -58,6 +77,7 @@ export function SetupActionWizard({
   const startRun = useCallback(async () => {
     setPhase("running");
     setSteps([]);
+    setSummary("");
     setError("");
     // Subscribe BEFORE the POST so an early progress event can't be missed.
     // One run per device+action is guaranteed server-side, so that pair is a
@@ -71,6 +91,7 @@ export function SetupActionWizard({
         { step: String(msg.step ?? ""), pct: (msg.pct as number | null) ?? null, status },
       ]);
       if (status === "done") {
+        setSummary(resultMessage(msg.result));
         setPhase("done");
         unsubRef.current?.();
       } else if (status === "error") {
@@ -154,6 +175,31 @@ export function SetupActionWizard({
       ) : (
         <>
           <StepLog steps={steps} phase={phase} error={error} />
+          {phase === "done" && summary && (
+            // Below the log, not inside it: the log scrolls, and this is the
+            // one line the operator has to actually read.
+            <div
+              style={{
+                marginTop: "var(--space-md)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "var(--space-xs)",
+                padding: "var(--space-md)",
+                borderRadius: "var(--border-radius)",
+                background: "var(--color-success-bg)",
+                border: "1px solid var(--color-success)",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-primary)",
+                lineHeight: 1.5,
+              }}
+            >
+              <Check
+                size={14}
+                style={{ color: "var(--color-success)", flexShrink: 0, marginTop: 3 }}
+              />
+              <span>{summary}</span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--space-lg)" }}>
             <button
               onClick={close}
@@ -218,18 +264,25 @@ function StepLog({
           <div
             key={i}
             style={{
+              // flex-start, not center: a failure step carries the driver's
+              // whole sentence and wraps to several lines.
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: "var(--space-xs)",
               fontSize: "var(--font-size-sm)",
+              lineHeight: 1.5,
               padding: "2px 0",
               color: s.status === "error" ? "var(--color-error)" : "var(--text-primary)",
             }}
           >
-            <span style={{ flexShrink: 0, width: 16, display: "flex" }}>{icon}</span>
+            <span style={{ flexShrink: 0, width: 16, display: "flex", paddingTop: 3 }}>
+              {icon}
+            </span>
             <span style={{ flex: 1 }}>{s.step}</span>
             {s.pct != null && (
-              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{s.pct}%</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 11, flexShrink: 0 }}>
+                {s.pct}%
+              </span>
             )}
           </div>
         );

@@ -1386,8 +1386,27 @@ class BaseDriver(ABC):
         may open its own transports independent of the device's normal one, and
         may call ``await self.request_config_update({...})`` to persist new
         connection settings and ``await self.request_reconnect()`` to bring the
-        device back online over them. Return a result dict; raise to report
-        failure. Default raises NotImplementedError.
+        device back online over them. Default raises NotImplementedError.
+
+        Return a result dict. A ``"message"`` in it is the sentence the wizard
+        shows the operator when the run finishes, so write it for them: what
+        was found, and any count worth sanity-checking ("Found 5 endpoints —
+        2 encoders, 3 decoders").
+
+        Two ways to report failure, and they are not interchangeable:
+
+        - **Raise** when the action could not run — the host was unreachable,
+          a transport blew up, the driver has nothing to do for this action id.
+          The exception is logged with a traceback.
+        - **Return ``{"success": False, "message": ...}``** when the action ran
+          and the answer is no: a community string the device ignores, a model
+          this driver doesn't drive, a declared value the device has no OID
+          for. The message is the whole report, so say what to check. There is
+          no traceback — an operator typing the wrong IP is not a platform
+          fault.
+
+        Either way the run terminates as ``error`` on the ``action.progress``
+        channel and the wizard renders it as a failure; only the log differs.
         """
         raise NotImplementedError(
             f"Driver {self.DRIVER_INFO.get('id', '?')} does not implement "
