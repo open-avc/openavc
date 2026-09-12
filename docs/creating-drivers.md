@@ -2845,15 +2845,18 @@ only; a YAML driver has nowhere to put the handler.
 Declare it beside your other actions, then implement `run_setup_action`:
 
 ```python
-"actions": [
-    {
-        "id": "test_connection",
-        "kind": "setup",
-        "label": "Test Connection",
-        "icon": "search",
-        "availability": "always",   # this one is worth running online too
-    },
-],
+DRIVER_INFO = {
+    ...
+    "actions": [
+        {
+            "id": "test_connection",
+            "kind": "setup",
+            "label": "Test Connection",
+            "icon": "search",
+            "availability": "always",   # this one is worth running online too
+        },
+    ],
+}
 ```
 
 ```python
