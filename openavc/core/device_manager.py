@@ -1127,7 +1127,11 @@ class DeviceManager:
     ) -> bool:
         """Re-attempt adding an orphaned device (e.g., after installing its driver).
 
-        Returns True if the device was successfully activated, False if still orphaned.
+        Returns True if the device was successfully activated, False if still
+        orphaned. "Activated" means registered: the connection is opened by
+        the bring-up round asked for below, not before this returns, so a
+        caller that needs the device on the wire awaits
+        ``Engine.wait_for_device_bringup``.
 
         The two ways this can be asked about the wrong device are separate
         answers, because the door above them is: an id nobody has is not found,
@@ -1145,10 +1149,27 @@ class DeviceManager:
         if not is_driver_registered(driver_id):
             return False
 
-        # Remove from orphan tracking and re-add normally
+        # Remove from orphan tracking and re-add normally.
+        #
+        # Registered, not dialed, whenever a bring-up round can open it: the
+        # round re-applies the simulation redirect to the new instance before
+        # anything is dialed, so a device activated while simulation is
+        # running reaches the simulator on its FIRST attempt. Dialing here
+        # sent it to its REAL address and left it reconnect-looping against
+        # hardware that is not there, with no recovery an integrator could
+        # guess (``/api/simulation/start`` refuses, "already active"; a
+        # reconnect re-dials the real address). Same rule as reload_driver,
+        # for the same reason.
+        defer = defer_connect or self.request_bringup is not None
         await self.remove_device(device_id)
-        await self.add_device(config, defer_connect=defer_connect)
-        return device_id not in self._orphaned_devices
+        await self.add_device(config, defer_connect=defer)
+        activated = device_id not in self._orphaned_devices
+        if activated and defer and not defer_connect:
+            # A caller that asked for the deferral owns its own round (the
+            # engine's reconcile does); one that did not gets it asked for
+            # here, or the device would sit registered and never dialed.
+            self.request_bringup()
+        return activated
 
     async def retry_all_orphans(self, *, defer_connect: bool = False) -> list[str]:
         """Promote every orphan whose driver is now in the registry.

@@ -132,6 +132,12 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
 
     installed: list[str] = []
     failed: list[dict[str, Any]] = []
+    activated: list[str] = []
+
+    def _record_activated(device_ids: list[str]) -> None:
+        for device_id in device_ids:
+            if device_id not in activated:
+                activated.append(device_id)
 
     for driver_id in body.driver_ids:
         match = catalog_by_id.get(driver_id)
@@ -139,12 +145,18 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
             failed.append({"driver_id": driver_id, "error": "Not in community catalog"})
             continue
         try:
-            await install_community_driver(CommunityDriverInstallRequest(
+            result = await install_community_driver(CommunityDriverInstallRequest(
                 driver_id=driver_id,
                 file_url=f"{COMMUNITY_REPO_URL}/{match['file']}",
                 min_platform_version=match.get("min_platform_version"),
             ))
             installed.append(driver_id)
+            # What THIS install unblocked. Each call retries the orphans its
+            # own driver was holding up, so by the time the sweep below runs
+            # there is nothing left for it to find — reporting only the sweep
+            # answered "nothing activated" while the device had demonstrably
+            # come up, and a follow-up /retry then refused it as not orphaned.
+            _record_activated(result.get("activated_devices") or [])
         except HTTPException as e:
             failed.append({"driver_id": driver_id, "error": str(e.detail)})
         except Exception as e:
@@ -152,9 +164,10 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
 
     # install_community_driver already retries orphans on each call; one
     # final sweep catches any orphan whose driver was registered out of
-    # order during the batch.
+    # order during the batch. Added to what the installs reported, never
+    # instead of it.
     engine = _get_engine()
-    activated = await engine.devices.retry_all_orphans()
+    _record_activated(await engine.devices.retry_all_orphans())
 
     return {
         "installed": installed,

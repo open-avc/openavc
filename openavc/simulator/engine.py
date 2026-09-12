@@ -74,6 +74,7 @@ class SimulatorManager:
 
     def __init__(self, port_range_start: int | None = None):
         self._available: dict[str, SimulatorInfo] = {}
+        self._driver_paths: list[str] = []  # what discover() last scanned
         self._instances: dict[str, BaseSimulator] = {}  # keyed by device_id
         self._allocated_ports: set[int] = set()
         self._change_listeners: list = []
@@ -92,6 +93,7 @@ class SimulatorManager:
         Returns {driver_id: SimulatorInfo}.
         """
         self._available.clear()
+        self._driver_paths = list(driver_paths)
 
         for path_str in driver_paths:
             path = Path(path_str)
@@ -212,6 +214,18 @@ class SimulatorManager:
             raise ValueError(f"Device '{device_id}' is already simulated")
 
         info = self._available.get(driver_id)
+        if info is None and self._driver_paths:
+            # The driver directories are walked once, at startup. A driver
+            # installed after that — which is exactly what installing a
+            # missing driver mid-session does, straight into driver_repo —
+            # is absent from the scan, so the device it unblocks would be
+            # refused a simulator and left dialing its real address. Re-scan
+            # before refusing.
+            logger.info(
+                "Rescanning driver paths for unknown driver '%s'", driver_id
+            )
+            self.discover(self._driver_paths)
+            info = self._available.get(driver_id)
         if not info:
             raise ValueError(
                 f"No simulator available for driver '{driver_id}'. "

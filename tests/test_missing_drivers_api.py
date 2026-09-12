@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from openavc.core.engine import Engine
+from openavc.drivers.base import BaseDriver
 from openavc.main import app
 from openavc.api import rest, ws
 
@@ -195,37 +196,39 @@ async def test_install_missing_empty_batch_returns_empty_lists(running_app):
     assert body == {"installed": [], "failed": [], "activated_devices": []}
 
 
+class _MockSamsung(BaseDriver):
+    """Stands in for the driver an install registers, so no GitHub fetch."""
+
+    DRIVER_INFO = {
+        "id": "samsung_mdc_test",
+        "name": "Samsung MDC",
+        "manufacturer": "Samsung",
+        "category": "display",
+        "transport": "tcp",
+        "default_config": {},
+        "commands": {},
+        "state_variables": {},
+        "config_schema": {},
+    }
+
+    async def connect(self):
+        self._connected = True
+        self.state.set(f"device.{self.device_id}.connected", True, source="driver")
+
+    async def disconnect(self):
+        self._connected = False
+
+    async def send_command(self, command, params=None):
+        pass
+
+    async def stop_polling(self):
+        pass
+
+
 async def test_install_missing_activates_orphans(running_app):
     """End-to-end happy path: install registers the driver, retry sweep
     promotes the matching orphan, response lists it under activated_devices."""
     from openavc.drivers.registry import _DRIVER_REGISTRY
-    from openavc.drivers.base import BaseDriver
-
-    class _MockSamsung(BaseDriver):
-        DRIVER_INFO = {
-            "id": "samsung_mdc_test",
-            "name": "Samsung MDC",
-            "manufacturer": "Samsung",
-            "category": "display",
-            "transport": "tcp",
-            "default_config": {},
-            "commands": {},
-            "state_variables": {},
-            "config_schema": {},
-        }
-
-        async def connect(self):
-            self._connected = True
-            self.state.set(f"device.{self.device_id}.connected", True, source="driver")
-
-        async def disconnect(self):
-            self._connected = False
-
-        async def send_command(self, command, params=None):
-            pass
-
-        async def stop_polling(self):
-            pass
 
     # Stub install_community_driver so it just registers our mock driver,
     # no GitHub fetch.
@@ -252,3 +255,80 @@ async def test_install_missing_activates_orphans(running_app):
     assert sorted(body["activated_devices"]) == [
         "boardroom_display", "lobby_display"
     ]
+
+
+async def test_install_missing_reports_what_each_install_activated(running_app):
+    """The reply is the union of what the installs activated and what the
+    final sweep found — not the sweep alone.
+
+    The real ``install_community_driver`` retries orphans itself and returns
+    them in its own ``activated_devices``; the fake above does neither, which
+    is what hid this. Once the per-install sweep has run there is nothing
+    left in the orphan list, so the route's final sweep answers ``[]`` — and
+    reporting only that told a caller nothing had been activated while the
+    devices had demonstrably come up (a follow-up ``/retry`` then refused
+    them as not orphaned).
+    """
+    from openavc.api._engine import _get_engine
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    async def fake_install(req):
+        """Behaves like the real route: register, then drain the orphans."""
+        _DRIVER_REGISTRY["samsung_mdc_test"] = _MockSamsung
+        activated = await _get_engine().devices.retry_all_orphans()
+        return {
+            "status": "installed",
+            "driver_id": req.driver_id,
+            "file": "x",
+            "activated_devices": activated,
+        }
+
+    with patch(
+        "openavc.api.routes.drivers.install_community_driver",
+        new=fake_install,
+    ):
+        try:
+            resp = running_app.post(
+                "/api/devices/install-missing",
+                json={"driver_ids": ["samsung_mdc_test"]},
+            )
+        finally:
+            _DRIVER_REGISTRY.pop("samsung_mdc_test", None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["installed"] == ["samsung_mdc_test"]
+    assert sorted(body["activated_devices"]) == [
+        "boardroom_display", "lobby_display"
+    ]
+
+
+async def test_install_missing_does_not_report_a_device_twice(running_app):
+    """A device the install reported and the sweep re-reported appears once."""
+    from openavc.api._engine import _get_engine
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    async def fake_install(req):
+        _DRIVER_REGISTRY["samsung_mdc_test"] = _MockSamsung
+        # Claim more than it drained: the sweep below must not double it up.
+        await _get_engine().devices.retry_all_orphans()
+        return {
+            "status": "installed",
+            "driver_id": req.driver_id,
+            "file": "x",
+            "activated_devices": ["lobby_display", "lobby_display"],
+        }
+
+    with patch(
+        "openavc.api.routes.drivers.install_community_driver",
+        new=fake_install,
+    ):
+        try:
+            resp = running_app.post(
+                "/api/devices/install-missing",
+                json={"driver_ids": ["samsung_mdc_test"]},
+            )
+        finally:
+            _DRIVER_REGISTRY.pop("samsung_mdc_test", None)
+
+    assert resp.json()["activated_devices"] == ["lobby_display"]
