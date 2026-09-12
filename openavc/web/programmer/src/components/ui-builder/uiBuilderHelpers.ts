@@ -863,6 +863,27 @@ export function masterPlacement(
 }
 
 /**
+ * THE write half of the pair above, for every door that moves a master: the
+ * canvas gesture, the arrow keys and the Layout fields.
+ *
+ * The READ falls back across keys, so a portrait arrangement with no portrait
+ * box of its own shows the landscape one. The WRITE never falls back: placing a
+ * master while a portrait arrangement is being authored gives it a portrait box
+ * instead of quietly rewriting the landscape one that every other page is
+ * drawn from.
+ */
+export function withMasterPlacement(
+  master: MasterElement,
+  orientation: Orientation,
+  placement: Placement,
+): MasterElement {
+  return {
+    ...master,
+    placements: { ...master.placements, [orientation]: roundPlacement(placement) },
+  };
+}
+
+/**
  * The canvas size for an arrangement.
  *
  * The screen presets are all landscape, and a portrait layout authored on a

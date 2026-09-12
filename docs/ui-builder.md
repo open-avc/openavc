@@ -668,7 +668,13 @@ To customize a theme, open the **Theme Studio** (click the paint brush icon in t
 
 Master elements persist across page changes. Use them for elements that should always be visible regardless of which page the user is on: a company logo, a navigation bar, a clock, or a status indicator row.
 
-To create a master element, select an element and click **Make Master** in the properties panel (or right-click the element and choose **Make Master**). Master elements render below page elements, so page content appears on top. That also means a control placed over one hides it, and the canvas badges the control when it happens.
+To create one, right-click a control on the canvas and choose **Make Master Element**. It leaves the page and starts appearing on all of them. Master elements render below page elements, so page content appears on top. That also means a control placed over one hides it, and the canvas badges the control when it happens.
+
+**Moving and resizing one works like any other control.** Click it on the canvas, where it outlines in purple and carries a **Master** badge, then drag it, grab a corner, or nudge it with the arrow keys. The Layout section of the properties panel takes typed percentages for it as usual. The one difference is reach: a master is not on the page you are looking at, so wherever you put it is where it sits on every page it appears on.
+
+A master's position belongs to the **arrangement**, not to a page. A page with a portrait arrangement shows the landscape position until you move it on the portrait canvas; move it there and it keeps a portrait position of its own, and landscape stays as you left it.
+
+**To put one back on a page,** right-click it and choose **Move to Page**, or use **Move to Current Page** in the properties panel. It becomes an ordinary control on the page you are on, keeping the position it had.
 
 Each master element has a **Pages** filter that controls where it appears:
 

@@ -4,6 +4,7 @@ import type { UIPage, MasterElement, Placement } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { CanvasElement } from "./CanvasElement";
+import { CanvasMasterElement } from "./CanvasMasterElement";
 import {
   commitGesturePlacements,
   moveElementsInPage,
@@ -22,6 +23,7 @@ import {
   absolutePlacements,
   lockedIdsFor,
   masterPlacement,
+  withMasterPlacement,
   layoutOrientation,
   resolveHidden,
   MIN_ELEMENT_SIZE,
@@ -247,6 +249,18 @@ export function Canvas({
   // The shape of glass this arrangement is for. Masters are keyed by it, and
   // so is the canvas the preset hands us.
   const canvasOrientation = layoutOrientation(page, activeLayoutId);
+  // The masters that draw on this page, each with the box this shape of glass
+  // gets. One list for the hit boxes, for the lines a gesture snaps to and for
+  // the live preview, so all three agree on what is on screen.
+  const visibleMasters = useMemo(
+    () =>
+      (masterElements ?? [])
+        .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
+        .map((m) => ({ master: m, box: masterPlacement(m, canvasOrientation) }))
+        .filter((entry): entry is { master: MasterElement; box: Placement } => !!entry.box),
+    [masterElements, page.id, canvasOrientation],
+  );
+
   // Elements this arrangement hides. They still get a hit-box so they can be
   // selected and un-hidden; the badge on them says why they are not drawn.
   const hiddenIds = useMemo(
@@ -411,6 +425,15 @@ export function Canvas({
 
   const previewRaf = useRef<number | null>(null);
   const pendingPreview = useRef<Record<string, Placement> | null>(null);
+
+  const postPlacements = useCallback((payload: Record<string, Placement>) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "openavc:editor-placements", placements: payload },
+      "*",
+    );
+  }, []);
+
+  /** Mid-gesture: coalesce to one message a frame. */
   const pushLivePreview = useCallback((next: Record<string, Placement>) => {
     pendingPreview.current = next;
     if (previewRaf.current !== null) return;
@@ -419,12 +442,30 @@ export function Canvas({
       const payload = pendingPreview.current;
       pendingPreview.current = null;
       if (!payload) return;
-      iframeRef.current?.contentWindow?.postMessage(
-        { type: "openavc:editor-placements", placements: payload },
-        "*",
-      );
+      postPlacements(payload);
     });
-  }, []);
+  }, [postPlacements]);
+
+  /**
+   * End of gesture: drop whatever frame is still owed and say where it landed,
+   * now, in the same tick.
+   *
+   * A queued frame is not harmless once the gesture is over. The browser pauses
+   * requestAnimationFrame while the tab is hidden -- switching to another app
+   * mid-edit is enough -- so the last frame of a drag can sit unscheduled for
+   * minutes and then run on the way back, painting the box where the pointer
+   * left it over whatever the project says NOW. Undo the drag while the tab is
+   * away and that is exactly what you come back to: the canvas showing a
+   * position the project does not hold, until the next edit happens to redraw.
+   */
+  const settleLivePreview = useCallback((final: Record<string, Placement>) => {
+    if (previewRaf.current !== null) {
+      cancelAnimationFrame(previewRaf.current);
+      previewRaf.current = null;
+    }
+    pendingPreview.current = null;
+    postPlacements(final);
+  }, [postPlacements]);
 
   const commitPlacements = useCallback(
     (next: Record<string, Placement>, kind: "move" | "resize") => {
@@ -655,7 +696,7 @@ export function Canvas({
       };
 
       const revert = () => {
-        pushLivePreview(startBoxes);
+        settleLivePreview(startBoxes);
         gestureRef.current = null;
         setGesture(null);
       };
@@ -665,18 +706,19 @@ export function Canvas({
         cleanup();
         gestureRef.current = null;
         setGesture(null);
-        if (!finished) return;
+        if (!finished) {
+          settleLivePreview(startBoxes);
+          return;
+        }
         const changed = Object.entries(finished.placements).some(([id, p]) => {
           const before = startBoxes[id];
           return !before || before.x !== p.x || before.y !== p.y || before.w !== p.w || before.h !== p.h;
         });
-        if (changed) {
-          commitPlacements(finished.placements, kind);
-        } else {
-          // Nothing moved, but the iframe has been told about intermediate
-          // boxes — put it back where the store says it is.
-          pushLivePreview(startBoxes);
-        }
+        // Either way, the frame still owed is dropped and the boxes are stated
+        // once: where they landed, or — nothing moved — where the store still
+        // says they are.
+        settleLivePreview(changed ? finished.placements : startBoxes);
+        if (changed) commitPlacements(finished.placements, kind);
       };
 
       const onKey = (ev: KeyboardEvent) => {
@@ -700,12 +742,211 @@ export function Canvas({
       document.addEventListener("keyup", onKey);
     },
     [previewMode, project, page, placements, absolute, snap, activeLayoutId,
-     commitPlacements, pushLivePreview],
+     commitPlacements, pushLivePreview, settleLivePreview],
+  );
+
+  // --- The same two gestures for a master element ---
+  //
+  // Separate from the page gesture above rather than folded into it, because a
+  // master answers three of its questions differently: its percentages are of
+  // the VIEWPORT (no parent to convert against), it can never be adopted into a
+  // container, and its box is stored per orientation instead of per layout. The
+  // parts that ARE the same -- snapping, the modifiers, Escape, one store write
+  // on pointer-up -- are the same calls.
+  const beginMasterGesture = useCallback(
+    (masterId: string, kind: "move" | "resize", direction: string, e: React.PointerEvent) => {
+      if (previewMode || !project) return;
+      if (lockedElementIds.has(masterId)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      cleanupGestureRef.current?.();
+
+      const masters = project.ui.master_elements ?? [];
+      const master = masters.find((m) => m.id === masterId);
+      const start = master ? masterPlacement(master, canvasOrientation) : null;
+      const rect = overlayRef.current?.getBoundingClientRect();
+      if (!master || !start || !rect || !(rect.width > 0) || !(rect.height > 0)) return;
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      // A master is placed against the viewport, so the lines worth sticking to
+      // are the ones drawn against that same box: the page's own top-level
+      // controls, flattened out of their containers, and the other masters on
+      // this page.
+      const others: Placement[] = [
+        ...topLevel
+          .map((el) => absolute[el.id])
+          .filter((p): p is Placement => !!p),
+        ...visibleMasters.filter((m) => m.master.id !== masterId).map((m) => m.box),
+      ];
+
+      const lock =
+        typeof master.aspect_lock === "number" && master.aspect_lock > 0
+          ? master.aspect_lock
+          : null;
+
+      const apply = (ev: PointerEvent | KeyboardEvent, dx: number, dy: number) => {
+        const bypass = ev.altKey;
+        const constrain = ev.shiftKey;
+        let box: Placement;
+        let guidesX: number[];
+        let guidesY: number[];
+
+        if (kind === "move") {
+          let px = dx;
+          let py = dy;
+          if (constrain) {
+            if (Math.abs(dx) >= Math.abs(dy)) py = 0;
+            else px = 0;
+          }
+          const snapped = snapMove(
+            {
+              ...start,
+              x: start.x + (px / rect.width) * 100,
+              y: start.y + (py / rect.height) * 100,
+            },
+            { snap, bypass, others },
+          );
+          box = snapped.placement;
+          guidesX = snapped.guidesX;
+          guidesY = snapped.guidesY;
+        } else {
+          const raw = { ...start };
+          const ddx = (dx / rect.width) * 100;
+          const ddy = (dy / rect.height) * 100;
+          if (direction.includes("e")) raw.w = start.w + ddx;
+          if (direction.includes("w")) {
+            raw.x = start.x + ddx;
+            raw.w = start.w - ddx;
+          }
+          if (direction.includes("s")) raw.h = start.h + ddy;
+          if (direction.includes("n")) {
+            raw.y = start.y + ddy;
+            raw.h = start.h - ddy;
+          }
+          raw.w = Math.max(MIN_ELEMENT_SIZE, raw.w);
+          raw.h = Math.max(MIN_ELEMENT_SIZE, raw.h);
+
+          const snapped = snapResize(raw, direction, { snap, bypass, others });
+          box = { ...snapped.placement };
+          guidesX = snapped.guidesX;
+          guidesY = snapped.guidesY;
+
+          // Same ratio rule as a page element: the ratio is in PIXELS, so it
+          // converts back to percentages through the box it is a percentage of
+          // -- here the viewport rather than a parent.
+          const ratio =
+            lock ??
+            (constrain && start.h > 0
+              ? ((start.w / 100) * rect.width) / ((start.h / 100) * rect.height)
+              : null);
+          if (ratio) {
+            const drivenByWidth = direction.includes("e") || direction.includes("w");
+            if (drivenByWidth) {
+              const hPx = ((box.w / 100) * rect.width) / ratio;
+              const newH = (hPx / rect.height) * 100;
+              if (direction.includes("n")) box.y += box.h - newH;
+              box.h = Math.max(MIN_ELEMENT_SIZE, newH);
+            } else {
+              const wPx = ((box.h / 100) * rect.height) * ratio;
+              const newW = (wPx / rect.width) * 100;
+              if (direction.includes("w")) box.x += box.w - newW;
+              box.w = Math.max(MIN_ELEMENT_SIZE, newW);
+            }
+          }
+          box = roundPlacement(box);
+        }
+
+        const placements = { [masterId]: box };
+        const live: LiveGesture = { kind, placements, guidesX, guidesY, adoptInto: null };
+        gestureRef.current = live;
+        setGesture(live);
+        pushLivePreview(placements);
+      };
+
+      let lastEvent: PointerEvent | null = null;
+      const onMove = (ev: PointerEvent) => {
+        lastEvent = ev;
+        apply(ev, ev.clientX - startX, ev.clientY - startY);
+      };
+
+      const cleanup = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("keydown", onKey);
+        document.removeEventListener("keyup", onKey);
+        cleanupGestureRef.current = null;
+      };
+
+      const revert = () => {
+        settleLivePreview({ [masterId]: start });
+        gestureRef.current = null;
+        setGesture(null);
+      };
+
+      const onUp = () => {
+        const finished = gestureRef.current;
+        cleanup();
+        gestureRef.current = null;
+        setGesture(null);
+        const box = finished?.placements[masterId];
+        const moved =
+          !!box &&
+          (box.x !== start.x || box.y !== start.y || box.w !== start.w || box.h !== start.h);
+        settleLivePreview({ [masterId]: moved && box ? box : start });
+        if (!moved || !box) return;
+        pushUndo(
+          { master_elements: masters },
+          kind === "move" ? "Move master element" : "Resize master element",
+        );
+        update({
+          ui: {
+            ...project.ui,
+            master_elements: masters.map((m) =>
+              m.id === masterId ? withMasterPlacement(m, canvasOrientation, box) : m,
+            ),
+          },
+        });
+        touchMutation();
+      };
+
+      const onKey = (ev: KeyboardEvent) => {
+        if (ev.key === "Escape") {
+          cleanup();
+          revert();
+          return;
+        }
+        if ((ev.key === "Alt" || ev.key === "Shift") && lastEvent) {
+          apply(ev, lastEvent.clientX - startX, lastEvent.clientY - startY);
+        }
+      };
+
+      cleanupGestureRef.current = cleanup;
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("keydown", onKey);
+      document.addEventListener("keyup", onKey);
+    },
+    [previewMode, project, lockedElementIds, canvasOrientation, topLevel, absolute,
+     visibleMasters, snap, pushLivePreview, settleLivePreview, pushUndo, update,
+     touchMutation],
   );
 
   // A gesture in flight when the canvas unmounts (page switched, project
-  // reloaded) would otherwise leave document listeners holding a dead closure.
-  useEffect(() => () => cleanupGestureRef.current?.(), []);
+  // reloaded) would otherwise leave document listeners holding a dead closure,
+  // and a preview frame queued against an iframe that is going away.
+  useEffect(
+    () => () => {
+      cleanupGestureRef.current?.();
+      if (previewRaf.current !== null) {
+        cancelAnimationFrame(previewRaf.current);
+        previewRaf.current = null;
+      }
+      pendingPreview.current = null;
+    },
+    [],
+  );
 
   // Where a hit box draws: the live box while it is being dragged, the stored
   // one otherwise.
@@ -864,63 +1105,24 @@ export function Canvas({
               </div>
             )}
 
-            {/* Master element hit-boxes (selection + badge, iframe renders the pixels) */}
-            {(masterElements || [])
-              .filter((m) => m.pages === "*" || (Array.isArray(m.pages) && m.pages.includes(page.id)))
-              .map((el) => {
-                // The same box the panel would draw at this shape of glass, so
-                // the hit-box sits on top of the pixels rather than beside them
-                // the moment a portrait arrangement is being authored.
-                const box = masterPlacement(el, canvasOrientation);
-                if (!box) return null;
-                const isMasterSelected = selectedMasterElementId === el.id;
-                return (
-                  <div
-                    key={`master-${el.id}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      selectMasterElement(el.id);
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setContextMenu({ x: e.clientX, y: e.clientY, elementId: el.id, isMaster: true });
-                    }}
-                    style={{
-                      position: "absolute",
-                      left: `${box.x}%`,
-                      top: `${box.y}%`,
-                      width: `${box.w}%`,
-                      height: `${box.h}%`,
-                      cursor: "pointer",
-                      outline: isMasterSelected ? "2px solid #9C27B0" : "none",
-                      outlineOffset: 1,
-                      borderRadius: 4,
-                      zIndex: 0,
-                    }}
-                    title={`Master element: ${el.id}`}
-                  >
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 2,
-                        left: 4,
-                        fontSize: 9,
-                        padding: "1px 5px",
-                        borderRadius: 3,
-                        background: "rgba(156,39,176,0.85)",
-                        color: "#fff",
-                        pointerEvents: "none",
-                        zIndex: 1,
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      Master
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Master element hit-boxes. Same selection, drag and resize as a
+                page element -- what differs is where the box is stored and how
+                far the change reaches, not whether it can be grabbed. */}
+            {visibleMasters.map(({ master, box }) => (
+              <CanvasMasterElement
+                key={`master-${master.id}`}
+                master={master}
+                box={gesture?.placements[master.id] ?? box}
+                selected={selectedMasterElementId === master.id}
+                locked={lockedElementIds.has(master.id)}
+                gestureKind={gesture?.kind ?? null}
+                onSelect={selectMasterElement}
+                onGestureStart={beginMasterGesture}
+                onContextMenu={(e, id) =>
+                  setContextMenu({ x: e.clientX, y: e.clientY, elementId: id, isMaster: true })
+                }
+              />
+            ))}
 
             {/* Element hit-boxes (selection + drag + resize, iframe renders the
                 pixels). Rendered as a tree: a container's children are absolute

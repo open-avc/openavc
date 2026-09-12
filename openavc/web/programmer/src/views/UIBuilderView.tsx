@@ -69,6 +69,8 @@ import {
   roundPlacement,
   presetForOrientation,
   layoutOrientation,
+  masterPlacement,
+  withMasterPlacement,
   resolveHidden,
   withHidden,
   type ValidationIssue,
@@ -339,22 +341,26 @@ export function UIBuilderView() {
         const dy =
           e.key === "ArrowUp" ? -stepY * mult : e.key === "ArrowDown" ? stepY * mult : 0;
 
-        // Nudge master element
+        // Nudge master element. The arrangement on screen decides which box
+        // moves, the same rule the canvas drag and the Layout fields follow:
+        // this used to write the landscape box whatever was being authored, so
+        // nudging a master on a portrait arrangement moved it on every OTHER
+        // page and left it where it was on this one.
         if (selectedMasterElementId && masterElements.length > 0) {
           if (lockedElementIds.has(selectedMasterElementId)) return;
           const mel = masterElements.find((m) => m.id === selectedMasterElementId);
           if (!mel) return;
           e.preventDefault();
-          const current =
-            mel.placements?.landscape ??
-            mel.placements?.portrait ??
-            Object.values(mel.placements ?? {})[0];
+          const orientation = layoutOrientation(currentPage, activeLayoutId);
+          const current = masterPlacement(mel, orientation);
           if (!current) return;
+          const moved = withMasterPlacement(mel, orientation, {
+            ...current,
+            x: current.x + dx,
+            y: current.y + dy,
+          });
           handleMasterElementPropertyChange(selectedMasterElementId, {
-            placements: {
-              ...mel.placements,
-              landscape: roundPlacement({ ...current, x: current.x + dx, y: current.y + dy }),
-            },
+            placements: moved.placements,
           } as Partial<MasterElement>);
           return;
         }

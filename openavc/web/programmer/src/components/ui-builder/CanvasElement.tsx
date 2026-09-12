@@ -32,10 +32,12 @@ interface CanvasElementProps {
   onContextMenu: (e: React.MouseEvent, elementId: string) => void;
 }
 
-const HANDLE_SIZE = 12;
+export const HANDLE_SIZE = 12;
 
-/** The eight grips, and which edges each one drags. */
-const HANDLE_POSITIONS: Record<string, React.CSSProperties> = {
+/** The eight grips, and which edges each one drags. Shared with the master
+ *  element's hit box, so a master is grabbed by the same corners as anything
+ *  else on the page. */
+export const HANDLE_POSITIONS: Record<string, React.CSSProperties> = {
   n: { top: -HANDLE_SIZE / 2, left: "50%", marginLeft: -HANDLE_SIZE / 2, cursor: "ns-resize" },
   s: { bottom: -HANDLE_SIZE / 2, left: "50%", marginLeft: -HANDLE_SIZE / 2, cursor: "ns-resize" },
   e: { right: -HANDLE_SIZE / 2, top: "50%", marginTop: -HANDLE_SIZE / 2, cursor: "ew-resize" },

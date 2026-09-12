@@ -25,6 +25,7 @@ import {
   storeStyleValue,
   layoutOrientation,
   masterPlacement,
+  withMasterPlacement,
   isHiddenInLayout,
   resolveHidden,
   withHidden,
@@ -569,7 +570,8 @@ function MasterElementProperties({
           orientation={masterOrientation}
           onChangePlacement={(placement) =>
             handleElementChange({
-              placements: { ...masterElement.placements, [masterOrientation]: placement },
+              placements: withMasterPlacement(masterElement, masterOrientation, placement)
+                .placements,
             })
           }
           onChange={handleElementChange}
