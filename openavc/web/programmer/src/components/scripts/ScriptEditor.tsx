@@ -195,6 +195,83 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
           }
         }
 
+        // isc.* completions
+        if (textUntilPosition.match(/isc\.\s*$/)) {
+          const iscMembers: {
+            label: string;
+            insertText: string;
+            detail: string;
+            doc: string;
+            example: string;
+            isClass?: boolean;
+          }[] = [
+            {
+              label: "send_to",
+              insertText: 'send_to("${1:instance_id}", "${2:event}")',
+              detail: "(instance_id: str, event: str, payload?: dict) -> None",
+              doc: "Send an event to one remote instance.",
+              example: 'await isc.send_to("lobby-instance-id", "custom.all_off", {"zone": "building"})',
+            },
+            {
+              label: "broadcast",
+              insertText: 'broadcast("${1:event}")',
+              detail: "(event: str, payload?: dict) -> None",
+              doc: "Send an event to every connected instance.",
+              example: 'await isc.broadcast("custom.fire_alarm", {"zone": "all"})',
+            },
+            {
+              label: "send_command",
+              insertText: 'send_command("${1:instance_id}", "${2:device_id}", "${3:command}")',
+              detail: "(instance_id: str, device_id: str, command: str, params?: dict) -> Any",
+              doc:
+                "Run a device command on a remote instance's equipment. That instance " +
+                "must allow the command in its `allowed_remote_commands` allowlist. " +
+                "Raises `isc.RemoteError` if it refuses, `ConnectionError` if it can't " +
+                "be reached, `TimeoutError` if it doesn't answer.",
+              example: 'await isc.send_command("lobby-instance-id", "display1", "power_off")',
+            },
+            {
+              label: "get_instances",
+              insertText: "get_instances()",
+              detail: "() -> list[dict]",
+              doc: "List discovered and connected peer instances. Not awaited.",
+              example:
+                'for peer in isc.get_instances():\n    log.info(f"{peer[\'name\']} connected={peer[\'connected\']}")',
+            },
+            {
+              label: "RemoteError",
+              insertText: "RemoteError",
+              detail: "exception",
+              doc:
+                "Raised by `send_command` when the peer answered and refused: its " +
+                "allowlist denied the command, it is already running as many remote " +
+                "commands as it accepts, or its device reported a fault. The fix is on " +
+                "that instance, not this one.",
+              example:
+                'try:\n    await isc.send_command("lobby-instance-id", "display1", "power_off")\nexcept isc.RemoteError as e:\n    log.warning(f"The lobby refused it: {e}")',
+              isClass: true,
+            },
+          ];
+          for (const m of iscMembers) {
+            suggestions.push({
+              label: m.label,
+              kind: m.isClass
+                ? monaco.languages.CompletionItemKind.Class
+                : monaco.languages.CompletionItemKind.Method,
+              insertText: m.insertText,
+              ...(m.insertText.includes("${")
+                ? {
+                    insertTextRules:
+                      monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                  }
+                : {}),
+              detail: m.detail,
+              documentation: { value: `${m.doc}\n\n\`\`\`python\n${m.example}\n\`\`\`` },
+              range,
+            });
+          }
+        }
+
         // plugins.* — list installed plugin ids that have script methods
         if (textUntilPosition.match(/plugins\.\s*$/)) {
           const grouped = groupByPlugin(getCachedPluginScriptApi());
