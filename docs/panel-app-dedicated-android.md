@@ -1,6 +1,8 @@
 # Android Dedicated Panel Setup
 
-> **Status: Android APK available now, Google Play listing coming soon.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and follow the steps below. The Google Play build will be a drop-in replacement once it's published.
+> **Status: Android APK available now, Google Play listing coming soon.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and follow the steps below.
+>
+> When the Play listing goes live it will be the easiest way to get the app for a basic panel. **It will not replace the APK for a locked-down panel:** locking a tablet to one app requires no Google account on it, and the Play Store requires one. See the tradeoffs under Tier 2.
 
 This guide walks through locking an Android tablet to the OpenAVC Panel app so end users can't exit to the home screen, open other apps, or pull down the notification shade. It applies to the Android build of the OpenAVC Panel app.
 
@@ -37,7 +39,7 @@ Provision the app as the Android "Device Owner" and the tablet becomes fully ine
 - Triple-tap the top-left corner plus an admin PIN is the only way to exit.
 
 **Tradeoffs:**
-- You can only provision a tablet as Device Owner on a factory-fresh device with no Google account signed in.
+- You can only provision a tablet as Device Owner on a factory-fresh device with no Google account signed in. This is an Android rule, not an OpenAVC one, and it is what decides how you install the app: **no Google account means no Play Store on that tablet**, so Method A installs the signed APK over USB, and Method B pulls it down during setup before any account exists. Either way you get the same app.
 - Provisioning requires either a USB computer (ADB) or a one-time enterprise QR scan. See the two methods below.
 - Setting up Device Owner is irreversible without a factory reset, so commit to it before you mount the tablet on a wall.
 
@@ -67,7 +69,9 @@ Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-
 adb install OpenAVCPanel-<version>.apk
 ```
 
-Once the Google Play listing is live, you can install from there instead. Either route produces the same app.
+**Use the APK here, not the Play Store.** The Play Store needs a Google account signed in to download anything, and Step 2 above had you skip sign-in precisely because an account blocks Device Owner provisioning. The two can't both be true on one tablet. The signed APK is the install route for this method, and it always will be — it isn't a stopgap until the Play listing is ready.
+
+If you'd rather install from Play, use **Method B** below instead: QR provisioning installs and locks the tablet during initial setup, before any account exists.
 
 ### 5. Set the App as Device Owner
 

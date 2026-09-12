@@ -20,6 +20,8 @@ The app is free and open-source (MIT). The web panel inside it is identical to w
 
 **Android.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and side-load it (`adb install` or copy-and-tap on the tablet). The Google Play listing is coming soon.
 
+If you plan to lock the tablet so it can only run the panel, install the APK rather than waiting for Play: locking a tablet to one app requires that it has no Google account signed in, and the Play Store needs one. The [Android dedicated panel setup](panel-app-dedicated-android.md) guide covers both routes.
+
 **iOS.** App Store listing coming soon.
 
 Both builds require the tablet to be on the same network as the OpenAVC server.
