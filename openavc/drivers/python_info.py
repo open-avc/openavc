@@ -122,6 +122,12 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
     looks for a ``BaseDriver`` subclass and reads ``DRIVER_INFO`` off the
     class, so a module-level dict of that name would leave the driver
     unregistered.
+
+    An annotated assignment (``DRIVER_INFO: dict[str, Any] = {...}``) counts
+    too. The runtime cannot tell the difference — an annotation is not part of
+    the value — and ``declares_driver_info`` below already accepts one, so
+    rejecting it here meant a file was recognised as a driver and then
+    reported as having no ``DRIVER_INFO`` at all.
     """
     source = filepath.read_text(encoding="utf-8")
     try:
@@ -131,11 +137,15 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for item in node.body:
+                targets = (
+                    item.targets if isinstance(item, ast.Assign)
+                    else [item.target] if isinstance(item, ast.AnnAssign)
+                    else []
+                )
                 if (
-                    isinstance(item, ast.Assign)
-                    and len(item.targets) == 1
-                    and isinstance(item.targets[0], ast.Name)
-                    and item.targets[0].id == "DRIVER_INFO"
+                    len(targets) == 1
+                    and isinstance(targets[0], ast.Name)
+                    and targets[0].id == "DRIVER_INFO"
                     and isinstance(item.value, ast.Dict)
                 ):
                     return item.value

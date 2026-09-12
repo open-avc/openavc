@@ -20,7 +20,10 @@ from pathlib import Path
 from openavc.drivers.avcdriver_semantic import unknown_key_errors
 from openavc.drivers.check import check_driver_file, main, scan_for_drivers
 from openavc.drivers.driver_loader import validate_driver_definition
-from openavc.drivers.python_info import python_driver_info_issues
+from openavc.drivers.python_info import (
+    extract_python_driver_info_full,
+    python_driver_info_issues,
+)
 
 CLEAN_YAML = """\
     id: acme_widget
@@ -196,6 +199,28 @@ def test_module_level_driver_info_is_reported_not_skipped(tmp_path):
     result = check_driver_file(driver)
     assert not result.readable
     assert "inside a class body" in result.errors[0]
+
+
+def test_an_annotated_driver_info_is_read_like_any_other(tmp_path):
+    """``DRIVER_INFO: dict[str, Any] = {...}`` is the same class attribute.
+
+    The runtime cannot tell the difference -- an annotation is not part of the
+    value -- and ``declares_driver_info`` already accepted one, so the reader
+    refusing it meant the file was recognised as a driver and then reported as
+    having no DRIVER_INFO at all. A driver author's only clue was a message
+    describing what they had already written.
+    """
+    annotated = CLEAN_PYTHON.replace(
+        "    DRIVER_INFO = {", "    DRIVER_INFO: dict[str, object] = {"
+    )
+    assert "DRIVER_INFO: dict[str, object]" in annotated  # the edit landed
+    driver = _write(tmp_path / "acme_widget.py", annotated)
+
+    result = check_driver_file(driver)
+
+    assert result.readable, result.errors
+    assert not result.errors
+    assert extract_python_driver_info_full(driver)[0]["id"] == "acme_widget"
 
 
 def test_unsupported_extension_is_an_error(tmp_path):
