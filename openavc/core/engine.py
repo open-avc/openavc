@@ -80,6 +80,11 @@ class Engine:
     def __init__(self, project_path: str):
         self.project_path = Path(project_path)
         self.project: ProjectConfig | None = None
+        # Resolved lazily and then held: get_or_create_instance_id() falls back
+        # to a fresh ephemeral UUID when it cannot write .instance_id (a
+        # read-only data dir), so calling it per request would hand out a
+        # DIFFERENT id every time. Panels pin their cert trust under this id.
+        self._instance_id: str | None = None
 
         # Core subsystems
         self.state = StateStore()
@@ -1714,8 +1719,8 @@ class Engine:
         if not self.project or not isc_enabled or not self.project.isc.enabled:
             return
         try:
-            from openavc.core.isc import ISCManager, get_or_create_instance_id
-            instance_id = get_or_create_instance_id(self.project_path)
+            from openavc.core.isc import ISCManager
+            instance_id = self.instance_id
             instance_name = self.project.project.name
             self.isc = ISCManager(
                 state=self.state,
@@ -1782,10 +1787,9 @@ class Engine:
         if not get_system_config().get("discovery", "advertise", True):
             return
         try:
-            from openavc.core.isc import get_or_create_instance_id
             from openavc.discovery.mdns_advertiser import MDNSAdvertiser
 
-            instance_id = get_or_create_instance_id(self.project_path)
+            instance_id = self.instance_id
             self.mdns_advertiser = MDNSAdvertiser(
                 instance_name=self.project.project.name,
                 instance_id=instance_id,
@@ -1936,6 +1940,20 @@ class Engine:
         self._network_info = None
         return self._detect_network_info()
 
+    @property
+    def instance_id(self) -> str:
+        """This instance's persistent UUID, resolved once per process.
+
+        The same id the mDNS advertiser puts in its ``id`` TXT field and ISC
+        identifies this peer by, so a panel that found us by QR or manual IP
+        gets the identifier a panel that found us by mDNS already had.
+        """
+        if self._instance_id is None:
+            from openavc.core.isc import get_or_create_instance_id
+
+            self._instance_id = get_or_create_instance_id(self.project_path)
+        return self._instance_id
+
     def get_status(self, include_sensitive: bool = True) -> dict[str, Any]:
         """Return system status info.
 
@@ -1964,6 +1982,12 @@ class Engine:
             "cloud_enabled": self.cloud_agent is not None,
             "http_port": config.HTTP_PORT,
             "port80_active": runtime_flags.port80_active,
+            # Not gated with the host/network identifiers below: this is not a
+            # LAN-reconnaissance detail, it is already broadcast to the whole
+            # LAN in the mDNS TXT record, and a panel paired by QR or manual IP
+            # has no other way to learn it. The panel app keys its pinned
+            # server cert on it so the pin survives a DHCP address change.
+            "instance_id": self.instance_id,
         }
         if include_sensitive:
             local_ip, hostname, all_ips = self._detect_network_info()

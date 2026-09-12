@@ -95,6 +95,49 @@ async def test_status(running_app):
     assert data["device_count"] == 1
 
 
+async def test_status_carries_a_stable_instance_id(running_app):
+    """The panel app pins a server's cert under this id, so it has to hold still.
+
+    get_or_create_instance_id() silently falls back to a fresh UUID when it
+    cannot write .instance_id, so an uncached read would hand out a different
+    id on every request and a panel would accumulate a pin per poll.
+    """
+    first = running_app.get("/api/status").json()["instance_id"]
+    second = running_app.get("/api/status").json()["instance_id"]
+
+    assert first, "instance_id must not be empty"
+    assert first == second
+
+
+async def test_status_instance_id_reaches_an_anonymous_caller(running_app):
+    """It rides in the non-sensitive subset, not with the host identifiers.
+
+    A panel on a claimed instance is an anonymous caller. If this field were
+    gated the way hostname/local_ip are, the QR and manual-entry pairing paths
+    would never see it and cert pins would stay keyed to host:port -- orphaned
+    by the next DHCP lease change.
+    """
+    engine = rest._engine
+
+    anonymous = engine.get_status(include_sensitive=False)
+    authenticated = engine.get_status(include_sensitive=True)
+
+    assert anonymous["instance_id"] == authenticated["instance_id"]
+    # The gated fields really are gated, so the assertion above means something.
+    assert "hostname" not in anonymous
+    assert "hostname" in authenticated
+
+
+async def test_status_instance_id_is_what_mdns_advertises(running_app):
+    """One id, one source. A panel must get the same value by QR as by mDNS."""
+    from openavc.core.isc import get_or_create_instance_id
+
+    engine = rest._engine
+    served = running_app.get("/api/status").json()["instance_id"]
+
+    assert served == get_or_create_instance_id(engine.project_path)
+
+
 async def test_get_state(running_app):
     resp = running_app.get("/api/state")
     assert resp.status_code == 200
