@@ -306,6 +306,7 @@ await isc.send_to(instance_id, event, payload=None)
 await isc.broadcast(event, payload=None)
 await isc.send_command(instance_id, device_id, command, params=None)
 isc.get_instances()
+isc.RemoteError          # exception (see below)
 ```
 
 Communicate with other OpenAVC instances on the network. ISC must be enabled in the project's `isc` configuration.
@@ -332,6 +333,23 @@ for p in peers:
 async def handle_remote_panic(event):
     log.warning(f"Panic from {event.source_instance}")
     await devices.send("display_main", "show_alert")
+```
+
+#### When a remote command fails
+
+`isc.send_command` can fail in three ways, and they are worth telling apart, because each one is fixed somewhere different:
+
+- **`isc.RemoteError`** — the other instance answered, and its answer was no. The message says why: its `allowed_remote_commands` allowlist does not permit the command, it is already running as many remote commands as it accepts, or the device it was asked about reported a fault. The fix is on **that** instance, not this one.
+- **`ConnectionError`** — there is no live connection to that instance, or it dropped before answering.
+- **`TimeoutError`** — the peer did not answer in time.
+
+```python
+try:
+    await isc.send_command("lobby-instance-id", "display1", "power_off")
+except isc.RemoteError as e:
+    log.warning(f"The lobby refused it: {e}")
+except (ConnectionError, TimeoutError):
+    log.warning("The lobby is not reachable right now")
 ```
 
 Remote state from peers is available in the state store under `isc.<peer_id>.<key>`:
