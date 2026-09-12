@@ -266,6 +266,17 @@ class LibraryUpdateRequest(BaseModel):
     description: str | None = None
 
 
+class PanelUnlockRequest(BaseModel):
+    """One typed PIN from a panel's lock screen.
+
+    Bounded because this is an open door: the field a person types into holds
+    six digits, and nothing is gained by letting an unauthenticated caller hand
+    the comparison a megabyte.
+    """
+
+    code: str = Field("", max_length=64)
+
+
 # --- ISC ---
 
 

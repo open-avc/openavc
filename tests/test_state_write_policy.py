@@ -106,6 +106,15 @@ def test_rest_still_accepts_a_namespaced_key(client):
     assert engine.state.get("var.room_active") is True
 
 
+def test_rest_rejects_a_write_to_a_platform_owned_key(client):
+    """The reported repro: 200 OK, and system.version read "pwn" until restart."""
+    c, engine = client
+    engine.state.set("system.version", "0.33.0")
+    resp = c.put("/api/state/system.version", json={"value": "pwn"})
+    assert resp.status_code == 422
+    assert engine.state.get("system.version") == "0.33.0"
+
+
 def test_rest_rejects_a_nested_value(client):
     c, engine = client
     resp = c.put("/api/state/var.x", json={"value": {"a": 1}})
@@ -289,10 +298,88 @@ def test_every_other_namespace_still_writes():
         "var.house_lights",
         "plugin.scheduler.next_run",
         "ui.page1.visible",
-        "system.help_state",
         "device.projector1.power",
     ):
         assert check_state_write(key, "x") is None, key
+
+
+# ---------------------------------------------------------------------------
+# The platform's own namespace
+#
+# system.* is the second kind of owned key, and the more dangerous one. A
+# `PUT /api/state/system.version` with "pwn" returned 200 and STUCK: unlike a
+# device key nothing repolls to correct it, because it is written once at
+# startup from version.py. Every panel label, every cloud report and every
+# condition bound to that key then repeated the lie until the server restarted.
+# ---------------------------------------------------------------------------
+
+
+def test_a_platform_owned_key_is_refused_at_every_door():
+    reason = check_state_write("system.version", "pwn")
+    assert reason is not None
+    # The refusal names the key, says what would happen to the write, and
+    # points at the namespace the caller actually wanted.
+    assert "system.version" in reason
+    assert "var." in reason
+
+
+def test_the_whole_platform_namespace_is_refused_not_a_handful_of_keys():
+    """Every system.* key the platform writes, not just the identity three.
+
+    Listing individual keys is how this kind of guard rots: the update status,
+    the help request keys and the cloud link were all added after
+    ``system.version`` was, and each would have had to be remembered.
+    """
+    for key in (
+        "system.version",
+        "system.deployment_type",
+        "system.started",
+        "system.update_status",
+        "system.help_state",
+        "system.cloud.status",
+        "system.isc.peer_count",
+        "system.integration.nodered.connected",
+        "system.something_a_later_release_adds",
+    ):
+        assert check_state_write(key, "x") is not None, key
+
+
+def test_the_platform_namespace_is_still_a_valid_key():
+    # Same separation the mirrored namespace keeps: a page binds to
+    # system.help_state to draw the help banner, and that has to keep working.
+    assert "system." in VALID_KEY_PREFIXES
+
+
+def test_a_panel_is_refused_for_its_own_reason_here_too():
+    reason = check_state_write("system.version", "pwn", panel=True)
+    assert reason is not None
+    assert "Panel clients" in reason
+
+
+def test_the_platform_writes_its_own_keys_without_the_door():
+    """The precondition, pinned: the platform's own writers bypass the door.
+
+    ``Engine.start`` and the updater/cloud/help writers go through
+    ``StateStore.set`` with a source tag. If any of them ever asked
+    ``check_state_write`` first, this refusal would empty the platform's own
+    status keys and the symptom would be a Programmer showing no version.
+    """
+    for rel in (("core", "engine.py"), ("core", "help_requests.py"), ("updater", "manager.py")):
+        source = (_SERVER.joinpath(*rel)).read_text(encoding="utf-8")
+        assert "check_state_write" not in source, rel
+
+
+def test_authored_writers_are_not_held_to_the_door_either():
+    """A macro step, a UI binding and a script write in-process, deliberately.
+
+    The door is for a remote caller that needs a reason handed back. An
+    integrator's own automation is trusted the same way a driver is, so
+    closing the namespace at the door takes nothing away from a project that
+    legitimately drives a system.* key.
+    """
+    for rel in (("core", "macro_engine.py"), ("core", "ui_events.py"), ("core", "script_api.py")):
+        source = (_SERVER.joinpath(*rel)).read_text(encoding="utf-8")
+        assert "check_state_write" not in source, rel
 
 
 def test_isc_own_writer_does_not_go_through_the_door():

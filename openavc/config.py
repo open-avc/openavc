@@ -98,7 +98,6 @@ LOG_LEVEL: str = _cfg.get("logging", "level")
 # Authentication (all empty = fully open)
 PROGRAMMER_PASSWORD: str = _cfg.get("auth", "programmer_password")
 API_KEY: str = _cfg.get("auth", "api_key")
-PANEL_LOCK_CODE: str = _cfg.get("auth", "panel_lock_code")
 
 # Cloud Agent. These four are the ones the cloud-pairing routes write back to
 # after a pair/unpair, so the constant and the singleton stay in step without

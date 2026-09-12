@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import json
 import secrets
 import shutil
@@ -1342,14 +1343,52 @@ class Engine:
         will be refused on press. It needs the project's macros and groups —
         a press runs a macro, which commands a group — so the renderer could
         not work it out from the page it is given even if we wanted it to.
+
+        **The panel lock PIN is not in what comes back.** A panel client is
+        unauthenticated by design, so everything this returns reaches every
+        panel on the LAN — and this is the payload the lock screen used to be
+        handed the code it was checking in. It leaves as ``lock_enabled``, and
+        the attempt goes to ``POST /api/panel/unlock``.
         """
         if not self.project:
             return {}
         ui = resolve_ui(self.project.ui.model_dump(mode="json"))
+        settings = ui.get("settings")
+        if isinstance(settings, dict):
+            settings["lock_enabled"] = bool(settings.pop("lock_code", ""))
         return annotate_action_devices(
             ui,
             [m.model_dump(mode="json") for m in self.project.macros],
             [g.model_dump(mode="json") for g in self.project.device_groups],
+        )
+
+    def panel_lock_accepts(self, code: str) -> bool:
+        """Whether ``code`` is this project's panel lock PIN.
+
+        The server checks it because the server is the only side that can:
+        a panel is unauthenticated, so handing it the PIN to compare against
+        published the PIN to every client on the LAN, and the "lock" was a
+        courtesy the same server had already given away. Constant-time, which
+        costs nothing on a six-digit string and means a wrong PIN takes the
+        same time whatever it got right.
+
+        A project with no PIN set accepts nothing rather than everything — the
+        panel never puts the screen up in that case, so an attempt arriving
+        anyway is not a person who left the field blank.
+
+        Both sides are encoded before the comparison, for the reason
+        ``api/auth.py``'s username check is: ``compare_digest`` raises on two
+        ``str`` arguments that are not both ASCII. The Builder's field takes
+        digits only, but a project file can be hand-written or AI-authored, and
+        a lock code with an accent in it would answer every attempt with a 500.
+        """
+        if not self.project:
+            return False
+        expected = self.project.ui.settings.lock_code or ""
+        if not expected:
+            return False
+        return hmac.compare_digest(
+            str(code or "").encode("utf-8"), expected.encode("utf-8")
         )
 
     def _load_project_safe(self) -> ProjectConfig:
@@ -1709,14 +1748,24 @@ class Engine:
 
     # --- ISC helpers ---
 
+    def isc_gates(self) -> tuple[bool, bool]:
+        """The two switches ISC runs behind: (system config, this project).
+
+        Two gates for one feature is an afternoon lost unless something can say
+        WHICH one is down — `/api/isc/status` asks here for exactly that. The
+        system-config value is read live rather than from an import-time
+        constant, so a `PATCH /system/config` toggle is honored on a reconcile
+        without a restart.
+        """
+        from openavc.system_config import get_system_config
+        system_enabled = bool(get_system_config().get("isc", "enabled", True))
+        project_enabled = bool(self.project and self.project.isc.enabled)
+        return system_enabled, project_enabled
+
     async def _start_isc(self) -> None:
         """Initialize ISC if enabled in both system config and project."""
-        # Read the live system-config value rather than an import-time
-        # constant, so a PATCH /system/config toggle is honored on
-        # reload/reconcile without a restart.
-        from openavc.system_config import get_system_config
-        isc_enabled = bool(get_system_config().get("isc", "enabled", True))
-        if not self.project or not isc_enabled or not self.project.isc.enabled:
+        system_enabled, project_enabled = self.isc_gates()
+        if not self.project or not system_enabled or not project_enabled:
             return
         try:
             from openavc.core.isc import ISCManager
@@ -1749,9 +1798,8 @@ class Engine:
         """Reload ISC configuration after project change."""
         if not self.project:
             return
-        from openavc.system_config import get_system_config
-        isc_enabled = bool(get_system_config().get("isc", "enabled", True))
-        isc_should_run = isc_enabled and self.project.isc.enabled
+        system_enabled, project_enabled = self.isc_gates()
+        isc_should_run = system_enabled and project_enabled
 
         if self.isc and isc_should_run:
             # Hot-reload config

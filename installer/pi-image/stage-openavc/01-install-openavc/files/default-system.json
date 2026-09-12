@@ -6,13 +6,10 @@
     "auth": {
         "programmer_password": "",
         "api_key": "",
-        "panel_lock_code": "",
         "allow_anonymous": false
     },
     "isc": {
-        "enabled": true,
-        "discovery_enabled": true,
-        "auth_key": ""
+        "enabled": true
     },
     "logging": {
         "level": "info",

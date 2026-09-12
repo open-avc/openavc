@@ -43,6 +43,13 @@ def test_initial_lock_unlock_and_idle_relock(server_factory, page, preview):
 
     # No interaction inside the runtime panel precedes this assertion.
     expect(panel.get_by_text("Panel Locked", exact=True)).to_be_visible()
+    if not preview:
+        # A real panel is unauthenticated, so its definition is public to the
+        # network — the PIN it is about to check must not be in it, and the
+        # unlock below therefore has to go to the server to succeed at all.
+        settings = page.evaluate("() => window.__openavcPanel.uiSettings")
+        assert settings.get("lock_code") is None
+        assert settings.get("lock_enabled") is True
     panel.get_by_placeholder("Enter PIN").fill("0000")
     panel.get_by_role("button", name="Unlock", exact=True).click()
     expect(panel.get_by_text("Incorrect PIN", exact=True)).to_be_visible()

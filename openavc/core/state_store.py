@@ -125,25 +125,43 @@ VALID_KEY_PREFIXES = ("device.", "var.", "ui.", "system.", "isc.", "plugin.")
 # guards, or pollute ISC mesh state) are rejected.
 PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
 
-# A namespace nothing outside this process may write, and why. These keys are a
-# *mirror* — something else owns the value and refreshes it — so a door write
-# lands, reports success, and is gone at the owner's next update. Telling a
-# caller "OK" for a write that will be discarded is the worst answer an API can
-# give: it is indistinguishable from working, right up until the value it is
-# steering disappears.
+# A namespace nothing outside this process may write, and why. Something else
+# owns every key under these prefixes, so a door write lands, reports success,
+# and then either disappears at the owner's next update or — worse — never
+# does. Telling a caller "OK" for a write that will be discarded is bad; telling
+# it "OK" for one that quietly replaces a fact the rest of the system reports is
+# worse, because nothing ever puts it back.
 #
-# The owner writes through ``StateStore.set`` directly (``source="isc"``),
-# which is a different path from the doors below — so refusing here costs the
-# mesh nothing. ``device.*`` has the same mirror shape and is deliberately NOT
-# here: a driver owns those keys, but poking one by hand is how an integrator
-# tests a binding against gear that is not on the bench yet, and taking that
-# away is a separate decision from closing a namespace nobody can use at all.
+# ``isc.*`` is the first kind: a mirror of another instance's state, gone at
+# that instance's next update. ``system.*`` is the second: the platform sets
+# these once (``system.version``, ``system.deployment_type``) or on its own
+# schedule (update progress, cloud status, help requests), and the ones set at
+# startup have no refresh to correct them — a write stands until the server
+# restarts, and every panel label and cloud report bound to that key repeats it.
+#
+# Both owners write through ``StateStore.set`` directly (``source="isc"`` /
+# ``source="system"``), which is a different path from the doors below, and so
+# are the authored writers — a macro step, a UI binding's ``state.set``, a
+# script — so refusing here costs the mesh, the platform and an integrator's own
+# automation nothing. ``device.*`` has the same owned shape and is deliberately
+# NOT here: a driver owns those keys, but poking one by hand is how an
+# integrator tests a binding against gear that is not on the bench yet, and
+# taking that away is a separate decision from closing a namespace nobody can
+# use at all.
 DOOR_READONLY_PREFIXES = {
     "isc.": (
         "'{key}' mirrors state received from another OpenAVC system, so a "
         "write here would be replaced by that system's next update. To send a "
         "value to peers, set it under 'var.' and cover that key with a Shared "
         "State Pattern on the Inter-System page."
+    ),
+    "system.": (
+        "'{key}' is set by OpenAVC itself — the version, the deployment type, "
+        "update and cloud status, help requests. A write here is either "
+        "replaced at the platform's next update or, for a key set only at "
+        "startup, left standing until the server restarts, with every panel "
+        "and report bound to it showing the wrong value meanwhile. Keep your "
+        "own values under 'var.'."
     ),
 }
 
@@ -161,8 +179,9 @@ def check_state_write(key: str, value: Any, *, panel: bool = False) -> str | Non
     clients), which is held to ``PANEL_WRITABLE_PREFIXES``.
 
     A namespace in ``DOOR_READONLY_PREFIXES`` is refused for every door,
-    authenticated or not: the value is a mirror of something this process does
-    not own, so the write would be silently undone rather than rejected.
+    authenticated or not: something else owns the value, so the write would be
+    silently undone — or, where nothing refreshes the key, silently kept as a
+    lie — rather than rejected.
 
     This is a pre-flight check, not the enforcement point. ``set()`` still
     drops a non-primitive on its own — that backstop covers in-process writers

@@ -23,12 +23,63 @@ from openavc.core.isc import ISCRemoteError
 router = APIRouter()
 
 
+def _why_isc_is_off(engine) -> dict[str, Any]:
+    """Which of the two switches is holding ISC down, and the sentence for it.
+
+    ISC runs behind a system-config gate and a per-project one, and the mesh
+    tearing down is CORRECT whenever either is off — opening a template project
+    with ISC off does it, and logs it cleanly. What was missing is any surface
+    saying *where the switch is*: the page read "enabled in the project but not
+    running yet. Save and reload the project", which is wrong advice when the
+    system gate is the one down, and following it costs an hour.
+    """
+    system_enabled, project_enabled = engine.isc_gates()
+    if engine.project is None:
+        return {
+            "disabled_by": "no_project",
+            "reason": "No project is loaded, so there is nothing for ISC to share yet.",
+        }
+    if not system_enabled and not project_enabled:
+        return {
+            "disabled_by": "both",
+            "reason": (
+                "ISC is switched off in this project and for the whole system "
+                "(system.json, isc.enabled). Both have to be on for the mesh to run."
+            ),
+        }
+    if not system_enabled:
+        return {
+            "disabled_by": "system",
+            "reason": (
+                "ISC is switched off for this whole system in system.json "
+                "(isc.enabled), so it will not start whatever a project asks for. "
+                "Turn it back on there."
+            ),
+        }
+    if not project_enabled:
+        return {
+            "disabled_by": "project",
+            "reason": "ISC is switched off in this project.",
+        }
+    return {
+        "disabled_by": "error",
+        "reason": (
+            "ISC is switched on everywhere but did not start. The server log "
+            "records why."
+        ),
+    }
+
+
 @router.get("/isc/status")
 async def isc_status() -> dict[str, Any]:
-    """ISC status: enabled, instance info, peer summary."""
+    """ISC status: enabled, instance info, peer summary.
+
+    When it is off, this also says which of the two gates is holding it down —
+    see ``_why_isc_is_off``.
+    """
     engine = _get_engine()
     if engine.isc is None:
-        return {"status": "disabled", "enabled": False}
+        return {"status": "disabled", "enabled": False, **_why_isc_is_off(engine)}
     return engine.isc.get_status()
 
 

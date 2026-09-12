@@ -15,6 +15,7 @@ from openavc.api.models import (
     LibraryReplaceRequest,
     LibrarySaveRequest,
     LibraryUpdateRequest,
+    PanelUnlockRequest,
 )
 from openavc.core.command_params import missing_params_check
 from openavc.core.device_config import resolve_device_config
@@ -27,6 +28,31 @@ from openavc.utils.log_buffer import get_log_buffer
 from openavc.drivers.registry import get_driver_class, is_driver_registered
 
 router = APIRouter()
+open_router = APIRouter()
+
+
+# --- Panel lock ---
+
+
+@open_router.post("/panel/unlock")
+async def panel_unlock(body: PanelUnlockRequest) -> dict[str, Any]:
+    """Check a panel lock PIN. Open, because a panel holds no credential.
+
+    The lock used to be enforced entirely in the browser against a value the
+    same server had published to it: ``ui.definition`` carried
+    ``settings.lock_code`` to every panel on the LAN, and `panel.js` compared
+    the typed attempt against it. Reading the PIN off a panel took a developer
+    console, not an exploit, and the Builder labels the field "Lock Code (PIN)"
+    with nothing saying it was a courtesy.
+
+    So the PIN stays on the server and only the verdict travels. A wrong PIN is
+    `200 {"success": false}` rather than a 4xx — the house shape for a command
+    that can fail at 200, and one answer means one thing for a panel to read.
+    A project with no PIN set answers the same way, and nothing else is in the
+    reply. Strict rate-limit tier: a six-digit PIN is worth guessing at if the
+    guessing is free.
+    """
+    return {"success": _get_engine().panel_lock_accepts(body.code)}
 
 
 # --- Project ---

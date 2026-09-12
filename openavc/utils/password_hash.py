@@ -52,10 +52,8 @@ boot and are deliberately never persisted, and an operator provisioning a box
 by hand may write one into `system.json` directly (`SystemConfig` converts that
 one on the next start).
 
-`auth.panel_lock_code` is deliberately NOT converted — see the note beside it
-in `system_config.py`. `isc.auth_key` and `cloud.system_key` are not candidates
-at all: this instance has to present them, so the file's 0600 mode is what
-protects those.
+`cloud.system_key` is not a candidate at all: this instance has to present it,
+so the file's 0600 mode is what protects that one.
 
 Pure stdlib and imports nothing from `openavc`. `system_config` still imports it
 inside the function rather than at module scope, because it sits in the import

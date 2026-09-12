@@ -39,6 +39,9 @@ def _make_mock_engine():
     engine.scripts = MagicMock()
     engine.plugin_loader = MagicMock()
     engine.isc = None
+    # Both gates on, so /api/isc/status reports the "enabled everywhere but
+    # did not start" case rather than unpacking a MagicMock.
+    engine.isc_gates.return_value = (True, True)
     engine._running = True
     engine.get_status.return_value = {
         "version": "0.0.0-test",
@@ -559,6 +562,10 @@ def test_isc_status_when_disabled(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["enabled"] is False
+    # Off always says which of the two gates is down — see
+    # tests/test_isc_gate_reason.py for the whole table.
+    assert data["disabled_by"]
+    assert data["reason"]
 
 
 # ── Connection endpoints ──

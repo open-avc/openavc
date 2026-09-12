@@ -9,8 +9,13 @@ same key authenticates afterwards, which is the whole requirement, because a
 credential that quietly stopped working would be a lockout with no error
 anywhere. And the file is mode 0600, which used to be true only by accident
 (`mkstemp` creates at 0600 and `os.replace` carries that mode across) and still
-matters: `panel_lock_code`, `isc.auth_key` and `cloud.system_key` all have to
-be usable as stored, so the mode is all they have.
+matters: `cloud.system_key` has to be usable as stored, so the mode is all it
+has.
+
+A fourth thing joined them: fields a previous release defined and this one does
+not are dropped from the file on load. Deleting the default alone leaves the
+value in place, because load() merges the file over DEFAULTS — and the
+redaction that used to hide it went with the field.
 """
 
 import copy
@@ -126,7 +131,7 @@ class TestConvertingAStoredPlaintext:
 
     def test_the_rest_of_the_file_survives_the_rewrite(self, tmp_path):
         _write(tmp_path, {
-            "auth": {"programmer_password": "commission123", "panel_lock_code": "4321"},
+            "auth": {"programmer_password": "commission123"},
             "network": {"http_port": 9090},
             "some_future_section": {"kept": True},
         })
@@ -136,16 +141,62 @@ class TestConvertingAStoredPlaintext:
         assert saved["network"]["http_port"] == 9090
         assert saved["some_future_section"] == {"kept": True}
 
-    def test_the_panel_lock_code_is_deliberately_left_as_typed(self, tmp_path):
-        """Nothing reads it yet, and hashing is one-way: the shape belongs to
-        the feature that will check it. See the note beside it in DEFAULTS."""
+
+class TestRetiredFields:
+    """Three fields presented exactly like live secrets and were wired to
+    nothing: `auth.panel_lock_code` (the real panel PIN is the PROJECT's
+    `ui.settings.lock_code`), `isc.auth_key` and `isc.discovery_enabled` (the
+    mesh reads the project too). Two of the three were even redacted as `***`
+    in the config GET, sitting beside the real password — so anyone
+    provisioning a mesh key or a panel PIN through that door configured
+    nothing and was shown a `***` saying they had."""
+
+    def test_a_retired_field_is_dropped_from_an_existing_file(self, tmp_path):
         _write(tmp_path, {
             "auth": {"programmer_password": "commission123", "panel_lock_code": "4321"},
+            "isc": {"enabled": True, "auth_key": "mesh-secret", "discovery_enabled": False},
         })
-        _converted(tmp_path)
+        cfg = _config_at(tmp_path)
+        cfg.load()
+        cfg.save()
 
         saved = json.loads((tmp_path / "system.json").read_text())
-        assert saved["auth"]["panel_lock_code"] == "4321"
+        assert "panel_lock_code" not in saved["auth"]
+        assert "auth_key" not in saved["isc"]
+        assert "discovery_enabled" not in saved["isc"]
+
+    def test_a_retired_field_is_not_readable_back_through_the_config(self, tmp_path):
+        """The half a bare DEFAULTS deletion would have missed: the merged
+        value is what `GET /api/system/config` returns, and it would have come
+        back in cleartext now that the redaction is gone with the field."""
+        _write(tmp_path, {"isc": {"enabled": True, "auth_key": "mesh-secret"}})
+        cfg = _config_at(tmp_path)
+        cfg.load()
+
+        assert "mesh-secret" not in json.dumps(cfg.to_dict())
+        assert cfg.get("isc", "auth_key", "") == ""
+
+    def test_the_live_neighbours_are_untouched(self, tmp_path):
+        _write(tmp_path, {
+            "auth": {"api_key": "integration-key", "allow_anonymous": "false"},
+            "isc": {"enabled": False},
+        })
+        cfg = _config_at(tmp_path)
+        cfg.load()
+
+        assert cfg.get("auth", "allow_anonymous") == "false"
+        assert cfg.get("isc", "enabled") is False
+        assert cfg.get("auth", "api_key") == "integration-key"
+
+    def test_every_retired_field_is_gone_from_the_defaults(self):
+        """Both halves of the removal, so neither can be done without the
+        other: a field still in DEFAULTS would be written back out by the very
+        next save, and a field pruned but still defaulted would flicker."""
+        from openavc.system_config import DEFAULTS, ENV_OVERRIDES, REMOVED_KEYS
+
+        for section, key in REMOVED_KEYS:
+            assert key not in DEFAULTS.get(section, {}), f"{section}.{key}"
+            assert (section, key) not in ENV_OVERRIDES, f"{section}.{key}"
 
 
 class TestConvertingAStoredApiKey:
@@ -293,9 +344,9 @@ class TestTheEnvOverride:
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
 class TestFileMode:
     """0600 was inherited behaviour before it was intended behaviour. Pinned,
-    because the recoverable secrets left in this file (api_key,
-    panel_lock_code, isc.auth_key, cloud.system_key) have nothing but the mode
-    protecting them from another account on the same host."""
+    because the recoverable secret left in this file (cloud.system_key) has
+    nothing but the mode protecting it from another account on the same
+    host."""
 
     def test_a_saved_config_is_readable_only_by_its_owner(self, tmp_path):
         cfg = _config_at(tmp_path)

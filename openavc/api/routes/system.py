@@ -256,12 +256,8 @@ async def get_system_config_endpoint() -> dict[str, Any]:
         data["auth"]["programmer_password"] = REDACTED
     if data.get("auth", {}).get("api_key"):
         data["auth"]["api_key"] = REDACTED
-    if data.get("auth", {}).get("panel_lock_code"):
-        data["auth"]["panel_lock_code"] = REDACTED
     if data.get("cloud", {}).get("system_key"):
         data["cloud"]["system_key"] = REDACTED
-    if data.get("isc", {}).get("auth_key"):
-        data["isc"]["auth_key"] = REDACTED
     return data
 
 
@@ -307,9 +303,7 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     # now that two of them are hashed, would be an unrecoverable lockout rather
     # than a visible mistake. The Programmer strips them client-side already;
     # this is the same rule where every other client meets it.
-    if isinstance(body.get("auth"), dict):
-        body["auth"] = {k: v for k, v in body["auth"].items() if v != REDACTED}
-    for section in ("cloud", "isc"):
+    for section in ("auth", "cloud"):
         if isinstance(body.get(section), dict):
             body[section] = {
                 k: v for k, v in body[section].items() if v != REDACTED
@@ -320,17 +314,31 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     # the hash, and the one-shot OS-sync request. Taken out here so no future
     # edit to the loop can persist it as typed. `None` means the caller did not
     # send the field at all, which is different from sending "" to clear it.
+    #
+    # Both are trimmed, and whitespace-only is refused rather than trimmed into
+    # a clear — the rule and both sentences live beside the credential, in
+    # `openavc/api/auth.py`.
+    from openavc.api.auth import (
+        API_KEY_NEEDS_PASSWORD,
+        API_KEY_ONLY_WHITESPACE,
+        PASSWORD_ONLY_WHITESPACE,
+        api_key_would_be_sole_credential,
+        normalize_credential,
+    )
+
     new_password: str | None = None
     if isinstance(body.get("auth"), dict) and "programmer_password" in body["auth"]:
-        raw = body["auth"].pop("programmer_password")
-        new_password = "" if raw is None else str(raw)
+        new_password = normalize_credential(body["auth"].pop("programmer_password"))
+        if new_password is None:
+            raise HTTPException(status_code=400, detail=PASSWORD_ONLY_WHITESPACE)
 
     # Same for the API key, for the same reason: it is a digest now, so the
     # typed value's only destination is the hash.
     new_api_key: str | None = None
     if isinstance(body.get("auth"), dict) and "api_key" in body["auth"]:
-        raw = body["auth"].pop("api_key")
-        new_api_key = "" if raw is None else str(raw)
+        new_api_key = normalize_credential(body["auth"].pop("api_key"))
+        if new_api_key is None:
+            raise HTTPException(status_code=400, detail=API_KEY_ONLY_WHITESPACE)
 
     # Refuse a save that would leave the API key as the only credential, before
     # anything is written. Same shape and the same reason as the TLS check
@@ -343,10 +351,6 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     # hand — must still be able to change its log level, and refusing every
     # unrelated save would widen the lockout instead of closing it. What covers
     # that box is the startup warning in `Engine.start`.
-    from openavc.api.auth import (
-        API_KEY_NEEDS_PASSWORD,
-        api_key_would_be_sole_credential,
-    )
     if (new_api_key is not None or new_password is not None) and (
         api_key_would_be_sole_credential(api_key=new_api_key, password=new_password)
     ):

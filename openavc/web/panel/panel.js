@@ -7275,6 +7275,58 @@ class PanelApp {
 
     // --- Lock Screen ---
 
+    /** Is a lock configured for this panel?
+     *
+     *  The server sends `lock_enabled` and keeps the PIN — a panel client is
+     *  unauthenticated, so the definition it receives is public to the LAN.
+     *  `lock_code` is only ever present when the Programmer pushed an UNSAVED
+     *  draft into its Preview iframe, which is an authenticated surface; see
+     *  `_checkLockCode`.
+     */
+    _lockConfigured() {
+        const settings = this.uiSettings || {};
+        return settings.lock_enabled === true || !!settings.lock_code;
+    }
+
+    /** Is this the right PIN? true, false, or null for "could not ask".
+     *
+     *  Two paths, and the split is exactly the split in who holds the PIN.
+     *  Every real panel gets `lock_enabled` and no code, so the attempt goes
+     *  to the server and only the verdict comes back. The Builder's Preview is
+     *  handed the project it is editing, unsaved PIN and all, and compares
+     *  locally — otherwise changing the PIN and pressing Preview would test
+     *  the last SAVED one and tell the programmer their new PIN is wrong.
+     *
+     *  `null` is its own answer because "Incorrect PIN" for an unreachable
+     *  server sends somebody to try the PIN they already know, over and over.
+     *  The timeout is what turns a hung request into that answer instead of a
+     *  lock screen whose Unlock button never comes back.
+     */
+    async _checkLockCode(attempt) {
+        const drafted = this.uiSettings?.lock_code;
+        if (drafted) return attempt === drafted;
+        const pathParts = location.pathname.split('/panel');
+        const basePath = pathParts[0] || '';
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        try {
+            const res = await fetch(`${basePath}/api/panel/unlock`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: attempt }),
+                signal: controller.signal,
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data?.success === true;
+        } catch (err) {
+            console.warn('[panel] unlock check failed:', err);
+            return null;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     /**
      * Reconcile the lock overlay against a freshly-received ui.definition.
      *
@@ -7287,9 +7339,8 @@ class PanelApp {
      */
     _reconcileLockOnDefinition() {
         if (this.editMode) return;
-        const lockCode = this.uiSettings?.lock_code;
         const overlay = document.getElementById('lock-overlay');
-        if (!lockCode) {
+        if (!this._lockConfigured()) {
             // Lock disabled (or removed mid-session) — clear any stuck overlay.
             if (overlay) overlay.remove();
             this.locked = false;
@@ -7303,8 +7354,7 @@ class PanelApp {
 
     showLockScreen() {
         if (this.editMode) return;
-        const lockCode = this.uiSettings?.lock_code;
-        if (!lockCode) return;
+        if (!this._lockConfigured()) return;
 
         // Prevent stacking multiple lock overlays
         if (document.getElementById('lock-overlay')) return;
@@ -7332,16 +7382,29 @@ class PanelApp {
         const submit = document.getElementById('lock-submit');
         const error = document.getElementById('lock-error');
 
-        const tryUnlock = () => {
-            if (input.value === lockCode) {
-                overlay.remove();
-                this.locked = false;
-                this.resetIdleTimer();
-            } else {
-                error.textContent = 'Incorrect PIN';
-                input.value = '';
-                input.focus();
-                setTimeout(() => { error.textContent = ''; }, 2000);
+        let checking = false;
+        const tryUnlock = async () => {
+            if (checking) return;   // Enter and the button both fire; one attempt.
+            checking = true;
+            submit.disabled = true;
+            try {
+                const ok = await this._checkLockCode(input.value);
+                if (!document.body.contains(overlay)) return;
+                if (ok === true) {
+                    overlay.remove();
+                    this.locked = false;
+                    this.resetIdleTimer();
+                } else {
+                    error.textContent = ok === null
+                        ? "Can't reach the server — try again"
+                        : 'Incorrect PIN';
+                    if (ok === false) input.value = '';
+                    input.focus();
+                    setTimeout(() => { error.textContent = ''; }, 2000);
+                }
+            } finally {
+                checking = false;
+                submit.disabled = false;
             }
         };
 
@@ -7396,7 +7459,7 @@ class PanelApp {
                 this.renderCurrentPage();
             }
             // Re-show lock screen if lock code is set
-            if (this.uiSettings?.lock_code) {
+            if (this._lockConfigured()) {
                 this.showLockScreen();
             }
         }, timeout * 1000);

@@ -273,8 +273,8 @@ export async function importTheme(
 
 export interface SystemConfig {
   network: { http_port: number; bind_address: string; control_interface: string; port80_redirect: boolean };
-  auth: { programmer_username: string; programmer_password: string; api_key: string; panel_lock_code: string };
-  isc: { enabled: boolean; discovery_enabled: boolean; auth_key: string };
+  auth: { programmer_username: string; programmer_password: string; api_key: string };
+  isc: { enabled: boolean };
   logging: { level: string; file_enabled: boolean; max_size_mb: number; max_files: number };
   updates: { check_enabled: boolean; channel: string; auto_check_interval_hours: number; notify_only: boolean };
   cloud: { enabled: boolean; endpoint: string; system_key: string; system_id: string };

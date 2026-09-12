@@ -44,6 +44,12 @@ from openavc.main import app
 # served as octet-stream. Writing into that tree is not open -- it requires a
 # claimed credential, like the script editor.
 #
+# The panel lock check is open because a panel holds no credential — it is the
+# same client the definition is pushed to. It takes a PIN and answers yes or no,
+# which is strictly less than the old arrangement, where the PIN itself was in
+# the definition every panel received. Strict rate-limit tier, so guessing a
+# six-digit code is not free.
+#
 # The simulator SHELL is open for the same reason `/programmer` is: it is
 # static markup, and requiring a credential for the document itself means the
 # browser meets a 401 on a top-level navigation and answers with its own
@@ -82,6 +88,7 @@ EXPECTED_OPEN = {
     ("NOTIFY", "/api/push/{device_id}/{label}"),
     ("POST", "/api/auth/session"),
     ("POST", "/api/auth/setup"),
+    ("POST", "/api/panel/unlock"),
     ("POST", "/api/push/{device_id}"),
     ("POST", "/api/push/{device_id}/{label}"),
     ("POST", "/api/system/network/hostname"),

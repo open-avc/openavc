@@ -242,23 +242,19 @@ DEFAULTS: dict[str, Any] = {
         "programmer_username": "",
         "programmer_password": "",
         "api_key": "",
-        # Reserved: nothing reads this yet. It is deliberately NOT converted to
-        # a digest alongside the password and the api_key, because hashing is
-        # one-way and the shape belongs to the feature that will check it — a
-        # short panel PIN needs the slow hash the password uses, not the fast
-        # one the API key uses, and how many tries a panel allows is part of
-        # the same decision. Whoever builds the lock screen: hash it then,
-        # through openavc/utils/password_hash.py, before anything writes one.
-        "panel_lock_code": "",
         # No-credential posture: "auto" = open only on a dev checkout, require
         # setup on shipped deployments; "true"/"false" force it. See
         # openavc/api/auth.py anonymous_access_allowed().
         "allow_anonymous": "auto",
     },
+    # One gate over the project's own ISC settings, which are where the mesh is
+    # actually configured (shared-state patterns, peers, the shared key). Off
+    # here means no mesh whatever the project says -- a deployment-level switch
+    # for a site that does not allow it -- and `/api/isc/status` names which of
+    # the two gates is holding ISC down, because two switches for one feature
+    # is otherwise an afternoon.
     "isc": {
         "enabled": True,
-        "discovery_enabled": True,
-        "auth_key": "",
     },
     "logging": {
         "level": "info",
@@ -325,6 +321,24 @@ DEFAULTS: dict[str, Any] = {
     },
 }
 
+# Fields that were once in DEFAULTS and are not any more, dropped from a
+# system.json on load so a box provisioned with one loses it on the next save.
+#
+# Deleting the default alone is not enough: `load()` deep-merges the file over
+# DEFAULTS, so a value somebody wrote survives, is handed back by
+# `GET /api/system/config`, and — since the redaction went with the field —
+# is handed back in cleartext. All three of these read exactly like live
+# settings and are wired to nothing: `auth.panel_lock_code` was reserved for a
+# panel lock screen that reads the PROJECT's `ui.settings.lock_code` instead,
+# and the mesh's key and discovery switch live in the project too. Anyone who
+# provisioned one through this door configured nothing, and the `***` beside
+# the real password sold the illusion that they had.
+REMOVED_KEYS: tuple[tuple[str, str], ...] = (
+    ("auth", "panel_lock_code"),
+    ("isc", "auth_key"),
+    ("isc", "discovery_enabled"),
+)
+
 # Mapping: (section, key) -> (env_var, type)
 ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("network", "http_port"): ("OPENAVC_PORT", int),
@@ -335,7 +349,6 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("auth", "programmer_username"): ("OPENAVC_PROGRAMMER_USERNAME", str),
     ("auth", "programmer_password"): ("OPENAVC_PROGRAMMER_PASSWORD", str),
     ("auth", "api_key"): ("OPENAVC_API_KEY", str),
-    ("auth", "panel_lock_code"): ("OPENAVC_PANEL_LOCK_CODE", str),
     ("auth", "allow_anonymous"): ("OPENAVC_ALLOW_ANONYMOUS", str),
     ("logging", "level"): ("OPENAVC_LOG_LEVEL", str),
     ("updates", "check_enabled"): ("OPENAVC_UPDATE_CHECK", bool),
@@ -631,6 +644,18 @@ class SystemConfig:
         else:
             log.info("No system.json found at %s (using defaults, will create on first save)", self._file_path)
 
+        # Drop anything a previous release defined and this one does not, so a
+        # retired field cannot be read back out of an existing file. Before the
+        # snapshot, so it leaves on the next save rather than being rewritten.
+        for section, key in REMOVED_KEYS:
+            values = self._data.get(section)
+            if isinstance(values, dict) and key in values:
+                del values[key]
+                log.info(
+                    "Dropping retired system.json field %s.%s (nothing reads it)",
+                    section, key,
+                )
+
         # Snapshot the persisted layer (defaults + file) BEFORE env overrides
         # are applied. save() serializes this, so env-injected values — secrets
         # included — stay out of system.json. set() keeps it in sync with
@@ -710,8 +735,10 @@ class SystemConfig:
         """The shared body of the two conversions above: hash a plaintext in
         the ``auth`` section of the file, keep the runtime view in step, save.
 
-        ``auth.panel_lock_code`` deliberately does not come through here — see
-        the note beside it in DEFAULTS.
+        ``isc.auth_key`` and ``cloud.system_key`` deliberately do not come
+        through here: this instance has to be able to PRESENT those, so they
+        are stored as they are used and the file's 0600 mode is what protects
+        them.
         """
         from openavc.utils.password_hash import looks_hashed
 
@@ -755,9 +782,9 @@ class SystemConfig:
         ``mkstemp`` creates at 0600 and ``os.replace`` carries the temp file's
         mode onto the destination, so a file left world-readable by an older
         release or a hand edit is tightened on the next save. The admin
-        password is a digest now, but ``isc.auth_key`` and ``cloud.system_key``
-        are shared secrets this instance has to be able to present, so they are
-        stored as they are used and the mode is what protects them.
+        password is a digest now, but ``cloud.system_key`` is a shared secret
+        this instance has to be able to present, so it is stored as it is used
+        and the mode is what protects it.
         ``tests/test_system_config_secrets.py`` pins it.
         """
         fd = None

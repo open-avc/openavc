@@ -49,8 +49,8 @@ vi.mock("../store/projectStore", () => ({
 
 const CONFIG = {
   network: { http_port: 8080, bind_address: "0.0.0.0", control_interface: "", port80_redirect: false },
-  auth: { programmer_username: "", programmer_password: "***", api_key: "", panel_lock_code: "" },
-  isc: { enabled: true, discovery_enabled: true, auth_key: "" },
+  auth: { programmer_username: "", programmer_password: "***", api_key: "" },
+  isc: { enabled: true },
   logging: { level: "info", file_enabled: true, max_size_mb: 50, max_files: 5 },
   updates: { check_enabled: true, channel: "stable", auto_check_interval_hours: 24, notify_only: false },
   cloud: { enabled: false, endpoint: "", system_key: "", system_id: "" },

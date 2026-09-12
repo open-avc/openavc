@@ -239,6 +239,10 @@ def _classify(method: str, path: str) -> str:
     if method == "POST":
         if path == "/api/auth/session":
             return "strict"
+        # A panel lock PIN is six digits and the door is open by necessity, so
+        # it is only a lock while guessing costs something.
+        if path == "/api/panel/unlock":
+            return "strict"
         if path.startswith("/api/cloud/"):
             return "strict"
         if path.startswith("/api/backups/") and "/restore" in path:

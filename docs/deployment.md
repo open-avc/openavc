@@ -109,13 +109,10 @@ System-level configuration controls the server itself: networking, authenticatio
         "programmer_username": "",
         "programmer_password": "",
         "api_key": "",
-        "panel_lock_code": "",
         "allow_anonymous": "auto"
     },
     "isc": {
-        "enabled": true,
-        "discovery_enabled": true,
-        "auth_key": ""
+        "enabled": true
     },
     "logging": {
         "level": "info",
@@ -173,7 +170,6 @@ A few keys deserve a note:
 | `auth.programmer_username` | `OPENAVC_PROGRAMMER_USERNAME` | `""` |
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | `""` |
 | `auth.api_key` | `OPENAVC_API_KEY` | `""` |
-| `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | `""` |
 | `auth.allow_anonymous` | `OPENAVC_ALLOW_ANONYMOUS` | `auto` |
 | `logging.level` | `OPENAVC_LOG_LEVEL` | `info` |
 | `updates.check_enabled` | `OPENAVC_UPDATE_CHECK` | `true` |
@@ -489,7 +485,6 @@ The Panel UI is never password-protected. End users can always open the touch pa
 |---------|---------------------|----------------|
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. Stored as a salted scrypt hash, so it cannot be read back out of `system.json`; a plain password written into that file by hand still works and is converted to a hash on the next start. |
 | `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. Set a programmer password alongside it — a key on its own cannot open the Programmer in a browser. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
-| `auth.panel_lock_code` | `OPENAVC_PANEL_LOCK_CODE` | **Set this if the panel runs on a public-facing display** and you want to prevent users from navigating away from the touch panel UI. |
 
 If the admin password is lost, set `auth.programmer_password` to `""` in `system.json` and restart. The instance returns to unclaimed and offers the "create admin password" screen again; nothing else is affected.
 

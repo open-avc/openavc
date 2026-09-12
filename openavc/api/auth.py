@@ -15,7 +15,6 @@ frictionless dev (see `anonymous_access_allowed`). Code-writing endpoints
 - OPENAVC_API_KEY — alternative token-based auth via X-API-Key header
 - OPENAVC_ALLOW_ANONYMOUS — force the no-credential posture: "true" serves the
   admin surface openly, "false" requires setup. Unset = auto (dev-only open).
-- OPENAVC_PANEL_LOCK_CODE — reserved for future panel lock screen
 
 Neither the password nor the API key is stored as typed — both are digests,
 see `openavc/utils/password_hash.py`. Nothing reads either back; every consumer
@@ -42,6 +41,7 @@ import binascii
 import hashlib
 import secrets
 from functools import lru_cache
+from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -264,6 +264,41 @@ def auth_state() -> str:
     if is_claimed():
         return "required"
     return "ok" if anonymous_access_allowed() else "setup"
+
+
+PASSWORD_ONLY_WHITESPACE = (
+    "A password can't be only spaces. Type one, or clear the field to remove "
+    "the password."
+)
+
+API_KEY_ONLY_WHITESPACE = (
+    "An API key can't be only spaces. Paste one, or clear the field to remove "
+    "the key."
+)
+
+
+def normalize_credential(raw: Any) -> str | None:
+    """The typed form of a credential as it should be stored, or None when the
+    caller typed nothing but whitespace.
+
+    Two rules, and they are separate on purpose. **Trim**, because a credential
+    arrives through a text field and a clipboard: a key pasted with a trailing
+    newline would otherwise be stored as a different key than the one the
+    caller holds, and would authenticate nobody. **Refuse whitespace-only**,
+    because trimming it produces the empty string, and empty means *clear the
+    credential* at this door — so an accidental spacebar would silently unclaim
+    the instance, and a deliberate `"   "` would otherwise be hashed into a real
+    credential that looks exactly like "no password set" to everyone who reads
+    the field.
+
+    `None` is the refusal, not an accepted value: an empty string means the
+    caller deliberately sent nothing, which still clears. ``claim_instance``
+    applies the same trim with a length floor on top, so first-run setup is
+    the stricter door, never a differently-shaped one.
+    """
+    text = "" if raw is None else str(raw)
+    stripped = text.strip()
+    return None if text and not stripped else stripped
 
 
 def store_admin_password(password: str) -> None:

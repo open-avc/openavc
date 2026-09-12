@@ -18,6 +18,12 @@ import { useConnectionStore } from "../store/connectionStore";
 
 interface ISCStatus {
   enabled: boolean;
+  // Only present when ISC is off. ISC runs behind two switches -- this
+  // project's and the whole system's -- and the server says which one is down,
+  // because the page used to tell everyone to save and reload the project even
+  // when the project was never the problem.
+  disabled_by?: "system" | "project" | "both" | "no_project" | "error";
+  reason?: string;
   instance_id?: string;
   instance_name?: string;
   peer_count?: number;
@@ -273,9 +279,11 @@ export function ISCView() {
               </div>
             ) : (
               <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>
-                {!enabled
-                  ? "ISC is disabled. Enable it to discover and communicate with other OpenAVC instances on your network."
-                  : "ISC is enabled in the project but not running yet. Save and reload the project to start ISC."}
+                {status.reason
+                  ? status.reason
+                  : enabled
+                    ? "ISC is enabled in this project. Waiting for the server to report the mesh."
+                    : "ISC is disabled. Enable it to discover and communicate with other OpenAVC instances on your network."}
                 <br /><br />
                 ISC allows multiple OpenAVC instances to share state, forward events,
                 and send commands to each other. Use it for multi-room systems where

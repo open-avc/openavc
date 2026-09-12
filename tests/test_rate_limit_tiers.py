@@ -40,6 +40,7 @@ EXPECTED_STRICT = {
     ("POST", "/api/backups/{filename:path}/restore"),
     ("POST", "/api/cloud/pair"),
     ("POST", "/api/cloud/unpair"),
+    ("POST", "/api/panel/unlock"),
 }
 
 # Commissioning operations. Every non-GET route under the control roots lands
