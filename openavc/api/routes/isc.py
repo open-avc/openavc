@@ -18,6 +18,7 @@ from openavc.api.errors import api_error as _api_error
 from openavc.api.models import (
     ISCBroadcastRequest, ISCCommandRequest, ISCSendRequest,
 )
+from openavc.core.isc import ISCRemoteError
 
 router = APIRouter()
 
@@ -67,7 +68,24 @@ async def isc_broadcast(data: ISCBroadcastRequest) -> dict[str, Any]:
 
 @router.post("/isc/command")
 async def isc_command(data: ISCCommandRequest) -> dict[str, Any]:
-    """Send a device command to a remote ISC peer."""
+    """Send a device command to a remote ISC peer.
+
+    Three different outcomes, because they have three different fixes and
+    they are all somewhere else:
+
+    * the peer answered "no" — its allowlist refused the command, it is at
+      its concurrent-command cap, or its device reported a fault. It computed
+      that sentence; this returns it verbatim as
+      ``{"success": false, "error": ...}``, which is the shape the API
+      reference has always documented, and the reason ``success`` is in the
+      success body at all. 200: the call reached the peer and got an answer.
+    * we never reached the peer, or it went away mid-command — 503.
+    * the peer took too long — 504.
+
+    Collapsing all three into one 500 with our own sentence was what made an
+    allowlist you have to edit on the OTHER box indistinguishable from a
+    network fault.
+    """
     engine = _get_engine()
     if engine.isc is None:
         raise HTTPException(status_code=503, detail="ISC not enabled")
@@ -76,6 +94,8 @@ async def isc_command(data: ISCCommandRequest) -> dict[str, Any]:
             data.instance_id, data.device_id, data.command, data.params,
         )
         return {"success": True, "result": result}
+    except ISCRemoteError as e:
+        return {"success": False, "error": str(e)}
     except ConnectionError as e:
         raise _api_error(503, f"ISC peer '{data.instance_id}' is not connected", e)
     except TimeoutError as e:

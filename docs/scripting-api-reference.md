@@ -181,8 +181,26 @@ Communicate with other OpenAVC instances on the network. ISC must be enabled in 
 | `await isc.broadcast(event, payload=None)` | `None` | Send an event to all connected instances. |
 | `await isc.send_command(instance_id, device_id, command, params=None)` | `Any` | Send a device command to a remote instance's equipment. |
 | `isc.get_instances()` | `list[dict]` | List all discovered/connected peer instances. |
+| `isc.RemoteError` | exception | What `send_command` raises when the peer answered and refused — see below. |
 
 Remote state from peers is available in the state store under `isc.<peer_id>.<key>`.
+
+`isc.send_command` fails in three ways worth telling apart, because each is fixed somewhere different:
+
+| Raises | Means | Where to fix it |
+|--------|-------|-----------------|
+| `ConnectionError` | There is no live connection to that instance, or it dropped before answering. | The network, or the peer's ISC settings. |
+| `TimeoutError` | The peer did not answer in time. | The peer, or the equipment it was asked about. |
+| `isc.RemoteError` | The peer answered and refused. Its message says why: its remote-command allowlist does not permit the command, it is already running as many remote commands as it accepts, or its device reported a fault. | On the **other** instance. |
+
+```python
+try:
+    await isc.send_command("lobby", "display1", "power_on")
+except isc.RemoteError as e:
+    log.warning(f"The lobby refused it: {e}")
+except (ConnectionError, TimeoutError):
+    log.warning("The lobby is not reachable right now")
+```
 
 ---
 

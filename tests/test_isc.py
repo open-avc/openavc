@@ -8,6 +8,7 @@ import pytest
 from openavc.core.isc import (
     MAX_AUTH_FAIL_ENTRIES,
     ISCManager,
+    ISCRemoteError,
     PeerConnection,
     PeerInfo,
     _client_proof,
@@ -456,7 +457,9 @@ async def test_handle_command_result(isc):
 
 
 async def test_handle_command_result_failure(isc):
-    """isc.command_result with success=false should set exception."""
+    """success=false is the peer's own answer, carried verbatim: the caller
+    has to be able to tell "your allowlist refused this" from "the network
+    is down", and only the peer knows which."""
     loop = asyncio.get_running_loop()
     future = loop.create_future()
     isc._pending_commands["req-err"] = future
@@ -469,8 +472,42 @@ async def test_handle_command_result_failure(isc):
     })
 
     assert future.done()
-    with pytest.raises(RuntimeError, match="Device not found"):
+    with pytest.raises(ISCRemoteError, match="Device not found"):
         future.result()
+
+
+async def test_handle_command_result_failure_without_a_reason(isc):
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    isc._pending_commands["req-bare"] = future
+
+    isc._handle_command_result({
+        "type": "isc.command_result", "id": "req-bare", "success": False,
+    })
+
+    with pytest.raises(ISCRemoteError, match="Remote command failed"):
+        future.result()
+
+
+async def test_a_peer_dropping_mid_command_is_a_connection_failure(isc):
+    """Not a refusal: this peer never said anything about the command, so it
+    is the same class of failure as never having been connected — and the
+    route answers both the same way."""
+    ws = FakeWebSocket(auth_key="testkey")
+    await isc.accept_inbound(ws, {
+        "type": "isc.hello", "instance_id": "peer-gone", "name": "Gone",
+    })
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    isc._pending_commands["req-flight"] = future
+    isc._pending_command_peers["req-flight"] = (future, "peer-gone")
+
+    await isc.peer_disconnected("peer-gone")
+
+    assert future.done()
+    with pytest.raises(ConnectionError, match="disconnected before answering"):
+        future.result()
+    assert not isinstance(future.exception(), ISCRemoteError)
 
 
 async def test_handle_event_message(isc, events):
@@ -1409,3 +1446,93 @@ async def test_isc_ws_rate_limit_survives_reconnect(isc, state, monkeypatch):
     ws2 = ScriptedWS("testkey", [hello, {"type": "isc.state", "changes": {"var.x": 42}}])
     await isc_ws.isc_websocket_endpoint(ws2)
     assert state.get("isc.cccc-3333.var.x") is None
+
+
+# ---------------------------------------------------------------------------
+# Handshake and discovery noise
+# ---------------------------------------------------------------------------
+
+class _HangUp(Exception):
+    """Stands in for starlette's WebSocketDisconnect, which core/isc.py does
+    not import — it is handed a WebSocket and never names its type."""
+
+
+class HangingUpWebSocket(FakeWebSocket):
+    """A peer that drops instead of answering the challenge.
+
+    Which is precisely what an outbound peer holding a DIFFERENT key does: it
+    checks our server_proof, refuses it, and closes without sending isc.auth.
+    """
+
+    async def receive_text(self) -> str:
+        raise _HangUp("peer closed")
+
+
+class DeafWebSocket(FakeWebSocket):
+    """A peer already gone by the time we try to tell it why it was refused."""
+
+    async def send_text(self, data: str) -> None:
+        raise _HangUp("peer closed")
+
+
+async def test_a_peer_that_hangs_up_during_the_challenge_is_refused_quietly(
+    isc_with_auth, caplog,
+):
+    """A routine key mismatch, reported in a line. It used to escape
+    accept_inbound as a WebSocketDisconnect and print a traceback from the
+    endpoint, which runs the handshake before its own try/finally."""
+    ws = HangingUpWebSocket(auth_key="")
+
+    with caplog.at_level("WARNING"):
+        peer_id = await isc_with_auth.accept_inbound(ws, {
+            "type": "isc.hello", "instance_id": "peer-quit", "name": "Quit",
+        })
+
+    assert peer_id is None
+    assert "peer-quit" not in isc_with_auth._peers
+    messages = [r.message for r in caplog.records]
+    assert any("peer closed during the challenge" in m for m in messages)
+    assert all(r.exc_info is None for r in caplog.records)
+
+
+async def test_a_reject_to_a_socket_that_is_already_gone_is_survivable(isc):
+    """The commonest reason a reject cannot be delivered is that the peer
+    already left — which is the very case being rejected."""
+    ws = DeafWebSocket(auth_key="testkey")
+
+    peer_id = await isc.accept_inbound(ws, {
+        "type": "isc.hello", "instance_id": "", "name": "Nameless",
+    })
+
+    assert peer_id is None
+
+
+async def test_a_held_discovery_port_is_explained_not_dumped(isc, caplog, monkeypatch):
+    """Another instance on this box already holding the port is an
+    explainable condition; the traceback that used to accompany it read like
+    a crash of something that had in fact degraded gracefully."""
+    import socket as socket_mod
+
+    class _RefusingSocket:
+        def __init__(self, *a, **k):
+            pass
+
+        def setsockopt(self, *a):
+            pass
+
+        def setblocking(self, *a):
+            pass
+
+        def bind(self, _addr):
+            raise OSError(48, "Address already in use")
+
+    monkeypatch.setattr(socket_mod, "socket", _RefusingSocket)
+
+    with caplog.at_level("ERROR"):
+        await isc._start_discovery()
+
+    assert isc._discovery_transport is None
+    records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert records, "the degradation still has to be reported"
+    assert all(r.exc_info is None for r in records)
+    assert any("manual peers still work" in r.message for r in records)

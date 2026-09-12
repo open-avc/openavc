@@ -22,6 +22,7 @@ from contextvars import ContextVar
 from typing import Any, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
+from openavc.core.isc import ISCRemoteError
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -328,6 +329,11 @@ class _LogProxy:
 
 class _ISCProxy:
     """Proxy to ISCManager. Lets scripts communicate with other instances."""
+
+    #: What ``send_command`` raises when the peer answered and refused, so a
+    #: script can write ``except isc.RemoteError`` without reaching into
+    #: platform modules for the class.
+    RemoteError = ISCRemoteError
 
     def __init__(self):
         self._manager = None

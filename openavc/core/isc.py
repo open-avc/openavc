@@ -68,6 +68,22 @@ AUTH_REJECT_DELAY = 300
 class _ISCAuthRejected(ConnectionRefusedError):
     """Outbound connect was rejected for an auth reason — backoff is long."""
 
+
+class ISCRemoteError(RuntimeError):
+    """The peer answered a remote command, and its answer was "no".
+
+    The distinction this exists to preserve is the one the caller has to act
+    on: a refusal carries the remote instance's OWN sentence — its policy
+    allowlist denied the command, it is at its concurrent-command cap, or its
+    device reported a fault — and each of those is fixed somewhere different,
+    on the far box. A transport failure (no connection, a timeout, the peer
+    dropping mid-command) is a ``ConnectionError`` or ``TimeoutError``
+    instead, because nothing over there ever formed an opinion.
+
+    ``RuntimeError`` remains the base so a script that already catches one
+    around ``isc.send_command`` keeps working.
+    """
+
 # Keepalive
 PING_INTERVAL = 30.0
 PING_TIMEOUT = 10.0
@@ -290,6 +306,9 @@ class ISCManager:
         # Background tasks
         self._tasks: list[asyncio.Task] = []
         self._connect_tasks: dict[str, asyncio.Task] = {}
+        # One event per live outbound loop, set to cut its reconnect wait
+        # short. See _wake_reconnects.
+        self._reconnect_wakeups: dict[str, asyncio.Event] = {}
 
         self._running = False
 
@@ -499,6 +518,11 @@ class ISCManager:
                     )
                 self._schedule_connect(tmp_key, host, port)
 
+        # Whatever changed, every waiting peer retries now rather than
+        # sitting out the rest of a backoff that a config change was supposed
+        # to end — the auth-reject message says so in as many words.
+        self._wake_reconnects()
+
         log.info(f"ISC reloaded ({len(self._shared_patterns)} patterns, {len(self._manual_peers)} manual peers)")
 
     # ------------------------------------------------------------------
@@ -552,7 +576,13 @@ class ISCManager:
         command: str,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        """Send a device command to a remote instance and wait for the result."""
+        """Send a device command to a remote instance and wait for the result.
+
+        Raises :class:`ISCRemoteError` carrying the remote instance's own
+        sentence when the peer answered but refused, ``ConnectionError`` when
+        there is no live connection or it drops before an answer arrives, and
+        ``TimeoutError`` when the peer does not answer in time.
+        """
         conn = self._require_connection(instance_id)
 
         request_id = str(uuid.uuid4())
@@ -644,11 +674,11 @@ class ISCManager:
         peer_version = hello.get("version", "")
 
         if not peer_id:
-            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "missing instance_id"})
+            await _ws_reject(ws, "missing instance_id")
             return None
 
         if not self._auth_key:
-            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "auth_not_configured"})
+            await _ws_reject(ws, "auth_not_configured")
             self._log_inbound_auth_fail(peer_id, "no auth key configured")
             return None
 
@@ -672,16 +702,26 @@ class ISCManager:
             auth_text = await asyncio.wait_for(ws.receive_text(), timeout=10.0)
             auth_msg = json.loads(auth_text)
         except (asyncio.TimeoutError, json.JSONDecodeError):
-            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "auth_timeout"})
+            await _ws_reject(ws, "auth_timeout")
+            return None
+        except Exception:
+            # The peer hung up instead of answering the challenge, which is
+            # what an outbound peer holding a DIFFERENT key does: it refuses
+            # our server_proof and closes. A routine key mismatch, and the
+            # sending side reports it in one line — so this side says it in
+            # one line too, rather than letting a WebSocketDisconnect
+            # traceback out of the endpoint (nothing above catches it: the
+            # handshake runs before isc_ws.py's try/finally).
+            self._log_inbound_auth_fail(peer_id, "peer closed during the challenge")
             return None
 
         if auth_msg.get("type") != "isc.auth":
-            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "expected isc.auth"})
+            await _ws_reject(ws, "expected isc.auth")
             return None
 
         expected_response = _client_proof(self._auth_key, nonce)
         if not hmac_mod.compare_digest(expected_response, str(auth_msg.get("response", ""))):
-            await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "auth_failed"})
+            await _ws_reject(ws, "auth_failed")
             self._log_inbound_auth_fail(peer_id, "HMAC verification failed")
             return None
 
@@ -702,7 +742,7 @@ class ISCManager:
                     # Our id is smaller — the outbound direction is canonical;
                     # reject this inbound. Lock released by context manager on
                     # the return below.
-                    await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": "duplicate"})
+                    await _ws_reject(ws, "duplicate")
                     log.debug(
                         f"ISC: Rejected inbound from {peer_id[:8]} "
                         f"(outbound direction is canonical)"
@@ -843,6 +883,15 @@ class ISCManager:
 
             ip = _get_local_ip()
             log.info(f"ISC: UDP discovery started on port {DISCOVERY_PORT} (local IP: {ip})")
+        except OSError as e:
+            # Almost always another instance on this box already holding the
+            # port. It is explainable in a sentence, and the traceback that
+            # used to accompany it read like a crash.
+            log.error(
+                "ISC: UDP discovery could not use port %d (%s) — peer "
+                "auto-discovery is off; manual peers still work",
+                DISCOVERY_PORT, e.strerror or e,
+            )
         except Exception:
             log.exception("ISC: UDP discovery startup failed — manual peers still work")
 
@@ -983,8 +1032,44 @@ class ISCManager:
         if self._connect_tasks.get(peer_id) is task:
             self._connect_tasks.pop(peer_id, None)
 
+    def _wake_reconnects(self) -> None:
+        """Cut every outbound peer's reconnect wait short.
+
+        The auth-reject backoff logs "backing off to 300s until configuration
+        changes", and a configuration change has to make that true. Nothing
+        else here can reach a backed-off peer: the wait is a sleep inside its
+        own outbound loop, the force-disconnect on a rotated key iterates
+        ``_connections`` and a backed-off peer holds none, and
+        ``_schedule_connect`` short-circuits on its still-live task. So the
+        only way out was to drop the peer from the manual list and add it
+        back — a five-minute silence at the one moment somebody is certainly
+        standing there watching, having just fixed the key.
+
+        Every outbound peer, not only the backed-off ones: a configuration
+        change is a reason to try any of them again now, and the schedule it
+        interrupts is a delay, not a decision.
+        """
+        for event in self._reconnect_wakeups.values():
+            event.set()
+
     async def _outbound_loop(self, peer_id: str, host: str, port: int, scheme: str = "http") -> None:
         """Maintain an outbound connection to a peer with reconnection."""
+        # Registered for the whole life of the loop so a reload can wake it
+        # out of the backoff in the body.
+        wake = asyncio.Event()
+        self._reconnect_wakeups[peer_id] = wake
+        try:
+            await self._outbound_loop_body(peer_id, host, port, scheme, wake)
+        finally:
+            # Identity-checked: a reload that dropped and re-added this peer
+            # may already have registered a fresh loop under the same id.
+            if self._reconnect_wakeups.get(peer_id) is wake:
+                del self._reconnect_wakeups[peer_id]
+
+    async def _outbound_loop_body(
+        self, peer_id: str, host: str, port: int, scheme: str, wake: asyncio.Event,
+    ) -> None:
+        """Connect, then reconnect on a schedule ``wake`` can cut short."""
         attempt = 0
         auth_fails = 0
         delay: float | None = None
@@ -1030,7 +1115,22 @@ class ISCManager:
                 delay = RECONNECT_DELAYS[idx]
                 attempt += 1
             log.debug(f"ISC: Reconnecting to {peer_id[:8]} in {delay}s")
-            await asyncio.sleep(delay)
+            wake.clear()
+            try:
+                await asyncio.wait_for(wake.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                pass
+            else:
+                # A reload asked for the retry now. Start the schedule over
+                # as well: the person who just changed the key needs to see
+                # whether it took, and the next failure is only reported at
+                # WARNING when it is the first one.
+                log.info(
+                    f"ISC: Configuration changed — retrying peer "
+                    f"{peer_id[:8]} now"
+                )
+                attempt = 0
+                auth_fails = 0
             delay = None
 
     async def _outbound_connect(self, peer_id: str, host: str, port: int, scheme: str = "http") -> None:
@@ -1297,7 +1397,9 @@ class ISCManager:
         if msg.get("success"):
             future.set_result(msg.get("result"))
         else:
-            future.set_exception(RuntimeError(msg.get("error", "Remote command failed")))
+            future.set_exception(
+                ISCRemoteError(msg.get("error") or "Remote command failed")
+            )
 
     async def _handle_remote_event(self, peer_id: str, msg: dict[str, Any]) -> None:
         """Emit a remote event on the local EventBus."""
@@ -1486,7 +1588,14 @@ class ISCManager:
             self._pending_command_peers.pop(rid, None)
             future = self._pending_commands.pop(rid, None)
             if future and not future.done():
-                future.set_exception(RuntimeError(f"Peer {peer_id} disconnected"))
+                # A transport failure, not an answer: this peer never said
+                # anything about the command. Same class as never having been
+                # connected, and the caller's fix is the same one.
+                future.set_exception(
+                    ConnectionError(
+                        f"Peer {peer_id[:8]} disconnected before answering"
+                    )
+                )
 
         peer = self._peers.get(peer_id)
         if peer and peer.connected:
@@ -1548,3 +1657,16 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
 async def _ws_send_fastapi(ws: Any, msg: dict[str, Any]) -> None:
     """Send a JSON message via a FastAPI WebSocket."""
     await ws.send_text(json.dumps(msg))
+
+
+async def _ws_reject(ws: Any, reason: str) -> None:
+    """Tell an inbound peer why it was refused, best effort.
+
+    The socket is closed straight after either way, and the commonest reason
+    a reject cannot be delivered is that the peer already hung up — which is
+    the very case being rejected. A failure here has nothing to report.
+    """
+    try:
+        await _ws_send_fastapi(ws, {"type": "isc.reject", "reason": reason})
+    except Exception:
+        log.debug("ISC: could not deliver reject (%s); peer already gone", reason)
