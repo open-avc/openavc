@@ -20,7 +20,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from openavc.api._engine import get_engine_optional
 from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
-from openavc.api.error_messages import friendly_error
+from openavc.api.error_messages import device_error_label, friendly_error
 from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.state_store import check_state_write, is_flat_primitive
 from openavc.utils.log_buffer import get_log_buffer, LogEntry
@@ -628,7 +628,7 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: driver command handlers can raise arbitrary exceptions
             log.error(f"Command failed: {e}")
-            device_name = engine.state.get(f"device.{device_id}.name") or device_id
+            device_name = device_error_label(device_id, engine.state, engine.project, exc=e)
             host = engine.state.get(f"device.{device_id}.host") or ""
             error_msg = friendly_error(e, device=device_name, host=host)
             await _send_ws(ws, {

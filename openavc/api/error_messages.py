@@ -9,8 +9,27 @@ from __future__ import annotations
 
 import errno
 import re
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from openavc.core.project_loader import ProjectConfig
+    from openavc.core.state_store import StateStore
+
+
+def device_error_label(
+    device_id: str, state: StateStore, project: ProjectConfig | None = None,
+    *, exc: Exception | None = None,
+) -> str:
+    """Use the configured name even after disabling removes live device state."""
+    from openavc.core.device_manager import DeviceNotFoundError
+
+    for device in getattr(project, "devices", ()):
+        if device.id == device_id and device.name:
+            return str(device.name)
+    fallback = "The requested equipment" if isinstance(exc, DeviceNotFoundError) else device_id
+    return str(state.get(f"device.{device_id}.name") or fallback)
 
 
 def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
@@ -124,6 +143,11 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
 
     # ValueError from our own code (e.g., "Device 'x' not found")
     if isinstance(exc, ValueError):
+        from openavc.core.device_manager import DeviceNotFoundError
+
+        if isinstance(exc, DeviceNotFoundError):
+            target = device or "The requested equipment"
+            return f"{target} is unavailable. Contact support."
         msg = str(exc)
         # Already human-readable messages from device_manager / macro_engine
         if "not found" in msg or "not connected" in msg or "blocked" in msg:

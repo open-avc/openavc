@@ -164,6 +164,11 @@ The device detail panel includes several management actions:
 - **Duplicate.** Create a copy of the device with a new ID, pre-filled with the same driver and settings.
 - **Device Log.** Filtered log view showing only activity for the selected device (commands sent, responses received, errors).
 
+A panel command aimed at disabled equipment reports that the equipment is
+unavailable, using its configured display name. If the device has been removed,
+the panel uses a general equipment message. Technical device IDs remain in the
+Programmer's logs for diagnosis.
+
 ### When a device won't connect
 
 An offline device shows the reason on its card and detail view (unreachable, connection refused, login rejected, and so on), and OpenAVC keeps retrying in the background for as long as the device is in the project. There is no cut-off: a display unplugged on Friday comes back by itself on Monday without anyone opening the Programmer. The first couple of attempts are a second or two apart and it then settles to one every five seconds.

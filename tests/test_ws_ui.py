@@ -489,7 +489,7 @@ async def test_a_press_that_never_reached_its_device_comes_back_with_the_reason(
         # Named by the interaction somebody performed, not by the action that
         # failed inside it.
         assert msg["source_type"] == "ui.press"
-        assert "ghost_projector" in msg["message"]
+        assert msg["message"] == "The requested equipment is unavailable. Contact support."
         # And by the control it came from. A panel moves a control the moment
         # it is touched, so a command that never ran leaves the operator's own
         # value standing with nothing coming to correct it -- this is what

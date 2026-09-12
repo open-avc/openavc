@@ -97,6 +97,7 @@ class MacroEngine:
         broadcast_ws: BroadcastWS | None = None,
         help_requests: Any = None,
         project_device_ids: Callable[[], set[str] | None] | None = None,
+        project_provider: Callable[[], Any] | None = None,
     ):
         self.state = state
         self.events = events
@@ -120,6 +121,7 @@ class MacroEngine:
         # harnesses, where the check is skipped rather than guessed, the same
         # posture _broadcast_ws and _help take.
         self._project_device_ids = project_device_ids
+        self._project_provider = project_provider
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
         self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
         self._group_names: dict[str, str] = {}  # group_id -> display name
@@ -815,11 +817,12 @@ class MacroEngine:
         seen. Deferred import to keep this module free of API imports at load
         time, matching ``ui_events`` and the project loader.
         """
-        from openavc.api.error_messages import friendly_error
+        from openavc.api.error_messages import device_error_label, friendly_error
 
         if not device_id:
             return friendly_error(exc)
-        name = self.state.get(f"device.{device_id}.name") or device_id
+        project = self._project_provider() if self._project_provider else None
+        name = device_error_label(device_id, self.state, project, exc=exc)
         host = self.state.get(f"device.{device_id}.host") or ""
         return friendly_error(exc, device=str(name), host=str(host))
 

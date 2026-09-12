@@ -543,10 +543,10 @@ class UIEventRuntime:
         the module free of API imports at load time, matching how the project
         loader reaches for its save-error twin.
         """
-        from openavc.api.error_messages import friendly_error
+        from openavc.api.error_messages import device_error_label, friendly_error
 
         state = self._engine.state
-        name = state.get(f"device.{device_id}.name") or device_id
+        name = device_error_label(device_id, state, self._engine.project, exc=exc)
         host = state.get(f"device.{device_id}.host") or ""
         return friendly_error(exc, device=str(name), host=str(host))
 
