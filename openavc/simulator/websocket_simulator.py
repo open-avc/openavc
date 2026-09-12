@@ -87,8 +87,12 @@ class WebSocketSimulator(BaseSimulator):
     # ── Lifecycle ──
 
     async def start(self, port: int) -> None:
-        """Start the WebSocket server on 127.0.0.1:port."""
-        self._port = port
+        """Start the WebSocket server on 127.0.0.1:port.
+
+        Port 0 binds an ephemeral port and the real one is read back, so
+        ``self.port`` is always the port a client should talk to — the same
+        contract ``TCPSimulator.start`` keeps.
+        """
         self._app = web.Application()
         # Catch-all route: a device's control endpoint may sit at "/" or a
         # vendor path; every GET that carries the WebSocket upgrade is
@@ -98,6 +102,11 @@ class WebSocketSimulator(BaseSimulator):
         await self._runner.setup()
         self._site = web.TCPSite(self._runner, "127.0.0.1", port)
         await self._site.start()
+        if port == 0:
+            addresses = getattr(self._runner, "addresses", None) or []
+            if addresses:
+                port = addresses[0][1]
+        self._port = port
         self._running = True
         logger.info(
             "%s started on port %d (driver: %s)",

@@ -159,13 +159,18 @@ class MQTTSimulator(BaseSimulator):
     # ── Lifecycle ──
 
     async def start(self, port: int) -> None:
-        self._port = port
+        """Start the broker. Port 0 binds an ephemeral port and the real one
+        is read back, so ``self.port`` is always the port a client should talk
+        to — the same contract ``TCPSimulator.start`` keeps."""
         ssl_ctx, self._tls_files = build_optional_tls(
             self.SIMULATOR_INFO, self.config, self.name
         )
         self._server = await asyncio.start_server(
             self._handle_client, host="127.0.0.1", port=port, ssl=ssl_ctx,
         )
+        if port == 0 and self._server.sockets:
+            port = self._server.sockets[0].getsockname()[1]
+        self._port = port
         self._running = True
         logger.info(
             "%s started on port %d (driver: %s, tls=%s)",

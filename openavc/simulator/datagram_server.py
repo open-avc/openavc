@@ -43,13 +43,21 @@ class DatagramServerMixin:
     # ── Lifecycle ──
 
     async def start_datagram_server(self, port: int) -> None:
-        """Bind the datagram endpoint on ``port``."""
-        self._port = port
+        """Bind the datagram endpoint on ``port``.
+
+        Port 0 binds an ephemeral port and the real one is read back, so
+        ``self.port`` is always the port a client should talk to — the same
+        contract ``TCPSimulator.start`` already keeps. Without the read-back
+        ``self.port`` answered 0 forever, which is not a port.
+        """
         loop = asyncio.get_running_loop()
         self._udp_transport, _ = await loop.create_datagram_endpoint(
             lambda: _SimDatagramProtocol(self),
             local_addr=("127.0.0.1", port),
         )
+        if port == 0:
+            port = self._udp_transport.get_extra_info("sockname")[1]
+        self._port = port
         self._running = True
         logger.info(
             "%s started on %s port %d (driver: %s)",

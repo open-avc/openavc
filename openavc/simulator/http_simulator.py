@@ -69,8 +69,12 @@ class HTTPServerMixin:
     # ── Lifecycle ──
 
     async def start_http_server(self, port: int) -> None:
-        """Start the HTTP server (https when this simulator opted into TLS)."""
-        self._port = port
+        """Start the HTTP server (https when this simulator opted into TLS).
+
+        Port 0 binds an ephemeral port and the real one is read back off the
+        listening socket, so ``self.port`` is always the port a client should
+        talk to — the same contract ``TCPSimulator.start`` already keeps.
+        """
         self._app = web.Application()
         # Catch-all route — forwards everything to the request handler
         self._app.router.add_route("*", "/{path:.*}", self._handle_http_request)
@@ -85,6 +89,11 @@ class HTTPServerMixin:
         )
         self._site = web.TCPSite(self._runner, "127.0.0.1", port, ssl_context=ssl_ctx)
         await self._site.start()
+        if port == 0:
+            sockets = getattr(self._runner, "addresses", None) or []
+            if sockets:
+                port = sockets[0][1]
+        self._port = port
         self._running = True
         logger.info(
             "%s started on HTTP port %d (driver: %s, tls=%s)",
