@@ -89,12 +89,17 @@ def _project() -> dict[str, Any]:
          "unit": "C", "bindings": {"show": {"value": {"key": "var.temp"}}}},
         {"id": "fad_mic", "type": "fader", "label": "Mic 1", "min": -60, "max": 10,
          "unit": "dB", "style": {"show_value": True}},
-        # Deliberately NOT editable in place, each for its own reason.
+        # A nav button with no name of its own: it draws its target page id,
+        # which is visible but NOT authored.
+        {"id": "nav_unnamed", "type": "page_nav", "target_page": "main"},
+        # A nav button that has been named.
+        {"id": "nav_named", "type": "page_nav", "target_page": "main",
+         "label": "Back"},
+        # Deliberately NOT editable in place.
         {"id": "cam_wide", "type": "camera_preset", "label": "Wide Shot",
          "preset_number": 3,
          "bindings": {"show": {"look": {"key": "var.power", "condition": {"equals": "on"},
                                         "style_active": {"bg_color": "#2e7d32"}}}}},
-        {"id": "nav_next", "type": "page_nav", "target_page": "main"},
     ]
     placements = {
         "btn_plain": {"x": 2, "y": 4, "w": 20, "h": 14},
@@ -108,13 +113,22 @@ def _project() -> dict[str, Any]:
         "gau_temp": {"x": 52, "y": 52, "w": 20, "h": 24},
         "fad_mic": {"x": 74, "y": 52, "w": 12, "h": 24},
         "cam_wide": {"x": 2, "y": 78, "w": 22, "h": 14},
-        "nav_next": {"x": 26, "y": 78, "w": 22, "h": 14},
+        "nav_unnamed": {"x": 26, "y": 78, "w": 22, "h": 14},
+        "nav_named": {"x": 50, "y": 78, "w": 22, "h": 14},
     }
     return {
         "openavc_version": "0.13.0", "devices": [],
         "ui": {
             "settings": {"theme_id": "dark-default"},
-            "master_elements": [], "page_groups": [],
+            "page_groups": [],
+            # A master: not on any one page, drawn on all of them. Its words
+            # are the highest-traffic text in a project, which is why it is
+            # editable here too.
+            "master_elements": [{
+                "id": "mst_home", "type": "button", "label": "Home",
+                "show_on": "all",
+                "placements": {"landscape": {"x": 76, "y": 78, "w": 20, "h": 14}},
+            }],
             "pages": [{
                 "id": "main", "name": "Main", "page_type": "page",
                 "layouts": [{"id": "d", "placements": placements}],
@@ -143,8 +157,14 @@ def builder(server_factory, page: Page) -> Page:
 
 
 def _open(page: Page, element_id: str) -> str | None:
-    """Double-click an element's hit box; return what the editor opened with."""
-    page.dblclick(f'[data-canvas-element="{element_id}"]')
+    """Double-click an element's hit box; return what the editor opened with.
+
+    A master's hit box is a different component with a different attribute,
+    which is exactly how it ended up with no double-click at all.
+    """
+    page.dblclick(
+        f'[data-canvas-element="{element_id}"], [data-canvas-master="{element_id}"]'
+    )
     page.wait_for_timeout(400)
     return page.evaluate(
         """() => {
@@ -351,7 +371,7 @@ def test_only_the_caption_takes_the_caret(
     assert untouched in _drawn(builder, element_id)
 
 
-@pytest.mark.parametrize("element_id", ["cam_wide", "nav_next"])
+@pytest.mark.parametrize("element_id", ["cam_wide"])
 def test_the_excluded_controls_are_not_offered(builder: Page, element_id: str) -> None:
     """Not every control that draws words is edited here.
 
@@ -368,3 +388,52 @@ def test_the_excluded_controls_are_not_offered(builder: Page, element_id: str) -
     builder.keyboard.type("Should not land")
     builder.wait_for_timeout(300)
     assert _stored(builder, element_id) == before
+
+
+def test_a_master_elements_words_are_editable_too(builder: Page) -> None:
+    """A master is drawn on every page, so its label is the most-used text there is.
+
+    Its hit box is a different component from a page element's, which is how it
+    came to have no double-click at all while every other control had one. It
+    also writes somewhere else: masters live in their own list, under their own
+    undo scope, not in the page.
+    """
+    assert _open(builder, "mst_home") == "Home"
+    _type_and_commit(builder, "Main Menu")
+    stored = builder.evaluate(
+        """() => {
+            const w = document.querySelector('iframe').contentWindow;
+            return w.__openavcPanel.uiDef.master_elements.find(m => m.id === 'mst_home');
+        }"""
+    )
+    assert stored["label"] == "Main Menu"
+    assert _drawn(builder, "mst_home") == "Main Menu"
+
+
+def test_a_named_nav_button_edits_its_label(builder: Page) -> None:
+    assert _open(builder, "nav_named") == "Back"
+    _type_and_commit(builder, "Go Back")
+    stored = _stored(builder, "nav_named")
+    assert stored["label"] == "Go Back"
+    assert stored["target_page"] == "main"
+
+
+def test_an_unnamed_nav_button_never_commits_its_target_page_id(builder: Page) -> None:
+    """It draws "main" because it has no label. That id is not authored text.
+
+    Opening it shows an empty box with the id behind it as a placeholder, so
+    pressing Enter without typing writes nothing. Committing what was on screen
+    would freeze a copy of a name that should keep following the page: rename
+    the page afterwards and the button would still say the old one.
+    """
+    assert _drawn(builder, "nav_unnamed") == "main"
+    assert _open(builder, "nav_unnamed") == ""
+    builder.keyboard.press("Enter")
+    builder.wait_for_timeout(600)
+    stored = _stored(builder, "nav_unnamed")
+    assert "label" not in stored or not stored.get("label")
+    assert _drawn(builder, "nav_unnamed") == "main"
+    # Typing, though, creates it.
+    assert _open(builder, "nav_unnamed") == ""
+    _type_and_commit(builder, "Home")
+    assert _stored(builder, "nav_unnamed")["label"] == "Home"

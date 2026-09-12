@@ -9,6 +9,10 @@ interface CanvasMasterElementProps {
   locked: boolean;
   /** Non-null while a gesture is in flight, which suppresses the handles. */
   gestureKind: "move" | "resize" | null;
+  /** Masters whose text the panel reports as editable in place. */
+  editableTextIds: Set<string>;
+  /** Why a master's words cannot be edited here, where that is worth saying. */
+  textRefusals: Record<string, string>;
   onSelect: (id: string) => void;
   onGestureStart: (
     masterId: string,
@@ -17,6 +21,8 @@ interface CanvasMasterElementProps {
     e: React.PointerEvent,
   ) => void;
   onContextMenu: (e: React.MouseEvent, masterId: string) => void;
+  onEditText: (masterId: string) => void;
+  onRefuseText: (reason: string) => void;
 }
 
 /**
@@ -29,7 +35,9 @@ interface CanvasMasterElementProps {
  * moves it on every page it appears on, and the badge says so rather than
  * leaving that to be discovered. It draws under the page's own hit boxes
  * (z 0 against their 1), matching the order the panel draws them in, so a
- * control laid over a master is still the thing you grab.
+ * control laid over a master is still the thing you grab. Editing its text is
+ * the same double-click for the same reason, and it has the same reach: the
+ * words change on every page the master appears on.
  */
 export function CanvasMasterElement({
   master,
@@ -37,22 +45,40 @@ export function CanvasMasterElement({
   selected,
   locked,
   gestureKind,
+  editableTextIds,
+  textRefusals,
   onSelect,
   onGestureStart,
   onContextMenu,
+  onEditText,
+  onRefuseText,
 }: CanvasMasterElementProps) {
+  const editable = editableTextIds.has(master.id);
+  const refusal = textRefusals[master.id];
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (locked || e.button !== 0) return;
     // Select on the way down, so a drag that starts on an unselected master
     // moves that master rather than whatever was selected before.
     if (!selected) onSelect(master.id);
+    // The second press of a double-click arms no drag; see CanvasElement.
+    if ((editable || refusal) && e.detail >= 2) return;
     onGestureStart(master.id, "move", "", e);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (locked || (!editable && !refusal)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (editable) onEditText(master.id);
+    else onRefuseText(refusal);
   };
 
   return (
     <div
       data-canvas-master={master.id}
       onPointerDown={handlePointerDown}
+      onDoubleClick={handleDoubleClick}
       onClick={(e) => {
         // The canvas background clears the selection on click, so letting this
         // bubble would deselect what the pointer-down just picked. A locked

@@ -27,6 +27,7 @@ import {
   layoutOrientation,
   resolveHidden,
   updateElementInPage,
+  updateMasterElement,
   patchForTextPath,
   MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
@@ -196,15 +197,41 @@ export function Canvas({
     (elementId: string, path: (string | number)[], value: string) => {
       const p = projectRef.current;
       if (!p) return;
+
       const element = (page.elements || []).find((e) => e.id === elementId);
-      if (!element) return;
-      const patch = patchForTextPath(element, path, value);
+      if (element) {
+        const patch = patchForTextPath(element, path, value);
+        if (!patch) return;
+        pushUndo({ pages: p.ui.pages }, "Edit text");
+        update({
+          ui: {
+            ...p.ui,
+            pages: updateElementInPage(p.ui.pages, page.id, elementId, patch),
+          },
+        });
+        touchMutation();
+        return;
+      }
+
+      // A master is not on this page, so it is written to its own list and
+      // snapshotted under its own undo scope. The words change on every page
+      // it appears on, which is the same reach dragging one already has.
+      const master = (p.ui.master_elements || []).find((m) => m.id === elementId);
+      if (!master) return;
+      const patch = patchForTextPath(master as never, path, value);
       if (!patch) return;
-      pushUndo({ pages: p.ui.pages }, "Edit text");
+      pushUndo(
+        { master_elements: p.ui.master_elements || [] },
+        "Edit master element text",
+      );
       update({
         ui: {
           ...p.ui,
-          pages: updateElementInPage(p.ui.pages, page.id, elementId, patch),
+          master_elements: updateMasterElement(
+            p.ui.master_elements || [],
+            elementId,
+            patch as never,
+          ),
         },
       });
       touchMutation();
@@ -1180,11 +1207,15 @@ export function Canvas({
                 selected={selectedMasterElementId === master.id}
                 locked={lockedElementIds.has(master.id)}
                 gestureKind={gesture?.kind ?? null}
+                editableTextIds={editableTextIds}
+                textRefusals={textRefusals}
                 onSelect={selectMasterElement}
                 onGestureStart={beginMasterGesture}
                 onContextMenu={(e, id) =>
                   setContextMenu({ x: e.clientX, y: e.clientY, elementId: id, isMaster: true })
                 }
+                onEditText={beginTextEdit}
+                onRefuseText={showInfo}
               />
             ))}
 

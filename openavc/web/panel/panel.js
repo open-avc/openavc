@@ -2896,6 +2896,7 @@ class PanelApp {
         if (element.target_page) {
             el.textContent = element.label || element.target_page;
             el.setAttribute('aria-label', `Navigate to ${element.label || element.target_page}`);
+            this._recordTextSource(el, ['label']);
             el.addEventListener('click', () => {
                 // The server replies with ui.navigate to this panel only.
                 // Moving here too opens overlays twice and consumes two Back
@@ -2904,6 +2905,7 @@ class PanelApp {
             });
         } else {
             el.textContent = element.label || 'No Target';
+            this._recordTextSource(el, ['label']);
             el.disabled = true;
             el.style.opacity = '0.5';
         }
@@ -8022,6 +8024,11 @@ class PanelApp {
             // A caption beside the control, in a node of its own.
             'group', 'status_led', 'slider', 'fader', 'level_meter',
             'gauge', 'select', 'text_input', 'list', 'keypad',
+            // A nav button is a button with words on it. Its text falls back to
+            // the target page id, so it opens EMPTY with that id behind it as a
+            // placeholder: committing the fallback would freeze a copy of a
+            // name that should keep following the page (_textPlaceholderFor).
+            'page_nav',
         ]);
     }
 
