@@ -44,6 +44,45 @@ the image loads. Selecting an asset or entering a URL preserves the source and
 any edits made while it loads. A ratio you set yourself, including turning the
 lock off, takes precedence over automatic sizing.
 
+## Editing Text on the Canvas
+
+Double-click a control's text and type over it. Enter saves, Escape discards,
+and clicking somewhere else saves. On a label set to allow line breaks, Shift
+and Enter together start a new line.
+
+**You edit what you wrote, not what is on screen.** A label bound to a device
+shows the live reading, so a label reading `Amp draw: 0.076 A` opens as
+`Amp draw: {value} A`, with the placeholder visible where the reading goes.
+Change the words around it, press Enter, and it goes back to showing the
+reading. A label with bold or italic markup opens with the `**` and `*` showing
+for the same reason.
+
+**A control showing one of several words edits the one you can see.** A button
+whose look changes with a device shows a different word per state. Double-click
+it and you are editing the word on screen. The others are in the Properties
+panel, under the same binding.
+
+**On a control with a caption, the caption is what you edit.** A gauge, fader,
+level meter, slider, dropdown, keypad, list, status LED, text input and group
+all draw a caption beside the control itself. Double-click picks the caption,
+so a gauge's reading, a fader's level and a dropdown's choices stay exactly as
+they are while you rename it.
+
+Master elements and page nav buttons work the same way. A master is drawn on
+every page it appears on, so its words change everywhere at once.
+
+**What is edited in the Properties panel instead:**
+
+- A matrix's source and destination names, which are set up in its own dialog
+- A camera preset's name, which shares a line with its preset number
+- A dropdown's choices and a list's rows
+- Any live reading, and a clock's display
+- Text inside a plugin panel or a custom control, which those own
+
+If a script or macro is setting a control's label while the system runs, the
+canvas says so and points you at the Properties panel, because the script's
+value would cover anything typed here.
+
 ## Warnings on the canvas
 
 Some controls contain parts that are a fixed number of pixels and do not shrink with the box. A status LED's dot is 20 pixels whatever you size the element to; a fader's handle is 44 and its number scale another 28. Drag one of those smaller than the parts inside it and the control still draws, with its contents cut off, which reads like a styling bug rather than a sizing one.
