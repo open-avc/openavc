@@ -17,8 +17,10 @@ import asyncio
 import socket as socket_module
 import ssl as ssl_module
 
+from openavc.core.connection_fault import ConnectionFault, typed_fault_from_exc
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data
+from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
 from openavc.utils.logger import get_logger
 from .types import Callback
 
@@ -104,6 +106,10 @@ class TCPTransport:
         self._connected = False
         # Last connect/IO error string, for the connection-fault classifier.
         self._last_error = ""
+        # A typed fault the classifier should prefer over matching the string
+        # above — set when the failure already knows its own code (a stalled
+        # write). Cleared on every connect so a healed link can't report it.
+        self._last_fault: ConnectionFault | None = None
 
         # For send_and_wait: a queue to capture the next response. May also
         # carry _DISCONNECT_SENTINEL to wake a parked waiter on disconnect.
@@ -179,6 +185,9 @@ class TCPTransport:
 
     async def _connect(self) -> None:
         """Open the TCP connection and start the reader loop."""
+        # Clean slate: a previous attempt's typed fault must not be read as
+        # this one's cause.
+        self._last_fault = None
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(
@@ -260,12 +269,13 @@ class TCPTransport:
             raise ConnectionError("Not connected")
         try:
             self._writer.write(data)
-            await self._writer.drain()
+            await drain_or_stalled(self._writer, self._name)
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (ConnectionError, OSError) as e:
             self._last_error = str(e) or type(e).__name__
+            self._last_fault = typed_fault_from_exc(e, host=self.host, port=self.port)
             log.error(f"TCP send error: {e}")
             await self._handle_disconnect()
             raise
@@ -315,11 +325,7 @@ class TCPTransport:
             except asyncio.CancelledError:
                 pass
         if self._writer:
-            try:
-                self._writer.close()
-                await self._writer.wait_closed()
-            except (ConnectionError, OSError):
-                pass
+            await close_or_abandon(self._writer, self._name)
         log.info(f"TCP disconnected from {self.host}:{self.port}")
 
     @property
@@ -330,6 +336,12 @@ class TCPTransport:
     def last_error(self) -> str:
         """Last connect/IO error string (for the connection-fault classifier)."""
         return self._last_error
+
+    @property
+    def last_fault(self) -> ConnectionFault | None:
+        """A typed fault for this failure, when the transport knew its own
+        cause. Preferred over string-matching ``last_error``."""
+        return self._last_fault
 
     async def _reader_loop(self) -> None:
         """Background task that reads from the socket and delivers messages."""

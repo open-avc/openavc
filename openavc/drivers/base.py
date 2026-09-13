@@ -803,16 +803,27 @@ class BaseDriver(ABC):
         return self._last_transport_error
 
     def _stash_transport_error(self) -> None:
-        """Capture the live transport's ``last_error`` before it's torn down.
+        """Capture the live transport's cause before it's torn down.
 
-        A no-op when there's no transport or it reports no error, so it never
-        overwrites a real cause with an empty string.
+        Takes ``last_error`` and, when the transport had already classified
+        itself, its typed ``last_fault`` — a stalled write knows its own code,
+        and the string it leaves behind matches no signature, so without this
+        the classifier would read a wedged device as a plain dropped link. The
+        fault must be copied HERE rather than read later: ``self.transport`` is
+        nulled before the disconnect event is emitted, so by the time the
+        DeviceManager classifies, the object holding it is gone.
+
+        A no-op when there's no transport or it reports nothing, so it never
+        overwrites a real cause with an empty one.
         """
         transport = self.transport
         if transport is not None:
             err = getattr(transport, "last_error", "") or ""
             if err:
                 self._last_transport_error = err
+            fault = getattr(transport, "last_fault", None)
+            if fault is not None:
+                self._last_fault = fault
 
     @property
     def last_fault(self) -> ConnectionFault | None:

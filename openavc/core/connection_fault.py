@@ -41,6 +41,7 @@ UNREACHABLE = "unreachable"
 HOST_KEY_REJECTED = "host_key_rejected"
 TLS_CERT_UNTRUSTED = "tls_cert_untrusted"  # HTTPS/TLS cert couldn't be verified
 NO_RESPONSE = "no_response"
+WRITE_STALLED = "write_stalled"  # link open, but the device stopped reading it
 CLIENT_MISSING = "client_missing"
 INVALID_CONFIG = "invalid_config"  # bad connection settings (baud/parity/port/...)
 TRANSPORT_DISCONNECTED = "transport_disconnected"  # generic fallback
@@ -69,6 +70,7 @@ _DRIVER_FAULT_CODES = frozenset({
     UNREACHABLE,
     HOST_KEY_REJECTED,
     NO_RESPONSE,
+    WRITE_STALLED,
     CLIENT_MISSING,
     INVALID_CONFIG,
     TRANSPORT_DISCONNECTED,
@@ -94,6 +96,10 @@ _DEFAULT_MESSAGES = {
     NO_RESPONSE: (
         "Connected, but the device didn't respond as expected. Wrong "
         "transport or protocol for this device?"
+    ),
+    WRITE_STALLED: (
+        "The device stopped accepting data on {where}. It's still on the "
+        "network but not reading — power-cycle it if it stays this way."
     ),
     CLIENT_MISSING: (
         "Required client not found. Install it and make sure it's on the "
@@ -124,9 +130,10 @@ def default_fault_message(code: str, where: str = "the device") -> str:
 # device manager stops reconnecting when it classifies one of these; a config
 # edit or the Reconnect button starts a fresh attempt.
 #
-# Everything else (unreachable, connection_refused, no_response,
+# Everything else (unreachable, connection_refused, no_response, write_stalled,
 # bridge_offline, transport_disconnected) is a network condition that can and
-# does heal on its own, so those keep retrying.
+# does heal on its own, so those keep retrying — write_stalled included, since a
+# wedged device that gets power-cycled comes back on its own.
 _PERMANENT_FAULT_CODES = frozenset({
     AUTH_FAILED,
     HOST_KEY_REJECTED,

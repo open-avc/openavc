@@ -46,7 +46,13 @@ import stat
 import sys
 import tempfile
 
-from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
+from openavc.core.connection_fault import (
+    INVALID_CONFIG,
+    ConnectionFault,
+    ConnectionFaultError,
+    typed_fault_from_exc,
+)
+from openavc.transport.write_drain import drain_or_stalled
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
@@ -146,6 +152,10 @@ class SSHTransport:
         # Last few stderr lines from ssh, for surfacing auth/host-key failures
         # to the driver when the session dies during the prompt read.
         self._stderr_tail = ""
+        # A typed fault the classifier should prefer over matching stderr —
+        # set when the failure already knows its own code (a stalled write).
+        # Cleared on every connect so a healed link can't report it.
+        self._last_fault: ConnectionFault | None = None
         # Strong refs for async on_data callback tasks (asyncio only weakly
         # references tasks) — same supervision pattern as the other transports.
         self._bg_tasks: set[asyncio.Task] = set()
@@ -297,6 +307,9 @@ class SSHTransport:
     # --- lifecycle -------------------------------------------------------
 
     async def _spawn(self) -> None:
+        # Clean slate: a previous attempt's typed fault must not be read as
+        # this one's cause.
+        self._last_fault = None
         argv = self.build_argv()
         env = self.build_env()
         # ssh creates known_hosts itself but not its parent directory.
@@ -376,10 +389,13 @@ class SSHTransport:
                 raise ConnectionError("Not connected")
             try:
                 self._proc.stdin.write(data)
-                await self._proc.stdin.drain()
+                await drain_or_stalled(self._proc.stdin, self._name)
                 if self._inter_command_delay > 0:
                     await asyncio.sleep(self._inter_command_delay)
             except (ConnectionError, OSError, BrokenPipeError) as e:
+                self._last_fault = typed_fault_from_exc(
+                    e, host=self.host, port=self.port
+                )
                 log.error(f"[{self._name}] SSH send error: {e}")
                 await self._handle_disconnect()
                 raise
@@ -442,6 +458,12 @@ class SSHTransport:
     def last_error(self) -> str:
         """Recent ssh stderr (auth/host-key diagnostics), trimmed."""
         return self._stderr_tail.strip()
+
+    @property
+    def last_fault(self) -> ConnectionFault | None:
+        """A typed fault for this failure, when the transport knew its own
+        cause. Preferred over string-matching ``last_error``."""
+        return self._last_fault
 
     def _cleanup_askpass(self) -> None:
         if self._askpass_path:

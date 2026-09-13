@@ -16,9 +16,15 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from openavc.core.connection_fault import INVALID_CONFIG, ConnectionFaultError
+from openavc.core.connection_fault import (
+    INVALID_CONFIG,
+    ConnectionFault,
+    ConnectionFaultError,
+    typed_fault_from_exc,
+)
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data
+from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
 from openavc.utils.logger import get_logger
 from .types import Callback
 
@@ -236,6 +242,10 @@ class SerialTransport:
         self._connected = False
         # Last open/IO error string, for the connection-fault classifier.
         self._last_error = ""
+        # A typed fault the classifier should prefer over matching the string
+        # above — set when the failure already knows its own code (a stalled
+        # write). Cleared on every connect so a healed link can't report it.
+        self._last_fault: ConnectionFault | None = None
 
         # For send_and_wait. May also carry _DISCONNECT_SENTINEL to wake a
         # parked waiter on disconnect/close.
@@ -303,6 +313,9 @@ class SerialTransport:
 
     async def _connect(self) -> None:
         """Open the serial port and start the reader loop."""
+        # Clean slate: a previous attempt's typed fault must not be read as
+        # this one's cause.
+        self._last_fault = None
         if self._simulate:
             self._connected = True
             if self._frame_parser is not None:
@@ -375,12 +388,13 @@ class SerialTransport:
 
         try:
             self._writer.write(data)
-            await self._writer.drain()
+            await drain_or_stalled(self._writer, self._name)
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (OSError, ConnectionError) as e:
             self._last_error = str(e) or type(e).__name__
+            self._last_fault = typed_fault_from_exc(e, port=self.port)
             log.error(f"Serial send error: {e}")
             await self._handle_disconnect()
             raise
@@ -427,12 +441,7 @@ class SerialTransport:
             except asyncio.CancelledError:
                 pass
         if self._writer and not self._simulate:
-            try:
-                self._writer.close()
-                if hasattr(self._writer, "wait_closed"):
-                    await self._writer.wait_closed()
-            except (OSError, AttributeError):
-                pass
+            await close_or_abandon(self._writer, self._name)
         log.info(f"Serial disconnected from {self.port}")
 
     @property
@@ -443,6 +452,12 @@ class SerialTransport:
     def last_error(self) -> str:
         """Last open/IO error string (for the connection-fault classifier)."""
         return self._last_error
+
+    @property
+    def last_fault(self) -> ConnectionFault | None:
+        """A typed fault for this failure, when the transport knew its own
+        cause. Preferred over string-matching ``last_error``."""
+        return self._last_fault
 
     # --- Simulation helpers ---
 
