@@ -34,6 +34,21 @@ const EMPTY: Omit<PanelAccess, "tunneled" | "localOnly"> = {
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
+/** The hostname form worth typing into a browser, or "" when there is none.
+ *
+ *  `/api/status` reports the raw OS hostname, whose shape is the platform's
+ *  business: bare on Linux and on an appliance image (`openavc`), already
+ *  dotted on macOS (`Aarons-MacBook-Air.local`), a domain name on a managed
+ *  box. So the suffix goes on a bare name only -- appending it to a dotted
+ *  one produced `Aarons-MacBook-Air.local.local`, which resolves nowhere.
+ *  The server's own copy of this rule is `utils/hostnames.py`.
+ */
+function resolvableHostname(raw: string): string {
+  const host = raw.trim().replace(/\.+$/, "");
+  if (!host || host.split(".")[0].toLowerCase() === "localhost") return "";
+  return host.includes(".") ? host : `${host}.local`;
+}
+
 /** The addresses to publish for a panel, from the server's status and the page.
  *
  *  `loc` is the browser's own location, passed in rather than read, so a test
@@ -59,7 +74,7 @@ export function panelAccess(
   }
 
   const localIp = String(systemStatus.local_ip ?? "");
-  const hostname = String(systemStatus.hostname ?? "");
+  const mdnsHost = resolvableHostname(String(systemStatus.hostname ?? ""));
   const httpPort = Number(systemStatus.http_port ?? 8080);
   const port80 = systemStatus.port80_active === true;
 
@@ -114,10 +129,10 @@ export function panelAccess(
     shortPanelUrl: shortBase && shortBase !== primaryBase ? `${shortBase}/panel` : "",
     // Name-based fallback that survives IP changes. ".local" resolves via mDNS
     // on phones and tablets (a bare machine name only resolves Windows-to-Windows).
-    hostnameUrl: hostname && hostname !== localIp
+    hostnameUrl: mdnsHost && mdnsHost !== localIp
       ? (tlsEnabled && !redirectHttp
-        ? `https://${hostname}.local:${tlsPort}/panel`
-        : `http://${hostname}.local${port80 ? "" : `:${httpPort}`}/panel`)
+        ? `https://${mdnsHost}:${tlsPort}/panel`
+        : `http://${mdnsHost}${port80 ? "" : `:${httpPort}`}/panel`)
       : "",
     pairUrl: qrBase ? `${qrBase}/pair` : "",
     qrPanelUrl: qrBase ? `${qrBase}/panel` : "",

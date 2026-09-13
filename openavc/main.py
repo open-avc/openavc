@@ -240,7 +240,18 @@ async def _initialize_engine(app: FastAPI) -> None:
         log.info(f"  Programmer:  {scheme}://localhost:{port}/programmer")
         log.info(f"  REST API:    {scheme}://localhost:{port}/api")
         local_ip = str(engine.get_status().get("local_ip") or "")
-        if local_ip and local_ip != "127.0.0.1":
+        if config.loopback_only():
+            # Every URL below this point is built from a LAN address, and the
+            # kernel refuses all of them on a loopback bind. Saying so is the
+            # only useful line here: this banner is the sole instruction a
+            # manual/checkout run ever gets, and the Dashboard's Panel Access
+            # card already tells the same truth from the other side.
+            log.info(
+                f"  LAN access:  none -- bound to {config.BIND_ADDRESS} "
+                "(local only). Set the bind address to 0.0.0.0 in "
+                "Settings > Network and restart to reach it from the network."
+            )
+        elif local_ip and local_ip != "127.0.0.1":
             log.info(f"  LAN access:  {scheme}://{local_ip}:{port}/panel")
             if runtime_flags.port80_active:
                 log.info(f"  Short URL:   http://{local_ip}/panel")
@@ -1218,7 +1229,7 @@ def main():
         msg = (
             f"{_primary_label} {_primary_port} is already in use.\n"
             f"Another application (or another copy of OpenAVC) is using this port.\n\n"
-            f"To fix this, change the port in Settings > System,\n"
+            f"To fix this, change the port in Settings > Network,\n"
             f"or set the {_env_var_hint} environment variable."
         )
         print(f"\n*** {msg} ***\n")

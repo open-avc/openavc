@@ -91,6 +91,36 @@ describe("panelAccess", () => {
     expect(a.shortPanelUrl).toBe("http://192.168.1.50:8080/panel");
   });
 
+  it("keeps a hostname that already carries a domain", () => {
+    // The card appended ".local" unconditionally, so a macOS controller --
+    // gethostname() there is already "Aarons-MacBook-Air.local" -- published
+    // "Aarons-MacBook-Air.local.local", which resolves nowhere. The same
+    // doubling was on the appliance setup screen (server side, fixed in
+    // utils/hostnames.py).
+    const a = panelAccess(
+      { ...LAN_STATUS, hostname: "Aarons-MacBook-Air.local" },
+      null,
+      onLan,
+    );
+    expect(a.hostnameUrl).toBe("http://Aarons-MacBook-Air.local:8080/panel");
+  });
+
+  it("leaves a managed host's domain name alone", () => {
+    const a = panelAccess(
+      { ...LAN_STATUS, hostname: "box.corp.example.com" },
+      null,
+      onLan,
+    );
+    expect(a.hostnameUrl).toBe("http://box.corp.example.com:8080/panel");
+  });
+
+  it("offers no hostname URL when the host has no name of its own", () => {
+    // A chroot answers "localhost", which is true of every machine and tells
+    // a panel nothing.
+    const a = panelAccess({ ...LAN_STATUS, hostname: "localhost" }, null, onLan);
+    expect(a.hostnameUrl).toBe("");
+  });
+
   it("drops the port when a port-80 listener is up", () => {
     const a = panelAccess({ ...LAN_STATUS, port80_active: true }, null, {
       hostname: "192.168.1.50",

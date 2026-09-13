@@ -11,14 +11,20 @@ interface LoginProps {
 }
 
 export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
-  const [user, setUser] = useState("admin");
+  // Empty, not "admin". The username is whatever the person who claimed this
+  // controller chose, and the client has no way to learn it -- a prefill is
+  // only ever right for the default, and when it is wrong it is invisible:
+  // the correct password typed over the wrong name answers "Wrong username or
+  // password" with nothing pointing at the name. An instance claimed without
+  // a username accepts any value here, blank included.
+  const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const passRef = useRef<HTMLInputElement>(null);
+  const userRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    passRef.current?.focus();
+    userRef.current?.focus();
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -33,7 +39,11 @@ export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
         return;
       }
       if (res.status === 401) {
-        setError("Wrong username or password.");
+        setError(
+          user.trim()
+            ? "Wrong username or password."
+            : "Wrong username or password. If this controller was claimed with a username, enter it too.",
+        );
       } else if (res.status === 429) {
         setError("Too many attempts. Wait a minute and try again.");
       } else {
@@ -86,6 +96,7 @@ export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           Username
           <input
+            ref={userRef}
             type="text"
             value={user}
             onChange={(e) => setUser(e.target.value)}
@@ -98,7 +109,6 @@ export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
           Password
           <input
-            ref={passRef}
             type="password"
             value={pass}
             onChange={(e) => setPass(e.target.value)}

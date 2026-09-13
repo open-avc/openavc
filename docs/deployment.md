@@ -191,7 +191,7 @@ You can also read and modify system configuration through the REST API:
 - `GET /api/system/config` returns the current configuration (sensitive fields redacted)
 - `PATCH /api/system/config` updates individual sections and saves to disk
 
-> **Bind address security:** The packaged installs — Windows installer, macOS installer, Docker, and the Linux install script — pre-configure `0.0.0.0` (network-accessible) since these deployments typically serve touch panels on other devices. A from-source installation defaults to `127.0.0.1` (localhost only); to allow network access, set `bind_address` to `0.0.0.0` in system.json or via the `OPENAVC_BIND` environment variable. To force localhost-only on a packaged install, set `OPENAVC_BIND=127.0.0.1` instead. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup.
+> **Bind address security:** The packaged installs — Windows installer, macOS installer, Docker, and the Linux install script — pre-configure `0.0.0.0` (network-accessible) since these deployments typically serve touch panels on other devices. A from-source installation defaults to `127.0.0.1` (localhost only); to allow network access, set `bind_address` to `0.0.0.0` in system.json or via the `OPENAVC_BIND` environment variable. To force localhost-only on a packaged install, set `OPENAVC_BIND=127.0.0.1` instead. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup. A localhost-only server says so where it would otherwise print a LAN address: the startup banner's `LAN access` line and the `/setup` screen both report local-only access and name the setting to change, rather than offering an address nothing on the network can open.
 
 ## Updates
 
@@ -548,7 +548,7 @@ Or edit `{data_dir}/system.json`:
 }
 ```
 
-Then restart the server. On first start with TLS on, OpenAVC generates a self-signed CA and server cert under `{data_dir}/tls/`. The cert is valid for 10 years and covers `localhost`, `127.0.0.1`, the OS hostname, and every LAN IPv4 the host has at generation time. It is regenerated automatically if the primary local IP changes later.
+Then restart the server. On first start with TLS on, OpenAVC generates a self-signed CA and server cert under `{data_dir}/tls/`. The cert is valid for 10 years and covers `localhost`, `127.0.0.1`, the OS hostname (plus its `.local` mDNS form — the name the setup screen prints and panels are told to type), and every LAN IPv4 the host has at generation time. It is regenerated automatically if the primary local IP changes later.
 
 ### Providing your own certificate
 

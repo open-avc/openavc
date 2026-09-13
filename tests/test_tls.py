@@ -393,12 +393,20 @@ def test_collect_local_identifiers_wide_open(monkeypatch):
 
 
 def test_collect_local_identifiers_hostname_sanitized(monkeypatch):
+    """Each label is scrubbed; the dots between them are structure, not junk.
+
+    Which name the OS hostname makes reachable is `utils/hostnames.py`'s call
+    and is pinned in tests/test_advertised_urls.py — here it is only that
+    nothing illegal for DNS reaches a SAN entry.
+    """
     monkeypatch.setattr(socket, "gethostname", lambda: "Aaron's Pi 4")
     hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
 
     sanitized = [h for h in hostnames if h != "localhost"]
     assert sanitized, "expected a sanitized hostname alongside 'localhost'"
     for h in sanitized:
-        assert all(c.isalnum() or c == "-" for c in h), (
-            f"hostname {h!r} contains unexpected chars"
-        )
+        for label in h.split("."):
+            assert label, f"hostname {h!r} has an empty label"
+            assert all(c.isalnum() or c == "-" for c in label), (
+                f"hostname {h!r} contains unexpected chars"
+            )

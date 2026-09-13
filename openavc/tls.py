@@ -102,8 +102,16 @@ class CertInfo:
 def collect_local_identifiers(bind_address: str) -> tuple[list[str], list[str]]:
     """Return (hostnames, ips) for inclusion in the cert's SubjectAlternativeName.
 
-    Always includes "localhost" + the OS hostname (sanitized through
-    ``mdns_advertiser._sanitize_hostname``) and "127.0.0.1".
+    Always includes "localhost", every name the OS hostname makes reachable
+    (``utils.hostnames.cert_hostnames`` -- the machine name, its ``.local``
+    form, and a managed box's domain name), and "127.0.0.1".
+
+    The hostname used to go through ``mdns_advertiser._sanitize_hostname``,
+    which sanitizes a single DNS *label* and therefore strips dots: on macOS
+    and on any FQDN-configured host that turned ``Aarons-MacBook-Air.local``
+    into the SAN entry ``Aarons-MacBook-Airlocal``, a name no lookup can ever
+    return, so installing the CA still left the machine's own advertised name
+    warning. Labels are now scrubbed individually and the dots kept.
 
     When ``bind_address`` is wide-open ("0.0.0.0" or "::"), every non-loopback
     IPv4 from ``ifaddr.get_adapters()`` is added so phones on the LAN connecting
@@ -111,15 +119,14 @@ def collect_local_identifiers(bind_address: str) -> tuple[list[str], list[str]]:
 
     "::1" is added whenever IPv6 is detected on any adapter.
     """
-    # Imported lazily so the TLS-off code path never pulls discovery in.
-    from openavc.discovery.mdns_advertiser import _sanitize_hostname
+    from openavc.utils.hostnames import cert_hostnames
 
     hostnames: list[str] = ["localhost"]
 
     try:
-        sanitized = _sanitize_hostname(socket.gethostname())
-        if sanitized and sanitized != "localhost":
-            hostnames.append(sanitized)
+        for name in cert_hostnames(socket.gethostname()):
+            if name not in hostnames:
+                hostnames.append(name)
     except OSError as exc:
         log.debug("Could not determine OS hostname for cert SAN: %s", exc)
 

@@ -387,7 +387,7 @@ When enabled, the server runs the HTTPS listener on port 8443 with an enforced *
 
 Three cert modes are supported:
 
-- **Auto-generated self-signed cert.** Built-in CA and server cert under `{data_dir}/tls/`, 10-year validity, SANs covering the OS hostname and every local IPv4. The CA is downloadable at `GET /api/certificate` for install on panel devices.
+- **Auto-generated self-signed cert.** Built-in CA and server cert under `{data_dir}/tls/`, 10-year validity, SANs covering the OS hostname, its `.local` mDNS form, and every local IPv4. The CA is downloadable at `GET /api/certificate` for install on panel devices.
 - **User-provided cert.** Point `tls.cert_file` / `tls.key_file` at PEM files signed by your internal CA. No browser warnings if the CA is already trusted by your fleet.
 - **Cloud-issued trusted cert.** Systems paired with OpenAVC Cloud can serve a publicly trusted certificate with no client-side setup at all. Details in the next section.
 

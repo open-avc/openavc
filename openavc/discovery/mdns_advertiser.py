@@ -35,6 +35,7 @@ from openavc.discovery.multicast import (
     join_group_on_interfaces,
     set_shared_port_reuse,
 )
+from openavc.utils.hostnames import sanitize_label
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -90,12 +91,24 @@ def _sanitize_instance_name(name: str) -> str:
 
 
 def _sanitize_hostname(name: str) -> str:
-    """Sanitize a hostname for DNS use."""
-    sanitized = re.sub(r"[^a-zA-Z0-9\-]", "", name.replace(" ", "-"))
-    sanitized = sanitized.strip("-")
-    encoded = sanitized.encode("utf-8")[:63]
-    sanitized = encoded.decode("utf-8", errors="ignore").strip("-")
-    return sanitized or "openavc"
+    """Sanitize a hostname into the single DNS label this responder answers for.
+
+    The character rule lives in ``utils.hostnames.sanitize_label``; this is a
+    label, so dots go. That is deliberately NOT a general hostname sanitizer,
+    and a caller that wants a name to print or to put in a certificate wants
+    ``utils.hostnames.resolvable_hostname`` / ``cert_hostnames`` instead.
+
+    On a host whose OS hostname is already dotted (macOS, an FQDN Linux box)
+    the label this produces is a name nobody queries -- and that is left
+    alone on purpose. Such a host always has a native mDNS responder
+    (mDNSResponder, avahi) that already owns and answers its real name;
+    announcing the same name from here would be a second claimant to it, and
+    RFC 6762 conflict resolution can rename the host. The deployments where
+    this advertiser is the ONLY responder -- the Pi image, the appliance
+    panel -- have a bare hostname, where a label and a hostname are the same
+    string.
+    """
+    return sanitize_label(name)
 
 
 # --- DNS Wire Format ---

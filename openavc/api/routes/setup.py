@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasicCredentials
 
-from openavc import host_control, runtime_flags
+from openavc import config, host_control, runtime_flags
 from openavc.api._engine import _get_engine
 from openavc.api.auth import (
     _basic,
@@ -38,6 +38,7 @@ from openavc.api.auth import (
     programmer_auth_satisfied,
 )
 from openavc.system_config import get_system_config
+from openavc.utils.hostnames import resolvable_hostname
 from openavc.utils.request_origin import is_local_console_request
 from openavc.version import __version__
 
@@ -156,26 +157,45 @@ async def setup_status(
     online = local_ip != "127.0.0.1"
     proto, port = _effective_endpoint()
 
-    # Prefer the routable IP; fall back to mDNS when there is a usable
-    # hostname. "localhost" means the host has no real name (e.g. a chroot).
-    mdns_name = hostname if hostname and hostname != "localhost" else None
-    if online:
+    # The name to type, decided once in utils.hostnames: ".local" belongs on a
+    # bare name only, and this screen is read on macOS and on FQDN-configured
+    # hosts as well as on an appliance. Empty when the host has no real name
+    # of its own (a chroot answers "localhost").
+    mdns_name = resolvable_hostname(hostname) or None
+
+    # A loopback-bound server serves NOTHING on any of the addresses below --
+    # the kernel refuses the connection -- and this screen's whole job is
+    # telling somebody which URL to open. So the address it offers is the one
+    # that works, and the page says why the others are missing.
+    local_only = config.loopback_only()
+
+    # Prefer the routable IP; fall back to mDNS when there is a usable name.
+    if local_only:
+        base = _base_url(proto, "localhost", port)
+    elif online:
         base = _base_url(proto, local_ip, port)
     elif mdns_name:
-        base = _base_url(proto, f"{mdns_name}.local", port)
+        base = _base_url(proto, mdns_name, port)
     else:
         base = None
 
     # On a multi-homed controller the top pick is only a best guess — which
     # address works depends on which network the person reading the screen is
-    # on. Send every leg with its own Programmer URL so they can pick.
+    # on. Send every leg with its own Programmer URL so they can pick. The
+    # addresses stay on the screen when the bind is loopback (they are still
+    # true of the machine, and they are what the integrator needs once the
+    # bind is opened); the URLs built from them do not.
     ips = all_ips if online else []
-    other_urls = [
-        f"{_base_url(proto, addr, port)}/programmer" for addr in ips[1:]
-    ]
+    other_urls = (
+        []
+        if local_only
+        else [f"{_base_url(proto, addr, port)}/programmer" for addr in ips[1:]]
+    )
 
     payload["network"] = {
         "online": online,
+        "local_only": local_only,
+        "bind_address": config.BIND_ADDRESS,
         "ip": local_ip if online else None,
         "ips": ips,
         "hostname": mdns_name,
@@ -315,7 +335,7 @@ _PAGE = """<!DOCTYPE html>
   </div>
 
   <div class="card" id="access-card" hidden>
-    <h2>Access Over the Network</h2>
+    <h2 id="access-title">Access Over the Network</h2>
     <div class="field"><span class="label">Programmer</span><span class="value" id="url-programmer"></span></div>
     <div class="field"><span class="label">Panel</span><span class="value" id="url-panel"></span></div>
     <div class="field" id="row-other-urls" hidden><span class="label">Or Try</span><span class="value multiline" id="url-others"></span></div>
@@ -398,16 +418,25 @@ _PAGE = """<!DOCTYPE html>
     } else {
       var url = net.programmer_url;
       // Multi-homed: the address below is the best guess, not the only
-      // answer, and nobody is standing here to correct it.
-      var tail = others.length
-        ? ' This controller is on more than one network -- if that address does not open, try the others listed below.'
-        : '';
+      // answer, and nobody is standing here to correct it. A loopback bind
+      // has the opposite problem -- there is exactly one address and it is
+      // not on the network -- so say that instead of listing alternates.
+      var tail = net.local_only
+        ? ' This controller is set to local-only access (bound to ' + net.bind_address + '), so nothing else on the network can reach it. To open it from another machine, set the bind address to 0.0.0.0 in Settings > Network and restart.'
+        : (others.length
+          ? ' This controller is on more than one network -- if that address does not open, try the others listed below.'
+          : '');
+      var where = net.local_only
+        ? 'From a browser on this device, open '
+        : 'From a browser on the same network, open ';
       if (s.state === 'setup') {
-        lede.innerHTML = 'From a browser on the same network, open <strong></strong> and create the admin password to claim this controller.';
+        lede.innerHTML = '<span></span><strong></strong> and create the admin password to claim this controller.';
+        lede.querySelector('span').textContent = where;
         lede.querySelector('strong').textContent = url;
         lede.appendChild(document.createTextNode(tail));
       } else if (!s.panel_has_content) {
-        lede.innerHTML = 'From a browser on the same network, open <strong></strong> and sign in to program this controller.';
+        lede.innerHTML = '<span></span><strong></strong> and sign in to program this controller.';
+        lede.querySelector('span').textContent = where;
         lede.querySelector('strong').textContent = url;
         lede.appendChild(document.createTextNode(tail));
       } else {
@@ -424,8 +453,12 @@ _PAGE = """<!DOCTYPE html>
       show('row-other-urls', others.length > 0);
       if (others.length) text('url-others', others.join('\\n'));
       show('row-host', !!net.hostname);
-      if (net.hostname) text('net-host', net.hostname + '.local');
+      // Already the resolvable form -- the server decides the ".local"
+      // suffix, because appending one here doubled it on any host whose
+      // name already carried a domain.
+      if (net.hostname) text('net-host', net.hostname);
       text('net-port', String(net.port));
+      text('access-title', net.local_only ? 'Access From This Device' : 'Access Over the Network');
       if (net.programmer_url) {
         text('url-programmer', net.programmer_url);
         text('url-panel', net.panel_url);
@@ -433,7 +466,7 @@ _PAGE = """<!DOCTYPE html>
       var ssh = net.ssh || {};
       show('row-ssh', !!ssh.supported);
       if (ssh.supported) {
-        text('ssh-state', ssh.enabled ? (net.hostname ? 'ssh openavc@' + net.hostname + '.local' : 'On') : 'Off (enable in Settings > Security)');
+        text('ssh-state', ssh.enabled ? (net.hostname ? 'ssh openavc@' + net.hostname : 'On') : 'Off (enable in Settings > Security)');
       }
     }
 

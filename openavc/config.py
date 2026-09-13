@@ -83,6 +83,26 @@ TRUST_FORWARDED_FOR: bool = _cfg.get("network", "trust_forwarded_for")
 # Port-80 convenience redirect (typed URLs drop the port). Best-effort bind.
 PORT80_REDIRECT: bool = _cfg.get("network", "port80_redirect")
 
+# Loopback binds, by every spelling the setting accepts.
+_LOOPBACK_BINDS = ("127.0.0.1", "::1", "[::1]", "localhost")
+
+
+def loopback_only() -> bool:
+    """True when the listener answers nothing but the machine it runs on.
+
+    THE question every surface that prints a LAN URL has to ask first: the
+    startup banner, the setup screen, and the Dashboard's Panel Access card
+    (which asks its own copy of it, over ``/api/status.bind_address``). On a
+    loopback-bound instance a ``http://<lan ip>:<port>/panel`` is refused by
+    the kernel, so printing one is an instruction that cannot be followed.
+
+    A function rather than a mirrored constant so it follows a monkeypatched
+    ``BIND_ADDRESS``, and because the answer is only ever wanted at display
+    time. Like the bind itself it takes a restart to change -- ``uvicorn``
+    was handed this value at startup.
+    """
+    return BIND_ADDRESS.strip() in _LOOPBACK_BINDS
+
 # HTTPS / TLS
 TLS_ENABLED: bool = _cfg.get("tls", "enabled")
 TLS_PORT: int = _cfg.get("tls", "port")
