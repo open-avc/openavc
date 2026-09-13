@@ -25,16 +25,16 @@ afterEach(() => {
 
 describe("importTheme", () => {
   it("POSTs without an overwrite param by default", async () => {
-    const fetchFn = mockFetch({ ok: true, status: 200, json: () => ({ status: "imported", id: "x", name: "X" }) });
+    const fetchFn = mockFetch({ ok: true, status: 200, json: () => ({ status: "imported", theme_id: "x", name: "X" }) });
     const res = await importTheme(file);
-    expect(res.id).toBe("x");
+    expect(res.theme_id).toBe("x");
     const url = fetchFn.mock.calls[0][0] as string;
     expect(url).toContain("/themes/import");
     expect(url).not.toContain("overwrite");
   });
 
   it("adds ?overwrite=true when overwriting", async () => {
-    const fetchFn = mockFetch({ ok: true, status: 200, json: () => ({ status: "imported", id: "x", name: "X" }) });
+    const fetchFn = mockFetch({ ok: true, status: 200, json: () => ({ status: "imported", theme_id: "x", name: "X" }) });
     await importTheme(file, true);
     expect(fetchFn.mock.calls[0][0] as string).toContain("?overwrite=true");
   });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeStudio } from "./ThemeStudio";
@@ -21,6 +21,39 @@ const theme = {
   element_defaults: { button: { border_radius: 0.5714 }, group: { border_radius: 1 } },
 };
 const project = { ui: { settings: {}, pages: [] } } as unknown as ProjectConfig;
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("Theme Studio import", () => {
+  it.each([false, true])("selects the imported theme from the server reply (overwrite=%s)", async (overwrite) => {
+    const user = userEvent.setup();
+    getTheme.mockResolvedValue(theme);
+    const fetchFn = vi.fn();
+    if (overwrite) {
+      fetchFn.mockResolvedValueOnce({
+        ok: false, status: 409,
+        json: async () => ({ code: "theme_exists", theme_id: "imported", name: "Imported" }),
+      });
+    }
+    fetchFn.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ status: "imported", theme_id: "imported", name: "Imported" }),
+    });
+    vi.stubGlobal("fetch", fetchFn);
+    const onChangeTheme = vi.fn();
+    const onRefreshThemes = vi.fn();
+    const { container } = render(<ThemeStudio open onClose={vi.fn()} themes={[]} project={project}
+      currentThemeId="sample" themeOverrides={{}} onChangeTheme={onChangeTheme}
+      onClearOverrides={vi.fn()} onRefreshThemes={onRefreshThemes} />);
+    await screen.findByRole("button", { name: "Import .avctheme" });
+    await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File([JSON.stringify({ ...theme, id: "imported" })], "imported.avctheme"));
+    if (overwrite) await user.click(await screen.findByRole("button", { name: "Overwrite", exact: true }));
+    await screen.findByText('Imported "Imported"');
+    expect(onChangeTheme).toHaveBeenCalledExactlyOnceWith("imported");
+    expect(onRefreshThemes).toHaveBeenCalledOnce();
+  });
+});
 
 describe("Theme Studio roundness", () => {
   beforeEach(() => {

@@ -245,7 +245,7 @@ export class ThemeExistsError extends Error {
 export async function importTheme(
   file: File,
   overwrite = false,
-): Promise<{ status: string; id: string; name: string }> {
+): Promise<{ status: string; theme_id: string; name: string }> {
   const formData = new FormData();
   formData.append("file", file);
   const url = `${BASE}/themes/import${overwrite ? "?overwrite=true" : ""}`;

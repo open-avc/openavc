@@ -969,7 +969,7 @@ export function ThemeStudio({
 
   const runImport = async (file: File, overwrite: boolean) => {
     const result = await importTheme(file, overwrite);
-    onChangeTheme(result.id);
+    onChangeTheme(result.theme_id);
     onRefreshThemes();
     setStatusMsg({ kind: "info", text: `Imported "${result.name}"` });
   };
