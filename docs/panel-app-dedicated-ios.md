@@ -36,7 +36,7 @@ Guided Access is built into iOS. It lets you pin the current app to the screen u
 - Someone has to enter a PIN to exit back to the home screen.
 
 **Tradeoffs:**
-- **Guided Access has to be started manually at the start of each session by triple-clicking the top button on the iPad.** If the iPad reboots or the battery dies, someone has to physically go to the tablet, launch the app, and re-engage Guided Access. There is no way to have iOS auto-engage Guided Access on boot.
+- **Guided Access has to be started by hand at the start of each session, by pressing the iPad's power button (the button on the top edge) three times quickly.** If the iPad reboots or the battery dies, someone has to physically go to the tablet, launch the app, and re-engage Guided Access. There is no way to have iOS auto-engage Guided Access on boot.
 - It is a per-device feature, not a per-app policy. Anyone with the PIN can disengage it on a whim.
 
 Good for installs where someone staff-side visits the tablet daily anyway.
@@ -64,8 +64,8 @@ This is what large-scale deployments use.
 1. On the iPad, open **Settings**.
 2. Tap **Accessibility**, then **Guided Access**.
 3. Toggle **Guided Access** on.
-4. Tap **Passcode Settings** and set a passcode. Write it down.
-5. Optionally, enable **Accessibility Shortcut** so you can also engage Guided Access by triple-pressing the top button.
+4. Tap **Passcode Settings**, then **Set Guided Access Passcode**, and choose a passcode. Write it down.
+5. On the same Guided Access screen, make sure **Accessibility Shortcut** is on. That is what makes the triple-press of the power button start a session.
 
 ### 2. Install and Pair the App
 
@@ -75,19 +75,19 @@ This is what large-scale deployments use.
 
 ### 3. Start a Guided Access Session
 
-1. With the OpenAVC Panel app open and the panel visible, triple-click the top button on the iPad.
-2. Tap **Guided Access**.
+1. With the OpenAVC Panel app open and the panel visible, press the power button three times quickly.
+2. If a menu of accessibility shortcuts appears, tap **Guided Access**.
 3. Tap **Start** in the upper-right corner.
 
 The iPad is now locked to the panel. The Home indicator is hidden. Notifications are suppressed.
 
 ### 4. Exit Guided Access
 
-Triple-click the top button, enter your Guided Access passcode, then tap **End** in the upper-left corner.
+Press the power button three times, enter your Guided Access passcode, then tap **End** in the upper-left corner.
 
 ### What Happens on Reboot
 
-The iPad returns to its lock screen. Someone has to unlock it, tap the OpenAVC Panel icon, then triple-click the top button and start Guided Access again. There is no way around this at Tier 2. If this is unacceptable, move to Tier 3.
+The iPad returns to its lock screen. Someone has to unlock it, tap the OpenAVC Panel icon, then press the power button three times and start Guided Access again. There is no way around this at Tier 2. If this is unacceptable, move to Tier 3.
 
 ## Tier 3 Walkthrough: Autonomous Single App Mode
 
@@ -107,7 +107,7 @@ Create a restriction profile in your MDM that allows `com.openavc.panel` to use 
 
 ### 4. Launch the App
 
-When the OpenAVC Panel app launches on a managed iPad with the ASAM profile, it calls `UIAccessibility.requestGuidedAccessSession(enabled: true)` and the system locks immediately. No physical triple-click required. The iPad stays locked across reboots.
+In the app, open the admin menu (tap the top-left corner of the panel three times), then **Panel settings**, and switch on **Lock on launch**. From then on the app asks iPadOS to lock the iPad every time the panel opens, and the system locks immediately. No button presses required. The iPad stays locked across reboots. The same screen has a test button that reports whether this iPad allows the app to lock itself; on an iPad without the profile it always refuses.
 
 ### 5. Exit for Maintenance
 
@@ -134,7 +134,7 @@ A pre-provisioned OpenAVC Panel Tablet (turnkey, arrives configured) is on the r
 ## Troubleshooting
 
 **Guided Access won't start.**
-Make sure it's toggled on in Settings > Accessibility > Guided Access. The passcode must be set. Then launch the OpenAVC Panel app first; Guided Access only engages on whatever app is foregrounded when you triple-click.
+Make sure it's toggled on in Settings > Accessibility > Guided Access. The passcode must be set. Then launch the OpenAVC Panel app first; Guided Access only engages on whatever app is on screen when you press the power button three times. If the presses do nothing, **Accessibility Shortcut** is off in Settings > Accessibility > Guided Access.
 
 **iPad keeps disengaging Guided Access.**
 Check Settings > Accessibility > Guided Access > Time Limits. Turn off any time limits so the session doesn't auto-end.
