@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import json as json_module
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -50,6 +51,18 @@ class SSEEventStream:
     when the device promises periodic keepalives, setting it slightly above
     the keepalive interval lets a half-open TCP connection (device power
     cut, NAT expiry) be detected and reconnected. 0 waits forever.
+
+    ``session`` (``push.session`` in the driver) makes the stream a device
+    session with a handshake: the device names the session in a response
+    header (``header``) or in the data of a typed opening event (``event`` +
+    ``key``), an optional ``pattern`` picks the id out of that value, and the
+    ``on_session`` callback runs with the id once per (re)open -- that is
+    where the driver arms the subscription. A ``close_event`` ends the
+    session from the device side, so the stream reopens at once instead of
+    holding a dead connection. The opening and closing events are session
+    plumbing and never reach ``callback``; ``on_session(None)`` says the
+    session is gone. Without ``session`` every event's data is delivered,
+    whatever its type.
     """
 
     def __init__(
@@ -60,6 +73,8 @@ class SSEEventStream:
         idle_timeout: float = 0.0,
         connect_timeout: float = 10.0,
         name: str | None = None,
+        session: dict[str, Any] | None = None,
+        on_session: Callable[[str | None], Any] | None = None,
     ) -> None:
         self.path = path
         self._client = client
@@ -68,6 +83,9 @@ class SSEEventStream:
         self._connect_timeout = connect_timeout
         self._name = name or path
         self._closed = False
+        self._session = session if isinstance(session, dict) else None
+        self._on_session = on_session
+        self.session_id: str | None = None
         # First failure logs at warning; repeats drop to debug until a
         # connection succeeds again, so an unreachable device doesn't flood
         # the log at the retry cadence.
@@ -112,14 +130,33 @@ class SSEEventStream:
                         f"[{self._name}] Event stream open: {self.path}"
                     )
                     self._warned = False
+                    closed_by_device = False
+                    session = self._session
+                    if session is not None:
+                        # The device names the session in the reply headers
+                        # (the SSCv2 Content-Location); the opening event is
+                        # the fallback when it does not.
+                        header = session.get("header")
+                        if header:
+                            await self._open_session(
+                                response.headers.get(str(header), "")
+                            )
                     data_lines: list[str] = []
+                    event_type = ""
                     async for line in response.aiter_lines():
                         backoff = 1.0
                         if line == "":
                             # Blank line ends an event; dispatch its data.
-                            if data_lines:
-                                await self._dispatch("\n".join(data_lines))
+                            if data_lines or event_type:
+                                data = "\n".join(data_lines)
+                                kind = await self._session_event(event_type, data)
+                                if kind == "close":
+                                    closed_by_device = True
+                                    break
+                                if kind is None and data_lines:
+                                    await self._dispatch(data)
                                 data_lines = []
+                                event_type = ""
                             continue
                         if line.startswith(":"):
                             continue  # comment / keepalive
@@ -128,14 +165,24 @@ class SSEEventStream:
                             value = value[1:]
                         if field == "data":
                             data_lines.append(value)
-                        # event/id/retry fields carry no data — ignored.
+                        elif field == "event":
+                            event_type = value.strip()
+                        # id/retry fields carry no data — ignored.
                     # Server closed the stream cleanly; fall through to retry.
-                    if data_lines:
-                        await self._dispatch("\n".join(data_lines))
-                log.debug(
-                    f"[{self._name}] Event stream {self.path} ended; "
-                    f"reconnecting"
-                )
+                    if data_lines and not closed_by_device:
+                        data = "\n".join(data_lines)
+                        if await self._session_event(event_type, data) is None:
+                            await self._dispatch(data)
+                if closed_by_device:
+                    log.info(
+                        f"[{self._name}] Event stream {self.path}: the "
+                        f"device closed the session; reopening"
+                    )
+                else:
+                    log.debug(
+                        f"[{self._name}] Event stream {self.path} ended; "
+                        f"reconnecting"
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -151,10 +198,97 @@ class SSEEventStream:
                 else:
                     log.warning(msg)
                     self._warned = True
+            await self._end_session()
             if self._closed:
                 return
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
+
+    async def _session_event(self, event_type: str, data: str) -> str | None:
+        """Consume a session event: ``"close"`` when the device ended the
+        session (the caller drops the connection and reopens), ``"open"``
+        for the opening event (it supplies the session id when the header
+        did not), None for anything else. Both session kinds are swallowed,
+        since neither is device state."""
+        session = self._session
+        if session is None or not event_type:
+            return None
+        close_event = session.get("close_event")
+        if close_event and event_type == str(close_event):
+            await self._end_session()
+            return "close"
+        open_event = session.get("event")
+        if open_event and event_type == str(open_event):
+            if self.session_id is None:
+                key = session.get("key")
+                value = ""
+                if key:
+                    try:
+                        payload = json_module.loads(data)
+                    except (ValueError, TypeError):
+                        payload = None
+                    if isinstance(payload, dict) and payload.get(key) is not None:
+                        value = str(payload[key])
+                await self._open_session(value)
+            return "open"
+        return None
+
+    def _extract_session_id(self, value: str) -> str:
+        """Pick the session id out of a header or event value: ``pattern``'s
+        first group when it has one, else its whole match, else the value."""
+        value = (value or "").strip()
+        if not value:
+            return ""
+        pattern = (self._session or {}).get("pattern")
+        if not pattern:
+            return value
+        try:
+            m = re.search(str(pattern), value)
+        except re.error:
+            return value
+        if not m:
+            return ""
+        return m.group(1) if m.groups() else m.group(0)
+
+    async def _open_session(self, raw_value: str) -> None:
+        """Record the session id and tell the owner once per (re)open. A
+        value the pattern cannot read is logged and the stream stays open:
+        events still flow, only the arming step is skipped."""
+        session_id = self._extract_session_id(raw_value)
+        if not session_id:
+            if raw_value:
+                log.warning(
+                    f"[{self._name}] Event stream {self.path}: could not read "
+                    f"a session id out of {raw_value!r}"
+                )
+            return
+        if self.session_id is not None:
+            return
+        self.session_id = session_id
+        log.debug(f"[{self._name}] Event stream session {session_id}")
+        if self._on_session is not None:
+            try:
+                result = self._on_session(session_id)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                log.exception(
+                    f"[{self._name}] Error in event-stream session callback"
+                )
+
+    async def _end_session(self) -> None:
+        if self.session_id is None:
+            return
+        self.session_id = None
+        if self._on_session is not None:
+            try:
+                result = self._on_session(None)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                log.exception(
+                    f"[{self._name}] Error in event-stream session callback"
+                )
 
     async def _dispatch(self, data: str) -> None:
         """Hand one event's data to the callback; a callback error must not
@@ -315,6 +449,8 @@ class HTTPClientTransport:
         callback: Callable[[bytes], Any],
         idle_timeout: float = 0.0,
         name: str | None = None,
+        session: dict[str, Any] | None = None,
+        on_session: Callable[[str | None], Any] | None = None,
     ) -> SSEEventStream:
         """Subscribe to a Server-Sent-Events endpoint (``push: {type: sse}``).
 
@@ -322,7 +458,9 @@ class HTTPClientTransport:
         client session (so auth headers/TLS settings apply) and delivers each
         event's data block to ``callback(bytes)`` (sync or async). The stream
         reconnects on its own with exponential backoff; ``await
-        handle.close()`` (or closing this transport) stops it.
+        handle.close()`` (or closing this transport) stops it. ``session`` and
+        ``on_session`` are the device-session handshake
+        (:class:`SSEEventStream`).
 
         Raises:
             ConnectionError: If the client is not open.
@@ -339,6 +477,8 @@ class HTTPClientTransport:
             idle_timeout=idle_timeout,
             connect_timeout=self.timeout,
             name=name or self._name,
+            session=session,
+            on_session=on_session,
         )
         self._event_streams.append(stream)
         return stream

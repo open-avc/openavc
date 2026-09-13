@@ -55,6 +55,8 @@ DEF_TS_NAMES: dict[str, str] = {
     "authBlock": "DriverAuthDef",
     "livenessBlock": "DriverLivenessDef",
     "pushBlock": "DriverPushDef",
+    "pushSession": "DriverPushSessionDef",
+    "pushRegisterEntry": "DriverPushRegisterEntry",
     "routingBlock": "DriverRoutingDef",
     "routingPlane": "DriverRoutingPlane",
     "discoveryBlock": "DriverDiscoveryConfig",
@@ -418,6 +420,18 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         lambda: spec.DEFS["authBlock"],
         {"type": _D(type="string")},
         _D(all_optional=True),
+    ),
+    (
+        "DriverPushSessionDef",
+        lambda: spec.DEFS["pushSession"],
+        {},
+        _D(all_optional=True),
+    ),
+    (
+        "DriverPushRegisterEntry",
+        lambda: spec.DEFS["pushRegisterEntry"],
+        {},
+        _D(),
     ),
     (
         "DriverPushDef",

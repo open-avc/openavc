@@ -1369,5 +1369,5 @@ def test_loader_rejects_an_arg_spec_borrowed_from_an_osc_rule():
         d["responses"][0]["child_set"][0]["state"] = {"input": {"arg": 0}}
 
     assert any(
-        "the spec is {key, type, map}" in e for e in _errors_for(mutate)
+        "the spec is {key, type, map, contains}" in e for e in _errors_for(mutate)
     )

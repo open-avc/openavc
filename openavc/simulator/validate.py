@@ -2061,6 +2061,18 @@ def _json_rule_keys(responses: list) -> set[str]:
             key = mapping.get("key") if isinstance(mapping, dict) else None
             if isinstance(key, str) and key:
                 keys.add(key.split(".")[0].split("[")[0])
+        # A json rule's child_set routes by JSON path too (literal id per
+        # entry): a body carrying one of those paths' top-level keys is
+        # parsed just the same, so a per-child notification is not ignored.
+        for entry in resp.get("child_set") or []:
+            state_map = entry.get("state") if isinstance(entry, dict) else None
+            for spec in (state_map or {}).values():
+                key = (
+                    spec.get("key", spec.get("path")) if isinstance(spec, dict)
+                    else spec
+                )
+                if isinstance(key, str) and key:
+                    keys.add(key.split(".")[0].split("[")[0])
     return keys
 
 

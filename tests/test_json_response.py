@@ -431,3 +431,140 @@ def test_after_json_sets_the_platform_floor():
     assert ("responses[1].after_json", "0.34.0") in platform_requirements(
         definition
     )
+
+
+# ---------------------------------------------------------------------------
+# `contains`: a yes/no question of the value at a key
+# ---------------------------------------------------------------------------
+
+CONTAINS_DEFINITION = {
+    "id": "acme_flagger",
+    "name": "Acme Flagger",
+    "manufacturer": "Acme",
+    "category": "utility",
+    "version": "1.0.0",
+    "transport": "http",
+    "default_config": {"host": "", "port": 80},
+    "state_variables": {
+        "no_link": {"type": "boolean", "label": "No link"},
+        "low_battery": {"type": "boolean", "label": "Low battery"},
+        "has_dante": {"type": "boolean", "label": "Has Dante"},
+        "name_has_stage": {"type": "boolean", "label": "Stage in name"},
+        "code_is_7": {"type": "boolean", "label": "Code is 7"},
+        "in_bank_3": {"type": "boolean", "label": "Bank 3"},
+        "warning_count": {"type": "integer", "label": "Warnings"},
+    },
+    "child_entity_types": {
+        "channel": {
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {
+                "no_link": {"type": "boolean"},
+                "af_peak": {"type": "boolean"},
+            },
+            "instances": {"count": 2},
+        }
+    },
+    "commands": {
+        "query": {"label": "Query", "method": "GET", "path": "/status"},
+    },
+    "responses": [
+        {
+            "json": True,
+            "set": {
+                "no_link": {"key": "warnings", "contains": "NoLink"},
+                "low_battery": {"key": "warnings", "contains": "LowBattery"},
+                "has_dante": {"key": "interfaces", "contains": "dante"},
+                "name_has_stage": {"key": "name", "contains": "Stage"},
+                "code_is_7": {"key": "code", "contains": 7},
+                "in_bank_3": {"key": "banks", "contains": 3},
+                "warning_count": "warnings",
+            },
+        },
+        {
+            "json": True,
+            "child_set": [
+                {
+                    "type": "channel",
+                    "id": 1,
+                    "state": {
+                        "no_link": {"key": "/api/channel/0/warnings", "contains": "NoLink"},
+                        "af_peak": {"key": "/api/channel/0/warnings", "contains": "AfPeak"},
+                    },
+                },
+                {
+                    "type": "channel",
+                    "id": 2,
+                    "state": {
+                        "no_link": {"key": "/api/channel/1/warnings", "contains": "NoLink"},
+                        "af_peak": {"key": "/api/channel/1/warnings", "contains": "AfPeak"},
+                    },
+                },
+            ],
+        },
+    ],
+}
+
+
+@pytest.fixture
+def flagger(state, events):
+    state.set_event_bus(events)
+    cls = create_configurable_driver_class(CONTAINS_DEFINITION)
+    drv = cls("flag1", {"host": "127.0.0.1", "port": 80}, state, events)
+    drv._register_declared_children()
+    return drv
+
+
+def test_loader_accepts_contains_specs():
+    from openavc.drivers.driver_loader import validate_driver_definition
+
+    assert validate_driver_definition(CONTAINS_DEFINITION) == []
+
+
+@pytest.mark.asyncio
+async def test_contains_answers_membership_key_substring_and_equality(flagger):
+    body = (
+        '{"warnings": ["NoLink", "RfPeak"], "interfaces": {"dante": {}, "analog": {}},'
+        ' "name": "Stage left", "code": 7, "banks": [1, 3]}'
+    )
+    assert flagger._apply_json_responses(body) is True
+    assert flagger.get_state("no_link") is True
+    assert flagger.get_state("low_battery") is False
+    assert flagger.get_state("has_dante") is True
+    assert flagger.get_state("name_has_stage") is True
+    assert flagger.get_state("code_is_7") is True
+    assert flagger.get_state("in_bank_3") is True
+    # The plain path on the same key still stores the array's length.
+    assert flagger.get_state("warning_count") == 2
+
+
+@pytest.mark.asyncio
+async def test_contains_false_when_the_flag_clears(flagger):
+    flagger._apply_json_responses('{"warnings": ["NoLink"]}')
+    assert flagger.get_state("no_link") is True
+    flagger._apply_json_responses('{"warnings": []}')
+    assert flagger.get_state("no_link") is False
+    assert flagger.get_state("warning_count") == 0
+
+
+@pytest.mark.asyncio
+async def test_contains_skips_a_body_without_the_key(flagger):
+    flagger._apply_json_responses('{"warnings": ["LowBattery"]}')
+    assert flagger.get_state("low_battery") is True
+    # A body about something else leaves the flag alone.
+    assert flagger._apply_json_responses('{"name": "Podium"}') is True
+    assert flagger.get_state("low_battery") is True
+
+
+@pytest.mark.asyncio
+async def test_contains_routes_to_children_by_literal_id(flagger):
+    body = (
+        '{"/api/channel/0/warnings": ["NoLink"],'
+        ' "/api/channel/1/warnings": ["AfPeak", "RfPeak"]}'
+    )
+    assert flagger._apply_json_responses(body) is True
+    one = flagger.get_child_state("channel", 1)
+    two = flagger.get_child_state("channel", 2)
+    assert one["no_link"] is True
+    assert one["af_peak"] is False
+    assert two["no_link"] is False
+    assert two["af_peak"] is True

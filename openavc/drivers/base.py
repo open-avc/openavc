@@ -39,6 +39,7 @@ from openavc.core.connection_fault import (
     default_fault_message,
     normalize_child_fault_claim,
 )
+from openavc.core.condition_eval import _coerce_bool
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import (
@@ -676,6 +677,14 @@ class BaseDriver(ABC):
         # rebuilt on every (re)connect. Exposed as push_callback_url so
         # registration commands can hand it to the device.
         self._push_callback_url: str = ""
+        # sse shape with a `session:` block: the id the device gave the open
+        # stream, so a registration command can address it ({push_session}).
+        # Empty outside a live session.
+        self._push_session: str = ""
+        # Register entries that failed on their last run, so a device that
+        # refuses the same registration on every reopen warns once and then
+        # drops to debug until it succeeds again.
+        self._push_register_failed: set[str] = set()
         # Registered child entities: {child_type: {local_id: register_epoch}}.
         # The inner mapping is a dict (not a set) so it preserves insertion
         # order, which makes list_children() output stable for tests and IDE
@@ -1999,16 +2008,127 @@ class BaseDriver(ABC):
         # dial back (resolves an ephemeral port-0 bind to the real port).
         self.config["listener_port"] = sub.port
 
-        register = push_def.get("register")
-        if register:
-            try:
-                await self.send_command(str(register))
-            except Exception as e:
-                log.warning(
-                    f"[{self.device_id}] push: registration command "
-                    f"{register!r} failed: {e} — the device will not push "
-                    f"until it reconnects (polling still covers it)"
-                )
+        await self._run_push_register(push_def)
+
+    def _push_register_entries(self, push_def: dict[str, Any]) -> list[dict[str, Any]]:
+        """Normalize ``push.register`` to a list of entry dicts.
+
+        Accepted forms: one command name; a list of names; or dicts of
+        ``{command, when?, each_child?}`` -- ``when`` names a config field
+        the entry needs truthy (an integrator's opt-in switch), ``each_child``
+        names a child type the command runs once per registered child of,
+        the child's local id passed as the command's child_id parameter.
+        The loader validates the shape; this only reads it.
+        """
+        raw = push_def.get("register")
+        if raw is None or raw == "":
+            return []
+        items = raw if isinstance(raw, list) else [raw]
+        entries: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, str) and item.strip():
+                entries.append({"command": item.strip()})
+            elif isinstance(item, dict) and isinstance(item.get("command"), str):
+                entries.append(item)
+        return entries
+
+    def _push_entry_enabled(self, entry: dict[str, Any]) -> bool:
+        """``when: <config_field>``: run only while that field is truthy."""
+        field = entry.get("when")
+        if field is None:
+            return True
+        value = self.config.get(str(field))
+        as_bool = _coerce_bool(value)
+        return bool(value) if as_bool is None else as_bool
+
+    def _child_id_param(self, command: str, child_type: str) -> str | None:
+        """The name of ``command``'s child_id parameter for ``child_type``."""
+        cmd = (self.DRIVER_INFO.get("commands") or {}).get(command)
+        params = cmd.get("params") if isinstance(cmd, dict) else None
+        if not isinstance(params, dict):
+            return None
+        for pname, pdef in params.items():
+            if (
+                isinstance(pdef, dict)
+                and pdef.get("type") == "child_id"
+                and pdef.get("child_type") == child_type
+            ):
+                return pname
+        return None
+
+    async def _run_push_register(self, push_def: dict[str, Any]) -> None:
+        """Run the push block's registration command(s).
+
+        Called once the channel is open: after the dial-back listener binds
+        (tcp_listener) or the device has named the session (sse), and again
+        on every reconnect or reopen, since device-side registrations do not
+        survive a reboot, a link cut or a new session. A failure never takes
+        the device down -- polling still covers it -- and is logged once per
+        entry until that entry succeeds again, because a registration the
+        device refuses is refused on every reopen.
+        """
+        for entry in self._push_register_entries(push_def):
+            if not self._push_entry_enabled(entry):
+                continue
+            command = str(entry["command"])
+            child_type = entry.get("each_child")
+            runs: list[dict[str, Any]] = []
+            if child_type:
+                pname = self._child_id_param(command, str(child_type))
+                if pname is None:
+                    log.warning(
+                        f"[{self.device_id}] push: register command "
+                        f"{command!r} has no child_id parameter for "
+                        f"{child_type!r}; skipping"
+                    )
+                    continue
+                runs = [
+                    {pname: local_id}
+                    for local_id in self.list_children(str(child_type))
+                ]
+            else:
+                runs = [{}]
+            for params in runs:
+                label = f"{command} {params}" if params else command
+                try:
+                    await self.send_command(command, params)
+                except Exception as e:
+                    msg = (
+                        f"[{self.device_id}] push: registration command "
+                        f"{label} failed: {e} — the device will not push "
+                        f"what it registers until this succeeds (polling "
+                        f"still covers it)"
+                    )
+                    if label in self._push_register_failed:
+                        log.debug(msg)
+                    else:
+                        log.warning(msg)
+                        self._push_register_failed.add(label)
+                else:
+                    self._push_register_failed.discard(label)
+
+    async def _on_push_session(self, session_id: str | None) -> None:
+        """The sse stream named its session (or lost it).
+
+        With an id, the registration commands run against it: ``{push_session}``
+        substitutes the id into their paths and bodies. With None the token
+        is withdrawn, so a command sent between sessions carries the literal
+        token (loud in the device log) rather than a stale id.
+        """
+        if not session_id:
+            self._push_session = ""
+            return
+        self._push_session = session_id
+        push_def = self.DRIVER_INFO.get("push")
+        if isinstance(push_def, dict):
+            await self._run_push_register(push_def)
+
+    @property
+    def push_session(self) -> str:
+        """The id of the live sse session (``push.session`` shape), or ``""``
+        outside one. Python drivers that register in code read it from the
+        ``_on_push_session`` hook."""
+        return self._push_session
 
     def _start_push_sse(self, push_def: dict[str, Any]) -> None:
         """Open the driver's declared SSE event stream(s).
@@ -2016,7 +2136,10 @@ class BaseDriver(ABC):
         SSE rides the driver's own HTTP session (auth + TLS settings apply),
         so it needs the HTTP transport — no listener, no source demux. The
         stream owns reconnect/backoff; a stream that can't connect is a
-        logged gap covered by polling, never a device fault.
+        logged gap covered by polling, never a device fault. A ``session:``
+        block turns the stream into a device session: the stream reports the
+        id the device gave it and the registration commands run against it,
+        on every (re)open.
         """
         transport = self.transport
         if transport is None or not hasattr(transport, "open_event_stream"):
@@ -2031,6 +2154,17 @@ class BaseDriver(ABC):
             idle_timeout = float(push_def.get("idle_timeout") or 0)
         except (TypeError, ValueError):
             idle_timeout = 0.0
+        session = push_def.get("session")
+        if not isinstance(session, dict):
+            session = None
+        elif len(paths) > 1:
+            # One session per stream would leave {push_session} ambiguous;
+            # the loader refuses this shape, this is the runtime backstop.
+            log.warning(
+                f"[{self.device_id}] push: a session block needs a single "
+                f"event-stream path; ignoring the session"
+            )
+            session = None
         streams = []
         for raw in paths:
             path = str(self._resolve_push_value(raw) or "").strip()
@@ -2047,6 +2181,8 @@ class BaseDriver(ABC):
                     self._handle_push_event,
                     idle_timeout=idle_timeout,
                     name=self.device_id,
+                    session=session,
+                    on_session=self._on_push_session if session else None,
                 )
             )
         if streams:
@@ -2100,9 +2236,14 @@ class BaseDriver(ABC):
         sub = self._push_subscription
         self._push_subscription = None
         self._push_callback_url = ""
+        self._push_register_failed.clear()
         if sub is None:
+            self._push_session = ""
             return
+        # De-register while the session id is still known (an sse
+        # unregister addresses the session), then withdraw it.
         await self._push_unregister()
+        self._push_session = ""
         for handle in sub if isinstance(sub, list) else [sub]:
             try:
                 await handle.close()
@@ -2132,6 +2273,9 @@ class BaseDriver(ABC):
             or self.transport is None
             or not self.transport.connected
         ):
+            return
+        if isinstance(push_def.get("session"), dict) and not self._push_session:
+            # An sse session that never opened has nothing to end.
             return
         try:
             await asyncio.wait_for(

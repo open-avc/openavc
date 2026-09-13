@@ -40,6 +40,8 @@ from openavc.drivers.spec import (
     PARAM_OPTIONS_FROM_SOURCES as _PARAM_OPTIONS_FROM_SOURCES,
     PORT_OPEN_TRANSPORTS,
     PUSH_FRAME_PARSER_TYPES,
+    PUSH_REGISTER_ENTRY_KEYS,
+    PUSH_SESSION_KEYS,
     PUSH_TYPE_KEYS,
     REQUIRED_FIELDS,
     SEND_FRAME_TYPES,
@@ -82,12 +84,29 @@ def _child_writable_props(type_def: Any) -> set[str]:
 UNEVALUATED_KEY = "<unevaluated>"
 
 # Names the platform substitutes without the driver declaring them:
-# ``child_id`` in a per-child send template, and the two tokens the push
+# ``child_id`` in a per-child send template, and the three tokens the push
 # machinery injects before a registration command goes out (``base.py`` sets
-# ``listener_port``; ``_push_params`` supplies ``push_callback_url``).
+# ``listener_port``; ``_push_params`` supplies ``push_callback_url`` and, for
+# an sse session, ``push_session``).
 PLATFORM_SUBSTITUTIONS = frozenset(
-    {"child_id", "push_callback_url", "listener_port"}
+    {"child_id", "push_callback_url", "listener_port", "push_session"}
 )
+
+def _json_contains_errors(where: str, spec: dict[str, Any]) -> list[str]:
+    """``contains`` on a json mapping spec asks a yes/no question of the value
+    at ``key`` (membership, a key, a substring), so it takes a scalar to look
+    for. One function so the set:, mappings: and child_set: walkers share
+    one wording."""
+    if "contains" not in spec:
+        return []
+    needle = spec["contains"]
+    if needle is None or isinstance(needle, (dict, list)):
+        return [
+            f"{where}: contains must be a scalar to look for (a flag name, "
+            f"a number, true/false), not {type(needle).__name__}"
+        ]
+    return []
+
 
 # One ``{name}`` or ``{name:format_spec}`` token. Deliberately requires an
 # identifier, so a literal JSON body — ``{"vol": {level}}`` — matches only on
@@ -1029,6 +1048,20 @@ def validate_driver_definition(
                     f"Response {i}: json response needs a 'set' map, a "
                     f"'mappings' list or a 'child_set'"
                 )
+            json_set = resp.get("set")
+            if isinstance(json_set, dict):
+                for state_key, spec in json_set.items():
+                    if isinstance(spec, dict):
+                        errors.extend(_json_contains_errors(
+                            f"Response {i}: set.{state_key}", spec
+                        ))
+            json_mappings = resp.get("mappings")
+            if isinstance(json_mappings, list):
+                for j, m in enumerate(json_mappings):
+                    if isinstance(m, dict):
+                        errors.extend(_json_contains_errors(
+                            f"Response {i}: mappings[{j}]", m
+                        ))
             # child_set on a json rule routes by LITERAL id (a body carries no
             # capture and no address to route on) and reads its values by JSON
             # path, like the rule's own set:. A misdeclared entry would
@@ -1106,14 +1139,19 @@ def validate_driver_definition(
                                     f"{where}: state '{prop}' needs a JSON "
                                     f"path: \"a.b\" or {{key: a.b}}"
                                 )
-                            unknown = set(expr) - {"key", "path", "type", "map"}
+                            unknown = set(expr) - {
+                                "key", "path", "type", "map", "contains",
+                            }
                             if unknown:
                                 errors.append(
                                     f"{where}: state '{prop}' has "
                                     f"{sorted(unknown)}, which a json rule "
                                     f"does not read — the spec is "
-                                    f"{{key, type, map}}"
+                                    f"{{key, type, map, contains}}"
                                 )
+                            errors.extend(
+                                _json_contains_errors(f"{where}: state '{prop}'", expr)
+                            )
                         elif isinstance(expr, str) and expr.startswith("$"):
                             errors.append(
                                 f"{where}: state '{prop}' — a json rule has "
@@ -1582,6 +1620,66 @@ def validate_driver_definition(
                         "seconds"
                     )
 
+                # A device session the stream carries: where the id comes
+                # from and which event ends it. A misdeclared block would
+                # silently never arm the device (the exact still-polling
+                # failure the shape exists to fix), so enforce it here.
+                session = push_def.get("session")
+                if session is not None:
+                    if not isinstance(session, dict):
+                        errors.append("push: session must be a mapping")
+                    else:
+                        unknown_session = set(session) - set(PUSH_SESSION_KEYS)
+                        if unknown_session:
+                            errors.append(
+                                f"push: session has unknown key(s): "
+                                f"{', '.join(sorted(unknown_session))} "
+                                f"(known: {', '.join(PUSH_SESSION_KEYS)})"
+                            )
+                        for skey in ("header", "event", "key", "close_event"):
+                            sval = session.get(skey)
+                            if sval is not None and (
+                                not isinstance(sval, str) or not sval.strip()
+                            ):
+                                errors.append(
+                                    f"push: session {skey} must be a "
+                                    f"non-empty string"
+                                )
+                        if session.get("key") and not session.get("event"):
+                            errors.append(
+                                "push: session key names a JSON key in the "
+                                "opening event's data, so it needs 'event' "
+                                "(the event type that carries it)"
+                            )
+                        if not session.get("header") and not (
+                            session.get("event") and session.get("key")
+                        ):
+                            errors.append(
+                                "push: session needs a source for the "
+                                "session id: 'header' (a response header), "
+                                "or 'event' + 'key' (a JSON key in the "
+                                "opening event's data), or both"
+                            )
+                        spat = session.get("pattern")
+                        if spat is not None:
+                            if not isinstance(spat, str) or not spat.strip():
+                                errors.append(
+                                    "push: session pattern must be a "
+                                    "non-empty regex"
+                                )
+                            else:
+                                err = _regex_redos_error(
+                                    "push: session pattern", spat
+                                )
+                                if err:
+                                    errors.append(err)
+                        if isinstance(paths, list) and len(paths) > 1:
+                            errors.append(
+                                "push: a session block needs a single "
+                                "event-stream path ({push_session} would be "
+                                "ambiguous across several sessions)"
+                            )
+
             elif ptype == "tcp_listener":
                 # The local inbound port the device dials back to. 0 lets the
                 # OS assign one (fine when the registration command carries
@@ -1652,26 +1750,90 @@ def validate_driver_definition(
                                     "be 'big' or 'little'"
                                 )
 
-                # register / unregister name driver commands (run after the
-                # listener opens / before it closes). A typo here would
-                # silently never arm the device — enforce the reference.
+            # register / unregister name driver commands (run after the
+            # listener opens or the session is named / before it closes). A
+            # typo here would silently never arm the device — enforce the
+            # reference. register also takes a list, whose entries may be
+            # {command, when, each_child} dicts.
+            if ptype in ("tcp_listener", "sse"):
                 _commands = driver_def.get("commands")
-                _command_names = (
-                    set(_commands) if isinstance(_commands, dict) else set()
+                _command_map = _commands if isinstance(_commands, dict) else {}
+                _command_names = set(_command_map)
+                _raw_child_types = driver_def.get("child_entity_types")
+                _child_type_names = (
+                    set(_raw_child_types)
+                    if isinstance(_raw_child_types, dict)
+                    else set()
                 )
-                for ckey in ("register", "unregister"):
-                    cval = push_def.get(ckey)
-                    if cval is None:
-                        continue
+
+                def _check_register_command(where: str, cval: Any) -> None:
                     if not isinstance(cval, str) or not cval.strip():
-                        errors.append(
-                            f"push: {ckey} must be a command name"
-                        )
+                        errors.append(f"push: {where} must be a command name")
                     elif cval not in _command_names:
                         errors.append(
-                            f"push: {ckey} command '{cval}' is not declared "
+                            f"push: {where} command '{cval}' is not declared "
                             f"in commands"
                         )
+
+                reg = push_def.get("register")
+                if reg is not None:
+                    reg_items = reg if isinstance(reg, list) else [reg]
+                    if isinstance(reg, list) and not reg:
+                        errors.append("push: register list must not be empty")
+                    for j, item in enumerate(reg_items):
+                        where = f"register[{j}]" if isinstance(reg, list) else "register"
+                        if isinstance(item, dict):
+                            unknown_entry = set(item) - set(PUSH_REGISTER_ENTRY_KEYS)
+                            if unknown_entry:
+                                errors.append(
+                                    f"push: {where} has unknown key(s): "
+                                    f"{', '.join(sorted(unknown_entry))} "
+                                    f"(known: "
+                                    f"{', '.join(PUSH_REGISTER_ENTRY_KEYS)})"
+                                )
+                            _check_register_command(where, item.get("command"))
+                            when = item.get("when")
+                            if when is not None and (
+                                not isinstance(when, str)
+                                or when not in _push_config_fields
+                            ):
+                                errors.append(
+                                    f"push: {where} when {when!r} must name a "
+                                    f"config field declared in config_schema, "
+                                    f"default_config, or config_derived"
+                                )
+                            each = item.get("each_child")
+                            if each is not None:
+                                if not isinstance(each, str) or each not in _child_type_names:
+                                    errors.append(
+                                        f"push: {where} each_child {each!r} is "
+                                        f"not a declared child entity type"
+                                    )
+                                else:
+                                    cmd_def = _command_map.get(item.get("command"))
+                                    params = (
+                                        cmd_def.get("params")
+                                        if isinstance(cmd_def, dict)
+                                        else None
+                                    )
+                                    has_child_param = isinstance(params, dict) and any(
+                                        isinstance(pd, dict)
+                                        and pd.get("type") == "child_id"
+                                        and pd.get("child_type") == each
+                                        for pd in params.values()
+                                    )
+                                    if not has_child_param:
+                                        errors.append(
+                                            f"push: {where} runs once per "
+                                            f"'{each}' child, so command "
+                                            f"'{item.get('command')}' needs a "
+                                            f"child_id parameter of that type"
+                                        )
+                        else:
+                            _check_register_command(where, item)
+                unreg = push_def.get("unregister")
+                if unreg is not None:
+                    _check_register_command("unregister", unreg)
 
     # Validate the optional `auth:` login handshake block. The runtime swaps to
     # raw byte buffering and types credentials before any other traffic — so a

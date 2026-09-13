@@ -1261,7 +1261,20 @@ responses:
       mode:        { key: video.mode, map: { "1": Extended, "2": Clone } }
 ```
 
-Each `set` value is the JSON field to read: a plain key, a dot path (`video.mode`), or a `{ key, type, map }` object. Missing keys are left alone, and a key that lands on a list or object yields its length. A reply wrapped in a single-element array (`[{ ... }]` — some devices wrap every reply that way) is unwrapped to its object first; multi-element arrays are ambiguous and are not parsed. You can add several `json: true` responses — they all run against every reply — and a body that isn't JSON falls through to your regex patterns. In the no-code Commands & Responses editor this is the "has a JSON field" response mode (one field per row).
+Each `set` value is the JSON field to read: a plain key, a dot path (`video.mode`), or a `{ key, type, map, contains }` object. Missing keys are left alone, and a key that lands on a list or object yields its length. A reply wrapped in a single-element array (`[{ ... }]` — some devices wrap every reply that way) is unwrapped to its object first; multi-element arrays are ambiguous and are not parsed. You can add several `json: true` responses — they all run against every reply — and a body that isn't JSON falls through to your regex patterns. In the no-code Commands & Responses editor this is the "has a JSON field" response mode (one field per row).
+
+**A list of flags becomes one boolean per flag with `contains`.** A device that reports its warnings as an array of names (`"warnings": ["NoLink", "LowBattery"]`) gives a trigger nothing to compare against: the length says how many, not which. `contains` stores whether the value at the key holds the given entry instead of the value itself — membership for an array, a key for an object, a substring for a string — so each flag lands in its own boolean a trigger or an alert rule can watch:
+
+```yaml
+responses:
+  - json: true
+    set:
+      no_link:       { key: warnings, contains: NoLink }
+      low_battery:   { key: warnings, contains: LowBattery }
+      warning_count: warnings              # the same key, read plainly: the count
+```
+
+The same spec works inside a json rule's `child_set:` state map. Pair it with a boolean state variable; the value is stored under the variable's declared type like any other mapping. Needs platform 0.34.0.
 
 Because every json rule runs against every reply, two endpoints on the same device that reuse a field name with different meanings would cross-write each other's state — a paired peripheral's `status` landing in the main unit's power state, say. Scope such a rule with `require:` — a JSON key (or list of keys, all required) that must be present in the body before the rule applies:
 
@@ -1534,6 +1547,50 @@ push:
 - `path` — the event-stream URL path on the device, or a **list** of paths for devices that stream each resource separately (Barco ClickShare lets you subscribe to every endpoint you can GET). Literal paths start with `/`; `{config_field}` templates are allowed.
 - `idle_timeout` — optional. If the stream is silent (keepalives included) for this many seconds, the connection is presumed dead and reopened. Set it above the device's keepalive interval (ClickShare sends one every 90 s); omit it to wait indefinitely.
 
+Some devices open the stream **empty** and wait to be told what to send: the reply names the session it opened, and the controller subscribes that session to resources with a second request. Sennheiser's SSCv2 devices (the TeamConnect Ceiling Medium, the TC Bar, the EW-DX receivers) work this way: `GET /api/ssc/state/subscriptions` answers with a `Content-Location` header naming the session and an `open` event repeating it, a `PUT` of a path list to `/api/ssc/state/subscriptions/{id}` arms it, and a `close` event says the device ended it. Declare that handshake with a `session` block and the register commands:
+
+```yaml
+push:
+  type: sse
+  path: /api/ssc/state/subscriptions
+  idle_timeout: 300
+  session:
+    header: Content-Location          # response header carrying the session id
+    event: open                       # opening event that repeats it (fallback)
+    key: sessionUUID                  # JSON key in that event's data
+    pattern: "([0-9a-fA-F-]{36})$"   # optional: pick the id out of the value
+    close_event: close                # the device ended the session: reopen now
+  register:                           # run once the session is named, and on every reopen
+    - subscribe_device
+    - { command: subscribe_channel, each_child: channel }
+    - { command: subscribe_meters, each_child: channel, when: enable_meters }
+  unregister: end_session             # optional; runs on a graceful disconnect
+
+commands:
+  subscribe_device:
+    method: PUT
+    path: /api/ssc/state/subscriptions/{push_session}/add
+    body: '["/api/device/state", "/api/device/identity"]'
+  subscribe_channel:
+    method: PUT
+    path: /api/ssc/state/subscriptions/{push_session}/add
+    body: '["/api/channel/{channel}"]'
+    params:
+      channel: { type: child_id, child_type: channel, map: { 1: 0, 2: 1 } }
+  end_session:
+    method: DELETE
+    path: /api/ssc/state/subscriptions/{push_session}
+```
+
+- `session.header` — the response header on the stream's 200 reply that carries the session id. Read first.
+- `session.event` + `session.key` — the opening event's type and the JSON key in its data that carries the id; the fallback when the header is missing. Declare at least one source (the header, or event + key), or both. The opening event is never fed to the response rules.
+- `session.pattern` — optional regex applied to the header value and the event value: the id is the first capture group, or the whole match. Use it when the id sits inside a path; without it the whole value is the id.
+- `session.close_event` — optional. When the device sends this event it has ended the session (a reboot, a password change), so the stream reopens at once, as a new session, instead of holding a dead connection until `idle_timeout`.
+- `register` — the command(s) that subscribe the session, run once the session is named and again on every reopen (every reopen is a new session, and the device sends the current value of everything subscribed as soon as it is armed, so a reopen is also a free resync). One command name, or a list whose entries are a name or `{command, when, each_child}`: `when` names a config field the entry needs truthy (an integrator's opt-in switch for a meter feed, say), and `each_child` runs the command once per registered child of that type, passing the child's local id as the command's `child_id` parameter (a per-channel subscription follows the roster, so a two-channel receiver never asks for channels it does not have). Put the resources a device may refuse in their own entries: a refused registration is logged (once, until it succeeds again) and the rest still arm. The token `{push_session}` substitutes the session id into any command's path, body and headers while the session is live, and is withdrawn between sessions.
+- `unregister` — optional; the command that ends the session. Runs best-effort when the device is disconnected on purpose, while `{push_session}` still resolves.
+
+A `session` block needs a single `path`. The `register` list form, its dict entries and the `session` block need platform 0.34.0; `register` and `unregister` as single command names also work on the TCP listener shape below.
+
 ```yaml
 # TCP listener — the device dials back to a port on the OpenAVC server and
 # pushes framed notifications (Panasonic PTZ cameras work this way):
@@ -1594,7 +1651,7 @@ Many devices ship with notifications disabled and a runtime command to enable th
 
 Network requirements (worth repeating in your driver's `help.setup` text): for multicast, the device and OpenAVC must be on the same VLAN (multicast doesn't cross VLANs without a router configured for it), and switches with IGMP snooping need an IGMP querier or the group may never reach the server. For a TCP listener, the device opens connections **to** the OpenAVC server on the listener port — a host firewall on the server must allow that inbound port, and the device must be able to reach the server's address. An HTTP listener works the same way but rides the existing web port: the **device connects to OpenAVC**, so a firewall rule that only allows OpenAVC → device will silently eat the notifications, and the callback URL is plain HTTP unless the server is HTTPS-only, in which case most devices need their certificate checking relaxed to accept OpenAVC's self-signed certificate (note it in `help.setup` if your device has such a switch). SSE has no special requirements — it's an ordinary outbound HTTPS/HTTP connection to the device's existing API port, just held open. When a join fails, a port can't be bound, a stream can't connect, or a registration is rejected, nothing breaks — the driver logs the gap and polling carries on.
 
-The simulator understands `push` too: a driver with a multicast push block emits its `simulator.notifications` templates to the group instead of the control connection; a driver with an SSE push block serves its declared event-stream paths and delivers the templates there; a driver with a TCP-listener push block gets a real dial-back loop — the simulator recognizes the `register`/`unregister` commands (via their `{listener_port}` token), tracks subscribers, and dials each one with the templates wrapped in the declared frame container; and a driver with an HTTP-listener push block POSTs the templates to whatever callback URL your registration command handler captured with `register_callback(...)`. So you can watch push updates end-to-end against a simulated device in all four shapes. See the [notifications section](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md) of the simulator guide.
+The simulator understands `push` too: a driver with a multicast push block emits its `simulator.notifications` templates to the group instead of the control connection; a driver with an SSE push block serves its declared event-stream paths and delivers the templates there (with a `session` block it names each subscription in the declared header and opening event, so the driver's register commands run against it and a `command_handlers` entry can answer them); a driver with a TCP-listener push block gets a real dial-back loop — the simulator recognizes the `register`/`unregister` commands (via their `{listener_port}` token), tracks subscribers, and dials each one with the templates wrapped in the declared frame container; and a driver with an HTTP-listener push block POSTs the templates to whatever callback URL your registration command handler captured with `register_callback(...)`. So you can watch push updates end-to-end against a simulated device in all four shapes. See the [notifications section](https://github.com/open-avc/openavc-drivers/blob/main/docs/writing-simulators.md) of the simulator guide.
 
 ### Discovery
 

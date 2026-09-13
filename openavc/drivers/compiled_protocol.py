@@ -1205,7 +1205,8 @@ def compile_json_child_set(
     A JSON body carries no capture and no address, so there is nothing in it
     to route ON: the child id is a **literal**, one entry per child, and the
     prop values are JSON paths into the same body (``zones.4.enabled``) — the
-    strings a json ``set:`` takes, plain or as ``{key, type, map}``. That is
+    strings a json ``set:`` takes, plain or as ``{key, type, map, contains}``.
+    That is
     what makes a five-zone device five entries rather than one rule with a
     wildcard: the body says which zone by *where* the value sits, which the
     path already expresses.
@@ -1265,6 +1266,8 @@ def compile_json_child_set(
                 }
                 if isinstance(expr.get("map"), dict):
                     pm["map"] = expr["map"]
+                if "contains" in expr:
+                    pm["contains"] = expr["contains"]
                 props.append(pm)
             else:
                 props.append(
@@ -1284,8 +1287,8 @@ def build_json_mappings(
 
     Accepts the detailed ``mappings`` list or the friendly ``set`` map. In a
     json rule a ``set`` value is the JSON key to read (string shorthand) or a
-    ``{key/path, type, map}`` spec — not a regex capture ref. Types default
-    to the matching state variable's declared type.
+    ``{key/path, type, map, contains}`` spec — not a regex capture ref. Types
+    default to the matching state variable's declared type.
     """
     mappings: list[dict[str, Any]] = list(resp.get("mappings", []))
     set_map = resp.get("set")
@@ -1296,12 +1299,18 @@ def build_json_mappings(
                 var_def.get("type", "string") if isinstance(var_def, dict) else "string"
             )
             if isinstance(spec, dict):
-                mappings.append({
+                mapping: dict[str, Any] = {
                     "state": state_key,
                     "key": spec.get("key", spec.get("path", state_key)),
                     "type": spec.get("type", default_type),
                     "map": spec.get("map"),
-                })
+                }
+                if "contains" in spec:
+                    # "does the array/object/string at key hold this?" --
+                    # answered by the runtime, stored under the state's type
+                    # (boolean, normally).
+                    mapping["contains"] = spec["contains"]
+                mappings.append(mapping)
             else:
                 mappings.append({
                     "state": state_key, "key": str(spec), "type": default_type,

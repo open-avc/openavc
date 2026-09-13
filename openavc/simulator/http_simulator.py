@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from abc import abstractmethod
 
 from aiohttp import web
@@ -54,6 +55,12 @@ class HTTPServerMixin:
     # events to every open subscription. Requests without that Accept header
     # still route through respond_http() normally.
     sse_paths: list[str] = []
+    # The driver's `push.session` block, when the stream is a session the
+    # device names: `_serve_sse` then answers like such a device -- a fresh
+    # id per subscription, carried in the declared response header (as
+    # `<path>/<id>`) and/or in the declared opening event's data under the
+    # declared key. None serves a plain event stream.
+    sse_session: dict | None = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -174,19 +181,31 @@ class HTTPServerMixin:
 
     # ── Server-Sent Events (push: {type: sse}) ──
 
-    def push_sse_event(self, data: str) -> None:
+    def push_sse_event(self, data: str, event: str | None = None) -> None:
         """Deliver one event to every open event-stream subscription.
 
         ``data`` is the event's payload (typically a JSON document); it is
-        framed as ``data: <payload>\\n\\n`` on the wire. No-op with no
-        subscribers — device state is authoritative either way, the driver
-        resyncs by polling.
+        framed as ``data: <payload>\\n\\n`` on the wire, with an
+        ``event: <event>`` line first when ``event`` is given (a session's
+        ``close``, say). No-op with no subscribers — device state is
+        authoritative either way, the driver resyncs by polling.
         """
         if not self._sse_clients:
             return
+        frame = f"event: {event}\ndata: {data}\n\n" if event else f"data: {data}\n\n"
         for queue in list(self._sse_clients):
-            queue.put_nowait(data)
-        self.log_protocol("out", f"data: {data[:200]}")
+            queue.put_nowait(frame)
+        self.log_protocol("out", frame.strip()[:200])
+
+    def close_sse_sessions(self, event: str | None = None) -> None:
+        """End every open event-stream subscription the way a device does
+        before a reboot: send the session's close event (``event`` or the
+        declared ``close_event``) and drop the connection."""
+        close_event = event or (self.sse_session or {}).get("close_event")
+        for queue in list(self._sse_clients):
+            if close_event:
+                queue.put_nowait(f"event: {close_event}\ndata: {{}}\n\n")
+            queue.put_nowait(None)
 
     def _close_sse_clients(self) -> None:
         """Unblock every open event-stream handler so stop can finish."""
@@ -195,24 +214,46 @@ class HTTPServerMixin:
 
     async def _serve_sse(self, request: web.Request, path: str) -> web.StreamResponse:
         """Hold an event-stream subscription open until the client leaves
-        or the simulator stops (None sentinel)."""
-        response = web.StreamResponse(
-            status=200,
-            headers={
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-            },
-        )
+        or the simulator stops (None sentinel). With a session block the
+        reply names a fresh session the way the device does."""
+        headers = {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+        }
+        session = self.sse_session if isinstance(self.sse_session, dict) else None
+        session_id = ""
+        opening: str | None = None
+        if session is not None:
+            session_id = str(uuid.uuid4())
+            bare_path = path.split("?")[0]
+            if session.get("header"):
+                headers[str(session["header"])] = f"{bare_path}/{session_id}"
+            if session.get("event"):
+                payload: dict[str, str] = {"path": f"{bare_path}/{session_id}"}
+                if session.get("key"):
+                    payload[str(session["key"])] = session_id
+                opening = (
+                    f"event: {session['event']}\ndata: {json.dumps(payload)}\n\n"
+                )
+        response = web.StreamResponse(status=200, headers=headers)
         await response.prepare(request)
         queue: asyncio.Queue = asyncio.Queue()
         self._sse_clients.add(queue)
-        self.log_protocol("in", f"GET {path} (event-stream subscribed)")
+        self.log_protocol(
+            "in",
+            f"GET {path} (event-stream subscribed"
+            + (f", session {session_id[:8]}" if session_id else "")
+            + ")",
+        )
         try:
+            if opening:
+                await response.write(opening.encode("utf-8"))
+                self.log_protocol("out", opening.strip()[:200])
             while self._running:
-                data = await queue.get()
-                if data is None:
+                frame = await queue.get()
+                if frame is None:
                     break
-                await response.write(f"data: {data}\n\n".encode("utf-8"))
+                await response.write(frame.encode("utf-8"))
         except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
             pass
         finally:

@@ -376,6 +376,15 @@
  "ir_codes_not_bool": [
   "ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / the device config)"
  ],
+ "json_child_set_contains_not_scalar": [
+  "Response 0: child_set[0]: state 'level': contains must be a scalar to look for (a flag name, a number, true/false), not NoneType"
+ ],
+ "json_mappings_contains_not_scalar": [
+  "Response 0: mappings[0]: contains must be a scalar to look for (a flag name, a number, true/false), not dict"
+ ],
+ "json_set_contains_not_scalar": [
+  "Response 0: set.power: contains must be a scalar to look for (a flag name, a number, true/false), not list"
+ ],
  "liveness_args_not_list": [
   "liveness: 'args' must be a list"
  ],
@@ -557,6 +566,25 @@
  "push_not_mapping": [
   "push: must be a mapping"
  ],
+ "push_register_entry_each_child_no_param": [
+  "push: register[0] runs once per 'zone' child, so command 'noop' needs a child_id parameter of that type"
+ ],
+ "push_register_entry_each_child_unknown_type": [
+  "push: register[0] each_child 'zone' is not a declared child entity type"
+ ],
+ "push_register_entry_missing_command": [
+  "push: register[0] must be a command name",
+  "push: register[0] when 'host' must name a config field declared in config_schema, default_config, or config_derived"
+ ],
+ "push_register_entry_unknown_key": [
+  "push: register[0] has unknown key(s): banana (known: command, when, each_child)"
+ ],
+ "push_register_entry_when_undeclared": [
+  "push: register[0] when 'meters' must name a config field declared in config_schema, default_config, or config_derived"
+ ],
+ "push_register_list_empty": [
+  "push: register list must not be empty"
+ ],
  "push_register_not_a_name": [
   "push: register must be a command name"
  ],
@@ -577,6 +605,38 @@
  ],
  "push_sse_path_wrong_type": [
   "push: path must be a string or a list of strings"
+ ],
+ "push_sse_register_unknown_command": [
+  "push: register command 'arm' is not declared in commands"
+ ],
+ "push_sse_session_header_empty": [
+  "push: session header must be a non-empty string"
+ ],
+ "push_sse_session_key_without_event": [
+  "push: session key names a JSON key in the opening event's data, so it needs 'event' (the event type that carries it)",
+  "push: session needs a source for the session id: 'header' (a response header), or 'event' + 'key' (a JSON key in the opening event's data), or both"
+ ],
+ "push_sse_session_multiple_paths": [
+  "push: a session block needs a single event-stream path ({push_session} would be ambiguous across several sessions)"
+ ],
+ "push_sse_session_no_source": [
+  "push: session needs a source for the session id: 'header' (a response header), or 'event' + 'key' (a JSON key in the opening event's data), or both"
+ ],
+ "push_sse_session_not_mapping": [
+  "push: session must be a mapping"
+ ],
+ "push_sse_session_pattern_empty": [
+  "push: session pattern must be a non-empty regex"
+ ],
+ "push_sse_session_pattern_invalid": [
+  "push: session pattern: invalid regex '([0-9a-f-]+': missing ), unterminated subpattern at position 0"
+ ],
+ "push_sse_session_unknown_key": [
+  "push: session has unknown key(s): cookie (known: header, event, key, pattern, close_event)",
+  "push.session: unknown key 'cookie'"
+ ],
+ "push_sse_unregister_unknown_command": [
+  "push: unregister command 'disarm' is not declared in commands"
  ],
  "push_sse_wrong_transport": [
   "push: type 'sse' requires the http transport, not 'tcp'"
@@ -655,7 +715,7 @@
  ],
  "response_json_child_set_state_is_an_osc_arg": [
   "Response 0: child_set[0]: state 'level' needs a JSON path: \"a.b\" or {key: a.b}",
-  "Response 0: child_set[0]: state 'level' has ['arg'], which a json rule does not read \u2014 the spec is {key, type, map}"
+  "Response 0: child_set[0]: state 'level' has ['arg'], which a json rule does not read \u2014 the spec is {key, type, map, contains}"
  ],
  "response_json_child_set_state_is_capture_ref": [
   "Response 0: child_set[0]: state 'level' \u2014 a json rule has no capture groups; use a JSON path"

@@ -105,7 +105,7 @@ export const DISALLOWED_OPEN_PORTS: ReadonlySet<number> = new Set([22, 80, 443, 
 /** The keys each push type accepts (unknown keys are rejected at load). */
 export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = {
   multicast: new Set(["group", "port", "type"]),
-  sse: new Set(["idle_timeout", "path", "type"]),
+  sse: new Set(["idle_timeout", "path", "register", "session", "type", "unregister"]),
   tcp_listener: new Set(["frame_parser", "port", "register", "type", "unregister"]),
   http_listener: new Set(["type"]),
 };
@@ -131,8 +131,10 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
-  mappingEntry: new Set(["arg", "group", "json_path", "map", "state", "type", "value"]),
+  mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
   responseEntry: new Set(["address", "after_json", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
+  pushSession: new Set(["close_event", "event", "header", "key", "pattern"]),
+  pushRegisterEntry: new Set(["command", "each_child", "when"]),
   authBlock: new Set(["failure_pattern", "line_ending", "password_field", "password_prompt", "skip_if_empty", "success_pattern", "timeout_seconds", "type", "username_field", "username_prompt"]),
   livenessBlock: new Set(["args", "expect", "interval", "max_failures", "send", "timeout"]),
   frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
@@ -440,6 +442,12 @@ export interface DriverCommandDef {
 export interface DriverResponseMapping {
   /** Regex capture group index (1-based; 0 is the whole match). */
   group: number;
+  /**
+   * json: true rules only: the JSON field to read (dot path allowed), the
+   * mappings-list form of a set: value. The Driver Builder writes this form
+   * when a rule maps one field to two state variables.
+   */
+  key?: string;
   /** State variable to update. */
   state: string;
   /** Coercion applied to the captured value. */
@@ -460,6 +468,15 @@ export interface DriverResponseMapping {
    * {"data": ...}).
    */
   json_path?: string;
+  /**
+   * json: true rules only. Instead of storing the value at key, store whether
+   * it holds this one: membership for an array (a warnings list of flag names
+   * becomes one boolean per flag), a key for an object, a substring for a
+   * string, equality otherwise. Pair with a boolean state variable. Also
+   * accepted inside a set: value spec ({key, contains}) and a json child_set
+   * state spec. Requires platform 0.34.0.
+   */
+  contains?: string | number | boolean;
 }
 
 /**
@@ -500,8 +517,9 @@ export interface DriverResponseDef {
    * set/mappings key is read from it. Unlike regex responses, all json rules
    * are applied to a body (not just the first match), so one JSON reply can
    * populate many state variables. In this mode a set value is the JSON field
-   * to read (a string key, dot path allowed) or a {key, type, map} object, not
-   * a capture ref.
+   * to read (a string key, dot path allowed) or a {key, type, map, contains}
+   * object, not a capture ref; contains stores whether the array, object or
+   * string at key holds the given value (platform 0.34.0).
    */
   json?: boolean;
   /** Regex matched against incoming text. Capture groups extract values. */
@@ -511,7 +529,8 @@ export interface DriverResponseDef {
   /**
    * Shorthand mapping state variables to values. For regex responses, values
    * are capture groups ("$1") or static values. For a json: true response,
-   * values are JSON field names (dot path allowed) or {key, type, map} specs.
+   * values are JSON field names (dot path allowed) or {key, type, map,
+   * contains} specs.
    */
   set?: Record<string, unknown>;
   /** Verbose mapping form, supporting type coercion and value maps. */
@@ -1059,25 +1078,93 @@ export interface DriverAuthDef {
 }
 
 /**
+ * How an sse stream's device session is named and ended. At least one of
+ * header or event+key. Every (re)open of the stream is a new session: the
+ * platform reads the id, runs the push block's register command(s) with
+ * {push_session} bound to it, and withdraws the token when the stream ends.
+ * Requires platform 0.34.0.
+ */
+export interface DriverPushSessionDef {
+  /**
+   * Response header on the stream's 200 reply that carries the session id
+   * (e.g. Content-Location). Read first; the opening event is the fallback.
+   */
+  header?: string;
+  /**
+   * Event type (the SSE `event:` field) the device sends first to name the
+   * session (e.g. open). Its data is read for `key` and never fed to the
+   * response rules.
+   */
+  event?: string;
+  /**
+   * JSON key in the opening event's data that carries the session id (e.g.
+   * sessionUUID). Requires `event`.
+   */
+  key?: string;
+  /**
+   * Optional regex applied to the header value and the event value: the id is
+   * the first capture group, or the whole match when the pattern has no group.
+   * Use it when the device carries the id inside a path (a Content-Location of
+   * /api/ssc/state/subscriptions/{uuid}). Without it the whole value is the
+   * id.
+   */
+  pattern?: string;
+  /**
+   * Event type the device sends when it ends the session (e.g. close, before a
+   * reboot or a password change). The stream drops the connection and reopens
+   * at once -- a new session, registered again -- instead of holding a dead
+   * one until the idle timeout. Never fed to the response rules.
+   */
+  close_event?: string;
+}
+
+/**
+ * One register entry in dict form: the command, an optional `when` config
+ * field gating it, and an optional `each_child` child type fanning it out per
+ * registered child.
+ */
+export interface DriverPushRegisterEntry {
+  /** The command to run. Must be declared in commands. */
+  command: string;
+  /**
+   * Config field (config_schema / default_config / config_derived) that must
+   * be truthy for this entry to run -- the same opt-in gate polling queries
+   * take.
+   */
+  when?: string;
+  /**
+   * Child type: run the command once per registered child, its local id passed
+   * as the command's child_id parameter for that type (the command must
+   * declare one).
+   */
+  each_child?: string;
+}
+
+/**
  * Device-initiated push notifications arriving on a channel the platform opens
  * (not the established control connection). type: multicast joins the device's
  * notification group; incoming datagrams feed the driver's responses rules
  * (split on the driver delimiter first) and are accepted only from the
  * device's own address. type: sse holds GET path(s) open on the driver's own
  * HTTP session with Accept: text/event-stream; each event's data block feeds
- * the responses rules whole (pair with json: true rules for JSON payloads).
- * type: tcp_listener opens a local TCP port the device dials back to after a
- * registration command carrying {listener_port} tells it where; frames are
- * parsed by the declared frame_parser, split on the driver delimiter, and
- * accepted only from the device's own address. In every shape the subscription
- * starts before on_connect (and any register command) runs, and stops on
- * disconnect; a dropped SSE stream reconnects with exponential backoff. type:
- * http_listener accepts the device's own HTTP POSTs (webhooks) on a callback
- * path the platform assigns per device — send the URL to the device from an
- * on_connect registration command, where the token {push_callback_url}
- * substitutes it into command bodies, paths, and headers; request bodies feed
- * the responses rules whole and are accepted only from the device's own
- * address. Requires platform 0.23.0.
+ * the responses rules whole (pair with json: true rules for JSON payloads). An
+ * sse stream the device treats as a session it names (a Content-Location
+ * header, an opening event) declares a session block: the platform reads the
+ * id, runs the register command(s) against it ({push_session} substitutes the
+ * id into their paths and bodies) on every (re)open, reopens the stream when
+ * the device sends the close event, and runs unregister on a graceful
+ * disconnect. type: tcp_listener opens a local TCP port the device dials back
+ * to after a registration command carrying {listener_port} tells it where;
+ * frames are parsed by the declared frame_parser, split on the driver
+ * delimiter, and accepted only from the device's own address. In every shape
+ * the subscription starts before on_connect (and any register command) runs,
+ * and stops on disconnect; a dropped SSE stream reconnects with exponential
+ * backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks)
+ * on a callback path the platform assigns per device — send the URL to the
+ * device from an on_connect registration command, where the token
+ * {push_callback_url} substitutes it into command bodies, paths, and headers;
+ * request bodies feed the responses rules whole and are accepted only from the
+ * device's own address. Requires platform 0.23.0.
  */
 export interface DriverPushDef {
   /**
@@ -1121,17 +1208,35 @@ export interface DriverPushDef {
    */
   frame_parser?: { type: string; [key: string]: unknown } | null;
   /**
-   * tcp_listener only, optional: name of the command that registers the dial-
-   * back target with the device (reference {listener_port} in its path/send
-   * string). Runs after the listener opens, and again on every reconnect.
+   * tcp_listener and sse, optional: the command(s) that register with the
+   * device -- for a dial-back listener the command that tells the device where
+   * to dial (reference {listener_port} in its path/send string), for an sse
+   * session the command(s) that subscribe the session to resources (reference
+   * {push_session}). One command name, or a list whose entries are a name or
+   * {command, when, each_child}: `when` names a config field the entry needs
+   * truthy (an integrator's opt-in switch, e.g. a meter feed), `each_child`
+   * names a child type the command runs once per registered child of, passing
+   * the child's local id as the command's child_id parameter. Runs after the
+   * listener opens or the session is named, and again on every reconnect or
+   * reopen. A failed entry is logged and polling carries on. The list form and
+   * the dict entries need platform 0.34.0.
    */
-  register?: string;
+  register?: string | (string | DriverPushRegisterEntry)[];
   /**
-   * tcp_listener only, optional: name of the command that cancels the
-   * registration. Runs best-effort on graceful disconnect, freeing the
-   * device's receiver slot.
+   * tcp_listener and sse, optional: name of the command that cancels the
+   * registration (for an sse session, the one that ends it -- {push_session}
+   * substitutes). Runs best-effort on graceful disconnect, freeing the
+   * device's receiver slot or session.
    */
   unregister?: string;
+  /**
+   * sse only, optional: the stream is a session the device names. Declare
+   * where the id comes from (a response header, an opening event's JSON key,
+   * or both) and which event ends it. The id is exposed to the register /
+   * unregister commands as {push_session}. Needs a single path. Requires
+   * platform 0.34.0.
+   */
+  session?: DriverPushSessionDef;
 }
 
 /**

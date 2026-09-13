@@ -1648,9 +1648,14 @@ class ConfigurableDriver(BaseDriver):
         outgoing payload, which is louder (and greppable in the device log)
         than silently registering an empty URL.
         """
+        params: dict[str, Any] = {}
         if self._push_callback_url:
-            return {"push_callback_url": self._push_callback_url}
-        return {}
+            params["push_callback_url"] = self._push_callback_url
+        if self._push_session:
+            # sse shape with a session block: the id the device gave the
+            # open stream, for the registration and unregister commands.
+            params["push_session"] = self._push_session
+        return params
 
     # Shared with the simulator/validator interpreters — one substitution
     # implementation for every surface (see compiled_protocol module docs).
@@ -2133,7 +2138,7 @@ class ConfigurableDriver(BaseDriver):
                 self.set_child_state_batch(ctype, local_id, updates)
 
     @staticmethod
-    def _extract_json_path(raw_value: Any, path: Any) -> Any:
+    def _extract_json_path(raw_value: Any, path: Any, collapse: bool = True) -> Any:
         """Parse a JSON string and walk a dotted path to a primitive.
 
         Used by response mappings that declare ``json_path`` — common for OSC
@@ -2149,7 +2154,9 @@ class ConfigurableDriver(BaseDriver):
 
         Returns ``_JSON_PATH_MISSING`` when the string isn't valid JSON or the
         path doesn't resolve, so the caller skips the mapping rather than
-        writing a wrong value.
+        writing a wrong value. ``collapse=False`` returns the node itself
+        (list or object included) for a caller that asks a question of it
+        rather than storing it -- a ``contains`` mapping.
         """
         if isinstance(raw_value, (dict, list)):
             obj: Any = raw_value
@@ -2175,9 +2182,32 @@ class ConfigurableDriver(BaseDriver):
                 else:
                     return _JSON_PATH_MISSING
 
-        if isinstance(obj, (list, dict)):
+        if collapse and isinstance(obj, (list, dict)):
             return len(obj)
         return obj
+
+    @classmethod
+    def _read_json_mapping(cls, obj: Any, mapping: dict[str, Any]) -> Any:
+        """Resolve one json mapping against a parsed body: the value at its
+        ``key``, or with ``contains`` the answer to "does the value at key
+        hold this?" -- membership for a list, a key for an object, a
+        substring for a string, equality otherwise. That is how a resource
+        that reports flags as an array (``["NoLink", "LowBattery"]``) becomes
+        one boolean per flag. Missing key -> ``_JSON_PATH_MISSING``."""
+        key = mapping.get("key")
+        if "contains" not in mapping:
+            return cls._extract_json_path(obj, key)
+        node = cls._extract_json_path(obj, key, collapse=False)
+        if node is _JSON_PATH_MISSING:
+            return node
+        needle = mapping["contains"]
+        if isinstance(node, list):
+            return needle in node or str(needle) in [str(v) for v in node]
+        if isinstance(node, dict):
+            return str(needle) in node
+        if isinstance(node, str):
+            return str(needle) in node
+        return node == needle or str(node) == str(needle)
 
     def _apply_json_responses(self, text: str) -> bool:
         """Apply all JSON-body response rules to one response/message body.
@@ -2227,7 +2257,7 @@ class ConfigurableDriver(BaseDriver):
                 key = mapping.get("key")
                 if not state_key or not key:
                     continue
-                value = self._extract_json_path(obj, key)
+                value = self._read_json_mapping(obj, mapping)
                 if value is _JSON_PATH_MISSING:
                     continue
                 resolved.append((mapping, value))
@@ -2298,7 +2328,7 @@ class ConfigurableDriver(BaseDriver):
                 continue
             updates: dict[str, Any] = {}
             for pm in cm["props"]:
-                value = self._extract_json_path(obj, pm["key"])
+                value = self._read_json_mapping(obj, pm)
                 if value is _JSON_PATH_MISSING:
                     continue
                 value_map = pm.get("map")

@@ -482,6 +482,27 @@ CASES: dict[str, Any] = {
     ),
     # --- discovery (validated through the hints parser) ---
     "discovery_invalid_block": _d(discovery={"tcp_probe": {"port": "not-a-port"}}),
+    # --- json contains ---
+    "json_set_contains_not_scalar": _d(
+        transport="http",
+        commands={"q": {"method": "GET", "path": "/s"}},
+        responses=[{"json": True, "set": {"power": {"key": "warnings", "contains": ["NoLink"]}}}],
+    ),
+    "json_mappings_contains_not_scalar": _d(
+        transport="http",
+        commands={"q": {"method": "GET", "path": "/s"}},
+        responses=[{"json": True, "mappings": [
+            {"state": "power", "key": "warnings", "contains": {"flag": "NoLink"}},
+        ]}],
+    ),
+    "json_child_set_contains_not_scalar": _d(
+        transport="http",
+        commands={"q": {"method": "GET", "path": "/s"}},
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"json": True, "child_set": [
+            {"type": "zone", "id": 1, "state": {"level": {"key": "flags", "contains": None}}},
+        ]}],
+    ),
     # --- push ---
     "push_not_mapping": _d(push=["multicast"]),
     "push_unknown_type": _push(type="carrier_pigeon"),
@@ -520,6 +541,58 @@ CASES: dict[str, Any] = {
     ),
     "push_register_not_a_name": _push(type="tcp_listener", port=0, register=5),
     "push_register_unknown_command": _push(type="tcp_listener", port=0, register="arm"),
+    "push_register_list_empty": _push(type="tcp_listener", port=0, register=[]),
+    "push_register_entry_unknown_key": _push(
+        type="tcp_listener", port=0, register=[{"command": "noop", "banana": 1}]
+    ),
+    "push_register_entry_missing_command": _push(
+        type="tcp_listener", port=0, register=[{"when": "host"}]
+    ),
+    "push_register_entry_when_undeclared": _push(
+        type="tcp_listener", port=0, register=[{"command": "noop", "when": "meters"}]
+    ),
+    "push_register_entry_each_child_unknown_type": _push(
+        type="tcp_listener", port=0, register=[{"command": "noop", "each_child": "zone"}]
+    ),
+    "push_register_entry_each_child_no_param": _d(
+        push={"type": "tcp_listener", "port": 0,
+              "register": [{"command": "noop", "each_child": "zone"}]},
+        child_entity_types=dict(_CHILD_TYPES),
+    ),
+    "push_sse_register_unknown_command": _push(
+        transport="http", type="sse", path="/events", register="arm"
+    ),
+    "push_sse_unregister_unknown_command": _push(
+        transport="http", type="sse", path="/events", unregister="disarm"
+    ),
+    "push_sse_session_not_mapping": _push(
+        transport="http", type="sse", path="/events", session="Content-Location"
+    ),
+    "push_sse_session_unknown_key": _push(
+        transport="http", type="sse", path="/events",
+        session={"header": "Content-Location", "cookie": "sid"},
+    ),
+    "push_sse_session_header_empty": _push(
+        transport="http", type="sse", path="/events", session={"header": " "}
+    ),
+    "push_sse_session_key_without_event": _push(
+        transport="http", type="sse", path="/events", session={"key": "sessionUUID"}
+    ),
+    "push_sse_session_no_source": _push(
+        transport="http", type="sse", path="/events", session={"pattern": "[0-9a-f-]+"}
+    ),
+    "push_sse_session_pattern_empty": _push(
+        transport="http", type="sse", path="/events",
+        session={"header": "Content-Location", "pattern": ""},
+    ),
+    "push_sse_session_pattern_invalid": _push(
+        transport="http", type="sse", path="/events",
+        session={"header": "Content-Location", "pattern": "([0-9a-f-]+"},
+    ),
+    "push_sse_session_multiple_paths": _push(
+        transport="http", type="sse", path=["/events", "/more"],
+        session={"header": "Content-Location"},
+    ),
     # --- auth ---
     "auth_not_mapping": _d(auth="telnet_login"),
     "auth_unsupported_type": _d(auth={"type": "oauth", "username_prompt": "U:", "password_prompt": "P:"}),

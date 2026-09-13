@@ -1,6 +1,52 @@
-import type { DriverDefinition, DriverPushDef } from "../../api/types";
+import type {
+  DriverDefinition,
+  DriverPushDef,
+  DriverPushRegisterEntry,
+  DriverPushSessionDef,
+} from "../../api/types";
 import { SearchableSelect } from "../shared/SearchableSelect";
 import { commandOptions } from "../shared/pickerOptions";
+
+type RegisterValue = NonNullable<DriverPushDef["register"]>;
+
+/** The register list as one entry per line: `command`, `command when
+ *  <config_field>`, `command each_child <type>`, or both clauses. A single
+ *  bare command stays the plain string form so simple drivers round-trip. */
+export function registerToText(value: RegisterValue | undefined): string {
+  if (value === undefined) return "";
+  const items = Array.isArray(value) ? value : [value];
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item;
+      const parts = [item.command];
+      if (item.each_child) parts.push(`each_child ${item.each_child}`);
+      if (item.when) parts.push(`when ${item.when}`);
+      return parts.join(" ");
+    })
+    .join("\n");
+}
+
+export function registerFromText(text: string): RegisterValue | undefined {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  if (lines.length === 0) return undefined;
+  const entries: (string | DriverPushRegisterEntry)[] = lines.map((line) => {
+    const tokens = line.split(/\s+/);
+    const command = tokens[0];
+    const entry: DriverPushRegisterEntry = { command };
+    for (let k = 1; k + 1 < tokens.length; k += 2) {
+      if (tokens[k] === "when") entry.when = tokens[k + 1];
+      else if (tokens[k] === "each_child") entry.each_child = tokens[k + 1];
+    }
+    return entry.when === undefined && entry.each_child === undefined
+      ? command
+      : entry;
+  });
+  if (entries.length === 1 && typeof entries[0] === "string") return entries[0];
+  return entries;
+}
 
 interface PushEditorProps {
   draft: DriverDefinition;
@@ -76,6 +122,76 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
     }
     onUpdate({ push: next });
   };
+
+  const setRegisterText = (text: string) => {
+    const next: DriverPushDef = { ...(push ?? {}) };
+    const value = registerFromText(text);
+    if (value === undefined) delete next.register;
+    else next.register = value;
+    onUpdate({ push: next });
+  };
+
+  const setSessionField = (key: keyof DriverPushSessionDef, value: string) => {
+    const next: DriverPushDef = { ...(push ?? {}) };
+    const session: DriverPushSessionDef = { ...(next.session ?? {}) };
+    if (value.trim() === "") delete session[key];
+    else session[key] = value;
+    if (Object.keys(session).length === 0) delete next.session;
+    else next.session = session;
+    onUpdate({ push: next });
+  };
+
+  const sessionEnabled = !!push?.session;
+  const setSessionEnabled = (on: boolean) => {
+    const next: DriverPushDef = { ...(push ?? {}) };
+    if (on) next.session = next.session ?? { header: "" };
+    else delete next.session;
+    onUpdate({ push: next });
+  };
+
+  const registerText = registerToText(push?.register);
+  const registerIsList = Array.isArray(push?.register);
+
+  const sessionField = (
+    key: keyof DriverPushSessionDef,
+    label: string,
+    placeholder: string,
+    help: string,
+  ) => (
+    <div>
+      <label style={labelStyle}>{label}</label>
+      <input
+        value={(push?.session?.[key] as string | undefined) ?? ""}
+        onChange={(e) => setSessionField(key, e.target.value)}
+        placeholder={placeholder}
+        style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+      />
+      <div style={helpStyle}>{help}</div>
+    </div>
+  );
+
+  const registerListEditor = (help: string) => (
+    <div>
+      <label style={labelStyle}>Register Command(s)</label>
+      <textarea
+        value={registerText}
+        onChange={(e) => setRegisterText(e.target.value)}
+        placeholder={"subscribe_device\nsubscribe_channel each_child channel\nsubscribe_meters each_child channel when enable_meters"}
+        rows={Math.max(2, registerText.split("\n").length)}
+        style={{
+          width: "100%",
+          fontFamily: "var(--font-mono)",
+          resize: "vertical",
+        }}
+      />
+      <div style={helpStyle}>
+        {help} One command per line. Add <code>when &lt;config_field&gt;</code>{" "}
+        to run a line only while that field is on (an opt-in feed), and{" "}
+        <code>each_child &lt;type&gt;</code> to run it once per child of that
+        type (the command takes the child in its child_id parameter).
+      </div>
+    </div>
+  );
 
   const frameType = push?.frame_parser?.type ?? "";
   const setFrameType = (next: string) => {
@@ -328,6 +444,89 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
                   connection is noticed; leave blank to wait indefinitely.
                 </div>
               </div>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-sm)",
+                  fontSize: "var(--font-size-sm)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={sessionEnabled}
+                  onChange={(e) => setSessionEnabled(e.target.checked)}
+                />
+                The stream is a session the device names
+              </label>
+              <div style={helpStyle}>
+                For devices whose event stream starts empty and must be told
+                what to send: the device names the session it opened (in a
+                response header, an opening event, or both), and the register
+                command(s) then subscribe that session to resources. The
+                token <code>{"{push_session}"}</code> substitutes the id into
+                their paths and bodies. Every reopen is a new session,
+                registered again.
+              </div>
+
+              {sessionEnabled && (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
+                    {sessionField(
+                      "header",
+                      "Session Header",
+                      "Content-Location",
+                      "Response header on the stream's reply that carries the session id. Read first; the opening event is the fallback.",
+                    )}
+                    {sessionField(
+                      "pattern",
+                      "Id Pattern (regex, optional)",
+                      "([0-9a-fA-F-]{36})",
+                      "Picks the id out of the header or event value: the first group, or the whole match. Leave blank to take the value as it is.",
+                    )}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "var(--space-md)" }}>
+                    {sessionField(
+                      "event",
+                      "Opening Event",
+                      "open",
+                      "Event type the device sends first to name the session. Never fed to the response rules.",
+                    )}
+                    {sessionField(
+                      "key",
+                      "Id Key in Opening Event",
+                      "sessionUUID",
+                      "JSON key in the opening event's data that carries the id. Needs the opening event.",
+                    )}
+                    {sessionField(
+                      "close_event",
+                      "Closing Event",
+                      "close",
+                      "Event type the device sends when it ends the session (before a reboot, say). The stream reopens at once.",
+                    )}
+                  </div>
+                </>
+              )}
+
+              {registerListEditor(
+                "Command(s) run once the session is named (or the stream opens), and again on every reopen.",
+              )}
+              <div>
+                <label style={labelStyle}>Unregister Command</label>
+                <SearchableSelect
+                  value={push?.unregister ?? ""}
+                  onChange={(name) => setPushCommand("unregister", name)}
+                  options={commandOptions(draft.commands)}
+                  placeholder="(none)"
+                  searchPlaceholder="Search commands..."
+                />
+                <div style={helpStyle}>
+                  Command that ends the session. Runs best-effort when the
+                  device is disconnected on purpose, while{" "}
+                  <code>{"{push_session}"}</code> still resolves.
+                </div>
+              </div>
             </>
           )}
 
@@ -359,22 +558,28 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
-                <div>
-                  <label style={labelStyle}>Register Command</label>
-                  <SearchableSelect
-                    value={push?.register ?? ""}
-                    onChange={(name) => setPushCommand("register", name)}
-                    options={commandOptions(draft.commands)}
-                    placeholder="(none)"
-                    searchPlaceholder="Search commands..."
-                  />
-                  <div style={helpStyle}>
-                    Command that tells the device where to dial back. Use{" "}
-                    <code>{"{listener_port}"}</code> in its path or send
-                    string. Runs when the listener opens, and again on every
-                    reconnect.
+                {registerIsList ? (
+                  registerListEditor(
+                    "Commands that tell the device where to dial back ({listener_port}). Run when the listener opens, and again on every reconnect.",
+                  )
+                ) : (
+                  <div>
+                    <label style={labelStyle}>Register Command</label>
+                    <SearchableSelect
+                      value={typeof push?.register === "string" ? push.register : ""}
+                      onChange={(name) => setPushCommand("register", name)}
+                      options={commandOptions(draft.commands)}
+                      placeholder="(none)"
+                      searchPlaceholder="Search commands..."
+                    />
+                    <div style={helpStyle}>
+                      Command that tells the device where to dial back. Use{" "}
+                      <code>{"{listener_port}"}</code> in its path or send
+                      string. Runs when the listener opens, and again on every
+                      reconnect.
+                    </div>
                   </div>
-                </div>
+                )}
                 <div>
                   <label style={labelStyle}>Unregister Command</label>
                   <SearchableSelect

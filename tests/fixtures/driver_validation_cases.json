@@ -3427,6 +3427,119 @@
   },
   "transport": "tcp"
  },
+ "json_child_set_contains_not_scalar": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "q": {
+    "method": "GET",
+    "path": "/s"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_set": [
+     {
+      "id": 1,
+      "state": {
+       "level": {
+        "contains": null,
+        "key": "flags"
+       }
+      },
+      "type": "zone"
+     }
+    ],
+    "json": true
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "json_mappings_contains_not_scalar": {
+  "commands": {
+   "q": {
+    "method": "GET",
+    "path": "/s"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "json": true,
+    "mappings": [
+     {
+      "contains": {
+       "flag": "NoLink"
+      },
+      "key": "warnings",
+      "state": "power"
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "json_set_contains_not_scalar": {
+  "commands": {
+   "q": {
+    "method": "GET",
+    "path": "/s"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "json": true,
+    "set": {
+     "power": {
+      "contains": [
+       "NoLink"
+      ],
+      "key": "warnings"
+     }
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
  "liveness_args_not_list": {
   "commands": {
    "noop": {
@@ -5133,6 +5246,174 @@
   },
   "transport": "tcp"
  },
+ "push_register_entry_each_child_no_param": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "port": 0,
+   "register": [
+    {
+     "command": "noop",
+     "each_child": "zone"
+    }
+   ],
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "push_register_entry_each_child_unknown_type": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "port": 0,
+   "register": [
+    {
+     "command": "noop",
+     "each_child": "zone"
+    }
+   ],
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "push_register_entry_missing_command": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "port": 0,
+   "register": [
+    {
+     "when": "host"
+    }
+   ],
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "push_register_entry_unknown_key": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "port": 0,
+   "register": [
+    {
+     "banana": 1,
+     "command": "noop"
+    }
+   ],
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "push_register_entry_when_undeclared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "port": 0,
+   "register": [
+    {
+     "command": "noop",
+     "when": "meters"
+    }
+   ],
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "push_register_list_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "port": 0,
+   "register": [],
+   "type": "tcp_listener"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "push_register_not_a_name": {
   "commands": {
    "noop": {
@@ -5268,6 +5549,236 @@
   "push": {
    "path": 5,
    "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_register_unknown_command": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "register": "arm",
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_header_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": {
+    "header": " "
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_key_without_event": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": {
+    "key": "sessionUUID"
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_multiple_paths": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": [
+    "/events",
+    "/more"
+   ],
+   "session": {
+    "header": "Content-Location"
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_no_source": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": {
+    "pattern": "[0-9a-f-]+"
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_not_mapping": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": "Content-Location",
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_pattern_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": {
+    "header": "Content-Location",
+    "pattern": ""
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_pattern_invalid": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": {
+    "header": "Content-Location",
+    "pattern": "([0-9a-f-]+"
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_session_unknown_key": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "session": {
+    "cookie": "sid",
+    "header": "Content-Location"
+   },
+   "type": "sse"
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "http"
+ },
+ "push_sse_unregister_unknown_command": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "push": {
+   "path": "/events",
+   "type": "sse",
+   "unregister": "disarm"
   },
   "state_variables": {
    "power": {

@@ -171,6 +171,11 @@ export interface JsonRuleRow {
   type: string;
   /** Optional lookup table translating raw values to friendly values. */
   map?: Record<string, string>;
+  /** Optional: store whether the value at `path` holds this (membership
+   *  in an array, a key of an object, a substring) instead of the value
+   *  itself -- how an array of flag names becomes one boolean per flag.
+   *  Kept as the raw scalar the YAML carries. */
+  contains?: string | number | boolean;
 }
 
 /** True when two coercion type names behave identically at runtime: the
@@ -197,12 +202,19 @@ export function getJsonRows(
   const mappings = resp.mappings;
   if (Array.isArray(mappings) && mappings.length > 0) {
     for (const m of mappings) {
-      const entry = m as { state?: string; key?: unknown; type?: string; map?: Record<string, string> };
+      const entry = m as {
+        state?: string;
+        key?: unknown;
+        type?: string;
+        map?: Record<string, string>;
+        contains?: unknown;
+      };
       rows.push({
         state: entry.state ?? "",
         path: entry.key == null ? "" : String(entry.key),
         type: entry.type ?? "string",
         ...(entry.map ? { map: entry.map } : {}),
+        ...(isContainsScalar(entry.contains) ? { contains: entry.contains } : {}),
       });
     }
     return rows;
@@ -212,7 +224,13 @@ export function getJsonRows(
   for (const [state, spec] of Object.entries(set)) {
     const declared = declaredStateType(stateVariables, state);
     if (spec !== null && typeof spec === "object" && !Array.isArray(spec)) {
-      const s = spec as { key?: unknown; path?: unknown; type?: unknown; map?: unknown };
+      const s = spec as {
+        key?: unknown;
+        path?: unknown;
+        type?: unknown;
+        map?: unknown;
+        contains?: unknown;
+      };
       const path = s.key ?? s.path ?? state;
       rows.push({
         state,
@@ -221,6 +239,7 @@ export function getJsonRows(
         ...(s.map && typeof s.map === "object"
           ? { map: s.map as Record<string, string> }
           : {}),
+        ...(isContainsScalar(s.contains) ? { contains: s.contains } : {}),
       });
     } else {
       rows.push({ state, path: String(spec), type: declared });
@@ -270,13 +289,15 @@ export function buildJsonResponse(
     for (const r of rows) {
       const declared = declaredStateType(stateVariables, r.state);
       const hasMap = r.map !== undefined && Object.keys(r.map).length > 0;
-      if (!hasMap && coercionTypesEquivalent(r.type, declared)) {
+      const hasContains = isContainsScalar(r.contains);
+      if (!hasMap && !hasContains && coercionTypesEquivalent(r.type, declared)) {
         set[r.state] = r.path;
       } else {
         set[r.state] = {
           key: r.path,
           ...(coercionTypesEquivalent(r.type, declared) ? {} : { type: r.type }),
           ...(hasMap ? { map: r.map } : {}),
+          ...(hasContains ? { contains: r.contains } : {}),
         };
       }
     }
@@ -287,9 +308,43 @@ export function buildJsonResponse(
       key: r.path,
       type: r.type,
       ...(r.map && Object.keys(r.map).length > 0 ? { map: r.map } : {}),
+      ...(isContainsScalar(r.contains) ? { contains: r.contains } : {}),
     })) as unknown as DriverResponseMapping[];
   }
   return next;
+}
+
+/** A `contains` value is a scalar to look for; anything else is not one the
+ *  runtime reads (the validator refuses it), so the editor drops it. */
+export function isContainsScalar(
+  value: unknown,
+): value is string | number | boolean {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+/** Read the `contains` text of a row for its input (a number or boolean
+ *  renders as its literal; absent renders blank). */
+export function containsToText(value: unknown): string {
+  return isContainsScalar(value) ? String(value) : "";
+}
+
+/** Rebuild a `contains` value from its input: blank clears it; `true` /
+ *  `false` and plain numbers become the JSON scalar they read as (a
+ *  device that reports `[1, 3]` is asked for the number 1, not "1");
+ *  anything else stays a string. */
+export function containsFromText(
+  text: string,
+): string | number | boolean | undefined {
+  const t = text.trim();
+  if (t === "") return undefined;
+  if (t === "true") return true;
+  if (t === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+  return t;
 }
 
 /** The require: scope as a list for editing (string → one entry). */
@@ -463,15 +518,16 @@ export function jsonChildPropToText(expr: unknown): string {
 
 /** Rebuild a json child_set property from its input text: the path alone
  *  when nothing else is carried, otherwise {key, ...} keeping the type
- *  override and value map the original spec had (the editor has no rows for
- *  either; editing the path must not drop them). */
+ *  override, value map and `contains` the original spec had (the editor has
+ *  no rows for them; editing the path must not drop them). */
 export function jsonChildPropFromText(text: string, original: unknown): unknown {
   const key = text.trim();
   if (original !== null && typeof original === "object") {
-    const spec = original as { type?: unknown; map?: unknown };
+    const spec = original as { type?: unknown; map?: unknown; contains?: unknown };
     const extra: Record<string, unknown> = {};
     if (typeof spec.type === "string") extra.type = spec.type;
     if (spec.map !== null && typeof spec.map === "object") extra.map = spec.map;
+    if (isContainsScalar(spec.contains)) extra.contains = spec.contains;
     if (Object.keys(extra).length > 0) return { key, ...extra };
   }
   return key;

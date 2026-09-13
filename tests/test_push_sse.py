@@ -545,3 +545,621 @@ async def test_e2e_driver_state_follows_sim_changes():
     finally:
         await drv.disconnect()
         await sim.stop()
+
+
+# ===========================================================================
+# Session shape: the device names the stream, the driver arms it
+# ===========================================================================
+
+
+def _session_def(**overrides) -> dict:
+    """An invented device whose event stream is a session it names: the
+    reply carries Content-Location, the opening event repeats the id, a PUT
+    of a resource list to the session arms it, and a close event ends it."""
+    d = _streamer_def()
+    d["config_schema"]["enable_meters"] = {
+        "type": "boolean", "label": "Stream meters", "default": False,
+    }
+    d["default_config"]["enable_meters"] = False
+    d["push"] = {
+        "type": "sse",
+        "path": "/api/subscriptions",
+        "session": {
+            "header": "Content-Location",
+            "event": "open",
+            "key": "sessionUUID",
+            "pattern": "([0-9a-fA-F-]{36})$",
+            "close_event": "close",
+        },
+        "register": [
+            "subscribe_status",
+            {"command": "subscribe_meters", "when": "enable_meters"},
+        ],
+        "unregister": "end_session",
+    }
+    d["commands"].update({
+        "subscribe_status": {
+            "label": "Subscribe status",
+            "method": "PUT",
+            "path": "/api/subscriptions/{push_session}",
+            "body": '["/api/status"]',
+        },
+        "subscribe_meters": {
+            "label": "Subscribe meters",
+            "method": "PUT",
+            "path": "/api/subscriptions/{push_session}/add",
+            "body": '["/api/meters"]',
+        },
+        "end_session": {
+            "label": "End session",
+            "method": "DELETE",
+            "path": "/api/subscriptions/{push_session}",
+        },
+    })
+    d.update(overrides)
+    return d
+
+
+def test_loader_accepts_session_block_with_register_forms():
+    assert validate_driver_definition(_session_def()) == []
+
+
+def test_loader_accepts_session_from_header_only():
+    d = _session_def()
+    d["push"]["session"] = {"header": "Content-Location"}
+    assert validate_driver_definition(d) == []
+
+
+def test_loader_accepts_session_from_event_only():
+    d = _session_def()
+    d["push"]["session"] = {"event": "open", "key": "sessionUUID"}
+    assert validate_driver_definition(d) == []
+
+
+def test_loader_accepts_each_child_register_entry():
+    d = _session_def()
+    d["child_entity_types"] = {
+        "channel": {
+            "id_format": {"type": "integer", "min": 1, "max": 4},
+            "state_variables": {"mute": {"type": "boolean"}},
+            "instances": {"count": 2},
+        }
+    }
+    d["commands"]["subscribe_channel"] = {
+        "label": "Subscribe channel",
+        "method": "PUT",
+        "path": "/api/subscriptions/{push_session}/add",
+        "body": '["/api/channel/{channel}"]',
+        "params": {"channel": {"type": "child_id", "child_type": "channel"}},
+    }
+    d["push"]["register"] = [
+        {"command": "subscribe_channel", "each_child": "channel"},
+    ]
+    assert validate_driver_definition(d) == []
+
+
+@pytest.mark.parametrize(
+    "push, expect",
+    [
+        ({"type": "sse", "path": "/e", "session": "sid"}, "session must be a mapping"),
+        ({"type": "sse", "path": "/e", "session": {"pattern": "x"}}, "needs a source"),
+        ({"type": "sse", "path": "/e", "session": {"key": "id"}}, "needs 'event'"),
+        ({"type": "sse", "path": "/e", "session": {"header": "H", "cookie": 1}}, "unknown key"),
+        ({"type": "sse", "path": "/e", "session": {"header": "H", "pattern": "("}}, "invalid regex"),
+        ({"type": "sse", "path": ["/e", "/f"], "session": {"header": "H"}}, "single event-stream path"),
+        ({"type": "sse", "path": "/e", "register": "arm"}, "not declared"),
+        ({"type": "sse", "path": "/e", "register": []}, "must not be empty"),
+        ({"type": "sse", "path": "/e", "register": [{"command": "query_status", "when": "nope"}]}, "when 'nope'"),
+        ({"type": "sse", "path": "/e", "register": [{"command": "query_status", "each_child": "zone"}]}, "not a declared child"),
+        ({"type": "sse", "path": "/e", "unregister": "bye"}, "not declared"),
+    ],
+)
+def test_loader_rejects_bad_session_blocks(push, expect):
+    d = _streamer_def()
+    d["push"] = push
+    errors = validate_driver_definition(d)
+    assert any(expect in e for e in errors), errors
+
+
+class _SessionServer(_SSEServer):
+    """The invented session device: names each stream, records what the
+    driver registers against it, and can close a session from its side."""
+
+    def __init__(self):
+        super().__init__()
+        self.sessions: list[str] = []
+        self.registrations: list[tuple[str, str, str, list]] = []  # method, sid, path, body
+        self.header_on = True
+        self.open_event_on = True
+        self.header_value = None  # override the Content-Location value
+        self._session_queues: dict[str, asyncio.Queue] = {}
+
+    async def start(self):
+        app = web.Application()
+        app.router.add_get("/api/subscriptions", self._handle)
+        app.router.add_put("/api/subscriptions/{sid}", self._register)
+        app.router.add_put("/api/subscriptions/{sid}/add", self._register)
+        app.router.add_delete("/api/subscriptions/{sid}", self._register)
+        self._runner = web.AppRunner(app, handler_cancellation=True)
+        await self._runner.setup()
+        site = web.TCPSite(self._runner, "127.0.0.1", 0)
+        await site.start()
+        self.port = site._server.sockets[0].getsockname()[1]
+
+    async def _register(self, request):
+        sid = request.match_info["sid"]
+        body = await request.json() if request.can_read_body else []
+        self.registrations.append((request.method, sid, request.path, body))
+        if sid not in self.sessions:
+            return web.Response(status=422)
+        return web.Response(status=200)
+
+    async def _handle(self, request):
+        import uuid
+
+        self.connections += 1
+        if self.reject_status is not None:
+            return web.Response(status=self.reject_status)
+        sid = str(uuid.uuid4())
+        self.sessions.append(sid)
+        headers = {"Content-Type": "text/event-stream"}
+        if self.header_on:
+            headers["Content-Location"] = (
+                self.header_value
+                if self.header_value is not None
+                else f"/api/subscriptions/{sid}"
+            )
+        resp = web.StreamResponse(headers=headers)
+        await resp.prepare(request)
+        queue: asyncio.Queue = asyncio.Queue()
+        self._queues.append(queue)
+        self._session_queues[sid] = queue
+        try:
+            if self.open_event_on:
+                await resp.write(
+                    f'event: open\ndata: {{"path": "/api/subscriptions/{sid}", '
+                    f'"sessionUUID": "{sid}"}}\n\n'.encode()
+                )
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                await resp.write(item)
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        finally:
+            self._queues.remove(queue)
+            self._session_queues.pop(sid, None)
+        return resp
+
+    def close_session(self, sid: str) -> None:
+        """Send the close event, then end the stream (what a device does
+        before a reboot)."""
+        queue = self._session_queues.get(sid)
+        if queue is not None:
+            queue.put_nowait(b"event: close\ndata: {}\n\n")
+            queue.put_nowait(None)
+
+    def close_event_only(self, sid: str) -> None:
+        """Send the close event and keep the connection open — a device
+        that ends the session without dropping the socket."""
+        queue = self._session_queues.get(sid)
+        if queue is not None:
+            queue.put_nowait(b"event: close\ndata: {}\n\n")
+
+
+@pytest.fixture
+async def session_server():
+    server = _SessionServer()
+    await server.start()
+    yield server
+    await server.stop()
+
+
+@pytest.fixture
+async def session_transport(session_server):
+    transport = HTTPClientTransport(
+        base_url=f"http://127.0.0.1:{session_server.port}", timeout=2.0
+    )
+    await transport.open()
+    yield transport
+    await transport.close()
+
+
+_SESSION = {
+    "header": "Content-Location",
+    "event": "open",
+    "key": "sessionUUID",
+    "pattern": "([0-9a-fA-F-]{36})$",
+    "close_event": "close",
+}
+
+
+@pytest.mark.asyncio
+async def test_stream_reads_session_from_header_and_swallows_open_event(
+    session_server, session_transport
+):
+    received: list[bytes] = []
+    sessions: list = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", received.append,
+        session=_SESSION, on_session=sessions.append,
+    )
+    await _wait_for(lambda: len(sessions) == 1)
+    assert sessions[0] == session_server.sessions[0]
+    assert stream.session_id == session_server.sessions[0]
+    # The opening event named the session again; it never reaches the
+    # response callback, and it does not restart the session.
+    session_server.send_raw(b'data: {"level": 3}\n\n')
+    await _wait_for(lambda: len(received) == 1)
+    assert received == [b'{"level": 3}']
+    assert sessions == [session_server.sessions[0]]
+    await stream.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_falls_back_to_open_event_when_header_absent(
+    session_server, session_transport
+):
+    session_server.header_on = False
+    sessions: list = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", lambda d: None,
+        session=_SESSION, on_session=sessions.append,
+    )
+    await _wait_for(lambda: len(sessions) == 1)
+    assert sessions[0] == session_server.sessions[0]
+    await stream.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_pattern_reads_bare_and_path_forms(
+    session_server, session_transport
+):
+    # The OpenAPI example header carries a bare UUID; the spec says a path.
+    # The same pattern reads both.
+    session_server.open_event_on = False
+    session_server.header_value = "bare-value-31875a94-29e6-4fb0-ab4d-7f0bbd6e1bc8"
+    sessions: list = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", lambda d: None,
+        session=_SESSION, on_session=sessions.append,
+    )
+    await _wait_for(lambda: len(sessions) == 1)
+    assert sessions[0] == "31875a94-29e6-4fb0-ab4d-7f0bbd6e1bc8"
+    await stream.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_without_pattern_takes_whole_value(
+    session_server, session_transport
+):
+    session_server.open_event_on = False
+    session_server.header_value = "session-42"
+    sessions: list = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", lambda d: None,
+        session={"header": "Content-Location"}, on_session=sessions.append,
+    )
+    await _wait_for(lambda: len(sessions) == 1)
+    assert sessions[0] == "session-42"
+    await stream.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_close_event_reopens_and_renames_session(
+    session_server, session_transport
+):
+    sessions: list = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", lambda d: None,
+        session=_SESSION, on_session=sessions.append,
+    )
+    await _wait_for(lambda: len(sessions) == 1)
+    first = sessions[0]
+    # The device ends the session but keeps the socket: the stream must not
+    # sit on the dead session until an idle timeout.
+    session_server.close_event_only(first)
+    await _wait_for(lambda: len(sessions) >= 3, timeout=5.0)
+    assert sessions[1] is None
+    assert sessions[2] == session_server.sessions[1]
+    assert sessions[2] != first
+    assert stream.session_id == sessions[2]
+    await stream.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_end_of_connection_ends_session(
+    session_server, session_transport
+):
+    sessions: list = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", lambda d: None,
+        session=_SESSION, on_session=sessions.append,
+    )
+    await _wait_for(lambda: len(sessions) == 1)
+    session_server.drop_all()
+    await _wait_for(lambda: len(sessions) >= 3, timeout=5.0)
+    assert sessions[1] is None
+    assert sessions[2] == session_server.sessions[1]
+    await stream.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_without_session_block_delivers_typed_events(
+    session_server, session_transport
+):
+    # No session declared: every event's data is delivered, the opening
+    # event included — the pre-session behaviour, unchanged.
+    received: list[bytes] = []
+    stream = session_transport.open_event_stream(
+        "/api/subscriptions", received.append
+    )
+    await _wait_for(lambda: len(received) == 1)
+    assert b"sessionUUID" in received[0]
+    assert stream.session_id is None
+    await stream.close()
+
+
+# --- Driver lifecycle: register against the session, re-arm, unregister ---
+
+
+@pytest.mark.asyncio
+async def test_driver_registers_against_session_and_ends_it(session_server):
+    drv = _make_driver(
+        _session_def(),
+        {"host": "127.0.0.1", "port": session_server.port, "ssl": False,
+         "enable_meters": False},
+    )
+    await drv.connect()
+    try:
+        await _wait_for(lambda: len(session_server.registrations) == 1)
+        method, sid, path, body = session_server.registrations[0]
+        assert (method, path, body) == (
+            "PUT", f"/api/subscriptions/{sid}", ["/api/status"]
+        )
+        assert sid == session_server.sessions[0]
+        assert drv.push_session == sid
+        # The meter entry is gated off by config: never sent.
+        await asyncio.sleep(0.2)
+        assert len(session_server.registrations) == 1
+        # Registered state arrives as an ordinary event.
+        session_server.send_raw(b'data: {"level": 9, "muted": false}\n\n')
+        await _wait_for(lambda: drv.get_state("level") == 9)
+    finally:
+        await drv.disconnect()
+    # The unregister ran while the session id was still known.
+    assert session_server.registrations[-1][0] == "DELETE"
+    assert session_server.registrations[-1][1] == session_server.sessions[0]
+    assert drv.push_session == ""
+
+
+@pytest.mark.asyncio
+async def test_driver_when_gated_register_entry_runs_when_enabled(session_server):
+    drv = _make_driver(
+        _session_def(),
+        {"host": "127.0.0.1", "port": session_server.port, "ssl": False,
+         "enable_meters": True},
+    )
+    await drv.connect()
+    try:
+        await _wait_for(lambda: len(session_server.registrations) == 2)
+        paths = [r[2] for r in session_server.registrations]
+        sid = session_server.sessions[0]
+        assert paths == [
+            f"/api/subscriptions/{sid}", f"/api/subscriptions/{sid}/add",
+        ]
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_driver_re_registers_on_every_reopen(session_server):
+    drv = _make_driver(
+        _session_def(),
+        {"host": "127.0.0.1", "port": session_server.port, "ssl": False},
+    )
+    await drv.connect()
+    try:
+        await _wait_for(lambda: len(session_server.registrations) == 1)
+        session_server.close_session(session_server.sessions[0])
+        await _wait_for(lambda: len(session_server.registrations) == 2, timeout=5.0)
+        assert session_server.registrations[1][1] == session_server.sessions[1]
+        assert drv.push_session == session_server.sessions[1]
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_driver_each_child_register_fans_out_per_child(session_server):
+    d = _session_def()
+    d["child_entity_types"] = {
+        "channel": {
+            "id_format": {"type": "integer", "min": 1, "max": 4},
+            "state_variables": {"mute": {"type": "boolean"}},
+            "instances": {"count_from": "channel_count"},
+        }
+    }
+    d["config_schema"]["channel_count"] = {"type": "integer", "default": 2}
+    d["default_config"]["channel_count"] = 2
+    d["commands"]["subscribe_channel"] = {
+        "label": "Subscribe channel",
+        "method": "PUT",
+        "path": "/api/subscriptions/{push_session}/add",
+        "body": '["/api/channel/{channel}"]',
+        "params": {
+            "channel": {
+                "type": "child_id", "child_type": "channel",
+                "map": {"1": 0, "2": 1, "3": 2, "4": 3},
+            }
+        },
+    }
+    d["push"]["register"] = [
+        "subscribe_status",
+        {"command": "subscribe_channel", "each_child": "channel"},
+    ]
+    drv = _make_driver(
+        d, {"host": "127.0.0.1", "port": session_server.port, "ssl": False,
+            "channel_count": 2},
+    )
+    await drv.connect()
+    try:
+        await _wait_for(lambda: len(session_server.registrations) == 3)
+        bodies = [r[3] for r in session_server.registrations]
+        # One PUT per registered child, the local id mapped to the wire index.
+        assert bodies == [["/api/status"], ["/api/channel/0"], ["/api/channel/1"]]
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_driver_register_failure_is_logged_not_fatal(session_server, caplog):
+    d = _session_def()
+    d["commands"]["subscribe_status"]["path"] = "/api/nowhere/{push_session}"
+    drv = _make_driver(
+        d, {"host": "127.0.0.1", "port": session_server.port, "ssl": False},
+    )
+    await drv.connect()
+    try:
+        await _wait_for(lambda: len(session_server.sessions) == 1)
+        await asyncio.sleep(0.3)
+        assert drv.connected
+        assert drv.push_session == session_server.sessions[0]
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_driver_token_is_withdrawn_between_sessions(session_server):
+    drv = _make_driver(
+        _session_def(),
+        {"host": "127.0.0.1", "port": session_server.port, "ssl": False},
+    )
+    await drv.connect()
+    try:
+        await _wait_for(lambda: drv.push_session != "")
+        session_server.reject_status = 503
+        session_server.drop_all()
+        await _wait_for(lambda: drv.push_session == "", timeout=5.0)
+        assert drv._push_params() == {}
+    finally:
+        await drv.disconnect()
+
+
+# --- YAMLAutoSimulator: a named session on the served stream ---
+
+
+def _session_sim_def() -> dict:
+    d = _session_def()
+    d["simulator"] = {
+        "initial_state": {"level": 1, "muted": False},
+        "notifications": {
+            "level": '{"level": {value}}',
+            "muted": {"true": '{"muted": true}', "false": '{"muted": false}'},
+        },
+        "command_handlers": [
+            # The device answers a subscription with the current value of
+            # every listed resource, on the stream.
+            {
+                "match": r"PUT /api/subscriptions/[0-9a-f-]+\|(.*)",
+                "handler": (
+                    "paths = json.loads(match.group(1))\n"
+                    "state['subscribed'] = ','.join(paths)\n"
+                    "if '/api/status' in paths:\n"
+                    "    notify(json.dumps({'level': state['level'], "
+                    "'muted': state['muted']}))\n"
+                    "respond('')\n"
+                ),
+            },
+            {"match": r"DELETE /api/subscriptions/[0-9a-f-]+", "respond": ""},
+        ],
+    }
+    return d
+
+
+def test_sim_resolves_session_block():
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_session_sim_def())
+    assert sim.sse_paths == ["/api/subscriptions"]
+    assert sim.sse_session == _SESSION
+    plain = YAMLAutoSimulator(device_id="s2", config={}, driver_def=_sim_def())
+    assert plain.sse_session is None
+
+
+@pytest.mark.asyncio
+async def test_sim_names_session_in_header_and_opening_event():
+    import json as _json
+
+    import httpx
+
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_session_sim_def())
+    port = _free_tcp_port()
+    await sim.start(port)
+    seen: dict = {}
+
+    async def consume():
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "GET", f"http://127.0.0.1:{port}/api/subscriptions",
+                headers={"Accept": "text/event-stream"},
+                timeout=httpx.Timeout(5.0, read=None),
+            ) as response:
+                seen["header"] = response.headers.get("content-location", "")
+                event = ""
+                async for line in response.aiter_lines():
+                    if line.startswith("event:"):
+                        event = line[6:].strip()
+                    elif line.startswith("data:"):
+                        seen.setdefault("events", []).append((event, line[5:].strip()))
+                        event = ""
+
+    task = asyncio.create_task(consume())
+    try:
+        await _wait_for(lambda: seen.get("events"))
+        sid = seen["header"].rsplit("/", 1)[-1]
+        assert seen["header"] == f"/api/subscriptions/{sid}"
+        assert len(sid) == 36
+        event, data = seen["events"][0]
+        assert event == "open"
+        assert _json.loads(data)["sessionUUID"] == sid
+        # A closing event ends the stream the way the device does.
+        sim.close_sse_sessions()
+        await _wait_for(lambda: len(seen["events"]) == 2)
+        assert seen["events"][1][0] == "close"
+    finally:
+        task.cancel()
+        await sim.stop()
+
+
+@pytest.mark.asyncio
+async def test_e2e_session_driver_registers_and_syncs_from_auto_sim():
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    d = _session_sim_def()
+    sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=d)
+    port = _free_tcp_port()
+    await sim.start(port)
+    drv = _make_driver(
+        d, {"host": "127.0.0.1", "port": port, "ssl": False,
+            "poll_interval": 0},
+    )
+    try:
+        await drv.connect()
+        # The registration ran against the session the simulator named, and
+        # the simulator answered it with the current values on the stream.
+        await _wait_for(lambda: sim.get_state("subscribed") == "/api/status")
+        await _wait_for(lambda: drv.get_state("level") == 1)
+        assert drv.push_session
+        # A later change reaches the driver as a notification.
+        sim.set_state("level", 42)
+        await _wait_for(lambda: drv.get_state("level") == 42)
+        # The device ends the session: a new one is named and registered.
+        sim.close_sse_sessions()
+        sim.set_state("level", 43)
+        await _wait_for(lambda: drv.get_state("level") == 43, timeout=8.0)
+    finally:
+        await drv.disconnect()
+        await sim.stop()

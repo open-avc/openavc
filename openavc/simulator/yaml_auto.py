@@ -388,6 +388,18 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         # channel above. `sse_paths` is the HTTP server's own name for the
         # paths it holds open, so the resolved list goes straight into it.
         self.sse_paths = self._resolve_push_sse(driver_def, config)
+        # A session block makes the served stream name a session the way the
+        # device does (header / opening event); the driver's register
+        # commands then address it, and the simulator: section's handlers
+        # answer them like any other request.
+        _push_def = driver_def.get("push")
+        self.sse_session = (
+            dict(_push_def["session"])
+            if isinstance(_push_def, dict)
+            and _push_def.get("type") == "sse"
+            and isinstance(_push_def.get("session"), dict)
+            else None
+        )
 
         # Dial-out push emission: when the driver declares
         # `push: {type: tcp_listener}`, the simulator watches for the

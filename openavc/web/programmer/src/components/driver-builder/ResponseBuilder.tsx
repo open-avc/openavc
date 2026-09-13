@@ -24,6 +24,8 @@ import {
   getJsonRows,
   getMappings,
   getPattern,
+  containsFromText,
+  containsToText,
   jsonChildPropFromText,
   jsonChildPropToText,
   oscChildIdFromParts,
@@ -386,6 +388,29 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                         ),
                       )
                     }
+                  />
+                  <input
+                    value={containsToText(row.contains)}
+                    onChange={(e) => {
+                      const contains = containsFromText(e.target.value);
+                      updateJsonRows(
+                        i,
+                        jsonRows.map((r, j) => {
+                          if (j !== ri) return r;
+                          const { contains: _dropped, ...rest } = r;
+                          return contains === undefined
+                            ? rest
+                            : { ...rest, contains };
+                        }),
+                      );
+                    }}
+                    placeholder="contains…"
+                    title="Optional. Instead of the value at the field, store whether it holds this: an entry of an array (a warnings list becomes one true/false per flag), a key of an object, or part of a string. Pair with a Boolean state variable."
+                    style={{
+                      width: 110,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "var(--font-size-sm)",
+                    }}
                   />
                 </div>
               ))}

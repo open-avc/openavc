@@ -151,7 +151,9 @@ STRUCT_LENGTH_SIZES: tuple[int, ...] = (1, 2, 4)
 # unknown keys are rejected against this table.
 PUSH_TYPE_KEYS: dict[str, frozenset[str]] = {
     "multicast": frozenset({"type", "group", "port"}),
-    "sse": frozenset({"type", "path", "idle_timeout"}),
+    "sse": frozenset({
+        "type", "path", "idle_timeout", "session", "register", "unregister",
+    }),
     "tcp_listener": frozenset({
         "type", "port", "frame_parser", "register", "unregister",
     }),
@@ -166,6 +168,13 @@ PUSH_TYPE_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "tcp_listener": ("port",),
     "http_listener": (),
 }
+
+# The keys a push.session block accepts (sse only): how the device names the
+# session it opened, and which event ends it.
+PUSH_SESSION_KEYS: tuple[str, ...] = ("header", "event", "key", "pattern", "close_event")
+
+# The keys a push.register list entry accepts in its dict form.
+PUSH_REGISTER_ENTRY_KEYS: tuple[str, ...] = ("command", "when", "each_child")
 
 # --- children ----------------------------------------------------------------
 
@@ -1223,7 +1232,9 @@ DEFS = {
                 'min_props': 1,
                 'doc': "Wire-value translation applied after validation, before substitution: the validated value (string-keyed) is replaced by the mapped wire value. Values not in the map pass through unchanged. Most useful on child_id params whose local ids differ from the protocol's channel numbers.",
                 'extra': {
-                    'one_of': (
+                    # any_of, not one_of: an integer wire value is also a
+                    # number, and one_of refused every integer map value.
+                    'any_of': (
                         {
                             'type': 'string',
                         },
@@ -1506,6 +1517,10 @@ DEFS = {
                 'type': 'integer',
                 'doc': 'Regex capture group index (1-based; 0 is the whole match).',
             },
+            'key': {
+                'type': 'string',
+                'doc': 'json: true rules only: the JSON field to read (dot path allowed), the mappings-list form of a set: value. The Driver Builder writes this form when a rule maps one field to two state variables.',
+            },
             'state': {
                 'type': 'string',
                 'doc': 'State variable to update.',
@@ -1528,6 +1543,11 @@ DEFS = {
                 'type': 'string',
                 'doc': 'Optional. The matched value is treated as a JSON string: it is parsed and this dot-separated path is walked (object keys and integer list indices, e.g. "data" or "data.name" or "data.0") to the value used before mapping/coercion. A path landing on an array or object yields its length (so a boolean type becomes "is non-empty?" and an integer type becomes the count). Omit for today\'s positional/raw behavior. Common for OSC devices whose replies carry the value inside a JSON string (e.g. QLab\'s /reply ... {"data": ...}).',
             },
+            'contains': {
+                'type': ['string', 'integer', 'number', 'boolean'],
+                'since': '0.34.0',
+                'doc': 'json: true rules only. Instead of storing the value at key, store whether it holds this one: membership for an array (a warnings list of flag names becomes one boolean per flag), a key for an object, a substring for a string, equality otherwise. Pair with a boolean state variable. Also accepted inside a set: value spec ({key, contains}) and a json child_set state spec.',
+            },
         },
         'extra': False,
     },
@@ -1537,7 +1557,7 @@ DEFS = {
         'fields': {
             'json': {
                 'type': 'boolean',
-                'doc': 'When true, the whole reply body is parsed as a JSON object and every set/mappings key is read from it. Unlike regex responses, all json rules are applied to a body (not just the first match), so one JSON reply can populate many state variables. In this mode a set value is the JSON field to read (a string key, dot path allowed) or a {key, type, map} object, not a capture ref.',
+                'doc': 'When true, the whole reply body is parsed as a JSON object and every set/mappings key is read from it. Unlike regex responses, all json rules are applied to a body (not just the first match), so one JSON reply can populate many state variables. In this mode a set value is the JSON field to read (a string key, dot path allowed) or a {key, type, map, contains} object, not a capture ref; contains stores whether the array, object or string at key holds the given value (platform 0.34.0).',
             },
             'match': {
                 'type': 'string',
@@ -1551,7 +1571,7 @@ DEFS = {
             },
             'set': {
                 'type': 'object',
-                'doc': 'Shorthand mapping state variables to values. For regex responses, values are capture groups ("$1") or static values. For a json: true response, values are JSON field names (dot path allowed) or {key, type, map} specs.',
+                'doc': 'Shorthand mapping state variables to values. For regex responses, values are capture groups ("$1") or static values. For a json: true response, values are JSON field names (dot path allowed) or {key, type, map, contains} specs.',
             },
             'mappings': {
                 'type': 'array',
@@ -1614,7 +1634,7 @@ DEFS = {
     },
     'pushBlock': {
         'type': 'object',
-        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address.",
+        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). An sse stream the device treats as a session it names (a Content-Location header, an opening event) declares a session block: the platform reads the id, runs the register command(s) against it ({push_session} substitutes the id into their paths and bodies) on every (re)open, reopens the stream when the device sends the close event, and runs unregister on a graceful disconnect. type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address.",
         'since': '0.23.0',
         'fields': {
             'type': {
@@ -1647,12 +1667,27 @@ DEFS = {
                 'doc': "tcp_listener only, optional: framing for the pushed frames (struct_frame / length_prefix / fixed_length) - the dial-back channel is its own byte stream, independent of the control transport's framing. Omit to dispatch raw reads.",
             },
             'register': {
-                'type': 'string',
-                'doc': 'tcp_listener only, optional: name of the command that registers the dial-back target with the device (reference {listener_port} in its path/send string). Runs after the listener opens, and again on every reconnect.',
+                'type': ['string', 'array'],
+                'doc': "tcp_listener and sse, optional: the command(s) that register with the device -- for a dial-back listener the command that tells the device where to dial (reference {listener_port} in its path/send string), for an sse session the command(s) that subscribe the session to resources (reference {push_session}). One command name, or a list whose entries are a name or {command, when, each_child}: `when` names a config field the entry needs truthy (an integrator's opt-in switch, e.g. a meter feed), `each_child` names a child type the command runs once per registered child of, passing the child's local id as the command's child_id parameter. Runs after the listener opens or the session is named, and again on every reconnect or reopen. A failed entry is logged and polling carries on. The list form and the dict entries need platform 0.34.0.",
+                'items': {
+                    'one_of': (
+                        {
+                            'type': 'string',
+                        },
+                        {
+                            'ref': 'pushRegisterEntry',
+                        },
+                    ),
+                },
             },
             'unregister': {
                 'type': 'string',
-                'doc': "tcp_listener only, optional: name of the command that cancels the registration. Runs best-effort on graceful disconnect, freeing the device's receiver slot.",
+                'doc': "tcp_listener and sse, optional: name of the command that cancels the registration (for an sse session, the one that ends it -- {push_session} substitutes). Runs best-effort on graceful disconnect, freeing the device's receiver slot or session.",
+            },
+            'session': {
+                'ref': 'pushSession',
+                'since': '0.34.0',
+                'doc': "sse only, optional: the stream is a session the device names. Declare where the id comes from (a response header, an opening event's JSON key, or both) and which event ends it. The id is exposed to the register / unregister commands as {push_session}. Needs a single path.",
             },
         },
         'required': ('type',),
@@ -1673,6 +1708,62 @@ DEFS = {
             }
             for t in PUSH_TYPE_KEYS
         ),
+    },
+    'pushSession': {
+        'type': 'object',
+        'doc': "How an sse stream's device session is named and ended. At least one of header or event+key. Every (re)open of the stream is a new session: the platform reads the id, runs the push block's register command(s) with {push_session} bound to it, and withdraws the token when the stream ends.",
+        'since': '0.34.0',
+        'fields': {
+            'header': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': "Response header on the stream's 200 reply that carries the session id (e.g. Content-Location). Read first; the opening event is the fallback.",
+            },
+            'event': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': "Event type (the SSE `event:` field) the device sends first to name the session (e.g. open). Its data is read for `key` and never fed to the response rules.",
+            },
+            'key': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': "JSON key in the opening event's data that carries the session id (e.g. sessionUUID). Requires `event`.",
+            },
+            'pattern': {
+                'type': 'string',
+                'format': 'regex',
+                'doc': "Optional regex applied to the header value and the event value: the id is the first capture group, or the whole match when the pattern has no group. Use it when the device carries the id inside a path (a Content-Location of /api/ssc/state/subscriptions/{uuid}). Without it the whole value is the id.",
+            },
+            'close_event': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': "Event type the device sends when it ends the session (e.g. close, before a reboot or a password change). The stream drops the connection and reopens at once -- a new session, registered again -- instead of holding a dead one until the idle timeout. Never fed to the response rules.",
+            },
+        },
+        'extra': False,
+    },
+    'pushRegisterEntry': {
+        'type': 'object',
+        'doc': "One register entry in dict form: the command, an optional `when` config field gating it, and an optional `each_child` child type fanning it out per registered child.",
+        'fields': {
+            'command': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'The command to run. Must be declared in commands.',
+            },
+            'when': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Config field (config_schema / default_config / config_derived) that must be truthy for this entry to run -- the same opt-in gate polling queries take.',
+            },
+            'each_child': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': "Child type: run the command once per registered child, its local id passed as the command's child_id parameter for that type (the command must declare one).",
+            },
+        },
+        'required': ('command',),
+        'extra': False,
     },
     'authBlock': {
         'type': 'object',
