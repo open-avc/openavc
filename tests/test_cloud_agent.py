@@ -974,6 +974,63 @@ class TestHeartbeat:
         assert metrics["uptime_seconds"] >= 0
 
     @pytest.mark.asyncio
+    async def test_uptime_is_the_system_uptime_not_the_agent_s(self):
+        """The portal and the instance must not disagree about how long a room
+        has been up.
+
+        The collector is built when the CLOUD subsystem starts, so measuring
+        from its own construction reported the agent's lifetime: 2h 4m at
+        `/api/status` against 9m in the portal for the same box, minutes after
+        pairing -- and the cloud figure reset on any agent restart while the
+        room had not gone anywhere. It takes the engine's start time now.
+        """
+        import time
+
+        from openavc.cloud.heartbeat import HeartbeatCollector
+        from openavc.core.state_store import StateStore
+
+        class FakeDevices:
+            def list_devices(self):
+                return []
+
+        booted = time.time() - 7440  # 2h 4m ago, the observed case
+        collector = HeartbeatCollector(StateStore(), FakeDevices(), start_time=booted)
+
+        metrics = await collector.collect()
+        assert 7430 <= metrics["uptime_seconds"] <= 7450
+
+    @pytest.mark.asyncio
+    async def test_uptime_falls_back_to_now_without_a_start_time(self):
+        """A caller with nothing better to offer still reports a sane figure
+        rather than 1970. The engine always passes one."""
+        from openavc.cloud.heartbeat import HeartbeatCollector
+        from openavc.core.state_store import StateStore
+
+        class FakeDevices:
+            def list_devices(self):
+                return []
+
+        metrics = await HeartbeatCollector(StateStore(), FakeDevices()).collect()
+        assert 0 <= metrics["uptime_seconds"] < 5
+
+    def test_the_engine_hands_the_collector_its_own_clock(self):
+        """The wiring is the whole fix, and it is one keyword argument that a
+        later edit could drop without any test noticing -- the collector would
+        go on reporting a plausible, wrong number.
+
+        Pinned against the source rather than by starting an engine, because
+        reaching this line needs a paired cloud config.
+        """
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[1] / "openavc" / "core" / "engine.py"
+        ).read_text(encoding="utf-8")
+        construction = source[source.index("heartbeat = HeartbeatCollector("):]
+        construction = construction[: construction.index(")")]
+        assert "start_time=self._start_time" in construction
+
+    @pytest.mark.asyncio
     async def test_devices_error_counts_offline_reason(self):
         """devices_error counts devices carrying an offline_reason fault code.
 

@@ -1900,6 +1900,10 @@ class Engine:
             heartbeat = HeartbeatCollector(
                 self.state, self.devices,
                 ws_client_count_fn=lambda: self.ws.client_count,
+                # The same clock `/api/status` reports uptime from, so the
+                # portal and the instance cannot disagree about how long this
+                # room has been up.
+                start_time=self._start_time,
             )
             self.cloud_agent.set_heartbeat_collector(heartbeat)
 

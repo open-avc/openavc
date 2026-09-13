@@ -40,18 +40,35 @@ class HeartbeatCollector:
     (CloudAgent) is responsible for the timing interval.
     """
 
-    def __init__(self, state: StateStore, devices: DeviceManager, ws_client_count_fn=None):
+    def __init__(
+        self,
+        state: StateStore,
+        devices: DeviceManager,
+        ws_client_count_fn=None,
+        start_time: float | None = None,
+    ):
         """
         Args:
             state: The StateStore for reading system state.
             devices: The DeviceManager for device counts.
             ws_client_count_fn: Optional callable returning the number of
                                 active WebSocket clients.
+            start_time: When the SYSTEM came up, as ``time.time()``. The engine
+                passes its own, because this collector is built when the cloud
+                subsystem starts and that is not when the box did.
         """
         self._state = state
         self._devices = devices
         self._ws_client_count_fn = ws_client_count_fn
-        self._start_time = time.time()
+        # Falls back to now only for a caller that has nothing better to offer
+        # (the engine always does). Measuring from construction is what made
+        # the portal disagree with the instance: the collector is created at
+        # cloud-subsystem start, so the two figures differed by however long
+        # the box had run before pairing -- 2h 4m locally against 9m in the
+        # portal, minutes after pairing, which is exactly when a new customer
+        # is looking at it -- and the cloud number reset on any agent restart
+        # while the room had not gone anywhere.
+        self._start_time = start_time or time.time()
 
         # Resolve data directory for disk usage reporting
         from openavc.system_config import get_data_dir
