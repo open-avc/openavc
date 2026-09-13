@@ -279,6 +279,9 @@ class MDNSAdvertiser:
         tls_enabled: bool = False,
         tls_port: int = 0,
     ):
+        # The DNS label is sanitised (no spaces, ASCII only); the TXT `name`
+        # keeps the project's own name, which is what a panel app displays.
+        self._display_name = instance_name.strip() or "OpenAVC"
         self._instance_name = _sanitize_instance_name(instance_name)
         self._instance_id = instance_id
         self._http_port = http_port
@@ -416,6 +419,7 @@ class MDNSAdvertiser:
 
     def update_name(self, new_name: str) -> None:
         """Update the advertised instance name (e.g., after project rename)."""
+        self._display_name = new_name.strip() or "OpenAVC"
         self._instance_name = _sanitize_instance_name(new_name)
 
     async def _responder_loop(self) -> None:
@@ -549,7 +553,7 @@ class MDNSAdvertiser:
         working through the HTTP-to-HTTPS redirect listener.
         """
         pairs = {
-            "name": self._instance_name,
+            "name": self._display_name,
             "id": self._instance_id,
             "version": self._version,
             "path": "/panel",

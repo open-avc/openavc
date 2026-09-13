@@ -25,7 +25,7 @@ def test_txt_pairs_omit_scheme_when_tls_off():
     adv = _make_advertiser()
     pairs = adv._build_txt_pairs()
     assert pairs == {
-        "name": "Test-Room",
+        "name": "Test Room",
         "id": "test-instance-id",
         "version": "0.1.0",
         "path": "/panel",
@@ -38,7 +38,7 @@ def test_txt_pairs_include_scheme_https_when_tls_on():
     pairs = adv._build_txt_pairs()
     assert pairs["scheme"] == "https"
     # baseline keys still present
-    assert pairs["name"] == "Test-Room"
+    assert pairs["name"] == "Test Room"
     assert pairs["id"] == "test-instance-id"
     assert pairs["version"] == "0.1.0"
     assert pairs["path"] == "/panel"
@@ -178,3 +178,12 @@ async def test_stop_drains_query_spawned_announcement():
         "announcement ran after socket close — untracked task raced shutdown"
     )
     assert not adv._announce_tasks
+
+
+def test_txt_name_is_the_project_name_while_the_dns_label_is_sanitised():
+    adv = _make_advertiser(instance_name="Lecture Hall 120 (East)")
+    assert adv._instance_name == "Lecture-Hall-120-East"
+    assert adv._build_txt_pairs()["name"] == "Lecture Hall 120 (East)"
+    adv.update_name("Huddle 2B")
+    assert adv._instance_name == "Huddle-2B"
+    assert adv._build_txt_pairs()["name"] == "Huddle 2B"
