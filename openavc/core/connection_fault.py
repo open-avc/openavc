@@ -97,6 +97,10 @@ _DEFAULT_MESSAGES = {
         "Connected, but the device didn't respond as expected. Wrong "
         "transport or protocol for this device?"
     ),
+    TLS_CERT_UNTRUSTED: (
+        "Couldn't verify the TLS certificate for {where}. If the device uses "
+        "a self-signed certificate, turn off 'Verify SSL Certificate' for it."
+    ),
     WRITE_STALLED: (
         "The device stopped accepting data on {where}. It's still on the "
         "network but not reading — power-cycle it if it stays this way."
