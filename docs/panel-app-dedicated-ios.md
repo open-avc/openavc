@@ -25,9 +25,9 @@ Install the app from the App Store, launch it, pair with your OpenAVC system. Do
 
 Basic mode is enough for staff-only spaces or temporary installs.
 
-### Tier 2: Guided Access (Free, Manual Per Session)
+### Tier 2: Guided Access (Kiosk, Free, Manual Per Session)
 
-Guided Access is built into iOS. It lets you pin the current app to the screen until a PIN is entered. No developer account, MDM, or hardware setup required.
+Guided Access is Apple's kiosk mode, built into iOS. It lets you pin the current app to the screen until a PIN is entered. No developer account, MDM, or hardware setup required.
 
 **What you get:**
 - Home indicator is disabled.
@@ -41,9 +41,9 @@ Guided Access is built into iOS. It lets you pin the current app to the screen u
 
 Good for installs where someone staff-side visits the tablet daily anyway.
 
-### Tier 3: Autonomous Single App Mode (MDM Required)
+### Tier 3: Autonomous Single App Mode (Managed Kiosk, MDM Required)
 
-Autonomous Single App Mode (ASAM) is Apple's real dedicated-panel mechanism. A managed iPad running a specific app can call the system to lock itself in, and survive reboots without staff intervention.
+Autonomous Single App Mode (ASAM) is Apple's managed kiosk mode and its real dedicated-panel mechanism. A managed iPad running a specific app can call the system to lock itself in, and survive reboots without staff intervention.
 
 **What you get on top of Tier 2:**
 - Lock engages automatically whenever the app launches, including after a reboot.
@@ -57,7 +57,7 @@ Autonomous Single App Mode (ASAM) is Apple's real dedicated-panel mechanism. A m
 
 This is what large-scale deployments use.
 
-## Tier 2 Walkthrough: Enable Guided Access
+## Tier 2 Walkthrough: Enable Guided Access (Kiosk)
 
 ### 1. Turn On Guided Access
 
@@ -73,7 +73,7 @@ This is what large-scale deployments use.
 2. Launch it and pair with your OpenAVC system (mDNS auto-discovery, QR from the Programmer, or manual IP entry).
 3. Confirm the panel loads and everything works.
 
-### 3. Start a Guided Access Session
+### 3. Start a Guided Access (Kiosk) Session
 
 1. With the OpenAVC Panel app open and the panel visible, press the power button three times quickly.
 2. If a menu of accessibility shortcuts appears, tap **Guided Access**.
@@ -89,7 +89,7 @@ Press the power button three times, enter your Guided Access passcode, then tap 
 
 The iPad returns to its lock screen. Someone has to unlock it, tap the OpenAVC Panel icon, then press the power button three times and start Guided Access again. There is no way around this at Tier 2. If this is unacceptable, move to Tier 3.
 
-## Tier 3 Walkthrough: Autonomous Single App Mode
+## Tier 3 Walkthrough: Autonomous Single App Mode (Managed Kiosk)
 
 This is an overview. Each MDM provider has their own console and wording. Refer to your MDM vendor's docs for exact steps.
 
@@ -115,7 +115,7 @@ To unlock, remove the ASAM profile from the iPad via your MDM. The next time the
 
 ## Comparison
 
-| | Basic | Guided Access | Autonomous Single App Mode |
+| | Basic | Guided Access (kiosk) | Autonomous Single App Mode (managed kiosk) |
 |---|---|---|---|
 | Cost | Free | Free | $3 to $6 per device per month |
 | Setup complexity | None | Low | High (one-time) |
