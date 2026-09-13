@@ -328,6 +328,8 @@ device.projector_main.power:
   "off"     -> gray (#9E9E9E)
 ```
 
+**A Status LED is lit or unlit by its value, not by the colour the map picked.** Any off-like value (`false`, `0`, an empty string, `off`, `no`) draws the LED dim, whatever colour that value maps to, so an LED whose healthy state is `false` sits dark next to the words it is meant to confirm. Bind the positive sense (mics live, not mics muted); if only the negative variable exists, have the macro that sets it set a positive one too.
+
 **Per-option highlight (Select):** a Select's Appearance card lets you style each dropdown option independently (its background and text color), so the current choice stands out.
 
 ### Shows: Visible when…
@@ -534,7 +536,7 @@ The **Style** section has subsections for fine-grained control over element appe
 - **Gradient**: two-color linear gradient (start color, end color, direction)
 - **Padding**: all sides, or horizontal/vertical independently
 - **Font Size**: the size of the element's text, in pixels on the reference panel. Every piece of text inside a control follows it: a keypad's keys and display, a fader's scale and readout, a matrix's tiles and column numbers. Leave it empty to use the panel's default, shown greyed in the box; that number is the size the panel is drawing. A gauge's readout is the one exception: it is sized to its dial.
-- **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height
+- **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height. Text transform and letter spacing set on a container (a group or a card) apply to everything inside it: the title and every child label, readout and caption. Set them on the element whose text you mean and leave them off the container.
 - **Background Image**: select an image asset with controls for size, position, and opacity (see Asset Management below)
 - **Overflow**: control how content that exceeds the element bounds is handled (visible, hidden, scroll)
 - **Custom Classes**: apply a class from the project stylesheet to this element (see [Custom Styling](#custom-styling))
