@@ -1,4 +1,5 @@
 import type { TlsStatus } from "../api/restClient";
+import { resolvableHostname } from "../api/hostnames";
 
 /** Every address the Panel Access card can offer, and whether it may offer any.
  *
@@ -33,21 +34,6 @@ const EMPTY: Omit<PanelAccess, "tunneled" | "localOnly"> = {
 };
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
-
-/** The hostname form worth typing into a browser, or "" when there is none.
- *
- *  `/api/status` reports the raw OS hostname, whose shape is the platform's
- *  business: bare on Linux and on an appliance image (`openavc`), already
- *  dotted on macOS (`Aarons-MacBook-Air.local`), a domain name on a managed
- *  box. So the suffix goes on a bare name only -- appending it to a dotted
- *  one produced `Aarons-MacBook-Air.local.local`, which resolves nowhere.
- *  The server's own copy of this rule is `utils/hostnames.py`.
- */
-function resolvableHostname(raw: string): string {
-  const host = raw.trim().replace(/\.+$/, "");
-  if (!host || host.split(".")[0].toLowerCase() === "localhost") return "";
-  return host.includes(".") ? host : `${host}.local`;
-}
 
 /** The addresses to publish for a panel, from the server's status and the page.
  *

@@ -266,6 +266,35 @@ class TestTheSetupScreenAppendsTheSuffixOnce:
             "server already decided whether a suffix belongs on it"
         )
 
+    def test_no_frontend_surface_appends_the_suffix_itself(self):
+        """The rule had four copies and three of them were wrong.
+
+        `/api/status` reports the RAW OS hostname, so every frontend surface
+        that turns it into something typable has to apply the rule — and two
+        did it inline and unconditionally (the Dashboard's Panel Access card
+        and the hostname field in Settings > Network). They ask
+        `api/hostnames.ts` now, and this is what catches the next inline copy:
+        a `.local` string literal anywhere in the IDE source but that module.
+        """
+        src = Path(__file__).resolve().parent.parent / "openavc" / "web" / "programmer" / "src"
+        home = src / "api" / "hostnames.ts"
+
+        offenders = []
+        for path in src.rglob("*.ts*"):
+            if path == home or path.name.endswith(".test.ts") or path.name.endswith(".test.tsx"):
+                continue
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if line.lstrip().startswith(("*", "//")):
+                    continue  # a comment naming the bug is not the bug
+                if '".local"' in line or "'.local'" in line or ".local`" in line:
+                    offenders.append(f"{path.relative_to(src)}:{n}: {line.strip()}")
+
+        assert not offenders, (
+            "these build a `.local` name inline instead of asking "
+            "api/hostnames.ts, which is how `Aarons-MacBook-Air.local.local` "
+            "reached two screens:\n  " + "\n  ".join(offenders)
+        )
+
 
 # ===========================================================================
 # F-052: the auto-generated certificate's SAN list

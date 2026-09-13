@@ -3,6 +3,7 @@ import { RefreshCw, Wifi, Lock, Check } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { showError, showSuccess } from "../../store/toastStore";
 import { parseApiError } from "../../api/errors";
+import { resolvableHostname } from "../../api/hostnames";
 import * as api from "../../api/restClient";
 import type { HostNetworkInterface, HostNetworkStatus, WifiNetwork } from "../../api/restClient";
 
@@ -502,7 +503,7 @@ export function HostNetworkCard() {
       const result = await api.setHostHostname(hostname.trim());
       if (result.success) {
         showSuccess(
-          `Hostname changed. This device is now ${hostname.trim()}.local`
+          `Hostname changed. This device is now ${resolvableHostname(hostname)}`
         );
         load();
       } else {
@@ -549,7 +550,7 @@ export function HostNetworkCard() {
             }}
           >
             Browsers on the network reach this device at{" "}
-            <code>{(hostname.trim() || "openavc") + ".local"}</code>.
+            <code>{resolvableHostname(hostname) || "openavc.local"}</code>.
           </span>
         </div>
       )}
