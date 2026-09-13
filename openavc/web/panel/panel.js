@@ -337,6 +337,9 @@ class PanelApp {
         this._lockInitialized = false;   // lock screen shown once per session, not on every reconnect
         this._meetingStartTimes = {};    // element_id -> meeting start Date (survives re-render)
         this.themeElementDefaults = {};
+        // The variables the applied theme is actually drawing from, which is
+        // not theme.variables: see _applyThemeData.
+        this.themeVariables = {};
         this.currentTheme = null;
         this._themeApplyInProgress = false;
         // The first draw waits for the theme -- see _drawWhenThemeArrives.
@@ -7612,13 +7615,23 @@ class PanelApp {
         // Per-setting overrides take priority over the theme's variables.
         if (settings.accent_color) {
             root.style.setProperty('--panel-accent', settings.accent_color);
+            vars.accent = settings.accent_color;
         }
         if (settings.font_family) {
             document.body.style.fontFamily = settings.font_family;
+            vars.font_family = settings.font_family;
         }
 
         // Store element defaults for use in rendering
         this.themeElementDefaults = theme.element_defaults || {};
+        // ...and the variables every element ends up drawing from: the theme's
+        // own, overlaid with the project's theme_overrides and then the two
+        // per-setting overrides above. Elements get these for free because they
+        // read the --panel-* custom properties set here; page_defaults do not,
+        // because their `var(name)` references are resolved in JS. Resolving
+        // those against theme.variables painted the page in the theme's colour
+        // while every element on it honoured the override.
+        this.themeVariables = vars;
     }
 
     _applyFallbackTheme(settings) {
@@ -7685,7 +7698,7 @@ class PanelApp {
         if (!bg || (!bg.color && !bg.image && !bg.gradient)) {
             bg = this._themePageDefaultsToBackground(
                 this.currentTheme?.page_defaults,
-                this.currentTheme?.variables,
+                this.themeVariables,
             );
         }
         if (!bg) return;

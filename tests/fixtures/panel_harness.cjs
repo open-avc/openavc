@@ -164,6 +164,30 @@ function navigationPanel() {
     return app;
 }
 
+/** A theme shaped like the eight built-ins: the page background is a `var(name)`
+ *  reference into the theme's own variables, which is what a project override
+ *  has to reach. `page_defaults` is overridable so a scenario can swap in a
+ *  gradient. */
+function themeWithPageDefaults(pageDefaults) {
+    return {
+        id: 'slate',
+        variables: { panel_bg: '#1e2a3a', accent: '#1976D2' },
+        element_defaults: {},
+        page_defaults: pageDefaults || { background_color: 'var(panel_bg)' },
+    };
+}
+
+/** The project the page-background scenarios draw: one button, and settings naming the
+ *  inline theme so applyTheme takes its synchronous path. */
+function themedProject(settings) {
+    const proj = project({
+        elements: [el('b1', 'button')],
+        placements: { b1: { x: 0, y: 0, w: 10, h: 10 } },
+    });
+    proj.ui.settings = Object.assign({ theme_id: 'slate' }, settings || {});
+    return proj;
+}
+
 const tests = {
     page_nav_opens_one_overlay_per_press() {
         const app = navigationPanel();
@@ -3485,6 +3509,69 @@ const tests = {
         assert(band && band.classList.contains('visible')
             && band.textContent === 'Ceiling Projector is not connected.',
             `a named failure is still drawn, got "${band && band.textContent}"`);
+    },
+
+    // --- A theme override has to reach the page, not just the elements ------
+
+    // Every built-in theme paints the page with `var(panel_bg)`, and that
+    // reference is resolved in JS rather than by CSS. Resolved against the
+    // theme's OWN variables it could never see the project's override, so the
+    // page stayed the theme's colour while every element on it moved.
+    theme_override_moves_the_page_background() {
+        const app = mkApp();
+        app.inlineTheme = themeWithPageDefaults();
+        try {
+            renderProject(app, themedProject({ theme_overrides: { panel_bg: '#0e1216' } }));
+            const surface = document.querySelector('#panel-root .panel-page');
+            assert(surface.style.backgroundColor === 'rgb(14, 18, 22)',
+                `the page paints the override, got ${surface.style.backgroundColor}`);
+            assert(document.documentElement.style.getPropertyValue('--panel-bg') === '#0e1216',
+                'the elements were already honouring it -- the page is what was not');
+        } finally {
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // Guards the guard: with nothing overridden the reference still resolves,
+    // or the test above would pass against a build that had lost page_defaults
+    // altogether and simply painted whatever it was handed.
+    theme_with_no_override_paints_its_own_page_colour() {
+        const app = mkApp();
+        app.inlineTheme = themeWithPageDefaults();
+        try {
+            renderProject(app, themedProject());
+            const surface = document.querySelector('#panel-root .panel-page');
+            assert(surface.style.backgroundColor === 'rgb(30, 42, 58)',
+                `the theme's own panel_bg, got ${surface.style.backgroundColor}`);
+        } finally {
+            document.documentElement.style.removeProperty('--panel-bg');
+        }
+    },
+
+    // Both ends of a page gradient go through the same resolver, so both have
+    // to see the same variables -- and settings.accent_color is an override
+    // too, applied after theme_overrides and on top of them.
+    theme_page_defaults_references_read_one_set_of_variables() {
+        const app = mkApp();
+        app.inlineTheme = themeWithPageDefaults({
+            background_gradient: { from: 'var(panel_bg)', to: 'var(accent)', angle: 90 },
+        });
+        try {
+            renderProject(app, themedProject({
+                theme_overrides: { panel_bg: '#0e1216', accent: '#ff0000' },
+                accent_color: '#00e676',
+            }));
+            const layer = document.querySelector('#panel-root .panel-page-bg-gradient');
+            assert(layer, 'the page drew a gradient layer');
+            const painted = layer.style.background || layer.style.backgroundImage;
+            assert(painted.includes('#0e1216'),
+                `the from end takes the override, got ${painted}`);
+            assert(painted.includes('#00e676'),
+                `accent_color outranks the theme_override, got ${painted}`);
+        } finally {
+            document.documentElement.style.removeProperty('--panel-bg');
+            document.documentElement.style.removeProperty('--panel-accent');
+        }
     },
 };
 

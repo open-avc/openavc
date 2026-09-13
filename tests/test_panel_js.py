@@ -211,6 +211,11 @@ SCENARIOS = [
     "q160_a_custom_page_says_nothing",
     "q160_the_designer_shows_no_notice",
     "q160_the_notice_takes_no_touches",
+    # A project's theme_overrides reach the page background, not just the
+    # elements standing on it.
+    "theme_override_moves_the_page_background",
+    "theme_with_no_override_paints_its_own_page_colour",
+    "theme_page_defaults_references_read_one_set_of_variables",
 ]
 
 
