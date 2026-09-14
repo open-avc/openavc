@@ -9,8 +9,10 @@
  *   - The WebSocket client sends the token via the `auth.bearer.<token>`
  *     Sec-WebSocket-Protocol subprotocol (browsers can't set headers on
  *     WebSocket upgrades).
- *   - On any 401 response we clear the cache and dispatch
+ *   - A 401 on any of those clears the cache and dispatches
  *     `openavc:auth-required` so the App can drop back to the login screen.
+ *     The mint endpoint itself is the exception: its 401 means the password
+ *     just typed was wrong, not that a session died.
  *
  * The server invalidates tokens on password change and restart, and expiry
  * is sliding — an active session stays signed in, an idle one ages out.
@@ -114,6 +116,29 @@ export async function logout(): Promise<void> {
 export const AUTH_REQUIRED_EVENT = "openavc:auth-required";
 
 /**
+ * True when `url` is the session-mint endpoint — the one door whose 401 means
+ * "that password is wrong", not "the credential you were holding is dead".
+ *
+ * `loginWithPassword` posts the typed password here as Basic auth, so a typo
+ * comes back 401 like any other refusal. Routing that through
+ * AUTH_REQUIRED_EVENT made the sign-in screen announce "Your session ended."
+ * to somebody who had never had a session, directly above the correct
+ * "Wrong username or password" — two sentences disagreeing about the cause on
+ * the first screen a new user sees.
+ *
+ * Matched by path, which also covers the DELETE (logout): a session already
+ * gone when you asked to leave is not worth a banner, and `logout()` clears
+ * the session itself.
+ */
+function isCredentialMintUrl(url: string, baseHref: string): boolean {
+  try {
+    return new URL(url, baseHref).pathname.endsWith("/api/auth/session");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True when `url` resolves (against `baseHref`) to the same origin AND an
  * /api path — /api, /api/..., or /tunnel/<id>/api/....
  *
@@ -179,7 +204,13 @@ export function installFetchAuth(): void {
 
     const res = await original(input, finalInit);
 
-    if (attach && res.status === 401) {
+    // A refused attempt to GET a credential must not destroy the one we hold,
+    // and must not be reported as an expiry — see isCredentialMintUrl.
+    if (
+      attach &&
+      res.status === 401 &&
+      !isCredentialMintUrl(url, window.location.href)
+    ) {
       clearSession();
       window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
     }
