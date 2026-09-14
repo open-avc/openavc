@@ -1,91 +1,58 @@
-# OpenAVC v0.33.0
+# OpenAVC v0.34.0
 
-Panel idle dimming, panel display settings stored in the project file, Node-RED support and an events API. A large part of the rest is controls, macros and triggers showing the actual result instead of showing success.
+Panel text can be edited in place on the design canvas, master elements can be dragged and resized, and duplicating a container copies what is inside it. On the device side: SNMP control for rack and infrastructure equipment, Wake-on-LAN and datagram commands, and a restart window so a display that reboots when you power it on is not reported as a fault.
 
-## Panel display
+## UI Builder
 
-* Panels dim after five minutes with no touch, to 20%, on hardware where OpenAVC drives the screen. On by default, in Settings > Panel Display.
-* Panel brightness is set in Settings > Panel Display, with a minimum of 10%.
-* The dim level is a percentage of the panel's brightness, not a fixed value.
-* A dim level of 0 blacks the screen out. A touch restores it. The screen is never slept, because a slept panel does not wake on touch.
-* **Stay bright while** holds full brightness against a state key, such as a system-on variable or a display's power state.
-* The waking touch does not press the control underneath. There is a setting for the other behaviour.
-* Brightness changes apply immediately while the panel is dimmed.
-
-## Panel controls
-
-* **Control text starts at 28px instead of 14px, on every control type**, and text inside a control follows the control's Font Size. Existing panels take the new size on next open. A tight layout may need more room, and **Validate** names any control that is now too small.
-* A reading the device has not sent draws `--` with no handle. This is separate from the v0.32.0 unreachable mark.
-* Readings from an unreachable device are dimmed and marked **last heard** on the device page. Panel controls still blank them.
-* Failed presses are shown: a deleted macro, a run that failed while a schedule ran the same macro, a matrix preset or lock failure. Refusals nobody in the room can act on, such as a rate limit, are not marked.
-* A condition wait that times out gives the reason on the panel.
-* Toggle buttons show whether the thing they control is on, and crosspoints mark dead rows.
-
-## Devices
-
-* Sub-units of an unreachable device read as unavailable with a reason, and come back with the device. Bindings to them are kept.
-* Declared sub-units appear when the device is added, not after its first connect.
-* A driver can declare a position as a slot rather than a channel. Empty slots draw with a grey ring and are not counted as down. Driver contract change, `min_platform_version` 0.33.0; `at_atdm_0604a` 2.3.0 is the first driver using it.
-* Per-channel readings can be monitored from the **Child Entities** table, with the type, unit and range the driver declares.
-* `Device 'x' not found` is returned only when the device is absent. A driver's own failure is reported as one, writing an undeclared setting names the setting, and retrying a device that is not an orphan returns 409.
-* A device group names a member that is not in the project, and deleting a device clears it from every group.
-* `DELETE /api/devices/{id}` returns a `references` object naming the groups, macro steps, triggers, bound controls, master elements and scripts that still name the device. The delete confirmation lists the same.
-* **Update** in Browse Community rebuilds the devices on that driver, with no restart.
-* A paused device stays paused across a project save, a driver hot-reload or a simulator redirect.
-* Project saves return before the fleet connects, and the devices come up behind the save.
-
-## Macros and triggers
-
-* Macro runs return `completed`, `failed`, `cancelled` or `skipped`, and the IDE's Test button shows which. **A clean run is `completed` where it was `executed`.**
-* Trigger cards show **Ran OK** or **Last run failed** with the reason. `GET /api/triggers` returns `last_outcome` and `last_error`, and a `trigger.completed` WebSocket message covers each fire. **`POST /api/triggers/{id}/test` returns an outcome instead of `fired`.**
-* State change triggers saved without an operator fire again. A room whose automation was dead will start running it after the update.
-* A blank value for a required parameter returns a 400 naming the parameter, instead of a no-op reported as success. Free text is exempt. `NaN` and `Infinity` are refused on numbers.
-* A sub-macro failure fails the calling step, so the parent's error policy applies, and cancelling stops the whole chain.
-* Test saves pending macro edits before running.
-* Runs from the IDE or the AI return "running" after 30 seconds instead of a failure. Triggers, scripts, plugins and panel presses still wait for the full run.
-* `macro.skipped` covers an overlap or cooldown refusal, and `macro.cancel` over the WebSocket stops a run.
-* Collapsed Run Macro steps name the macro, and a step calling a deleted macro is marked missing.
-* A script whose top-level code runs past the load timeout is stopped, listed and counted in `system.abandoned_script_loads`.
+* **Double-click text on the canvas to edit it in place.** What opens is the text you wrote, not the text on screen: a label drawing "Amp draw: 0.076 A" opens as `Amp draw: {value} A`. On controls with a caption, only the caption is editable, so a reading or a scale is not disturbed. Master elements and page navigation buttons are editable too.
+* **A master element can be dragged and resized**, with the same handles, snapping and guides as any other control. Nudging one while a portrait arrangement is on screen moves it in that arrangement.
+* **Duplicate, Ctrl+D and Duplicate All copy a container's contents.** References between copied controls follow the copy, and the whole duplicate is one undo step.
+* Deleting an uploaded file or a custom control file that a panel still shows is refused, and the pages and controls using it are named. Listings state what uses each file. There is no undo for either.
+* A part-typed number in the Layout fields is no longer applied to the next control you select.
+* A monitored reading can state how many decimal places to show. Rounding is display only: the value that fires an alert is the value the device sent.
+* Smaller fixes: a monitor tile's state key wraps instead of printing across the value, multi-state appearance names can be edited, an imported theme is selected after the import, and an image keeps its selection while its dimensions load.
 
 ## Programmer
 
-* UI Builder undo history survives a device, a discovery, a cloud push or a reconnect touching the project. It is cleared only on a real collision, with a message.
-* A Builder tab left open across a restart no longer overwrites later edits, and the 409 names the restart.
-* Save As can replace a project saved under the same ID.
-* Release Action can be set in any button mode, not only Tap.
-* Server refusals are shown as a sentence rather than raw API error text, and a refused project import or save names the fields at fault.
-* The Appearance card lists a state key's declared values before the device has reported.
-* Sliders and faders keep their handles in the design canvas and the styling previews. Live Preview still shows missing readings as missing.
-* Theme Studio rounding presets are 8px and 16px, and a saved preset is recognised.
-* Smaller fixes: the canvas warning badge can be hovered to read it, renaming a control moves its placement, a plugin that fails to start is listed in the sidebar, discovery drops hosts a finished scan lost, Monitor controls fit on one line, a tab left open across an update reloads itself, a failed update check no longer reads as up to date, Save enables when a panel setting is the only change, Validate checks macro steps the same way as controls, and simulator cards size to their own contents.
+* A controller that only accepts connections from itself says so on the startup banner and the setup screen, and shows the address that works. Machine names already ending in `.local` are no longer shown with it twice, and the self-signed certificate covers that name, so installing the certificate authority removes the browser warning.
+* The sign-in screen no longer fills in the username `admin`, a wrong password says so, and a session that has ended is reported on the sign-in screen with unsaved edits noted as still open in the tab.
+* **A boot that had to recover the project says so.** The Dashboard names the backup and the time it was taken, so work saved after that point is accounted for. The notice survives restarts until dismissed.
+* **A script that fails while running is reported.** The Scripts list marks it and says how many times, and the editor marks the line that raised and names the exception type.
+* A backup can be restored straight after it is created. The row shows the restore in progress and the message names the backup that landed.
+* Pairing failures name the cloud that answered, and a self-hosted cloud's URL typed into the wrong field is refused instead of sending the token to cloud.openavc.com. Error banners across the IDE show the sentence the server sent rather than raw API error text.
+* The AI Assistant pane states why the assistant cannot be used instead of offering a prompt box that fails.
+* Panel Access points to Remote Panel in the cloud portal when you are working on a system remotely, instead of showing addresses that only reach the space's own network.
+* Panels paired by QR code or a typed address remember the system they trust, so an HTTPS system that changes IP address does not have to be paired again. The panel app lists a system by its project name, spaces included.
+* `auth.panel_lock_code`, `isc.auth_key` and `isc.discovery_enabled` are removed from `system.json`; nothing read them, and they are dropped from an existing file when it loads. A Programmer password or API key of only spaces is refused rather than stored, and both are trimmed.
+* The Inter-System page names which of the two switches is holding the mesh down. A configuration change ends an authentication backoff, and a refused remote command keeps the reason the other system gave.
+* Project format stays at 0.13.0, so a project saved here opens on v0.33.0.
 
-## Projects
+## Panel
 
-* Panel display settings and the device retry interval are stored in the project file, so they travel with a deployment or a cloud template. Project format 0.13.0.
-* Network address and ports, credentials, cloud pairing, certificates and the update channel stay with the individual system.
-* Custom panel themes travel with library saves, exports, imports, starter bundles and backups.
-* Project bundles include drivers' simulator and discovery companion files.
-* The Conference Room and Classroom starters send `set_input` to the PJLink projector, so source selection works.
-* A system whose live project came from a starter no longer boots with orphaned devices after a bundle refresh.
+* **The panel lock PIN stays on the server.** A panel is unauthenticated, so everything it receives is readable by anything on the network. Panels now receive only whether a lock is set, and the attempt is checked by the server.
+* A project's theme override reaches the page behind the controls, not just the controls. Preview and the design canvas show the same colour the panel does.
+* A page with nothing on it says so instead of drawing the connection badge on black. A space built entirely from custom pages now reaches an appliance or Pi display.
+* Panel errors identify disabled equipment by name and tell the occupant to contact support. Technical device IDs stay in the Programmer logs.
+* A control that only sends a command takes the same dashed edge as any other unavailable control, and only when nothing it can reach is up.
+* Smaller fixes: a panel opens the home page chosen in the project, a slider keeps its reading current after you let go, lock and idle settings apply in Preview, screen-reader button names match the state label, a paused device's dot is distinguishable from a working one, and a reading bound to a sub-unit's status no longer blanks when that sub-unit has something to report.
 
-## Integrations and API
+## Device control
 
-* Node-RED support: `@open-avc/node-red-openavc` on npm, with `docs/node-red.md`. This is the release the event nodes need; state, commands, macros and variables work against any server. A flow announces itself with `?name=<name>`, which holds `system.integration.<name>.connected` while the socket is open.
-* Events over the API in both directions. Subscribe with `?events=custom.*,ui.press.*` or an `event.subscribe` message; emit with `event.emit` or `POST /api/events`, restricted to `custom.*` for outside clients.
-* A script handler for an event nothing in the project emits is badged "with no emitter".
-* Alerts and resolves are stamped when this system saw the fault, so service report response times exclude transit delay.
-* A resolved alert includes why it ended, so a removed or disabled rule is not recorded as a fault somebody fixed.
-* Notify only is sent to the cloud, so the portal can show which rooms are opted out. The cloud side needs its own deploy.
-* A Programmer password or username containing a non-ASCII character works over HTTP Basic and through `OPENAVC_PROGRAMMER_PASSWORD` and `OPENAVC_API_KEY`.
-* A custom control or plugin panel file saved twice within one second is no longer served stale.
+* **SNMP v2c control**: GET, GETNEXT, SET and a walk, with retries. Python drivers only. The community string is sent in cleartext, and write permission is enforced on the device by the community it accepts. A device locked to v3, or set to a community you did not configure, reads as unreachable.
+* **A command can send one UDP datagram** beside the device's main connection: a payload to a given host and port, or a Wake-on-LAN packet built from a MAC address in a config field. It needs no connection, so with `available_offline` set it wakes a display that has closed its network port. YAML drivers declare it in the Driver Builder's **Send over UDP** section; Python drivers get `send_udp` and `wake_on_lan`.
+* **A command can declare how long it takes the device away for.** For that window the device reads as restarting with a counting-down message, rather than red with a network fault. `offline_reason` is left empty, so alert rules and automation conditions stay quiet about a display somebody just switched on.
+* Equipment that holds its connection open but stops responding now goes offline and reconnects on its own, on TCP, serial and SSH.
+* A serial device reached through an IP-to-serial bridge names the bridge when the bridge is down, and its line settings are sent again when the bridge reconnects.
+* A device setting stays queued until the device reports the value back. If it reports a different value the setting stays queued and the device shows an error naming it. **Reconnect** flushes the queue.
 
-## Updates
+## Driver contract
 
-* **Notify only** stops a system installing an update on its own, including one the cloud scheduled for a maintenance window. Installing by hand is unaffected.
-* The "Auto-backup before update" toggle is gone. The backup is taken on every update.
+Drivers built on any of the following declare a minimum platform version of 0.34.0, so they become installable once a system is updated.
 
-## Upgrading
+* An SSE event stream can be a subscribed session: the driver says where the session id comes from, subscribes it when the stream names it and again on every reopen, substitutes it into later commands, and ends it on disconnect.
+* A JSON reply can route values into child entities, so a device that answers with one body holding every sub-unit is modelled with children rather than flat per-zone state.
+* A JSON mapping can record whether a list holds a value, turning an array of flag names into one boolean per flag that a trigger can watch.
+* A regex response rule can stay eligible after the JSON rules have read a body, for a device that reports an error outside any JSON key it publishes.
+* A device's setup action, such as Test Connection, shows what it found. A check that ran but found the wrong answer ends red with the reason instead of a green tick.
+* `DRIVER_INFO` written with a type annotation is read like any other.
 
-* Projects are migrated to format 0.13.0 on first open. Nothing needs re-authoring.
-* Two API results changed: a clean macro run returns `completed` instead of `executed`, and `POST /api/triggers/{id}/test` returns an outcome instead of `fired`.
-* `offline_reason` and `offline_detail` on a sub-unit are unset rather than an empty string, matching a device. A trigger comparing one to an empty string should compare it to nothing set.
