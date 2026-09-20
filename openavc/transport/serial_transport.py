@@ -224,10 +224,10 @@ class SerialTransport:
         # Determine if we should simulate
         self._simulate = simulate or port.startswith("SIM:") or not HAS_SERIAL
 
-        # Resolve frame parser (same logic as TCP)
+        # Resolve frame parser (same logic as TCP, empty delimiter included)
         if frame_parser is not None:
             self._frame_parser: FrameParser | None = frame_parser
-        elif delimiter is not None:
+        elif delimiter:
             self._frame_parser = DelimiterFrameParser(delimiter)
         else:
             self._frame_parser = None
@@ -288,7 +288,8 @@ class SerialTransport:
             on_data: Called with each complete message.
             on_disconnect: Called when the port is lost.
             frame_parser: Optional FrameParser instance.
-            delimiter: Fallback delimiter if no frame_parser given.
+            delimiter: Fallback delimiter if no frame_parser given. None
+                or empty selects raw mode.
             timeout: Connection timeout in seconds.
             inter_command_delay: Seconds to wait between sends.
             bytesize: Data bits (5, 6, 7, 8). Default 8.

@@ -85,10 +85,15 @@ class TCPTransport:
         # Resolve frame parser:
         # 1. Explicit frame_parser param takes priority
         # 2. If delimiter is set, auto-create DelimiterFrameParser
-        # 3. None = raw mode
+        # 3. None or empty = raw mode
+        # An empty delimiter is the same statement as None ("this protocol has
+        # no framing"), so it selects raw mode rather than building a parser
+        # DelimiterFrameParser would reject. Drivers normalise this in
+        # BaseDriver._resolve_delimiter; the check is repeated here because a
+        # caller that builds a transport directly gets the same answer.
         if frame_parser is not None:
             self._frame_parser: FrameParser | None = frame_parser
-        elif delimiter is not None:
+        elif delimiter:
             self._frame_parser = DelimiterFrameParser(delimiter)
         else:
             self._frame_parser = None
@@ -145,7 +150,7 @@ class TCPTransport:
             port: Target TCP port.
             on_data: Called with each complete message (delimiter stripped).
             on_disconnect: Called when connection drops.
-            delimiter: Message delimiter bytes. None for raw mode.
+            delimiter: Message delimiter bytes. None or empty for raw mode.
                        Ignored when frame_parser is provided.
             timeout: Connection timeout in seconds.
             inter_command_delay: Seconds to wait between sends.

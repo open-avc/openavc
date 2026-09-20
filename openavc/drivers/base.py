@@ -2490,22 +2490,25 @@ class BaseDriver(ABC):
 
         Checks DRIVER_INFO["delimiter"] first, then self.config["delimiter"],
         then falls back to b"\\r". Override for custom logic.
+
+        An **empty** delimiter means "no delimiter", not "a delimiter of zero
+        bytes", and resolves to None like any other raw byte-stream protocol.
+        The device page's Line ending control stores its None option as "",
+        and a YAML driver may declare ``delimiter: ""`` for the same reason;
+        both used to reach the transport as b"", which is not None, so the
+        transport built a DelimiterFrameParser on it and that constructor
+        rejects an empty delimiter. The device then failed at transport
+        construction on every attempt, before any socket work.
         """
         from openavc.transport.binary_helpers import encode_escape_sequences
 
-        # Check DRIVER_INFO
-        delim = self.DRIVER_INFO.get("delimiter")
-        if delim is not None:
-            if isinstance(delim, bytes):
-                return delim
-            return encode_escape_sequences(delim)
-
-        # Check config
-        delim = self.config.get("delimiter")
-        if delim is not None:
-            if isinstance(delim, bytes):
-                return delim
-            return encode_escape_sequences(delim)
+        for source in (self.DRIVER_INFO, self.config):
+            delim = source.get("delimiter")
+            if delim is None:
+                continue
+            raw = delim if isinstance(delim, bytes) else encode_escape_sequences(delim)
+            # "" and b"" both mean no framing, not a zero-length delimiter.
+            return raw or None
 
         # Default
         return b"\r"

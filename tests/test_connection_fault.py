@@ -557,3 +557,41 @@ def test_a_specific_failure_still_wins_over_the_mismatch_hint():
         host="10.0.0.5", port=22, transport="tcp",
     )
     assert fault.code == CONNECTION_REFUSED
+
+
+# --- Framing configuration rejected before the transport existed -----------
+
+
+@pytest.mark.parametrize("err", [
+    "Delimiter must not be empty",
+    "header_size must be 1, 2, or 4",
+    "length_offset and header_extra must be >= 0",
+    "length must be positive",
+    "length_size must be 1, 2, or 4",
+    "reserve byte counts must be >= 0",
+])
+def test_framing_config_rejected_is_invalid_config(err):
+    """Every frame-parser validation refusal classifies as invalid_config.
+
+    These are raised while BUILDING the transport, so the device never reached
+    the network. Classified as transport_disconnected they read as "the
+    connection dropped" and retried forever; invalid_config says which settings
+    to look at and stops the reconnect loop.
+    """
+    fault = classify_connection_fault(
+        last_error=err, exc=ValueError(err),
+        host="192.168.1.50", port=23, transport="tcp",
+    )
+    assert fault.code == INVALID_CONFIG
+    assert is_permanent_fault(fault.code)
+
+
+def test_framing_config_rejected_on_serial_too():
+    """Serial builds the same frame parsers, so it gets the same answer rather
+    than the serial branch's generic "the serial connection dropped"."""
+    fault = classify_connection_fault(
+        last_error="Delimiter must not be empty",
+        exc=ValueError("Delimiter must not be empty"),
+        host="", port="/dev/ttyUSB0", transport="serial",
+    )
+    assert fault.code == INVALID_CONFIG
