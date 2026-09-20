@@ -127,6 +127,35 @@ def _copy_tree(src: Path, dest: Path) -> None:
             shutil.copy2(f, target)
 
 
+#: The file trees that belong to the live project rather than to its .avc, and
+#: are served from ``project_path.parent``: uploaded images and audio, custom
+#: controls, and saved themes. Anything that REPLACES the live project replaces
+#: all three, because a file left behind belongs to a project that is no longer
+#: loaded and shows up in the new one's asset list.
+PROJECT_FILE_TREES = ("assets", "ui", "themes")
+
+
+def replace_project_trees(project_dir: Path, source_dir: Path | None) -> None:
+    """Swap the live project's file trees for ``source_dir``'s.
+
+    ``source_dir`` None clears them, which is what starting a blank project
+    wants. One helper for both callers on purpose: opening a library project
+    cleared the trees and creating a blank one did not, so a new project
+    inherited the previous project's images, custom controls and themes while
+    its scripts were correctly cleared.
+    """
+    for tree in PROJECT_FILE_TREES:
+        active_tree = project_dir / tree
+        if active_tree.exists():
+            shutil.rmtree(active_tree, ignore_errors=True)
+        if source_dir is None:
+            continue
+        if tree == "themes":
+            theme_tree.copy_tree(source_dir / tree, active_tree)
+        else:
+            _copy_tree(source_dir / tree, active_tree)
+
+
 def _lib_dir() -> Path:
     """Get the saved projects directory, creating it if needed."""
     d = config.SAVED_PROJECTS_DIR
@@ -694,19 +723,10 @@ def open_from_library(
 
     replace_scripts(scripts_dir, scripts)
 
-    # Replace the active project's assets and custom UI files with the library
-    # project's so image/background references and custom controls resolve, and
-    # the previous project's files don't linger (both are served from
-    # project_path.parent).
-    lib_project_dir = _lib_dir() / sanitize_id(project_id)
-    for tree in ("assets", "ui", "themes"):
-        active_tree = project_path.parent / tree
-        if active_tree.exists():
-            shutil.rmtree(active_tree, ignore_errors=True)
-        if tree == "themes":
-            theme_tree.copy_tree(lib_project_dir / tree, active_tree)
-        else:
-            _copy_tree(lib_project_dir / tree, active_tree)
+    # Replace the active project's assets, custom UI files and themes with the
+    # library project's, so image/background references and custom controls
+    # resolve and the previous project's files don't linger.
+    replace_project_trees(project_path.parent, _lib_dir() / sanitize_id(project_id))
 
     log.info(f"Opened project '{project_id}' as '{new_project_name}'")
     return project

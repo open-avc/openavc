@@ -1127,3 +1127,66 @@ class TestReplaceRoute:
             resp = client.put("/api/library/nope", json={"name": "Nope"})
             assert resp.status_code == 404, resp.text
             assert "not found in library" in resp.json()["detail"]
+
+
+# --- Replacing the live project replaces all of its file trees --------------
+
+
+def _seed_live_trees(project_dir: Path) -> None:
+    """Plant one file in each tree that belongs to the live project."""
+    (project_dir / "assets").mkdir(parents=True, exist_ok=True)
+    (project_dir / "assets" / "logo.png").write_bytes(b"\x89PNG stand-in")
+    (project_dir / "ui" / "dial").mkdir(parents=True, exist_ok=True)
+    (project_dir / "ui" / "dial" / "index.html").write_text("<p>a control</p>")
+    (project_dir / "themes").mkdir(parents=True, exist_ok=True)
+    (project_dir / "themes" / "house.json").write_text('{"id": "house"}')
+
+
+def _live_tree_files(project_dir: Path) -> set[str]:
+    return {
+        str(f.relative_to(project_dir))
+        for tree in plib.PROJECT_FILE_TREES
+        for f in (project_dir / tree).rglob("*")
+        if f.is_file()
+    }
+
+
+def test_replace_project_trees_with_no_source_clears_all_three(tmp_path):
+    """Starting a blank project must not inherit the previous project's
+    images, custom controls or themes. They used to survive, because only
+    the scripts were cleared."""
+    project_dir = tmp_path / "projects" / "default"
+    project_dir.mkdir(parents=True)
+    _seed_live_trees(project_dir)
+    assert _live_tree_files(project_dir)  # the fixture actually planted them
+
+    plib.replace_project_trees(project_dir, None)
+
+    assert _live_tree_files(project_dir) == set()
+
+
+def test_replace_project_trees_swaps_in_the_source(tmp_path):
+    """Opening a saved project takes its files and leaves none of the old."""
+    project_dir = tmp_path / "projects" / "default"
+    project_dir.mkdir(parents=True)
+    _seed_live_trees(project_dir)
+
+    source = tmp_path / "saved_projects" / "other"
+    (source / "assets").mkdir(parents=True)
+    (source / "assets" / "backdrop.jpg").write_bytes(b"jpg stand-in")
+    (source / "themes").mkdir(parents=True)
+    (source / "themes" / "night.json").write_text('{"id": "night"}')
+
+    plib.replace_project_trees(project_dir, source)
+
+    assert _live_tree_files(project_dir) == {
+        str(Path("assets") / "backdrop.jpg"),
+        str(Path("themes") / "night.json"),
+    }
+
+
+def test_replace_project_trees_is_safe_on_a_project_with_none(tmp_path):
+    project_dir = tmp_path / "projects" / "default"
+    project_dir.mkdir(parents=True)
+    plib.replace_project_trees(project_dir, None)
+    assert _live_tree_files(project_dir) == set()

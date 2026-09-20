@@ -666,7 +666,9 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
 @router.post("/project/create-blank")
 async def create_blank(request: Request) -> dict[str, Any]:
     """Reset to an empty project."""
-    from openavc.core.project_library import create_blank_project, sanitize_id, replace_scripts
+    from openavc.core.project_library import (
+        create_blank_project, replace_project_trees, replace_scripts, sanitize_id,
+    )
     from openavc.core.backup_manager import create_backup
 
     engine = _get_engine()
@@ -681,8 +683,12 @@ async def create_blank(request: Request) -> dict[str, Any]:
 
     project = create_blank_project(project_id, project_name)
 
+    # A blank project starts with nothing of the old one's: its scripts, and
+    # equally its uploaded assets, custom controls and themes. The backup above
+    # is taken first, so none of this is unrecoverable.
     scripts_dir = engine.project_path.parent / "scripts"
     replace_scripts(scripts_dir, {})
+    replace_project_trees(engine.project_path.parent, None)
 
     await engine.broadcast_ws({
         "type": "project.replaced",
