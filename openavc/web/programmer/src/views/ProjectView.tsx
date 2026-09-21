@@ -13,6 +13,7 @@ import {
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Dialog } from "../components/shared/Dialog";
+import { AnchoredMenu } from "../components/shared/AnchoredMenu";
 import { AssetBrowser, type AssetFilter } from "../components/assets/AssetBrowser";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -586,50 +587,20 @@ export function ProjectView() {
                     </div>
                   )}
                 </div>
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenMenu(openMenu === lib.id ? null : lib.id);
-                    }}
-                    style={{
-                      padding: "var(--space-xs)",
-                      borderRadius: "var(--border-radius)",
-                      background: "transparent",
-                      cursor: "pointer",
-                      display: "flex",
-                    }}
-                  >
-                    <MoreHorizontal size={16} />
-                  </button>
-                  {openMenu === lib.id && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        right: 0,
-                        top: "100%",
-                        zIndex: 100,
-                        background: "var(--bg-elevated)",
-                        borderRadius: "var(--border-radius)",
-                        border: "1px solid var(--border-color)",
-                        boxShadow: "var(--shadow-lg)",
-                        minWidth: 140,
-                        overflow: "hidden",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MenuBtn icon={<FolderOpen size={14} />} label="Open" onClick={() => openOpenDialog(lib)} />
-                      <MenuBtn icon={<Copy size={14} />} label="Duplicate" onClick={() => openDuplicateDialog(lib)} />
-                      <MenuBtn icon={<Download size={14} />} label="Export" onClick={() => { handleExportLib(lib.id); setOpenMenu(null); }} />
-                      <MenuBtn
-                        icon={<Trash2 size={14} />}
-                        label="Delete"
-                        danger
-                        onClick={() => { setShowDelete(lib.id); setOpenMenu(null); }}
-                      />
-                    </div>
-                  )}
-                </div>
+                <RowMenu
+                  open={openMenu === lib.id}
+                  onToggle={() => setOpenMenu(openMenu === lib.id ? null : lib.id)}
+                >
+                  <MenuBtn icon={<FolderOpen size={14} />} label="Open" onClick={() => openOpenDialog(lib)} />
+                  <MenuBtn icon={<Copy size={14} />} label="Duplicate" onClick={() => openDuplicateDialog(lib)} />
+                  <MenuBtn icon={<Download size={14} />} label="Export" onClick={() => { handleExportLib(lib.id); setOpenMenu(null); }} />
+                  <MenuBtn
+                    icon={<Trash2 size={14} />}
+                    label="Delete"
+                    danger
+                    onClick={() => { setShowDelete(lib.id); setOpenMenu(null); }}
+                  />
+                </RowMenu>
               </div>
             ))
           )}
@@ -893,6 +864,53 @@ export function ProjectView() {
 }
 
 // --- Overflow menu button ---
+
+/**
+ * The three-dot trigger on a library row, and its menu.
+ *
+ * The menu goes through AnchoredMenu rather than being positioned inside this
+ * row: the library card sets `overflow: hidden`, which clipped the menu on the
+ * bottom rows and left only Open reachable there.
+ */
+function RowMenu({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        style={{
+          padding: "var(--space-xs)",
+          borderRadius: "var(--border-radius)",
+          background: "transparent",
+          cursor: "pointer",
+          display: "flex",
+        }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <AnchoredMenu anchorRef={btnRef} onClose={onToggle}>
+          {children}
+        </AnchoredMenu>
+      )}
+    </div>
+  );
+}
+
 
 function MenuBtn({
   icon,
