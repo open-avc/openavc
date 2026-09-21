@@ -9,6 +9,7 @@ import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CopyButton } from "./CopyButton";
 import { groupLabel } from "./variableKeyPickerHelpers";
+import { UI_OVERRIDE_PROPERTIES } from "./uiOverrideProperties";
 import { showError } from "../../store/toastStore";
 import { getDevice, listChildEntities } from "../../api/restClient";
 import {
@@ -76,6 +77,11 @@ interface VariableKeyPickerProps {
   onChange: (key: string) => void;
   /** Show device state keys in addition to project variables */
   showDeviceState?: boolean;
+  /** Offer `ui.<element>.<property>` for every control in the project, so a
+   *  macro can drive the panel without a script. Off by default: it is only
+   *  meaningful where the picked key is written to, and it would otherwise
+   *  bury the project's own variables under one row per control per property. */
+  showUiOverrides?: boolean;
   /** Also offer $trigger.<field> refs (the event payload / state-change
    *  snapshot of the trigger that fired the macro). Only meaningful in macro
    *  step/condition editors, where the macro may be run by a trigger. */
@@ -150,6 +156,7 @@ export function VariableKeyPicker({
   value,
   onChange,
   showDeviceState = true,
+  showUiOverrides = false,
   showTriggerContext = false,
   eventContext = NO_EVENT_CONTEXT,
   placeholder = "Select state key...",
@@ -158,6 +165,7 @@ export function VariableKeyPicker({
   const projectVariables = useProjectStore((s) => s.project?.variables);
   const projectDevices = useProjectStore((s) => s.project?.devices);
   const projectPages = useProjectStore((s) => s.project?.ui?.pages);
+  const projectMasters = useProjectStore((s) => s.project?.ui?.master_elements);
   const storeUpdate = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
 
@@ -219,6 +227,46 @@ export function VariableKeyPicker({
       });
     }
 
+    // Panel element overrides, from the PROJECT rather than from live state.
+    //
+    // These keys exist the moment somebody writes one, so reading them off
+    // liveState (as the `ui.` branch below does) only ever offered a key that
+    // had already been set. That made a shipped capability unreachable from a
+    // standing start: an integrator with no `ui.` key in state saw no way to
+    // touch a control from a macro and concluded it needed Python.
+    const offeredUiKeys = new Set<string>();
+    if (showUiOverrides) {
+      const seen = new Set<string>();
+      const addElement = (
+        el: { id?: string; label?: string; type?: string },
+        where: string,
+      ) => {
+        const id = el?.id;
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        const name = el.label || el.id;
+        for (const prop of UI_OVERRIDE_PROPERTIES) {
+          const key = `ui.${id}.${prop.name}`;
+          offeredUiKeys.add(key);
+          entries.push({
+            key,
+            label: prop.label,
+            type: prop.type,
+            group: `ui:${id}`,
+            groupDesc:
+              "Change this control on every panel while the program runs. "
+              + "Clearing the key puts it back as authored.",
+            deviceName: `${name} · ${where}`,
+            description: prop.hint,
+          });
+        }
+      };
+      for (const page of pages) {
+        for (const el of page.elements ?? []) addElement(el, page.name);
+      }
+      for (const el of projectMasters ?? []) addElement(el, "every page");
+    }
+
     // Live state keys — group by prefix
     if (showDeviceState) {
       // Build device name lookup from project
@@ -269,6 +317,7 @@ export function VariableKeyPicker({
             deviceName: pluginId,
           });
         } else if (k.startsWith("ui.")) {
+          if (offeredUiKeys.has(k)) continue;  // already offered from the project
           const parts = k.split(".");
           const elId = parts[1] ?? "";
           entries.push({
@@ -299,7 +348,7 @@ export function VariableKeyPicker({
     return entries;
     // labelsVersion re-runs this once lazily-fetched device labels land.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectVariables, projectDevices, projectPages, liveState, showDeviceState, showTriggerContext, eventContext, labelsVersion]);
+  }, [projectVariables, projectDevices, projectPages, projectMasters, liveState, showDeviceState, showUiOverrides, showTriggerContext, eventContext, labelsVersion]);
 
   // Display text for collapsed state
   const selectedEntry = allEntries.find((e) => e.key === value);

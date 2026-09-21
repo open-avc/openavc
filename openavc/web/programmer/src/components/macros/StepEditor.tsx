@@ -537,8 +537,9 @@ function StateSetEditor({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       <HelpText>
-        Set a shared variable that the whole system can see: UI elements update, scripts
-        can react, other macros can read it.
+        Set a shared value the whole system can see: UI elements update, scripts can
+        react, other macros can read it. Pick a control under UI to change its label,
+        colour, opacity, or whether it shows at all, with no script needed.
       </HelpText>
 
       <div style={rowStyle}>
@@ -547,7 +548,8 @@ function StateSetEditor({
           value={step.key ?? ""}
           onChange={(key) => onChange({ key })}
           showDeviceState
-          placeholder="Select variable..."
+          showUiOverrides
+          placeholder="Select variable or control..."
           style={{ flex: 1 }}
         />
       </div>

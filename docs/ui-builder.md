@@ -705,6 +705,31 @@ Select a theme to apply it immediately. The canvas preview updates in real time.
 
 To customize a theme, open the **Theme Studio** (click the paint brush icon in the toolbar). The studio lets you tweak any theme and save it as a custom theme. All custom themes travel with the project when you save it to the library, duplicate it, export a project bundle, or create a backup. You can also export an individual theme as an `.avctheme` file and share it across projects or installations.
 
+## Changing a Control While the Program Runs
+
+Everything above decides how a control is *authored*. A macro or a script can
+also change one while the room is in use, and the panel updates immediately.
+
+Add a **Set Variable or Control** step to a macro, pick the control from the
+**UI** groups in the picker, and set one of:
+
+| Property | Value | Effect |
+|----------|-------|--------|
+| **Label** | text | The words on the control, replacing the one it was given |
+| **Visible** | true / false | Show or hide the control |
+| **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
+| **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
+| **Opacity** | 0 to 1 | Below 1 fades it |
+
+The same five are available on a button's own **Does** bucket, and to scripts as
+`openavc.state.set("ui.<control id>.<property>", value)`.
+
+An override stands until it is cleared, so a macro that renames a button for a
+meeting wants a counterpart that puts it back. For anything the table does not
+cover, and for state that should survive a panel reconnect, bind the control to
+a variable and change the variable instead. Full detail:
+[Macros and Triggers](macros-and-triggers.md#changing-a-control-from-a-macro).
+
 ## Master Elements
 
 Master elements persist across page changes. Use them for elements that should always be visible regardless of which page the user is on: a company logo, a navigation bar, a clock, or a status indicator row.

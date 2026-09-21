@@ -21,7 +21,7 @@ Use the search box at the top of the macro list to filter by name.
 | **Group Command** | Send a command to all devices in a group at once | `projectors` -> `power_on` |
 | **Delay** | Wait N seconds between steps | Wait 15 seconds for projector warmup |
 | **Wait Until** | Pause until a state value matches a condition | Wait until the projector reports it is warm |
-| **Set Variable** | Set a user variable | `var.room_active` = `true` |
+| **Set Variable or Control** | Set a user variable, or change a control on the panel | `var.room_active` = `true`, or `ui.btn_power.label` = `Turn Off` |
 | **Emit Event** | Fire a custom event on the event bus | `room.shutdown_complete` |
 | **Run Macro** | Execute another macro as a sub-routine | Run `select_hdmi1` |
 | **Conditional** | If/else branching based on state | If projector is already on, skip power-on |
@@ -33,7 +33,7 @@ The **Group Command** step works the same way but targets a device group instead
 
 The **Emit Event** step can attach optional payload fields that travel with the event. Each field has a name and a typed value (text, number, or true/false), and a value starting with `$` is resolved when the step runs, so `$var.current_source` travels as that variable's value rather than as the text. Scripts read a field with `event.get("<field>")` inside an `@on_event` handler, and a macro triggered by the event can read each field with `$trigger.<field>`. The same step is available directly on a button or other control, in the UI Builder's **Does** bucket.
 
-The **Set Variable** step stores values with the variable's declared type: a string variable keeps text like `0` or `true` exactly as typed. When the target is a device or system state key instead of a variable, a type selector chooses whether the value is stored as text, a number, or true/false.
+The **Set Variable or Control** step stores values with the variable's declared type: a string variable keeps text like `0` or `true` exactly as typed. When the target is a device or system state key instead of a variable, a type selector chooses whether the value is stored as text, a number, or true/false. It also reaches the panel directly: see [Changing a Control from a Macro](#changing-a-control-from-a-macro) below.
 
 A step that will not run as built is marked while you edit it, both inline and on the macro's row in the list. That includes a step that has not been finished (a delay with no seconds, a command step with no device chosen) and a command whose parameters are not filled in: some commands take a parameter they cannot run without, marked **required** in red beside the field, and leaving one empty means the device refuses the step every time with a message like `'set_fader': 'channel' is required`. The mark uses those same words. A step aimed at a device whose driver is not installed yet is left alone, so a macro written ahead of the equipment stays quiet. Nothing here blocks a save: a half-built macro is a normal thing to leave overnight.
 
@@ -270,7 +270,34 @@ still run; it does not make the failure stop being one.
 
 ## Variables in Macros
 
-The **Set Variable** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **true / false** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
+The **Set Variable or Control** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **true / false** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
+
+## Changing a Control from a Macro
+
+A macro can change a control on the panel while the program runs, without a
+script. Add a **Set Variable or Control** step and pick the control from the
+**UI** groups in the picker, then set the value. Every panel showing that
+control updates immediately.
+
+| Property | Value | Effect |
+|----------|-------|--------|
+| **Label** | text | The words on the control, replacing the one it was given |
+| **Visible** | true / false | Show or hide the control |
+| **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
+| **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
+| **Opacity** | 0 to 1 | Below 1 fades it |
+
+The key behind each one is `ui.<control id>.<property>`, so a script writes the
+same values with `openavc.state.set("ui.btn_power.label", "Turn Off")`.
+
+An override stands until you clear it. Delete the key (or set it back) and the
+control returns to the way it was authored, so a macro that changes a label for
+a meeting should have a counterpart that clears it afterwards.
+
+Two things it does not reach: a control's *value* (a slider's position, a
+toggle's on/off) and anything not in the table above. For those, bind the
+control to a variable and set the variable instead, which is also what makes
+the state survive a panel reconnect.
 
 ## Macro Dependencies
 

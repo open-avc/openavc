@@ -41,7 +41,7 @@ interface ActionPickerProps {
 const ACTION_TYPES = (navigateAction: string) => [
   { value: "macro", label: "Run Macro" },
   { value: "device.command", label: "Device Command" },
-  { value: "state.set", label: "Set Variable" },
+  { value: "state.set", label: "Set Variable or Control" },
   { value: navigateAction, label: "Navigate Page" },
   { value: "script.call", label: "Script Function" },
   { value: "event.emit", label: "Emit Event" },
@@ -343,7 +343,8 @@ function StateSetConfig({
             })
           }
           showDeviceState={false}
-          placeholder="Select or create a variable..."
+          showUiOverrides
+          placeholder="Select a variable or control..."
           style={{ width: "100%" }}
         />
       </div>
