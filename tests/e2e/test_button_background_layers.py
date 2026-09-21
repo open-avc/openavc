@@ -171,3 +171,19 @@ def test_a_flat_colour_alone_draws_no_image(panel_page) -> None:
 def test_a_button_with_neither_draws_no_gradient(panel_page) -> None:
     style = _render(panel_page, label="Power", style={})
     assert "linear-gradient" not in style["backgroundImage"]
+
+
+def test_a_gradient_survives_an_element_background_image(panel_page) -> None:
+    """The same composition for `style.background_image`, three lines away in
+    the same function and broken the same way: it overwrote background-image
+    with the asset and the gradient went with it."""
+    style = _render(
+        panel_page,
+        label="Power",
+        style={"background_gradient": GRADIENT, "background_image": PIXEL},
+    )
+    assert "linear-gradient" in style["backgroundImage"], (
+        "an element background image replaced the gradient instead of "
+        "drawing over it"
+    )
+    assert "url(" in style["backgroundImage"]

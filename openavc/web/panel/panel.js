@@ -7811,9 +7811,17 @@ class PanelApp {
                     }
                 });
             } else {
-                el.style.backgroundImage = `url("${this._sanitizeCssUrl(url)}")`;
-                el.style.backgroundSize = this._sanitizeCssValue(size === 'stretch' ? '100% 100%' : size);
-                el.style.backgroundPosition = this._sanitizeCssValue(pos);
+                // Over the gradient, not instead of it -- same composition the
+                // button-image path does, for the same reason.
+                const imageCss = `url("${this._sanitizeCssUrl(url)}")`;
+                const sizeValue = this._sanitizeCssValue(size === 'stretch' ? '100% 100%' : size);
+                const posValue = this._sanitizeCssValue(pos);
+                el.style.backgroundImage = gradientCss
+                    ? `${imageCss}, ${gradientCss}` : imageCss;
+                el.style.backgroundSize = gradientCss
+                    ? `${sizeValue}, cover` : sizeValue;
+                el.style.backgroundPosition = gradientCss
+                    ? `${posValue}, center` : posValue;
                 el.style.backgroundRepeat = 'no-repeat';
             }
         }
