@@ -211,7 +211,7 @@
     "CLICKABLE Device Command",
     "CLICKABLE Test Controller \u2192 identify",
     "CLICKABLE (unnamed)",
-    "CLICKABLE Set Variable",
+    "CLICKABLE Set Variable or Control",
     "CLICKABLE var.system_power = \"on\""
   ],
   "Plugins": [
