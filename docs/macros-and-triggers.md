@@ -193,6 +193,29 @@ Dynamic references also work on the **Set Variable** step's value field. This le
 
 The same `$` picker now appears on UI Builder bindings, so a touch panel button or slider can read a variable or device state the same way a macro step does. See [UI Builder](ui-builder.md) for the binding-side picker.
 
+### One macro for a row of buttons
+
+A control hands the macro it runs a few facts about itself, read the same way
+as a trigger's:
+
+| Reference | What it is |
+|-----------|-----------|
+| `$trigger.tag` | The **Tag** you gave the control in the UI Builder |
+| `$trigger.element` | The control's ID, whether or not it has a tag |
+| `$trigger.value` | The touched value, for a control that carries one (a slider's position) |
+
+So nine buttons tagged `1` through `9` can share one macro:
+
+```json
+{"action": "device.command", "device": "switcher", "command": "select_input",
+ "params": {"input": "$trigger.tag"}}
+```
+
+Set the Tag in the properties panel of the UI Builder. It is free text, so
+`1`, `hdmi2` and `row_3` all work. A control with no tag still reports its ID,
+and a macro run from the Macros view or on a schedule has no control behind it,
+so all three resolve to nothing there.
+
 ### Reading the trigger that fired the macro
 
 When a macro is run by a trigger, it can read what fired it through the **Trigger event** group in the dynamic-value picker:

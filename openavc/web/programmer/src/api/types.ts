@@ -305,6 +305,9 @@ export interface UIElement {
   parent?: string | null;
   aspect_lock?: number | null;
   css_class?: string | null;
+  /** A word this control passes to whatever it runs, read in a macro as
+   *  $trigger.tag, so one macro can serve a whole array of controls. */
+  tag?: string | null;
   /** Authoring-time protection: no drag, resize, nudge or delete. Absent on a
    *  project saved before the field existed, which reads the same as false. */
   locked?: boolean;

@@ -705,6 +705,17 @@ Select a theme to apply it immediately. The canvas preview updates in real time.
 
 To customize a theme, open the **Theme Studio** (click the paint brush icon in the toolbar). The studio lets you tweak any theme and save it as a custom theme. All custom themes travel with the project when you save it to the library, duplicate it, export a project bundle, or create a backup. You can also export an individual theme as an `.avctheme` file and share it across projects or installations.
 
+## Tagging a Control
+
+A control's **Tag** is a word it passes to the macro it runs, so a row of
+controls that differ by one value can share a single macro instead of needing
+one each. Tag nine source buttons `1` to `9`, point all of them at the same
+macro, and have that macro send `$trigger.tag` as the input number.
+
+It is free text: `1`, `hdmi2` and `row_3` are all fine. The macro also reads
+`$trigger.element` (the control's ID) whether or not you set a tag. Full
+detail: [Macros and Triggers](macros-and-triggers.md#one-macro-for-a-row-of-buttons).
+
 ## Changing a Control While the Program Runs
 
 Everything above decides how a control is *authored*. A macro or a script can

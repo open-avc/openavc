@@ -46,6 +46,26 @@ DISPATCHED_ACTIONS = frozenset({
 })
 
 
+def _press_context(element: Any, event_ctx: dict[str, Any]) -> dict[str, Any]:
+    """What a macro run from a control can read about the press.
+
+    Reaches the steps as ``$trigger.<field>``, the same namespace a triggered
+    macro reads, because a press IS what fired this run and a second namespace
+    for the same idea would be two things to learn instead of one.
+
+    ``tag`` is the author's own word for this control (element.tag); ``element``
+    is its id, which every control has whether or not anybody tagged it. The
+    event tokens ride along unchanged, so ``$trigger.value`` is the same
+    already-scaled reading ``$value`` hands a device command on the same press,
+    rather than a second, rawer answer to the same question.
+    """
+    return {
+        **event_ctx,
+        "tag": getattr(element, "tag", None),
+        "element": getattr(element, "id", None),
+    }
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Log an exception from a fire-and-forget task instead of swallowing it."""
     if task.cancelled():
@@ -345,8 +365,16 @@ class UIEventRuntime:
                 if dry_run:
                     record(macro=macro_id, started=False)
                     return
-                # Run macro in background so UI doesn't block
-                task = asyncio.create_task(engine.macros.execute(macro_id))
+                # What the press knows about itself, handed to the macro the
+                # way a trigger hands over its payload -- so the steps read it
+                # as $trigger.tag / $trigger.element. Without it a macro run
+                # from a control learned nothing about which control ran it,
+                # and an array of buttons that differ only in one value needed
+                # one macro each (or a script), while the sibling
+                # device.command branch below had resolved $value all along.
+                task = asyncio.create_task(
+                    engine.macros.execute(macro_id, _press_context(element, event_ctx))
+                )
                 task.add_done_callback(_log_task_exception)
                 record(macro=macro_id, started=True)
 

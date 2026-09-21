@@ -234,7 +234,7 @@ async def test_a_macro_start_is_recorded(tmp_path) -> None:
     )
     started: list[str] = []
 
-    async def execute(macro_id):
+    async def execute(macro_id, context=None):
         started.append(macro_id)
 
     engine.macros.execute = execute
@@ -263,7 +263,7 @@ async def test_a_button_whose_macro_is_gone_says_so_instead_of_starting_it(
     )
     started: list[str] = []
 
-    async def execute(macro_id):
+    async def execute(macro_id, context=None):
         started.append(macro_id)
 
     engine.macros.execute = execute
@@ -359,7 +359,7 @@ async def test_one_destination_can_do_something_else_entirely(tmp_path) -> None:
     async def send(device_id, command, params):
         sent.append((device_id, command, params))
 
-    async def execute(macro_id):
+    async def execute(macro_id, context=None):
         pass
 
     engine.devices.send_command = send
@@ -384,7 +384,7 @@ async def test_a_destination_is_found_by_value_however_it_is_spelled(tmp_path) -
         macros=[{"id": "start_stream", "name": "Stream", "steps": []}],
     )
 
-    async def execute(macro_id):
+    async def execute(macro_id, context=None):
         pass
 
     engine.macros.execute = execute

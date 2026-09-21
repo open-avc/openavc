@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { LAYER } from "./layers";
 
 /**
  * A dropdown that escapes whatever is clipping its trigger.
@@ -87,7 +88,7 @@ export function AnchoredMenu({
         top: pos?.top ?? -9999,
         left: pos?.left ?? -9999,
         visibility: pos ? "visible" : "hidden",
-        zIndex: 1000,
+        zIndex: LAYER.popover,
         background: "var(--bg-elevated)",
         borderRadius: "var(--border-radius)",
         border: "1px solid var(--border-color)",

@@ -30,6 +30,7 @@ class _ForwardCompatModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 from openavc.utils.logger import get_logger
+from openavc.core.project_migration import CURRENT_VERSION
 from openavc.drivers.registry import get_driver_class
 
 log = get_logger(__name__)
@@ -485,6 +486,12 @@ class UIElement(_ForwardCompatModel):
     # (ui.custom_css) can target. The renderer puts them on the element's node,
     # and the UI Builder's styling editor writes both halves.
     css_class: str | None = None
+    # A word this control passes to whatever it runs, so one macro can serve a
+    # whole array of buttons. A press hands it to the macro as $trigger.tag
+    # alongside $trigger.element, which is what lets nine keypad buttons share
+    # one macro instead of needing nine. Free-form and never interpreted here:
+    # "1", "hdmi2" and "row_3" are all the same to the platform.
+    tag: str | None = None
     # Authoring-time protection: a locked element cannot be dragged, resized,
     # nudged or deleted in the Builder. It has no runtime meaning -- the panel
     # renders a locked element exactly like any other -- but it has to live in
@@ -774,12 +781,14 @@ class ProjectSettings(_ForwardCompatModel):
 
 
 class ProjectConfig(_ForwardCompatModel):
-    # Keep in sync with project_migration.CURRENT_VERSION — the default stamped
-    # on a freshly-created project so it isn't immediately "migrated" on reload.
-    # A stale default here is not cosmetic: a project written with it gets the
-    # whole 0.7->0.8 migration re-run over an already-0.8 body on its next
-    # save, which collapses every placement and re-divides every rem value.
-    openavc_version: str = "0.13.0"
+    # The version stamped on a freshly-created project, so it isn't immediately
+    # "migrated" on reload. Taken FROM project_migration rather than written out
+    # again: it was a literal with a "keep in sync" comment, and it did not stay
+    # in sync. A stale default here is not cosmetic -- a project written with it
+    # gets the whole 0.7->0.8 migration re-run over an already-0.8 body on its
+    # next save, which collapses every placement and re-divides every rem value.
+    # (project_migration imports nothing from here, so this is not a cycle.)
+    openavc_version: str = CURRENT_VERSION
     project: ProjectMeta
     # Settings the project carries to every panel it is deployed to. See
     # ProjectSettings for what may live here and, more importantly, what may

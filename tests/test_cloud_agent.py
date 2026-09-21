@@ -1294,8 +1294,11 @@ class TestCommandHandler:
         )
 
         saved = json.loads(project_path.read_text(encoding="utf-8"))
-        # Migration ran before the save: the persisted version is the current one.
-        assert saved["openavc_version"] == "0.13.0", saved.get("openavc_version")
+        # Migration ran before the save: the persisted version is the current
+        # one. Read from CURRENT_VERSION rather than written out again, so a
+        # format bump does not fail here for no reason.
+        from openavc.core.project_migration import CURRENT_VERSION
+        assert saved["openavc_version"] == CURRENT_VERSION, saved.get("openavc_version")
         # And the pushed project is what got saved (not the pre-existing one).
         assert saved["project"]["id"] == "pushed"
         # The push went through the seam — LOAD origin, no OCC check (a fleet

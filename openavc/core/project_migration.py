@@ -9,7 +9,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.13.0"
+CURRENT_VERSION = "0.14.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -968,6 +968,28 @@ def migrate_0_12_to_0_13(data: dict) -> dict:
     return data
 
 
+def migrate_0_13_to_0_14(data: dict) -> dict:
+    """
+    Migrate from 0.13.0 to 0.14.0 -- a control can name itself to the macro it
+    runs.
+
+    A version stamp: nothing in an existing project moves, and no element gains
+    a `tag`. What the stamp records is that a press now hands the macro a
+    context (`$trigger.tag`, `$trigger.element`, and the event tokens), which it
+    did not before -- a macro run from a control used to learn nothing at all
+    about which control ran it.
+
+    That is a real difference to an older platform rather than a cosmetic one,
+    the same shape as 0.12.0's binding actions: open a 0.14.0 project on a
+    platform that passes no context and every `$trigger.tag` in it resolves to
+    nothing, so a row of buttons sharing one macro silently all do the same
+    thing. The version is what says which meaning the project was written
+    against.
+    """
+    data["openavc_version"] = "0.14.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -982,6 +1004,7 @@ MIGRATIONS = [
     ("0.10.0", "0.11.0", migrate_0_10_to_0_11),
     ("0.11.0", "0.12.0", migrate_0_11_to_0_12),
     ("0.12.0", "0.13.0", migrate_0_12_to_0_13),
+    ("0.13.0", "0.14.0", migrate_0_13_to_0_14),
 ]
 
 

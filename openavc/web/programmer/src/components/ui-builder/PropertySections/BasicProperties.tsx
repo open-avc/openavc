@@ -105,6 +105,28 @@ export function BasicProperties({
         />
       </FieldRow>
 
+      {/* Tag -- what this control calls itself when it runs a macro. Free
+          text on purpose: "1", "hdmi2" and "row_3" are all the same to the
+          platform, and the author is naming their own array. */}
+      <FieldRow label="Tag">
+        <input
+          value={element.tag || ""}
+          onChange={(e) => onChange({ tag: e.target.value || undefined })}
+          placeholder="optional"
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <div
+        style={{
+          fontSize: "var(--font-size-xs, 11px)",
+          color: "var(--text-muted)",
+          margin: "-4px 0 4px 0",
+        }}
+      >
+        A macro this control runs reads it as <code>$trigger.tag</code>, so a row
+        of buttons can share one macro instead of needing one each.
+      </div>
+
       {/* Label -- for the types whose renderer draws one.
           Not "everything except a label": a clock, a custom control and a
           plugin element never draw it either, and offering the field there is
