@@ -7753,13 +7753,33 @@ class PanelApp {
     applyStyle(el, style) {
         if (!style) return;
 
-        // Background: gradient takes priority over solid color
-        if (style.background_gradient && style.background_gradient.from && style.background_gradient.to) {
-            const g = style.background_gradient;
-            const angle = g.angle != null ? g.angle : 180;
-            el.style.background = `linear-gradient(${parseFloat(angle) || 180}deg, ${this._sanitizeCssValue(g.from)}, ${this._sanitizeCssValue(g.to)})`;
-        } else if (style.bg_color) {
-            el.style.backgroundColor = style.bg_color;
+        // Background: gradient takes priority over solid color.
+        //
+        // Written as the two longhands, never the `background` shorthand. A
+        // gradient IS a background-image, so the shorthand put it where the
+        // button image goes and reset background-color on the way past -- a
+        // button with both a gradient and an image then drew with no
+        // background at all, because the image replaced the gradient and the
+        // colour behind it had already been cleared. applyImageEffect composes
+        // with the gradient below and needs it in a property of its own.
+        //
+        // Both longhands are decided on every call, so a feedback state that
+        // names a flat colour cannot inherit the previous state's gradient.
+        const grad = style.background_gradient;
+        const gradientCss = (grad && grad.from && grad.to)
+            ? `linear-gradient(${parseFloat(grad.angle != null ? grad.angle : 180) || 180}deg, `
+                + `${this._sanitizeCssValue(grad.from)}, ${this._sanitizeCssValue(grad.to)})`
+            : null;
+        // Read by applyImageEffect, which runs after this and owns the same
+        // property. Stored rather than re-read from the style so it is right
+        // whichever render path got here.
+        el._avcGradientCss = gradientCss;
+        if (gradientCss) {
+            el.style.backgroundImage = gradientCss;
+            el.style.backgroundColor = style.bg_color || 'transparent';
+        } else {
+            el.style.backgroundImage = '';
+            if (style.bg_color) el.style.backgroundColor = style.bg_color;
         }
 
         // Background image (assets:// resolved by panel, see resolveAssetUrl)
@@ -8441,11 +8461,18 @@ class PanelApp {
         const isMask = blend === 'mask';
         const needsLayer = needsBlend || isMask || opacity < 1;
 
+        // A gradient authored on this element, if any: applyStyle put it in
+        // background-image, which is where the image below goes too. Draw the
+        // image over it as a second layer instead of replacing it.
+        const gradientCss = el._avcGradientCss || null;
+
         if (!needsLayer) {
             // Simple background image on the button, no effect layer
-            el.style.backgroundImage = `url("${sanitizedUrl}")`;
-            el.style.backgroundSize = sizeCss;
-            el.style.backgroundPosition = 'center';
+            el.style.backgroundImage = gradientCss
+                ? `url("${sanitizedUrl}"), ${gradientCss}`
+                : `url("${sanitizedUrl}")`;
+            el.style.backgroundSize = gradientCss ? `${sizeCss}, cover` : sizeCss;
+            el.style.backgroundPosition = gradientCss ? 'center, center' : 'center';
             el.style.backgroundRepeat = 'no-repeat';
             // Clear isolation if previously set from another render
             el.style.isolation = '';
@@ -8455,7 +8482,11 @@ class PanelApp {
         // Image effect runs on a child layer. Use isolation + negative z-index so the
         // layer paints above the button's own background but below text/icons, without
         // needing to wrap every text node or content element.
-        el.style.backgroundImage = 'none';
+        // The element's own background-image goes back to the gradient, if it
+        // has one, rather than to 'none': the artwork is on the layer now, and
+        // clearing this outright was what removed a gradient that had nothing
+        // to do with the image.
+        el.style.backgroundImage = gradientCss || 'none';
         el.style.position = 'relative';
         el.style.isolation = 'isolate';
 
