@@ -78,8 +78,8 @@ For warning-free operation, the auto-generated CA needs to be trusted by each ta
 
 ## Troubleshooting
 
-**"Searching the network" never finds anything.**
-Your network is probably blocking mDNS between the tablet and the server. Use QR or manual entry instead.
+**No systems appear in the list.**
+Check that the tablet is on the same Wi-Fi network as the server, not a guest network. If it is, the network is probably blocking mDNS between the tablet and the server. Use QR or manual entry instead.
 
 **The panel loads but the Connected badge is red.**
 The tablet reached the HTTP server but the WebSocket connection is blocked. Usually a proxy or firewall between the tablet and the OpenAVC system is stripping the WebSocket upgrade headers.
