@@ -1,7 +1,5 @@
 # OpenAVC Panel App
 
-> **Status: Android available, iOS in development.** The signed Android APK is on the [OpenAVC Panel page](https://openavc.com/panel-app/) now; the Google Play listing is coming soon. The iOS build is still being finalized for the App Store. If you're on iOS today, use **Open Panel** to view the web panel in Safari in the meantime.
-
 The OpenAVC Panel app turns an Android or iOS tablet into a dedicated touch panel for an OpenAVC system. It wraps the same web panel you can reach from any browser, but adds the things a browser on a wall-mounted tablet can't do: automatic server discovery, QR pairing, dedicated-panel lockdown, and boot-to-panel auto-start.
 
 ## When to Use the App Instead of a Browser
@@ -18,11 +16,11 @@ The app is free and open-source (MIT). The web panel inside it is identical to w
 
 ## Install
 
-**Android.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and side-load it (`adb install` or copy-and-tap on the tablet). The Google Play listing is coming soon.
+**Android.** Install OpenAVC Panel from [Google Play](https://play.google.com/store/apps/details?id=com.openavc.panel). Android 8.0 or newer.
 
-If you plan to lock the tablet so it can only run the panel, install the APK rather than waiting for Play: locking a tablet to one app requires that it has no Google account signed in, and the Play Store needs one. The [Android dedicated panel setup](panel-app-dedicated-android.md) guide covers both routes.
+If you plan to lock the tablet so it can only run the panel, install the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) instead (`adb install` or copy-and-tap on the tablet): locking a tablet to one app requires that it has no Google account signed in, and Google Play needs one. The [Android dedicated panel setup](panel-app-dedicated-android.md) guide covers both routes.
 
-**iOS.** App Store listing coming soon.
+**iOS.** Install OpenAVC Panel from the [App Store](https://apps.apple.com/app/id6811610982). iPadOS or iOS 16 or newer, on iPad or iPhone.
 
 Both builds require the tablet to be on the same network as the OpenAVC server.
 
@@ -72,7 +70,7 @@ Both guides open with what you get for free before explaining what full lockdown
 
 ## Using the App with HTTPS
 
-If HTTPS is turned on in **Settings > Security** on the OpenAVC system, the app picks it up automatically — the server advertises `https` in its mDNS record, and the app connects over TLS. No setting on the tablet to change.
+If HTTPS is turned on in **Settings > Security** on the OpenAVC system, the app picks it up automatically. The server advertises `https` in its mDNS record, and the app connects over TLS. No setting on the tablet to change.
 
 For warning-free operation, the auto-generated CA needs to be trusted by each tablet. The CA cert is downloadable at `https://<server>:8443/api/certificate`, or via the **Download CA certificate** button on the server's Settings > Security page. Once the CA is installed on the tablet, the app and any browser on the tablet open the panel without a security prompt.
 
@@ -97,5 +95,5 @@ HTTPS is enabled on the server but the tablet hasn't trusted the OpenAVC CA yet.
 
 ## Related
 
-- [Getting started with OpenAVC](getting-started.md) — install the server you're pairing to
-- [Network and security cut sheet](it-network-guide.md) — ports and firewall rules IT will ask about
+- [Getting started with OpenAVC](getting-started.md): install the server you're pairing to
+- [Network and security cut sheet](it-network-guide.md): ports and firewall rules IT will ask about

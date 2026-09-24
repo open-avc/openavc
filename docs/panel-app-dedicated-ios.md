@@ -1,7 +1,5 @@
 # iOS Dedicated Panel Setup
 
-> **Status: in development.** The OpenAVC Panel app for iOS is being built. This guide describes the setup flow the app will support when it ships. The App Store listing will go live once the app is tested and published. Use this page to plan your install.
-
 This guide covers locking an iPad (or iPhone) to the OpenAVC Panel app. It applies to the iOS build of the OpenAVC Panel app.
 
 > Apple's own developer documentation calls this "Single App Mode" or "Autonomous Single App Mode" (ASAM). Same feature. We call it dedicated panel mode because that's what AV integrators call these tablets.
@@ -12,7 +10,7 @@ Apple is much more restrictive than Android about dedicated-panel lockdown. Ther
 
 ### Tier 1: Basic Dedicated Panel (No Setup)
 
-Install the app from the App Store, launch it, pair with your OpenAVC system. Done.
+Install the app from the [App Store](https://apps.apple.com/app/id6811610982), launch it, pair with your OpenAVC system. Done.
 
 **What you get for free:**
 - Full-screen panel with no Safari chrome.

@@ -4,8 +4,8 @@ Served at GET /pair (no /api prefix). This is the target of the QR code
 shown in the Programmer IDE Panel Access card. It gives scanners a choice
 between opening the web panel in a browser and installing the native app.
 
-Deep-link handoff to the native mobile app (custom URL scheme / Android
-intent URL) is intentionally deferred until the native apps ship.
+The app link sends a phone to its own store. Handing off to an app that is
+already installed (custom URL scheme / Android intent URL) is not built.
 """
 
 from __future__ import annotations
@@ -129,13 +129,31 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 """
 
 
-# Marketing page that will redirect to the right app store / download
-# once the native apps ship.
-_APP_DOWNLOAD_URL = "https://openavc.com/panel-app"
+_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.openavc.panel"
+_APP_STORE_URL = "https://apps.apple.com/app/id6811610982"
+# Offers both stores plus the signed APK a locked-down Android panel needs.
+_APP_PAGE_URL = "https://openavc.com/panel-app"
 
 # Docs site hosts the Android + iOS dedicated-panel walkthroughs; the
 # overview page lets users pick the platform they're on.
 _DEDICATED_PANEL_GUIDE_URL = "https://docs.openavc.com/panel-app"
+
+
+def app_download_url(user_agent: str) -> str:
+    """Where "Get the OpenAVC app" points for this browser.
+
+    Android goes to Google Play and iPhone/iPad to the App Store. Anything
+    else gets the page that lists every route: a desktop, an iPad asking for
+    the desktop site (its user agent says Macintosh), and a Fire tablet
+    (Silk), which reports Android but has no Google Play.
+    """
+    if "Silk" in user_agent:
+        return _APP_PAGE_URL
+    if "Android" in user_agent:
+        return _PLAY_STORE_URL
+    if any(device in user_agent for device in ("iPhone", "iPad", "iPod")):
+        return _APP_STORE_URL
+    return _APP_PAGE_URL
 
 
 @router.get("/pair", response_class=HTMLResponse)
@@ -143,7 +161,7 @@ async def pair_landing(request: Request) -> HTMLResponse:
     """Landing page for QR code scanners.
 
     Shows the project name and a primary 'Open Panel' button. A secondary
-    link points to the app download page for users who want the native app.
+    link points to the app's store listing for users who want the native app.
     """
     status = _get_engine().get_status()
     project_name = str(status.get("project_name") or "OpenAVC")
@@ -153,7 +171,7 @@ async def pair_landing(request: Request) -> HTMLResponse:
         title=f"{html.escape(project_name)} | OpenAVC",
         project_name=html.escape(project_name),
         version=html.escape(version),
-        app_url=_APP_DOWNLOAD_URL,
+        app_url=app_download_url(request.headers.get("user-agent", "")),
         dedicated_panel_guide_url=_DEDICATED_PANEL_GUIDE_URL,
     )
     return HTMLResponse(page)

@@ -1,9 +1,5 @@
 # Android Dedicated Panel Setup
 
-> **Status: Android APK available now, Google Play listing coming soon.** Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-app/) and follow the steps below.
->
-> When the Play listing goes live it will be the easiest way to get the app for a basic panel. **It will not replace the APK for a locked-down panel:** locking a tablet to one app requires no Google account on it, and the Play Store requires one. See the tradeoffs under Tier 2.
-
 This guide walks through locking an Android tablet to the OpenAVC Panel app so end users can't exit to the home screen, open other apps, or pull down the notification shade. It applies to the Android build of the OpenAVC Panel app.
 
 > Android's own developer documentation calls this "kiosk mode" or "Lock Task Mode." Same feature. We call it dedicated panel mode because that's what AV integrators call these tablets. If you're searching the Android docs or Stack Overflow and see "kiosk," that's the same thing.
@@ -14,7 +10,7 @@ Decide how locked-down the install needs to be. There are two tiers.
 
 ### Tier 1: Basic Dedicated Panel (No Setup)
 
-Install the app, launch it, pair with your OpenAVC system. Done.
+Install the app from [Google Play](https://play.google.com/store/apps/details?id=com.openavc.panel), launch it, pair with your OpenAVC system. Done.
 
 **What you get for free:**
 - Full-screen panel with no visible browser chrome, URL bar, or Android status bar.
@@ -69,9 +65,9 @@ Download the signed APK from the [OpenAVC Panel page](https://openavc.com/panel-
 adb install OpenAVCPanel-<version>.apk
 ```
 
-**Use the APK here, not the Play Store.** The Play Store needs a Google account signed in to download anything, and Step 2 above had you skip sign-in precisely because an account blocks Device Owner provisioning. The two can't both be true on one tablet. The signed APK is the install route for this method, and it always will be — it isn't a stopgap until the Play listing is ready.
+**Use the APK here, not Google Play.** Google Play needs a Google account signed in to download anything, and Step 2 above had you skip sign-in because an account blocks Device Owner provisioning.
 
-If you'd rather install from Play, use **Method B** below instead: QR provisioning installs and locks the tablet during initial setup, before any account exists.
+Setting up more than a couple of tablets? **Method B** below installs and locks each one during initial setup, with no USB cable.
 
 ### 5. Set the App as Device Owner
 
@@ -114,7 +110,7 @@ adb push openavc-ca.crt /sdcard/Download/openavc-ca.crt
 
 Then on the tablet, open **Settings > Security > Encryption & credentials > Install a certificate > CA certificate**, browse to `Downloads`, and pick `openavc-ca.crt`. The exact path varies slightly by manufacturer (Samsung calls it "Biometrics and security > Other security settings > Install from device storage", for example). Confirm the warning that the device is adding a CA.
 
-If the panel app is already paired and showing a cert warning, force-stop it and reopen — Android picks up the new CA right away.
+If the panel app is already paired and showing a cert warning, force-stop it and reopen. Android picks up the new CA right away.
 
 You can skip the install if you're using a cert signed by your organization's CA that the tablet already trusts (corporate / school MDM-managed devices typically do).
 
