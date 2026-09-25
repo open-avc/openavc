@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AuditReportDriver,
   AuditConflictDevice,
   AuditListen,
   AuditReport,
@@ -23,6 +24,7 @@ import {
   previewStageLabel,
   stepFor,
   summaryLines,
+  driverLines,
   verdictDrivers,
 } from "./auditHelpers";
 
@@ -193,6 +195,45 @@ describe("the on-screen summary", () => {
       { label: "Web pages", value: '80: HTTP/1.0 401 Unauthorized, "Widget", asks for sign-in' },
       { label: "Announcements", value: "mDNS (1 service)" },
       { label: "SNMP", value: "No answer" },
+    ]);
+  });
+
+  it("adds what each driver did, and names the driver when there are several", () => {
+    const attempt = {
+      status: "done", error: "", started_at: 100, connected_at: 100.5, declared: 7,
+      reported: 5, offline: null, contract: { counts: { unmatched_response: 3 } },
+      unprompted_replies: { count: 0 }, traffic: { count: 40, not_captured: false },
+    };
+    const failed = {
+      ...attempt, connected_at: null, reported: 0, contract: { counts: {} },
+      offline: { code: "auth_failed", detail: "The device refused the password.", next_step: "" },
+    };
+    const one = { run: 0, driver: { id: "acme", name: "Acme", version: "1.2.0", modified: false },
+      attempts: [attempt] } as unknown as AuditReportDriver;
+    expect(driverLines([one])).toEqual([
+      { label: "Driver", value: "Acme 1.2.0" },
+      { label: "Connected", value: "Yes, 0.5 s after starting" },
+      { label: "Status values", value: "5 of 7 reported" },
+      { label: "Replies not understood", value: "3 matched none of the driver's rules" },
+    ]);
+    const two = { run: 1, driver: { id: "acme2", name: "Acme Two", version: "", modified: true },
+      attempts: [failed] } as unknown as AuditReportDriver;
+    const unused = { run: 2, driver: { id: "x", name: "X", version: "", modified: false },
+      attempts: [] } as unknown as AuditReportDriver;
+    expect(driverLines([one, two, unused]).map((l) => l.label)).toEqual([
+      "Driver (1)", "Connected (1)", "Status values (1)", "Replies not understood (1)",
+      "Driver (2)", "Connected (2)", "Status values (2)",
+    ]);
+    expect(driverLines([two])[0].value).toBe("Acme Two, a modified copy");
+    expect(driverLines([two])[1].value).toBe("No: The device refused the password.");
+    // What the person entered names the device ahead of what it reported.
+    const entered = {
+      ...report,
+      device: { ...report.device, entered: { manufacturer: "Acme", model: "W-100", firmware: null } },
+    } as AuditReport;
+    expect(summaryLines(entered).slice(0, 2)).toEqual([
+      { label: "Device", value: "Acme W-100" },
+      { label: "Firmware", value: "1.2" },
     ]);
   });
 

@@ -22,9 +22,10 @@ driver's commands. What it records:
   says whether OpenAVC showed it; the state changes seen are kept beside the
   answer.
 
-Everything the driver moved is in the run's observer for the report. The
-wizard gets it live: ``audit.traffic`` batches and ``audit.listen`` updates,
-each throttled, to the subscribing client only.
+Everything the driver moved is in the run's observer for the report
+(:meth:`ListenPass.report_record`). The wizard gets it live: ``audit.traffic``
+batches and ``audit.listen`` updates, each throttled, to the subscribing
+client only.
 """
 
 from __future__ import annotations
@@ -33,7 +34,12 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Any
 
-from openavc.audit.observe import ContractEvent, replies_to_nobody
+from openavc.audit.observe import (
+    CONTRACT_TEXT,
+    REPLY_WINDOW_SECONDS,
+    ContractEvent,
+    replies_to_nobody,
+)
 from openavc.audit.sandbox import DriverSandbox, audit_device_id
 from openavc.audit.session import AuditError
 from openavc.core.connection_fault import is_permanent_fault
@@ -71,16 +77,6 @@ _PLATFORM_KEYS = frozenset({
     "connected", "name", "enabled", "offline_reason", "offline_detail", "paused",
     "restarting", "web_ui_url", "orphaned", "orphan_reason",
 })
-
-_CONTRACT_TEXT = {
-    "unmatched_response": "A reply matched none of the driver's response rules",
-    "undeclared_state": "The driver wrote a status value it does not declare",
-    "type_mismatch": "A status value is not of the type the driver declares",
-    "coercion_failure": "A reply's value could not be converted to its declared type",
-    "unknown_command": "The driver was asked for a command it does not have",
-    "child_unregistered": "The driver wrote status for a channel or zone it never registered",
-}
-
 
 def next_step(code: str) -> str:
     """What to try after an offline reason, in the audit's terms."""
@@ -155,6 +151,12 @@ class ListenPass:
         self._pending: list[TrafficEntry] = []
         self._dirty = True
         self._redactor = None
+        # Set while the audit itself takes the driver down: its disconnect
+        # is not a drop, and its state being removed is not a change.
+        self._stopping = False
+        # The status table as it stood when the driver stopped (its state
+        # goes with it), for the report and the wizard afterwards.
+        self._final_table: dict[str, Any] | None = None
         self.task: asyncio.Task | None = None
         self.sandbox = DriverSandbox(
             audit_device_id(session.id), run.choice.driver_id, dict(run.config or {}),
@@ -291,6 +293,8 @@ class ListenPass:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
         if self.sandbox.started:
+            self._final_table = self.status_table()
+            self._stopping = True
             await self.sandbox.stop()
         if self.status in (CONNECTING, LISTENING, NOT_CONNECTED):
             self.status = STOPPED
@@ -331,7 +335,7 @@ class ListenPass:
             ) or event.detail.get("address") or ""
             self._timeline(
                 f"contract.{event.kind}",
-                f"{_CONTRACT_TEXT.get(event.kind, event.kind)}"
+                f"{CONTRACT_TEXT.get(event.kind, event.kind)}"
                 f"{': ' + str(detail)[:120] if detail else ''}.",
             )
         self._dirty = True
@@ -352,12 +356,14 @@ class ListenPass:
         self._dirty = True
 
     async def _on_disconnected(self, _event: str, _payload: Any = None) -> None:
-        if self.connected_at is not None:
+        if self.connected_at is not None and not self._stopping:
             self.drops += 1
             self._timeline("listen.dropped", "The connection dropped.")
         self._dirty = True
 
     def _on_state(self, key: str, old: Any, new: Any, _source: str = "") -> None:
+        if self._stopping:
+            return
         prefix = f"device.{self.sandbox.device_id}."
         prop = key[len(prefix):] if key.startswith(prefix) else key
         now = time.time()
@@ -436,6 +442,8 @@ class ListenPass:
         return list((self._driver_info().get("state_variables") or {}).keys())
 
     def status_table(self) -> dict[str, Any]:
+        if self._final_table is not None and not self.sandbox.started:
+            return self._final_table
         info = self._driver_info()
         state = self.sandbox.device_state()
         mismatches: dict[str, str] = {}
@@ -512,7 +520,7 @@ class ListenPass:
                 "entries": len(frames),
                 "sent": sum(1 for e in frames if e.direction == TX),
                 "received": sum(1 for e in frames if e.direction == RX),
-                "bytes": observer.traffic_bytes,
+                "bytes": sum(len(e.data) for e in frames),
                 "truncated": observer.truncated_at is not None,
                 "not_captured": own_session,
             },
@@ -522,6 +530,44 @@ class ListenPass:
             },
             "status_table": self.status_table(),
             "front_panel": self.front_panel,
+        }
+
+
+    def report_record(self) -> dict[str, Any]:
+        """This attempt as the report keeps it: the live view's fields, plus
+        every contract event kept, every state change, the replies that came
+        with no request before them, and every traffic entry (raw receive
+        chunks included) with its bytes as hex and text, secrets masked."""
+        observer = self.sandbox.observer
+        redactor = observer.redactor()
+        live = self.to_dict()
+        frames = observer.frames()
+        unprompted = replies_to_nobody(frames)
+        return {
+            **{k: v for k, v in live.items() if k not in ("contract", "traffic")},
+            "contract": {
+                "counts": dict(observer.event_counts),
+                "events": [
+                    {**e.to_dict(), "detail": redactor.value(dict(e.detail))}
+                    for e in observer.events
+                ],
+            },
+            "unprompted_replies": {
+                "count": len(unprompted),
+                "window_seconds": REPLY_WINDOW_SECONDS,
+                "seq": [e.seq for e in unprompted],
+            },
+            "state_changes": [redactor.value(dict(c)) for c in self.changes],
+            "traffic": {
+                "count": len(frames),
+                "sent": live["traffic"]["sent"],
+                "received": live["traffic"]["received"],
+                "bytes": live["traffic"]["bytes"],
+                "truncated_at": observer.truncated_at,
+                "dropped_entries": observer.dropped_entries,
+                "not_captured": live["traffic"]["not_captured"],
+                "entries": [serialize_entry(e, redactor) for e in observer.traffic],
+            },
         }
 
 

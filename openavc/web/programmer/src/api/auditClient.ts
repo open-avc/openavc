@@ -367,12 +367,34 @@ export interface AuditReportFile {
   modified: number;
 }
 
+/** One connect-and-listen attempt as the report keeps it (the parts the wizard reads). */
+export interface AuditReportAttempt {
+  status: AuditListenStatus;
+  error: string;
+  started_at: number;
+  connected_at: number | null;
+  declared: number;
+  reported: number;
+  offline: { code: string; detail: string; next_step: string } | null;
+  contract: { counts: Record<string, number> };
+  unprompted_replies: { count: number };
+  traffic: { count: number; not_captured: boolean };
+}
+
+/** One driver run in the report. */
+export interface AuditReportDriver {
+  run: number;
+  driver: { id: string; name: string; version: string; modified: boolean };
+  attempts: AuditReportAttempt[];
+}
+
 /** The report record (report.json). Only the parts the wizard reads are typed. */
 export interface AuditReport {
   report_version: number;
   complete: boolean;
   target: { address: string; ip: string; hostname: string | null; same_subnet: boolean | null };
   device: {
+    entered?: { manufacturer: string | null; model: string | null; firmware: string | null };
     reported: {
       manufacturer: string | null;
       model: string | null;
@@ -395,6 +417,7 @@ export interface AuditReport {
     snmp?: { answered: boolean; values?: Record<string, string> };
   };
   verdict: Omit<AuditVerdict, "catalog">;
+  drivers?: AuditReportDriver[];
   limits: AuditLimit[];
 }
 

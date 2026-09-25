@@ -32,9 +32,9 @@ SOURCE_IMPORTED = "imported"
 SOURCE_BUILT_IN = "built_in"
 
 
-def _sha256(path: Path) -> str | None:
+def _read(path: Path) -> bytes | None:
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        return path.read_bytes()
     except OSError:
         return None
 
@@ -88,8 +88,14 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
             published_by_name[Path(str(path)).name] = str(digest).lower()
 
     files: list[dict[str, Any]] = []
+    # The bytes hashed are the bytes the report carries (``driver/`` in the
+    # zip), read once, so a file updated later cannot stand in for this one.
+    contents: dict[str, bytes] = {}
     for path in driver_files(main) if main is not None else []:
-        digest = _sha256(path)
+        data = _read(path)
+        digest = hashlib.sha256(data).hexdigest() if data is not None else None
+        if data is not None:
+            contents[path.name] = data
         catalog_digest = published_by_name.get(path.name)
         files.append({
             "name": path.name,
@@ -129,6 +135,7 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
             "checked": catalog is not None and len(catalog) > 0,
         },
         "_paths": [str(p) for p in (driver_files(main) if main is not None else [])],
+        "_contents": contents,
     }
 
 
@@ -218,5 +225,11 @@ class DriverChoice:
 
     @property
     def file_paths(self) -> list[str]:
-        """Where the driver's files are on this server (for the report zip)."""
+        """Where the driver's files are on this server."""
         return list(self.identity.get("_paths") or [])
+
+    @property
+    def file_contents(self) -> dict[str, bytes]:
+        """Each driver file's bytes as they were when chosen, by base name
+        (what the report zip carries under ``driver/``)."""
+        return dict(self.identity.get("_contents") or {})

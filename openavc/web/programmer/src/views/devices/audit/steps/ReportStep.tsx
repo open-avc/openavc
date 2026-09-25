@@ -150,8 +150,8 @@ export function ReportStep() {
                   color: "var(--text-secondary)",
                 }}
               >
-                {report.limits.map((limit) => (
-                  <li key={limit.id}>{limit.text}</li>
+                {report.limits.map((limit, i) => (
+                  <li key={`${limit.id}-${i}`}>{limit.text}</li>
                 ))}
               </ul>
             </div>

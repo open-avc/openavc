@@ -5,7 +5,8 @@
     openavc-device-audit-<manufacturer>-<model>-<YYYYMMDD-HHMM>.zip
       summary.html     readable summary, self-contained, no scripts
       report.json      the complete record
-      timeline.txt     every event in order, human-readable
+      timeline.txt     every event in order, the driver's traffic included
+      driver/<files>   the exact driver file(s) that ran
 
 ``report.json`` (``report_version`` 1) holds:
 
@@ -17,8 +18,9 @@
 - ``target``: the address as typed, the address it resolved to, the reverse
   DNS name, whether it is on one of this computer's subnets, the local
   address and adapter the check used, and the serial port (none yet).
-- ``device``: manufacturer, model and firmware as entered (none yet), and the
-  identity the device reported (``reported``).
+- ``device``: manufacturer, model and firmware as the person entered them on
+  "Which driver?" (``entered``, null where left empty), and the identity the
+  device reported to the network check (``reported``).
 - ``catalog``: where the driver catalog came from, when it was fetched, the
   SHA-256 of its ``index.json``, its driver count, and whether it was
   fetched fresh, taken from an earlier fetch, or not available at all.
@@ -27,16 +29,58 @@
 - ``evidence``: the discovery Evidence records built from those observations.
 - ``verdict``: the matcher's identification, every driver each signal points
   at, and each named driver's declared signals judged against the device.
-- ``drivers``: one entry per driver tested (none yet).
+- ``drivers``: one entry per driver chosen, in order:
+
+  - ``run``, ``started_at``, ``finished_at``.
+  - ``driver``: exactly which driver: id, name, manufacturer, version, format
+    (``avcdriver`` or ``python``), transport, source (``catalog``,
+    ``imported``, ``built_in``), and ``files``, each with its SHA-256, the
+    catalog's (``catalog_sha256``, ``matches_catalog``), where the zip holds
+    it (``in_report``, under ``driver/``) and whether redaction changed that
+    copy (``redacted_in_report``); ``modified`` is true when a file differs
+    from the catalog's; ``catalog`` says whether and at what version the
+    catalog lists it.
+  - ``entered`` (the make, model and firmware given with this choice),
+    ``model_listing`` (``listed``: whether the driver lists that model, null
+    when none was typed; ``confidence``), ``verdict_agreement`` (``agrees``,
+    ``candidate``, ``differs``, ``no_verdict``).
+  - ``connection``: ``config`` with every credential shown as ``***``,
+    ``transport``, ``saved_from`` (the project device whose saved settings
+    were used, or empty) and ``preview`` (what connecting was shown to send).
+  - ``attempts``: every connect and listen, in order: ``status``
+    (``listening``, ``not_connected``, ``done``, ``failed``, ``stopped``),
+    ``error``, the times (``started_at``, ``first_tx_at``, ``first_rx_at``,
+    ``connected_at``, ``ends_at``, ``finished_at``), ``poll_interval``,
+    ``reconnects``, ``drops``, ``offline`` (``code``, ``detail``,
+    ``next_step``), ``declared`` and ``reported`` counts, ``status_table``
+    (every declared value with ``value``, ``reported``,
+    ``first_reported_at``, ``problem`` and ``sources``, the response rules
+    that would set it; ``children``; ``settings``), ``contract`` (``counts``
+    by kind and the ``events`` kept, the first 50 of each kind),
+    ``unprompted_replies`` (a hint: the ``seq`` of each reply with no request
+    in the ``window_seconds`` before it), ``state_changes`` (``t``, ``key``,
+    ``old``, ``new``), ``front_panel`` (``answer``, ``note``, ``changes``)
+    and ``traffic``: ``count``, ``sent``, ``received``, ``bytes``,
+    ``truncated_at``, ``dropped_entries``, ``not_captured`` (values changed
+    while no traffic was recorded: a driver that manages its own connection)
+    and ``entries``, each ``{"seq", "t", "direction", "channel", "hex",
+    "text", "chunk"?, "meta"?}``, ``chunk`` marking a raw receive chunk
+    before framing and ``meta`` what the bytes do not say (an HTTP method,
+    target, status and headers; a peer; a topic).
+
 - ``timeline``: every session event in order, typed and timestamped.
 - ``limits``: what the audit could not see, and why.
 - ``complete``: false when the report was taken before the network check
   finished.
 
 **Redaction.** Every secret the person typed (a read community other than
-``public``) is replaced in every file, in its plain, JSON, HTML and hex forms,
-before anything is written; a serial number the person asked to leave out is
-replaced the same way. The report never reads the server's own configuration.
+``public``, a driver credential) and every credential the driver's config
+registered is replaced in every file, in its plain, JSON, HTML and hex forms,
+before anything is written, the driver files included (each copy says whether
+that changed it); a serial number the person asked to leave out is replaced
+the same way. Traffic is masked (``***``) as it is written out, so the hex of
+a masked entry still decodes. The report never reads the server's own
+configuration.
 A secret shorter than three characters is not searched for, since it would
 match ordinary text everywhere; the report never writes a typed secret into a
 field of its own, so such a value could only appear if the device repeated it.
@@ -143,6 +187,14 @@ def redactions_for(session: "AuditSession") -> list[Redaction]:
     serial = footprint.device.serial_number if footprint and footprint.device else None
     if tester.get("leave_out_serial") and serial:
         out.append(Redaction(str(serial), SERIAL_REMOVED))
+    # A driver run's credentials: what the person typed, and what the
+    # driver registered as secret while it ran.
+    values: set[str] = set()
+    for run in getattr(session, "runs", None) or []:
+        values |= set(getattr(run, "secrets", None) or ())
+        for attempt in getattr(run, "listens", None) or []:
+            values |= attempt.sandbox.observer.secrets
+    out.extend(Redaction(v) for v in sorted(values) if isinstance(v, str) and v)
     return out
 
 
@@ -161,6 +213,117 @@ def _footprint_of(session: "AuditSession"):
     if check is None or getattr(check, "status", "idle") == "idle":
         return None
     return check.footprint
+
+
+@dataclass(frozen=True)
+class PlacedFile:
+    """One driver file as the zip holds it."""
+
+    run: int
+    name: str
+    path: str
+    data: bytes
+    redacted: bool
+
+
+def _redact_file(raw: bytes, redactor: "Redactor") -> tuple[bytes, bool]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw, False
+    cleaned = redactor.text(text)
+    return (cleaned.encode("utf-8"), True) if cleaned != text else (raw, False)
+
+
+def place_driver_files(session: "AuditSession", redactor: "Redactor") -> list[PlacedFile]:
+    """Where each driver that ran puts its files in the zip.
+
+    ``driver/<name>``; a second copy of a name with different bytes (the
+    driver updated between two runs) goes under ``driver/run-<n>/``. A driver
+    chosen but never connected did not run, so its files are not included
+    (its hashes are still in its section).
+    """
+    placed: list[PlacedFile] = []
+    used: dict[str, bytes] = {}
+    for run in getattr(session, "runs", None) or []:
+        if not getattr(run, "listens", None):
+            continue
+        for name, raw in sorted(run.choice.file_contents.items()):
+            data, redacted = _redact_file(raw, redactor)
+            path = f"driver/{name}"
+            if path in used and used[path] != data:
+                path = f"driver/run-{run.index + 1}/{name}"
+            used.setdefault(path, data)
+            placed.append(PlacedFile(run.index, name, path, data, redacted))
+    return placed
+
+
+def _entered(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: (values.get(key) or None) for key in ("manufacturer", "model", "firmware")}
+
+
+def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
+    choice = run.choice.to_dict()
+    identity = dict(choice["identity"])
+    where = {p.name: p for p in placed if p.run == run.index}
+    identity["files"] = [
+        {
+            **f,
+            "in_report": where[f["name"]].path if f["name"] in where else None,
+            "redacted_in_report": where[f["name"]].redacted if f["name"] in where else False,
+        }
+        for f in identity.get("files", [])
+    ]
+    return {
+        "run": run.index,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "driver": identity,
+        "entered": _entered(choice),
+        "model_listing": choice["model_listing"],
+        "verdict_agreement": choice["verdict_agreement"],
+        "connection": json.loads(json.dumps(run.connection, default=str))
+        if run.connection else None,
+        "attempts": [attempt.report_record() for attempt in run.listens],
+    }
+
+
+def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
+    """What the driver test could not see, per run."""
+    from openavc.audit.observe import TRAFFIC_CAP_BYTES
+
+    runs = list(getattr(session, "runs", None) or [])
+    limits: list[dict[str, Any]] = []
+    if not any(run.listens for run in runs):
+        text = (
+            "The person said there is no driver for this device yet, so none was tested; "
+            "this report covers the network check only."
+            if getattr(session, "no_driver", False)
+            else "No driver was tested; this report covers the network check only."
+        )
+        limits.append({"id": "no_driver_tested", "text": text})
+    cap_mb = TRAFFIC_CAP_BYTES // (1024 * 1024)
+    for run in runs:
+        name = run.choice.identity.get("name") or run.choice.driver_id
+        if not run.listens:
+            limits.append({
+                "id": "driver_not_connected", "run": run.index,
+                "text": f"{name} was chosen, but the audit did not connect it.",
+            })
+            continue
+        views = [attempt.to_dict()["traffic"] for attempt in run.listens]
+        if any(v["not_captured"] for v in views):
+            limits.append({
+                "id": "traffic_not_captured", "run": run.index,
+                "text": f"{name} manages its own connection, so its traffic was not captured.",
+            })
+        if any(attempt.sandbox.observer.truncated_at is not None for attempt in run.listens):
+            limits.append({
+                "id": "traffic_truncated", "run": run.index,
+                "text": f"{name}'s traffic passed {cap_mb} MB, so the report keeps the "
+                        f"first {cap_mb} MB of it.",
+            })
+    return limits
 
 
 def generator_info() -> dict[str, Any]:
@@ -183,6 +346,8 @@ def generator_info() -> dict[str, Any]:
 
 def build_report(session: "AuditSession") -> dict[str, Any]:
     """The whole record for ``session``, redacted."""
+    redactor = Redactor(redactions_for(session))
+    placed = place_driver_files(session, redactor)
     footprint = _footprint_of(session)
     fp = footprint.to_dict() if footprint is not None else {}
     complete = session.footprint is not None
@@ -198,10 +363,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         })
     if footprint is None:
         limits.insert(0, {"id": "check_not_run", "text": "The network check did not run."})
-    limits.append({
-        "id": "no_driver_tested",
-        "text": "No driver was tested; this report covers the network check only.",
-    })
+    limits.extend(_driver_limits(session))
 
     network = fp.get("network") or {}
     names = fp.get("names") or {}
@@ -220,6 +382,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
             "status": session.status,
             "steps": list(session.steps),
             "origin": dict(session.origin) if getattr(session, "origin", None) else None,
+            "no_driver": bool(getattr(session, "no_driver", False)),
             "tester": tester,
         },
         "target": {
@@ -232,7 +395,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
             "serial_port": None,
         },
         "device": {
-            "entered": {"manufacturer": None, "model": None, "firmware": None},
+            "entered": _entered(getattr(session, "device_entered", None) or {}),
             "reported": {
                 key: device.get(key)
                 for key in (
@@ -245,11 +408,13 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         "footprint": raw_footprint,
         "evidence": fp.get("evidence", []),
         "verdict": {k: v for k, v in (fp.get("verdict") or {}).items() if k != "catalog"},
-        "drivers": [],
+        "drivers": [
+            _driver_section(run, placed) for run in getattr(session, "runs", None) or []
+        ],
         "timeline": [entry.to_dict() for entry in session.timeline],
         "limits": limits,
     }
-    return Redactor(redactions_for(session)).tree(report)
+    return redactor.tree(report)
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +466,32 @@ def _quote(view: dict[str, str] | None, limit: int = 160) -> str:
     return f'"{shown}"' if printable else shown
 
 
+def _traffic_text(entry: dict[str, Any], limit: int = 400) -> str:
+    """One traffic entry as a timeline line reads it."""
+    meta = entry.get("meta") or {}
+    body = _quote(entry, limit) if entry.get("text") else ""
+    if entry.get("channel") in ("http", "http_listener"):
+        request = f"{meta.get('method', '')} {meta.get('target', '')}".strip()
+        if entry.get("direction") == "tx":
+            head = request
+        elif meta.get("error"):
+            head = f"no response to {request}: {meta['error']}"
+        elif meta.get("status") is not None:
+            head = f"{meta.get('status')} {meta.get('reason', '')}".strip() + f" for {request}"
+        else:
+            head = request or "request"
+        return f"{head}, body {body}" if body else head
+    where = ""
+    if meta.get("topic"):
+        where = f"topic {meta['topic']}: "
+    elif meta.get("peer"):
+        where = f"{meta['peer']}: "
+    return where + (body or "nothing")
+
+
 def render_timeline(report: dict[str, Any]) -> str:
-    """``timeline.txt``: the session's events and the check's exchanges, in order."""
+    """``timeline.txt``: the session's events, the check's exchanges and the
+    driver's traffic, in order."""
     rows: list[tuple[float, str, str]] = []
     for entry in report.get("timeline", []):
         rows.append((entry.get("t") or 0.0, entry.get("kind", ""), entry.get("text", "")))
@@ -315,6 +504,18 @@ def render_timeline(report: dict[str, Any]) -> str:
             f"{', ' + probe['error'] if probe.get('error') else ''} ({outcome})"
         )
         rows.append((probe.get("started_at") or 0.0, "probe", text))
+    drivers = report.get("drivers", [])
+    for section in drivers:
+        label = f"[{section.get('driver', {}).get('name')}] " if len(drivers) > 1 else ""
+        for attempt in section.get("attempts", []):
+            for entry in attempt.get("traffic", {}).get("entries", []):
+                if entry.get("chunk"):
+                    continue
+                rows.append((
+                    entry.get("t") or 0.0,
+                    f"{entry.get('direction')} {entry.get('channel')}",
+                    label + _traffic_text(entry),
+                ))
     rows.sort(key=lambda row: row[0])
     target = report.get("target", {})
     started = report.get("session", {}).get("started_at")
@@ -322,6 +523,8 @@ def render_timeline(report: dict[str, Any]) -> str:
         f"OpenAVC device audit of {target.get('address')} ({target.get('ip') or 'unresolved'})",
         f"Started {datetime.fromtimestamp(started).isoformat(timespec='seconds') if started else '?'}"
         f", OpenAVC {report.get('generator', {}).get('openavc_version')}",
+        "Traffic lines are what the driver sent (tx) and handled (rx); report.json holds "
+        "every byte, and the raw receive chunks before framing.",
         "",
     ]
     width = max((len(kind) for _, kind, _ in rows), default=4)
@@ -378,7 +581,11 @@ def render_summary(report: dict[str, Any]) -> str:
     catalog = report.get("catalog", {})
     generator = report.get("generator", {})
 
-    title_bits = [reported.get("manufacturer"), reported.get("model")]
+    entered = report.get("device", {}).get("entered", {})
+    title_bits = [
+        entered.get("manufacturer") or reported.get("manufacturer"),
+        entered.get("model") or reported.get("model"),
+    ]
     title = " ".join(str(b) for b in title_bits if b) or target.get("address") or "Device"
     started = session.get("started_at")
     when = datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M") if started else ""
@@ -561,6 +768,10 @@ def render_summary(report: dict[str, Any]) -> str:
                 )
             parts.append("</table>")
 
+    drivers = report.get("drivers", [])
+    for section in drivers:
+        parts.extend(_render_driver(section))
+
     limits = report.get("limits", [])
     if limits:
         parts.append("<h2>What the audit could not see</h2><ul>")
@@ -583,8 +794,201 @@ def render_summary(report: dict[str, Any]) -> str:
     return "".join(parts)
 
 
-def build_zip(report: dict[str, Any], redactor: Redactor | None = None) -> bytes:
-    """The report zip. ``redactor`` runs once more over every file's text."""
+_SOURCE_TEXT = {
+    "catalog": "from the driver catalog",
+    "imported": "imported on this system",
+    "built_in": "built into OpenAVC",
+}
+_AGREEMENT_TEXT = {
+    "agrees": "The network check identified this driver too.",
+    "candidate": "The network check named this driver as one that might fit.",
+    "differs": "The network check identified a different driver.",
+    "no_verdict": "The network check did not identify a driver.",
+}
+
+
+def _seconds_after(t: float | None, start: float | None) -> str:
+    if not t or not start:
+        return "never"
+    return f"{max(0.0, t - start):.1f} s after starting"
+
+
+def _attempt_sentence(attempt: dict[str, Any]) -> str:
+    status = attempt.get("status")
+    offline = attempt.get("offline") or {}
+    started = attempt.get("started_at")
+    if attempt.get("connected_at"):
+        listened = (attempt.get("finished_at") or attempt.get("ends_at") or 0) - attempt["connected_at"]
+        text = (
+            f"Connected {_seconds_after(attempt['connected_at'], started)}; "
+            f"{attempt.get('reported', 0)} of {attempt.get('declared', 0)} status values reported"
+        )
+        if listened > 0:
+            secs = round(listened)
+            text += f" in {secs} {'second' if secs == 1 else 'seconds'} of listening"
+        if status == "stopped":
+            text += "; stopped before the listening window ended"
+        return text + "."
+    if attempt.get("error"):
+        return str(attempt["error"])
+    reason = offline.get("detail") or offline.get("code")
+    text = "Did not connect" + (f": {reason}" if reason else ".")
+    if reason and not text.endswith("."):
+        text += "."
+    if offline.get("next_step"):
+        text += " " + offline["next_step"]
+    return text
+
+
+def _status_rows(table: dict[str, Any]) -> list[str]:
+    rows = []
+    for var in table.get("variables", []):
+        if var.get("reported") and var.get("value") is not None:
+            value = var["value"]
+            shown = ("true" if value else "false") if isinstance(value, bool) else str(value)
+            cell = f"<code>{_e(shown)}</code>"
+        else:
+            sources = var.get("sources") or []
+            cell = "not reported" + (
+                f" (set by {_e(_join(sources))})" if sources else ""
+            )
+        if var.get("problem"):
+            cell += f" <span class=\"not_matched\">{_e(var['problem'])}</span>"
+        label = var.get("label") or var.get("name")
+        name = var.get("name")
+        rows.append(_row(f"{label} ({name})" if label != name else str(name), cell))
+    return rows
+
+
+def _render_driver(section: dict[str, Any]) -> list[str]:
+    """One driver's test, for summary.html."""
+    from openavc.audit.observe import CONTRACT_TEXT
+
+    d = section.get("driver", {})
+    parts = [f"<h2>Driver test: {_e(d.get('name'))} {_e(d.get('version'))}</h2><table>"]
+    parts.append(_row("Driver", (
+        f"<code>{_e(d.get('id'))}</code>, {_e(d.get('format'))}, "
+        f"{_e(_SOURCE_TEXT.get(d.get('source'), d.get('source')))}"
+    )))
+    for f in d.get("files", []):
+        if f.get("matches_catalog") is True:
+            note = "matches the catalog's"
+        elif f.get("matches_catalog") is False:
+            note = f"differs from the catalog's ({f.get('catalog_sha256')})"
+        else:
+            note = "not in the catalog"
+        where = f"; in this file as {f['in_report']}" if f.get("in_report") else ""
+        parts.append(_row(f.get("name", ""), _e(f"SHA-256 {f.get('sha256')}, {note}{where}")))
+    entered = section.get("entered") or {}
+    said = " ".join(str(v) for v in (entered.get("manufacturer"), entered.get("model")) if v)
+    if said:
+        listing = (section.get("model_listing") or {}).get("listed")
+        listed = {True: "the driver lists this model", False: "the driver does not list this model"}
+        parts.append(_row("Device, as entered", _e(
+            said + (f", firmware {entered['firmware']}" if entered.get("firmware") else "")
+            + (f" ({listed[listing]})" if listing in listed else "")
+        )))
+    parts.append(_row("Network check", _e(
+        _AGREEMENT_TEXT.get(section.get("verdict_agreement"), "")
+    )))
+    connection = section.get("connection") or {}
+    if connection:
+        config = ", ".join(f"{k}={v}" for k, v in (connection.get("config") or {}).items())
+        parts.append(_row("Connection", _e(
+            f"{connection.get('transport')}: {config}"
+            + (f" (from {connection['saved_from']}'s saved settings)"
+               if connection.get("saved_from") else "")
+        )))
+    parts.append("</table>")
+
+    attempts = section.get("attempts", [])
+    if not attempts:
+        parts.append("<p>The audit did not connect this driver.</p>")
+    for number, attempt in enumerate(attempts, 1):
+        heading = "Connect and listen" + (f", attempt {number}" if len(attempts) > 1 else "")
+        parts.append(f"<h3>{heading}</h3><p>{_e(_attempt_sentence(attempt))}</p><table>")
+        started = attempt.get("started_at")
+        parts.append(_row("First bytes sent", _e(_seconds_after(attempt.get("first_tx_at"), started))))
+        parts.append(_row("First reply", _e(_seconds_after(attempt.get("first_rx_at"), started))))
+        if attempt.get("poll_interval"):
+            parts.append(_row("Polls every", _e(f"{attempt['poll_interval']} seconds")))
+        if attempt.get("drops") or attempt.get("reconnects"):
+            drops, again = attempt.get("drops", 0), attempt.get("reconnects", 0)
+            parts.append(_row("Dropped", _e(
+                f"{drops} {'time' if drops == 1 else 'times'}, reconnected {again} "
+                f"{'time' if again == 1 else 'times'}"
+            )))
+        traffic = attempt.get("traffic") or {}
+        if traffic.get("not_captured"):
+            traffic_text = "not captured: this driver manages its own connection"
+        else:
+            traffic_text = (
+                f"{traffic.get('count', 0)} entries ({traffic.get('sent', 0)} sent, "
+                f"{traffic.get('received', 0)} received, {traffic.get('bytes', 0)} bytes); "
+                "every one is in timeline.txt and report.json"
+            )
+            if traffic.get("truncated_at"):
+                traffic_text += "; stopped keeping traffic at the size limit"
+        parts.append(_row("Traffic", _e(traffic_text)))
+        unprompted = (attempt.get("unprompted_replies") or {}).get("count", 0)
+        if unprompted:
+            parts.append(_row("Unprompted replies", _e(
+                f"{unprompted} arrived with no request in the "
+                f"{attempt['unprompted_replies'].get('window_seconds')} seconds before them. "
+                "The device may announce changes on its own; a driver that takes one as the "
+                "answer to its next request misreads the replies after it."
+            )))
+        front = attempt.get("front_panel")
+        if front:
+            answer = "OpenAVC showed the change" if front.get("answer") == "showed" \
+                else "OpenAVC did not show the change"
+            parts.append(_row("Front-panel check", _e(
+                answer + (f" ({front['note']})" if front.get("note") else "")
+            )))
+        parts.append("</table>")
+
+        table = attempt.get("status_table") or {}
+        rows = _status_rows(table)
+        if rows:
+            parts.append("<h3>Status values</h3><table>" + "".join(rows) + "</table>")
+        children = table.get("children") or {}
+        if children:
+            counts = ", ".join(f"{len(ids)} {ctype}" for ctype, ids in children.items())
+            parts.append(f"<p>Registered: {_e(counts)} (values in report.json).</p>")
+        settings = table.get("settings") or []
+        if settings:
+            parts.append("<h3>Device settings</h3><table>")
+            for setting in settings:
+                value = setting.get("value")
+                parts.append(_row(setting.get("label") or setting.get("key"), _e(
+                    value if setting.get("populated") else "not read back"
+                )))
+            parts.append("</table>")
+        counts = (attempt.get("contract") or {}).get("counts") or {}
+        if counts:
+            items = []
+            events = (attempt.get("contract") or {}).get("events") or []
+            for kind, count in counts.items():
+                example = next((e.get("detail") for e in events if e.get("kind") == kind), None)
+                shown = ""
+                if isinstance(example, dict):
+                    shown = example.get("text") or example.get("state") or \
+                        example.get("command") or example.get("address") or ""
+                items.append(
+                    f"<li>{_e(CONTRACT_TEXT.get(kind, kind))}: {count}"
+                    f"{' (first: <code>' + _e(str(shown)[:200]) + '</code>)' if shown else ''}</li>"
+                )
+            parts.append("<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>")
+    return parts
+
+
+def build_zip(
+    report: dict[str, Any],
+    redactor: Redactor | None = None,
+    driver_files: list[PlacedFile] | None = None,
+) -> bytes:
+    """The report zip. ``redactor`` runs once more over every file's text;
+    ``driver_files`` are already redacted (``place_driver_files``)."""
     files = {
         "summary.html": render_summary(report),
         "report.json": json.dumps(report, indent=2, ensure_ascii=False, default=str),
@@ -596,6 +1000,11 @@ def build_zip(report: dict[str, Any], redactor: Redactor | None = None) -> bytes
             if redactor is not None:
                 text = redactor.text(text)
             zf.writestr(name, text.encode("utf-8"))
+        written: set[str] = set()
+        for placed in driver_files or []:
+            if placed.path not in written:
+                written.add(placed.path)
+                zf.writestr(placed.path, placed.data)
     return buf.getvalue()
 
 
@@ -603,7 +1012,8 @@ def report_zip(session: "AuditSession") -> tuple[str, bytes]:
     """(file name, zip bytes) for ``session`` as it stands now."""
     report = build_report(session)
     name = report_filename(report)
-    return name, build_zip(report, Redactor(redactions_for(session)))
+    redactor = Redactor(redactions_for(session))
+    return name, build_zip(report, redactor, place_driver_files(session, redactor))
 
 
 # ---------------------------------------------------------------------------

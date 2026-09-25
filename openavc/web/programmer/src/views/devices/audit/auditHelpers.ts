@@ -12,6 +12,7 @@ import type {
   AuditStatusVariable,
   AuditTrafficEntry,
   AuditReport,
+  AuditReportDriver,
   AuditSessionState,
   AuditTimelineEntry,
 } from "../../../api/auditClient";
@@ -215,9 +216,14 @@ export interface SummaryLine {
 export function summaryLines(report: AuditReport): SummaryLine[] {
   const lines: SummaryLine[] = [];
   const reported = report.device.reported;
-  const identity = [reported.manufacturer, reported.model].filter(Boolean).join(" ");
+  const entered = report.device.entered;
+  // What the person said the device is, else what it reported.
+  const identity =
+    [entered?.manufacturer, entered?.model].filter(Boolean).join(" ") ||
+    [reported.manufacturer, reported.model].filter(Boolean).join(" ");
   if (identity) lines.push({ label: "Device", value: identity });
-  if (reported.firmware) lines.push({ label: "Firmware", value: reported.firmware });
+  const firmware = entered?.firmware || reported.firmware;
+  if (firmware) lines.push({ label: "Firmware", value: firmware });
   if (reported.device_name) lines.push({ label: "Name", value: reported.device_name });
 
   const target = report.target;
@@ -265,6 +271,51 @@ export function summaryLines(report: AuditReport): SummaryLine[] {
       value: fp.snmp.answered ? descr || "Answers" : "No answer",
     });
   }
+  lines.push(...driverLines(report.drivers ?? []));
+  return lines;
+}
+
+/** The summary's lines for each driver tested: which one, whether it
+ *  connected, how many status values it reported, what it did not understand.
+ *  With several drivers each line names its driver. */
+export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
+  const lines: SummaryLine[] = [];
+  const tested = drivers.filter((d) => d.attempts.length > 0);
+  const several = tested.length > 1;
+  tested.forEach((d, i) => {
+    const suffix = several ? ` (${i + 1})` : "";
+    const name = [d.driver.name, d.driver.version].filter(Boolean).join(" ");
+    lines.push({
+      label: `Driver${suffix}`,
+      value: d.driver.modified ? `${name}, a modified copy` : name,
+    });
+    const last = d.attempts[d.attempts.length - 1];
+    let connected: string;
+    if (last.connected_at) {
+      connected = `Yes, ${(last.connected_at - last.started_at).toFixed(1)} s after starting`;
+    } else {
+      const reason = last.offline?.detail || last.offline?.code || last.error;
+      connected = reason ? `No: ${reason}` : "No";
+    }
+    lines.push({ label: `Connected${suffix}`, value: connected });
+    lines.push({
+      label: `Status values${suffix}`,
+      value: `${last.reported} of ${last.declared} reported`,
+    });
+    if (last.traffic.not_captured) {
+      lines.push({
+        label: `Traffic${suffix}`,
+        value: "Not captured: the driver manages its own connection",
+      });
+    }
+    const unmatched = last.contract.counts.unmatched_response ?? 0;
+    if (unmatched > 0) {
+      lines.push({
+        label: `Replies not understood${suffix}`,
+        value: `${unmatched} matched none of the driver's rules`,
+      });
+    }
+  });
   return lines;
 }
 
