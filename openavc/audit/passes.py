@@ -59,7 +59,11 @@ class DriverRun:
     # What the connection step shows: the settings with secrets masked, where
     # they came from, and what connecting will send.
     connection: dict[str, Any] | None = None
-    # Filled by the later steps (connect and listen).
+    # Connect and listen (``audit/listen.py``): the current attempt, and every
+    # attempt in order (a failed sign-in, then the one after the fix).
+    listen: Any = None
+    listens: list[Any] = field(default_factory=list)
+    # State the later steps add to ``to_dict`` (name -> value or provider).
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -86,6 +90,8 @@ class DriverRun:
         """Stop the sandbox, if one is running. Results stay."""
         import time
 
+        if self.listen is not None:
+            await self.listen.stop()
         sandbox = self.sandbox
         if sandbox is not None and sandbox.started:
             await sandbox.stop()
@@ -271,8 +277,9 @@ async def set_connection(
     run = current_run(session)
     if run is None or not run.choice.driver_id:
         raise AuditError(NO_DRIVER_CHOSEN)
-    if run.active:
-        raise AuditError(RUN_IN_PROGRESS.format(driver=run.choice.identity.get("name")))
+    # New settings end a connection made with the old ones.
+    if run.listen is not None:
+        await run.listen.stop()
     entered = {k: v for k, v in config.items() if v not in (None, "")}
     base: dict[str, Any] = {}
     saved_name = ""

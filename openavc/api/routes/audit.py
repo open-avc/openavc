@@ -19,6 +19,9 @@ turns a refusal into its sentence.
   settings the chosen driver can use, secrets withheld) and
   ``POST /audit/sessions/{id}/connection`` (the settings, and what connecting
   will send).
+- ``POST /audit/sessions/{id}/connect`` (connect and listen),
+  ``POST /audit/sessions/{id}/listen/extend`` ("Keep listening") and
+  ``POST /audit/sessions/{id}/front-panel`` (the front-panel check's answer).
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -38,17 +41,21 @@ from openavc.api._engine import _get_engine
 from openavc.api.models import (
     AuditConnectionRequest,
     AuditDriverRequest,
+    AuditFrontPanelRequest,
     AuditStartRequest,
     AuditTesterRequest,
 )
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
+from openavc.audit.listen import start_listen
 from openavc.audit.passes import (
     choose_driver,
+    current_run,
     next_driver,
     open_runs,
     saved_settings,
     set_connection,
 )
+from openavc.audit.sandbox import unpaused_devices_at
 from openavc.audit.report import (
     ReportStore,
     build_report,
@@ -285,6 +292,65 @@ async def set_session_connection(session_id: str, body: AuditConnectionRequest) 
         )
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+def _listening_run(session: AuditSession):
+    run = current_run(session)
+    if run is None or run.listen is None:
+        raise HTTPException(status_code=409, detail="Connect the driver first.")
+    return run
+
+
+@router.post("/sessions/{session_id}/connect")
+async def connect_and_listen(session_id: str) -> dict[str, Any]:
+    """Connect the chosen driver and listen; progress arrives over
+    ``audit.subscribe``."""
+    session = _session(session_id)
+    run = current_run(session)
+    if run is None:
+        raise HTTPException(status_code=409, detail="Choose the driver to test first.")
+    engine = _get_engine()
+    names = [session.target.address] + (
+        [session.target.ip] if session.target.ip != session.target.address else []
+    )
+    running = unpaused_devices_at(getattr(engine, "project", None), engine.state, names)
+    if running:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{running[0]} in this project uses this device and is not paused. Pause it "
+                "on its device page, or finish this audit and start a new one, which pauses it."
+            ),
+        )
+    try:
+        await start_listen(session, run)
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/listen/extend")
+async def keep_listening(session_id: str) -> dict[str, Any]:
+    """Listen for another minute (five minutes at most in all)."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        run.listen.extend()
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/front-panel")
+async def front_panel_check(session_id: str, body: AuditFrontPanelRequest) -> dict[str, Any]:
+    """Record whether OpenAVC showed a change made on the device itself."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    run.listen.answer_front_panel(body.answer, body.note.strip())
     session.publish_state()
     return {"session": session.to_dict()}
 

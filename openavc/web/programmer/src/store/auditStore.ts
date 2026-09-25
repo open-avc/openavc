@@ -8,8 +8,12 @@
  * stored objects themselves; never build an object inside a selector.
  */
 import { create } from "zustand";
-import type { AuditSessionState, AuditTimelineEntry } from "../api/auditClient";
-import { applyAuditMessage, type AuditStep } from "../views/devices/audit/auditHelpers";
+import type { AuditSessionState, AuditTimelineEntry, AuditTrafficEntry } from "../api/auditClient";
+import {
+  appendTraffic,
+  applyAuditMessage,
+  type AuditStep,
+} from "../views/devices/audit/auditHelpers";
 
 interface AuditStoreState {
   open: boolean;
@@ -18,6 +22,8 @@ interface AuditStoreState {
   step: AuditStep;
   session: AuditSessionState | null;
   timeline: AuditTimelineEntry[];
+  /** The driver's traffic as it arrives (the newest few hundred entries). */
+  traffic: AuditTrafficEntry[];
 
   openWizard: (opts?: { address?: string }) => void;
   closeWizard: () => void;
@@ -32,14 +38,26 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
   step: "target",
   session: null,
   timeline: [],
+  traffic: [],
 
   openWizard: (opts) =>
-    set({ open: true, presetAddress: opts?.address ?? "", step: "target", timeline: [] }),
-  closeWizard: () => set({ open: false, session: null, timeline: [], step: "target" }),
+    set({
+      open: true,
+      presetAddress: opts?.address ?? "",
+      step: "target",
+      timeline: [],
+      traffic: [],
+    }),
+  closeWizard: () =>
+    set({ open: false, session: null, timeline: [], traffic: [], step: "target" }),
   setStep: (step) => set({ step }),
   setSession: (session) => set({ session }),
   applyMessage: (msg) =>
     set((state) => {
+      if (msg.type === "audit.traffic") {
+        const traffic = appendTraffic(state.traffic, msg, state.session?.session_id ?? null);
+        return traffic === state.traffic ? state : { traffic };
+      }
       const next = applyAuditMessage(state.session, state.timeline, msg);
       if (next.session === state.session && next.timeline === state.timeline) return state;
       return { session: next.session, timeline: next.timeline };

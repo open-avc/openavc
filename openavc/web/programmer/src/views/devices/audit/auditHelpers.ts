@@ -7,13 +7,16 @@ import type {
   AuditActivityKey,
   AuditConflictDevice,
   AuditDriverRun,
+  AuditListen,
   AuditPreviewStage,
+  AuditStatusVariable,
+  AuditTrafficEntry,
   AuditReport,
   AuditSessionState,
   AuditTimelineEntry,
 } from "../../../api/auditClient";
 
-export type AuditStep = "target" | "network" | "driver" | "connection" | "report";
+export type AuditStep = "target" | "network" | "driver" | "connection" | "listen" | "report";
 
 /** The steps this wizard has, in order, with their rail labels. */
 export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
@@ -21,6 +24,7 @@ export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
   { key: "network", label: "Network check" },
   { key: "driver", label: "Driver" },
   { key: "connection", label: "Connection" },
+  { key: "listen", label: "Connect and listen" },
   { key: "report", label: "Report" },
 ];
 
@@ -43,6 +47,7 @@ export const ACTIVITY_ORDER: AuditActivityKey[] = [
 export function stepFor(session: AuditSessionState | null): AuditStep {
   if (!session) return "target";
   if (session.steps.includes("report")) return "report";
+  if (session.steps.includes("listen")) return "listen";
   if (session.steps.includes("connection")) return "connection";
   if (session.steps.includes("driver")) return "driver";
   return "network";
@@ -78,7 +83,45 @@ export function applyAuditMessage(
   if (msg.type === "audit.timeline" && msg.entry) {
     return { session, timeline: [...timeline, msg.entry as AuditTimelineEntry] };
   }
+  if (msg.type === "audit.listen" && typeof msg.run === "number" && msg.listen && session.runs) {
+    const index = msg.run;
+    if (!session.runs.some((r) => r.index === index)) return { session, timeline };
+    const runs = session.runs.map((r) =>
+      r.index === index ? { ...r, listen: msg.listen as AuditListen } : r,
+    );
+    return { session: { ...session, runs }, timeline };
+  }
   return { session, timeline };
+}
+
+/** The live traffic the wizard keeps (the report has all of it). */
+export const LIVE_TRAFFIC_KEPT = 500;
+
+/** Append an ``audit.traffic`` batch to what the wizard shows. */
+export function appendTraffic(
+  kept: AuditTrafficEntry[],
+  msg: Record<string, unknown>,
+  sessionId: string | null,
+): AuditTrafficEntry[] {
+  if (msg.type !== "audit.traffic" || msg.session_id !== sessionId) return kept;
+  const entries = (msg.entries as AuditTrafficEntry[] | undefined) ?? [];
+  if (entries.length === 0) return kept;
+  const next = [...kept, ...entries];
+  return next.length > LIVE_TRAFFIC_KEPT ? next.slice(next.length - LIVE_TRAFFIC_KEPT) : next;
+}
+
+/** Seconds left in the listening window, or null when not listening. */
+export function secondsLeft(listen: AuditListen | undefined, now: number): number | null {
+  if (!listen || !listen.ends_at) return null;
+  if (listen.status !== "listening" && listen.status !== "not_connected") return null;
+  return Math.max(0, Math.ceil(listen.ends_at - now));
+}
+
+/** A status value as the table shows it. */
+export function statusValue(v: AuditStatusVariable): string {
+  if (!v.reported || v.value === null || v.value === undefined) return "Not reported";
+  if (typeof v.value === "boolean") return v.value ? "true" : "false";
+  return String(v.value);
 }
 
 /** The sentence the first step shows about project devices at the address. */

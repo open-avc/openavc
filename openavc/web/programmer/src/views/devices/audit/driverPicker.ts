@@ -83,23 +83,32 @@ export function buildDriverOptions(
   }
   for (const reg of registered) {
     if (catalogIds.has(reg.id)) continue;
-    out.push({
+    // The same fan-out as a catalog driver, from the models the driver lists.
+    const cards = expandDriverToCards({
       id: reg.id,
       name: reg.name || reg.id,
-      brand: reg.manufacturer || "Other",
-      models: [],
-      confidence: null,
-      isVia: false,
-      verified: false,
-      source: inRepo.has(reg.id) ? "imported" : "built_in",
-      installed: true,
-      installedVersion: reg.version ?? "",
-      catalogVersion: "",
-      updateAvailable: false,
-      blockedBy: "",
-      file: "",
-      deprecated: false,
-    });
+      manufacturer: reg.manufacturer || "Other",
+      compatible_models: reg.compatible_models,
+    } as CommunityDriver);
+    for (const card of cards) {
+      out.push({
+        id: reg.id,
+        name: reg.name || reg.id,
+        brand: card.brand,
+        models: card.brandModels,
+        confidence: card.brandConfidence,
+        isVia: card.isViaCard,
+        verified: false,
+        source: inRepo.has(reg.id) ? "imported" : "built_in",
+        installed: true,
+        installedVersion: reg.version ?? "",
+        catalogVersion: "",
+        updateAvailable: false,
+        blockedBy: "",
+        file: "",
+        deprecated: false,
+      });
+    }
   }
   return out;
 }

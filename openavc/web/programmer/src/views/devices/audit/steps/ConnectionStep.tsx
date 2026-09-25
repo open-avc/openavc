@@ -117,7 +117,7 @@ export function ConnectionStep() {
   return (
     <div style={{ maxWidth: 720 }}>
       <h2 style={headingStyle}>Connection</h2>
-      <p style={{ ...hintStyle, fontSize: "var(--font-size-sm)", marginTop: 0 }}>
+      <p style={{ ...hintStyle, fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)" }}>
         {run.choice.identity.name}
         {run.choice.identity.version ? ` ${run.choice.identity.version}` : ""} connects to{" "}
         {address} with these settings.
@@ -197,7 +197,7 @@ export function ConnectionStep() {
         <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
           <button
             type="button"
-            onClick={() => useAuditStore.getState().setStep("report")}
+            onClick={() => useAuditStore.getState().setStep("listen")}
             style={buttonStyle("primary")}
           >
             Continue

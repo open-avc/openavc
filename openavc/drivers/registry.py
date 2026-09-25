@@ -156,6 +156,9 @@ def list_registered_drivers() -> list[dict[str, Any]]:
             "help": driver_class.DRIVER_INFO.get("help", {}),
             "discovery": driver_class.DRIVER_INFO.get("discovery", {}),
             "device_settings": driver_class.DRIVER_INFO.get("device_settings", {}),
+            # The models the driver lists (the catalog carries the same list for
+            # catalog drivers; this is where an imported driver's comes from).
+            "compatible_models": driver_class.DRIVER_INFO.get("compatible_models", []),
             # Action strip + child types, so pre-device UIs (driver browser
             # detail) can show a driver's full surface — device-level views
             # get the resolved form via get_device_info.

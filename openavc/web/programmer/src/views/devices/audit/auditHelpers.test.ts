@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type {
   AuditConflictDevice,
+  AuditListen,
   AuditReport,
   AuditSessionState,
+  AuditTrafficEntry,
 } from "../../../api/auditClient";
 import {
   ACTIVITY_LABELS,
@@ -12,8 +14,12 @@ import {
   fileSize,
   parseCommunities,
   pauseNotice,
+  appendTraffic,
   currentRun,
   displayBytes,
+  LIVE_TRAFFIC_KEPT,
+  secondsLeft,
+  statusValue,
   previewStageLabel,
   stepFor,
   summaryLines,
@@ -217,5 +223,47 @@ describe("showing bytes and the connection preview", () => {
   it("takes the last run as the current one", () => {
     expect(currentRun(null)).toBeNull();
     expect(currentRun(session({ runs: [] }))).toBeNull();
+  });
+});
+
+describe("connect and listen", () => {
+  const entry = (seq: number): AuditTrafficEntry => ({
+    seq, t: seq, direction: "tx", channel: "tcp", hex: "41", text: "A",
+  });
+
+  it("keeps the newest traffic, for this audit only", () => {
+    const one = appendTraffic([], { type: "audit.traffic", session_id: "abc123", entries: [entry(1)] }, "abc123");
+    expect(one.map((e) => e.seq)).toEqual([1]);
+    expect(appendTraffic(one, { type: "audit.traffic", session_id: "other", entries: [entry(2)] }, "abc123")).toBe(one);
+    const many = Array.from({ length: LIVE_TRAFFIC_KEPT + 5 }, (_, i) => entry(i));
+    const kept = appendTraffic([], { type: "audit.traffic", session_id: "abc123", entries: many }, "abc123");
+    expect(kept.length).toBe(LIVE_TRAFFIC_KEPT);
+    expect(kept[0].seq).toBe(5);
+  });
+
+  it("patches one run's listening state", () => {
+    const s = session({
+      runs: [{ index: 0, choice: {} as never, started_at: 1, finished_at: null, active: true, connection: null }],
+    });
+    const listen = { status: "listening" } as unknown as AuditListen;
+    const next = applyAuditMessage(s, [], { type: "audit.listen", session_id: "abc123", run: 0, listen });
+    expect(next.session?.runs?.[0].listen).toBe(listen);
+    const ignored = applyAuditMessage(s, [], { type: "audit.listen", session_id: "abc123", run: 3, listen });
+    expect(ignored.session).toBe(s);
+  });
+
+  it("counts down only while listening", () => {
+    const listen = { status: "listening", ends_at: 110 } as unknown as AuditListen;
+    expect(secondsLeft(listen, 100.2)).toBe(10);
+    expect(secondsLeft({ ...listen, status: "done" }, 100)).toBeNull();
+    expect(secondsLeft(undefined, 100)).toBeNull();
+  });
+
+  it("says a value was not reported rather than showing nothing", () => {
+    const v = { name: "power", label: "Power", type: "boolean", value: null, reported: false,
+      first_reported_at: null, problem: "", sources: [] };
+    expect(statusValue(v)).toBe("Not reported");
+    expect(statusValue({ ...v, reported: true, value: false })).toBe("false");
+    expect(statusValue({ ...v, reported: true, value: 12 })).toBe("12");
   });
 });

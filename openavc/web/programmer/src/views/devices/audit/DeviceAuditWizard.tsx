@@ -11,6 +11,7 @@ import { TargetStep } from "./steps/TargetStep";
 import { NetworkCheckStep } from "./steps/NetworkCheckStep";
 import { DriverStep } from "./steps/DriverStep";
 import { ConnectionStep } from "./steps/ConnectionStep";
+import { ListenStep } from "./steps/ListenStep";
 import { ReportStep } from "./steps/ReportStep";
 import { buttonStyle } from "./auditStyles";
 import { ErrorLine } from "./auditParts";
@@ -154,6 +155,8 @@ export function DeviceAuditWizard() {
             <DriverStep />
           ) : step === "connection" ? (
             <ConnectionStep />
+          ) : step === "listen" ? (
+            <ListenStep />
           ) : (
             <ReportStep />
           )}

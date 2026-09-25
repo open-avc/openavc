@@ -144,28 +144,14 @@ def _within_app(path: Path) -> bool:
 
 
 def compatible_models(driver_id: str, catalog: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """The driver's model list: the catalog's, else the driver's own (a YAML
-    driver's runtime class does not carry it, so its file is read)."""
+    """The driver's model list: the catalog's, else the driver's own."""
     entry = next((d for d in (catalog or []) if d.get("id") == driver_id), None)
     if entry and isinstance(entry.get("compatible_models"), list):
         return list(entry["compatible_models"])
     cls = get_driver_class(driver_id)
     info = getattr(cls, "DRIVER_INFO", {}) or {}
     models = info.get("compatible_models")
-    if isinstance(models, list):
-        return list(models)
-    main = driver_main_file(driver_id)
-    if main is not None and main.suffix != ".py":
-        import yaml
-
-        try:
-            definition = yaml.safe_load(main.read_text(encoding="utf-8"))
-        except (OSError, ValueError, yaml.YAMLError):
-            return []
-        models = definition.get("compatible_models") if isinstance(definition, dict) else None
-        if isinstance(models, list):
-            return list(models)
-    return []
+    return list(models) if isinstance(models, list) else []
 
 
 def model_listing(

@@ -2680,6 +2680,11 @@ def create_configurable_driver_class(
     if "device_settings" in driver_def:
         driver_info["device_settings"] = driver_def["device_settings"]
 
+    # Copy the models the driver lists, so a driver installed from a file
+    # (not the catalog) still says which models it covers.
+    if "compatible_models" in driver_def:
+        driver_info["compatible_models"] = driver_def["compatible_models"]
+
     # Copy child_entity_types from the YAML definition. BaseDriver reads
     # this on register_child / set_child_state to validate properties and
     # platform-inject the synthetic `online` / `label` keys. The cloud

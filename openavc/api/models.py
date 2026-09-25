@@ -3,7 +3,7 @@ Pydantic models for the REST API request/response bodies.
 """
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -437,6 +437,16 @@ class AuditConnectionRequest(BaseModel):
 
     config: dict[str, Any] = Field(default_factory=dict, max_length=128)
     use_saved: str | None = Field(default=None, max_length=200)
+
+
+class AuditFrontPanelRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/front-panel``: after changing
+    something on the device itself, whether OpenAVC showed the change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: Literal["showed", "did_not"]
+    note: str = Field(default="", max_length=2000)
 
 
 class AuditTesterRequest(BaseModel):

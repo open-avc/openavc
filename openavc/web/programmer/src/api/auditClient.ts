@@ -199,6 +199,82 @@ export interface AuditConnection {
   preview: AuditConnectPreview;
 }
 
+/** One payload that crossed the device's wire, as the report writes it. */
+export interface AuditTrafficEntry {
+  seq: number;
+  t: number;
+  direction: "tx" | "rx";
+  channel: string;
+  hex: string;
+  text: string;
+  /** A raw receive chunk, before the frame parser cut it. */
+  chunk?: boolean;
+  meta?: Record<string, unknown>;
+}
+
+export type AuditListenStatus =
+  | "connecting"
+  | "listening"
+  | "not_connected"
+  | "done"
+  | "failed"
+  | "stopped";
+
+export interface AuditStatusVariable {
+  name: string;
+  label: string;
+  type: string;
+  value: unknown;
+  reported: boolean;
+  first_reported_at: number | null;
+  /** Why the value is not of its declared type, or "". */
+  problem: string;
+  /** The response rules that would set it (YAML drivers). */
+  sources: string[];
+}
+
+export interface AuditListen {
+  status: AuditListenStatus;
+  error: string;
+  started_at: number;
+  connected_at: number | null;
+  first_tx_at: number | null;
+  first_rx_at: number | null;
+  ends_at: number | null;
+  finished_at: number | null;
+  max_ends_at: number;
+  poll_interval: number;
+  reconnects: number;
+  drops: number;
+  offline: { code: string; detail: string; next_step: string } | null;
+  declared: number;
+  reported: number;
+  traffic: {
+    entries: number;
+    sent: number;
+    received: number;
+    bytes: number;
+    truncated: boolean;
+    /** State changed but no traffic was recorded: the driver owns its connection. */
+    not_captured: boolean;
+  };
+  contract: {
+    counts: Record<string, number>;
+    recent: { t: number; kind: string; detail: Record<string, unknown> }[];
+  };
+  status_table: {
+    variables: AuditStatusVariable[];
+    children: Record<string, Record<string, Record<string, unknown>>>;
+    settings: { key: string; label: string; state_key: string; value: unknown; populated: boolean }[];
+  };
+  front_panel: {
+    answer: "showed" | "did_not";
+    note: string;
+    at: number;
+    changes: { t: number; key: string; old: unknown; new: unknown }[];
+  } | null;
+}
+
 /** One driver tested against the device. */
 export interface AuditDriverRun {
   index: number;
@@ -208,6 +284,7 @@ export interface AuditDriverRun {
   /** True while its driver is connected to the device. */
   active: boolean;
   connection: AuditConnection | null;
+  listen?: AuditListen;
 }
 
 /** A paused project device whose saved settings the chosen driver can use. */
@@ -355,6 +432,28 @@ export function setAuditConnection(
   return request(`/audit/sessions/${encodeURIComponent(sessionId)}/connection`, {
     method: "POST",
     body: JSON.stringify({ config, use_saved: useSaved }),
+  });
+}
+
+/** Connect the chosen driver and listen; progress arrives over the WebSocket. */
+export function connectAudit(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/connect`, { method: "POST" });
+}
+
+export function keepListening(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/listen/extend`, {
+    method: "POST",
+  });
+}
+
+export function answerFrontPanel(
+  sessionId: string,
+  answer: "showed" | "did_not",
+  note = "",
+): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/front-panel`, {
+    method: "POST",
+    body: JSON.stringify({ answer, note }),
   });
 }
 

@@ -594,6 +594,8 @@ export interface DriverInfo {
   name: string;
   manufacturer: string;
   category: string;
+  /** The models the driver lists, per manufacturer. */
+  compatible_models?: CommunityDriver["compatible_models"];
   description?: string;
   version?: string;
   author?: string;
