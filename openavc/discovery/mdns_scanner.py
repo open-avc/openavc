@@ -104,10 +104,16 @@ def decode_dns_name(
     # return_offset tracks where to resume in the original data stream.
     # It's set the first time we encounter a compression pointer.
     return_offset: int | None = None
-    max_jumps = 20  # Prevent infinite loops from malformed packets
+    # Two separate bounds against malformed packets: pointers followed, and
+    # labels read. A name is at most 255 bytes, so at most 127 labels; an
+    # IPv6 reverse-address name alone has 34, so labels must not count
+    # against the pointer limit.
+    max_jumps = 20
+    max_labels = 127
+    jumps = 0
     visited: set[int] = set()  # Track visited pointer offsets to detect cycles
 
-    for _ in range(max_jumps):
+    while len(labels) < max_labels:
         if offset >= len(data):
             break
         # While still reading the name's own bytes (before any compression
@@ -132,9 +138,10 @@ def decode_dns_name(
                 # Save where to continue reading after this name
                 return_offset = offset + 2
             pointer = struct.unpack("!H", data[offset:offset + 2])[0] & 0x3FFF
-            if pointer in visited:
-                break  # Cycle detected — return what we have
+            if pointer in visited or jumps >= max_jumps:
+                break  # Cycle or runaway chain — return what we have
             visited.add(pointer)
+            jumps += 1
             offset = pointer
         else:
             # Normal label
