@@ -195,6 +195,10 @@ class AuditSession:
         self.check: Any = None
         self.footprint: Any = None
         self.report_name: str | None = None
+        self.report_saved_at: float | None = None
+        # "About you" on the report step: name, company, email, notes, and
+        # whether to leave the serial number out. All optional.
+        self.tester: dict[str, Any] = {}
         self._clock = clock
         self._last_activity = clock()
         self._subscribers: dict[int, Subscriber] = {}
@@ -326,7 +330,8 @@ class AuditManager:
         self._clock = clock
         self._current: AuditSession | None = None
         self._lock = asyncio.Lock()
-        # Called with a session as it ends, before its pauses are released.
+        # Called with a session as it ends, after its pauses are released and
+        # the end is in its timeline (so a report saved then is the whole story).
         self._end_hooks: list[Callable[[AuditSession], Awaitable[None]]] = []
         if discovery is not None:
             discovery.scan_blocker = self.scan_blocked_reason
@@ -413,13 +418,13 @@ class AuditManager:
         # can run from inside it (the idle timeout), so it is not cancelled
         # from under itself.
         await session.stop_everything(spare=asyncio.current_task())
+        await self._resume_owned(session)
+        session.add_timeline("session.ended", self._end_text(status), status=status)
         for hook in self._end_hooks:
             try:
                 await hook(session)
             except Exception:
                 log.warning("Audit end hook failed", exc_info=True)
-        await self._resume_owned(session)
-        session.add_timeline("session.ended", self._end_text(status), status=status)
         session.publish_state()
         log.info("Device audit %s ended (%s)", session.id, status)
 

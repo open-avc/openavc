@@ -1056,11 +1056,13 @@ class NetworkCheck:
             else "cached" if identity.get("sha256")
             else "none"
         )
+        drivers = self._driver_names(named)
         fp.verdict = {
             "state": state,
+            "sentence": verdict_sentence(state, match.driver_id, match.candidates, drivers),
             "identification": match.to_dict(),
             "explanation": explanation.to_dict(),
-            "drivers": self._driver_names(named),
+            "drivers": drivers,
             "checks": checks,
             "catalog": identity,
             "signal_index_drivers": self.discovery.signal_index.driver_count(),
@@ -1134,6 +1136,28 @@ class NetworkCheck:
                 "this computer and the device would look the same as a device that "
                 "is off.",
             )
+
+
+def verdict_sentence(
+    state: str,
+    driver_id: str | None,
+    candidates: list[str],
+    drivers: dict[str, dict[str, Any]],
+) -> str:
+    """The verdict in one sentence, as the wizard and the report say it."""
+
+    def name(d: str) -> str:
+        return str(drivers.get(d, {}).get("name") or d)
+
+    if state == "identified" and driver_id:
+        return f"OpenAVC recognizes this device: {name(driver_id)}."
+    if state == "possible":
+        if len(candidates) == 1:
+            return f"OpenAVC found a driver that might fit this device: {name(candidates[0])}."
+        return "OpenAVC found a few drivers that might fit this device."
+    if state == "unknown":
+        return "OpenAVC can see this device but does not recognize it."
+    return "Nothing answered at this address. Check the address and that the device is on."
 
 
 def _control_interface() -> str:
