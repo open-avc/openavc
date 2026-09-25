@@ -421,36 +421,59 @@ async def test_disabling_a_paused_device_drops_the_pause(dm, core):
 # ---------------------------------------------------------------------------
 
 
+class MockSerialDriver(MockTCPDriver):
+    DRIVER_INFO = {
+        **MockTCPDriver.DRIVER_INFO,
+        "id": "mock_a81_serial",
+        "transport": "serial",
+        "default_config": {"port": "COM9", "baudrate": 9600},
+    }
+
+
+class MockBridgeDriver(MockTCPDriver):
+    DRIVER_INFO = {
+        **MockTCPDriver.DRIVER_INFO,
+        "id": "mock_a81_bridge",
+        "default_config": {"host": "10.0.0.60", "port": 4998},
+        "bridge": {"ports": [{"id": "serial1", "kind": "serial", "passthrough_port": 4999}]},
+    }
+
+
+_DRIVER_REGISTRY["mock_a81_serial"] = MockSerialDriver
+_DRIVER_REGISTRY["mock_a81_bridge"] = MockBridgeDriver
+
+
 @pytest.fixture
 def conflict_engine():
-    """Build a minimal engine stub with two TCP devices for conflict checks."""
+    """A minimal engine stub with a real project model: two TCP devices, one
+    disabled, for conflict checks."""
     from types import SimpleNamespace
+
+    from openavc.core.project_loader import DeviceConfig
 
     state = StateStore()
     events = EventBus()
     state.set_event_bus(events)
 
     devices = [
-        SimpleNamespace(
+        DeviceConfig(
             id="proj_main",
             driver="mock_a81_tcp",
             name="Main Projector",
             config={"host": "10.0.0.50", "port": 4352},
-            enabled=True,
         ),
-        SimpleNamespace(
+        DeviceConfig(
             id="proj_disabled",
             driver="mock_a81_tcp",
             name="Spare (Disabled)",
             config={"host": "10.0.0.50", "port": 4352},
             enabled=False,
         ),
-        SimpleNamespace(
+        DeviceConfig(
             id="display1",
             driver="mock_a81_tcp",
             name="Hallway Display",
             config={"host": "10.0.0.99", "port": 23},
-            enabled=True,
         ),
     ]
     project = SimpleNamespace(
@@ -499,17 +522,87 @@ async def test_check_conflict_no_match(monkeypatch, conflict_engine):
     assert result["conflicts"] == []
 
 
-async def test_check_conflict_non_tcp_returns_empty(monkeypatch, conflict_engine):
-    """Single-session poaching is a TCP issue; HTTP/UDP/serial return [] so
-    the UI doesn't surface false-alarm warnings."""
+async def test_check_conflict_sessionless_transports_return_empty(monkeypatch, conflict_engine):
+    """HTTP, UDP and OSC hold no session to poach, so they return [] and the
+    UI raises no false alarm."""
     from openavc.api.routes import driver_test as driver_test_routes
 
     monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
-    for transport in ("http", "udp", "serial", "osc"):
+    for transport in ("http", "udp", "osc"):
         result = await driver_test_routes.check_connection_conflict(
             host="10.0.0.50", port="4352", transport=transport
         )
         assert result["conflicts"] == [], f"transport={transport}"
+
+
+async def test_check_conflict_finds_a_device_on_its_drivers_default_port(
+    monkeypatch, conflict_engine,
+):
+    """A device that saved only its host connects on the driver's default
+    port, and that is where the conflict is."""
+    from openavc.api.routes import driver_test as driver_test_routes
+    from openavc.core.project_loader import DeviceConfig
+
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    conflict_engine.project.devices.append(
+        DeviceConfig(id="bare", driver="mock_a81_tcp", name="Bare", config={"host": "10.0.0.70"})
+    )
+    result = await driver_test_routes.check_connection_conflict(
+        host="10.0.0.70", port="9999", transport="tcp"
+    )
+    assert [c["device_id"] for c in result["conflicts"]] == ["bare"]
+
+
+async def test_check_conflict_honors_a_transport_override(monkeypatch, conflict_engine):
+    """A TCP driver whose connection is switched to serial no longer holds a
+    TCP session, and it does hold the serial port."""
+    from openavc.api.routes import driver_test as driver_test_routes
+
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    conflict_engine.project.connections["proj_main"] = {"transport": "serial", "port": "COM4"}
+    tcp = await driver_test_routes.check_connection_conflict(
+        host="10.0.0.50", port="4352", transport="tcp"
+    )
+    assert tcp["conflicts"] == []
+    serial = await driver_test_routes.check_connection_conflict(
+        port="COM4", transport="serial"
+    )
+    assert [c["device_id"] for c in serial["conflicts"]] == ["proj_main"]
+
+
+async def test_check_conflict_finds_a_serial_device_on_its_port(monkeypatch, conflict_engine):
+    from openavc.api.routes import driver_test as driver_test_routes
+    from openavc.core.project_loader import DeviceConfig
+
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    conflict_engine.project.devices.append(
+        DeviceConfig(id="relay", driver="mock_a81_serial", name="Relay", config={})
+    )
+    hit = await driver_test_routes.check_connection_conflict(port="COM9", transport="serial")
+    assert [c["device_id"] for c in hit["conflicts"]] == ["relay"]
+    miss = await driver_test_routes.check_connection_conflict(port="COM8", transport="serial")
+    assert miss["conflicts"] == []
+
+
+async def test_check_conflict_finds_a_device_behind_a_bridge(monkeypatch, conflict_engine):
+    """A serial device bound to a bridge's pass-through port connects to the
+    bridge's host on the pass-through port, so a test of that host and port
+    meets it there."""
+    from openavc.api.routes import driver_test as driver_test_routes
+    from openavc.core.project_loader import DeviceConfig
+
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: conflict_engine)
+    conflict_engine.project.devices.extend([
+        DeviceConfig(id="gc", driver="mock_a81_bridge", name="Bridge", config={}),
+        DeviceConfig(
+            id="bridged", driver="mock_a81_serial", name="Bridged Display",
+            config={"bridge": "gc", "bridge_port": "serial1"},
+        ),
+    ])
+    result = await driver_test_routes.check_connection_conflict(
+        host="10.0.0.60", port="4999", transport="tcp"
+    )
+    assert [c["device_id"] for c in result["conflicts"]] == ["bridged"]
 
 
 async def test_check_conflict_invalid_port(monkeypatch, conflict_engine):
@@ -551,3 +644,13 @@ async def test_check_conflict_surfaces_paused_state(monkeypatch, conflict_engine
     )
     assert len(result["conflicts"]) == 1
     assert result["conflicts"][0]["paused"] is True
+
+
+def test_serial_port_names_compare_the_way_the_os_does(monkeypatch):
+    from openavc.core import device_config
+
+    monkeypatch.setattr(device_config.sys, "platform", "win32")
+    assert device_config.same_serial_port("COM3", " com3 ")
+    monkeypatch.setattr(device_config.sys, "platform", "linux")
+    assert device_config.same_serial_port("/dev/ttyUSB0", "/dev/ttyUSB0")
+    assert not device_config.same_serial_port("/dev/ttyUSB0", "/dev/ttyusb0")

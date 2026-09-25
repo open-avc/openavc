@@ -176,12 +176,15 @@ export interface TestPanelConflict {
 }
 
 /**
- * Pre-flight check: does any production device already own this host:port?
+ * Pre-flight check: does any production device already own this connection?
  *
- * The driver test panel calls this before opening a competing TCP session.
- * Many AV devices accept only one TCP control connection at a time, so the
- * test would kick the production device offline. Currently TCP-only — UDP
- * and HTTP don't have the single-session problem.
+ * The driver test panel calls this before opening a competing session. Many
+ * AV devices accept only one TCP control connection at a time, and a serial
+ * port opens for one program at a time, so the test would kick the
+ * production device offline. `tcp` compares host and port, `serial` the port
+ * name (host is ignored); UDP and HTTP hold no session and never conflict.
+ * The server compares where each device really connects: its driver's
+ * default port, a transport override, a bridge's pass-through port.
  */
 export async function checkConnectionConflict(
   host: string,

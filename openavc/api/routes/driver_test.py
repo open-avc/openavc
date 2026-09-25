@@ -28,8 +28,12 @@ from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.models import TestCommandRequest
+from openavc.core.device_config import (
+    device_connections,
+    devices_at_host,
+    same_serial_port,
+)
 from openavc.utils.logger import get_logger
-from openavc.drivers.registry import list_registered_drivers
 
 log = get_logger(__name__)
 
@@ -75,59 +79,63 @@ async def test_driver_command(driver_id: str, body: TestCommandRequest) -> dict:
 
 @router.get("/driver-test-conflicts")
 async def check_connection_conflict(
-    host: str,
     port: str,
+    host: str = "",
     transport: str = "tcp",
 ) -> dict:
-    """Find production devices using the same host:port as a planned test (A81).
+    """Find production devices using the connection a planned test wants (A81).
 
-    Many AV devices allow only one TCP control session at a time. The test
-    panel calls this before opening a competing connection so the UI can
-    warn the user and offer to pause the production driver.
+    Many AV devices allow only one TCP control session at a time, and a
+    serial port opens for one process only. The test panel calls this before
+    opening a competing connection so the UI can warn the user and offer to
+    pause the production driver.
+
+    Devices are compared where they really connect (``device_connections``):
+    the driver's default port, a transport override, a bridge's pass-through
+    port and a USB-serial binding all count. ``tcp`` matches host and port,
+    ``serial`` matches the port name; other transports hold no session and
+    return nothing.
 
     Returns ``{"conflicts": [...]}`` with one entry per matching device. An
-    empty list means it's safe to test. Matching is currently TCP-only —
-    the single-session problem is a TCP-specific failure mode.
+    empty list means it's safe to test.
     """
-    if transport != "tcp":
+    transport = transport.lower()
+    if transport not in ("tcp", "serial"):
         return {"conflicts": []}
     engine = _get_engine()
     if not engine.project:
         return {"conflicts": []}
 
-    try:
-        target_port = int(port)
-    except (TypeError, ValueError):
-        return {"conflicts": []}
-
-    registry = {d["id"]: d for d in list_registered_drivers()}
-
-    conflicts: list[dict[str, Any]] = []
-    for device in engine.project.devices:
-        if not device.enabled:
-            continue
-        driver_info = registry.get(device.driver)
-        if not driver_info or driver_info.get("transport", "tcp") != "tcp":
-            continue
-        conn = engine.project.connections.get(device.id, {})
-        cfg = {**device.config, **conn}
-        device_host = str(cfg.get("host", ""))
+    if transport == "tcp":
         try:
-            device_port = int(cfg.get("port", 0))
+            target_port: int | str = int(port)
         except (TypeError, ValueError):
-            continue
-        if device_host != host or device_port != target_port:
-            continue
-        connected = bool(engine.state.get(f"device.{device.id}.connected"))
-        paused = bool(engine.state.get(f"device.{device.id}.paused"))
-        conflicts.append({
-            "device_id": device.id,
-            "device_name": device.name,
-            "driver": device.driver,
-            "connected": connected,
-            "paused": paused,
-        })
-    return {"conflicts": conflicts}
+            return {"conflicts": []}
+        if not host.strip():
+            return {"conflicts": []}
+        matches = [
+            conn for conn in devices_at_host(engine.project, [host])
+            if conn.transport == "tcp" and conn.port == target_port
+        ]
+    else:
+        if not port.strip():
+            return {"conflicts": []}
+        matches = [
+            conn for conn in device_connections(engine.project)
+            if conn.transport == "serial" and isinstance(conn.port, str)
+            and same_serial_port(conn.port, port)
+        ]
+
+    return {"conflicts": [
+        {
+            "device_id": conn.device_id,
+            "device_name": conn.name,
+            "driver": conn.driver,
+            "connected": bool(engine.state.get(f"device.{conn.device_id}.connected")),
+            "paused": bool(engine.state.get(f"device.{conn.device_id}.paused")),
+        }
+        for conn in matches
+    ]}
 
 
 class _TestDriverBuildError(Exception):

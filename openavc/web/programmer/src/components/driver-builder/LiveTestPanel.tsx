@@ -139,12 +139,14 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   }, [selectedCommand, draft.commands]);
 
   // A81 — pre-flight conflict check. Many AV devices accept only one TCP
-  // control session, so before the test panel opens its competing socket
-  // we look up which production device (if any) currently owns this
-  // host:port and surface a warning so the user can choose to pause it.
+  // control session, and a serial port opens for one program at a time, so
+  // before the test panel opens its competing connection we look up which
+  // production device (if any) currently owns this host:port or serial port
+  // and surface a warning so the user can choose to pause it.
   // Debounced to 300ms so rapid typing doesn't spam the endpoint.
   useEffect(() => {
-    if (isSerial || transport !== "tcp" || !host.trim() || !port.trim()) {
+    const checkable = isSerial || transport === "tcp";
+    if (!checkable || !port.trim() || (!isSerial && !host.trim())) {
       setConflicts([]);
       setConflictAcknowledged(false);
       return;
@@ -152,7 +154,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
     const handle = setTimeout(async () => {
       try {
         const result = await api.checkConnectionConflict(
-          host.trim(),
+          isSerial ? "" : host.trim(),
           port.trim(),
           transport,
         );
@@ -753,6 +755,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
       {conflicts.length > 0 && (
         <ConflictBanner
           conflicts={conflicts}
+          serial={isSerial}
           pausedDeviceIds={pausedDeviceIds}
           pausingId={pausingId}
           acknowledged={conflictAcknowledged}
@@ -954,15 +957,17 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
 }
 
 /**
- * A81 — warn the user that the host:port they're testing against is already
- * owned by a production device. Many AV devices accept only one TCP control
- * session, so the test would kick the live device offline. The banner offers
+ * A81 — warn the user that the host:port (or serial port) they're testing
+ * against is already owned by a production device. Many AV devices accept only
+ * one TCP control session, and a serial port opens for one program at a time,
+ * so the test would kick the live device offline. The banner offers
  * to pause each conflicting device (cleanly disconnect, suppress auto-
  * reconnect) and then resume them on demand. A "Connect anyway" override is
  * provided for cases where the user knows the device is already gone.
  */
 function ConflictBanner({
   conflicts,
+  serial,
   pausedDeviceIds,
   pausingId,
   acknowledged,
@@ -971,6 +976,7 @@ function ConflictBanner({
   onAcknowledge,
 }: {
   conflicts: TestPanelConflict[];
+  serial: boolean;
   pausedDeviceIds: string[];
   pausingId: string | null;
   acknowledged: boolean;
@@ -1014,8 +1020,12 @@ function ConflictBanner({
         {allPaused
           ? "Production device paused for testing"
           : acknowledged
-            ? "Testing over a live production address"
-            : "Production device already uses this address"}
+            ? serial
+              ? "Testing over a live production port"
+              : "Testing over a live production address"
+            : serial
+              ? "Production device already uses this port"
+              : "Production device already uses this address"}
       </div>
       <div
         style={{
@@ -1028,7 +1038,9 @@ function ConflictBanner({
           ? "The conflicting device is offline while you test. Resume it when you're done."
           : acknowledged
             ? "You chose to connect anyway. The live device will likely drop while the test panel holds the connection."
-            : "Many AV devices accept only one TCP control session at a time. Testing will kick the production driver offline until it reconnects."}
+            : serial
+              ? "A serial port opens for one program at a time. Testing will take the port from the production driver until it reconnects."
+              : "Many AV devices accept only one TCP control session at a time. Testing will kick the production driver offline until it reconnects."}
       </div>
       <div
         style={{
