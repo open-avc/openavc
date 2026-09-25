@@ -203,8 +203,19 @@ async def _fetch_plugin_hashes(plugin_id: str) -> ArtifactHashes:
 _SAFE_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 
+def is_safe_plugin_id(plugin_id: str) -> bool:
+    """THE plugin-id rule: lowercase letters, digits and underscores only.
+
+    Asked by every door that turns an id into a directory under
+    ``plugin_repo/`` -- the installer before it writes, the file-serving
+    routes before they read -- so an id is never a path segment that can
+    name anything but a plugin's own folder.
+    """
+    return bool(plugin_id) and _SAFE_ID_RE.match(plugin_id) is not None
+
+
 def _validate_plugin_id(plugin_id: str) -> None:
-    if not plugin_id or not _SAFE_ID_RE.match(plugin_id):
+    if not is_safe_plugin_id(plugin_id):
         raise ValueError(
             f"Invalid plugin ID '{plugin_id}': must be lowercase letters, "
             "numbers, and underscores only"

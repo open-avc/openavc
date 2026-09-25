@@ -154,6 +154,13 @@ def _serve_plugin_file(plugin_id: str, subdir: str, file_path: str, request: Req
     open must not go on running the version it loaded before the update.
     """
     from openavc.config import get_config
+    from openavc.core.plugin_installer import is_safe_plugin_id
+
+    # The id becomes a directory name below, and the containment check in
+    # serve_static_file is against that directory. An id that is not a plain
+    # plugin id names nothing this route may serve.
+    if not is_safe_plugin_id(plugin_id):
+        raise HTTPException(status_code=404, detail="Plugin not found")
 
     config = get_config()
     base_dir = Path(config.plugin_repo_path) / plugin_id
