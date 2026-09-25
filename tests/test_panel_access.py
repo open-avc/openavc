@@ -372,7 +372,7 @@ def test_the_setting_takes_two_values(claimed_engine, access_mode):
     good = client.patch("/api/system/config", json={"panels": {"access": "approved"}}, auth=AUTH)
     assert good.status_code == 200
     assert get_system_config().get("panels", "access") == "approved"
-    assert client.get("/api/system/config", auth=AUTH).json()["panels"] == {"access": "approved"}
+    assert client.get("/api/system/config", auth=AUTH).json()["panels"] == {"access": "approved", "upgrade_notice": False}
 
 
 def test_a_round_trip_keeps_the_advertise_switch(claimed_engine, access_mode):
@@ -383,7 +383,7 @@ def test_a_round_trip_keeps_the_advertise_switch(claimed_engine, access_mode):
     client.patch("/api/system/config", json={"discovery": {"advertise": False}, "panels": {"access": "approved"}}, auth=AUTH)
     after = client.get("/api/system/config", auth=AUTH).json()
     assert after["discovery"] == {"advertise": False}
-    assert after["panels"] == {"access": "approved"}
+    assert after["panels"] == {"access": "approved", "upgrade_notice": False}
     client.patch("/api/system/config", json={"discovery": {"advertise": True}}, auth=AUTH)
 
 

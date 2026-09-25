@@ -26,6 +26,10 @@ export type PanelDevicesChangeReason =
 
 interface PanelDevicesStore {
   access: PanelAccessMode;
+  /** True on a system that was updated with its panels connected and is
+   *  still set to Anyone on the network; the notice shows once until it is
+   *  dismissed or the mode is switched. */
+  upgradeNotice: boolean;
   /** Waiting for approval, oldest request first. */
   pending: PanelDevice[];
   /** Approved, by name. */
@@ -45,6 +49,8 @@ interface PanelDevicesStore {
   deny: (id: string) => Promise<boolean>;
   revoke: (id: string) => Promise<boolean>;
   rename: (id: string, name: string) => Promise<boolean>;
+  /** Clear the one-time notice; the server remembers, so it stays gone. */
+  dismissUpgradeNotice: () => Promise<void>;
 }
 
 function accessMode(value: unknown): PanelAccessMode {
@@ -92,6 +98,7 @@ function placed(lists: Lists, device: PanelDevice): Lists {
 
 export const usePanelDevicesStore = create<PanelDevicesStore>((set, get) => ({
   access: "approved",
+  upgradeNotice: false,
   pending: [],
   approved: [],
   denied: [],
@@ -103,6 +110,7 @@ export const usePanelDevicesStore = create<PanelDevicesStore>((set, get) => ({
       const list = await api.listPanelDevices();
       set({
         access: accessMode(list.access),
+        upgradeNotice: list.upgrade_notice === true,
         pending: list.pending ?? [],
         approved: list.approved ?? [],
         denied: list.denied ?? [],
@@ -120,7 +128,7 @@ export const usePanelDevicesStore = create<PanelDevicesStore>((set, get) => ({
     const reason = message.reason as PanelDevicesChangeReason | undefined;
     const device = message.device;
     if (reason === "access_changed") {
-      set({ access: accessMode(message.access) });
+      set({ access: accessMode(message.access), upgradeNotice: message.upgrade_notice === true });
       return;
     }
     if (!isDevice(device)) {
@@ -185,6 +193,16 @@ export const usePanelDevicesStore = create<PanelDevicesStore>((set, get) => ({
     } catch (e) {
       showError("Couldn't rename the panel: " + parseApiError(e));
       return false;
+    }
+  },
+
+  dismissUpgradeNotice: async () => {
+    set({ upgradeNotice: false });
+    try {
+      await api.dismissPanelAccessNotice();
+    } catch (e) {
+      // It comes back on the next connect if the server never heard.
+      showError("Couldn't dismiss the notice: " + parseApiError(e));
     }
   },
 }));

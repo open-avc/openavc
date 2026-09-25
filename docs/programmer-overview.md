@@ -126,7 +126,7 @@ The Settings view configures the server itself: networking, authentication, and 
 - **Port**: HTTP port (default 8080)
 - **Programmer password**: protects the Programmer IDE and API when the server is network-accessible
 - **API key**: for third-party integrations connecting via REST or WebSocket
-- **Panel access**: **Approved panels only** (the default) makes a new tablet or browser wait until you approve it once, from the notice or the Dashboard's **Panels** card; **Anyone on the network** lets any device that can reach the port open the panel and control the space. Applies as soon as you save
+- **Panel access**: **Approved panels only** (the default on a fresh install) makes a new tablet or browser wait until you approve it once, from the notice or the Dashboard's **Panels** card; **Anyone on the network** lets any device that can reach the port open the panel and control the space. A system updated from a version without this setting starts as Anyone on the network so its panels stay connected, and a notice says so once. Applies as soon as you save
 - **Advertise on the network**: lets the OpenAVC Panel app find this system in its list. Turned off, devices still connect by address
 - **Log level**: debug, info, warning, or error
 

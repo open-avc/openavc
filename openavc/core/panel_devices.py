@@ -31,7 +31,11 @@ the device back to pending and the programmer approves it again.
 
 **Access mode.** ``panels.access`` in ``system.json`` is ``approved`` or
 ``open``; ``access_mode()`` reads it and fails closed, so anything other than
-the exact word ``open`` means approved.
+the exact word ``open`` means approved. A system that has never had the key
+written gets it decided once at start by ``settle_access_default``: ``open``
+for a system that was already running before Panel access existed (its
+panels stay connected through the update, and ``panels.upgrade_notice`` makes
+the Programmer say so once), ``approved`` for a fresh install.
 
 Pure stdlib plus ``utils/password_hash`` and the config reader; no FastAPI and
 no engine. The socket gate and the Programmer push are in the API layer.
@@ -101,6 +105,51 @@ def access_mode() -> str:
 
     raw = get_system_config().get("panels", "access", ACCESS_APPROVED)
     return ACCESS_OPEN if raw == ACCESS_OPEN else ACCESS_APPROVED
+
+
+def settle_access_default(config: Any, instance_id_file: Path) -> str | None:
+    """Decide ``panels.access`` once for a system that has never had it
+    written down, and write it: ``open`` for a system that was already
+    running before Panel access existed, ``approved`` for a fresh install.
+
+    A system updated from an earlier release has wall tablets connected
+    that no one has approved, and the person who applied the update may be
+    in another city. Left at the shipped default, every one of them would go
+    to the waiting screen the moment the update finished. So the first start
+    that finds no ``panels.access`` in system.json asks whether this data
+    directory has run before: the instance id file is created on a system's
+    very first start (any release), and a claimed system has its admin
+    password in the file. Either means an existing system, which is settled
+    to ``open`` with ``upgrade_notice`` set so the Programmer says so once and
+    points at the switch. Neither means a fresh install, settled to
+    ``approved``. The decision is written to the file, so it is made exactly
+    once: a fresh system that is claimed and restarted tomorrow is never
+    mistaken for an old one.
+
+    Must run before anything saves system.json on the new release (the
+    engine calls it first thing, ahead of ``ensure_file``), because a save
+    writes the default into the file and the question can no longer be
+    asked. An environment override keeps winning at runtime either way.
+    Returns the mode written, or None when the file already had one.
+    """
+    if config.persisted_has("panels", "access"):
+        return None
+    existing = instance_id_file.exists() or bool(
+        config.persisted_get("auth", "programmer_password") or ""
+    )
+    mode = ACCESS_OPEN if existing else ACCESS_APPROVED
+    config.persist_default("panels", "access", mode)
+    config.persist_default("panels", "upgrade_notice", existing)
+    config.save()
+    if existing:
+        log.info(
+            "Panel access settled to 'open' for a system that was running before "
+            "approval existed, so its panels stay connected; switch to approved "
+            "panels only under Settings > Access when ready"
+        )
+    else:
+        log.info("Panel access settled to 'approved' for a fresh install")
+    return mode
 
 
 def _now_iso() -> str:

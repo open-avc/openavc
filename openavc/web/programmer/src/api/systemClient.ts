@@ -281,8 +281,10 @@ export interface SystemConfig {
   cloud: { enabled: boolean; endpoint: string; system_key: string; system_id: string };
   kiosk: { enabled: boolean; target_url: string; cursor_visible: boolean };
   tls: { enabled: boolean; port: number; auto_generate: boolean; cert_file: string; key_file: string; redirect_http: boolean; cloud_cert: boolean };
-  /** Who may open the panel. Applies as soon as it is saved. */
-  panels: { access: PanelAccessMode };
+  /** Who may open the panel. Applies as soon as it is saved. `upgrade_notice`
+   *  is true on a system that was updated with its panels connected and is
+   *  still open; the Programmer's notice clears it. */
+  panels: { access: PanelAccessMode; upgrade_notice: boolean };
   /** The mDNS advertisement the Panel app's list is built from. Applies as
    *  soon as it is saved. */
   discovery: { advertise: boolean };

@@ -328,11 +328,19 @@ async def panel_access_claim(
 
 @router.get("/panel/devices")
 async def list_panel_devices() -> dict[str, Any]:
-    """Every panel this system knows: waiting, approved and denied."""
+    """Every panel this system knows: waiting, approved and denied, plus the
+    access mode and whether the one-time notice (a system updated with its
+    panels connected is still open) is due."""
+    from openavc.system_config import get_system_config
+
     engine = _get_engine()
     store = _require_store(engine)
     await _sweep(engine, store)
-    return {"access": access_mode(), **store.list_devices()}
+    return {
+        "access": access_mode(),
+        "upgrade_notice": bool(get_system_config().get("panels", "upgrade_notice", False)),
+        **store.list_devices(),
+    }
 
 
 @router.post("/panel/devices/{device_id}/approve")

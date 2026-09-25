@@ -290,9 +290,14 @@ DEFAULTS: dict[str, Any] = {
     # the programmer approves it once; the box's own screen, a cloud tunnel
     # and a credentialed client need no approval) or "open" (anyone who can
     # reach the port). The rule is openavc/api/panel_access.py and the records
-    # are openavc/core/panel_devices.py.
+    # are openavc/core/panel_devices.py. This default is what a FRESH install
+    # gets: a system that was already running before Panel access existed is
+    # settled to "open" on its first start with it, so its panels stay
+    # connected through the update, and `upgrade_notice` is set so the
+    # Programmer says so once (core/panel_devices.settle_access_default).
     "panels": {
         "access": "approved",
+        "upgrade_notice": False,
     },
     "devices": {
         # Seconds between reconnect attempts for a device that has gone
@@ -640,12 +645,17 @@ class SystemConfig:
         # Start with defaults
         import copy
         self._data = copy.deepcopy(DEFAULTS)
+        # What the file itself said, before the defaults were merged under it.
+        # `persisted_has` reads this: the merged layers cannot tell a value the
+        # operator set from a default that was never written.
+        self._raw_file: dict[str, Any] = {}
 
         # Layer: system.json (if it exists)
         if self._file_path.exists():
             try:
                 file_data = json.loads(self._file_path.read_text(encoding="utf-8"))
                 if isinstance(file_data, dict):
+                    self._raw_file = copy.deepcopy(file_data)
                     self._data = _deep_merge(self._data, file_data)
                     log.info("Loaded system config from %s", self._file_path)
             except (json.JSONDecodeError, OSError) as e:
@@ -853,6 +863,41 @@ class SystemConfig:
         if section not in self._file_data:
             self._file_data[section] = {}
         self._file_data[section][key] = value
+
+    def persisted_has(self, section: str, key: str) -> bool:
+        """Whether system.json itself carried ``section.key`` when it was
+        loaded. False for a value that only comes from DEFAULTS or the
+        environment: the merged layers cannot tell those apart, and a rule
+        that runs once per system needs to."""
+        values = getattr(self, "_raw_file", {}).get(section)
+        return isinstance(values, dict) and key in values
+
+    def persisted_get(self, section: str, key: str, default: Any = None) -> Any:
+        """The value system.json itself carried for ``section.key`` (or
+        ``default``), ignoring DEFAULTS and the environment."""
+        values = getattr(self, "_raw_file", {}).get(section)
+        if isinstance(values, dict) and key in values:
+            return values[key]
+        return default
+
+    def persist_default(self, section: str, key: str, value: Any) -> None:
+        """Write ``value`` to the persisted layer, and to the runtime view
+        unless an environment override holds that key. For a decision the
+        server makes once and writes down (``settle_access_default``), where
+        an operator's env var must keep winning at runtime and must not be
+        overwritten in the file either. Call save() afterwards."""
+        if section not in self._file_data:
+            self._file_data[section] = {}
+        self._file_data[section][key] = value
+        if section not in self._raw_file:
+            self._raw_file[section] = {}
+        self._raw_file[section][key] = value
+        env_var = ENV_OVERRIDES.get((section, key), (None, None))[0]
+        if env_var and os.environ.get(env_var) is not None:
+            return
+        if section not in self._data:
+            self._data[section] = {}
+        self._data[section][key] = value
 
     def to_dict(self) -> dict[str, Any]:
         """Return the full config as a dict."""

@@ -484,6 +484,8 @@ Packaged installs (Windows, macOS, Linux, Docker, Pi) start unclaimed: the first
 
 The Panel UI never asks an end user for a password. Who may open it is **Panel access** (Settings > Access). With **Approved panels only**, the default, a new tablet or browser waits on a screen showing a six-digit code until you approve it once, from the notice in the Programmer, from the Dashboard's **Panels** list (from the office through OpenAVC Cloud too), or with the admin password typed on the panel; it then stays approved until revoked. With **Anyone on the network**, any device that can reach the port opens the panel. The device's own screen, a panel opened through OpenAVC Cloud and the Programmer's preview never wait.
 
+A system updated from a version before Panel access existed keeps its panels connected: it comes up as **Anyone on the network**, the Programmer says so once, and you switch to **Approved panels only** when you are ready. A fresh install starts as **Approved panels only**. The decision is written to `system.json` on that first start, so it is made once.
+
 ### When to set each credential
 
 | Setting | Environment Variable | When to use it |

@@ -32,6 +32,9 @@ export interface PanelDevice {
 
 export interface PanelDeviceList {
   access: PanelAccessMode;
+  /** True on a system that was updated with its panels connected and is
+   *  still set to Anyone on the network: the Programmer says so once. */
+  upgrade_notice?: boolean;
   pending: PanelDevice[];
   approved: PanelDevice[];
   denied: PanelDevice[];
@@ -39,6 +42,16 @@ export interface PanelDeviceList {
 
 export async function listPanelDevices(): Promise<PanelDeviceList> {
   return request<PanelDeviceList>("/panel/devices");
+}
+
+/** Dismiss the notice that a system updated with its panels connected is
+ *  still open. The setting it clears is `panels.upgrade_notice`; switching
+ *  Panel access to approved clears it on the server too. */
+export async function dismissPanelAccessNotice(): Promise<void> {
+  await request("/system/config", {
+    method: "PATCH",
+    body: JSON.stringify({ panels: { upgrade_notice: false } }),
+  });
 }
 
 /** A blank name means the platform and address; the server fills it in. */

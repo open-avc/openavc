@@ -28,6 +28,13 @@ export function revokeQuestion(name: string): string {
   return `Revoke ${name}? It shows the waiting screen until it is approved again.`;
 }
 
+/** The one-time notice on a system that was updated with its panels
+ *  connected: it came up as Anyone on the network so nothing in the room
+ *  changed, and this says what that means and where the switch is. */
+export const PANEL_ACCESS_UPGRADE_NOTICE =
+  "Panel access is Anyone on the network: any device that can reach this system can open the panel and control the space. "
+  + "To have a new tablet or browser wait for your approval, choose Approved panels only under Settings > Access.";
+
 /** "just now", "2 min", "3 h", "2 d"; null for a timestamp that cannot be
  *  read. Server timestamps are UTC ("2026-09-25T14:02:11Z"). */
 export function elapsedText(iso: string | null | undefined, now: number = Date.now()): string | null {

@@ -235,6 +235,19 @@ class Engine:
             migrate_legacy_repos,
         )
         sys_config = get_system_config()
+
+        # Decide Panel access for a system that has never had it written
+        # down, BEFORE anything can save system.json on this release: a save
+        # writes the shipped default into the file, and the question (was this
+        # system running before approval existed?) can no longer be asked.
+        # core/panel_devices.settle_access_default has the rule.
+        try:
+            from openavc.core.panel_devices import settle_access_default
+
+            settle_access_default(sys_config, self.project_path.parent / ".instance_id")
+        except Exception:  # never block startup on the decision
+            log.exception("Could not settle the Panel access default")
+
         sys_config.ensure_file()
 
         # Convert an admin password or API key stored as typed (an install
@@ -1700,6 +1713,9 @@ class Engine:
         to open changes nothing for connected clients. Programmer clients are
         told either way, so the Panels card can redraw.
         """
+        from openavc.system_config import get_system_config
+
+        config = get_system_config()
         mode = access_mode()
         if mode == ACCESS_APPROVED:
             closed = await self.ws.close_clients(
@@ -1709,8 +1725,18 @@ class Engine:
             )
             if closed:
                 log.info(f"Panel access is now approved panels only; {closed} panel socket(s) sent to the waiting screen")
+            # The one-time notice that a system updated with its panels
+            # connected is still open has nothing left to say.
+            if config.get("panels", "upgrade_notice", False):
+                config.set("panels", "upgrade_notice", False)
+                config.save()
         await self.ws.broadcast(
-            {"type": "panel.devices.changed", "reason": "access_changed", "access": mode},
+            {
+                "type": "panel.devices.changed",
+                "reason": "access_changed",
+                "access": mode,
+                "upgrade_notice": bool(config.get("panels", "upgrade_notice", False)),
+            },
             client_type="programmer",
         )
 

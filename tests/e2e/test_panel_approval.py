@@ -99,7 +99,7 @@ def _panel_project() -> dict[str, Any]:
     }
 
 
-def _lan_server(server_factory, **env: str):
+def _lan_server(server_factory, *, existing_system: bool = False, **env: str):
     address = _lan_address()
     if address is None:
         gates.skip_or_fail(gates.E2E, "this host has no network address to bind")
@@ -113,6 +113,7 @@ def _lan_server(server_factory, **env: str):
             "OPENAVC_ALLOW_ANONYMOUS": "false",
             **env,
         },
+        existing_system=existing_system,
     )
 
 
@@ -367,3 +368,65 @@ def test_the_dashboard_card_approves_renames_and_revokes_a_panel(
         assert [d["code"] for d in listed["pending"]] == [new_code]
     finally:
         tablet.close()
+
+
+# ---------------------------------------------------------------------------
+# A system that was running before Panel access existed
+# ---------------------------------------------------------------------------
+
+def test_a_system_updated_with_its_panels_connected_stays_open_and_says_so_once(
+    server_factory, browser, page: Page,
+) -> None:
+    """A system that was already running before Panel access existed comes
+    up as Anyone on the network, so no wall tablet goes dark on update day.
+    The Programmer says so once: Dismiss is remembered by the server across a
+    reload, and switching to Approved panels only is where the notice points
+    and what retires it for good."""
+    handle = _lan_server(server_factory, existing_system=True)
+    # Nothing waits: the check-in answers open and a tablet draws at once.
+    assert _api(handle.base_url, "GET", "/api/panel/access") == {"access": "open"}
+    tablet = browser.new_context()
+    try:
+        panel = tablet.new_page()
+        panel.goto(f"{handle.base_url}/panel/", wait_until="domcontentloaded")
+        expect(panel.locator('[data-element-id="btn_laptop"]')).to_be_visible(timeout=READY_TIMEOUT)
+        expect(panel.locator("#panel-access-overlay")).to_have_count(0)
+    finally:
+        tablet.close()
+
+    _sign_in(page, handle.base_url)
+    notice = page.get_by_test_id("panel-access-notice")
+    expect(notice).to_contain_text("Panel access is Anyone on the network", timeout=READY_TIMEOUT)
+    expect(notice).to_contain_text("choose Approved panels only under Settings > Access")
+    expect(page.get_by_test_id("panels-card")).to_contain_text("Panel access is set to Anyone on the network")
+
+    # Dismiss is remembered by the server, so a reload does not bring it back.
+    notice.get_by_role("button", name="Dismiss", exact=True).click()
+    expect(notice).to_have_count(0)
+    _eventually(
+        lambda: _api(handle.base_url, "GET", "/api/panel/devices")["upgrade_notice"] is False,
+        "the server never recorded the dismissal",
+    )
+    page.reload(wait_until="domcontentloaded")
+    expect(page.get_by_test_id("panels-card")).to_contain_text(
+        "Panel access is set to Anyone on the network", timeout=READY_TIMEOUT,
+    )
+    expect(page.get_by_test_id("panel-access-notice")).to_have_count(0)
+
+    # The switch the notice points at: Settings > Access > Panel access.
+    page.goto(f"{handle.base_url}/programmer/#settings", wait_until="domcontentloaded")
+    page.get_by_role("radio", name=re.compile(r"^Approved panels only")).check()
+    page.get_by_role("button", name="Save", exact=True).click()
+    _eventually(
+        lambda: _api(handle.base_url, "GET", "/api/panel/access").get("access") == "approved",
+        "Panel access never switched to approved",
+    )
+    assert _api(handle.base_url, "GET", "/api/panel/devices")["upgrade_notice"] is False
+
+
+def test_a_fresh_install_starts_with_approved_panels_only(server_factory) -> None:
+    """The other half of the rule: a data directory that has never booted
+    gets the shipped default, and no notice is due."""
+    handle = _lan_server(server_factory)
+    assert _api(handle.base_url, "GET", "/api/panel/access")["access"] == "approved"
+    assert _api(handle.base_url, "GET", "/api/panel/devices")["upgrade_notice"] is False

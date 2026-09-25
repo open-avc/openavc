@@ -311,6 +311,14 @@ async def update_system_config(request: Request) -> dict[str, Any]:
                     "or 'open' (anyone on the network)."
                 ),
             )
+    # The one-time notice flag is a switch the Programmer turns off (Dismiss);
+    # anything but a bool would read as "due" forever or never.
+    if (
+        "panels" in body and isinstance(body["panels"], dict)
+        and "upgrade_notice" in body["panels"]
+        and not isinstance(body["panels"]["upgrade_notice"], bool)
+    ):
+        raise HTTPException(status_code=422, detail="upgrade_notice is true or false.")
 
     # A caller that GETs this config and PATCHes it back sends the redaction
     # marker in place of every secret it never saw. Dropping those is what
@@ -419,8 +427,10 @@ async def update_system_config(request: Request) -> dict[str, Any]:
             )
 
     # Panel access applies live: switching to approved sends every panel
-    # that was in only because the mode was open to the waiting screen.
-    if isinstance(body.get("panels"), dict) and "access" in body["panels"]:
+    # that was in only because the mode was open to the waiting screen. A
+    # dismissed upgrade notice rides the same push, so every open Programmer
+    # drops it, not only the one that pressed Dismiss.
+    if isinstance(body.get("panels"), dict) and ("access" in body["panels"] or "upgrade_notice" in body["panels"]):
         try:
             await _get_engine().panel_access_changed()
         except Exception:  # noqa: BLE001 — the setting is saved; the sockets catch up on reconnect

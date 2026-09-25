@@ -220,6 +220,7 @@ def server_factory(tmp_path: Path, _install_test_driver):
         project_overrides: dict[str, Any] | None = None,
         bind: str = "127.0.0.1",
         env: dict[str, str] | None = None,
+        existing_system: bool = False,
     ) -> _ServerHandle:
         gen = _start_server(
             tmp_path / f"srv-{uuid.uuid4().hex[:8]}",
@@ -227,6 +228,7 @@ def server_factory(tmp_path: Path, _install_test_driver):
             project_overrides=project_overrides,
             bind=bind,
             env=env,
+            existing_system=existing_system,
         )
         handle = next(gen)
         handles.append(handle)
@@ -251,15 +253,22 @@ def _start_server(
     project_overrides: dict[str, Any] | None = None,
     bind: str = "127.0.0.1",
     env: dict[str, str] | None = None,
+    existing_system: bool = False,
 ):
     """Boot one server. ``bind`` is loopback unless a test needs the instance
     to see the browser as a device on the network (a loopback peer is the
     box's own screen, which the panel gate admits without approval); ``env``
     adds to or overrides the quiet-startup environment below, which is how a
-    test sets a password."""
+    test sets a password. ``existing_system`` makes the server look like one
+    that was already running before this release: the instance id file that
+    a first start creates is there before this start, which is what the
+    Panel access default reads."""
     tmp_root.mkdir(parents=True, exist_ok=True)
     data_dir = tmp_root / "data"
     data_dir.mkdir(exist_ok=True)
+    if existing_system:
+        # Beside project.avc, where core/isc.get_or_create_instance_id keeps it.
+        (tmp_root / ".instance_id").write_text(str(uuid.uuid4()), encoding="utf-8")
 
     # Install the synthetic controller driver into THIS server's own
     # driver_repo (which is where DRIVER_REPO_DIR resolves under the temp
