@@ -145,6 +145,7 @@ _CONTROL_ROOTS = (
     "/api/python-drivers",
     "/api/isc",                 # send, broadcast, command
     "/api/events",              # emit -- fires automation, like a command does
+    "/api/audit",               # a device audit: starts, network check, report
 )
 
 

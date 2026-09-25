@@ -180,6 +180,7 @@ async def test_a_report_taken_mid_check_says_so():
     session = await manager.start(AuditTarget(address="10.0.0.50", ip="10.0.0.50"))
 
     class Running:
+        status = "running"
         footprint = _footprint()
 
     session.check = Running()

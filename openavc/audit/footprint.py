@@ -406,6 +406,9 @@ class NetworkCheck:
         self._catalog_identity: dict[str, Any] = {}
         self._catalog_forced = False
         self._snmp_info: Any = None
+        # idle, running, done, failed or cancelled; ``error`` says why it failed.
+        self.status = "idle"
+        self.error = ""
 
     # -- progress -------------------------------------------------------------
 
@@ -1204,6 +1207,75 @@ def _evidence_from_dict(raw: dict[str, Any]) -> Evidence:
     )
 
 
+def check_state(session: "AuditSession") -> dict[str, Any]:
+    """The network check as the wizard draws it: progress, then the result.
+
+    The result carries what step 2 shows (the verdict with its sentence and
+    "Why?", the evidence, the device record, the limits), redacted the way the
+    report is. The complete record comes with the report.
+    """
+    check: NetworkCheck | None = session.check
+    if check is None:
+        return {"check": None}
+    out: dict[str, Any] = {
+        "status": check.status,
+        "error": check.error,
+        "activities": [check.activities[key].to_dict() for key in ACTIVITIES],
+        "result": None,
+    }
+    fp = session.footprint
+    if fp is not None:
+        from openavc.audit.report import Redactor, redactions_for
+
+        result = {
+            "verdict": fp.verdict,
+            "evidence": [ev.to_dict() for ev in fp.evidence],
+            "device": fp.device.to_dict() if fp.device else None,
+            "limits": [limit.to_dict() for limit in fp.limits],
+            "open_ports": fp.open_ports(),
+        }
+        out["result"] = Redactor(redactions_for(session)).tree(result)
+    return {"check": out}
+
+
+def start_check(session: "AuditSession") -> None:
+    """Run the session's network check in the background, once.
+
+    Progress and the finished state reach the session's subscribers; the
+    session's teardown cancels a check still running.
+    """
+    from openavc.audit.session import AuditError
+
+    check: NetworkCheck | None = session.check
+    if check is None:
+        raise AuditError("This audit has no network check.")
+    if check.status != "idle":
+        raise AuditError("The network check has already run for this audit.")
+    check.status = "running"
+    session.enter_step("network_check")
+    session.publish_state()
+
+    async def run() -> None:
+        try:
+            session.footprint = await check.run()
+            check.status = "done"
+            session.add_timeline(
+                "check.finished", check.footprint.verdict.get("sentence", "Network check done."),
+            )
+        except asyncio.CancelledError:
+            check.status = "cancelled"
+            raise
+        except Exception as exc:
+            log.exception("Network check failed")
+            check.status = "failed"
+            check.error = f"The network check stopped: {exc}"
+            session.add_timeline("check.failed", check.error)
+        finally:
+            session.publish_state()
+
+    session.track_task(asyncio.create_task(run()))
+
+
 async def open_for_session(session: "AuditSession", discovery: DiscoveryEngine) -> NetworkCheck:
     """Attach a network check to ``session`` and open its listeners.
 
@@ -1227,4 +1299,5 @@ async def open_for_session(session: "AuditSession", discovery: DiscoveryEngine) 
     await check.start_listeners()
     session.on_teardown(check.stop_listeners)
     session.check = check
+    session.add_state_provider(lambda: check_state(session))
     return check

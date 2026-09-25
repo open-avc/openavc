@@ -205,6 +205,7 @@ class AuditSession:
         self._next_subscriber = 0
         self._tasks: set[asyncio.Task] = set()
         self._teardown_hooks: list[Callable[[], Awaitable[None]]] = []
+        self._state_providers: list[Callable[[], dict[str, Any]]] = []
 
     # -- activity -----------------------------------------------------------
 
@@ -289,9 +290,13 @@ class AuditSession:
 
     # -- the record ---------------------------------------------------------
 
+    def add_state_provider(self, provider: Callable[[], dict[str, Any]]) -> None:
+        """Merge ``provider()`` into ``to_dict`` (the network check adds its own)."""
+        self._state_providers.append(provider)
+
     def to_dict(self) -> dict[str, Any]:
         """The session's state, as the wizard needs it to (re)draw."""
-        return {
+        out = {
             "session_id": self.id,
             "status": self.status,
             "target": self.target.to_dict(),
@@ -301,7 +306,14 @@ class AuditSession:
             "steps": list(self.steps),
             "paused": [p.to_dict() for p in self.paused],
             "report_name": self.report_name,
+            "tester": {k: v for k, v in self.tester.items()},
         }
+        for provider in self._state_providers:
+            try:
+                out.update(provider())
+            except Exception:
+                log.debug("Audit state provider failed", exc_info=True)
+        return out
 
 
 class AuditManager:

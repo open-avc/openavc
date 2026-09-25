@@ -537,7 +537,8 @@ def test_panel_allowed_types_includes_expected():
 def test_programmer_only_types_excluded_from_panel():
     """Verify programmer-only message types are NOT in the panel allowed set."""
     for msg_type in ["project.reload", "isc.send", "isc.broadcast",
-                     "log.subscribe", "log.unsubscribe"]:
+                     "log.subscribe", "log.unsubscribe",
+                     "audit.subscribe", "audit.unsubscribe"]:
         assert msg_type not in _PANEL_ALLOWED_TYPES
 
 

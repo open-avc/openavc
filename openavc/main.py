@@ -353,6 +353,10 @@ engine.plugin_loader.set_router_hooks(
 
 # Wire discovery engine
 discovery_api.set_discovery_engine(discovery_engine)
+
+# Wire the device audit (it pauses project devices and asks discovery).
+from openavc.api.routes import audit as audit_routes
+audit_routes.configure(audit_manager, discovery_engine)
 discovery_api.set_broadcast_fn(engine.broadcast_ws)
 discovery_api.set_app_engine(engine)
 

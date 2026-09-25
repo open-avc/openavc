@@ -392,3 +392,34 @@ class WifiRadioRequest(BaseModel):
 
 class HostnameRequest(BaseModel):
     hostname: str
+
+
+class AuditStartRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions``: the device to audit and how.
+
+    ``pause`` lists the project devices to hold paused for the audit (the ones
+    ``GET /api/audit/conflicts`` found at this address). ``extended`` is the
+    slower check (ports 1 to 1024 as well, and a full SNMP read);
+    ``snmp_communities`` are read communities to try after ``public``. Unknown
+    fields are refused, so a field the server does not read cannot vanish.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    address: str = Field(min_length=1, max_length=253)
+    pause: list[str] = Field(default_factory=list, max_length=64)
+    extended: bool = False
+    snmp_communities: list[str] = Field(default_factory=list, max_length=8)
+
+
+class AuditTesterRequest(BaseModel):
+    """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
+    report, all optional, and whether to leave the serial number out."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default="", max_length=200)
+    company: str = Field(default="", max_length=200)
+    email: str = Field(default="", max_length=200)
+    notes: str = Field(default="", max_length=4000)
+    leave_out_serial: bool = False

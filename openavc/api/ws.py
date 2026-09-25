@@ -13,7 +13,7 @@ import re
 import time
 from collections import deque
 from fnmatch import fnmatch
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -69,6 +69,10 @@ def set_engine(engine) -> None:
 
 # Per-client log subscriptions: ws -> (sub_id, task)
 _log_subscriptions: dict[int, tuple[str, asyncio.Task]] = {}
+
+# Per-client device-audit subscriptions: ws id -> unsubscribe. An audit's
+# progress goes to the Programmer that asked for it, never to every client.
+_audit_subscriptions: dict[int, Callable[[], None]] = {}
 
 # Per-client event-stream subscriptions: ws id -> (bus handler id, patterns).
 # ONE bus handler per client, registered on "*" and filtering against the
@@ -268,6 +272,7 @@ async def _run_ws_connection(
             ping_task.cancel()
         _cleanup_log_subscription(ws_id)
         _cleanup_event_subscription(ws_id, engine)
+        _cleanup_audit_subscription(ws_id)
         if integration:
             _integration_disconnected(engine, integration)
         engine.ws.remove_client(ws)
@@ -356,6 +361,28 @@ def _cleanup_event_subscription(ws_id: int, engine: Any) -> None:
     sub = _event_subscriptions.pop(ws_id, None)
     if sub and engine is not None:
         engine.events.off(sub[0])
+
+
+def _cleanup_audit_subscription(ws_id: int) -> None:
+    """Stop sending a client its audit's messages."""
+    unsubscribe = _audit_subscriptions.pop(ws_id, None)
+    if unsubscribe is not None:
+        unsubscribe()
+
+
+def _subscribe_audit(ws: WebSocket, engine: Any, session_id: str) -> dict[str, Any] | None:
+    """Send this client ``session_id``'s messages. Returns its state, or None
+    when that audit is not the running one."""
+    from openavc.api.routes.audit import manager_or_none
+
+    ws_id = id(ws)
+    _cleanup_audit_subscription(ws_id)
+    manager = manager_or_none()
+    session = manager.current() if manager is not None else None
+    if session is None or session.id != session_id:
+        return None
+    _audit_subscriptions[ws_id] = session.subscribe(lambda message: engine.ws.send(ws, message))
+    return session.to_dict()
 
 
 def _cleanup_log_subscription(ws_id: int) -> None:
@@ -787,6 +814,18 @@ async def _handle_message(
 
     elif msg_type == "log.unsubscribe":
         _cleanup_log_subscription(id(ws))
+
+    elif msg_type == "audit.subscribe":
+        session_id = str(msg.get("session_id") or "")
+        state = _subscribe_audit(ws, engine, session_id)
+        if state is None:
+            await _send_ws_error(ws, msg_type, "That audit has ended. Start a new one.")
+            return
+        # The state now, so a client that (re)subscribes draws from it.
+        await _send_ws(ws, {"type": "audit.state", "session_id": session_id, "state": state})
+
+    elif msg_type == "audit.unsubscribe":
+        _cleanup_audit_subscription(id(ws))
 
     elif msg_type == "event.subscribe":
         patterns = _parse_event_patterns(msg.get("patterns"))

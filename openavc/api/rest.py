@@ -11,6 +11,7 @@ import openavc.api._engine as _engine_mod
 from openavc.api import panel_access as _panel_access
 from openavc.api.auth import require_programmer_auth
 
+from openavc.api.routes import audit as _audit_routes
 from openavc.api.routes import auth as _auth_routes
 from openavc.api.routes import cloud as _cloud_routes
 from openavc.api.routes import devices as _devices_routes
@@ -74,6 +75,7 @@ router.include_router(_updates_routes.router)
 router.include_router(_simulation_routes.router)
 router.include_router(_ui_files_routes.router)
 router.include_router(_panel_access.router)
+router.include_router(_audit_routes.router)
 
 # Include open (unauthenticated) sub-routers
 open_router.include_router(_project_routes.open_router)

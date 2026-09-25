@@ -151,10 +151,15 @@ def redactions_for(session: "AuditSession") -> list[Redaction]:
 
 
 def _footprint_of(session: "AuditSession"):
+    """The finished footprint, or the one in progress, or None before the
+    check has started (its listeners run from the session's start, but there
+    is nothing to report until the check does)."""
     if session.footprint is not None:
         return session.footprint
     check = getattr(session, "check", None)
-    return check.footprint if check is not None else None
+    if check is None or getattr(check, "status", "idle") == "idle":
+        return None
+    return check.footprint
 
 
 def generator_info() -> dict[str, Any]:

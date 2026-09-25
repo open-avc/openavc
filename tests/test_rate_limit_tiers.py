@@ -51,6 +51,12 @@ EXPECTED_STRICT = {
 # here structurally, so this set grows whenever a device/driver/discovery/ISC
 # route is added — which is correct, and the point of the roots.
 EXPECTED_CONTROL = {
+    # A device audit: it sends traffic to a device and pauses project devices.
+    ("DELETE", "/api/audit/reports/{name}"),
+    ("DELETE", "/api/audit/sessions/{session_id}"),
+    ("PATCH", "/api/audit/sessions/{session_id}/tester"),
+    ("POST", "/api/audit/sessions"),
+    ("POST", "/api/audit/sessions/{session_id}/network-check"),
     ("DELETE", "/api/devices/{device_id}"),
     ("DELETE", "/api/driver-definitions/{driver_id}"),
     ("DELETE", "/api/drivers/installed/{driver_id}"),

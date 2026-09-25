@@ -179,3 +179,27 @@ def test_representative_admin_routes_stay_protected(method, path):
     assert (method, path) in protected, (
         f"{method} {path} lost its programmer-auth requirement"
     )
+
+
+# A device audit sends traffic to an address the programmer picks and pauses
+# project devices: the privilege of adding a device, never open.
+AUDIT_ROUTES = {
+    ("GET", "/api/audit/conflicts"),
+    ("POST", "/api/audit/sessions"),
+    ("GET", "/api/audit/sessions/current"),
+    ("DELETE", "/api/audit/sessions/{session_id}"),
+    ("POST", "/api/audit/sessions/{session_id}/network-check"),
+    ("PATCH", "/api/audit/sessions/{session_id}/tester"),
+    ("GET", "/api/audit/sessions/{session_id}/report"),
+    ("GET", "/api/audit/reports"),
+    ("GET", "/api/audit/reports/{name}"),
+    ("DELETE", "/api/audit/reports/{name}"),
+}
+
+
+def test_every_device_audit_route_needs_a_programmer_credential():
+    routes = {(m, p): needs_auth for m, p, needs_auth in _http_routes()
+              if p.startswith("/api/audit")}
+    assert set(routes) == AUDIT_ROUTES
+    open_ones = sorted(route for route, needs_auth in routes.items() if not needs_auth)
+    assert not open_ones, f"Device audit routes open without a credential: {open_ones}"
