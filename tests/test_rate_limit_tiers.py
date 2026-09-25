@@ -28,6 +28,8 @@ EXPECTED_OPEN = {
     ("GET", "/api/certificate"),
     ("GET", "/api/cloud/status"),
     ("GET", "/api/health"),
+    # A panel waiting for approval polls this every 3 seconds.
+    ("GET", "/api/panel/access"),
     ("GET", "/api/setup/status"),
     ("GET", "/api/startup-status"),
     ("GET", "/api/status"),
@@ -40,6 +42,8 @@ EXPECTED_STRICT = {
     ("POST", "/api/backups/{filename:path}/restore"),
     ("POST", "/api/cloud/pair"),
     ("POST", "/api/cloud/unpair"),
+    # The admin password, typed on a waiting panel.
+    ("POST", "/api/panel/access/claim"),
     ("POST", "/api/panel/unlock"),
 }
 

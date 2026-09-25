@@ -286,6 +286,15 @@ DEFAULTS: dict[str, Any] = {
     "discovery": {
         "advertise": True,
     },
+    # Who may open the panel: "approved" (a new tablet or browser waits until
+    # the programmer approves it once; the box's own screen, a cloud tunnel
+    # and a credentialed client need no approval) or "open" (anyone who can
+    # reach the port). The rule is openavc/api/panel_access.py and the records
+    # are openavc/core/panel_devices.py. Ships as "open" until the panel page
+    # can show the waiting screen; the default flips to "approved" with it.
+    "panels": {
+        "access": "open",
+    },
     "devices": {
         # Seconds between reconnect attempts for a device that has gone
         # offline for a network reason. OpenAVC retries for as long as the
@@ -358,6 +367,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("cloud", "system_key"): ("OPENAVC_CLOUD_SYSTEM_KEY", str),
     ("cloud", "system_id"): ("OPENAVC_CLOUD_SYSTEM_ID", str),
     ("discovery", "advertise"): ("OPENAVC_MDNS_ADVERTISE", bool),
+    ("panels", "access"): ("OPENAVC_PANEL_ACCESS", str),
     ("simulation", "ui_port"): ("OPENAVC_SIMULATOR_UI_PORT", int),
     ("simulation", "device_port_base"): ("OPENAVC_SIMULATOR_DEVICE_PORT_BASE", int),
     ("tls", "enabled"): ("OPENAVC_TLS_ENABLED", bool),

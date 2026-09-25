@@ -116,6 +116,8 @@ _OPEN_EXACT = {
     "/api/auth/required",
     "/api/setup/status",
     "/api/certificate",
+    # A panel waiting for approval polls this every 3 seconds (20/min).
+    "/api/panel/access",
 }
 _OPEN_PREFIXES = ()
 
@@ -242,6 +244,10 @@ def _classify(method: str, path: str) -> str:
         # A panel lock PIN is six digits and the door is open by necessity, so
         # it is only a lock while guessing costs something.
         if path == "/api/panel/unlock":
+            return "strict"
+        # The admin password typed on a waiting panel. A wrong one is a 401,
+        # which feeds the brute-force counter like every other sign-in.
+        if path == "/api/panel/access/claim":
             return "strict"
         if path.startswith("/api/cloud/"):
             return "strict"

@@ -8,6 +8,7 @@ the two top-level routers (open_router, router) for main.py to mount.
 from fastapi import APIRouter, Depends
 
 import openavc.api._engine as _engine_mod
+from openavc.api import panel_access as _panel_access
 from openavc.api.auth import require_programmer_auth
 
 from openavc.api.routes import auth as _auth_routes
@@ -72,9 +73,11 @@ router.include_router(_host_routes.router)
 router.include_router(_updates_routes.router)
 router.include_router(_simulation_routes.router)
 router.include_router(_ui_files_routes.router)
+router.include_router(_panel_access.router)
 
 # Include open (unauthenticated) sub-routers
 open_router.include_router(_project_routes.open_router)
+open_router.include_router(_panel_access.open_router)
 open_router.include_router(_push_routes.open_router)
 open_router.include_router(_setup_routes.open_router)
 open_router.include_router(_system_routes.open_router)

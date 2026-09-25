@@ -57,6 +57,13 @@ class WSHub:
         self._clients: set = set()
         # Per-client namespace filters: id(ws) -> tuple of prefix strings
         self._ns_filters: dict[int, tuple[str, ...]] = {}
+        # What each client is and how it got in: id(ws) -> "panel" |
+        # "programmer", and id(ws) -> (admission kind, panel device id or
+        # None). A broadcast can be aimed at one client type, and a panel
+        # device's sockets, or every socket a now-closed mode admitted, can be
+        # closed by what admitted them.
+        self._client_types: dict[int, str] = {}
+        self._admissions: dict[int, tuple[str, str | None]] = {}
         # Per-client bounded send queues + their writer tasks: id(ws) -> ...
         # Broadcasts enqueue and return; each writer drains its own client,
         # so one wedged client can never stall the emit path (macros,
@@ -91,7 +98,8 @@ class WSHub:
         return len(self._clients)
 
     def add_client(self, ws, ns_prefixes: tuple[str, ...] | None = None,
-                   *, defer_delivery: bool = False) -> None:
+                   *, defer_delivery: bool = False, client_type: str = "panel",
+                   admitted_by: str = "", panel_device: str | None = None) -> None:
         """Register a WebSocket client with optional namespace filter.
 
         Each client gets a bounded send queue drained by its own writer
@@ -102,10 +110,17 @@ class WSHub:
         handler registers before snapshotting so changes flushed
         mid-handshake buffer here instead of being missed, then releases
         delivery once the snapshot is on the wire.
+
+        ``client_type`` is what the handler decided the client is (never what
+        it asked to be); ``admitted_by`` and ``panel_device`` record how a
+        panel got past the panel gate, so a revoke or a mode change can find
+        exactly the sockets it should close.
         """
         self._clients.add(ws)
         if ns_prefixes:
             self._ns_filters[id(ws)] = ns_prefixes
+        self._client_types[id(ws)] = client_type
+        self._admissions[id(ws)] = (admitted_by, panel_device)
         queue: asyncio.Queue = asyncio.Queue(maxsize=_WS_SEND_QUEUE_MAX)
         self._send_queues[id(ws)] = queue
         ready = asyncio.Event()
@@ -141,6 +156,8 @@ class WSHub:
         """
         self._clients.discard(ws)
         self._ns_filters.pop(id(ws), None)
+        self._client_types.pop(id(ws), None)
+        self._admissions.pop(id(ws), None)
         self._send_queues.pop(id(ws), None)
         self._ready_events.pop(id(ws), None)
         writer = self._writers.pop(id(ws), None)
@@ -208,9 +225,56 @@ class WSHub:
         if queues:
             await asyncio.gather(*(q.join() for q in queues))
 
+    async def close_clients(
+        self, *, admitted_by: str | None = None, panel_device: str | None = None,
+        code: int, reason: str,
+    ) -> int:
+        """Close every client that matches, and forget it. Returns how many.
+
+        ``admitted_by`` selects the sockets the panel gate let in by that
+        rule (``"open"`` when the mode switches to approved); ``panel_device``
+        selects one device's sockets (a revoke). The connection handler's own
+        unwind finds the client already gone and stays idempotent.
+        """
+        targets = []
+        for ws in list(self._clients):
+            kind, device = self._admissions.get(id(ws), ("", None))
+            if admitted_by is not None and kind != admitted_by:
+                continue
+            if panel_device is not None and device != panel_device:
+                continue
+            targets.append(ws)
+        for ws in targets:
+            self._drop_client(ws, cancel_writer=True)
+            try:
+                await ws.close(code=code, reason=reason)
+            except Exception:
+                pass  # Peer already gone — nothing to close
+        if targets:
+            log.info(
+                f"Closed {len(targets)} WebSocket client(s) with {code} "
+                f"({len(self._clients)} total)"
+            )
+        return len(targets)
+
+    async def close_panel_device(self, device_id: str) -> int:
+        """Close the sockets one approved panel device holds (a revoke)."""
+        from openavc.core.panel_devices import (
+            CLOSE_CODE_NOT_APPROVED,
+            CLOSE_REASON_NOT_APPROVED,
+        )
+
+        return await self.close_clients(
+            panel_device=device_id,
+            code=CLOSE_CODE_NOT_APPROVED,
+            reason=CLOSE_REASON_NOT_APPROVED,
+        )
+
     # --- Broadcast ---
 
-    async def broadcast(self, message: dict[str, Any]) -> None:
+    async def broadcast(
+        self, message: dict[str, Any], *, client_type: str | None = None
+    ) -> None:
         """Queue a JSON message for delivery to all connected WS clients.
 
         Never awaits a client send: messages go onto per-client bounded
@@ -219,6 +283,12 @@ class WSHub:
         whose queue overflows is dropped and its socket closed — panels
         auto-reconnect and resnapshot, which is cheaper than letting one
         sick client apply backpressure engine-wide.
+
+        ``client_type`` narrows delivery to one kind of client. Panels hold
+        no credential and subscribe to the ``system`` namespace like
+        everything else, so a message that is the Programmer's business
+        (a panel waiting for approval, with its code and address) is sent
+        with ``client_type="programmer"`` and never reaches a panel.
         """
         if not self._clients:
             return
@@ -230,6 +300,8 @@ class WSHub:
 
         full_text: str | None = None
         for ws in list(self._clients):
+            if client_type is not None and self._client_types.get(id(ws)) != client_type:
+                continue
             ns = self._ns_filters.get(id(ws)) if is_filterable else None
             if not ns:
                 if full_text is None:

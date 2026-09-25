@@ -29,6 +29,13 @@ from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.panel_devices import (
+    ACCESS_APPROVED,
+    CLOSE_CODE_NOT_APPROVED,
+    CLOSE_REASON_NOT_APPROVED,
+    PanelDeviceStore,
+    access_mode,
+)
 from openavc.core.plugin_loader import PluginLoader
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import (
@@ -93,6 +100,13 @@ class Engine:
         # WebSocket fan-out + batched state push (see ws_hub); broadcast_ws
         # below is the engine-wide door to it.
         self.ws = WSHub(self.state)
+        # The panels approved to run this system (core/panel_devices). Loaded
+        # here, not in start(): the socket gate asks it from the first
+        # handshake, and a test-built engine that never starts still has it.
+        from openavc.system_config import get_data_dir
+        self.panel_devices = PanelDeviceStore(get_data_dir() / "panel_devices.json")
+        self.panel_devices.load()
+        self._panel_sweep_task: asyncio.Task | None = None
         # Panel interaction runtime (peer of the macro engine, see ui_events)
         self.ui_events = UIEventRuntime(self)
         self.devices = DeviceManager(self.state, self.events)
@@ -433,6 +447,11 @@ class Engine:
         self._periodic_backup_task = asyncio.create_task(self._periodic_backup_loop())
         self._periodic_backup_task.add_done_callback(_log_task_exception)
 
+        # Forget panel requests nobody answered (every minute), so a tablet
+        # that walked away leaves the Programmer's list on its own.
+        self._panel_sweep_task = asyncio.create_task(self._panel_devices_sweep_loop())
+        self._panel_sweep_task.add_done_callback(_log_task_exception)
+
         self._running = True
 
         # Pre-warm the network-info cache off the event loop so the first
@@ -571,6 +590,14 @@ class Engine:
                 await self._periodic_backup_task
             except asyncio.CancelledError:
                 pass
+
+        if self._panel_sweep_task and not self._panel_sweep_task.done():
+            self._panel_sweep_task.cancel()
+            try:
+                await self._panel_sweep_task
+            except asyncio.CancelledError:
+                pass
+            self._panel_sweep_task = None
 
         # Stop simulation if active
         if self.simulation.active:
@@ -1658,6 +1685,49 @@ class Engine:
         queues, and namespace filtering live in ``core.ws_hub``.
         """
         await self.ws.broadcast(message)
+
+    # --- Panel access ---
+
+    async def panel_access_changed(self) -> None:
+        """Apply a saved ``panels.access`` to the live sockets.
+
+        Switching to approved closes every panel socket that was admitted
+        only because the mode was open (with 4010, so the page shows the
+        waiting screen and checks in); a socket admitted by a credential, the
+        box's own screen, a tunnel or an approved cookie stays up. Switching
+        to open changes nothing for connected clients. Programmer clients are
+        told either way, so the Panels card can redraw.
+        """
+        mode = access_mode()
+        if mode == ACCESS_APPROVED:
+            closed = await self.ws.close_clients(
+                admitted_by="open",
+                code=CLOSE_CODE_NOT_APPROVED,
+                reason=CLOSE_REASON_NOT_APPROVED,
+            )
+            if closed:
+                log.info(f"Panel access is now approved panels only; {closed} panel socket(s) sent to the waiting screen")
+        await self.ws.broadcast(
+            {"type": "panel.devices.changed", "reason": "access_changed", "access": mode},
+            client_type="programmer",
+        )
+
+    async def _panel_devices_sweep_loop(self) -> None:
+        """Drop pending and denied panel records past their time, and tell
+        the Programmer, so the list stays honest without a check-in."""
+        try:
+            while True:
+                await asyncio.sleep(60)
+                for device in self.panel_devices.expire():
+                    await self.ws.broadcast(
+                        {"type": "panel.devices.changed", "reason": "expired",
+                         "device": device.public()},
+                        client_type="programmer",
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Panel device sweep stopped")
 
     async def _on_pending_settings_applied(
         self, event: str, payload: dict[str, Any]

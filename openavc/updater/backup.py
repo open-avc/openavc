@@ -26,7 +26,8 @@ def create_backup(
     """Create a pre-update backup of user data.
 
     Archives: projects/, driver_repo/, plugin_repo/, themes/, system.json,
-    cloud.json. Stores in: {data_dir}/backups/pre-update-v{version}-{timestamp}.zip
+    cloud.json, panel_devices.json. Stores in:
+    {data_dir}/backups/pre-update-v{version}-{timestamp}.zip
 
     When ``project_path`` points outside ``data_dir`` (set via
     ``OPENAVC_PROJECT`` to keep project files on a different volume,
@@ -97,6 +98,13 @@ def create_backup(
             cloud_json = data_dir / "cloud.json"
             if cloud_json.exists():
                 zf.write(cloud_json, "cloud.json")
+
+            # The approved panel devices. Backed up like system.json; a
+            # rollback restores projects/ only and leaves this in place,
+            # because an approval should not roll back with the code.
+            panel_devices = data_dir / "panel_devices.json"
+            if panel_devices.exists():
+                zf.write(panel_devices, "panel_devices.json")
 
             # Back up the project file and its siblings when it lives outside
             # data_dir. Without this, OPENAVC_PROJECT users would lose project.avc,

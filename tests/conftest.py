@@ -205,6 +205,25 @@ def _reset_rate_limit_buckets():
 
 
 @pytest.fixture
+def claimed_engine(tmp_path, monkeypatch):
+    """A real engine wired into the app on an instance with a password set,
+    its panel device store in the test's own directory. The panel approval
+    tests; the body is tests/panel_access_helpers.py."""
+    from tests.panel_access_helpers import claimed_engine_fixture
+
+    yield from claimed_engine_fixture(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def access_mode():
+    """``panels.access`` set for one test and put back afterwards, the file
+    included. Yields a setter taking "approved" or "open"."""
+    from tests.panel_access_helpers import access_mode_fixture
+
+    yield from access_mode_fixture()
+
+
+@pytest.fixture
 def isolated_auth_config():
     """Snapshot and restore the auth credential around a test.
 

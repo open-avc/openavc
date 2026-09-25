@@ -297,6 +297,21 @@ async def update_system_config(request: Request) -> dict[str, Any]:
                 ),
             )
 
+    # Panel access takes exactly two values. Checked up front like the TLS
+    # invariants: the generic loop below would write whatever it was handed,
+    # and the rule that reads it fails closed, so a typo would silently lock
+    # every panel out under a setting that reads as valid.
+    if "panels" in body and isinstance(body["panels"], dict) and "access" in body["panels"]:
+        from openavc.core.panel_devices import ACCESS_VALUES
+        if body["panels"]["access"] not in ACCESS_VALUES:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Panel access is either 'approved' (approved panels only) "
+                    "or 'open' (anyone on the network)."
+                ),
+            )
+
     # A caller that GETs this config and PATCHes it back sends the redaction
     # marker in place of every secret it never saw. Dropping those is what
     # keeps that round trip from setting each one to a literal `***` — which,
@@ -401,6 +416,17 @@ async def update_system_config(request: Request) -> dict[str, Any]:
             from openavc.utils.logger import get_logger
             get_logger(__name__).warning(
                 "Runtime service reconcile after config change failed", exc_info=True
+            )
+
+    # Panel access applies live: switching to approved sends every panel
+    # that was in only because the mode was open to the waiting screen.
+    if isinstance(body.get("panels"), dict) and "access" in body["panels"]:
+        try:
+            await _get_engine().panel_access_changed()
+        except Exception:  # noqa: BLE001 — the setting is saved; the sockets catch up on reconnect
+            from openavc.utils.logger import get_logger
+            get_logger(__name__).warning(
+                "Applying the panel access change to live sockets failed", exc_info=True
             )
 
     # Log level applies live (no restart) so the "Settings saved" toast is

@@ -21,7 +21,12 @@ from openavc.api._engine import get_engine_optional
 from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
 from openavc.api.error_messages import device_error_label, friendly_error
+from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
+from openavc.core.panel_devices import (
+    CLOSE_CODE_NOT_APPROVED,
+    CLOSE_REASON_NOT_APPROVED,
+)
 from openavc.core.state_store import check_state_write, is_flat_primitive
 from openavc.utils.log_buffer import get_log_buffer, LogEntry
 from openavc.utils.request_origin import cloud_session_secret
@@ -30,11 +35,12 @@ from openavc.utils.logger import get_logger
 router = APIRouter()
 log = get_logger(__name__)
 
-# Cap on simultaneous WebSocket connections. Panel connections are
-# unauthenticated, so without a ceiling a misbehaving or malicious client
-# could exhaust server resources by opening connections in a loop. Generous
-# for real deployments (one instance serves one space's panels plus the
-# Programmer IDE).
+# Cap on simultaneous WebSocket connections. A panel connection carries no
+# programmer credential (it is admitted by the panel gate, or by the open
+# mode), so without a ceiling a misbehaving or malicious client could exhaust
+# server resources by opening connections in a loop. Generous for real
+# deployments (one instance serves one space's panels plus the Programmer
+# IDE). A refused panel holds no slot: it is closed before the count.
 MAX_WS_CONNECTIONS = 100
 _ws_connection_count = 0
 
@@ -109,6 +115,22 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     # Panel clients cannot escalate to programmer even if they have auth
     client_type = requested_type if is_authenticated else "panel"
 
+    # The panel gate (openavc/api/panel_access.py): a credential, the box's
+    # own screen, a cloud tunnel, an approved panel cookie, or the open mode. A
+    # refusal is accepted THEN closed with 4010: a close before accept reaches
+    # a browser as 1006, which the page cannot tell from a dropped network,
+    # and the page acts on 4010 by showing the waiting screen. The client's
+    # subprotocol is echoed on that accept for the same reason the admitted
+    # path echoes it: a browser that offered one and got none back fails the
+    # handshake before any close code arrives.
+    admission = Admission(True, "programmer")
+    if client_type == "panel":
+        admission = admit_panel(ws, authenticated=is_authenticated)
+        if not admission.admitted:
+            await ws.accept(subprotocol=get_ws_auth_subprotocol(headers))
+            await ws.close(code=CLOSE_CODE_NOT_APPROVED, reason=CLOSE_REASON_NOT_APPROVED)
+            return
+
     # Connection cap: reject before accepting the handshake. The counter is
     # incremented before any await so concurrent handshakes can't slip past
     # the check, and decremented in the outer finally on every exit path.
@@ -120,13 +142,14 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         return
     _ws_connection_count += 1
     try:
-        await _run_ws_connection(ws, query_params, headers, client_type)
+        await _run_ws_connection(ws, query_params, headers, client_type, admission)
     finally:
         _ws_connection_count -= 1
 
 
 async def _run_ws_connection(
-    ws: WebSocket, query_params: dict, headers: dict, client_type: str
+    ws: WebSocket, query_params: dict, headers: dict, client_type: str,
+    admission: Admission = Admission(True, "programmer"),
 ) -> None:
     """Accept the handshake and run one client's message loop until disconnect."""
     # Echo back auth subprotocol if client used Sec-WebSocket-Protocol
@@ -168,7 +191,13 @@ async def _run_ws_connection(
         # Buffered updates may partially predate the snapshot; replaying
         # them after it is safe because state messages carry full per-key
         # values — the client converges on the latest.
-        engine.ws.add_client(ws, ns_prefixes=ns_prefixes, defer_delivery=True)
+        engine.ws.add_client(
+            ws, ns_prefixes=ns_prefixes, defer_delivery=True,
+            client_type=client_type, admitted_by=admission.kind,
+            panel_device=admission.device_id,
+        )
+        if admission.device_id:
+            engine.panel_devices.touch(admission.device_id)
 
         # `?events=custom.*,ui.press.*` subscribes at connect -- the same
         # subscription `event.subscribe` makes, for a client that would rather
@@ -450,7 +479,8 @@ async def _run_ui_event(
 # Panel can interact with UI elements, navigate pages, execute macros
 # (presets), and set state (plugin iframes). The log stream is programmer-only:
 # the buffer carries verbatim transport TX/RX, which can include device
-# credentials, and panel clients are unauthenticated.
+# credentials, and a panel client holds no programmer credential (it is
+# admitted by the panel gate, never by a password).
 #
 # The event doors are open to a panel on the same terms as the rest: a panel
 # already causes `ui.press.*`, and a button's own Emit Event action emits

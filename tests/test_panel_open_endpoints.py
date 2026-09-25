@@ -127,10 +127,11 @@ async def test_ext_token_minted_for_authenticated_caller(claimed_client):
     assert body["scope"] == "full"
 
 
-async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_client):
+async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_client, access_mode):
     """A standalone panel gets a PANEL-scoped token (not a full plugin token)
     when the running plugin declared panel-reachable ext paths — that token
-    opens only the declared routes, so plugin CRUD stays programmer-only."""
+    opens only the declared routes, so plugin CRUD stays programmer-only.
+    On an instance whose Panel access is open, that is any panel."""
     from fastapi import APIRouter
 
     from openavc.api.plugin_ext import (
@@ -141,6 +142,7 @@ async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_cl
     )
     from openavc.main import app as main_app
 
+    access_mode("open")
     router = APIRouter()
 
     @router.get("/media")
@@ -164,6 +166,46 @@ async def test_ext_token_panel_scope_when_plugin_declares_panel_paths(claimed_cl
             headers={"x-openavc-plugin-token": body["token"]},
         )
         assert media_resp.status_code == 200
+    finally:
+        unmount_plugin_router(main_app, "audio_player")
+
+
+async def test_ext_token_panel_scope_needs_an_admitted_panel(claimed_client, access_mode, tmp_path):
+    """With Panel access on approved-only, the panel-scoped token (what
+    reaches a camera feed) goes to an approved panel and to nobody else. An
+    unapproved caller still gets a 200 with an empty token: never a 401."""
+    from fastapi import APIRouter
+
+    from openavc.api._engine import _get_engine
+    from openavc.api.panel_access import cookie_name
+    from openavc.api.plugin_ext import mount_plugin_router, unmount_plugin_router, verify_panel_token
+    from openavc.core.panel_devices import PanelDeviceStore
+    from openavc.main import app as main_app
+    from tests.panel_access_helpers import approve_a_device
+
+    access_mode("approved")
+    engine = _get_engine()
+    engine.panel_devices = PanelDeviceStore(tmp_path / "panel_devices.json")
+    router = APIRouter()
+
+    @router.get("/media")
+    async def media():
+        return {}
+
+    mount_plugin_router(main_app, "audio_player", router, ["GET /media"])
+    try:
+        refused = claimed_client.get("/api/plugins/audio_player/ext-token")
+        assert refused.status_code == 200
+        assert refused.json() == {"token": "", "expires_at": 0, "auth_required": True, "scope": ""}
+        assert "www-authenticate" not in {k.lower() for k in refused.headers}
+
+        value = approve_a_device(claimed_client, engine)
+        admitted = claimed_client.get(
+            "/api/plugins/audio_player/ext-token",
+            headers={"cookie": f"{cookie_name(engine.instance_id)}={value}"},
+        )
+        assert admitted.json()["scope"] == "panel"
+        assert verify_panel_token(admitted.json()["token"], "audio_player")
     finally:
         unmount_plugin_router(main_app, "audio_player")
 

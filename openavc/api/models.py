@@ -277,6 +277,27 @@ class PanelUnlockRequest(BaseModel):
     code: str = Field("", max_length=64)
 
 
+# --- Panel devices (approval) ---
+
+
+class PanelDeviceApproveRequest(BaseModel):
+    """Approve a waiting panel, optionally naming it. Blank means the default
+    name (the platform and address it checked in from)."""
+
+    name: str | None = Field(None, max_length=200)
+
+
+class PanelDeviceRenameRequest(BaseModel):
+    name: str = Field(..., max_length=200)
+
+
+class PanelClaimRequest(BaseModel):
+    """The body of the on-panel approval; the password rides in the
+    ``Authorization`` header, never here."""
+
+    name: str | None = Field(None, max_length=200)
+
+
 # --- ISC ---
 
 

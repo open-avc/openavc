@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from starlette.requests import Request
+from starlette.requests import HTTPConnection
 
 from openavc import config
 
@@ -72,12 +72,16 @@ TUNNEL_HEADER = "x-openavc-tunneled"
 CLOUD_SESSION_HEADER = "x-openavc-cloud-session"
 
 
-def socket_peer_is_loopback(request: Request) -> bool:
+def socket_peer_is_loopback(request: HTTPConnection) -> bool:
     """Whether the TCP peer on the other end of this request is loopback.
 
     The un-spoofable half of the question: this is the real socket, not a
     header. It is not on its own evidence that a *person* is at the console —
     see ``is_local_console_request``.
+
+    Takes a ``Request`` or a ``WebSocket`` (both are ``HTTPConnection``s with
+    ``.client`` and ``.headers``): the panel gate asks the console question of
+    a socket handshake, and it has to get the same answer the REST door gets.
     """
     client = request.client
     return client is not None and client.host in LOOPBACK_HOSTS
@@ -117,12 +121,30 @@ def cloud_session_secret(conn: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def is_tunneled_request(request: Request) -> bool:
+def is_tunneled_request(request: HTTPConnection) -> bool:
     """Whether this request was proxied in over a cloud remote-UI tunnel."""
     return socket_peer_is_loopback(request) and TUNNEL_HEADER in request.headers
 
 
-def is_local_console_request(request: Request) -> bool:
+def peer_address(request: HTTPConnection) -> str:
+    """The address to show a person for this connection, as data.
+
+    The forwarded address when the operator has said a reverse proxy sits in
+    front (every peer is loopback then), else the socket peer. Not a trust
+    decision: it names a waiting panel in the Programmer and bounds how many
+    pending requests one address may hold, and a spoofed value buys nothing
+    but a wrong label on its own request. Kept here so the socket peer is
+    still read in one module only.
+    """
+    if config.TRUST_FORWARDED_FOR:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    client = request.client
+    return client.host if client is not None else ""
+
+
+def is_local_console_request(request: HTTPConnection) -> bool:
     """Whether this request came from the device's own screen.
 
     This is the credential-free trust anchor for host network configuration,

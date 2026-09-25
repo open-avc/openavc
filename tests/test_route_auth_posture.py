@@ -50,6 +50,13 @@ from openavc.main import app
 # the definition every panel received. Strict rate-limit tier, so guessing a
 # six-digit code is not free.
 #
+# The panel's check-in and its on-panel approval are open because they are
+# the doors a device that holds no credential yet knocks on: the check-in
+# answers whether this device may connect (and gives a new one its code), and
+# the claim takes the admin password once, as Basic auth, to approve the
+# device it is typed on. What either hands out is decided by
+# openavc/api/panel_access.py; the claim sits on the strict rate tier.
+#
 # The simulator SHELL is open for the same reason `/programmer` is: it is
 # static markup, and requiring a credential for the document itself means the
 # browser meets a 401 on a top-level navigation and answers with its own
@@ -64,6 +71,7 @@ EXPECTED_OPEN = {
     ("GET", "/api/certificate"),
     ("GET", "/api/cloud/status"),
     ("GET", "/api/health"),
+    ("GET", "/api/panel/access"),
     ("GET", "/api/plugins/extensions"),
     ("GET", "/api/plugins/{plugin_id}/ext-token"),
     ("GET", "/api/plugins/{plugin_id}/files/{file_path:path}"),
@@ -88,6 +96,7 @@ EXPECTED_OPEN = {
     ("NOTIFY", "/api/push/{device_id}/{label}"),
     ("POST", "/api/auth/session"),
     ("POST", "/api/auth/setup"),
+    ("POST", "/api/panel/access/claim"),
     ("POST", "/api/panel/unlock"),
     ("POST", "/api/push/{device_id}"),
     ("POST", "/api/push/{device_id}/{label}"),

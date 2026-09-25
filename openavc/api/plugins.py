@@ -586,10 +586,12 @@ async def get_plugin_data_info_endpoint(plugin_id: str) -> dict[str, Any]:
 
 # Open router (no auth) so a standalone room panel can fetch it without a 401 —
 # a 401 here would pop the browser's native Basic dialog. A full plugin token is
-# still only minted for an authenticated caller; an unauthenticated panel gets a
-# panel-scoped token that the /ext/* guard honors only for routes the plugin
-# declared panel-reachable (or an empty token when it declared none), so the
-# rest of the plugin's ext surface stays programmer-only.
+# still only minted for an authenticated caller; a panel the panel gate admits
+# gets a panel-scoped token that the /ext/* guard honors only for routes the
+# plugin declared panel-reachable (or an empty token when it declared none), so
+# the rest of the plugin's ext surface stays programmer-only. A panel the gate
+# refuses gets the empty token: this is what reaches a camera feed, and a
+# device that is still waiting for approval must not get one.
 @open_router.get("/plugins/{plugin_id}/ext-token")
 async def get_plugin_ext_token(
     plugin_id: str,
@@ -608,10 +610,13 @@ async def get_plugin_ext_token(
       embedded in it): a full plugin token (`scope: "full"`).
     - Claimed instance, unauthenticated caller (standalone room panel): a
       panel-scoped token (`scope: "panel"`) when the plugin declared
-      panel-reachable ext paths — the guard only honors it for those routes.
-      Otherwise an empty token with `auth_required: true` and a 200 — never a
-      401, so the browser stays quiet.
+      panel-reachable ext paths and the panel gate admits this caller (open
+      mode, the box's own screen, a tunnel, or an approved panel cookie) —
+      the guard only honors it for those routes. Otherwise an empty token
+      with `auth_required: true` and a 200 — never a 401, so the browser
+      stays quiet.
     """
+    from openavc.api.panel_access import admit as admit_panel
     from openavc.api.plugin_ext import (
         auth_required,
         has_panel_paths,
@@ -629,7 +634,7 @@ async def get_plugin_ext_token(
             "auth_required": True,
             "scope": "full",
         }
-    if has_panel_paths(plugin_id):
+    if has_panel_paths(plugin_id) and admit_panel(request, authenticated=False).admitted:
         token, expires_at = mint_panel_token(plugin_id)
         return {
             "token": token,

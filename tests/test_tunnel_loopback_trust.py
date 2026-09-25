@@ -115,8 +115,9 @@ async def test_upstream_cannot_suppress_or_forge_the_marker(tunnel_handler):
 
 @pytest.mark.asyncio
 async def test_proxied_websocket_open_is_marked(tunnel_handler):
-    """Nothing on the WS surface trusts loopback today; the marker is there so
-    that stays a choice rather than an accident."""
+    """The panel gate asks a socket handshake the console question, and the
+    marker is what makes a tunnelled socket answer "tunnel" rather than
+    "console" (openavc/api/panel_access.py)."""
     from openavc.cloud.tunnel import TunnelConnection
 
     conn = TunnelConnection(tunnel_id="t-ws", target_port=8080, data_ws=AsyncMock())
