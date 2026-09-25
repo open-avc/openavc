@@ -1,8 +1,8 @@
 """A device audit, driven through the Programmer from the button to the file.
 
 Devices > Drivers > Audit a Device, the address, the network check with its
-progress arriving over the WebSocket, the verdict, the report step, the
-download, and Finish. The target is the loopback address of the machine the
+progress arriving over the WebSocket, the verdict, the driver step answered
+"no driver yet", the report step, the download, and Finish. The target is the loopback address of the machine the
 test runs on, which always answers something (at least a refused port), so the
 check reaches a verdict everywhere; which verdict depends on the machine, so
 the test asserts that one was said, not which.
@@ -58,6 +58,10 @@ def test_an_audit_runs_through_the_programmer_and_hands_over_its_report(
     expect(dialog.get_by_text(VERDICT).first).to_be_visible(timeout=EXPECT_TIMEOUT)
 
     proceed.click()
+    expect(dialog.get_by_role("heading", name="Which driver?")).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+    dialog.get_by_role("button", name="There is no driver for this device yet").click()
     expect(dialog.get_by_text("What the audit could not see")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )

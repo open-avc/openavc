@@ -23,7 +23,7 @@ export function ReportStep() {
   const [report, setReport] = useState<audit.AuditReport | null>(null);
   const [tester, setTester] = useState<audit.AuditTester>(() => ({ ...(session?.tester ?? {}) }));
   const [saved, setSaved] = useState("");
-  const [busy, setBusy] = useState<"" | "download" | "finish">("");
+  const [busy, setBusy] = useState<"" | "download" | "finish" | "another">("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -74,7 +74,22 @@ export function ReportStep() {
     }
   };
 
+  const anotherDriver = async () => {
+    setError("");
+    setBusy("another");
+    try {
+      await saveTester();
+      const { session: next } = await audit.nextAuditDriver(sessionId);
+      useAuditStore.getState().setSession(next);
+      useAuditStore.getState().setStep("driver");
+    } catch (e) {
+      setError(parseApiError(e));
+      setBusy("");
+    }
+  };
+
   if (!session) return null;
+  const tested = session.runs?.length ?? 0;
   const field = (key: "name" | "company" | "email", label: string, type = "text") => (
     <div>
       <label htmlFor={`audit-tester-${key}`} style={labelStyle}>
@@ -204,6 +219,17 @@ export function ReportStep() {
           {busy === "finish" && <Loader2 size={14} style={spinStyle} />}
           Finish
         </button>
+        {tested > 0 && (
+          <button
+            type="button"
+            onClick={() => void anotherDriver()}
+            disabled={!active || busy !== ""}
+            style={buttonStyle("muted", !active || busy !== "")}
+          >
+            {busy === "another" && <Loader2 size={14} style={spinStyle} />}
+            Test another driver
+          </button>
+        )}
       </div>
       {saved && (
         <div

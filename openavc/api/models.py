@@ -412,6 +412,20 @@ class AuditStartRequest(BaseModel):
     snmp_communities: list[str] = Field(default_factory=list, max_length=8)
 
 
+class AuditDriverRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/driver``: the answer on "Which
+    driver?". ``driver_id`` null means there is no driver for this device
+    yet; the manufacturer, model and firmware are what the person says the
+    device is, all optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    driver_id: str | None = Field(default=None, max_length=200)
+    manufacturer: str = Field(default="", max_length=200)
+    model: str = Field(default="", max_length=200)
+    firmware: str = Field(default="", max_length=200)
+
+
 class AuditTesterRequest(BaseModel):
     """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
     report, all optional, and whether to leave the serial number out."""

@@ -55,6 +55,9 @@ describe("where the wizard picks up", () => {
   it("returns to the network check for a running audit", () => {
     expect(stepFor(session({ steps: ["target", "network_check"] }))).toBe("network");
   });
+  it("returns to the driver choice once the person made one", () => {
+    expect(stepFor(session({ steps: ["target", "network_check", "driver"] }))).toBe("driver");
+  });
   it("returns to the report once the person reached it", () => {
     expect(stepFor(session({ steps: ["target", "network_check", "report"] }))).toBe("report");
   });

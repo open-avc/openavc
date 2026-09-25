@@ -11,12 +11,13 @@ import type {
   AuditTimelineEntry,
 } from "../../../api/auditClient";
 
-export type AuditStep = "target" | "network" | "report";
+export type AuditStep = "target" | "network" | "driver" | "report";
 
 /** The steps this wizard has, in order, with their rail labels. */
 export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
   { key: "target", label: "Device" },
   { key: "network", label: "Network check" },
+  { key: "driver", label: "Driver" },
   { key: "report", label: "Report" },
 ];
 
@@ -39,6 +40,7 @@ export const ACTIVITY_ORDER: AuditActivityKey[] = [
 export function stepFor(session: AuditSessionState | null): AuditStep {
   if (!session) return "target";
   if (session.steps.includes("report")) return "report";
+  if (session.steps.includes("driver")) return "driver";
   return "network";
 }
 

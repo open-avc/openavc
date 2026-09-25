@@ -13,6 +13,8 @@ turns a refusal into its sentence.
   ``DELETE /audit/sessions/{id}`` (``?cancel=true`` for Cancel).
 - ``POST /audit/sessions/{id}/network-check``;
   ``PATCH /audit/sessions/{id}/tester``.
+- ``POST /audit/sessions/{id}/driver`` (the driver chosen, or none yet) and
+  ``POST /audit/sessions/{id}/next-driver`` ("Test another driver").
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -29,8 +31,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from openavc.api._engine import _get_engine
-from openavc.api.models import AuditStartRequest, AuditTesterRequest
+from openavc.api.models import AuditDriverRequest, AuditStartRequest, AuditTesterRequest
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
+from openavc.audit.passes import choose_driver, next_driver, open_runs
 from openavc.audit.report import (
     ReportStore,
     build_report,
@@ -174,6 +177,7 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
         )
     try:
         await open_for_session(session, _discovery)
+        open_runs(session)
     except Exception:
         await manager.finish(session.id, CANCELLED)
         raise
@@ -205,6 +209,45 @@ async def run_network_check(session_id: str) -> dict[str, Any]:
         start_check(session)
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
+
+
+async def _catalog() -> list[dict[str, Any]] | None:
+    """The community catalog as last fetched (the network check refreshed it)."""
+    index = getattr(_discovery, "community_index", None)
+    if index is None:
+        return None
+    try:
+        return await index.get_drivers()
+    except Exception:
+        log.warning("Could not read the driver catalog for an audit", exc_info=True)
+        return None
+
+
+@router.post("/sessions/{session_id}/driver")
+async def set_driver(session_id: str, body: AuditDriverRequest) -> dict[str, Any]:
+    """Record the driver chosen for the test, or that there is none yet."""
+    session = _session(session_id)
+    if session.check is None or session.check.status == "idle":
+        raise HTTPException(status_code=409, detail="Run the network check first.")
+    try:
+        choose_driver(
+            session, body.driver_id,
+            manufacturer=body.manufacturer, model=body.model, firmware=body.firmware,
+            catalog=await _catalog() if body.driver_id else None,
+        )
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/next-driver")
+async def test_another_driver(session_id: str) -> dict[str, Any]:
+    """Finish with the current driver (its results stay) to choose another."""
+    session = _session(session_id)
+    await next_driver(session)
+    session.publish_state()
     return {"session": session.to_dict()}
 
 

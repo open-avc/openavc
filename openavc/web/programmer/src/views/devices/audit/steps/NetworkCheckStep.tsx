@@ -122,7 +122,7 @@ export function NetworkCheckStep() {
         </button>
         <button
           type="button"
-          onClick={() => useAuditStore.getState().setStep("report")}
+          onClick={() => useAuditStore.getState().setStep("driver")}
           disabled={!finished}
           style={buttonStyle("primary", !finished)}
         >

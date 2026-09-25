@@ -57,6 +57,8 @@ EXPECTED_CONTROL = {
     ("PATCH", "/api/audit/sessions/{session_id}/tester"),
     ("POST", "/api/audit/sessions"),
     ("POST", "/api/audit/sessions/{session_id}/network-check"),
+    ("POST", "/api/audit/sessions/{session_id}/driver"),
+    ("POST", "/api/audit/sessions/{session_id}/next-driver"),
     ("DELETE", "/api/devices/{device_id}"),
     ("DELETE", "/api/driver-definitions/{driver_id}"),
     ("DELETE", "/api/drivers/installed/{driver_id}"),

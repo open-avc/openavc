@@ -199,6 +199,11 @@ class AuditSession:
         # "About you" on the report step: name, company, email, notes, and
         # whether to leave the serial number out. All optional.
         self.tester: dict[str, Any] = {}
+        # The driver test (``passes.py``): what the person says the device is,
+        # whether they said no driver exists yet, and one run per driver.
+        self.device_entered: dict[str, str] = {}
+        self.no_driver = False
+        self.runs: list[Any] = []
         self._clock = clock
         self._last_activity = clock()
         self._subscribers: dict[int, Subscriber] = {}

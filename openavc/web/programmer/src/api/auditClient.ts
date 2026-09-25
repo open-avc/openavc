@@ -126,6 +126,63 @@ export interface AuditTester {
   leave_out_serial?: boolean;
 }
 
+/** One file of the driver that ran, against the catalog's published hash. */
+export interface AuditDriverFile {
+  name: string;
+  sha256: string | null;
+  catalog_sha256: string | null;
+  /** null when the catalog publishes no hash for this file. */
+  matches_catalog: boolean | null;
+}
+
+/** Exactly which driver ran: what the report says about it. */
+export interface AuditDriverIdentity {
+  id: string;
+  name: string;
+  manufacturer: string;
+  version: string;
+  format: "avcdriver" | "python";
+  transport: string;
+  source: "catalog" | "imported" | "built_in";
+  files: AuditDriverFile[];
+  catalog_files_missing: string[];
+  /** True when a file differs from the one the catalog publishes. */
+  modified: boolean;
+  catalog: { listed: boolean; version: string; verified: boolean | null; checked: boolean };
+}
+
+export type AuditVerdictAgreement = "agrees" | "candidate" | "differs" | "no_verdict";
+
+/** The answer on "Which driver?". */
+export interface AuditDriverChoice {
+  driver_id: string;
+  manufacturer: string;
+  model: string;
+  firmware: string;
+  identity: AuditDriverIdentity;
+  /** listed is null when no model was entered. */
+  model_listing: { listed: boolean | null; confidence: string | null };
+  verdict_agreement: AuditVerdictAgreement;
+}
+
+/** One driver tested against the device. */
+export interface AuditDriverRun {
+  index: number;
+  choice: AuditDriverChoice;
+  started_at: number | null;
+  finished_at: number | null;
+  /** True while its driver is connected to the device. */
+  active: boolean;
+}
+
+export interface AuditDriverBody {
+  /** null: there is no driver for this device yet. */
+  driver_id: string | null;
+  manufacturer: string;
+  model: string;
+  firmware: string;
+}
+
 export interface AuditSessionState {
   session_id: string;
   status: AuditSessionStatus;
@@ -138,6 +195,11 @@ export interface AuditSessionState {
   report_name: string | null;
   tester: AuditTester;
   check: AuditCheckState | null;
+  /** What the person says the device is. */
+  device?: { manufacturer: string; model: string; firmware: string };
+  /** True when the person said there is no driver for this device yet. */
+  no_driver?: boolean;
+  runs?: AuditDriverRun[];
 }
 
 export interface AuditTimelineEntry {
@@ -213,6 +275,23 @@ export function endAudit(
 
 export function startNetworkCheck(sessionId: string): Promise<{ session: AuditSessionState }> {
   return request(`/audit/sessions/${encodeURIComponent(sessionId)}/network-check`, {
+    method: "POST",
+  });
+}
+
+export function setAuditDriver(
+  sessionId: string,
+  body: AuditDriverBody,
+): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/driver`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Finish with the current driver (its results stay) to choose another. */
+export function nextAuditDriver(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/next-driver`, {
     method: "POST",
   });
 }

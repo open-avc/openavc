@@ -9,6 +9,7 @@ import { parseApiError } from "../../../api/errors";
 import { AUDIT_STEPS, stepFor, type AuditStep } from "./auditHelpers";
 import { TargetStep } from "./steps/TargetStep";
 import { NetworkCheckStep } from "./steps/NetworkCheckStep";
+import { DriverStep } from "./steps/DriverStep";
 import { ReportStep } from "./steps/ReportStep";
 import { buttonStyle } from "./auditStyles";
 import { ErrorLine } from "./auditParts";
@@ -148,6 +149,8 @@ export function DeviceAuditWizard() {
             <TargetStep />
           ) : step === "network" ? (
             <NetworkCheckStep />
+          ) : step === "driver" ? (
+            <DriverStep />
           ) : (
             <ReportStep />
           )}

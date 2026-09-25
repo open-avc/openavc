@@ -190,6 +190,8 @@ AUDIT_ROUTES = {
     ("DELETE", "/api/audit/sessions/{session_id}"),
     ("POST", "/api/audit/sessions/{session_id}/network-check"),
     ("PATCH", "/api/audit/sessions/{session_id}/tester"),
+    ("POST", "/api/audit/sessions/{session_id}/driver"),
+    ("POST", "/api/audit/sessions/{session_id}/next-driver"),
     ("GET", "/api/audit/sessions/{session_id}/report"),
     ("GET", "/api/audit/reports"),
     ("GET", "/api/audit/reports/{name}"),
