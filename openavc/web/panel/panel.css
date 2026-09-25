@@ -549,20 +549,26 @@ button.panel-element {
     z-index: 11000;
 }
 
+/* The panel's rem is a share of the shorter screen edge, which is right on a
+   wall tablet and far too small on a phone held upright: the message there
+   came out at about eight pixels. Every size below therefore has a pixel
+   floor, what a phone in the hand needs to read; on a tablet the rem wins
+   and nothing changes. The inputs floor at 16px because iOS zooms the page
+   into any smaller field the moment it is focused. */
 .panel-access-container {
-    max-width: 40rem;
-    padding: 2.8571rem;
+    max-width: max(40rem, 340px);
+    padding: max(2.8571rem, 20px);
     text-align: center;
 }
 
 .panel-access-title {
-    font-size: 1.7143rem;
+    font-size: max(1.7143rem, 22px);
     font-weight: 600;
-    margin-bottom: 1.1429rem;
+    margin-bottom: max(1.1429rem, 12px);
 }
 
 .panel-access-message {
-    font-size: 1.1429rem;
+    font-size: max(1.1429rem, 16px);
     line-height: 1.5;
 }
 
@@ -581,15 +587,15 @@ button.panel-element {
 
 .panel-access-claim-link {
     display: inline-block;
-    margin-top: 1.7143rem;
-    font-size: 1rem;
+    margin-top: max(1.7143rem, 20px);
+    font-size: max(1rem, 15px);
     color: var(--panel-accent, #2196F3);
     text-decoration: underline;
     cursor: pointer;
 }
 
 .panel-access-claim {
-    margin-top: 1.7143rem;
+    margin-top: max(1.7143rem, 20px);
 }
 
 /* display is set above, so the hidden attribute needs saying again. */
@@ -600,11 +606,11 @@ button.panel-element {
 
 .panel-access-input {
     display: block;
-    width: 18rem;
+    width: max(18rem, 260px);
     max-width: 100%;
-    margin: 0 auto 0.8571rem;
-    padding: 0.7143rem 1rem;
-    font-size: 1.1429rem;
+    margin: 0 auto max(0.8571rem, 10px);
+    padding: max(0.7143rem, 10px) max(1rem, 12px);
+    font-size: max(1.1429rem, 16px);
     border: 2px solid var(--panel-surface-border, #3a3a5c);
     border-radius: 0.5714rem;
     background: color-mix(in srgb, var(--panel-text, #ffffff) 10%, var(--panel-bg, #1a1a2e));
@@ -619,11 +625,11 @@ button.panel-element {
 
 .panel-access-submit {
     display: block;
-    width: 18rem;
+    width: max(18rem, 260px);
     max-width: 100%;
     margin: 0 auto;
-    padding: 0.8571rem;
-    font-size: 1.1429rem;
+    padding: max(0.8571rem, 12px);
+    font-size: max(1.1429rem, 16px);
     font-weight: 600;
     border: none;
     border-radius: 0.5714rem;
@@ -643,9 +649,9 @@ button.panel-element {
 
 .panel-access-error {
     color: var(--panel-danger, #F44336);
-    font-size: 1rem;
-    margin-top: 0.8571rem;
-    min-height: 1.4286rem;
+    font-size: max(1rem, 14px);
+    margin-top: max(0.8571rem, 10px);
+    min-height: max(1.4286rem, 18px);
 }
 
 /* ===== Page Transitions ===== */

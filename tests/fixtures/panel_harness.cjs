@@ -1974,7 +1974,10 @@ const tests = {
     // The panel stylesheets are rem so a design scales with the glass. The
     // exceptions are deliberate and narrow -- border/outline widths and
     // anything <= 2px, which exist to be thin lines and would round away on a
-    // phone. Anything else left in px is a value that silently stops scaling.
+    // phone; and a pixel floor beside a rem inside max(), which still scales
+    // above the floor and exists because the rem alone is about eight pixels
+    // on a phone held upright (the waiting screen). Anything else left in px
+    // is a value that silently stops scaling.
     layout_stylesheets_are_rem_except_hairlines() {
         const offenders = [];
         // Strip comments first. Prose mentions pixel sizes ("14px at the
@@ -1986,7 +1989,10 @@ const tests = {
             if (!decl.includes(':')) continue;
             const prop = decl.split(':')[0].trim();
             if (/^(border|outline)(-(top|right|bottom|left))?(-width)?$/.test(prop)) continue;
-            for (const m of decl.matchAll(/(?<![\w.-])(\d+(?:\.\d+)?)px/g)) {
+            // A max() that names a rem is a floor, not a fixed size; a max()
+            // without one is scanned like anything else.
+            const scanned = decl.replace(/max\([^()]*rem[^()]*\)/g, '');
+            for (const m of scanned.matchAll(/(?<![\w.-])(\d+(?:\.\d+)?)px/g)) {
                 if (parseFloat(m[1]) > 2) offenders.push(`${prop}: ${m[0]}`);
             }
         }
