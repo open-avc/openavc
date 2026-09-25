@@ -1,4 +1,5 @@
 import type { LogEntryResponse } from "./types";
+import type { PanelAccessMode } from "./panelDevicesClient";
 import { BASE, request } from "./base";
 
 // --- Cloud Connection ---
@@ -280,6 +281,11 @@ export interface SystemConfig {
   cloud: { enabled: boolean; endpoint: string; system_key: string; system_id: string };
   kiosk: { enabled: boolean; target_url: string; cursor_visible: boolean };
   tls: { enabled: boolean; port: number; auto_generate: boolean; cert_file: string; key_file: string; redirect_http: boolean; cloud_cert: boolean };
+  /** Who may open the panel. Applies as soon as it is saved. */
+  panels: { access: PanelAccessMode };
+  /** The mDNS advertisement the Panel app's list is built from. Applies as
+   *  soon as it is saved. */
+  discovery: { advertise: boolean };
 }
 
 export async function getSystemVersion(): Promise<{

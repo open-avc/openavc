@@ -255,6 +255,7 @@
     "INPUT type: text",
     "INPUT type: number",
     "BUTTON (unnamed)",
+    "BUTTON Advertise on the network",
     "SELECT select",
     "BUTTON Refresh adapter list",
     "BUTTON (unnamed)",
@@ -264,6 +265,8 @@
     "INPUT placeholder: No API key set",
     "BUTTON (unnamed)",
     "BUTTON Generate",
+    "INPUT type: radio",
+    "INPUT type: radio",
     "SELECT select",
     "BUTTON (unnamed)",
     "INPUT type: number",
@@ -281,7 +284,9 @@
     "INPUT placeholder: 5",
     "BUTTON (unnamed)",
     "INPUT type: text",
-    "BUTTON (unnamed)"
+    "BUTTON (unnamed)",
+    "CLICKABLE Approved panels onlyA new tablet or browser waits until you ",
+    "CLICKABLE Anyone on the networkAny device that can reach this system c"
   ],
   "State": [
     "BUTTON Delete all variables with zero usages",

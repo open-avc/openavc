@@ -276,3 +276,94 @@ def test_the_programmer_preview_carries_the_session_instead_of_a_cookie(
     # It asked for nothing: the IDE's own preview is never a device waiting
     # in the Programmer's list.
     assert _api(handle.base_url, "GET", "/api/panel/devices")["pending"] == []
+
+
+# ---------------------------------------------------------------------------
+# The Programmer: the notice and the Dashboard's Panels card
+# ---------------------------------------------------------------------------
+
+def _sign_in(page: Page, base_url: str) -> None:
+    page.goto(f"{base_url}/programmer/", wait_until="domcontentloaded")
+    page.get_by_label("Username").fill("admin")
+    page.get_by_label("Password").fill(PASSWORD)
+    page.get_by_role("button", name="Sign In", exact=True).click()
+
+
+def test_the_dashboard_card_approves_renames_and_revokes_a_panel(
+    server_factory, browser, page: Page,
+) -> None:
+    """A tablet on the network asks; the programmer answers from the
+    Dashboard's Panels card. The notice on every view names the request
+    while it waits and clears once it is answered; Rename and Revoke act on
+    the approved row, and a revoked tablet asks again with a new code."""
+    handle = _lan_server(server_factory)
+    _sign_in(page, handle.base_url)
+    card = page.get_by_test_id("panels-card")
+    expect(card).to_contain_text("No panels have connected yet.", timeout=READY_TIMEOUT)
+
+    # The tablet gets its own browser context, so it shares nothing with the
+    # signed-in Programmer tab, least of all the session.
+    tablet = browser.new_context()
+    try:
+        panel = tablet.new_page()
+        panel.goto(f"{handle.base_url}/panel/", wait_until="domcontentloaded")
+        overlay = panel.locator("#panel-access-overlay")
+        expect(overlay).to_be_visible(timeout=READY_TIMEOUT)
+        code = _code_on_screen(panel)
+
+        banner = page.get_by_test_id("panel-request-banner")
+        expect(banner).to_contain_text(
+            f"A panel is asking to connect: code {code},", timeout=EXPECT_TIMEOUT,
+        )
+        row = card.locator(f'[data-panel-status="pending"]:has-text("{code}")')
+        expect(row).to_be_visible()
+        row.get_by_role("button", name="Approve", exact=True).click()
+
+        dialog = page.get_by_role("dialog", name="Name this panel")
+        name_field = dialog.get_by_role("textbox")
+        # Offered: the kind of device and its address.
+        expect(name_field).to_have_value(re.compile(r"^.+ at \d+\.\d+\.\d+\.\d+$"))
+        name_field.fill("Lobby tablet")
+        dialog.get_by_role("button", name="Approve", exact=True).click()
+
+        # The tablet draws without a reload, the notice clears, and the row
+        # moves to Approved under its name.
+        expect(overlay).to_have_count(0, timeout=EXPECT_TIMEOUT)
+        expect(panel.locator('[data-element-id="btn_laptop"]')).to_be_visible(timeout=READY_TIMEOUT)
+        expect(banner).to_have_count(0, timeout=EXPECT_TIMEOUT)
+        approved = card.locator('[data-panel-status="approved"]')
+        expect(approved).to_have_count(1, timeout=EXPECT_TIMEOUT)
+        expect(approved).to_contain_text("Lobby tablet")
+        expect(card.locator('[data-panel-status="pending"]')).to_have_count(0)
+        listed = _api(handle.base_url, "GET", "/api/panel/devices")
+        assert [d["name"] for d in listed["approved"]] == ["Lobby tablet"]
+
+        # Rename.
+        approved.get_by_role("button", name="Rename", exact=True).click()
+        dialog = page.get_by_role("dialog", name="Rename panel")
+        expect(dialog.get_by_role("textbox")).to_have_value("Lobby tablet")
+        dialog.get_by_role("textbox").fill("Lobby wall")
+        dialog.get_by_role("button", name="Rename", exact=True).click()
+        expect(approved).to_contain_text("Lobby wall", timeout=EXPECT_TIMEOUT)
+        listed = _api(handle.base_url, "GET", "/api/panel/devices")
+        assert [d["name"] for d in listed["approved"]] == ["Lobby wall"]
+
+        # Revoke: the confirm names the panel, the tablet goes back to the
+        # waiting screen with a new code, and the notice returns.
+        approved.get_by_role("button", name="Revoke", exact=True).click()
+        confirm = page.get_by_role("alertdialog", name="Revoke panel")
+        expect(confirm).to_contain_text(
+            "Revoke Lobby wall? It shows the waiting screen until it is approved again.",
+        )
+        confirm.get_by_role("button", name="Revoke", exact=True).click()
+        expect(overlay).to_be_visible(timeout=EXPECT_TIMEOUT)
+        new_code = _code_on_screen(panel)
+        assert new_code != code
+        expect(banner).to_contain_text(f"code {new_code},", timeout=EXPECT_TIMEOUT)
+        expect(card.locator('[data-panel-status="approved"]')).to_have_count(0)
+        expect(card.locator(f'[data-panel-status="pending"]:has-text("{new_code}")')).to_be_visible()
+        listed = _api(handle.base_url, "GET", "/api/panel/devices")
+        assert listed["approved"] == []
+        assert [d["code"] for d in listed["pending"]] == [new_code]
+    finally:
+        tablet.close()

@@ -5,6 +5,7 @@ import { ViewErrorBoundary } from "./components/shared/ViewErrorBoundary";
 import ToastContainer from "./components/shared/ToastContainer";
 import { ShortcutsPanel } from "./components/shared/ShortcutsPanel";
 import { MissingDriversWatcher } from "./components/shared/MissingDriversWatcher";
+import { PanelRequestBanner } from "./components/shared/PanelRequestBanner";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
 import { DashboardView } from "./views/DashboardView";
@@ -272,6 +273,8 @@ function AuthedApp() {
             </div>
           </div>
         )}
+        {/* A panel waiting for approval, on every view */}
+        <PanelRequestBanner />
         <main style={{ flex: 1, overflow: "hidden" }}>
           <ErrorBoundary>
             <Suspense fallback={null}>{renderView()}</Suspense>

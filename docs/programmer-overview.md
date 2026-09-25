@@ -7,7 +7,7 @@ A tour of the OpenAVC Programmer IDE: what each section does and how to approach
 ## Overview
 
 The Programmer IDE is a web-based design environment with these sidebar sections:
-- **Dashboard**: System status at a glance, panel access URLs, monitored readings
+- **Dashboard**: System status at a glance, panel access URLs, panels waiting for approval, monitored readings
 - **Program**: Create and manage projects, backups, import/export
 - **Devices**: Add equipment, test commands, browse drivers, device groups, and network discovery
 - **State**: Variables, device states, and activity feed
@@ -19,7 +19,7 @@ The Programmer IDE is a web-based design environment with these sidebar sections
 - **AI Assistant**: AI-powered help and automation (requires cloud connection)
 - **Cloud**: Cloud platform connection and monitoring
 - **Log**: Real-time system log and state changes
-- **Settings**: Server configuration (port, bind address, logging)
+- **Settings**: Server configuration (port, bind address, panel access, logging)
 - **Updates**: Check for and install OpenAVC updates
 
 At the bottom of the sidebar, the **Simulate Devices** button (play icon) starts the device simulator so you can test your project without real hardware. See [Device Simulator](simulator.md) for details.
@@ -57,6 +57,7 @@ The Dashboard is the landing page of the Programmer IDE, giving you a system sta
 - **Cloud status**: shows whether the system is paired to OpenAVC Cloud and the connection state
 - **Uptime**: how long the server has been running since last restart
 - **Panel Access**: shows the URLs you can use to open the Panel UI on tablets, phones, or other devices on the network (e.g., `http://192.168.1.100:8080/panel`). If the server is bound to localhost only, it tells you how to enable network access in Settings. In a cloud remote session those addresses are on the space's network and cannot reach you, so the card points you to Remote Panel in the cloud portal instead.
+- **Panels**: every tablet, phone or browser that has asked to open the panel. A device waiting for approval shows its code, the kind of device it is and its address, with **Approve** and **Deny**; an approved panel shows its name and when it was last seen, with **Rename** and **Revoke**. While a panel is waiting, a notice with the same **Approve** and **Deny** appears at the top of every view. With Panel access set to **Anyone on the network** (Settings > Access), the card says so instead. See [Approve the Panel](panel-app.md#4-approve-the-panel)
 - **Monitored readings**: anything you tagged with **Monitor** shows its live value here — a variable, or a reading off a device such as lamp hours, a DSP temperature, or a fault flag. Where you set limits, a reading outside them is flagged; where you did not, the value is shown without any judgement. See [Variables and State](variables-and-state.md#monitor-a-reading)
 - **ISC status**: if Inter-System Communication is enabled, shows connected peer instances
 - **Recent activity**: a feed of recent system log entries so you can spot errors or confirm actions without switching to the Log view
@@ -125,6 +126,8 @@ The Settings view configures the server itself: networking, authentication, and 
 - **Port**: HTTP port (default 8080)
 - **Programmer password**: protects the Programmer IDE and API when the server is network-accessible
 - **API key**: for third-party integrations connecting via REST or WebSocket
+- **Panel access**: **Approved panels only** (the default) makes a new tablet or browser wait until you approve it once, from the notice or the Dashboard's **Panels** card; **Anyone on the network** lets any device that can reach the port open the panel and control the space. Applies as soon as you save
+- **Advertise on the network**: lets the OpenAVC Panel app find this system in its list. Turned off, devices still connect by address
 - **Log level**: debug, info, warning, or error
 
 See the [Deployment Guide](deployment.md) for the full configuration reference and environment variable overrides.

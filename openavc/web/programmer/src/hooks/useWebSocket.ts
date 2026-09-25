@@ -8,6 +8,7 @@ import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
+import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import { invalidatePluginMacroActions } from "../components/macros/pluginMacroActions";
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
@@ -54,6 +55,9 @@ export function useWebSocket() {
       // Builder's plugin-element config form has no schema after a reload and
       // falls back to the raw-JSON editor.
       usePluginStore.getState().load();
+      // The panels waiting for approval, and the approved ones. The push
+      // below carries every change after this, so a missed one is harmless.
+      usePanelDevicesStore.getState().load();
       // Always load server state first on reconnect to avoid overwriting
       // external changes with stale local data
       const store = useProjectStore.getState();
@@ -430,6 +434,13 @@ export function useWebSocket() {
         if (Array.isArray(msg.warnings)) {
           useDiscoveryStore.getState().setWarnings(msg.warnings as string[]);
         }
+      }
+
+      // A panel asked to connect, or one was approved, denied, renamed,
+      // revoked or aged out, or Panel access was saved. Programmer clients
+      // only; the notice and the Dashboard's Panels card read the store.
+      if (msg.type === "panel.devices.changed") {
+        usePanelDevicesStore.getState().applyChange(msg);
       }
 
       // Plugin events — refresh plugin list AND macro builder's plugin

@@ -7,3 +7,4 @@ export * from "./stateClient";
 export * from "./discoveryClient";
 export * from "./pluginClient";
 export * from "./systemClient";
+export * from "./panelDevicesClient";

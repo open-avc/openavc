@@ -561,6 +561,11 @@ unlock it, then leave the panel untouched to test its idle return and relock.
 Exit Preview to continue designing; the design canvas stays unlocked and does
 not change pages when idle.
 
+The preview never waits for panel approval; it opens as part of your Programmer
+session. A tablet or phone opening the panel from the network waits once, until
+you approve it from the notice or the Dashboard's **Panels** card (see
+[Approve the Panel](panel-app.md#4-approve-the-panel)).
+
 ## Panel Settings
 
 Click the gear icon in the UI Builder toolbar to open Panel Settings:

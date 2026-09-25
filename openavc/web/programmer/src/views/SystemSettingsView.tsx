@@ -154,6 +154,20 @@ const toggleRow: React.CSSProperties = {
   marginBottom: "var(--space-sm)",
 };
 
+const radioRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "var(--space-md)",
+  padding: "var(--space-sm) 0",
+  cursor: "pointer",
+};
+
+const radioInput: React.CSSProperties = {
+  marginTop: 3,
+  flexShrink: 0,
+  accentColor: "var(--accent)",
+};
+
 const toggleStyle: React.CSSProperties = {
   position: "relative",
   width: 40,
@@ -193,10 +207,13 @@ const warningBox: React.CSSProperties = {
   marginBottom: "var(--space-md)",
 };
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
       style={{
         ...toggleStyle,
         background: checked ? "var(--accent-bg)" : "var(--bg-hover, #555)",
@@ -742,6 +759,10 @@ export function SystemSettingsView() {
   const upd = merged("updates");
   const kiosk = merged("kiosk");
   const tls = merged("tls");
+  // Both read the way the server does: anything but the exact word "open" is
+  // approved panels only, and an absent discovery section advertises.
+  const panelAccess = merged("panels")?.access === "open" ? "open" : "approved";
+  const advertise = merged("discovery")?.advertise !== false;
 
   // Warning: no auth + public bind
   const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
@@ -922,6 +943,20 @@ export function SystemSettingsView() {
             <Toggle
               checked={!!net.port80_redirect}
               onChange={(v) => update("network", "port80_redirect", v)}
+            />
+          </div>
+          <div style={toggleRow}>
+            <div>
+              <div style={{ fontSize: "var(--font-size-sm)" }}>Advertise on the network</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Lets the OpenAVC Panel app find this system in its list. Turning this off hides
+                the system from the list; devices can still connect by address.
+              </div>
+            </div>
+            <Toggle
+              label="Advertise on the network"
+              checked={advertise}
+              onChange={(v) => update("discovery", "advertise", v)}
             />
           </div>
           <div style={fieldRow}>
@@ -1652,13 +1687,13 @@ export function SystemSettingsView() {
         }}>
           Access controls are optional. When the server is only accessible locally (bind address <code>127.0.0.1</code>), no credentials are needed.
           When the server is accessible on the network (<code>0.0.0.0</code>), set at least one of the options below to prevent unauthorized access.
-          The Panel UI is never protected so end users can always reach it.
+          Who can open the panel is set below under Panel access.
         </div>
 
         <div style={cardStyle}>
           <h4 style={subCardTitle}>Programmer login</h4>
           <div style={subCardDescription}>
-            For humans opening the Programmer IDE in a browser. When a password is set, the Programmer shows its own sign-in screen first. The room panel stays open and is never protected.
+            For humans opening the Programmer IDE in a browser. When a password is set, the Programmer shows its own sign-in screen first. Who can open the panel is set below under Panel access.
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Username</label>
@@ -1758,6 +1793,45 @@ export function SystemSettingsView() {
               </span>
             )}
           </div>
+        </div>
+
+        <div style={cardStyle}>
+          <h4 style={subCardTitle}>Panel access</h4>
+          <div style={subCardDescription}>
+            Who can open the panel from a tablet, a phone or a browser on the network. Applies as soon as it is saved.
+          </div>
+          <label style={radioRow}>
+            <input
+              type="radio"
+              name="cfg-panel-access"
+              value="approved"
+              checked={panelAccess === "approved"}
+              onChange={() => update("panels", "access", "approved")}
+              style={radioInput}
+            />
+            <div>
+              <div style={{ fontSize: "var(--font-size-sm)" }}>Approved panels only</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                A new tablet or browser waits until you approve it here. Approved panels stay approved.
+              </div>
+            </div>
+          </label>
+          <label style={radioRow}>
+            <input
+              type="radio"
+              name="cfg-panel-access"
+              value="open"
+              checked={panelAccess === "open"}
+              onChange={() => update("panels", "access", "open")}
+              style={radioInput}
+            />
+            <div>
+              <div style={{ fontSize: "var(--font-size-sm)" }}>Anyone on the network</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Any device that can reach this system can open the panel and control the space.
+              </div>
+            </div>
+          </label>
         </div>
 
         {/* Logging */}

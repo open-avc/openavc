@@ -1,19 +1,25 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer, X } from "lucide-react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer, X, Tablet } from "lucide-react";
 import qrcode from "qrcode-generator";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
 import { Dialog } from "../components/shared/Dialog";
+import { ConfirmDialog } from "../components/shared/ConfirmDialog";
+import { PromptDialog } from "../components/shared/PromptDialog";
+import {
+  defaultPanelName, deniedText, lastSeenText, revokeQuestion, sinceText,
+} from "../components/shared/panelDevicesCopy";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import { useNavigationStore } from "../store/navigationStore";
+import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import { useTriggerRuns, isFailedRun } from "../components/macros/triggerRuns";
 import { StatusCardSlot } from "../components/plugins/PluginExtensions";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { showError } from "../store/toastStore";
 import * as api from "../api/restClient";
-import type { CloudStatus, TlsStatus } from "../api/restClient";
+import type { CloudStatus, PanelDevice, TlsStatus } from "../api/restClient";
 import { panelAccess } from "./panelAccessUrls";
 import { recoveryNotice, type RecoveryNotice as RecoveryNoticeCopy } from "./recoveryNotice";
 import type { MonitorConfig } from "../api/types";
@@ -57,12 +63,24 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// What the QR dialog and the printed sign say while Panel access is Approved
+// panels only. Nothing is said in the other mode, because nothing waits.
+const APPROVAL_NOTE = "A device that scans this waits for approval in the Programmer.";
+
 // Full-page, print-ready poster: big headline + big QR + subtle OpenAVC branding
 // and a faint sage "signal ripple" motif in opposite corners. Rendered into a
 // standalone window so none of the IDE's styling bleeds into the printout.
-function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url: string; roomName: string; logoSrc: string }): string {
+function buildPosterHtml({ qrSvg, url, roomName, logoSrc, approvalNote }: {
+  qrSvg: string; url: string; roomName: string; logoSrc: string;
+  /** True while Panel access is Approved panels only: a phone that scans the
+   *  sign waits until someone approves it, and the sign says so. */
+  approvalNote: boolean;
+}): string {
   const room = roomName.trim() ? escapeHtml(roomName.trim()) : "this room";
   const safeUrl = escapeHtml(url);
+  const note = approvalNote
+    ? `<p class="note">${escapeHtml(APPROVAL_NOTE)}</p>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -98,6 +116,7 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
   .steps b { color: var(--ink); font-weight: 600; }
   .url { margin-top: 6mm; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
          font-size: 12pt; color: var(--sage-deep); word-break: break-all; }
+  .note { margin: 8mm 0 0; font-size: 11pt; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -118,6 +137,7 @@ function buildPosterHtml({ qrSvg, url, roomName, logoSrc }: { qrSvg: string; url
       <div class="qr-wrap"><div class="qr">${qrSvg}</div></div>
       <p class="steps"><b>1.</b> Open your camera &nbsp;&nbsp; <b>2.</b> Tap the link that appears</p>
       <div class="url">${safeUrl}</div>
+      ${note}
     </div>
   </div>
   <script>
@@ -146,6 +166,7 @@ function makeQrSvg(data: string): string {
 function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: string; panelUrl: string; roomName: string; onClose: () => void }) {
   const pairSvg = useMemo(() => makeQrSvg(pairUrl), [pairUrl]);
   const panelSvg = useMemo(() => makeQrSvg(panelUrl), [panelUrl]);
+  const approvalNote = usePanelDevicesStore((s) => s.access) === "approved";
 
   const handlePrint = useCallback(async () => {
     // Inline the logo as a data URI so the standalone print window is fully
@@ -166,7 +187,7 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
       /* fall back to the resolved URL */
     }
 
-    const posterHtml = buildPosterHtml({ qrSvg: panelSvg, url: panelUrl, roomName, logoSrc });
+    const posterHtml = buildPosterHtml({ qrSvg: panelSvg, url: panelUrl, roomName, logoSrc, approvalNote });
     const win = window.open("", "_blank");
     if (!win) {
       showError("Couldn't open the print view. Allow pop-ups for this site, then try again.");
@@ -175,13 +196,14 @@ function QRCodeDialog({ pairUrl, panelUrl, roomName, onClose }: { pairUrl: strin
     win.document.open();
     win.document.write(posterHtml);
     win.document.close();
-  }, [panelSvg, panelUrl, roomName]);
+  }, [panelSvg, panelUrl, roomName, approvalNote]);
 
   return (
     <Dialog title="Scan to connect" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-md)" }}>
         <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)", textAlign: "center" }}>
           Scan this code to open this OpenAVC system.
+          {approvalNote && <> {APPROVAL_NOTE}</>}
         </div>
         <div
           style={{ width: 260, height: 260, background: "#fff", padding: "var(--space-sm)", borderRadius: "var(--border-radius)" }}
@@ -411,6 +433,222 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
         )}
       </div>
       {qrOpen && access.pairUrl && access.qrPanelUrl && <QRCodeDialog pairUrl={access.pairUrl} panelUrl={access.qrPanelUrl} roomName={roomName} onClose={() => setQrOpen(false)} />}
+    </div>
+  );
+}
+
+const panelRowButton: React.CSSProperties = {
+  padding: "2px 10px",
+  borderRadius: 4,
+  border: "1px solid var(--border-color)",
+  background: "transparent",
+  color: "var(--text-primary)",
+  fontSize: 12,
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+const panelRowStyle: React.CSSProperties = {
+  padding: "var(--space-sm) var(--space-md)",
+  borderTop: "1px solid var(--border-color)",
+  fontSize: "var(--font-size-sm)",
+};
+
+const panelGroupTitle: React.CSSProperties = {
+  padding: "var(--space-xs) var(--space-md)",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.5px",
+  background: "var(--bg-hover)",
+};
+
+function PanelRow({ device, headline, detail, children }: {
+  device: PanelDevice;
+  headline: React.ReactNode;
+  detail: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={panelRowStyle} data-panel-id={device.id} data-panel-status={device.status}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-sm)" }}>
+        <span style={{ fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {headline}
+        </span>
+        <div style={{ display: "flex", gap: "var(--space-xs)", flexShrink: 0 }}>{children}</div>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{detail}</div>
+    </div>
+  );
+}
+
+/** The panels this system knows: waiting for approval at the top, then the
+ *  approved ones, then any that were denied (a denied panel can still be
+ *  approved; the record expires a day after the denial). With Panel access
+ *  set to Anyone on the network nothing waits, and the card says so. */
+function PanelsCard() {
+  const access = usePanelDevicesStore((s) => s.access);
+  const pending = usePanelDevicesStore((s) => s.pending);
+  const approved = usePanelDevicesStore((s) => s.approved);
+  const denied = usePanelDevicesStore((s) => s.denied);
+  const loaded = usePanelDevicesStore((s) => s.loaded);
+  const load = usePanelDevicesStore((s) => s.load);
+  const approve = usePanelDevicesStore((s) => s.approve);
+  const deny = usePanelDevicesStore((s) => s.deny);
+  const revoke = usePanelDevicesStore((s) => s.revoke);
+  const rename = usePanelDevicesStore((s) => s.rename);
+  const [naming, setNaming] = useState<PanelDevice | null>(null);
+  const [renaming, setRenaming] = useState<PanelDevice | null>(null);
+  const [revoking, setRevoking] = useState<PanelDevice | null>(null);
+
+  // "last seen" moves without a push, so refetch while the card is on screen.
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => { void load(); }, 30000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  const now = Date.now();
+  const cardStyle: React.CSSProperties = {
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--border-radius)",
+    padding: "var(--space-lg)",
+  };
+  const sectionTitle: React.CSSProperties = {
+    fontSize: "var(--font-size-sm)",
+    color: "var(--text-secondary)",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    fontWeight: 600,
+    marginBottom: "var(--space-md)",
+  };
+  const approveButton: React.CSSProperties = {
+    ...panelRowButton, border: "none", background: "var(--accent-bg)", color: "var(--text-on-accent)",
+  };
+
+  const empty = pending.length === 0 && approved.length === 0 && denied.length === 0;
+
+  return (
+    <div style={{ marginBottom: "var(--space-xl)" }} data-testid="panels-card">
+      <h3 style={sectionTitle}>
+        <span style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
+          <Tablet size={14} />
+          Panels
+        </span>
+      </h3>
+      {access === "open" ? (
+        <div style={{ ...cardStyle, fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+          Panel access is set to Anyone on the network. Change it in{" "}
+          <strong
+            onClick={() => useNavigationStore.getState().navigateTo("settings")}
+            style={{ color: "var(--accent)", cursor: "pointer" }}
+          >
+            Settings
+          </strong>.
+        </div>
+      ) : empty ? (
+        <div style={{ ...cardStyle, fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+          {loaded ? "No panels have connected yet." : "Loading..."}
+        </div>
+      ) : (
+        <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+          {pending.length > 0 && (
+            <>
+              <div style={panelGroupTitle}>Waiting for approval</div>
+              {pending.map((d) => (
+                <PanelRow
+                  key={d.id}
+                  device={d}
+                  headline={<code style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{d.code}</code>}
+                  detail={[defaultPanelName(d), sinceText(d.first_seen, now)].filter(Boolean).join(" · ")}
+                >
+                  <button type="button" style={approveButton} onClick={() => setNaming(d)}>Approve</button>
+                  <button type="button" style={panelRowButton} onClick={() => { void deny(d.id); }}>Deny</button>
+                </PanelRow>
+              ))}
+            </>
+          )}
+          {approved.length > 0 && (
+            <>
+              <div style={panelGroupTitle}>Approved</div>
+              {approved.map((d) => (
+                <PanelRow
+                  key={d.id}
+                  device={d}
+                  headline={d.name || defaultPanelName(d)}
+                  detail={[defaultPanelName(d), lastSeenText(d.last_seen, now)].filter(Boolean).join(" · ")}
+                >
+                  <button type="button" style={panelRowButton} onClick={() => setRenaming(d)}>Rename</button>
+                  <button
+                    type="button"
+                    style={{ ...panelRowButton, color: "var(--color-error)" }}
+                    onClick={() => setRevoking(d)}
+                  >
+                    Revoke
+                  </button>
+                </PanelRow>
+              ))}
+            </>
+          )}
+          {denied.length > 0 && (
+            <>
+              <div style={panelGroupTitle}>Denied</div>
+              {denied.map((d) => (
+                <PanelRow
+                  key={d.id}
+                  device={d}
+                  headline={<code style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{d.code}</code>}
+                  detail={[defaultPanelName(d), deniedText(d.denied_at, now)].filter(Boolean).join(" · ")}
+                >
+                  <button type="button" style={approveButton} onClick={() => setNaming(d)}>Approve</button>
+                </PanelRow>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+      {naming && (
+        <PromptDialog
+          title="Name this panel"
+          defaultValue={defaultPanelName(naming)}
+          submitLabel="Approve"
+          onSubmit={(name) => {
+            const device = naming;
+            setNaming(null);
+            void approve(device.id, name);
+          }}
+          onCancel={() => setNaming(null)}
+        />
+      )}
+      {renaming && (
+        <PromptDialog
+          title="Rename panel"
+          defaultValue={renaming.name || defaultPanelName(renaming)}
+          submitLabel="Rename"
+          onSubmit={(name) => {
+            const device = renaming;
+            setRenaming(null);
+            void rename(device.id, name);
+          }}
+          onCancel={() => setRenaming(null)}
+        />
+      )}
+      {revoking && (
+        <ConfirmDialog
+          title="Revoke panel"
+          message={revokeQuestion(revoking.name || defaultPanelName(revoking))}
+          confirmLabel="Revoke"
+          destructive
+          onConfirm={() => {
+            const device = revoking;
+            setRevoking(null);
+            void revoke(device.id);
+          }}
+          onCancel={() => setRevoking(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1057,6 +1295,9 @@ export function DashboardView() {
         <div>
           {/* Panel Access */}
           <PanelAccessCard systemStatus={systemStatus} tlsStatus={tlsStatus} roomName={String(projectName ?? "")} />
+
+          {/* Panels: waiting for approval, approved, denied */}
+          <PanelsCard />
 
           {/* Monitored readings */}
           {monitored.length > 0 && (
