@@ -1,0 +1,252 @@
+import { request } from "./base";
+import type { DiscoveredDevice, DiscoveryEvidence, IdentificationMatch } from "./discoveryClient";
+import { downloadFromApi } from "./downloadFile";
+
+// --- Device Audit (/api/audit) ---
+
+/** A project device that connects to the audited address. */
+export interface AuditConflictDevice {
+  device_id: string;
+  device_name: string;
+  driver: string;
+  transport: string;
+  host: string;
+  port: number | string | null;
+  bridge: string;
+  connected: boolean;
+  paused: boolean;
+}
+
+export interface AuditConflicts {
+  address: string;
+  /** "" when the address resolves to nothing. */
+  ip: string;
+  resolved: boolean;
+  devices: AuditConflictDevice[];
+}
+
+export type AuditActivityKey =
+  | "address"
+  | "ports"
+  | "greetings"
+  | "web"
+  | "announcements"
+  | "snmp"
+  | "probes";
+
+export type AuditActivityStatus = "pending" | "running" | "done" | "skipped" | "failed";
+
+export interface AuditActivity {
+  key: AuditActivityKey;
+  status: AuditActivityStatus;
+  message: string;
+  started_at: number | null;
+  finished_at: number | null;
+}
+
+export type AuditVerdictState = "identified" | "possible" | "unknown" | "nothing";
+
+export interface AuditSignalHits {
+  source: string;
+  tier: string;
+  strong: boolean;
+  drivers: string[];
+  evidence: DiscoveryEvidence;
+}
+
+export interface AuditSignalCheck {
+  kind: string;
+  declared: string;
+  strong: boolean;
+  cross_vendor: boolean;
+  status: "matched" | "not_matched" | "not_observed";
+  observed: string[];
+  detail: string;
+}
+
+export interface AuditDriverName {
+  name: string;
+  manufacturer: string;
+  installed: boolean;
+}
+
+export interface AuditCatalog {
+  source?: string;
+  fetched_at?: number;
+  sha256?: string;
+  driver_count?: number;
+  error?: string;
+  reachable?: boolean;
+  used?: "fresh" | "cached" | "none";
+}
+
+export interface AuditVerdict {
+  state: AuditVerdictState;
+  sentence: string;
+  identification: IdentificationMatch;
+  explanation: {
+    signals: AuditSignalHits[];
+    drivers: Record<string, string[]>;
+    strong_drivers: string[];
+  };
+  drivers: Record<string, AuditDriverName>;
+  checks: Record<string, AuditSignalCheck[]>;
+  catalog: AuditCatalog;
+}
+
+export interface AuditLimit {
+  id: string;
+  text: string;
+}
+
+export interface AuditCheckResult {
+  verdict: AuditVerdict;
+  evidence: DiscoveryEvidence[];
+  device: DiscoveredDevice | null;
+  limits: AuditLimit[];
+  open_ports: number[];
+}
+
+export type AuditCheckStatus = "idle" | "running" | "done" | "failed" | "cancelled";
+
+export interface AuditCheckState {
+  status: AuditCheckStatus;
+  error: string;
+  activities: AuditActivity[];
+  result: AuditCheckResult | null;
+}
+
+export type AuditSessionStatus = "active" | "finished" | "cancelled" | "expired" | "shutdown";
+
+export interface AuditTester {
+  name?: string;
+  company?: string;
+  email?: string;
+  notes?: string;
+  leave_out_serial?: boolean;
+}
+
+export interface AuditSessionState {
+  session_id: string;
+  status: AuditSessionStatus;
+  target: { address: string; ip: string };
+  options: { extended: boolean; snmp_communities: number };
+  started_at: number;
+  ended_at: number | null;
+  steps: string[];
+  paused: { device_id: string; name: string; owned: boolean }[];
+  report_name: string | null;
+  tester: AuditTester;
+  check: AuditCheckState | null;
+}
+
+export interface AuditTimelineEntry {
+  t: number;
+  kind: string;
+  text: string;
+  data?: Record<string, unknown>;
+}
+
+export interface AuditStartBody {
+  address: string;
+  pause: string[];
+  extended: boolean;
+  snmp_communities: string[];
+}
+
+export interface AuditReportFile {
+  name: string;
+  size: number;
+  modified: number;
+}
+
+/** The report record (report.json). Only the parts the wizard reads are typed. */
+export interface AuditReport {
+  report_version: number;
+  complete: boolean;
+  target: { address: string; ip: string; hostname: string | null; same_subnet: boolean | null };
+  device: {
+    reported: {
+      manufacturer: string | null;
+      model: string | null;
+      firmware: string | null;
+      serial_number: string | null;
+      device_name: string | null;
+      hostname: string | null;
+      mac: string | null;
+    };
+  };
+  catalog: AuditCatalog;
+  footprint: {
+    ping?: { result?: string };
+    mac?: { address: string | null; source: string };
+    ports?: { checked: number; range: string; open: number[]; refused: number[]; filtered: number[] };
+    web?: Record<string, { status_line: string; title: string | null; www_authenticate: string | null; error: string }>;
+    mdns?: { services: { service_type: string | null }[] } | null;
+    ssdp?: { device_types: string[] } | null;
+    amx_ddp?: { make: string | null; model: string | null } | null;
+    snmp?: { answered: boolean; values?: Record<string, string> };
+  };
+  verdict: Omit<AuditVerdict, "catalog">;
+  limits: AuditLimit[];
+}
+
+export function getAuditConflicts(address: string): Promise<AuditConflicts> {
+  return request(`/audit/conflicts?${new URLSearchParams({ address }).toString()}`);
+}
+
+export function startAudit(body: AuditStartBody): Promise<{ session: AuditSessionState }> {
+  return request("/audit/sessions", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getCurrentAudit(): Promise<{ session: AuditSessionState | null }> {
+  return request("/audit/sessions/current");
+}
+
+export function endAudit(
+  sessionId: string,
+  cancel = false,
+): Promise<{ session: AuditSessionState }> {
+  const query = cancel ? "?cancel=true" : "";
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}${query}`, { method: "DELETE" });
+}
+
+export function startNetworkCheck(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/network-check`, {
+    method: "POST",
+  });
+}
+
+export function setAuditTester(
+  sessionId: string,
+  tester: AuditTester,
+): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/tester`, {
+    method: "PATCH",
+    body: JSON.stringify(tester),
+  });
+}
+
+export function getAuditReport(sessionId: string): Promise<AuditReport> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/report?format=json`);
+}
+
+/** Save the session's report zip; returns the file name. */
+export function downloadAuditReport(sessionId: string): Promise<string> {
+  return downloadFromApi(
+    `/audit/sessions/${encodeURIComponent(sessionId)}/report`,
+    "openavc-device-audit.zip",
+  );
+}
+
+export function listAuditReports(): Promise<{ reports: AuditReportFile[] }> {
+  return request("/audit/reports");
+}
+
+export function downloadSavedAuditReport(name: string): Promise<string> {
+  return downloadFromApi(`/audit/reports/${encodeURIComponent(name)}`, name);
+}
+
+export function deleteAuditReport(name: string): Promise<{ deleted: string }> {
+  return request(`/audit/reports/${encodeURIComponent(name)}`, { method: "DELETE" });
+}

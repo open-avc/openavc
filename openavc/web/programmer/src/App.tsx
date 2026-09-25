@@ -6,6 +6,7 @@ import ToastContainer from "./components/shared/ToastContainer";
 import { ShortcutsPanel } from "./components/shared/ShortcutsPanel";
 import { MissingDriversWatcher } from "./components/shared/MissingDriversWatcher";
 import { PanelRequestBanner } from "./components/shared/PanelRequestBanner";
+import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
 import { DashboardView } from "./views/DashboardView";
@@ -284,6 +285,7 @@ function AuthedApp() {
       <ToastContainer />
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
       <MissingDriversWatcher />
+      <DeviceAuditHost />
     </div>
   );
 }

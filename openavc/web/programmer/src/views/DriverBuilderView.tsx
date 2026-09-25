@@ -7,6 +7,8 @@ import { CommunityBrowser } from "../components/driver-builder/CommunityBrowser"
 import { InstalledDriversView } from "../components/driver-builder/InstalledDriversView";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
+import { ClipboardCheck } from "lucide-react";
+import { useAuditStore } from "../store/auditStore";
 
 type ViewTab = "installed" | "create" | "browse-community";
 
@@ -136,6 +138,26 @@ export function DriverPanel() {
             Loading...
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => useAuditStore.getState().openWizard()}
+          title="Check a device on the network and write a report about it"
+          style={{
+            marginLeft: "auto",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-xs)",
+            padding: "var(--space-xs) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-hover)",
+            color: "var(--text-primary)",
+            fontSize: "var(--font-size-sm)",
+            cursor: "pointer",
+          }}
+        >
+          <ClipboardCheck size={14} /> Audit a Device
+        </button>
       </div>
 
       {viewTab === "installed" ? (

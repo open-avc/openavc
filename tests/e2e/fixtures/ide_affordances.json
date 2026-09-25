@@ -88,6 +88,7 @@
     "BUTTON Installed",
     "BUTTON Create",
     "BUTTON Browse Community",
+    "BUTTON Check a device on the network and write a report about it",
     "INPUT placeholder: Search drivers...",
     "CLICKABLE IR DeviceGeneric \u00b7 utility",
     "CLICKABLE E2E Test ControllerPYOpenAVC \u00b7 controller"

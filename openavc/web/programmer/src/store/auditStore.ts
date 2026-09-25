@@ -1,0 +1,47 @@
+/**
+ * Device audit store: whether the wizard is open, which step it shows, and
+ * the running session as the server last described it.
+ *
+ * The session is replaced wholesale on every `audit.state` and patched per
+ * activity on `audit.progress` (see applyAuditMessage), so a component that
+ * selects `session` re-renders only when it changed. Select primitives or the
+ * stored objects themselves; never build an object inside a selector.
+ */
+import { create } from "zustand";
+import type { AuditSessionState, AuditTimelineEntry } from "../api/auditClient";
+import { applyAuditMessage, type AuditStep } from "../views/devices/audit/auditHelpers";
+
+interface AuditStoreState {
+  open: boolean;
+  /** The address an entry point filled in (a Discovery result, say). */
+  presetAddress: string;
+  step: AuditStep;
+  session: AuditSessionState | null;
+  timeline: AuditTimelineEntry[];
+
+  openWizard: (opts?: { address?: string }) => void;
+  closeWizard: () => void;
+  setStep: (step: AuditStep) => void;
+  setSession: (session: AuditSessionState | null) => void;
+  applyMessage: (msg: Record<string, unknown>) => void;
+}
+
+export const useAuditStore = create<AuditStoreState>((set) => ({
+  open: false,
+  presetAddress: "",
+  step: "target",
+  session: null,
+  timeline: [],
+
+  openWizard: (opts) =>
+    set({ open: true, presetAddress: opts?.address ?? "", step: "target", timeline: [] }),
+  closeWizard: () => set({ open: false, session: null, timeline: [], step: "target" }),
+  setStep: (step) => set({ step }),
+  setSession: (session) => set({ session }),
+  applyMessage: (msg) =>
+    set((state) => {
+      const next = applyAuditMessage(state.session, state.timeline, msg);
+      if (next.session === state.session && next.timeline === state.timeline) return state;
+      return { session: next.session, timeline: next.timeline };
+    }),
+}));
