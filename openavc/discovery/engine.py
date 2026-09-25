@@ -158,6 +158,60 @@ _REPING_MAX_HOSTS: int = 128
 _REPING_MAX_SECONDS: float = 6.0
 
 
+# Generic alternate web, streaming and management ports a thorough scan adds.
+# No vendor labels.
+THOROUGH_EXTRA_PORTS: tuple[int, ...] = (554, 3000, 4000, 5060, 8443, 8888, 9000, 10000)
+
+
+def hostname_evidence(hostname: str, index: SignalIndex) -> list:
+    """The evidence a scan records for a host name.
+
+    One record per driver pattern the name matches, so the "Why?" reveal can
+    show the pattern that fired; a single bare record when none does, as the
+    audit trail.
+    """
+    patterns = index.matched_hostname_patterns(hostname)
+    if patterns:
+        return [evidence_hostname(hostname, matched_pattern=pat) for pat in patterns]
+    return [evidence_hostname(hostname)]
+
+
+def mac_info_and_evidence(
+    mac: str, oui_db: OUIDatabase,
+) -> tuple[dict[str, Any], Any]:
+    """What a MAC address tells a scan: device info and the OUI evidence.
+
+    The info carries ``mac`` and, when the OUI table knows the prefix, the
+    ``manufacturer`` and ``category`` it names (the network card's maker,
+    which is often not the device's).
+    """
+    info: dict[str, Any] = {"mac": mac}
+    vendor = None
+    found = oui_db.lookup(mac)
+    if found:
+        vendor, category = found
+        info["manufacturer"] = vendor
+        info["category"] = category
+    return info, evidence_oui(mac, vendor=vendor)
+
+
+def derived_evidence(
+    evidence_log: list, open_ports: list[int], index: SignalIndex,
+) -> list:
+    """The records a scan adds to a device's evidence in its last phase.
+
+    An open-port record for each open port some driver's ``port_open:`` hint
+    names (bare openness on a generic port is too weak to record for every
+    port), and the manufacturer strings lifted from probe replies.
+    """
+    records = [
+        evidence_open_port(port) for port in open_ports
+        if index.find_soft_open_port(port)
+    ]
+    records.extend(extract_vendor_strings(evidence_log + records))
+    return records
+
+
 async def _resolve_hostnames(
     ips: list[str],
     concurrency: int = 20,
@@ -402,6 +456,11 @@ class DiscoveryEngine:
             len(self._discovery_companions),
         )
 
+    @property
+    def discovery_companions(self) -> dict[str, CompanionProbe]:
+        """The loaded Python discovery companions, by driver id (a copy)."""
+        return dict(self._discovery_companions)
+
     def load_driver_hints_from_registry(self, registry: list[dict[str, Any]]) -> None:
         """Parse new-schema discovery hints + build the SignalIndex.
 
@@ -412,7 +471,7 @@ class DiscoveryEngine:
         self._installed_registry = list(registry)
         self._rebuild_signal_index(community_drivers=[])
 
-    async def refresh_signal_index_with_catalog(self) -> None:
+    async def refresh_signal_index_with_catalog(self, force_catalog: bool = False) -> None:
         """Re-fold the community catalog into the SignalIndex.
 
         Discovery's job is to suggest what driver to install, so the
@@ -420,10 +479,12 @@ class DiscoveryEngine:
         the installed registry does. Installed wins on collisions.
 
         Called at scan start so a freshly-fetched catalog takes effect
-        without a server restart.
+        without a server restart. ``force_catalog`` fetches the catalog now
+        instead of taking a cached copy (a device audit records which
+        catalog it checked against, so it wants the current one).
         """
         try:
-            community = await self.community_index.get_drivers()
+            community = await self.community_index.get_drivers(force=force_catalog)
         except Exception:
             log.warning("Could not fetch community catalog for SignalIndex; using installed only", exc_info=True)
             community = []
@@ -510,6 +571,40 @@ class DiscoveryEngine:
             len(all_hints), len(installed_hints), len(community_hints),
             self.signal_index.driver_count(), added,
         )
+
+    def port_scan_lists(
+        self, community_drivers: list[dict[str, Any]], extended: bool,
+    ) -> tuple[list[int], list[int]]:
+        """(core, full) TCP port lists a scan checks.
+
+        Every loaded driver contributes the port it declares for
+        ``tcp_probe:`` and ``port_open:`` hints; the community catalog
+        contributes ports of un-installed drivers so a known-but-uninstalled
+        device still surfaces with its open ports; and a small generic
+        baseline (SSH, Telnet, HTTP/HTTPS, alt-HTTP) covers banner reading and
+        web management for devices no driver claims yet. ``extended`` (a
+        thorough scan) adds ``THOROUGH_EXTRA_PORTS``.
+
+        ``core`` is the AV-critical subset a budget narrows to when the full
+        list will not fit: the baseline plus the ports of drivers actually
+        loaded here.
+        """
+        port_set: set[int] = set(BASELINE_PORTS)
+        for hint in self.discovery_hints:
+            if hint.tcp_probe is not None:
+                port_set.add(hint.tcp_probe.port)
+            for p in hint.port_open:
+                port_set.add(p)
+        core = sorted(port_set)
+        for drv in community_drivers:
+            if not isinstance(drv, dict):
+                continue
+            for p in drv.get("ports", []) or []:
+                if isinstance(p, int):
+                    port_set.add(p)
+        if extended:
+            port_set.update(THOROUGH_EXTRA_PORTS)
+        return core, sorted(port_set)
 
     def get_results(self) -> list[dict[str, Any]]:
         """Return current discovery results sorted identified > possible > unknown."""
@@ -998,41 +1093,13 @@ class DiscoveryEngine:
             # --- Phase 5: Port Scan ---
             await self._set_phase(5, "port_scan", "Probing device ports...")
 
-            # Build the scan list at runtime: every loaded driver
-            # contributes the port it declares for ``tcp_probe:`` and
-            # ``port_open:`` hints; the community catalog contributes
-            # ports of un-installed drivers so a known-but-uninstalled
-            # device still surfaces with its open ports in the UI; and
-            # a small generic baseline (SSH, Telnet, HTTP/HTTPS,
-            # alt-HTTP) covers banner reading and web management for
-            # devices we don't yet have a driver for.
-            port_set: set[int] = set(BASELINE_PORTS)
-
-            for hint in self.discovery_hints:
-                if hint.tcp_probe is not None:
-                    port_set.add(hint.tcp_probe.port)
-                for p in hint.port_open:
-                    port_set.add(p)
-
-            # The AV-critical subset the budget narrows to when the full list
-            # won't fit: the universal baseline plus the ports of drivers
-            # actually installed here. Everything past this point is coverage
-            # for devices no installed driver claims.
-            core_port_list = sorted(port_set)
-
+            # Build the scan list at runtime (see port_scan_lists): driver
+            # probe and port_open ports, the catalog's ports, the generic
+            # baseline, and the thorough extras.
             community_drivers = await self.community_index.get_drivers()
-            for drv in community_drivers:
-                for p in drv.get("ports", []):
-                    if isinstance(p, int):
-                        port_set.add(p)
-
-            # Thorough mode: add a handful of generic extended ports.
-            # No vendor labels — these are common alternate web / RTSP
-            # / management ports.
-            if policy.extended_ports:
-                port_set.update([554, 3000, 4000, 5060, 8443, 8888, 9000, 10000])
-
-            port_list = sorted(port_set)
+            core_port_list, port_list = self.port_scan_lists(
+                community_drivers, extended=policy.extended_ports,
+            )
             log.info(
                 "Port scan: %d ports (%d baseline + driver/catalog)",
                 len(port_list), len(BASELINE_PORTS),
@@ -1298,33 +1365,16 @@ class DiscoveryEngine:
                         hostname = nbt_name
 
             if hostname:
-                # One evidence record per matching driver pattern
-                # so the "Why?" reveal can render the specific
-                # regex that fired. If no driver pattern matches,
-                # emit a single bare record as audit trail.
-                matched_patterns = self.signal_index.matched_hostname_patterns(hostname)
-                if matched_patterns:
-                    for pat in matched_patterns:
-                        device.evidence_log.append(
-                            evidence_hostname(hostname, matched_pattern=pat)
-                        )
-                else:
-                    device.evidence_log.append(evidence_hostname(hostname))
+                device.evidence_log.extend(hostname_evidence(hostname, self.signal_index))
 
             # MAC + OUI: lookup keeps the friendly vendor name
             # visible in the UI; the matcher consumes the OUI
             # enrichment evidence record instead.
             mac = arp_table.get(ip)
             if mac:
-                info["mac"] = mac
-                oui_result = self.oui_db.lookup(mac)
-                oui_vendor = None
-                if oui_result:
-                    manufacturer, category = oui_result
-                    info["manufacturer"] = manufacturer
-                    info["category"] = category
-                    oui_vendor = manufacturer
-                device.evidence_log.append(evidence_oui(mac, vendor=oui_vendor))
+                mac_info, oui_ev = mac_info_and_evidence(mac, self.oui_db)
+                info.update(mac_info)
+                device.evidence_log.append(oui_ev)
 
             if info:
                 # Split the merge by trust. manufacturer/category
@@ -1529,22 +1579,12 @@ class DiscoveryEngine:
 
         finalize_total = len(self.results)
         for i, device in enumerate(self.results.values()):
-            # Emit open-port enrichment evidence for any port that's
-            # both observed open AND referenced by at least one
-            # driver's ``port_open:`` hint. Bare openness on a
-            # generic port is too weak to emit unconditionally.
-            for port in device.open_ports:
-                if self.signal_index.find_soft_open_port(port):
-                    device.evidence_log.append(evidence_open_port(port))
-
-            # Mine probe responses for manufacturer / make strings
-            # and append vendor_string enrichment evidence so the
-            # matcher can pick a best-fit driver via
-            # ``manufacturer_alias:`` hints — e.g. a probe response
-            # carrying ``manufacturer=<vendor>`` surfaces a driver
-            # that claims that alias without needing an OUI hit.
+            # Open-port records for ports a driver's port_open: hint names,
+            # and manufacturer strings mined from probe replies (so a reply
+            # carrying ``manufacturer=<vendor>`` surfaces a driver that
+            # claims that alias without an OUI hit).
             device.evidence_log.extend(
-                extract_vendor_strings(device.evidence_log)
+                derived_evidence(device.evidence_log, device.open_ports, self.signal_index)
             )
 
             device.identification = self.tier_matcher.match(device.evidence_log)
@@ -2159,20 +2199,13 @@ class DiscoveryEngine:
             if not mac:
                 continue
             device = self._get_or_create(ip)
-            info: dict[str, Any] = {"mac": mac}
-            oui_result = self.oui_db.lookup(mac)
-            oui_vendor = None
-            if oui_result:
-                manufacturer, category = oui_result
-                info["manufacturer"] = manufacturer
-                info["category"] = category
-                oui_vendor = manufacturer
+            info, oui_ev = mac_info_and_evidence(mac, self.oui_db)
             # fill_only: this runs AFTER passive collection, and OUI names
             # the NIC vendor — a longer IEEE registrant string must not
             # clobber the manufacturer/category a device self-reported via
             # mDNS/SSDP/SNMP. Enrich empty fields; never overwrite.
             merge_device_info(device, info, "arp", fill_only=True)
-            device.evidence_log.append(evidence_oui(mac, vendor=oui_vendor))
+            device.evidence_log.append(oui_ev)
             enriched += 1
             await self._emit_device_update(device, "arp_harvest")
         if enriched:

@@ -45,6 +45,7 @@ from typing import Any, Sequence
 
 from openavc.discovery.certificates import (
     certificate_match_text,
+    discovery_tls_context,
     read_peer_certificate,
 )
 from openavc.discovery.hints import (
@@ -89,22 +90,9 @@ _MAX_PROBE_RESPONDERS = 512
 _PROBE_READ_QUIET_SECONDS = 1.5
 
 
-def _make_probe_tls_context() -> ssl.SSLContext:
-    """A permissive TLS context for ``tls: true`` tcp probes.
-
-    Discovery happens before a device is trusted or configured, and AV gear
-    ships self-signed certs out of the box, so a probe can't verify the chain
-    or hostname — it only needs the encrypted channel to read the device's
-    own banner/landing page. Verification is the runtime driver's job once the
-    user adds the device. Built once and reused; it holds no per-host state.
-    """
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
-
-
-_PROBE_TLS_CONTEXT = _make_probe_tls_context()
+# ``tls: true`` probes connect with discovery's permissive context: a device
+# is not trusted yet and usually presents a self-signed certificate.
+_PROBE_TLS_CONTEXT = discovery_tls_context()
 
 
 def _bytes_view(data: bytes) -> dict[str, str]:

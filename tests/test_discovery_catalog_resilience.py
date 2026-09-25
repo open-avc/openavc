@@ -119,6 +119,14 @@ def _fetch_returning(data):
     return _fetch
 
 
+def _raw_fetch_returning(data):
+    import json
+
+    async def _fetch(_path):
+        return json.dumps(data).encode(), ""
+    return _fetch
+
+
 async def test_index_cache_skips_non_object_driver_entries(monkeypatch, caplog):
     """A non-dict element in index.json is dropped; the rest survive."""
     payload = {"drivers": [
@@ -127,7 +135,7 @@ async def test_index_cache_skips_non_object_driver_entries(monkeypatch, caplog):
         None,
         {"id": "acme_gadget", "version": "1.0.0"},
     ]}
-    monkeypatch.setattr(ci, "_fetch_json_with_retry", _fetch_returning(payload))
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", _raw_fetch_returning(payload))
     cache = ci.CommunityIndexCache()
     with caplog.at_level(logging.WARNING):
         drivers = await cache.get_drivers()
@@ -138,7 +146,7 @@ async def test_index_cache_skips_non_object_driver_entries(monkeypatch, caplog):
 
 async def test_index_cache_unexpected_shape_ignored(monkeypatch):
     """A non-list `drivers` value is ignored rather than cached blindly."""
-    monkeypatch.setattr(ci, "_fetch_json_with_retry", _fetch_returning({"drivers": "oops"}))
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", _raw_fetch_returning({"drivers": "oops"}))
     cache = ci.CommunityIndexCache()
     assert await cache.get_drivers() == []
 
@@ -169,3 +177,53 @@ def test_rebuild_signal_index_skips_non_dict_catalog_entry(caplog):
         engine._rebuild_signal_index(catalog)  # must not raise
     probe = engine.signal_index.find_strong(KIND_ACTIVE_PROBE, "custom_acme_widget_tcp")
     assert probe is not None and probe.driver_id == "acme_widget"
+
+
+async def test_index_cache_records_which_catalog_it_holds(monkeypatch):
+    """A forced fetch goes to the network even with a fresh cache, and the
+    cache says when, from where, which bytes and how many drivers."""
+    import hashlib
+    import json
+
+    payload = {"drivers": [{"id": "acme_widget", "version": "1.0.0"}]}
+    raw = json.dumps(payload).encode()
+    calls = []
+
+    async def fetch(path):
+        calls.append(path)
+        return raw, ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    cache = ci.CommunityIndexCache()
+    await cache.get_drivers()
+    await cache.get_drivers()
+    assert calls == ["index.json"]
+    await cache.get_drivers(force=True)
+    assert calls == ["index.json", "index.json"]
+
+    identity = cache.identity()
+    assert identity["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert identity["driver_count"] == 1
+    assert identity["error"] == ""
+    assert identity["source"].endswith("/index.json")
+
+
+async def test_a_failed_forced_fetch_keeps_the_old_copy_and_says_why(monkeypatch):
+    responses = [
+        (b'{"drivers": [{"id": "acme_widget"}]}', ""),
+        (None, "network unreachable"),
+    ]
+
+    async def fetch(_path):
+        return responses.pop(0)
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    cache = ci.CommunityIndexCache()
+    first = await cache.get_drivers()
+    fetched_at = cache.identity()["fetched_at"]
+    again = await cache.get_drivers(force=True)
+    assert again == first
+    identity = cache.identity()
+    assert identity["error"] == "network unreachable"
+    assert identity["fetched_at"] == fetched_at
+    assert identity["driver_count"] == 1

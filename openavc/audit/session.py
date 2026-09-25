@@ -190,7 +190,9 @@ class AuditSession:
         self.steps: list[str] = []
         self.paused: list[PausedDevice] = []
         self.timeline: list[TimelineEntry] = []
-        # Set by the network check and the report builder.
+        # Set by the network check (``footprint.open_for_session``) and the
+        # report builder.
+        self.check: Any = None
         self.footprint: Any = None
         self.report_name: str | None = None
         self._clock = clock

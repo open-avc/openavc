@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable, Awaitable
+from dataclasses import dataclass
+from typing import Any, Callable, Awaitable
 
 PORT_OPEN = "open"
 PORT_REFUSED = "refused"    # the host answered with a reset: it is there, the port is closed
@@ -187,3 +188,97 @@ async def grab_banners(
 
     await asyncio.gather(*[_grab(p) for p in banner_candidates])
     return banners
+
+
+@dataclass
+class PortGreeting:
+    """What a port said, unprompted, in the first seconds of a connection.
+
+    ``data`` is every byte read, exactly (a telnet port's option negotiation
+    included). ``first_byte_ms`` is when the first of them arrived, from the
+    connect. ``closed`` is True when the device ended the connection itself.
+    ``error`` says why nothing could be read (``refused``, ``timeout``, ...).
+    """
+
+    port: int
+    data: bytes = b""
+    first_byte_ms: float | None = None
+    closed: bool = False
+    error: str = ""
+    truncated: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "port": self.port,
+            "hex": self.data.hex(),
+            "text": self.data.decode("latin-1"),
+            "first_byte_ms": self.first_byte_ms,
+            "closed_by_device": self.closed,
+            "error": self.error,
+            "truncated": self.truncated,
+        }
+
+
+async def read_greeting(
+    ip: str,
+    port: int,
+    wait: float = 3.0,
+    source_ip: str = "",
+    max_bytes: int = 8192,
+    connect_timeout: float = 2.0,
+) -> PortGreeting:
+    """Connect, send nothing, and keep everything the port says for ``wait``.
+
+    The raw form of ``grab_banner``: every byte, not the first read decoded,
+    and the whole window, not the first segment. A single-device check uses
+    it on every open port; it sends no bytes, so it changes nothing.
+    """
+    greeting = PortGreeting(port=port)
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port, local_addr=_local_addr(source_ip)),
+            timeout=connect_timeout,
+        )
+    except asyncio.TimeoutError:
+        greeting.error = "timeout"
+        return greeting
+    except ConnectionRefusedError:
+        greeting.error = "refused"
+        return greeting
+    except OSError as exc:
+        greeting.error = str(exc) or type(exc).__name__
+        return greeting
+
+    loop = asyncio.get_running_loop()
+    began = loop.time()
+    deadline = began + wait
+    buf = bytearray()
+    try:
+        while len(buf) < max_bytes:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                chunk = await asyncio.wait_for(
+                    reader.read(max_bytes - len(buf)), timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                break
+            if not chunk:
+                greeting.closed = True
+                break
+            if not buf:
+                greeting.first_byte_ms = round((loop.time() - began) * 1000.0, 1)
+            buf += chunk
+        greeting.truncated = len(buf) >= max_bytes
+    except OSError as exc:
+        greeting.error = str(exc) or type(exc).__name__
+        greeting.closed = True
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except OSError:
+            pass
+    greeting.data = bytes(buf)
+    return greeting

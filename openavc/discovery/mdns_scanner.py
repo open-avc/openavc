@@ -16,7 +16,7 @@ import logging
 import socket
 import struct
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 from openavc.discovery.multicast import (
     join_group_on_interfaces,
@@ -487,6 +487,7 @@ class MDNSScanner:
         control_ip: str = "",
         service_types: list[str] | None = None,
         query_enumerated_types: bool = False,
+        enumerated_from: Iterable[str] = (),
     ) -> None:
         """``control_ip``: bind multicast group join to this interface IP.
         Empty string means INADDR_ANY (default route, all interfaces).
@@ -505,6 +506,11 @@ class MDNSScanner:
         instances of types no driver declares come back with their SRV and
         TXT. Off in normal scans (it multiplies the queries by whatever the
         network enumerates); a single-device check turns it on.
+
+        ``enumerated_from``: with ``query_enumerated_types``, query only the
+        types these addresses list, so a single-device check chases the
+        device's own types and not every type the network offers. Empty
+        means every source.
         """
         self._sock: socket.socket | None = None
         self._running = False
@@ -528,6 +534,7 @@ class MDNSScanner:
         # enumeration (claimed or not), keyed by the sender's IP.
         self._enumerated_types: dict[str, set[str]] = {}
         self._query_enumerated = query_enumerated_types
+        self._enumerated_from = frozenset(enumerated_from)
         # Enumerated types waiting for their own PTR query, and every type
         # ever queued, so each is queried once (only used when
         # query_enumerated_types is on).
@@ -974,6 +981,8 @@ class MDNSScanner:
             return
         types.add(normalized)
         if not self._query_enumerated:
+            return
+        if self._enumerated_from and sender_ip not in self._enumerated_from:
             return
         if (
             normalized in self._known_service_types_lower

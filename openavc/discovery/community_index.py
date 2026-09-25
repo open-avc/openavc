@@ -1,7 +1,15 @@
-"""Community driver index + device catalog caches — fetched from GitHub raw."""
+"""Community driver index + device catalog caches — fetched from GitHub raw.
+
+The index cache also keeps what it last fetched (``identity``): when, from
+where, the SHA-256 of the bytes, and how many drivers they held, or why the
+fetch failed. A device audit records that, so a report says exactly which
+catalog its device was checked against.
+"""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import time
 from typing import Any
@@ -12,13 +20,16 @@ COMMUNITY_REPO_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers
 CACHE_TTL = 600  # 10 minutes
 
 
-async def _fetch_json_with_retry(path: str) -> dict[str, Any] | list[Any] | None:
-    """Fetch a JSON file from the community repo with one retry. None on failure."""
+async def _fetch_raw_with_retry(path: str) -> tuple[bytes | None, str]:
+    """Fetch a file from the community repo with one retry.
+
+    Returns (bytes, "") or (None, why it failed).
+    """
     try:
         import httpx
     except ImportError:
         log.warning("httpx not installed — cannot fetch %s", path)
-        return None
+        return None, "httpx is not installed"
 
     last_error: Exception | None = None
     for attempt in range(2):
@@ -26,14 +37,26 @@ async def _fetch_json_with_retry(path: str) -> dict[str, Any] | list[Any] | None
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{COMMUNITY_REPO_URL}/{path}")
                 resp.raise_for_status()
-                return resp.json()
+                return resp.content, ""
         except Exception as e:
             last_error = e
             if attempt == 0:
                 import asyncio
                 await asyncio.sleep(2.0)
     log.warning("Failed to fetch %s after 2 attempts: %s", path, last_error)
-    return None
+    return None, str(last_error) or type(last_error).__name__
+
+
+async def _fetch_json_with_retry(path: str) -> dict[str, Any] | list[Any] | None:
+    """Fetch a JSON file from the community repo with one retry. None on failure."""
+    raw, _error = await _fetch_raw_with_retry(path)
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError as e:
+        log.warning("%s is not valid JSON: %s", path, e)
+        return None
 
 
 class CommunityIndexCache:
@@ -42,35 +65,68 @@ class CommunityIndexCache:
     def __init__(self) -> None:
         self._drivers: list[dict[str, Any]] = []
         self._fetched_at: float = 0.0
+        self._sha256: str = ""
+        self._last_error: str = ""
+        self._last_attempt: float = 0.0
 
-    async def get_drivers(self) -> list[dict[str, Any]]:
+    def identity(self) -> dict[str, Any]:
+        """Which catalog the cached drivers came from.
+
+        ``fetched_at`` and ``sha256`` describe the copy in use (0 and "" when
+        there is none); ``error`` is why the most recent fetch failed, empty
+        when it succeeded. A failed fetch keeps the earlier copy, so both can
+        be set at once.
+        """
+        return {
+            "source": f"{COMMUNITY_REPO_URL}/index.json",
+            "fetched_at": self._fetched_at,
+            "sha256": self._sha256,
+            "driver_count": len(self._drivers),
+            "last_attempt": self._last_attempt,
+            "error": self._last_error,
+        }
+
+    async def get_drivers(self, force: bool = False) -> list[dict[str, Any]]:
         """Fetch community drivers, using cached data if fresh enough.
 
-        Returns [] on network failure (offline-safe). Retries once on failure.
+        ``force`` skips the cache and fetches now (the cached copy is still
+        returned if that fetch fails). Returns [] on network failure
+        (offline-safe). Retries once on failure.
         """
         now = time.time()
-        if self._drivers and (now - self._fetched_at) < CACHE_TTL:
+        if not force and self._drivers and (now - self._fetched_at) < CACHE_TTL:
             return self._drivers
 
-        data = await _fetch_json_with_retry("index.json")
+        self._last_attempt = now
+        raw, error = await _fetch_raw_with_retry("index.json")
+        data: Any = None
+        if raw is not None:
+            try:
+                data = json.loads(raw)
+            except ValueError as e:
+                error = f"index.json is not valid JSON: {e}"
         if data is None:
+            self._last_error = error or "no data"
             if self._drivers:
                 log.info("Using stale community index cache (%d drivers)", len(self._drivers))
             return self._drivers
 
-        raw = data.get("drivers", []) if isinstance(data, dict) else data
-        if not isinstance(raw, list):
+        entries = data.get("drivers", []) if isinstance(data, dict) else data
+        if not isinstance(entries, list):
             log.warning("index.json had unexpected shape; ignoring")
+            self._last_error = "index.json had an unexpected shape"
             return self._drivers
         # Drop non-object entries so a single malformed element in the remote
         # catalog can't crash a downstream consumer's `.get(...)` (which would
         # abort the whole scan) — skip the bad entry, keep the rest.
-        drivers = [d for d in raw if isinstance(d, dict)]
-        skipped = len(raw) - len(drivers)
+        drivers = [d for d in entries if isinstance(d, dict)]
+        skipped = len(entries) - len(drivers)
         if skipped:
             log.warning("index.json: skipped %d malformed (non-object) driver entr(ies)", skipped)
         self._drivers = drivers
         self._fetched_at = now
+        self._sha256 = hashlib.sha256(raw or b"").hexdigest()
+        self._last_error = ""
         log.info("Community index fetched: %d drivers", len(drivers))
         return self._drivers
 

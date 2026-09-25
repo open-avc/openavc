@@ -17,9 +17,34 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import ssl
 from typing import Any
 
 log = logging.getLogger("discovery.certificates")
+
+
+def _make_discovery_tls_context() -> ssl.SSLContext:
+    """A permissive TLS context for talking to a device that is not trusted yet.
+
+    Discovery happens before a device is configured, and AV gear ships
+    self-signed certificates out of the box, so neither the chain nor the host
+    name can be verified; discovery only needs the encrypted channel to read
+    what the device says and the certificate it presents. Verification is the
+    driver's job once the device is added. Built once; it holds no per-host
+    state.
+    """
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+_DISCOVERY_TLS_CONTEXT = _make_discovery_tls_context()
+
+
+def discovery_tls_context() -> ssl.SSLContext:
+    """The one TLS context discovery connects with (see above)."""
+    return _DISCOVERY_TLS_CONTEXT
 
 
 def peer_certificate_der(writer: asyncio.StreamWriter) -> bytes | None:

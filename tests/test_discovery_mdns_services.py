@@ -197,6 +197,19 @@ class TestEnumeratedTypes:
         # Unknown-type tracking is unchanged by the option.
         assert scanner.unknown_service_types == {"_acmeother._udp.local.", "_acmethird._tcp.local."}
 
+    def test_enumerated_from_queries_only_those_sources(self):
+        """A single-device check chases the device's own types, not every
+        type the network lists."""
+        scanner = MDNSScanner(
+            service_types=[VENDOR_TYPE], query_enumerated_types=True,
+            enumerated_from=[DEVICE_IP],
+        )
+        scanner._process_response(_enumeration("_acmeother._udp.local."), "10.77.0.10")
+        scanner._process_response(_enumeration("_acmethird._tcp.local."), DEVICE_IP)
+        assert scanner._query_queue == ["_acmethird._tcp.local."]
+        # Every source's list is still recorded.
+        assert set(scanner.enumerated_service_types) == {DEVICE_IP, "10.77.0.10"}
+
     async def test_queued_types_are_sent(self):
         scanner = MDNSScanner(service_types=[VENDOR_TYPE], query_enumerated_types=True)
         scanner._process_response(_enumeration("_acmeother._udp.local."), DEVICE_IP)

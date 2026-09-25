@@ -29,6 +29,7 @@ from openavc.discovery.multicast import (
     send_per_interface,
     set_shared_port_reuse,
 )
+from openavc.discovery.http_fetch import http_get
 from openavc.discovery.network_scanner import get_interface_ips
 
 log = logging.getLogger("discovery.ssdp")
@@ -358,6 +359,20 @@ class SSDPScanner:
         """Stop the SSDP scanner."""
         self._running = False
         self._close_socket()
+
+    async def fetch_description(self, ip: str) -> bool:
+        """Fetch the UPnP description of the device at ``ip`` now.
+
+        For a listener that keeps running (a device audit's), where the fetch
+        a scan makes when its listen window closes never comes. Same guard as
+        a scan's fetch: only the address the device itself announced. True
+        when a description was read.
+        """
+        result = self._results.get(ip)
+        if result is None or not result.location:
+            return False
+        await self._fetch_single_description(result)
+        return bool(result.description_xml or result.friendly_name or result.model_name)
 
     async def _send_searches(self) -> None:
         """Send M-SEARCH for each search target, once per interface.
@@ -738,73 +753,19 @@ async def _http_fetch(
 
     A scan takes the first read of up to 16 KB. ``read_to_end`` keeps
     reading until the server closes, ``max_bytes``, or the timeout, for a
-    capture that wants the whole document.
+    capture that wants the whole document. The GET itself is discovery's one
+    (``http_fetch.http_get``); UPnP descriptions are plain HTTP, so an
+    ``https://`` location is not fetched.
     """
-    match = re.match(r"http://([^/:]+)(?::(\d+))?(/.*)$", url)
-    if not match:
+    if not url.lower().startswith("http://"):
         return None
-
-    host = match.group(1)
-    port = int(match.group(2)) if match.group(2) else 80
-    path = match.group(3) or "/"
-
-    try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(
-                host, port,
-                local_addr=(source_ip, 0) if source_ip else None,
-            ),
-            timeout=timeout,
-        )
-    except (asyncio.TimeoutError, OSError):
+    exchange = await http_get(
+        url, timeout=timeout, source_ip=source_ip,
+        max_bytes=max_bytes, read_to_end=read_to_end,
+    )
+    if exchange is None or exchange.error:
         return None
-
-    try:
-        request = (
-            f"GET {path} HTTP/1.0\r\n"
-            f"Host: {host}\r\n"
-            f"Connection: close\r\n"
-            f"\r\n"
-        )
-        writer.write(request.encode("utf-8"))
-        await writer.drain()
-
-        response = await asyncio.wait_for(
-            reader.read(max_bytes),
-            timeout=timeout,
-        )
-        if read_to_end:
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + timeout
-            chunks = [response]
-            size = len(response)
-            while response and size < max_bytes and loop.time() < deadline:
-                try:
-                    response = await asyncio.wait_for(
-                        reader.read(max_bytes - size),
-                        timeout=max(0.05, deadline - loop.time()),
-                    )
-                except asyncio.TimeoutError:
-                    break
-                chunks.append(response)
-                size += len(response)
-            response = b"".join(chunks)
-        writer.close()
-
-        text = response.decode("utf-8", errors="replace")
-
-        # Split the HTTP head from the body at the first blank line
-        header_end = text.find("\r\n\r\n")
-        if header_end >= 0:
-            return text[:header_end], text[header_end + 4:]
-        return "", text
-    except (asyncio.TimeoutError, OSError):
-        return None
-    finally:
-        try:
-            writer.close()
-        except OSError:
-            pass
+    return exchange.head, exchange.body.decode("utf-8", errors="replace")
 
 
 # --- Socket Creation ---
