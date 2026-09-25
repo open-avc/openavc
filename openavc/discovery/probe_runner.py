@@ -20,6 +20,16 @@ acquires before each ``sendto`` and the TCP active runner before each
 connect, so both send paths honor the one global limit. The runner
 does not retry — a missed reply is silently a missed reply, which is
 the right behavior for a discovery probe.
+
+Observations
+------------
+A scan keeps only the replies that matched, as ``Evidence``. The
+``observe_*`` runners also return a ``ProbeObservation`` for every exchange,
+matched or not: the bytes sent and received, the certificate subject, the
+``then:`` step, the timing, and why nothing came back when nothing did. A
+single-device check needs the misses as much as the matches (a probe that
+nearly matched is how a driver's fingerprint gets corrected). The ``run_*``
+runners the scan calls are thin wrappers that return only the evidence.
 """
 
 from __future__ import annotations
@@ -29,7 +39,9 @@ import logging
 import re
 import socket
 import ssl
-from typing import Sequence
+import time
+from dataclasses import dataclass, field
+from typing import Any, Sequence
 
 from openavc.discovery.hints import (
     CustomProbeSpec,
@@ -128,6 +140,84 @@ def _read_peer_cert_subject(writer: asyncio.StreamWriter) -> str:
     except Exception as exc:  # malformed cert / parse failure — treat as no signal
         log.debug("probe_runner: peer cert parse failed: %s", exc)
         return ""
+
+
+def _bytes_view(data: bytes) -> dict[str, str]:
+    """Raw bytes as both hex and text, the way a report shows them."""
+    return {"hex": data.hex(), "text": data.decode("latin-1", errors="replace")}
+
+
+def _connect_error(exc: BaseException) -> str:
+    """A short, stable reason a probe never got to exchange anything."""
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return "timeout"
+    if isinstance(exc, ConnectionRefusedError):
+        return "refused"
+    if isinstance(exc, ssl.SSLError):
+        return f"tls: {exc}"
+    return str(exc) or type(exc).__name__
+
+
+@dataclass
+class ProbeObservation:
+    """One probe exchange as it happened, whether or not it matched.
+
+    ``target`` is the host a TCP probe connected to, or the host a UDP reply
+    came from. ``sent_to`` lists every address a UDP probe went to (a
+    directed broadcast, or unicast hosts); a UDP probe nothing answered is
+    one observation with an empty ``target`` and ``error`` ``"no reply"``.
+    ``error`` says why no exchange happened (``refused``, ``timeout``,
+    ``tls: ...``) or why one broke off; the bytes read before a break are
+    kept. Times are milliseconds from the connect or send.
+    """
+
+    probe_id: str
+    kind: str                      # "tcp" or "udp"
+    port: int
+    target: str
+    sent: bytes = b""
+    sent_to: tuple[str, ...] = ()
+    reply: bytes = b""
+    error: str = ""
+    tls: bool = False
+    cert_subject: str = ""
+    follow_up_sent: bytes = b""
+    follow_up_reply: bytes = b""
+    follow_up_ok: bool | None = None
+    started_at: float = field(default_factory=time.time)
+    connect_ms: float | None = None
+    first_reply_ms: float | None = None
+    elapsed_ms: float | None = None
+    matched: bool = False
+    evidence: Evidence | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "probe_id": self.probe_id,
+            "kind": self.kind,
+            "port": self.port,
+            "target": self.target,
+            "sent": _bytes_view(self.sent),
+            "reply": _bytes_view(self.reply),
+            "error": self.error,
+            "matched": self.matched,
+            "started_at": self.started_at,
+            "connect_ms": self.connect_ms,
+            "first_reply_ms": self.first_reply_ms,
+            "elapsed_ms": self.elapsed_ms,
+        }
+        if self.sent_to:
+            out["sent_to"] = list(self.sent_to)
+        if self.tls:
+            out["tls"] = True
+            out["cert_subject"] = self.cert_subject
+        if self.follow_up_sent or self.follow_up_ok is not None:
+            out["follow_up"] = {
+                "sent": _bytes_view(self.follow_up_sent),
+                "reply": _bytes_view(self.follow_up_reply),
+                "ok": self.follow_up_ok,
+            }
+        return out
 
 
 class RateLimiter:
@@ -266,21 +356,60 @@ async def run_udp_broadcast_probe(
     broadcast and only answers per-host probes).
 
     The runner binds to ``source_ip`` and acquires from
-    ``rate_limiter`` before each send.
+    ``rate_limiter`` before each send. ``observe_udp_probe`` is the same
+    run with every reply kept.
+    """
+    observations = await observe_udp_probe(
+        spec, targets=targets, source_ip=source_ip, rate_limiter=rate_limiter,
+    )
+    return {
+        obs.target: obs.evidence
+        for obs in observations
+        if obs.evidence is not None
+    }
+
+
+async def observe_udp_probe(
+    spec: CustomProbeSpec,
+    *,
+    targets: Sequence[str],
+    source_ip: str,
+    rate_limiter: RateLimiter,
+) -> list[ProbeObservation]:
+    """``run_udp_broadcast_probe``, returning every reply as an observation.
+
+    One observation per datagram received, matched or not, with its raw
+    bytes and arrival time. The first matching datagram from each responder
+    carries the ``Evidence`` a scan keeps (one record per device per probe,
+    as a scan has always kept). A probe nothing answered comes back as one
+    observation with ``error`` ``"no reply"`` (or why it could not be sent).
     """
     if spec.kind != "udp":
         raise ValueError(f"run_udp_broadcast_probe got non-udp spec: {spec.kind!r}")
     if not targets:
-        return {}
+        return []
+
+    sent_to = tuple(targets)
+    observations: list[ProbeObservation] = []
+
+    def _nothing(error: str) -> list[ProbeObservation]:
+        return [ProbeObservation(
+            probe_id=spec.probe_id, kind="udp", port=spec.port, target="",
+            sent=spec.send, sent_to=sent_to, error=error,
+        )]
 
     sock = _make_udp_socket(source_ip, broadcast=True)
     if sock is None:
-        return {}
+        return _nothing(f"could not bind a socket to {source_ip or 'any address'}")
 
-    results: dict[str, Evidence] = {}
+    matched_from: set[str] = set()
     cap_warned = False
+    obs_cap_warned = False
+    send_errors: list[str] = []
     loop = asyncio.get_event_loop()
     timeout_seconds = spec.timeout_ms / 1000.0
+    started_at = time.time()
+    sent_mono = loop.time()
 
     try:
         for target in targets:
@@ -295,10 +424,13 @@ async def run_udp_broadcast_probe(
                     spec.probe_id, target, spec.port, len(spec.send),
                 )
             except OSError as exc:
+                send_errors.append(f"{target}: {exc}")
                 log.debug(
                     "probe_runner: %s send to %s failed: %s",
                     spec.probe_id, target, exc,
                 )
+        # Reply times count from the last send.
+        sent_mono = loop.time()
 
         end = loop.time() + timeout_seconds
         while loop.time() < end:
@@ -317,11 +449,31 @@ async def run_udp_broadcast_probe(
                 break
 
             sender_ip = addr[0]
-            if sender_ip in results:
-                continue  # one evidence record per device per probe
+            arrived_ms = round((loop.time() - sent_mono) * 1000.0, 1)
+            obs: ProbeObservation | None = None
+            if len(observations) < _MAX_PROBE_RESPONDERS:
+                obs = ProbeObservation(
+                    probe_id=spec.probe_id, kind="udp", port=spec.port,
+                    target=sender_ip, sent=spec.send, sent_to=sent_to,
+                    reply=bytes(data), started_at=started_at,
+                    first_reply_ms=arrived_ms, elapsed_ms=arrived_ms,
+                )
+                observations.append(obs)
+            elif not obs_cap_warned:
+                obs_cap_warned = True
+                log.warning(
+                    "probe_runner: %s kept %d replies; not recording more "
+                    "for the rest of this probe window",
+                    spec.probe_id, _MAX_PROBE_RESPONDERS,
+                )
+
             if not _matches(data, spec.response_match):
                 continue
-            if len(results) >= _MAX_PROBE_RESPONDERS:
+            if obs is not None:
+                obs.matched = True
+            if sender_ip in matched_from:
+                continue  # one evidence record per device per probe
+            if len(matched_from) >= _MAX_PROBE_RESPONDERS:
                 # Flood guard: a spoofed-source responder storm would otherwise
                 # accumulate an unbounded results dict (each entry becomes a
                 # device + WS broadcast downstream). Drop new sources past the
@@ -340,13 +492,25 @@ async def run_udp_broadcast_probe(
             # which puts manufacturer/make exactly where
             # extract_vendor_strings looks for them.
             txt: dict[str, str] = {**reserved, **extracted}
-            results[sender_ip] = evidence_broadcast(
+            evidence = evidence_broadcast(
                 probe_id=spec.probe_id,
                 response={"ip": sender_ip},
                 txt=txt or None,
                 port=spec.port,
                 matched_pattern=describe_response_match(spec.response_match) or None,
             )
+            matched_from.add(sender_ip)
+            if obs is None:
+                # Past the observation cap, a match still reaches the scan.
+                obs = ProbeObservation(
+                    probe_id=spec.probe_id, kind="udp", port=spec.port,
+                    target=sender_ip, sent=spec.send, sent_to=sent_to,
+                    reply=bytes(data), started_at=started_at,
+                    first_reply_ms=arrived_ms, elapsed_ms=arrived_ms,
+                    matched=True,
+                )
+                observations.append(obs)
+            obs.evidence = evidence
             log.debug(
                 "probe_runner: %s match from %s reserved=%s extracted=%s",
                 spec.probe_id, sender_ip, reserved, extracted,
@@ -357,7 +521,11 @@ async def run_udp_broadcast_probe(
         except OSError:
             pass
 
-    return results
+    if not observations:
+        if send_errors and len(send_errors) == len(targets):
+            return _nothing("could not send: " + "; ".join(send_errors))
+        return _nothing("no reply")
+    return observations
 
 
 # ---------------------------------------------------------------------------
@@ -372,10 +540,10 @@ async def _run_follow_up(
     probe_id: str,
     target: str,
     port: int,
-) -> bool:
+) -> tuple[bool, bytes]:
     """Run a probe's second exchange on the established connection.
 
-    Returns True when the step's expectation held.
+    Returns whether the step's expectation held, and the bytes it read.
 
     For ``expect_silence`` the whole timeout is spent proving a negative, so it
     cannot short-circuit the way a matcher can: the device gets the full window
@@ -416,14 +584,15 @@ async def _run_follow_up(
         if _matches(bytes(acc), step.response_match):
             break
 
+    reply = bytes(acc)
     if step.expect_silence:
         ok = not acc
         log.debug(
             "probe_runner: %s follow-up silence check on %s:%d -> %s (%d bytes)",
             probe_id, target, port, "silent" if ok else "answered", len(acc),
         )
-        return ok
-    return _matches(bytes(acc), step.response_match)
+        return ok, reply
+    return _matches(reply, step.response_match), reply
 
 
 async def run_tcp_active_probe(
@@ -449,6 +618,32 @@ async def run_tcp_active_probe(
     from it immediately before connecting, so the documented global
     10/sec send cap actually bounds the TCP SYN rate too (a batch of
     matching hosts across many drivers can't burst past it).
+
+    ``observe_tcp_active_probe`` is the same run with the whole exchange
+    kept, matched or not.
+    """
+    observation = await observe_tcp_active_probe(
+        spec, target=target, source_ip=source_ip,
+        stagger_ms=stagger_ms, rate_limiter=rate_limiter,
+    )
+    return observation.evidence
+
+
+async def observe_tcp_active_probe(
+    spec: CustomProbeSpec,
+    *,
+    target: str,
+    source_ip: str,
+    stagger_ms: float = 0.0,
+    rate_limiter: RateLimiter | None = None,
+) -> ProbeObservation:
+    """``run_tcp_active_probe``, returning the exchange as an observation.
+
+    The observation holds what was sent, every byte read (up to the cap),
+    the certificate subject on a TLS probe, the ``then:`` step's bytes and
+    verdict, the connect and first-reply times, and why the exchange failed
+    when it did. ``evidence`` is set exactly when ``run_tcp_active_probe``
+    would return it.
     """
     if spec.kind != "tcp":
         raise ValueError(f"run_tcp_active_probe got non-tcp spec: {spec.kind!r}")
@@ -460,6 +655,16 @@ async def run_tcp_active_probe(
     # TCP-probe drivers and many matching hosts stays under the shared limit.
     if rate_limiter is not None:
         await rate_limiter.acquire()
+
+    obs = ProbeObservation(
+        probe_id=spec.probe_id, kind="tcp", port=spec.port, target=target,
+        tls=bool(spec.tls),
+    )
+    loop = asyncio.get_event_loop()
+    began = loop.time()
+
+    def _ms_since_start() -> float:
+        return round((loop.time() - began) * 1000.0, 1)
 
     timeout = spec.timeout_ms / 1000.0
     local_addr = (source_ip, 0) if source_ip else None
@@ -481,7 +686,10 @@ async def run_tcp_active_probe(
             "probe_runner: %s connect to %s:%d failed: %s",
             spec.probe_id, target, spec.port, exc,
         )
-        return None
+        obs.error = _connect_error(exc)
+        obs.elapsed_ms = _ms_since_start()
+        return obs
+    obs.connect_ms = _ms_since_start()
 
     match = spec.response_match
     has_matcher = (
@@ -500,14 +708,20 @@ async def run_tcp_active_probe(
     # declared follow-up that never ran (connection died first) stays None and
     # is treated as a miss below -- an unanswered question is not a pass.
     follow_up_ok: bool | None = None
+    acc = bytearray()
     try:
         # Self-signed identity certs carry the model (NVX: CN=DM-NVX-E20-<mac>).
-        if spec.tls and (spec.cert_subject is not None or spec.extract):
-            cert_subject_str = _read_peer_cert_subject(writer)
+        # The observation reads it on every TLS probe; the evidence uses it
+        # only when the probe matches on the cert or extracts from it.
+        if spec.tls:
+            obs.cert_subject = _read_peer_cert_subject(writer)
+            if spec.cert_subject is not None or spec.extract:
+                cert_subject_str = obs.cert_subject
 
         if not cert_only:
             if spec.send:
                 writer.write(spec.send)
+                obs.sent = spec.send
                 try:
                     await asyncio.wait_for(writer.drain(), timeout=timeout)
                 except (TimeoutError, asyncio.TimeoutError):
@@ -520,9 +734,7 @@ async def run_tcp_active_probe(
             # peer closes, the byte cap is reached, or the peer goes quiet for
             # _PROBE_READ_QUIET_SECONDS (whichever comes first). A connect-only
             # probe (no matcher) returns as soon as any reply arrives.
-            loop = asyncio.get_event_loop()
             deadline = loop.time() + timeout
-            acc = bytearray()
             while loop.time() < deadline and len(acc) < _MAX_RESPONSE_BYTES:
                 remaining = deadline - loop.time()
                 # Wait the full remaining budget for the first byte (a device
@@ -540,6 +752,8 @@ async def run_tcp_active_probe(
                     break  # first-byte budget elapsed, or peer went quiet mid-banner
                 if not chunk:
                     break  # peer closed the connection
+                if not acc:
+                    obs.first_reply_ms = _ms_since_start()
                 acc += chunk
                 if not has_matcher:
                     break  # connect-only probe: any reply is enough
@@ -550,7 +764,8 @@ async def run_tcp_active_probe(
         # Follow-up step, on the SAME connection. Only worth running when the
         # first exchange already matched — otherwise this is not the device.
         if spec.follow_up is not None and _matches(payload, spec.response_match):
-            follow_up_ok = await _run_follow_up(
+            obs.follow_up_sent = spec.follow_up.send
+            follow_up_ok, obs.follow_up_reply = await _run_follow_up(
                 spec.follow_up, reader, writer, spec.probe_id, target, spec.port,
             )
     except (ConnectionResetError, BrokenPipeError, OSError) as exc:
@@ -558,6 +773,8 @@ async def run_tcp_active_probe(
             "probe_runner: %s read from %s:%d failed: %s",
             spec.probe_id, target, spec.port, exc,
         )
+        obs.error = _connect_error(exc)
+        payload = payload or bytes(acc)
     finally:
         writer.close()
         try:
@@ -565,22 +782,26 @@ async def run_tcp_active_probe(
         except (OSError, ConnectionResetError):
             pass
 
+    obs.reply = payload
+    obs.follow_up_ok = follow_up_ok
+    obs.elapsed_ms = _ms_since_start()
+
     # Cert gate: a declared cert_subject must match, and stands in for the
     # payload requirement (a matched cert is signal enough on its own).
     if spec.cert_subject is not None:
         if not cert_subject_str or not spec.cert_subject.search(cert_subject_str):
-            return None
+            return obs
     elif not payload:
-        return None
+        return obs
     # The payload matcher (if any) must still pass; an empty matcher passes.
     if not _matches(payload, spec.response_match):
-        return None
+        return obs
     if spec.follow_up is not None and follow_up_ok is not True:
         log.debug(
             "probe_runner: %s follow-up not satisfied for %s:%d",
             spec.probe_id, target, spec.port,
         )
-        return None
+        return obs
 
     reserved, extracted = _apply_extract(payload, spec.extract)
     if cert_subject_str:
@@ -612,9 +833,11 @@ async def run_tcp_active_probe(
         "probe_runner: %s match from %s reserved=%s extracted=%s cert=%r",
         spec.probe_id, target, reserved, extracted, cert_subject_str,
     )
-    return evidence_active_probe(
+    obs.matched = True
+    obs.evidence = evidence_active_probe(
         spec.probe_id,
         response=response,
         port=spec.port,
         matched_pattern=matched_pattern,
     )
+    return obs
