@@ -116,6 +116,7 @@
     "BUTTON Test Controllere2e_test_controller",
     "BUTTON Disable device",
     "BUTTON Test device connection",
+    "BUTTON Check this device in detail and write a report about it",
     "BUTTON Edit device settings",
     "BUTTON Duplicate device",
     "BUTTON Delete device",

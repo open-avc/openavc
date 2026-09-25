@@ -221,6 +221,7 @@ def server_factory(tmp_path: Path, _install_test_driver):
         bind: str = "127.0.0.1",
         env: dict[str, str] | None = None,
         existing_system: bool = False,
+        drivers: dict[str, str] | None = None,
     ) -> _ServerHandle:
         gen = _start_server(
             tmp_path / f"srv-{uuid.uuid4().hex[:8]}",
@@ -229,6 +230,7 @@ def server_factory(tmp_path: Path, _install_test_driver):
             bind=bind,
             env=env,
             existing_system=existing_system,
+            drivers=drivers,
         )
         handle = next(gen)
         handles.append(handle)
@@ -254,6 +256,7 @@ def _start_server(
     bind: str = "127.0.0.1",
     env: dict[str, str] | None = None,
     existing_system: bool = False,
+    drivers: dict[str, str] | None = None,
 ):
     """Boot one server. ``bind`` is loopback unless a test needs the instance
     to see the browser as a device on the network (a loopback peer is the
@@ -262,7 +265,9 @@ def _start_server(
     test sets a password. ``existing_system`` makes the server look like one
     that was already running before this release: the instance id file that
     a first start creates is there before this start, which is what the
-    Panel access default reads."""
+    Panel access default reads. ``drivers`` maps file names to driver source
+    written into the server's ``driver_repo/`` before it boots, so a project
+    device can use one from the start."""
     tmp_root.mkdir(parents=True, exist_ok=True)
     data_dir = tmp_root / "data"
     data_dir.mkdir(exist_ok=True)
@@ -278,6 +283,8 @@ def _start_server(
     driver_repo = data_dir / "driver_repo"
     driver_repo.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(DRIVER_SRC, driver_repo / INSTALLED_DRIVER_NAME)
+    for filename, source in (drivers or {}).items():
+        (driver_repo / filename).write_bytes(source.encode("utf-8"))
 
     project_path = tmp_root / "project.avc"
     project_path.write_text(

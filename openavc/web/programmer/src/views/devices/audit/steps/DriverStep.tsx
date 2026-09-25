@@ -247,7 +247,7 @@ export function DriverStep() {
             </div>
           )}
 
-          {brand && (notListed || model) && (
+          {brand && (notListed || model || driverId) && (
             <fieldset style={{ border: "none", margin: "var(--space-md) 0 0", padding: 0 }}>
               <legend style={labelStyle}>Driver</legend>
               {drivers.length === 0 ? (
