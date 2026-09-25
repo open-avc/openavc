@@ -19,6 +19,7 @@ import asyncio
 import ipaddress
 from typing import Callable
 
+from openavc.core.device_traffic import RX, TX, record_traffic
 from openavc.transport.wire_log import format_wire_data
 from openavc.utils.logger import get_logger
 from .types import Callback
@@ -78,6 +79,7 @@ class UDPTransport:
         on_disconnect: Callback[[], None] | None = None,
         inter_command_delay: float = 0.0,
         name: str | None = None,
+        traffic_channel: str = "udp",
     ) -> None:
         """
         Args:
@@ -87,7 +89,10 @@ class UDPTransport:
             on_data: Callback for incoming datagrams (targeted mode).
             on_disconnect: Called on socket errors (for BaseDriver compat).
             inter_command_delay: Seconds to wait between sends.
-            name: Label for log messages.
+            name: Label for log messages, and the device id the traffic
+                  recorder files datagrams under (none recorded without it).
+            traffic_channel: The recorder's channel ("osc", "snmp" for the
+                  transports built on this one).
         """
         self.host = host
         self.port = port
@@ -95,6 +100,8 @@ class UDPTransport:
         self._on_disconnect = on_disconnect
         self._inter_command_delay = inter_command_delay
         self._name = name or "udp"
+        self._traffic_name = name or ""
+        self._traffic_channel = traffic_channel
         # Source to accept datagrams from in targeted mode. None = don't filter
         # (ad-hoc/broadcast/hostname target). Guards send_and_wait responses and
         # the on_data matcher against forged datagrams from other hosts.
@@ -174,6 +181,10 @@ class UDPTransport:
                 f"[{self._name}] TX: {_format_data(data, self._name)} "
                 f"-> {host}:{port}"
             )
+            record_traffic(
+                self._traffic_name, TX, data, channel=self._traffic_channel,
+                meta={"peer": f"{host}:{port}"},
+            )
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
 
@@ -218,6 +229,10 @@ class UDPTransport:
             log.info(
                 f"[{self._name}] TX: {_format_data(data, self._name)} -> "
                 f"{self.host}:{self.port}"
+            )
+            record_traffic(
+                self._traffic_name, TX, data, channel=self._traffic_channel,
+                meta={"peer": f"{self.host}:{self.port}"},
             )
 
             try:
@@ -309,6 +324,10 @@ class UDPTransport:
         log.debug(
             f"[{self._name}] RX: {_format_data(data, self._name)} "
             f"<- {addr[0]}:{addr[1]}"
+        )
+        record_traffic(
+            self._traffic_name, RX, data, channel=self._traffic_channel,
+            meta={"peer": f"{addr[0]}:{addr[1]}"},
         )
 
         # If someone is waiting for a response, put it in the queue

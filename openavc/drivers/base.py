@@ -40,6 +40,7 @@ from openavc.core.connection_fault import (
     normalize_child_fault_claim,
 )
 from openavc.core.condition_eval import _coerce_bool
+from openavc.core.device_traffic import record_traffic
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import (
@@ -765,6 +766,35 @@ class BaseDriver(ABC):
         ignored, so a trivial value cannot blank unrelated log text.
         """
         get_secret_registry().add_runtime_secret(self.device_id, value)
+
+    def record_traffic(
+        self,
+        direction: str,
+        data: bytes | str,
+        *,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """Report bytes this driver moved over a connection it owns.
+
+        Every platform transport records its own traffic, so a driver that
+        uses ``self.transport`` never needs this. A driver that owns its
+        session instead (a websocket library, its own socket) is invisible
+        to the device's communication monitor and to a device audit unless
+        it reports what it sends and receives here::
+
+            await self._ws.send(frame)
+            self.record_traffic("tx", frame)
+
+        ``direction`` is ``"tx"`` or ``"rx"``; text is recorded as UTF-8.
+        ``meta`` says what the bytes do not (a topic, a message type).
+        Credentials are masked when the traffic is shown, as for any other
+        channel.
+        """
+        payload = data.encode("utf-8") if isinstance(data, str) else bytes(data)
+        record_traffic(
+            self.device_id, "rx" if direction == "rx" else "tx", payload,
+            channel="driver", meta=meta,
+        )
 
     def set_project_child_entities(
         self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,

@@ -124,7 +124,8 @@ class SNMPTransport:
             port=self.port,
             on_disconnect=on_disconnect,
             inter_command_delay=inter_command_delay,
-            name=self._name,
+            name=name or None,
+            traffic_channel="snmp",
         )
         self._request_id = random.randint(0, _MAX_REQUEST_ID)
 

@@ -25,6 +25,7 @@ import ipaddress
 import time
 from typing import Any
 
+from openavc.core.device_traffic import RX, record_traffic
 from openavc.transport.osc_codec import osc_encode_message
 from openavc.transport.udp import UDPTransport, _expected_source_ip
 from openavc.utils.logger import get_logger
@@ -64,6 +65,9 @@ class OSCTransport:
         self._on_disconnect = on_disconnect
         self._inter_command_delay = inter_command_delay
         self._name = name or "osc"
+        # The device id traffic is recorded under (core/device_traffic.py);
+        # an unnamed transport records nothing.
+        self._traffic_name = name or ""
         self._tcp_mode = tcp
 
         self._udp: UDPTransport | None = None
@@ -93,7 +97,8 @@ class OSCTransport:
             on_data=self._on_data,
             on_disconnect=self._on_disconnect,
             inter_command_delay=self._inter_command_delay,
-            name=self._name,
+            name=self._traffic_name or None,
+            traffic_channel="osc",
         )
         await self._udp.open(local_addr=bind_addr)
 
@@ -128,8 +133,9 @@ class OSCTransport:
             delimiter=None,
             frame_parser=SlipFrameParser(),
             inter_command_delay=self._inter_command_delay,
-            name=self._name,
+            name=self._traffic_name or None,
             local_addr=(local_addr, 0) if local_addr else None,
+            traffic_channel="osc",
         )
         log.info(f"[{self._name}] OSC-over-TCP (SLIP) connected to "
                  f"{self._host}:{self._port}")
@@ -293,6 +299,8 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         self._on_data = on_data
         self._name = name
         self._parent = parent
+        # The device id feedback is recorded under (the transport's own).
+        self._traffic_name = getattr(parent, "_traffic_name", "") or ""
         # Same source filter as the send socket: only accept feedback from the
         # configured device (fail open for hostname/multicast/broadcast targets).
         self._expected_src = _expected_source_ip(parent._host if parent else None)
@@ -316,6 +324,10 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         if self._parent is not None:
             self._parent._listen_last_data = time.monotonic()
         log.debug(f"[{self._name}] RX: ({len(data)} bytes) <- {addr[0]}:{addr[1]}")
+        record_traffic(
+            self._traffic_name, RX, data, channel="osc",
+            meta={"peer": f"{addr[0]}:{addr[1]}"},
+        )
         if self._on_data is not None:
             try:
                 result = self._on_data(data)

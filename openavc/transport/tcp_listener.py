@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
+from openavc.core.device_traffic import RX, record_traffic
 from openavc.transport.frame_parsers import FrameParser
 from openavc.transport.multicast_listener import resolve_source_ips
 from openavc.utils.logger import get_logger
@@ -179,6 +180,10 @@ class _PortListener:
         frame: bytes,
         addr: tuple[str, int],
     ) -> None:
+        record_traffic(
+            sub.name, RX, frame, channel="tcp_listener",
+            meta={"peer": f"{addr[0]}:{addr[1]}", "port": self.port},
+        )
         try:
             result = sub._callback(frame, addr)
             if asyncio.iscoroutine(result):

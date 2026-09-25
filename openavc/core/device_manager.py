@@ -44,6 +44,7 @@ from openavc.drivers.registry import get_driver_class, is_driver_registered
 from openavc.core.device_config import bridge_first
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.state_store import StateStore
+from openavc.core.device_traffic import get_traffic_recorder
 from openavc.utils.log_redaction import get_secret_registry, redact_config
 from openavc.utils.logger import get_logger
 
@@ -668,6 +669,10 @@ class DeviceManager:
 
         # Also clean up orphan tracking
         self._orphaned_devices.pop(device_id, None)
+        # And its recent traffic, after the disconnect's last bytes: a device
+        # re-added under this id starts a fresh record (a reader still
+        # subscribed keeps its subscription).
+        get_traffic_recorder().forget(device_id)
 
         self._device_configs.pop(device_id, None)
         # Drop the detected web UI URL so a re-add under the same id re-detects

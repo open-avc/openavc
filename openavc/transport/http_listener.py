@@ -37,6 +37,7 @@ import socket
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from openavc.core.device_traffic import RX, body_part, header_pairs, record_traffic
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -185,6 +186,16 @@ async def dispatch(
             request.source_ip,
         )
         return 403
+    data, cut = body_part(request.body)
+    meta = {
+        "method": request.method,
+        "label": label,
+        "peer": request.source_ip,
+        "headers": header_pairs(request.headers),
+    }
+    if cut:
+        meta["truncated"] = True
+    record_traffic(sub.name, RX, data, channel="http_listener", meta=meta)
     try:
         result = sub._callback(request)
         if hasattr(result, "__await__"):

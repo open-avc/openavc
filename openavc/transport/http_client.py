@@ -32,6 +32,13 @@ from typing import Any, Callable
 
 import httpx
 
+from openavc.core.device_traffic import (
+    RX,
+    TX,
+    body_part,
+    header_pairs,
+    record_traffic,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -82,6 +89,8 @@ class SSEEventStream:
         self._idle_timeout = idle_timeout
         self._connect_timeout = connect_timeout
         self._name = name or path
+        # The device id events are recorded under (core/device_traffic.py).
+        self._traffic_name = name or ""
         self._closed = False
         self._session = session if isinstance(session, dict) else None
         self._on_session = on_session
@@ -293,8 +302,12 @@ class SSEEventStream:
     async def _dispatch(self, data: str) -> None:
         """Hand one event's data to the callback; a callback error must not
         kill the stream (the next event may parse fine)."""
+        payload = data.encode("utf-8")
+        record_traffic(
+            self._traffic_name, RX, payload, channel="sse", meta={"path": self.path},
+        )
         try:
-            result = self._callback(data.encode("utf-8"))
+            result = self._callback(payload)
             if asyncio.iscoroutine(result):
                 await result
         except Exception:
@@ -380,6 +393,9 @@ class HTTPClientTransport:
         self.default_headers = default_headers or {}
         self.timeout = timeout
         self._name = name or base_url
+        # The device id requests are recorded under (core/device_traffic.py);
+        # an unnamed client records nothing.
+        self._traffic_name = name or ""
         self._local_address = local_address
         self.max_response_bytes = max_response_bytes
 
@@ -593,6 +609,7 @@ class HTTPClientTransport:
                 headers=headers,
                 **({"timeout": timeout} if timeout is not None else {}),
             )
+            target = self._record_request(req, path)
             response = await self._client.send(req, stream=True)
             try:
                 declared = response.headers.get("content-length", "")
@@ -647,6 +664,7 @@ class HTTPClientTransport:
             log.info(
                 f"[{self._name}] {method} {path} -> {result.status_code}"
             )
+            self._record_response(method, target, response, body)
             return result
 
         except httpx.TimeoutException as e:
@@ -654,17 +672,73 @@ class HTTPClientTransport:
             # class name so the classifier still sees a "timeout" signal.
             self._last_error = str(e) or type(e).__name__
             log.warning(f"HTTP {method} {path} timeout: {e}")
+            self._record_failure(method, path, self._last_error)
             raise
         except httpx.ConnectError as e:
             self._last_error = str(e) or type(e).__name__
             log.error(f"HTTP {method} {path} connection error: {e}")
+            self._record_failure(method, path, self._last_error)
             raise ConnectionError(
                 f"Failed to connect to {self.base_url}{path}: {e}"
             ) from e
         except httpx.HTTPError as e:
             self._last_error = str(e) or type(e).__name__
             log.error(f"HTTP {method} {path} error: {e}")
+            self._record_failure(method, path, self._last_error)
             raise
+        except ValueError as e:
+            # The response-size ceiling above.
+            self._record_failure(method, path, str(e))
+            raise
+
+    # --- Traffic recording (core/device_traffic.py) ---
+
+    def _record_request(self, req: httpx.Request, path: str) -> str:
+        """Record a request as it will be sent; returns its request target."""
+        if not self._traffic_name:
+            return path
+        try:
+            target = req.url.raw_path.decode("ascii", "replace")
+        except Exception:
+            target = path
+        try:
+            content = bytes(req.content)
+        except Exception:  # a streamed body not read yet
+            content = b""
+        data, cut = body_part(content)
+        meta: dict[str, Any] = {
+            "method": req.method,
+            "target": target,
+            "headers": header_pairs(req.headers),
+        }
+        if cut:
+            meta["truncated"] = True
+        record_traffic(self._traffic_name, TX, data, channel="http", meta=meta)
+        return target
+
+    def _record_response(
+        self, method: str, target: str, response: httpx.Response, body: bytes,
+    ) -> None:
+        if not self._traffic_name:
+            return
+        data, cut = body_part(body)
+        meta: dict[str, Any] = {
+            "method": method,
+            "target": target,
+            "status": response.status_code,
+            "reason": response.reason_phrase,
+            "headers": header_pairs(response.headers),
+        }
+        if cut:
+            meta["truncated"] = True
+        record_traffic(self._traffic_name, RX, data, channel="http", meta=meta)
+
+    def _record_failure(self, method: str, path: str, error: str) -> None:
+        """A request that got no response: an empty entry saying why."""
+        record_traffic(
+            self._traffic_name, RX, b"", channel="http",
+            meta={"method": method, "target": path, "error": error},
+        )
 
     # --- Compatibility with BaseDriver/ConfigurableDriver transport interface ---
 

@@ -2761,6 +2761,16 @@ Everything else — the clean-slate reset, the connected declare and event, poll
 
 **Important**: If you do build a platform transport by hand anywhere, always pass `name=self.device_id` so sent and received data appears in the device log under the right device.
 
+**Report the traffic of a session you own.** Every platform transport records what it sends and receives for its device, and a device audit reports that record. A session your driver owns (an `httpx` client, a websocket library, a socket of its own) is invisible to that record unless you report it: call `self.record_traffic("tx", data)` after each send and `self.record_traffic("rx", data)` for each message you receive. `data` is bytes or text; an optional `meta` dict says what the bytes do not, such as a message type or a URL. The device's credentials are masked when the traffic is shown, as on every other channel. A device audit of a driver that never reports its traffic says so in its report rather than showing an empty record.
+
+```python
+    async def _request(self, method: str, path: str, body: dict | None = None) -> dict:
+        self.record_traffic("tx", json.dumps(body or {}), meta={"method": method, "path": path})
+        response = await self._client.request(method, path, json=body)
+        self.record_traffic("rx", response.content, meta={"status": response.status_code})
+        return response.json()
+```
+
 ### A datagram beside the transport: `send_udp` and `wake_on_lan`
 
 A Python driver that has to send one UDP datagram somewhere other than its control link, a Wake-on-LAN packet or a message to a presentation's UDP receiver, calls the two `BaseDriver` helpers instead of opening a socket of its own. Both open a socket for the send and close it after, need no connection, and put the bytes in the device log; while the device is simulated the platform points them at the simulator, so the datagram shows in the protocol log instead of leaving the box.

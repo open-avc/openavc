@@ -18,6 +18,7 @@ import socket as socket_module
 import ssl as ssl_module
 
 from openavc.core.connection_fault import ConnectionFault, typed_fault_from_exc
+from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
@@ -69,8 +70,14 @@ class TCPTransport:
         name: str | None = None,
         local_addr: tuple[str, int] | None = None,
         keepalive: bool = False,
+        traffic_channel: str = "tcp",
     ):
         self.host = host
+        # Traffic is recorded (core/device_traffic.py) under the device id a
+        # caller names, never the host:port fallback label, and on this
+        # channel: "osc" when the connection carries OSC over SLIP.
+        self._traffic_name = name or ""
+        self._traffic_channel = traffic_channel
         self.port = port
         self._keepalive = keepalive
         self._on_data = on_data
@@ -141,6 +148,7 @@ class TCPTransport:
         name: str | None = None,
         local_addr: tuple[str, int] | None = None,
         keepalive: bool = False,
+        traffic_channel: str = "tcp",
     ) -> "TCPTransport":
         """
         Factory method. Creates a TCPTransport and connects.
@@ -166,6 +174,8 @@ class TCPTransport:
                        socket, with best-effort aggressive timing (see the
                        KEEPALIVE_* module constants), so a silently-dead peer
                        is detected at the transport layer.
+            traffic_channel: The channel the traffic recorder files this
+                       connection's bytes under (default "tcp").
 
         Returns:
             Connected TCPTransport instance.
@@ -183,7 +193,7 @@ class TCPTransport:
         transport = cls(
             host, port, on_data, on_disconnect, delimiter, timeout,
             inter_command_delay, frame_parser, ssl_context, name, local_addr,
-            keepalive=keepalive,
+            keepalive=keepalive, traffic_channel=traffic_channel,
         )
         await transport._connect()
         return transport
@@ -276,6 +286,7 @@ class TCPTransport:
             self._writer.write(data)
             await drain_or_stalled(self._writer, self._name)
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
+            record_traffic(self._traffic_name, TX, data, channel=self._traffic_channel)
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (ConnectionError, OSError) as e:
@@ -361,7 +372,10 @@ class TCPTransport:
                     # Raw mode — deliver all data as-is
                     self._deliver_message(data)
                 else:
-                    # Frame parser mode — feed data and deliver complete messages
+                    # Frame parser mode — feed data and deliver complete
+                    # messages. The chunk as read is recorded first, for a
+                    # reader looking for a framing bug the frames would hide.
+                    record_chunk(self._traffic_name, data, channel=self._traffic_channel)
                     for msg in self._frame_parser.feed(data):
                         self._deliver_message(msg)
         except asyncio.CancelledError:
@@ -380,6 +394,7 @@ class TCPTransport:
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to the callback and/or response queue."""
         log.debug(f"[{self._name}] RX: {self._format_data(data)}")
+        record_traffic(self._traffic_name, RX, data, channel=self._traffic_channel)
 
         # If someone is waiting for a response, put it in the queue
         if self._waiting_for_response:

@@ -37,6 +37,7 @@ from typing import Any, Callable
 # is_multicast_group lives in the shared driver-contract module (the
 # definition validator needs it too); re-exported here for its
 # transport-side callers.
+from openavc.core.device_traffic import RX, record_traffic
 from openavc.drivers.spec import is_multicast_group as is_multicast_group
 from openavc.utils.logger import get_logger
 
@@ -192,6 +193,10 @@ class _PortListener:
             if not sub.matches_source(src_ip):
                 continue
             delivered = True
+            record_traffic(
+                sub.name, RX, data, channel="multicast",
+                meta={"peer": f"{addr[0]}:{addr[1]}", "group": sub.group},
+            )
             try:
                 result = sub._callback(data, addr)
                 if asyncio.iscoroutine(result):

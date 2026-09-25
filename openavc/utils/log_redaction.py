@@ -170,6 +170,46 @@ def compile_secret_pattern(secrets: Iterable[str]) -> re.Pattern[str] | None:
     return re.compile("|".join(alternatives))
 
 
+def compile_secret_bytes_pattern(
+    secrets: Iterable[str],
+) -> re.Pattern[bytes] | None:
+    """The byte form of :func:`compile_secret_pattern`, for raw wire bytes.
+
+    The device traffic recorder keeps bytes exactly as they crossed the wire
+    and redacts only when an entry is written out, so the redaction has to
+    work on the bytes themselves: replacing the text form would leave the hex
+    view of the same entry carrying the secret, and replacing inside the hex
+    would leave an odd-length string no reader can decode. Same forms and the
+    same edge rule as the text pattern, matched against the UTF-8 encoding.
+    """
+    forms: list[tuple[bytes, bool]] = []
+    for secret in secrets:
+        if not isinstance(secret, str) or len(secret) < MIN_SECRET_LEN:
+            continue
+        for text, bounded in _variants(secret):
+            forms.append((text.encode("utf-8"), bounded))
+    if not forms:
+        return None
+    def word(edge: bytes) -> bool:
+        # A bytes pattern's \b knows ASCII word characters only.
+        return edge.isalnum() or edge == b"_"
+
+    alternatives = []
+    for raw, bounded in sorted(forms, key=lambda f: len(f[0]), reverse=True):
+        left = rb"\b" if bounded and word(raw[:1]) else b""
+        right = rb"\b" if bounded and word(raw[-1:]) else b""
+        alternatives.append(left + re.escape(raw) + right)
+    return re.compile(b"|".join(alternatives))
+
+
+def redact_bytes(data: bytes, secrets: Iterable[str]) -> bytes:
+    """``data`` with every known secret value replaced by ``***``."""
+    pattern = compile_secret_bytes_pattern(secrets)
+    if pattern is None:
+        return data
+    return pattern.sub(REDACTED.encode("ascii"), data)
+
+
 def redact_text(text: str, secrets: Iterable[str]) -> str:
     """Mask every known secret value in ``text``.
 

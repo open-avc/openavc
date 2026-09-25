@@ -22,6 +22,7 @@ from openavc.core.connection_fault import (
     ConnectionFaultError,
     typed_fault_from_exc,
 )
+from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
@@ -206,6 +207,9 @@ class SerialTransport:
         self._rtscts = rtscts
         self._xonxoff = xonxoff
         self._name = name or port
+        # Recorded (core/device_traffic.py) under the device id a caller
+        # names, never the port-name fallback.
+        self._traffic_name = name or ""
 
         # A serial port is a device path ("COM3", "/dev/ttyUSB0", "SIM:<name>"),
         # never a number. A numeric value means the device was configured with a
@@ -383,6 +387,7 @@ class SerialTransport:
 
         if self._simulate:
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
+            record_traffic(self._traffic_name, TX, data, channel="serial")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
             return
@@ -391,6 +396,7 @@ class SerialTransport:
             self._writer.write(data)
             await drain_or_stalled(self._writer, self._name)
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
+            record_traffic(self._traffic_name, TX, data, channel="serial")
             if self._inter_command_delay > 0:
                 await asyncio.sleep(self._inter_command_delay)
         except (OSError, ConnectionError) as e:
@@ -500,6 +506,7 @@ class SerialTransport:
         if self._frame_parser is None:
             self._deliver_message(data)
         else:
+            record_chunk(self._traffic_name, data, channel="serial")
             for msg in self._frame_parser.feed(data):
                 self._deliver_message(msg)
 
@@ -510,6 +517,7 @@ class SerialTransport:
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to callback and/or response queue."""
         log.debug(f"[{self._name}] RX: {self._format_data(data)}")
+        record_traffic(self._traffic_name, RX, data, channel="serial")
 
         if self._waiting_for_response:
             try:

@@ -46,6 +46,7 @@ import time
 import uuid
 from typing import Any, Awaitable, Callable
 
+from openavc.core.device_traffic import RX, TX, record_traffic
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -138,6 +139,8 @@ class MQTTTransport:
         self.on_message: MessageHandler | None = on_message
         self.on_disconnect: Callable[[], Any] | None = on_disconnect
         self._name = name or f"{host}:{self.port}"
+        # The device id traffic is recorded under (core/device_traffic.py).
+        self._traffic_name = name or ""
 
         self._client: Any = None  # gmqtt.Client
         self._connack_rc: int | None = None
@@ -261,6 +264,10 @@ class MQTTTransport:
         if isinstance(payload, str):
             payload = payload.encode("utf-8")
         self._client.publish(topic, payload, qos=qos, retain=retain)
+        record_traffic(
+            self._traffic_name, TX, payload or b"", channel="mqtt",
+            meta={"topic": topic, "qos": qos, "retain": retain},
+        )
 
     async def subscribe(self, topic: str, qos: int = 0) -> None:
         """Subscribe to a topic (or topic filter)."""
@@ -321,6 +328,10 @@ class MQTTTransport:
         self, client: Any, topic: str, payload: bytes, qos: int, properties: Any
     ) -> int:
         self.last_data_received = time.monotonic()
+        record_traffic(
+            self._traffic_name, RX, bytes(payload or b""), channel="mqtt",
+            meta={"topic": topic, "qos": qos},
+        )
         handler = self.on_message
         if handler is not None:
             try:
