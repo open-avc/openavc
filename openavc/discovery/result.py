@@ -27,10 +27,12 @@ class DeviceState(str, Enum):
       TCP probe / UDP probe / Python companion) identified a driver
       deterministically. ``IdentificationMatch.driver_id`` is set and
       the UI offers one-click Add.
-    - ``possible``: one ambiguous strong signal (an OUI-only match, a
-      generic UPnP MediaRenderer, etc). May offer 1+ candidate drivers,
-      but requires user confirmation before adding.
-    - ``unknown``: host responded to ping/ARP but no driver matched.
+    - ``possible``: no fingerprint matched, but a hint (an OUI, an SNMP
+      enterprise number, a host name, a declared open port, a
+      manufacturer name) points at 1+ candidate drivers. Requires user
+      confirmation before adding.
+    - ``unknown``: the device was found (ping, ARP, an announcement) but
+      no signal matched a driver.
       The UI shows what we know (IP, MAC, OUI vendor, open ports) and
       lets the user pick a driver manually or hide the device.
     """
@@ -56,8 +58,9 @@ class SignalTier(str, Enum):
       (TCP connect-and-read, TCP send/expect, Python companion
       per-host exchange).
     - ``enrichment``: secondary signals that narrow candidates but
-      can't identify on their own (OUI, hostname, SNMP enterprise
-      number, reverse DNS).
+      can't identify on their own (OUI, host name from reverse DNS or
+      NetBIOS, SNMP enterprise number, a declared open port, a
+      manufacturer name from a probe reply).
     """
 
     PASSIVE_LISTENER = "passive_listener"
@@ -78,8 +81,8 @@ class Evidence:
 
     ``tier`` carries the kind of signal observed (see ``SignalTier``).
     ``source`` is a stable, human-readable identifier for the signal
-    (e.g. ``"mdns:_netaudio-cmc._udp"``, ``"broadcast:custom_<id>_udp"``,
-    ``"probe:custom_<id>_tcp"``, ``"snmp:pen:17049"``).
+    (e.g. ``"mdns:_netaudio-cmc._udp."``, ``"broadcast:custom_<id>_udp"``,
+    ``"probe:custom_<id>_tcp"``, ``"snmp_pen:17049"``).
     ``data`` is whatever raw evidence the signal produced (TXT records,
     response bytes, parsed sysObjectID, etc).
     ``at`` is a unix timestamp for ordering and audit.
@@ -114,15 +117,19 @@ class IdentificationMatch:
       vendor-specific peer driver also matched on an enrichment
       signal. Empty in the common vendor-specific case.
     - ``possible``: ``driver_id`` is None; ``candidates`` has 1+ ids;
-      ``source`` references the enrichment signal (OUI, generic UPnP,
-      etc). ``alternatives`` is unused — the dropdown reads from
-      ``candidates``.
+      ``source`` references the enrichment signal with the fewest
+      candidates (``oui:00:11:22``, ``snmp_pen:17049``). ``alternatives``
+      is unused — the dropdown reads from ``candidates``.
     - ``unknown``: ``driver_id`` is None; ``candidates`` is empty;
       ``reason`` explains why nothing matched.
 
-    All states carry the full ``evidence`` list — the audit trail of
-    every signal observed for the device, regardless of whether any
-    matched a driver. This is what the "Why?" UI link reveals.
+    ``evidence`` is the part of the device's log that fed this result:
+    the matching record for ``identified`` (plus the enrichment records
+    when a cross-vendor match was demoted), the enrichment records for
+    ``possible``, and the whole log for ``unknown``. The full audit trail
+    the "Why?" UI link reveals is ``DiscoveredDevice.evidence_log``;
+    ``discovery/explain.py`` lists every driver each of its records
+    points at.
     """
 
     state: DeviceState
