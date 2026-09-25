@@ -530,6 +530,124 @@ button.panel-element {
     min-height: 1.4286rem;
 }
 
+/* ===== Waiting for approval ===== */
+
+/* Shown by the check-in before the socket opens, or after the server closed
+   the socket with 4010, until this device is approved. Above the offline
+   overlay (6000): the page is refused on purpose, not cut off, and "waiting
+   for approval" is the sentence that helps. Above the lock screen (10000): a
+   panel that is not admitted has no interface to lock. Drawn in the :root
+   default colours (panel-elements.css), because no theme has been received. */
+.panel-access-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--panel-bg, #1a1a2e);
+    color: var(--panel-text, #ffffff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 11000;
+}
+
+.panel-access-container {
+    max-width: 40rem;
+    padding: 2.8571rem;
+    text-align: center;
+}
+
+.panel-access-title {
+    font-size: 1.7143rem;
+    font-weight: 600;
+    margin-bottom: 1.1429rem;
+}
+
+.panel-access-message {
+    font-size: 1.1429rem;
+    line-height: 1.5;
+}
+
+.panel-access-space {
+    font-weight: 600;
+}
+
+.panel-access-code {
+    display: inline-block;
+    font-size: 1.5em;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--panel-accent, #2196F3);
+    white-space: nowrap;
+}
+
+.panel-access-claim-link {
+    display: inline-block;
+    margin-top: 1.7143rem;
+    font-size: 1rem;
+    color: var(--panel-accent, #2196F3);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.panel-access-claim {
+    margin-top: 1.7143rem;
+}
+
+/* display is set above, so the hidden attribute needs saying again. */
+.panel-access-claim-link[hidden],
+.panel-access-claim[hidden] {
+    display: none;
+}
+
+.panel-access-input {
+    display: block;
+    width: 18rem;
+    max-width: 100%;
+    margin: 0 auto 0.8571rem;
+    padding: 0.7143rem 1rem;
+    font-size: 1.1429rem;
+    border: 2px solid var(--panel-surface-border, #3a3a5c);
+    border-radius: 0.5714rem;
+    background: color-mix(in srgb, var(--panel-text, #ffffff) 10%, var(--panel-bg, #1a1a2e));
+    color: var(--panel-text, #ffffff);
+    outline: none;
+}
+
+.panel-access-input:focus {
+    border-color: var(--panel-accent, #2196F3);
+    box-shadow: 0 0 0 0.2143rem color-mix(in srgb, var(--panel-accent, #2196F3) 30%, transparent);
+}
+
+.panel-access-submit {
+    display: block;
+    width: 18rem;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0.8571rem;
+    font-size: 1.1429rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 0.5714rem;
+    background: var(--panel-accent, #2196F3);
+    color: var(--panel-button-text, #ffffff);
+    cursor: pointer;
+}
+
+.panel-access-submit:active {
+    opacity: 0.8;
+}
+
+.panel-access-submit:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.panel-access-error {
+    color: var(--panel-danger, #F44336);
+    font-size: 1rem;
+    margin-top: 0.8571rem;
+    min-height: 1.4286rem;
+}
+
 /* ===== Page Transitions ===== */
 
 .panel-page-transition {

@@ -5,54 +5,39 @@
  * from JSON definitions, and sends user interactions back to the server.
  */
 
-// --- Programmer auth bridge -------------------------------------------------
-// When the panel is embedded as an iframe inside the Programmer IDE (UI Builder
-// canvas, Theme Studio preview) and a programmer password is configured, the
-// SPA caches the credentials in sessionStorage. We're same-origin with the SPA
-// so we can read them, and we must — otherwise our /api fetches and the
-// WebSocket handshake return 401, which makes the browser pop its native HTTP
-// Basic dialog inside the iframe. See openavc/web/programmer/src/api/auth.ts
-// for the parent half.
-(function installProgrammerAuthBridge() {
-    const STORAGE_KEY = 'openavc.programmer.auth';
+// --- Programmer session bridge ---------------------------------------------
+// When the panel is embedded as an iframe inside the Programmer IDE (the UI
+// Builder's canvas and its Preview), the IDE holds its session token in
+// sessionStorage. The iframe is same-origin and unsandboxed, so it shares the
+// tab's sessionStorage, and the token is what lets the iframe's /api fetches
+// and its WebSocket handshake pass on an instance with a password: without it
+// every call answers 401, which makes the browser pop its native sign-in
+// dialog inside the iframe, and the panel gate refuses the socket for want of
+// an approved cookie. The stored value is the bare token, URL-safe base64, so
+// it is valid as it is both in a header and as a subprotocol. See
+// openavc/web/programmer/src/api/auth.ts for the parent half.
+(function installProgrammerSessionBridge() {
+    const STORAGE_KEY = 'openavc.programmer.session';
 
-    function getStoredAuth() {
+    function getSessionToken() {
         try {
-            const raw = sessionStorage.getItem(STORAGE_KEY);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.user === 'string' && typeof parsed.pass === 'string') {
-                return parsed;
-            }
-        } catch (_) { /* fall through */ }
-        return null;
+            const token = sessionStorage.getItem(STORAGE_KEY);
+            return token || null;
+        } catch (_) {
+            return null;
+        }
     }
 
-    // URI-encode before base64, the same way getAuthSubprotocol() below and the
-    // Programmer SPA's buildBasicHeader() do. A bare btoa() is a Latin-1
-    // encoder: an accent in the Latin-1 range (a, o, u with umlauts) went out
-    // as one byte where the server reads UTF-8, so the password silently did
-    // not match and every panel API call 401'd; anything above it (a Polish l,
-    // a Turkish s, an emoji) makes btoa THROW InvalidCharacterError and takes
-    // the whole request with it.
     function getAuthHeader() {
-        const a = getStoredAuth();
-        if (!a) return null;
-        return 'Basic ' + btoa(unescape(encodeURIComponent(`${a.user}:${a.pass}`)));
+        const token = getSessionToken();
+        return token ? `Bearer ${token}` : null;
     }
 
-    // Mirrors getAuthSubprotocols() in the Programmer SPA: URI-encode for
-    // unicode safety, base64-encode, then URL-safe / strip padding so the value
-    // is a valid WebSocket subprotocol token (RFC 6455 restricts these to HTTP
-    // token chars). The server decodes it in check_ws_auth().
+    // Mirrors getAuthSubprotocols() in the Programmer SPA. The server reads it
+    // in check_ws_auth().
     function getAuthSubprotocol() {
-        const a = getStoredAuth();
-        if (!a) return null;
-        const b64 = btoa(unescape(encodeURIComponent(a.pass)))
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
-        return `auth.b64.${b64}`;
+        const token = getSessionToken();
+        return token ? `auth.bearer.${token}` : null;
     }
 
     // Exposed so the PanelApp WebSocket constructor can pull the subprotocol.
@@ -63,10 +48,9 @@
         return /(^|\/)api(\/|$|\?)/.test(url);
     }
 
-    // Patch fetch unconditionally; the header is only attached when credentials
-    // are actually present. If no Programmer SPA is involved (panel opened
-    // standalone after an interactive Basic login), the browser's own cache
-    // handles auth and this patch is a no-op.
+    // Patch fetch unconditionally; the header is only attached when a session
+    // is actually present. A panel opened on its own holds none and this
+    // patch is a no-op.
     const originalFetch = window.fetch.bind(window);
     window.fetch = async (input, init) => {
         let url;
@@ -97,6 +81,17 @@
 // 14px at the 1280x800 reference. Runtime defaults are written as
 // <old px> / REM_BASE_PX so they still land on the pixel they always did.
 const REM_BASE_PX = 14;
+
+// The close code the server sends after accepting a panel socket it will not
+// serve: this device is not approved, or its approval was revoked. Accepted
+// first so the page can read the code; a refusal before the handshake reaches
+// a browser as 1006, which looks exactly like a dropped network.
+const PANEL_NOT_APPROVED_CLOSE = 4010;
+
+// How often a waiting panel asks whether it has been approved, and how often
+// a denied one, or one the system had no room for, asks again.
+const ACCESS_POLL_MS = 3000;
+const ACCESS_RETRY_MS = 60000;
 
 // How long a macro this panel started stays this panel's to report a failure
 // for, when nothing ever tells us its run ended. Matches the macro engine's own
@@ -335,6 +330,9 @@ class PanelApp {
         this._lastTouchedElementId = null; // control the next failure is about
         this._errorMessageTimer = null;    // auto-dismiss for the failure band
         this._lockInitialized = false;   // lock screen shown once per session, not on every reconnect
+        this._accessOverlay = null;      // the waiting-for-approval screen while it is up
+        this._accessWake = null;         // ends the current wait between check-ins early
+        this._accessPromise = null;      // the check-in loop in flight, if any
         this._meetingStartTimes = {};    // element_id -> meeting start Date (survives re-render)
         this.themeElementDefaults = {};
         // The variables the applied theme is actually drawing from, which is
@@ -519,6 +517,13 @@ class PanelApp {
             this._postToParent({ type: 'openavc:editor-ready' });
             return;
         }
+        // Whether this device may connect is settled before anything else is
+        // fetched: a device that is not approved sees the waiting screen and
+        // nothing more. The Programmer's Preview is parent-driven and carries
+        // the Programmer's own session on its socket, so it skips the check-in.
+        if (!this.embedded) {
+            await this._waitForPanelAccess();
+        }
         // Load plugin extensions before the first render so per-element
         // iframe sandbox / allow attributes can be applied correctly.
         // Best-effort: if the fetch fails or hangs, we proceed with defaults.
@@ -701,12 +706,22 @@ class PanelApp {
             if (retryEl) retryEl.textContent = '';
         };
 
-        this.ws.onclose = () => {
+        this.ws.onclose = (event) => {
             this.setConnectionStatus(false);
             // Clear all active hold-repeat timers — pointer-events: none
             // blocks release events, so timers would run indefinitely
             for (const t of Object.values(this.holdTimers)) clearInterval(t);
             this.holdTimers = {};
+            if (event && event.code === PANEL_NOT_APPROVED_CLOSE) {
+                // The server took the handshake and then refused this device:
+                // not approved, or approval was just revoked. There is nothing
+                // to reconnect to until that changes, so ask instead of
+                // retrying; the waiting screen shows a new code after a revoke.
+                this.reconnectDelay = 1000;
+                this.reconnectAttempts = 0;
+                this._waitForPanelAccess({ afterRefusal: true }).then(() => this.connect());
+                return;
+            }
             this.reconnectAttempts++;
             const retryEl = document.getElementById('reconnect-info');
             if (retryEl) {
@@ -7434,6 +7449,280 @@ class PanelApp {
         observer.observe(document.body, { childList: true });
 
         input.focus();
+    }
+
+    // --- Panel access ---
+
+    /**
+     * Ask the server whether this device may connect.
+     *
+     * Null when it gave no usable answer (unreachable, or an error), which is
+     * not a refusal: a refusal is an answer whose status says so.
+     */
+    async _fetchPanelAccess() {
+        const pathParts = location.pathname.split('/panel');
+        const basePath = pathParts[0] || '';
+        try {
+            const res = await fetch(`${basePath}/api/panel/access`, { cache: 'no-store' });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data && typeof data === 'object' ? data : null;
+        } catch (err) {
+            console.warn('[panel] access check failed:', err);
+            return null;
+        }
+    }
+
+    /**
+     * Resolve once this page may open its socket.
+     *
+     * The first request the page makes, before the plugin list and before
+     * the socket, so a device that is not approved sees the waiting screen
+     * and nothing else. While it waits it asks again every few seconds; once
+     * denied, or when the system had no room for another request, every
+     * minute. The poll that answers "approved" carries the real cookie, and
+     * the page goes on to connect without a reload. The admin-password form
+     * on the screen wakes the poll the moment it succeeds.
+     *
+     * No answer at all is not a refusal. On the first load the socket's own
+     * offline overlay is the honest screen for an unreachable server, so the
+     * page goes on and lets it speak. Asked again after a refusal (the server
+     * was there a moment ago: it closed the socket on purpose), or while the
+     * waiting screen is already up, it keeps asking.
+     */
+    _waitForPanelAccess(options) {
+        // One loop at a time: a second caller joins the one in flight rather
+        // than starting another, so nothing connects while a check-in is
+        // still being answered.
+        if (!this._accessPromise) {
+            this._accessPromise = this._runAccessCheck(options || {}).finally(() => {
+                this._accessPromise = null;
+            });
+        }
+        return this._accessPromise;
+    }
+
+    async _runAccessCheck({ afterRefusal = false }) {
+        for (;;) {
+            const answer = await this._fetchPanelAccess();
+            if (answer === null) {
+                if (!afterRefusal && !this._accessOverlay) return;
+                await this._accessSleep(ACCESS_POLL_MS);
+                continue;
+            }
+            if (answer.access === 'open' || answer.status === 'approved') {
+                this._hideWaitingScreen();
+                return;
+            }
+            this._showWaitingScreen(answer);
+            await this._accessSleep(
+                answer.status === 'pending' ? ACCESS_POLL_MS : ACCESS_RETRY_MS
+            );
+        }
+    }
+
+    /** A wait between check-ins that _wakeAccessPoll can end early. */
+    _accessSleep(ms) {
+        return new Promise((resolve) => {
+            const done = () => {
+                clearTimeout(timer);
+                if (this._accessWake === done) this._accessWake = null;
+                resolve();
+            };
+            const timer = setTimeout(done, ms);
+            this._accessWake = done;
+        });
+    }
+
+    _wakeAccessPoll() {
+        if (this._accessWake) this._accessWake();
+    }
+
+    /**
+     * The full-screen waiting screen, drawn in the :root default colours
+     * because no theme has been received. It covers the offline overlay
+     * (this page is refused on purpose, not cut off) and the lock screen (a
+     * panel that is not admitted has no interface to lock), and while it is
+     * up the loading text and the connection pill are hidden.
+     */
+    _showWaitingScreen(answer) {
+        this._hideLoadingState();
+        if (this.statusEl) this.statusEl.classList.add('hidden');
+        const offline = document.getElementById('offline-overlay');
+        if (offline) offline.classList.remove('visible');
+
+        let overlay = this._accessOverlay;
+        if (!overlay || !document.body.contains(overlay)) {
+            overlay = document.createElement('div');
+            overlay.id = 'panel-access-overlay';
+            overlay.className = 'panel-access-overlay';
+            const box = document.createElement('div');
+            box.className = 'panel-access-container';
+            const title = document.createElement('div');
+            title.className = 'panel-access-title';
+            const message = document.createElement('div');
+            message.className = 'panel-access-message';
+            box.append(title, message, ...this._buildClaimForm());
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            this._accessOverlay = overlay;
+        }
+
+        const status = answer.status === 'denied' || answer.status === 'unavailable'
+            ? answer.status
+            : 'pending';
+        overlay.dataset.status = status;
+        const title = overlay.querySelector('.panel-access-title');
+        const message = overlay.querySelector('.panel-access-message');
+        message.textContent = '';
+        if (status === 'pending') {
+            title.textContent = 'Waiting for approval';
+            const space = document.createElement('strong');
+            space.className = 'panel-access-space';
+            space.textContent = answer.space ? String(answer.space) : 'this space';
+            const code = document.createElement('strong');
+            code.className = 'panel-access-code';
+            code.textContent = answer.code ? String(answer.code) : '';
+            message.append(
+                'This panel needs approval before it can control ', space,
+                '. Ask your AV administrator to approve code ', code, '.',
+            );
+        } else if (status === 'denied') {
+            title.textContent = 'Not approved';
+            message.textContent =
+                'This panel was not approved. Ask your AV administrator if you need to use it.';
+        } else {
+            title.textContent = 'Not accepting new panels';
+            message.textContent =
+                'This system is not accepting new panels right now. Ask your AV administrator.';
+        }
+        // The password route is there for a waiting or a denied device. When
+        // the system has no room for another request there is nothing to
+        // approve, so the form is not offered.
+        const link = overlay.querySelector('.panel-access-claim-link');
+        const form = overlay.querySelector('.panel-access-claim');
+        if (status === 'unavailable') {
+            link.hidden = true;
+            form.hidden = true;
+        } else if (form.hidden) {
+            link.hidden = false;
+        }
+    }
+
+    _hideWaitingScreen() {
+        const overlay = this._accessOverlay;
+        this._accessOverlay = null;
+        if (!overlay) return;
+        overlay.remove();
+        if (this.statusEl) this.statusEl.classList.remove('hidden');
+        if (!this.snapshotReceived) {
+            const loading = document.getElementById('loading-state');
+            if (loading) loading.style.display = 'flex';
+        }
+    }
+
+    /**
+     * "Approve with the admin password": a link that reveals the form, and
+     * the form itself. The password goes to the server once, as HTTP Basic on
+     * the claim route, and is never kept. A wrong one answers 401 with no
+     * browser challenge, so the page shows its own sentence. The username
+     * rides along because the instance checks it whenever one is set, which
+     * first-run setup always does; it is prefilled with the one setup offers.
+     */
+    _buildClaimForm() {
+        const link = document.createElement('a');
+        link.className = 'panel-access-claim-link';
+        link.href = '#';
+        link.textContent = 'Approve with the admin password';
+
+        const form = document.createElement('form');
+        form.className = 'panel-access-claim';
+        form.hidden = true;
+        form.setAttribute('autocomplete', 'off');
+        const user = document.createElement('input');
+        user.className = 'panel-access-input';
+        user.type = 'text';
+        user.name = 'username';
+        user.value = 'admin';
+        user.setAttribute('aria-label', 'Username');
+        user.setAttribute('autocomplete', 'username');
+        const pass = document.createElement('input');
+        pass.className = 'panel-access-input';
+        pass.type = 'password';
+        pass.name = 'password';
+        pass.placeholder = 'Admin password';
+        pass.setAttribute('aria-label', 'Admin password');
+        pass.setAttribute('autocomplete', 'new-password');
+        const submit = document.createElement('button');
+        submit.type = 'submit';
+        submit.className = 'panel-access-submit';
+        submit.textContent = 'Approve';
+        const error = document.createElement('div');
+        error.className = 'panel-access-error';
+        form.append(user, pass, submit, error);
+
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            link.hidden = true;
+            form.hidden = false;
+            pass.focus();
+        });
+
+        let claiming = false;
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (claiming) return;   // Enter and the button both fire; one attempt.
+            claiming = true;
+            submit.disabled = true;
+            error.textContent = '';
+            try {
+                const result = await this._claimWithPassword(user.value, pass.value);
+                if (result.ok) {
+                    // The approved cookie is on that response; the next
+                    // check-in answers "approved" and the page connects.
+                    this._wakeAccessPoll();
+                } else {
+                    error.textContent = result.message;
+                    pass.value = '';
+                    pass.focus();
+                }
+            } finally {
+                claiming = false;
+                submit.disabled = false;
+            }
+        });
+        return [link, form];
+    }
+
+    async _claimWithPassword(username, password) {
+        const pathParts = location.pathname.split('/panel');
+        const basePath = pathParts[0] || '';
+        // URI-encode before base64: btoa is a Latin-1 encoder and the server
+        // reads the header as UTF-8, so a password with an accent would go
+        // out wrong and one above Latin-1 would make btoa throw.
+        const token = btoa(unescape(encodeURIComponent(`${username}:${password}`)));
+        try {
+            const res = await fetch(`${basePath}/api/panel/access/claim`, {
+                method: 'POST',
+                headers: { Authorization: `Basic ${token}`, Accept: 'application/json' },
+                cache: 'no-store',
+            });
+            if (res.ok) return { ok: true };
+            let detail = null;
+            try {
+                detail = (await res.json()).detail;
+            } catch (_) { /* not JSON */ }
+            if (res.status === 401) return { ok: false, message: 'That password is not correct.' };
+            return {
+                ok: false,
+                message: typeof detail === 'string' && detail
+                    ? detail
+                    : 'This panel could not be approved. Try again.',
+            };
+        } catch (err) {
+            console.warn('[panel] claim failed:', err);
+            return { ok: false, message: "Can't reach the system. Try again." };
+        }
     }
 
     // --- Idle Timeout ---

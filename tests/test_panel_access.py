@@ -389,18 +389,20 @@ def test_a_round_trip_keeps_the_advertise_switch(claimed_engine, access_mode):
 
 def test_the_env_override_wins(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAVC_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("OPENAVC_PANEL_ACCESS", "approved")
+    monkeypatch.setenv("OPENAVC_PANEL_ACCESS", "open")
+    reset_system_config()
+    try:
+        assert get_system_config().get("panels", "access") == "open"
+        assert pd.access_mode() == "open"
+    finally:
+        reset_system_config()
+    # Fresh again without the override: the shipped default, which is that a
+    # new panel waits to be approved.
+    monkeypatch.delenv("OPENAVC_PANEL_ACCESS")
     reset_system_config()
     try:
         assert get_system_config().get("panels", "access") == "approved"
         assert pd.access_mode() == "approved"
-    finally:
-        reset_system_config()
-    # Fresh again without the override: the shipped default.
-    monkeypatch.delenv("OPENAVC_PANEL_ACCESS")
-    reset_system_config()
-    try:
-        assert get_system_config().get("panels", "access") in pd.ACCESS_VALUES
     finally:
         reset_system_config()
 

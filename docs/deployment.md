@@ -140,6 +140,9 @@ System-level configuration controls the server itself: networking, authenticatio
     "discovery": {
         "advertise": true
     },
+    "panels": {
+        "access": "approved"
+    },
     "tls": {
         "enabled": false,
         "port": 8443,
@@ -156,6 +159,7 @@ A few keys deserve a note:
 - `auth.allow_anonymous` controls whether an instance with no credentials serves the Programmer IDE openly. The default `"auto"` means a from-source development checkout runs open, while every packaged install (Windows, macOS, Linux, Docker, Pi) requires the first-run setup screen to set an admin password before the IDE is reachable. Set `true` or `false` to force either behavior. Setting `true` opens the full admin surface to everyone who can reach the instance, not just the Programmer IDE but the configuration API, including the ability to set or overwrite the admin credential, change the bind address, and disable TLS. Open an instance only where reachability is already restricted (bind to localhost, or front it with an authenticating reverse proxy) rather than trusting the network to be friendly.
 - `auth.programmer_username` is optional. When empty, any username is accepted with the correct password. Set it to require a specific username at the login prompt.
 - `discovery.advertise` controls the mDNS advertisement that lets panel apps find this server on the network. Set to `false` to hide the server from discovery (devices then connect by IP address).
+- `panels.access` decides who can open the room panel. `approved`, the default, makes a new tablet or browser wait until it is approved once in the Programmer (or with the admin password typed on the panel); `open` admits anyone who can reach the port. The screen on the device itself, a panel opened through OpenAVC Cloud and the Programmer's own preview never need approval. The same setting is **Panel access** under Settings > Access, and a change applies at once.
 - `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address.
 - `network.backend_module` is reserved for specialized deployments that supply their own host-network configuration backend. Leave it empty.
 
@@ -179,6 +183,7 @@ A few keys deserve a note:
 | `cloud.system_key` | `OPENAVC_CLOUD_SYSTEM_KEY` | `""` |
 | `cloud.system_id` | `OPENAVC_CLOUD_SYSTEM_ID` | `""` |
 | `discovery.advertise` | `OPENAVC_MDNS_ADVERTISE` | `true` |
+| `panels.access` | `OPENAVC_PANEL_ACCESS` | `approved` |
 | `tls.enabled` | `OPENAVC_TLS_ENABLED` | `false` |
 | `tls.port` | `OPENAVC_TLS_PORT` | `8443` |
 | `tls.auto_generate` | `OPENAVC_TLS_AUTO_GENERATE` | `true` |
@@ -387,7 +392,7 @@ The Raspberry Pi image is ready to run the moment it boots. There is nothing to 
 What ships locked down on a fresh image:
 
 - **No usable OS password, and SSH off.** The `openavc` account is locked until you set the admin password in step 3, and `sshd` does not start. Enable SSH later from **Settings > Security** if you need remote console access.
-- **The admin surface is closed.** Until you complete step 3, the Programmer and REST API require the credential you are about to set. The Panel UI is always open, so end users never see a login.
+- **The admin surface is closed.** Until you complete step 3, the Programmer and REST API require the credential you are about to set. The device's own screen needs no approval and never shows a login. A tablet in the space waits for approval, which you give once from the Programmer after step 3.
 
 To set the IP, hostname, or WiFi without attaching a keyboard, see [Changing the device's network settings](#changing-the-devices-network-settings). To force the display back to the setup screen while a project is running, open `/setup?stay=1`.
 
@@ -477,7 +482,7 @@ This applies only to the Pi appliance image. A generic Linux `install.sh` host r
 
 Packaged installs (Windows, macOS, Linux, Docker, Pi) start unclaimed: the first person to open the Programmer IDE sees a setup screen that sets the admin password, so a shipped controller is never left open on the network. A from-source development checkout runs open by default; set a programmer password before making it network-accessible (`0.0.0.0`). To run an instance intentionally open (for example behind your own SSO reverse proxy), set `auth.allow_anonymous` to `true` and restrict reachability at the proxy.
 
-The Panel UI is never password-protected. End users can always open the touch panel without logging in.
+The Panel UI never asks an end user for a password. Who may open it is **Panel access** (Settings > Access). With **Approved panels only**, the default, a new tablet or browser waits on a screen showing a six-digit code until you approve it once, from the notice in the Programmer, from the Dashboard's **Panels** list (from the office through OpenAVC Cloud too), or with the admin password typed on the panel; it then stays approved until revoked. With **Anyone on the network**, any device that can reach the port opens the panel. The device's own screen, a panel opened through OpenAVC Cloud and the Programmer's preview never wait.
 
 ### When to set each credential
 
@@ -510,8 +515,8 @@ When at least one credential is configured:
 - `/api/status` and `/api/health` remain open (no auth), along with the bootstrap endpoints the login and setup screens need (`/api/auth/required`, `/api/startup-status`, `/api/setup/status`, `/api/cloud/status`) and the CA certificate download at `/api/certificate`
 - All other REST endpoints, including `/api/library`, require HTTP Basic or `X-API-Key`
 - The `/programmer` static files are served without credentials; the IDE shows a login screen, and every API call it makes requires credentials
-- Panel WebSocket connections remain open but are restricted to touch-panel interactions; programmer WebSocket connections authenticate via the `X-API-Key` header, the browser's cached HTTP Basic credentials, or an `auth.`-prefixed WebSocket subprotocol token
-- The Panel UI at `/panel` is always accessible (it's a touch screen, not a config tool)
+- A panel WebSocket connection carries no credential and is restricted to touch-panel interactions. It is admitted by Panel access (an approved panel, the device's own screen, a cloud tunnel, or the **Anyone on the network** setting); anything else is closed with code 4010 and the page shows the waiting screen. Programmer WebSocket connections authenticate via the `X-API-Key` header, the browser's cached HTTP Basic credentials, or an `auth.`-prefixed WebSocket subprotocol token
+- The Panel UI at `/panel` is served to anyone; whether it connects is Panel access, never a login (it's a touch screen, not a config tool)
 
 ## HTTPS
 
@@ -586,7 +591,7 @@ If you front OpenAVC with nginx, Caddy, or another reverse proxy that terminates
 
 By default, people have to include the port when typing an address: `http://192.168.1.20:8080/panel`. Turning on **Short URLs** in **Settings > Network** adds a small listener on port 80 that forwards every request to the real port, so `http://192.168.1.20/panel` just works. It composes with HTTPS and trusted certificates: with those on, typing the bare IP lands directly on the padlocked page. The listener serves no content, only redirects, and it is best-effort: if something else on the machine owns port 80, OpenAVC logs a warning and starts normally without it. Changing the toggle takes effect after a restart. Also set the environment variable `OPENAVC_PORT80_REDIRECT=true` for headless setups.
 
-While the listener is up, the addresses OpenAVC shows people — the Panel Access card, its QR code and printed poster, the device setup screen, and the startup log — drop the port automatically. If the listener could not bind, those surfaces keep showing the full address with the port, so a displayed URL always works as shown.
+While the listener is up, the addresses OpenAVC shows people — the Panel Access card, its QR code and printed poster, the device setup screen, and the startup log — drop the port automatically. If the listener could not bind, those surfaces keep showing the full address with the port, so a displayed URL always works as shown. A device that opens the panel through either address waits for approval like any other.
 
 Platform notes:
 

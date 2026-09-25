@@ -10,7 +10,7 @@ Decide how locked-down the install needs to be. There are two tiers.
 
 ### Tier 1: Basic Dedicated Panel (No Setup)
 
-Install the app from [Google Play](https://play.google.com/store/apps/details?id=com.openavc.panel), launch it, pair with your OpenAVC system. Done.
+Install the app from [Google Play](https://play.google.com/store/apps/details?id=com.openavc.panel), launch it, pair with your OpenAVC system, approve the panel once from the Programmer. Done.
 
 **What you get for free:**
 - Full-screen panel with no visible browser chrome, URL bar, or Android status bar.
@@ -89,14 +89,14 @@ If you see `not allowed to set device owner: there are already some accounts`, s
 
 ### 6. Launch the App and Lock the Panel
 
-1. Open the app and pair with your OpenAVC system as usual.
+1. Open the app and pair with your OpenAVC system as usual. Approve the panel from the Programmer, or tap **Approve with the admin password** on the tablet.
 2. Triple-tap the top-left corner of the screen.
 3. In the admin sheet, tap **Panel settings**.
 4. Set an admin PIN. Write it down somewhere you won't lose it.
 5. Flip the **Lock the panel** switch to on.
 6. Tap the back arrow in the toolbar.
 
-The panel locks immediately when you return to it. Home and recents are disabled. Reboot the tablet to confirm the app auto-launches back into the panel.
+The panel locks immediately when you return to it. Home and recents are disabled. Reboot the tablet to confirm the app auto-launches back into the panel; it comes back approved, with no code to enter.
 
 ### 7. (HTTPS-only servers) Install the OpenAVC CA Certificate
 

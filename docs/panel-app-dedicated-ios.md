@@ -10,7 +10,7 @@ Apple is much more restrictive than Android about dedicated-panel lockdown. Ther
 
 ### Tier 1: Basic Dedicated Panel (No Setup)
 
-Install the app from the [App Store](https://apps.apple.com/app/id6811610982), launch it, pair with your OpenAVC system. Done.
+Install the app from the [App Store](https://apps.apple.com/app/id6811610982), launch it, pair with your OpenAVC system, approve the panel once from the Programmer. Done.
 
 **What you get for free:**
 - Full-screen panel with no Safari chrome.
@@ -69,7 +69,8 @@ This is what large-scale deployments use.
 
 1. Install OpenAVC Panel from the App Store.
 2. Launch it and pair with your OpenAVC system (mDNS auto-discovery, QR from the Programmer, or manual IP entry).
-3. Confirm the panel loads and everything works.
+3. Approve the panel from the Programmer, or tap **Approve with the admin password** on the iPad.
+4. Confirm the panel loads and everything works.
 
 ### 3. Start a Guided Access (Kiosk) Session
 

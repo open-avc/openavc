@@ -99,13 +99,13 @@ Apart from the mDNS advertiser noted above (standard multicast DNS, receive-only
 
 OpenAVC separates two surfaces with different access rules:
 
-- **The room panel** (`/panel`) — the end-user touch interface — is **always open**. Wall tablets and shared room displays reach it without a login, as an AV panel should.
+- **The room panel** (`/panel`) — the end-user touch interface — never asks for a login. Who may connect is **Panel access**. With **Approved panels only** (the default), a new tablet or browser is shown a waiting screen with a six-digit code until an administrator approves it once, from the Programmer or by entering the admin password on the device itself; the device is then remembered by a cookie the server issued and connects without being asked again. With **Anyone on the network**, any device that can reach the port connects. The screen on the OpenAVC host itself, a panel opened through OpenAVC Cloud, and any client presenting the admin credential connect without approval. An approved panel may send any device command the system knows, not only the ones on its pages, so approval is the boundary around control, and network reachability is the boundary around that.
   - A project can set a **panel lock PIN**, which covers the panel with a lock screen when it opens and after its idle timeout. The PIN is checked on the server and attempts are rate-limited, so it is not readable from the panel device and not worth guessing at. It gates the touch interface, not the network: it is there to stop stray taps on a public display, and anyone who can reach the panel's address can still reach the panel's own open endpoints. Treat network reachability as the access control, and the PIN as what keeps a passer-by from changing the room.
 - **The Programmer (configuration interface) and the control/admin API** require an **admin credential**.
 
 **Wireless presentation guest pages (Present plugin).** When the optional Present plugin is installed, it adds two login-free pages on the standard web ports: the guest connect page (`/present`), where a presenter enters the rotating join code shown on the space's displays, and the display pages that drive each screen, each gated by a long per-display key carried in its URL. Neither grants any access to the configuration interface or the API. Wrong join codes are rate-limited, the code rotates between presentation sessions, and a display's key can be regenerated to revoke its link. Screen sharing additionally requires HTTPS to be enabled on the instance, because browsers only permit screen capture on a secure page. These pages exist only while the plugin is installed and running.
 
-**Secure by default.** Packaged deployments (Windows installer, Linux `install.sh`, Docker, Raspberry Pi image) listen on all network interfaces so panels can reach them, but they ship with **no credential and refuse admin access until one is set**. The first time someone opens the Programmer, OpenAVC presents a one-time "create admin password" screen. Until that is done, the configuration interface and control API return HTTP 401; only the panel and health/status endpoints respond. There is no default password and no open admin surface on a shipped box.
+**Secure by default.** Packaged deployments (Windows installer, Linux `install.sh`, Docker, Raspberry Pi image) listen on all network interfaces so panels can reach them, but they ship with **no credential and refuse admin access until one is set**. The first time someone opens the Programmer, OpenAVC presents a one-time "create admin password" screen. Until that is done, the configuration interface and control API return HTTP 401; only the panel page, its approval check-in and the health/status endpoints respond, and no panel can be approved until the password exists. There is no default password and no open admin surface on a shipped box.
 
 **Code-writing endpoints are never open.** The endpoints that create or edit Python drivers and scripts (which execute code on the host) always require the admin credential, even on an instance that is otherwise configured for open access.
 
@@ -354,7 +354,7 @@ When deploying multiple OpenAVC instances (e.g., one per room), ISC allows them 
 
 ### Web interface and API
 
-Admin access is **secure by default on every shipped deployment.** An installed instance (Windows, Linux, Docker, Raspberry Pi) refuses the Programmer and the mutating/admin API until an admin password is set on first open — returning HTTP 401 until then, while the room panel and health/status endpoints stay reachable. See [Who can access the web interface](#who-can-access-the-web-interface) above for the full model. (A from-source developer checkout is the one exception: it stays open on localhost for frictionless development. Force either posture explicitly with `OPENAVC_ALLOW_ANONYMOUS`.)
+Admin access is **secure by default on every shipped deployment.** An installed instance (Windows, Linux, Docker, Raspberry Pi) refuses the Programmer and the mutating/admin API until an admin password is set on first open — returning HTTP 401 until then, while the room panel page and the health/status endpoints stay reachable (a panel connects only once approved). See [Who can access the web interface](#who-can-access-the-web-interface) above for the full model. (A from-source developer checkout is the one exception: it stays open on localhost for frictionless development. Force either posture explicitly with `OPENAVC_ALLOW_ANONYMOUS`.)
 
 The admin credential is one of the following, set during first-run setup or provisioned ahead of time. You do not need to set both:
 
@@ -363,6 +363,8 @@ The admin credential is one of the following, set during first-run setup or prov
 | HTTP Basic (username + password) | `OPENAVC_PROGRAMMER_USERNAME` and `OPENAVC_PROGRAMMER_PASSWORD` env vars, or `auth.programmer_username` and `auth.programmer_password` in `system.json` | The standard admin login, and what the first-run setup screen creates. The browser prompts for both username and password. This is for humans logging in via a browser. |
 | API key (token) | `OPENAVC_API_KEY` env var or `auth.api_key` in `system.json` | Set this if you have third-party integrations (control scripts, middleware, or external software) that connect to the REST API or WebSocket. Provide the key via the `X-API-Key` header. Not needed unless you are building custom integrations. Set a programmer password alongside it — a key on its own cannot open the Programmer in a browser. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
 
+| Panel approval (cookie) | Issued by the server when a panel is approved; held by the device's browser or the OpenAVC Panel app | Not a credential a person holds or types. Each approved panel gets a random 256-bit secret, stored on the host as a salted hash in `panel_devices.json` and sent back by the device as an `HttpOnly` cookie on every panel request. It admits the panel's own connection and nothing else: it opens no configuration endpoint and cannot be used from the Programmer. Revoke it from the Dashboard. |
+
 The username/password is for humans (browser login), the API key is for machines (HTTP headers). If both are set, either credential is accepted.
 
 An API key is not a substitute for the password. It is only accepted in the `X-API-Key` header, which a browser cannot send when you open a page, so a system with a key and no password serves integrations normally and cannot be opened in any browser. Settings refuses to save a key unless a password is set as well. A key supplied through `OPENAVC_API_KEY` or written into `system.json` by hand is not stopped that way; the server writes a warning to the log at startup instead.
@@ -370,7 +372,7 @@ An API key is not a substitute for the password. It is only accepted in the `X-A
 If a programmer password is set without a username, any username entered at the browser prompt is accepted as long as the password matches. Setting a username as well is recommended.
 
 In all cases:
-- The **Panel** (end-user touch interface) is reachable without credentials
+- The **Panel** page (end-user touch interface) is reachable without credentials; a panel *connects* once it is approved, or from the host's own screen, through OpenAVC Cloud, or when Panel access is set to Anyone on the network
 - The **Programmer** (configuration interface) requires the admin credential
 - All configuration-changing API endpoints require the credential
 - The **code-writing endpoints** (Python drivers, scripts) require a set credential even on a checkout otherwise configured for open access — an unclaimed instance refuses them outright
@@ -421,10 +423,10 @@ Rate limiting is enabled by default on the HTTP REST API for remote clients. Req
 
 | Tier | Limit | Applies to |
 |------|-------|-----------|
-| Open | 120 requests/min per IP | Status, health-check, setup-state, and CA-certificate download endpoints. These are the ones that answer without a credential. |
+| Open | 120 requests/min per IP | Status, health-check, setup-state, and CA-certificate download endpoints, and the panel approval check-in (a panel waiting for approval asks every 3 seconds). These are the ones that answer without a credential. |
 | Standard | 60 requests/min per IP | General API operations (including library/catalog reads) |
 | Control | 120 requests/min per IP | Commissioning operations: anything that changes a device, driver, or discovery scan, plus project save. That covers device commands and tests, raw sends, IR emit, device settings and lifecycle, driver install/upload/edit, and inter-system commands. These all require authentication; the higher budget keeps normal setup work (command bursts, volume ramps) from being throttled. |
-| Strict | 10 requests/min per IP | Security-sensitive operations: sign-in, cloud pairing, backup restore, and panel lock PIN attempts |
+| Strict | 10 requests/min per IP | Security-sensitive operations: sign-in, cloud pairing, backup restore, panel lock PIN attempts, and approving a panel with the admin password typed on the panel |
 | Media | 3000 requests/min per IP | Video streams served by a plugin, such as a camera or a switcher output shown on a panel. A single video tile asks for a small file several times a second, far more often than anything else, so it gets a budget of its own. A plugin receives this only for the specific routes that carry video. |
 | Exempt | no limit | Inbound device push (`/api/push/`), and the files a touch panel loads to draw itself: project images and audio, a project's custom controls, and plugin panel files. These are reads of static files that require no credential. A wall panel loading a large layout can request several dozen in a few seconds, and a throttled response there would leave part of the panel blank. Uploading, replacing or deleting any of these files is a separate authenticated operation and is limited normally. |
 
@@ -443,6 +445,7 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 | Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low. Contains device IP addresses and connection parameters. |
 | System configuration | `system.json` | Medium. The admin password and API key are stored as salted hashes, not as typed. The cloud and inter-system keys are stored as-is, because the instance has to present them. The file is readable only by the account the service runs as. |
 | Persistent variables | `state.json` | Low. Key-value pairs for automation state. |
+| Approved panels | `panel_devices.json` | Medium. One record per approved panel: its name, the kind of device, its address, when it was approved and by whom, and a salted hash of its secret, never the secret itself. Readable only by the account the service runs as; carried by the pre-update backup. Devices still waiting, and denied ones, are held in memory only. |
 | Application logs | `logs/` directory | Low. Standard application logs at INFO level. Device protocol traffic (which can include device credentials) is never written to disk — it is held in a fixed-size in-memory buffer, visible only in the live log view behind an authenticated Programmer login. Configurable rotation (default: 50 MB, 5 files). |
 | Cloud pairing data | `cloud.json` | High. Contains system key for cloud authentication. Protect with filesystem permissions. |
 
@@ -540,7 +543,7 @@ The cloud platform can open a remote access tunnel to the device's web interface
 - Tunnel connections are authenticated with a per-tunnel token
 - Tunnels are closed when the remote session ends or when the device disconnects
 
-**What a tunnel grants.** The tunnel is a transport, not a set of permissions. A request arriving through it is treated as a remote request in every respect: it must present the Programmer credential, it is rate-limited, and its failed logins count toward the brute-force lockout. The proxy delivers traffic to the device's own loopback interface, and that fact earns the caller nothing. Surfaces the device reserves for its own screen, host network configuration and the network identifiers on the setup page, are reached only with the Programmer credential when the request comes through a tunnel.
+**What a tunnel grants.** The tunnel is a transport, not a set of permissions. A request arriving through it is treated as a remote request in every respect: it must present the Programmer credential, it is rate-limited, and its failed logins count toward the brute-force lockout. The proxy delivers traffic to the device's own loopback interface, and that fact earns the caller nothing. Surfaces the device reserves for its own screen, host network configuration and the network identifiers on the setup page, are reached only with the Programmer credential when the request comes through a tunnel. The one thing a tunnel does grant is the room panel: Remote Panel needs no panel approval, because the cloud has already decided who may open it, and the instance issues no panel cookie to a tunnelled request.
 
 So the reach of a tunnel is the reach of the Programmer credential, no more and no less: whoever holds it can do through the tunnel exactly what they could do from a browser on the same LAN. On deployments that expose host network settings (Linux and Raspberry Pi with NetworkManager) that does include changing the device's IP, WiFi, and hostname, which is the one capability the cloud command list above does not carry. If you want no remote path to those settings at all, the controls are the same ones that govern the rest of this plane: leave cloud disabled, or keep the instance paired but treat the Programmer credential as the boundary it is.
 
@@ -651,7 +654,8 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 |--------|---------|-------|
 | Inbound ports | HTTP 8080 (+ UDP 5353 for panel auto-discovery) | Configurable. Adds 8443 when HTTPS is enabled. |
 | Bind address | Packaged installs: all interfaces (`0.0.0.0`); source run: localhost | Installers bind all interfaces so panels can reach the host. Force localhost with `OPENAVC_BIND=127.0.0.1`. |
-| Admin authentication | Secure by default | Shipped deployments refuse the Programmer and admin API until an admin password is set; the room panel stays open. A source checkout is open on localhost for development. |
+| Admin authentication | Secure by default | Shipped deployments refuse the Programmer and admin API until an admin password is set. A source checkout is open on localhost for development. |
+| Panel access | Approved panels only | A new tablet or browser waits until an administrator approves it once; the host's own screen and Remote Panel through OpenAVC Cloud need no approval. Can be set to Anyone on the network. |
 | TLS | Off, opt-in built-in | Enable via Settings > Security. TLS 1.2/1.3 only (1.0/1.1 refused). Auto-generated self-signed cert, supply your own, or a cloud-issued publicly trusted cert for paired systems. Reverse-proxy TLS also supported. |
 | Outbound internet | Not required | Only for optional updates and cloud |
 | Cloud connectivity | Disabled by default | Opt-in. When paired, it is an administrator-equivalent management plane (see Cloud Platform above). |
@@ -699,4 +703,4 @@ Yes. OpenAVC is MIT-licensed open source. The full source code, including the cl
 
 ---
 
-*Document version: 1.4. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*
+*Document version: 1.5. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*

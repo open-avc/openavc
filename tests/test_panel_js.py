@@ -198,10 +198,18 @@ SCENARIOS = [
     "q139_a_claim_is_given_back_when_the_run_it_started_ends",
     "q139_a_button_stays_busy_while_a_second_run_is_still_going",
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
-    "q163_the_basic_header_is_utf8_not_latin1",
-    "q163_a_password_above_latin1_does_not_break_the_request",
-    "q163_no_stored_credential_attaches_no_header",
+    # The Programmer's session reaches the embedded panel's requests and socket.
+    "bridge_sends_the_programmer_session_as_a_bearer_token",
+    "bridge_attaches_nothing_without_a_session",
     "q139_a_connection_level_refusal_is_not_put_on_the_glass",
+    # Panel access: the check-in comes first, and a device that is not
+    # approved waits on a screen with its code.
+    "access_the_check_in_comes_before_everything_else",
+    "access_a_waiting_device_sees_its_code_and_is_let_in_on_approval",
+    "access_denied_and_unavailable_say_what_to_do",
+    "access_a_4010_close_asks_again_instead_of_reconnecting",
+    "access_the_admin_password_approves_from_the_panel",
+    "access_the_designer_and_the_preview_skip_the_check_in",
     # A page nobody has built yet says so, without sending anyone to the IDE.
     "q160_an_empty_page_says_so",
     "q160_a_page_with_a_control_says_nothing",

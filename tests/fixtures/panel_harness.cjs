@@ -188,6 +188,64 @@ function themedProject(settings) {
     return proj;
 }
 
+// --- Panel-access helpers ---------------------------------------------------
+
+/** The waiting screen is appended to the shared document and outlives a
+ *  scenario, so anything asserting on it starts from none at all. */
+function clearAccessOverlay() {
+    const overlay = document.getElementById('panel-access-overlay');
+    if (overlay) overlay.remove();
+}
+
+/**
+ * A fake server for start(): `answers` are the check-in bodies handed out in
+ * order (the last one repeats; `null` is a 503), `claim` is what the
+ * admin-password route answers, and `calls` records every request and every
+ * socket in the order the page made them. `restore()` puts the real stubs
+ * back; `settle()` lets the page's awaits run.
+ */
+function accessRig(answers) {
+    const rig = { answers: answers.slice(), calls: [], claim: null };
+    const savedFetch = window.fetch;
+    const savedWS = window.WebSocket;
+    window.fetch = async (url, init) => {
+        const u = String(url);
+        rig.calls.push({ url: u, init: init || {} });
+        if (u.includes('/api/panel/access/claim')) {
+            const answer = rig.claim
+                || { status: 401, body: { detail: 'That password is not correct.' } };
+            return { ok: answer.status < 300, status: answer.status, json: async () => answer.body };
+        }
+        if (u.includes('/api/panel/access')) {
+            const body = rig.answers.length > 1 ? rig.answers.shift() : rig.answers[0];
+            if (body === null) return { ok: false, status: 503, json: async () => ({}) };
+            return { ok: true, status: 200, json: async () => body };
+        }
+        return { ok: false, status: 404, json: async () => ({}) };
+    };
+    class RecordingWS extends FakeWS {
+        constructor(url, protocols) {
+            super();
+            rig.calls.push({ ws: url, protocols: protocols || null });
+        }
+    }
+    RecordingWS.OPEN = 1;
+    window.WebSocket = RecordingWS;
+    rig.restore = () => {
+        window.fetch = savedFetch;
+        window.WebSocket = savedWS;
+    };
+    rig.settle = async (rounds = 8) => {
+        for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    return rig;
+}
+
+const PENDING_ANSWER = {
+    access: 'approved', status: 'pending', code: '482-915', space: 'Executive Boardroom',
+};
+const APPROVED_ANSWER = { access: 'approved', status: 'approved', name: 'Room 101 wall' };
+
 const tests = {
     page_nav_opens_one_overlay_per_press() {
         const app = navigationPanel();
@@ -3427,20 +3485,13 @@ const tests = {
             `the lock names the matrix, got "${app._lastTouchedElementId}"`);
     },
 
-    // Q-139 / E8 -- the band carries failures of things people did. A frame
-    // with no source_type is the connection refusing a message before anything
-    // was read off it, so it cannot name what failed; "Rate limit exceeded" in
-    // front of a room is a fact about our protocol nobody there can act on.
-    // Q-163 -- the Basic header the panel attaches to every API call. A bare
-    // btoa() is a Latin-1 encoder and the server reads the header as UTF-8: an
-    // umlaut went out as one byte where two were expected, so the password
-    // silently did not match and every call 401'd. The sibling
-    // getAuthSubprotocol() two lines below it always had this right.
-    async q163_the_basic_header_is_utf8_not_latin1() {
-        const pass = 'p\u00e4ssw\u00f6rd-\u00fc';
-        window.sessionStorage.setItem(
-            'openavc.programmer.auth', JSON.stringify({ user: '', pass }),
-        );
+    // The Programmer session bridge: the token the IDE keeps in sessionStorage
+    // rides on every /api call as a Bearer header and on the socket as the
+    // auth.bearer subprotocol, the two channels the IDE itself uses. This is
+    // what keeps the Builder's Preview working on an instance with a password,
+    // now that the panel gate refuses a socket with no credential and no cookie.
+    async bridge_sends_the_programmer_session_as_a_bearer_token() {
+        window.sessionStorage.setItem('openavc.programmer.session', 'tok-abc_123');
         window.__fetchCalls.length = 0;
         try {
             await patchedFetch('/api/status');
@@ -3448,49 +3499,309 @@ const tests = {
             assert(call, 'the patched fetch reached the underlying one');
             const header = call.init && call.init.headers
                 && call.init.headers.get('Authorization');
-            assert(header && header.startsWith('Basic '),
-                `expected a Basic header, got "${header}"`);
-            const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
-            assert(decoded === `:${pass}`,
-                `header decodes to "${decoded}", not ":${pass}"`);
+            assert(header === 'Bearer tok-abc_123',
+                `expected the token as a Bearer header, got "${header}"`);
+            assert(window.__openavcGetAuthSubprotocol() === 'auth.bearer.tok-abc_123',
+                'the socket offers the same token as its subprotocol');
         } finally {
-            window.sessionStorage.removeItem('openavc.programmer.auth');
+            window.sessionStorage.removeItem('openavc.programmer.session');
         }
     },
 
-    // The half that does not merely garble: btoa REFUSES a code point above
-    // Latin-1, so getAuthHeader() threw and no API call was made at all. A
-    // Polish l-stroke is the everyday version of this.
-    async q163_a_password_above_latin1_does_not_break_the_request() {
-        const pass = 'has\u0142o-secret';
+    // Guards the guard: no session must still mean no header, or the one above
+    // would pass against a build that always attached one. The key the IDE
+    // stopped writing, a JSON blob holding the password, is not read either.
+    async bridge_attaches_nothing_without_a_session() {
+        window.sessionStorage.removeItem('openavc.programmer.session');
         window.sessionStorage.setItem(
-            'openavc.programmer.auth', JSON.stringify({ user: '', pass }),
+            'openavc.programmer.auth', JSON.stringify({ user: 'admin', pass: 'secret' }),
         );
         window.__fetchCalls.length = 0;
         try {
             await patchedFetch('/api/status');
             const call = window.__fetchCalls[0];
-            assert(call, 'the request was made rather than throwing');
-            const header = call.init.headers.get('Authorization');
-            assert(Buffer.from(header.slice(6), 'base64').toString('utf8') === `:${pass}`,
-                'the header round-trips through UTF-8');
+            assert(call, 'the request still went through');
+            assert(!(call.init && call.init.headers && call.init.headers.get('Authorization')),
+                'no session, no Authorization header');
+            assert(window.__openavcGetAuthSubprotocol() === null, 'no session, no subprotocol');
         } finally {
             window.sessionStorage.removeItem('openavc.programmer.auth');
         }
     },
 
-    // Guards the guard: no stored credential must still mean no header, or the
-    // two above would pass against a build that always attached one.
-    async q163_no_stored_credential_attaches_no_header() {
-        window.sessionStorage.removeItem('openavc.programmer.auth');
-        window.__fetchCalls.length = 0;
-        await patchedFetch('/api/status');
-        const call = window.__fetchCalls[0];
-        assert(call, 'the request still went through');
-        assert(!(call.init && call.init.headers && call.init.headers.get('Authorization')),
-            'no credential, no Authorization header');
+    // --- Panel access: the check-in comes first, and a refusal waits --------
+
+    // Even on an instance that admits anyone, the check-in is the first
+    // request the page makes: then the plugin list, then the socket.
+    async access_the_check_in_comes_before_everything_else() {
+        clearAccessOverlay();
+        const rig = accessRig([{ access: 'open' }]);
+        try {
+            const app = mkApp();
+            app.start();
+            await rig.settle();
+            const order = rig.calls.map((c) => (c.ws ? 'ws' : c.url));
+            assert(order[0] && order[0].endsWith('/api/panel/access'),
+                `the check-in is first, got ${JSON.stringify(order)}`);
+            assert(order[1] && order[1].endsWith('/api/plugins/extensions'),
+                `the plugin list is second, got ${JSON.stringify(order)}`);
+            assert(order[2] === 'ws', `the socket opens last, got ${JSON.stringify(order)}`);
+            assert(!document.getElementById('panel-access-overlay'),
+                'an instance open to anyone shows no waiting screen');
+        } finally {
+            rig.restore();
+        }
     },
 
+    // A device that is not approved sees the sentence, the space and the code,
+    // and nothing else happens: no plugin list, no socket. The poll that
+    // answers "approved" lets it in without a reload.
+    async access_a_waiting_device_sees_its_code_and_is_let_in_on_approval() {
+        clearAccessOverlay();
+        const rig = accessRig([PENDING_ANSWER]);
+        try {
+            const app = mkApp();
+            app.start();
+            await rig.settle();
+            const overlay = document.getElementById('panel-access-overlay');
+            assert(overlay, 'the waiting screen is up');
+            assert(overlay.querySelector('.panel-access-title').textContent === 'Waiting for approval',
+                'the title');
+            const text = overlay.querySelector('.panel-access-message').textContent;
+            assert(text === 'This panel needs approval before it can control Executive Boardroom. '
+                + 'Ask your AV administrator to approve code 482-915.',
+            `the sentence, got "${text}"`);
+            assert(overlay.querySelector('.panel-access-code').textContent === '482-915',
+                'the code stands on its own');
+            assert(!rig.calls.some((c) => c.ws), 'no socket is opened while waiting');
+            assert(!rig.calls.some((c) => c.url && c.url.includes('/api/plugins/extensions')),
+                'nothing else is fetched while waiting');
+            assert(document.getElementById('loading-state').style.display === 'none',
+                'the loading text is hidden');
+            assert(document.getElementById('connection-status').classList.contains('hidden'),
+                'the connection pill is hidden');
+            assert(!document.getElementById('offline-overlay').classList.contains('visible'),
+                'the offline overlay is not shown');
+            const link = overlay.querySelector('.panel-access-claim-link');
+            assert(link && !link.hidden && link.textContent === 'Approve with the admin password',
+                'the password route is offered');
+
+            // The programmer approves it. The next poll says so and the page
+            // goes on exactly as an open one does.
+            rig.answers = [APPROVED_ANSWER];
+            app._wakeAccessPoll();
+            await rig.settle();
+            assert(!document.getElementById('panel-access-overlay'), 'the waiting screen is gone');
+            assert(!document.getElementById('connection-status').classList.contains('hidden'),
+                'the connection pill is back');
+            assert(rig.calls.some((c) => c.url && c.url.includes('/api/plugins/extensions')),
+                'the plugin list is fetched once admitted');
+            assert(rig.calls.some((c) => c.ws), 'the socket opens once admitted');
+        } finally {
+            clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // A denied device and one the system had no room for are told what to do.
+    // The password route stays open to a denied device (the admin can still
+    // approve it); when the system is full there is nothing to approve.
+    access_denied_and_unavailable_say_what_to_do() {
+        clearAccessOverlay();
+        const app = mkApp();
+        try {
+            app._showWaitingScreen({ access: 'approved', status: 'denied' });
+            let overlay = document.getElementById('panel-access-overlay');
+            assert(overlay.querySelector('.panel-access-title').textContent === 'Not approved',
+                'the denied title');
+            assert(overlay.querySelector('.panel-access-message').textContent
+                === 'This panel was not approved. Ask your AV administrator if you need to use it.',
+            'the denied sentence');
+            assert(!overlay.querySelector('.panel-access-claim-link').hidden,
+                'a denied device may still be approved with the password');
+
+            app._showWaitingScreen({ access: 'approved', status: 'unavailable' });
+            overlay = document.getElementById('panel-access-overlay');
+            assert(document.querySelectorAll('#panel-access-overlay').length === 1,
+                'one screen, refilled, never stacked');
+            assert(overlay.querySelector('.panel-access-title').textContent === 'Not accepting new panels',
+                'the unavailable title');
+            assert(overlay.querySelector('.panel-access-message').textContent
+                === 'This system is not accepting new panels right now. Ask your AV administrator.',
+            'the unavailable sentence');
+            assert(overlay.querySelector('.panel-access-claim-link').hidden
+                && overlay.querySelector('.panel-access-claim').hidden,
+            'nothing to approve when the system is full');
+
+            app._hideWaitingScreen();
+            assert(!document.getElementById('panel-access-overlay'), 'gone once the page may connect');
+        } finally {
+            clearAccessOverlay();
+        }
+    },
+
+    // The server accepts the socket and closes it with 4010 when the device is
+    // not approved, which is also what a revoke does to a connected panel. The
+    // page stops reconnecting and asks again, and the waiting screen carries
+    // whatever the check-in answers (a new code after a revoke). Every other
+    // close code reconnects as it always did.
+    async access_a_4010_close_asks_again_instead_of_reconnecting() {
+        clearAccessOverlay();
+        const rig = accessRig([{ ...PENDING_ANSWER, code: '111-222' }]);
+        const realSetTimeout = window.setTimeout;
+        try {
+            const app = mkApp();
+            app.connect();
+            const scheduled = [];
+            window.setTimeout = (fn, ms) => { scheduled.push(ms); return 0; };
+            try {
+                app.ws.onclose({ code: 4010 });
+            } finally {
+                window.setTimeout = realSetTimeout;
+            }
+            assert(scheduled.length === 0,
+                `a refusal schedules no reconnect, got ${JSON.stringify(scheduled)}`);
+            assert(app.reconnectAttempts === 0, 'a refusal is not a reconnect attempt');
+            await rig.settle();
+            const overlay = document.getElementById('panel-access-overlay');
+            assert(overlay, 'the waiting screen is up after 4010');
+            assert(overlay.querySelector('.panel-access-code').textContent === '111-222',
+                'with the code the check-in answered');
+            assert(!document.getElementById('offline-overlay').classList.contains('visible'),
+                'the offline overlay is not shown over it');
+
+            // A plain drop still reconnects.
+            const dropped = mkApp();
+            dropped.connect();
+            const scheduledAfterDrop = [];
+            window.setTimeout = (fn, ms) => { scheduledAfterDrop.push(ms); return 0; };
+            try {
+                dropped.ws.onclose({ code: 1006 });
+            } finally {
+                window.setTimeout = realSetTimeout;
+            }
+            assert(scheduledAfterDrop.includes(1000),
+                `a dropped socket schedules the reconnect, got ${JSON.stringify(scheduledAfterDrop)}`);
+            assert(dropped.reconnectAttempts === 1, 'a drop counts as an attempt');
+
+            // Approval ends the wait and the refused page connects again.
+            rig.answers = [APPROVED_ANSWER];
+            app._wakeAccessPoll();
+            await rig.settle();
+            assert(!document.getElementById('panel-access-overlay'), 'the waiting screen is gone');
+            assert(rig.calls.filter((c) => c.ws).length === 3,
+                `the refused page opened a new socket, got ${rig.calls.filter((c) => c.ws).length}`);
+        } finally {
+            window.setTimeout = realSetTimeout;
+            clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // "Approve with the admin password": the link reveals the form, the
+    // password goes to the claim route once as HTTP Basic, a wrong one is
+    // said on the screen (never by a browser dialog), and a right one wakes
+    // the poll so the page connects at once.
+    async access_the_admin_password_approves_from_the_panel() {
+        clearAccessOverlay();
+        const rig = accessRig([PENDING_ANSWER]);
+        try {
+            const app = mkApp();
+            app._showWaitingScreen(PENDING_ANSWER);
+            const overlay = document.getElementById('panel-access-overlay');
+            const link = overlay.querySelector('.panel-access-claim-link');
+            const form = overlay.querySelector('.panel-access-claim');
+            assert(form.hidden, 'the form waits behind the link');
+            link.click();
+            assert(link.hidden && !form.hidden, 'the link reveals the form');
+            const user = form.querySelector('input[name="username"]');
+            const pass = form.querySelector('input[name="password"]');
+            assert(user.value === 'admin', 'the username is prefilled as first-run setup offers it');
+            assert(pass.value === '' && pass.getAttribute('autocomplete') === 'new-password',
+                'the password field starts empty and is not autofilled');
+
+            let woke = 0;
+            app._wakeAccessPoll = () => { woke++; };
+            pass.value = 'wr\u00f6ng';
+            form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+            await rig.settle();
+            const claim = rig.calls.find((c) => c.url && c.url.endsWith('/api/panel/access/claim'));
+            assert(claim && claim.init.method === 'POST', 'the password goes to the claim route');
+            const header = claim.init.headers && claim.init.headers.Authorization;
+            assert(header === 'Basic ' + Buffer.from('admin:wr\u00f6ng', 'utf8').toString('base64'),
+                `as HTTP Basic, UTF-8 encoded, got "${header}"`);
+            assert(form.querySelector('.panel-access-error').textContent === 'That password is not correct.',
+                'a wrong password says so on the screen');
+            assert(pass.value === '', 'and clears the field');
+            assert(woke === 0, 'nothing wakes the poll on a refusal');
+
+            rig.claim = { status: 200, body: APPROVED_ANSWER };
+            pass.value = 'right';
+            form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+            await rig.settle();
+            assert(woke === 1, 'a successful claim wakes the poll so the page connects at once');
+            assert(form.querySelector('.panel-access-error').textContent === '',
+                'no error left standing');
+        } finally {
+            clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // The design canvas has no socket and the Preview is parent-driven with
+    // the Programmer's session on its socket, so neither checks in: a
+    // programmer never sees the waiting screen inside the IDE.
+    async access_the_designer_and_the_preview_skip_the_check_in() {
+        clearAccessOverlay();
+        const rig = accessRig([PENDING_ANSWER]);
+        const statusEl = document.getElementById('connection-status');
+        const offline = document.getElementById('offline-overlay');
+        // Edit mode announces itself with console.log, which jsdom forwards to
+        // stdout, where the results JSON goes. Keep it off the wire.
+        const realLog = window.console.log;
+        try {
+            const designer = mkApp();
+            designer.editMode = true;
+            designer.embedded = true;
+            window.console.log = () => {};
+            try {
+                designer.start();
+                await rig.settle();
+            } finally {
+                window.console.log = realLog;
+            }
+            assert(!rig.calls.some((c) => c.url && c.url.includes('/api/panel/access')),
+                'the designer never checks in');
+            assert(!rig.calls.some((c) => c.ws), 'and opens no socket');
+
+            rig.calls.length = 0;
+            window.sessionStorage.setItem('openavc.programmer.session', 'tok-preview');
+            const preview = mkApp();
+            preview.embedded = true;
+            preview.start();
+            await rig.settle();
+            assert(!rig.calls.some((c) => c.url && c.url.includes('/api/panel/access')),
+                'the preview never checks in');
+            const ws = rig.calls.find((c) => c.ws);
+            assert(ws && ws.protocols && ws.protocols[0] === 'auth.bearer.tok-preview',
+                `the preview socket carries the session, got ${JSON.stringify(ws)}`);
+            assert(!document.getElementById('panel-access-overlay'), 'no waiting screen in the IDE');
+        } finally {
+            window.console.log = realLog;
+            window.sessionStorage.removeItem('openavc.programmer.session');
+            // Edit mode removes the pill and hides the offline overlay; the
+            // scenarios after this one expect both where the document put them.
+            if (!document.getElementById('connection-status')) document.body.appendChild(statusEl);
+            offline.style.display = '';
+            clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // Q-139 / E8 -- the band carries failures of things people did. A frame
+    // with no source_type is the connection refusing a message before anything
+    // was read off it, so it cannot name what failed; "Rate limit exceeded" in
+    // front of a room is a fact about our protocol nobody there can act on.
     q139_a_connection_level_refusal_is_not_put_on_the_glass() {
         const app = mkApp();
         clearFailureBand();

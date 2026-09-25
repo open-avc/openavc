@@ -290,10 +290,9 @@ DEFAULTS: dict[str, Any] = {
     # the programmer approves it once; the box's own screen, a cloud tunnel
     # and a credentialed client need no approval) or "open" (anyone who can
     # reach the port). The rule is openavc/api/panel_access.py and the records
-    # are openavc/core/panel_devices.py. Ships as "open" until the panel page
-    # can show the waiting screen; the default flips to "approved" with it.
+    # are openavc/core/panel_devices.py.
     "panels": {
-        "access": "open",
+        "access": "approved",
     },
     "devices": {
         # Seconds between reconnect attempts for a device that has gone

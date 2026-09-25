@@ -105,7 +105,7 @@ sudo journalctl -u openavc -f    # View logs
 
 Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:8080/programmer** from another device. The installed service listens on all network interfaces so tablets and panels can reach it.
 
-The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. The room panel at `/panel` stays open so wall tablets work without a login. You can change them later in **Settings > Security**.
+The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. A tablet or browser that opens the room panel at `/panel` waits until you approve it once in the Programmer; nobody enters a password on the panel. You can change them later in **Settings > Security**.
 
 To bind to localhost only (no network access) instead, set `Environment=OPENAVC_BIND=127.0.0.1` with `sudo systemctl edit openavc` and restart the service.
 
@@ -248,6 +248,7 @@ Navigate to http://localhost:8080/panel in another tab. This is what end users s
 2. Change the **bind address** to `0.0.0.0`
 3. Save and restart the server
 4. The **Dashboard** will show the panel URL with your machine's IP address (e.g., `http://192.168.1.100:8080/panel`) that you can open on any device on the same network
+5. Open it on the tablet. The panel shows **Waiting for approval** with a six-digit code; approve it from the notice that appears in the Programmer, or from the Dashboard's **Panels** list, and the panel loads. Approve each device once; it stays approved.
 
 ## Environment Variables
 

@@ -48,6 +48,15 @@ Tap **Enter manually** and type the IP address and port of your OpenAVC system (
 
 Once you've paired successfully, the app remembers the server and reconnects automatically on the next launch.
 
+### 4. Approve the Panel
+
+The first time the app reaches a system, the panel shows **Waiting for approval** with a six-digit code. Approve it once and the tablet stays approved:
+
+- **From the Programmer.** A notice appears with the code, the kind of device and its address. Click **Approve** and give the panel a name. The same list is on the Dashboard under **Panels**, and it works from the office through OpenAVC Cloud.
+- **On the tablet.** Tap **Approve with the admin password** under the message and enter the admin username and password once.
+
+The panel loads within a few seconds. It stays approved until someone revokes it from the Dashboard, and it asks again only if the system moves to a new address. A system set to **Anyone on the network** (Settings > Access > Panel access) skips this step.
+
 ## Change the Server Later
 
 If you move the tablet to a different space or rebuild the OpenAVC system:
@@ -87,8 +96,11 @@ The tablet reached the HTTP server but the WebSocket connection is blocked. Usua
 **"Can't reach the system" appears suddenly after working.**
 The OpenAVC system became unreachable. Tap **Try again** once it's back up, or **Change server** if you need to point at a different system.
 
-**Panel shows "HTTP 401".**
-The OpenAVC system has authentication enabled. Log in from a browser first so the session is established, then relaunch the app.
+**Panel shows "Waiting for approval".**
+The system admits approved panels only and this tablet is not approved yet. Approve it from the Programmer (the notice with the code, or the Dashboard's **Panels** list), or tap **Approve with the admin password** on the tablet. A tablet that was approved before shows this again after the system moves to a new address, or after someone revoked it.
+
+**Panel shows "Not approved".**
+Someone denied this tablet from the Programmer. Ask the person who looks after the system; they can approve it from the Dashboard, or enter the admin password on the tablet.
 
 **Browser-style certificate warning before the panel loads.**
 HTTPS is enabled on the server but the tablet hasn't trusted the OpenAVC CA yet. Download the CA cert from `https://<server>:8443/api/certificate` and install it on the tablet, then relaunch the app.

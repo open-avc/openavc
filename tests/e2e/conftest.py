@@ -218,11 +218,15 @@ def server_factory(tmp_path: Path, _install_test_driver):
         *,
         initial_children: int = 0,
         project_overrides: dict[str, Any] | None = None,
+        bind: str = "127.0.0.1",
+        env: dict[str, str] | None = None,
     ) -> _ServerHandle:
         gen = _start_server(
             tmp_path / f"srv-{uuid.uuid4().hex[:8]}",
             initial_children=initial_children,
             project_overrides=project_overrides,
+            bind=bind,
+            env=env,
         )
         handle = next(gen)
         handles.append(handle)
@@ -245,7 +249,14 @@ def _start_server(
     *,
     initial_children: int,
     project_overrides: dict[str, Any] | None = None,
+    bind: str = "127.0.0.1",
+    env: dict[str, str] | None = None,
 ):
+    """Boot one server. ``bind`` is loopback unless a test needs the instance
+    to see the browser as a device on the network (a loopback peer is the
+    box's own screen, which the panel gate admits without approval); ``env``
+    adds to or overrides the quiet-startup environment below, which is how a
+    test sets a password."""
     tmp_root.mkdir(parents=True, exist_ok=True)
     data_dir = tmp_root / "data"
     data_dir.mkdir(exist_ok=True)
@@ -277,12 +288,12 @@ def _start_server(
     )
 
     port = _pick_free_port()
-    base_url = f"http://127.0.0.1:{port}"
+    base_url = f"http://{bind}:{port}"
 
     env = {
         **os.environ,
         "OPENAVC_PORT": str(port),
-        "OPENAVC_BIND": "127.0.0.1",
+        "OPENAVC_BIND": bind,
         "OPENAVC_PROJECT": str(project_path),
         "OPENAVC_DATA_DIR": str(data_dir),
         "OPENAVC_E2E_CONTROL_FILE": str(control_file),
@@ -292,6 +303,7 @@ def _start_server(
         # Prevent the subprocess from inheriting any parent PYTHONPATH that
         # shadows the openavc source tree.
         "PYTHONUNBUFFERED": "1",
+        **(env or {}),
     }
     # PowerShell-launched parents sometimes leave OPENAVC_DATA_DIR pointed at
     # a session-scoped temp from the in-process test suite; force ours through.
