@@ -282,6 +282,32 @@ def _broadcast_addresses_for(subnets: list[str]) -> list[str]:
     return out
 
 
+def _udp_probe_targets_for(subnets: list[str]) -> list[str]:
+    """Where a driver's UDP probe goes for these subnets.
+
+    The directed broadcast address where a subnet has one. A /31 or /32 has
+    none: its addresses are hosts (a /32 is a single-device scan), so the
+    probe goes to each of them unicast instead.
+    """
+    out = _broadcast_addresses_for(subnets)
+    for cidr in subnets:
+        try:
+            net = ipaddress.IPv4Network(cidr, strict=False)
+        except ValueError:
+            continue
+        if net.prefixlen >= 31:
+            out.extend(str(ip) for ip in net.hosts() if str(ip) not in out)
+    return out
+
+
+def _host_count(net: ipaddress.IPv4Network) -> int:
+    """Addresses a sweep of ``net`` pings: all of them from /31 up, since a
+    /31 or /32 has no network or broadcast address to leave out."""
+    if net.prefixlen >= 31:
+        return net.num_addresses
+    return max(0, net.num_addresses - 2)
+
+
 class DiscoveryEngine:
     """Orchestrates device discovery across all scanning methods."""
 
@@ -852,7 +878,7 @@ class DiscoveryEngine:
                     continue
                 if net.prefixlen < min_prefix:
                     continue
-                ping_total += max(0, net.num_addresses - 2)
+                ping_total += _host_count(net)
             ping_done = 0
 
             async def on_ping_progress(completed: int, total: int) -> None:
@@ -927,21 +953,25 @@ class DiscoveryEngine:
             # --- Phase 4: ARP Harvest + OUI Lookup + Hostname Resolution ---
             await self._set_phase(4, "arp_harvest", "Reading MAC addresses and hostnames...")
 
-            if alive_ips:
-                # Budget phase 4 from the alive count — the pivot the plan
-                # turns on, and the first number the scan knows that actually
-                # predicts what everything downstream costs.
-                arp_plan = budgeting.plan_arp_phase(
-                    self._budget, len(alive_ips), policy.netbios,
-                )
-                self._apply_plan(budgeting.PHASE_ARP, arp_plan.warnings)
-                await self._run_budgeted(
-                    budgeting.PHASE_ARP, arp_plan.budget,
-                    self._arp_phase(alive_ips, arp_plan),
-                    "Reading MAC addresses and hostnames ran out of its share "
-                    "of the scan time. Some devices are missing their vendor "
-                    "or hostname.",
-                )
+            # Runs even when the sweep heard nobody: the ARP table can still
+            # name hosts that drop ping, and the second look in _arp_phase is
+            # how they reach the port scan. A single-device scan of a device
+            # that ignores ping is exactly that case.
+            #
+            # Budget phase 4 from the alive count — the pivot the plan
+            # turns on, and the first number the scan knows that actually
+            # predicts what everything downstream costs.
+            arp_plan = budgeting.plan_arp_phase(
+                self._budget, len(alive_ips), policy.netbios,
+            )
+            self._apply_plan(budgeting.PHASE_ARP, arp_plan.warnings)
+            await self._run_budgeted(
+                budgeting.PHASE_ARP, arp_plan.budget,
+                self._arp_phase(alive_ips, arp_plan),
+                "Reading MAC addresses and hostnames ran out of its share "
+                "of the scan time. Some devices are missing their vendor "
+                "or hostname.",
+            )
 
             # --- Phase 5: Port Scan ---
             await self._set_phase(5, "port_scan", "Probing device ports...")
@@ -1154,11 +1184,18 @@ class DiscoveryEngine:
         # whole reason the first scan on a freshly provisioned box found about
         # half what the next one found -- the first scan's real work was
         # filling the cache.
+        #
+        # A subnet's network and broadcast addresses are not hosts and are
+        # left out, but only below /31: a /31's two addresses and a /32's one
+        # are the hosts themselves, and a /32 is the target of a
+        # single-device scan.
         edges: set[str] = set()
         for subnet in self.scan_status.subnets:
             try:
                 net = ipaddress.IPv4Network(subnet, strict=False)
             except ValueError:
+                continue
+            if net.prefixlen >= 31:
                 continue
             edges.add(str(net.network_address))
             edges.add(str(net.broadcast_address))
@@ -1393,9 +1430,9 @@ class DiscoveryEngine:
         list that method builds — same spec/port test, so the projection and
         the execution can't disagree about what the phase is about to do.
         """
-        broadcasts = len(_broadcast_addresses_for(subnets))
+        udp_targets = len(_udp_probe_targets_for(subnets))
         udp_sends = sum(
-            broadcasts for h in self.discovery_hints if h.udp_probe is not None
+            udp_targets for h in self.discovery_hints if h.udp_probe is not None
         )
         tcp_jobs = 0
         for hint in self.discovery_hints:
@@ -1778,7 +1815,8 @@ class DiscoveryEngine:
         ``udp_probe:`` / ``tcp_probe:`` / ``python:`` specs:
 
         - **UDP probes** fire once per scan against every subnet's
-          directed broadcast address, sharing a single 10/sec
+          directed broadcast address (unicast to each address of a /31
+          or /32, which have none), sharing a single 10/sec
           ``RateLimiter``.
         - **TCP probes** run against every host whose port-scan results
           include the spec's port, with a 20 ms stagger so the SYN burst
@@ -1815,12 +1853,12 @@ class DiscoveryEngine:
         rate_limiter = RateLimiter(rate_per_sec=10.0)
 
         if udp_specs:
-            broadcasts = _broadcast_addresses_for(subnets)
-            if broadcasts:
+            udp_targets = _udp_probe_targets_for(subnets)
+            if udp_targets:
                 udp_tasks = [
                     run_udp_broadcast_probe(
                         spec,
-                        targets=broadcasts,
+                        targets=udp_targets,
                         source_ip=control_ip,
                         rate_limiter=rate_limiter,
                     )
