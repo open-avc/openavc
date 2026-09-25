@@ -293,14 +293,54 @@ def _parse_txt_rdata(rdata: bytes) -> dict[str, str]:
 
 
 @dataclass
+class MDNSService:
+    """One service instance a device advertises (a PTR/SRV/TXT set)."""
+    service_type: str | None = None       # e.g., "_http._tcp.local"
+    instance_name: str | None = None      # readable part, e.g., "<vendor> <model>"
+    port: int | None = None               # from the SRV record
+    target: str | None = None             # SRV target hostname, as sent
+    txt_records: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class MDNSResult:
-    """A device discovered via mDNS/DNS-SD."""
+    """A device discovered via mDNS/DNS-SD.
+
+    ``services`` holds every service instance the device advertised, keyed
+    by the instance's full DNS name (lowercased), in the order first heard.
+    A device commonly advertises a generic type (``_http._tcp``) beside the
+    vendor type that identifies it, and both must survive.
+
+    The single-service fields (``service_type``, ``instance_name``,
+    ``port``, and ``txt_records``, which is every service's TXT merged) are
+    the most recently resolved service, kept for callers that read one
+    service per host, such as the plugin API's ``mdns_browse``. Discovery
+    reads ``services``.
+    """
     ip: str
     hostname: str | None = None
     port: int | None = None
     service_type: str | None = None       # e.g., "_http._tcp.local."
     instance_name: str | None = None      # e.g., "<vendor> <model>"
     txt_records: dict[str, str] = field(default_factory=dict)
+    services: dict[str, MDNSService] = field(default_factory=dict)
+
+    def service_list(self) -> list[MDNSService]:
+        """Every advertised service, first heard first.
+
+        A result built directly with the single-service fields and no
+        ``services`` (older callers, tests) reads as that one service.
+        """
+        if self.services:
+            return list(self.services.values())
+        if self.service_type or self.port:
+            return [MDNSService(
+                service_type=self.service_type,
+                instance_name=self.instance_name,
+                port=self.port,
+                txt_records=dict(self.txt_records),
+            )]
+        return []
 
     def to_device_info(self) -> dict[str, Any]:
         """Convert to a dict suitable for merge_device_info()."""
@@ -331,16 +371,24 @@ class MDNSResult:
         elif "sn" in txt:
             info["serial_number"] = txt["sn"]
 
-        # Record the raw mDNS service type seen on the wire. Protocol
+        # Record every raw mDNS service type seen on the wire. Protocol
         # / category labels come from the matched driver's registry
         # entry once the matcher runs in finalize, so core does not
         # ship a service-type → protocol / category dispatch.
-        if self.service_type:
-            info["mdns_services"] = [self.service_type]
-
-        # Include port in open_ports if set
-        if self.port and self.port not in (80, 443):
-            info["open_ports"] = [self.port]
+        services = self.service_list()
+        types: list[str] = []
+        ports: list[int] = []
+        for svc in services:
+            if svc.service_type and svc.service_type not in types:
+                types.append(svc.service_type)
+            # Advertised ports count as open, bar the web defaults the
+            # port scan always covers.
+            if svc.port and svc.port not in (80, 443) and svc.port not in ports:
+                ports.append(svc.port)
+        if types:
+            info["mdns_services"] = types
+        if ports:
+            info["open_ports"] = ports
 
         return info
 
@@ -349,6 +397,8 @@ class MDNSResult:
 
         Returns ``None`` if this MDNSResult does not carry a service type
         (e.g. an A-record-only resolution). The caller should drop those.
+        One record for the single-service view; discovery uses
+        ``to_evidence_records`` so no advertised service is lost.
 
         Imports happen locally to avoid a circular import: ``tier_matcher``
         imports from ``result``, and ``result`` is imported by everything.
@@ -362,6 +412,26 @@ class MDNSResult:
             txt=self.txt_records or None,
             instance_name=self.instance_name,
         )
+
+    def to_evidence_records(self) -> list:
+        """One passive_listener Evidence record per advertised service.
+
+        Each record carries that service's own TXT and instance name, so a
+        driver's TXT filter is checked against the instance it belongs to.
+        Services heard only through SRV/TXT, with no PTR naming their type,
+        emit nothing (their type is unknown).
+        """
+        from openavc.discovery.tier_matcher import evidence_mdns
+
+        return [
+            evidence_mdns(
+                service_type=svc.service_type,
+                txt=svc.txt_records or None,
+                instance_name=svc.instance_name,
+            )
+            for svc in self.service_list()
+            if svc.service_type
+        ]
 
 
 # Service-type → protocol and service-type → category dispatch tables
@@ -399,6 +469,7 @@ class MDNSScanner:
         self,
         control_ip: str = "",
         service_types: list[str] | None = None,
+        query_enumerated_types: bool = False,
     ) -> None:
         """``control_ip``: bind multicast group join to this interface IP.
         Empty string means INADDR_ANY (default route, all interfaces).
@@ -411,6 +482,12 @@ class MDNSScanner:
         consumer-AV types. ``None`` falls back to baseline + DNS-SD
         meta-query, matching the pre-Phase-9 behavior for callers
         that haven't been threaded through.
+
+        ``query_enumerated_types``: also PTR-query every service type a
+        device lists in answer to the DNS-SD enumeration, so the device's
+        instances of types no driver declares come back with their SRV and
+        TXT. Off in normal scans (it multiplies the queries by whatever the
+        network enumerates); a single-device check turns it on.
         """
         self._sock: socket.socket | None = None
         self._running = False
@@ -430,6 +507,15 @@ class MDNSScanner:
         # enumeration that no loaded driver claims. Surfaced for
         # catalog-growth telemetry and the unknown-state UI.
         self._unknown_service_types: set[str] = set()
+        # Every type each source listed in answer to the DNS-SD
+        # enumeration (claimed or not), keyed by the sender's IP.
+        self._enumerated_types: dict[str, set[str]] = {}
+        self._query_enumerated = query_enumerated_types
+        # Enumerated types waiting for their own PTR query, and every type
+        # ever queued, so each is queried once (only used when
+        # query_enumerated_types is on).
+        self._query_queue: list[str] = []
+        self._queued_types: set[str] = set()
         self._cap_warned = False
         self._pending_cap_warned = False
         self._control_ip = control_ip
@@ -478,6 +564,9 @@ class MDNSScanner:
         self._results.clear()
         self._hostname_to_ip.clear()
         self._pending.clear()
+        self._enumerated_types.clear()
+        self._query_queue.clear()
+        self._queued_types.clear()
         self._running = True
         self._cap_warned = False
         self._pending_cap_warned = False
@@ -525,23 +614,34 @@ class MDNSScanner:
         if not self._sock:
             return
 
-        loop = asyncio.get_event_loop()
         for service_type in self._service_types:
-            try:
-                packet = build_dns_query(service_type, DNS_TYPE_PTR)
-                sent = await loop.run_in_executor(
-                    None, send_per_interface,
-                    self._sock, packet, (MDNS_ADDR, MDNS_PORT), self._joined_ips,
-                )
-                if sent == 0:
-                    log.debug(
-                        "mDNS query for %s could not be sent on any interface",
-                        service_type,
-                    )
-            except OSError as e:
-                log.debug("Failed to send mDNS query for %s: %s", service_type, e)
-
+            await self._send_query(service_type)
             # Small delay between queries to avoid flooding
+            await asyncio.sleep(0.05)
+
+    async def _send_query(self, service_type: str) -> None:
+        """PTR-query one service type on every joined interface."""
+        if not self._sock:
+            return
+        loop = asyncio.get_event_loop()
+        try:
+            packet = build_dns_query(service_type, DNS_TYPE_PTR)
+            sent = await loop.run_in_executor(
+                None, send_per_interface,
+                self._sock, packet, (MDNS_ADDR, MDNS_PORT), self._joined_ips,
+            )
+            if sent == 0:
+                log.debug(
+                    "mDNS query for %s could not be sent on any interface",
+                    service_type,
+                )
+        except OSError as e:
+            log.debug("Failed to send mDNS query for %s: %s", service_type, e)
+
+    async def _send_queued_queries(self) -> None:
+        """Query the enumerated types queued since the last pass."""
+        while self._query_queue and self._running:
+            await self._send_query(self._query_queue.pop(0))
             await asyncio.sleep(0.05)
 
     async def _listen(self, duration: float) -> None:
@@ -553,6 +653,8 @@ class MDNSScanner:
         end_time = loop.time() + duration
 
         while self._running and loop.time() < end_time:
+            if self._query_queue:
+                await self._send_queued_queries()
             remaining = end_time - loop.time()
             if remaining <= 0:
                 break
@@ -609,6 +711,7 @@ class MDNSScanner:
                     "_services._dns-sd._udp.local"
                 ):
                     self._track_unknown_service_type(instance_name)
+                    self._track_enumerated_type(sender_ip, instance_name)
                     continue
 
                 # Extract human-readable name (everything before the service type)
@@ -751,6 +854,25 @@ class MDNSScanner:
             if pending.get("txt_records"):
                 result.txt_records.update(pending["txt_records"])
 
+            # The same instance in its own slot, so a device's second
+            # service never overwrites its first. Pending entries are keyed
+            # by instance name, and a later packet about the same instance
+            # updates the same slot.
+            svc = result.services.get(key)
+            if svc is None:
+                svc = result.services[key] = MDNSService()
+            if pending.get("service_type"):
+                svc.service_type = pending["service_type"]
+            if pending.get("instance_name"):
+                svc.instance_name = pending["instance_name"]
+            if pending.get("port"):
+                svc.port = pending["port"]
+            target = pending.get("hostname")
+            if isinstance(target, str) and target:
+                svc.target = target
+            if pending.get("txt_records"):
+                svc.txt_records.update(pending["txt_records"])
+
             resolved_keys.append(key)
 
         # Remove resolved entries
@@ -795,6 +917,43 @@ class MDNSScanner:
             return
         self._unknown_service_types.add(normalized)
         log.debug("mDNS enumeration discovered unknown service type: %s", normalized)
+
+    def _track_enumerated_type(self, sender_ip: str, service_type: str) -> None:
+        """Record a type ``sender_ip`` listed in the DNS-SD enumeration.
+
+        Every type is kept per source, claimed or not, so a single-device
+        check can say what the device offers. With
+        ``query_enumerated_types`` on, a type nobody has queried yet is
+        queued for its own PTR query. Bounded like the other accumulators:
+        new sources past the result cap and new types past the unknown-type
+        cap are dropped.
+        """
+        normalized = service_type.lower().rstrip(".") + "."
+        types = self._enumerated_types.get(sender_ip)
+        if types is None:
+            if len(self._enumerated_types) >= MAX_MDNS_SOURCES:
+                return
+            types = self._enumerated_types[sender_ip] = set()
+        if normalized in types or len(types) >= MAX_UNKNOWN_SERVICE_TYPES:
+            return
+        types.add(normalized)
+        if not self._query_enumerated:
+            return
+        if (
+            normalized in self._known_service_types_lower
+            or normalized in self._queued_types
+        ):
+            return
+        self._queued_types.add(normalized)
+        self._query_queue.append(normalized)
+
+    @property
+    def enumerated_service_types(self) -> dict[str, set[str]]:
+        """Types each source listed in the DNS-SD enumeration, by sender IP.
+
+        Caller receives a copy.
+        """
+        return {ip: set(types) for ip, types in self._enumerated_types.items()}
 
     @property
     def unknown_service_types(self) -> set[str]:

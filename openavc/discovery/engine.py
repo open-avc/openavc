@@ -323,6 +323,11 @@ class DiscoveryEngine:
         # scanned like any other host but must EARN their place; anything
         # still mute at the end is dropped in _finalize_scan.
         self._arp_provisional: set[str] = set()
+        # Hosts this scan has port-scanned, whatever the result. Phase 7's
+        # follow-up decides which passive-only hosts still need a scan from
+        # this, not from open_ports: an mDNS SRV record puts its port into
+        # open_ports without anything having been scanned.
+        self._port_scanned: set[str] = set()
         self._scan_counter = 0
         # Discovery settings (persisted in project)
         self.config: dict[str, Any] = {
@@ -626,6 +631,7 @@ class DiscoveryEngine:
             self._passive_merged.clear()
             self._budget = ScanBudget(policy, total_seconds)
             self._arp_provisional = set()
+            self._port_scanned = set()
             self._narrowed = False
 
             self._scan_task = asyncio.create_task(
@@ -1307,6 +1313,7 @@ class DiscoveryEngine:
             async with semaphore:
                 device = self._get_or_create(ip)
                 open_ports = await scan_host_ports(ip, ports, timeout=1.0)
+                self._port_scanned.add(ip)
                 if open_ports:
                     merge_device_info(device, {"open_ports": open_ports}, "port_scan")
 
@@ -1353,11 +1360,14 @@ class DiscoveryEngine:
 
         # Follow-up: port scan devices found only by passive discovery
         # (mDNS/SSDP/AMX-DDP) that weren't in the ping sweep, so the
-        # custom-probe pass sees their open ports.
+        # custom-probe pass sees their open ports. "Not scanned yet" is
+        # the test, not "no open ports": an mDNS SRV port already sits in
+        # open_ports, and a device that drops ping but advertises one
+        # service must still have its other ports found and probed.
         ping_found = set(alive_ips) if alive_ips else set()
         passive_only = [
             ip for ip, dev in self.results.items()
-            if dev.alive and ip not in ping_found and not dev.open_ports
+            if dev.alive and ip not in ping_found and ip not in self._port_scanned
         ]
         if passive_only:
             log.info(
@@ -1627,9 +1637,10 @@ class DiscoveryEngine:
             if device is None:
                 continue
             device.alive = True
-            ev = mdns_result.to_evidence()
-            if ev is not None:
-                device.evidence_log.append(ev)
+            # One record per advertised service: the vendor type that
+            # identifies a device is often only one of the types it
+            # announces, and packet order must not decide which survives.
+            device.evidence_log.extend(mdns_result.to_evidence_records())
             merge_device_info(device, mdns_result.to_device_info(), "mdns")
             await self._emit_device_update(device, "mdns")
             merged += 1
