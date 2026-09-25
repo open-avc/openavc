@@ -80,3 +80,33 @@ def test_preview_starts_idle_timer_without_panel_input(server_factory, page):
     expect(main_page).to_be_visible()
     expect(panel.get_by_role("button", name="Navigate to Main", exact=True)).to_be_visible()
     expect(panel.locator("#lock-overlay")).to_have_count(0)
+
+
+def _px(page, selector: str, prop: str = "font-size") -> float:
+    return page.evaluate(
+        "([s, p]) => parseFloat(getComputedStyle(document.querySelector(s))[p])",
+        [selector, prop],
+    )
+
+
+def test_lock_screen_is_readable_on_a_phone_held_upright(server_factory, page):
+    """The panel's rem is a share of the shorter screen edge, so on a phone
+    held upright the lock screen's type came out around eight pixels. Every
+    size on it has a pixel floor now; on a tablet the rem still wins."""
+    handle = server_factory(project_overrides=_project())
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{handle.base_url}/panel/")
+    expect(page.get_by_text("Panel Locked", exact=True)).to_be_visible()
+    assert _px(page, ".lock-title") >= 22
+    assert _px(page, ".lock-input") >= 22
+    assert _px(page, ".lock-submit") >= 16
+    assert _px(page, ".lock-error", "min-height") >= 18
+    assert _px(page, ".lock-input", "width") >= 200
+
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{handle.base_url}/panel/")
+    expect(page.get_by_text("Panel Locked", exact=True)).to_be_visible()
+    # A floor, not a fixed size: on a tablet the rem is the larger of the two.
+    assert _px(page, ".lock-title") > 22
+    assert _px(page, ".lock-input") > 22

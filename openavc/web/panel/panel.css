@@ -468,31 +468,36 @@ button.panel-element {
     z-index: 10000;
 }
 
+/* Pixel floors beside every rem, for the same reason the waiting screen has
+   them: the panel's rem is a share of the shorter screen edge, so on a phone
+   held upright the PIN screen came out unreadable. On a tablet the rem wins
+   and nothing changes; the input floors at 16px so iOS does not zoom into it. */
 .lock-container {
     text-align: center;
-    padding: 2.8571rem;
+    padding: max(2.8571rem, 20px);
 }
 
 .lock-icon {
-    font-size: 3.4286rem;
-    margin-bottom: 1.1429rem;
+    font-size: max(3.4286rem, 40px);
+    margin-bottom: max(1.1429rem, 12px);
 }
 
 .lock-title {
-    font-size: 1.7143rem;
+    font-size: max(1.7143rem, 22px);
     font-weight: 600;
     color: var(--panel-text, #fff);
-    margin-bottom: 1.7143rem;
+    margin-bottom: max(1.7143rem, 20px);
 }
 
 .lock-input {
     display: block;
-    width: 14.2857rem;
-    margin: 0 auto 1.1429rem;
-    padding: 0.8571rem 1.1429rem;
-    font-size: 1.7143rem;
+    width: max(14.2857rem, 200px);
+    max-width: 100%;
+    margin: 0 auto max(1.1429rem, 12px);
+    padding: max(0.8571rem, 10px) max(1.1429rem, 12px);
+    font-size: max(1.7143rem, 22px);
     text-align: center;
-    letter-spacing: 0.5714rem;
+    letter-spacing: max(0.5714rem, 6px);
     border: 2px solid var(--panel-accent, #2196F3);
     border-radius: 0.5714rem;
     background: color-mix(in srgb, var(--panel-text) 10%, var(--panel-bg));
@@ -507,10 +512,11 @@ button.panel-element {
 
 .lock-submit {
     display: block;
-    width: 14.2857rem;
+    width: max(14.2857rem, 200px);
+    max-width: 100%;
     margin: 0 auto;
-    padding: 0.8571rem;
-    font-size: 1.1429rem;
+    padding: max(0.8571rem, 12px);
+    font-size: max(1.1429rem, 16px);
     font-weight: 600;
     border: none;
     border-radius: 0.5714rem;
@@ -525,9 +531,9 @@ button.panel-element {
 
 .lock-error {
     color: var(--panel-danger, #ef4444);
-    font-size: 1rem;
-    margin-top: 0.8571rem;
-    min-height: 1.4286rem;
+    font-size: max(1rem, 14px);
+    margin-top: max(0.8571rem, 10px);
+    min-height: max(1.4286rem, 18px);
 }
 
 /* ===== Waiting for approval ===== */
