@@ -74,7 +74,7 @@ class TestSingleHostScan:
 
         scanned: list[str] = []
 
-        async def fake_scan(ip, ports, timeout=1.0):
+        async def fake_scan(ip, ports, timeout=1.0, source_ip=""):
             scanned.append(ip)
             return [23]
 

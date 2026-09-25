@@ -256,8 +256,12 @@ class SNMPScanner:
 
     DEFAULT_COMMUNITY = "public"
 
-    def __init__(self) -> None:
+    def __init__(self, source_ip: str = "") -> None:
+        """``source_ip``: bind every query to this local address (the
+        control interface), so replies come back on a multi-homed host.
+        Empty lets the OS pick."""
         self._results: dict[str, SNMPInfo] = {}
+        self._source_ip = source_ip
 
     @property
     def results(self) -> dict[str, SNMPInfo]:
@@ -452,6 +456,7 @@ class SNMPScanner:
             transport, protocol = await loop.create_datagram_endpoint(
                 lambda: _SNMPQueryProtocol(packet, expected_request_id, loop),
                 remote_addr=(ip, SNMP_PORT),
+                local_addr=(self._source_ip, 0) if self._source_ip else None,
             )
         except OSError:
             return None

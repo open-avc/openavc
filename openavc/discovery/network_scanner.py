@@ -602,19 +602,25 @@ def _parse_nbstat_response(data: bytes) -> dict[str, str] | None:
 async def netbios_query(
     ip: str,
     timeout: float = 1.0,
+    source_ip: str = "",
 ) -> dict[str, str] | None:
     """Query a device for its NetBIOS name via UDP 137.
 
     Returns dict with 'hostname' and optionally 'workgroup', or None.
     Windows PCs, NAS devices, and some Linux hosts with Samba respond.
+    ``source_ip`` binds the socket to that local address (the control
+    interface) so the reply comes back on a multi-homed host.
     """
     packet = _build_nbstat_request()
     loop = asyncio.get_event_loop()
 
+    sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setblocking(False)
         sock.settimeout(0)
+        if source_ip:
+            sock.bind((source_ip, 0))
 
         await loop.run_in_executor(None, sock.sendto, packet, (ip, 137))
 
@@ -627,16 +633,18 @@ async def netbios_query(
     except (asyncio.TimeoutError, OSError, socket.error):
         return None
     finally:
-        try:
-            sock.close()
-        except OSError:
-            pass
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
 
 
 async def netbios_sweep(
     ips: list[str],
     concurrency: int = 30,
     timeout: float = 1.0,
+    source_ip: str = "",
 ) -> dict[str, dict[str, str]]:
     """Query multiple IPs for NetBIOS names. Returns {ip: {hostname, workgroup}}."""
     results: dict[str, dict[str, str]] = {}
@@ -644,7 +652,7 @@ async def netbios_sweep(
 
     async def query_one(ip: str) -> None:
         async with sem:
-            result = await netbios_query(ip, timeout)
+            result = await netbios_query(ip, timeout, source_ip=source_ip)
             if result:
                 results[ip] = result
 

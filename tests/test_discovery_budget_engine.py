@@ -75,7 +75,7 @@ class _Pipeline:
             await asyncio.sleep(self.ping_delay)
         return list(self.alive)
 
-    async def _fake_scan_host_ports(self, ip, ports, timeout=1.0):
+    async def _fake_scan_host_ports(self, ip, ports, timeout=1.0, source_ip=""):
         self.port_scan_hosts.append(ip)
         self.inflight += 1
         self.max_inflight = max(self.max_inflight, self.inflight)

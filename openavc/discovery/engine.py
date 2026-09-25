@@ -809,6 +809,10 @@ class DiscoveryEngine:
         snmp_enabled = self.config.get("snmp_enabled", True)
         snmp_community = self.config.get("snmp_community", "public")
         control_ip = "" if getattr(self, "_scan_ignores_pin", False) else self._get_control_interface()
+        # Every probe this scan sends binds to the control interface, so
+        # replies come back on a multi-homed host (spec: discovery binds
+        # to the control interface).
+        self._scan_source_ip = control_ip
 
         # --- Phase 1: Subnet Detection (already done) ---
         await self._set_phase(1, "subnet_detection", "Detecting network interfaces...")
@@ -931,7 +935,6 @@ class DiscoveryEngine:
             # ERRORED (no ICMP permission, no ping binary, exec failures)
             # is not an empty network, and the UI must say so.
             self._ping_method = ping_stats.method
-            self._scan_source_ip = control_ip
 
             if ping_stats.method == icmp.METHOD_NONE:
                 self.scan_status.warnings.append(
@@ -1056,7 +1059,7 @@ class DiscoveryEngine:
             await self._set_phase(6, "protocol_probe", "Identifying device protocols...")
 
             if snmp_enabled and alive_ips:
-                snmp_scanner = SNMPScanner()
+                snmp_scanner = SNMPScanner(source_ip=control_ip)
                 snmp_concurrency = 10 if gentle else 20
                 snmp_task = asyncio.create_task(
                     snmp_scanner.scan_devices(
@@ -1242,7 +1245,10 @@ class DiscoveryEngine:
         netbios_task = None
         if plan.netbios and named:
             netbios_task = asyncio.create_task(
-                netbios_sweep(named, concurrency=30, timeout=1.0)
+                netbios_sweep(
+                    named, concurrency=30, timeout=1.0,
+                    source_ip=self._scan_source_ip,
+                )
             )
 
         hostnames = await hostname_task
@@ -1351,13 +1357,18 @@ class DiscoveryEngine:
             nonlocal done
             async with semaphore:
                 device = self._get_or_create(ip)
-                open_ports = await scan_host_ports(ip, ports, timeout=1.0)
+                open_ports = await scan_host_ports(
+                    ip, ports, timeout=1.0, source_ip=self._scan_source_ip,
+                )
                 self._port_scanned.add(ip)
                 if open_ports:
                     merge_device_info(device, {"open_ports": open_ports}, "port_scan")
 
                     # Grab banners from banner-friendly ports.
-                    banners = await grab_banners(ip, open_ports, timeout=2.0)
+                    banners = await grab_banners(
+                        ip, open_ports, timeout=2.0,
+                        source_ip=self._scan_source_ip,
+                    )
                     if banners:
                         merge_device_info(device, {"banners": banners}, "banner")
 

@@ -31,27 +31,39 @@ BASELINE_PORTS: frozenset[int] = frozenset({22, 23, 80, 443, 8080})
 BANNER_PORTS: frozenset[int] = frozenset({22, 23})
 
 
+def _local_addr(source_ip: str) -> tuple[str, int] | None:
+    """Source address for an outbound connect: the control adapter, or the
+    OS's choice when none is set. Binding it is what brings the replies back
+    on a multi-homed host (a VPN adapter beside the AV network, say)."""
+    return (source_ip, 0) if source_ip else None
+
+
 async def scan_host_ports(
     ip: str,
     ports: list[int],
     timeout: float = 1.0,
     stagger_ms: float = 20.0,
+    source_ip: str = "",
 ) -> list[int]:
     """Probe TCP ports on a single host. Returns list of open ports.
 
     ``stagger_ms`` adds a small delay between connection starts to avoid
     blasting embedded AV devices with too many SYN packets at once.
     All connections still overlap — this just spreads the initial burst.
+
+    ``source_ip`` binds every connection to that local address (the
+    control interface); empty lets the OS pick.
     """
     if not ports:
         return []
+    local_addr = _local_addr(source_ip)
 
     async def _check(port: int, delay: float) -> int | None:
         if delay > 0:
             await asyncio.sleep(delay)
         try:
             _, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, port),
+                asyncio.open_connection(ip, port, local_addr=local_addr),
                 timeout=timeout,
             )
             writer.close()
@@ -98,7 +110,9 @@ async def scan_multiple_hosts(
     return results
 
 
-async def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str | None:
+async def grab_banner(
+    ip: str, port: int, timeout: float = 2.0, source_ip: str = "",
+) -> str | None:
     """Connect to a port and read the first response (banner).
 
     Many embedded devices send a welcome string immediately on connect.
@@ -106,7 +120,7 @@ async def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str | None:
     """
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port),
+            asyncio.open_connection(ip, port, local_addr=_local_addr(source_ip)),
             timeout=timeout,
         )
         try:
@@ -125,6 +139,7 @@ async def grab_banners(
     ip: str,
     open_ports: list[int],
     timeout: float = 2.0,
+    source_ip: str = "",
 ) -> dict[int, str]:
     """Grab banners from all open ports that typically send one.
 
@@ -137,7 +152,7 @@ async def grab_banners(
     banners: dict[int, str] = {}
 
     async def _grab(port: int) -> None:
-        banner = await grab_banner(ip, port, timeout)
+        banner = await grab_banner(ip, port, timeout, source_ip=source_ip)
         if banner:
             banners[port] = banner
 

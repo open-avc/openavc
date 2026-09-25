@@ -512,7 +512,9 @@ class SSDPScanner:
             return
 
         try:
-            xml_text = await _http_get(result.location, timeout=3.0)
+            xml_text = await _http_get(
+                result.location, timeout=3.0, source_ip=self._control_ip,
+            )
             if xml_text:
                 _parse_upnp_xml(result, xml_text)
         except Exception:
@@ -684,10 +686,14 @@ def _get_xml_text(parent: ElementTree.Element, tag: str) -> str | None:
 # --- HTTP Fetch ---
 
 
-async def _http_get(url: str, timeout: float = 3.0) -> str | None:
+async def _http_get(
+    url: str, timeout: float = 3.0, source_ip: str = "",
+) -> str | None:
     """Minimal HTTP GET using raw sockets. No external dependencies.
 
     Only supports http:// (not https) — UPnP descriptions are always HTTP.
+    ``source_ip`` binds the connection to that local address (the control
+    interface); empty lets the OS pick.
     """
     match = re.match(r"http://([^/:]+)(?::(\d+))?(/.*)$", url)
     if not match:
@@ -699,7 +705,10 @@ async def _http_get(url: str, timeout: float = 3.0) -> str | None:
 
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port),
+            asyncio.open_connection(
+                host, port,
+                local_addr=(source_ip, 0) if source_ip else None,
+            ),
             timeout=timeout,
         )
     except (asyncio.TimeoutError, OSError):
