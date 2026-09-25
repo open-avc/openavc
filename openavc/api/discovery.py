@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from openavc.api.auth import require_programmer_auth
 from openavc.api.errors import api_error as _api_error
-from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.engine import DiscoveryEngine, ScanBlocked
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import get_driver_default_config, list_registered_drivers
 
@@ -220,6 +220,9 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
             timeout=req.timeout,
             ignore_control_interface=req.ignore_control_interface,
         )
+    except ScanBlocked as e:
+        # A refusal, not a fault: the sentence is the whole answer.
+        raise HTTPException(status_code=409, detail=str(e))
     except RuntimeError as e:
         raise _api_error(409, "A scan is already in progress", e)
     except ValueError as e:

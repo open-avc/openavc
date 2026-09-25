@@ -243,6 +243,14 @@ class ScanStatus:
         }
 
 
+class ScanBlocked(RuntimeError):
+    """A scan cannot start because something else holds the network.
+
+    Its message is the sentence the person reads. A ``RuntimeError`` so a
+    caller that only knows "a scan could not start" still catches it.
+    """
+
+
 def _ip_in_subnets(ip: str, subnets: list[str]) -> bool:
     """True if ``ip`` parses as an address inside one of ``subnets``.
 
@@ -361,6 +369,10 @@ class DiscoveryEngine:
         # open_ports without anything having been scanned.
         self._port_scanned: set[str] = set()
         self._scan_counter = 0
+        # Asked before a scan starts; returns why it cannot, or None. A device
+        # audit sets it: the two never run together (both open the multicast
+        # listeners and both send probes).
+        self.scan_blocker: Callable[[], str | None] | None = None
         # Discovery settings (persisted in project)
         self.config: dict[str, Any] = {
             "snmp_enabled": True,
@@ -519,6 +531,10 @@ class DiscoveryEngine:
     def get_status(self) -> dict[str, Any]:
         return self.scan_status.to_dict()
 
+    def is_scanning(self) -> bool:
+        """True while a scan is running."""
+        return self._scan_task is not None and not self._scan_task.done()
+
     def get_subnets(self) -> list[str]:
         """Auto-detect local subnets (filtered to control interface if set)."""
         control_ip = self._get_control_interface()
@@ -574,6 +590,9 @@ class DiscoveryEngine:
         async with self._scan_lock:
             if self._scan_task and not self._scan_task.done():
                 raise RuntimeError("Scan already running")
+            blocked = self.scan_blocker() if self.scan_blocker is not None else None
+            if blocked:
+                raise ScanBlocked(blocked)
 
             self._scan_counter += 1
             scan_id = f"scan_{self._scan_counter}_{int(time.time())}"

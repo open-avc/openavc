@@ -191,11 +191,15 @@ class SystemToolsMixin:
 
         discovery_engine.config["snmp_enabled"] = snmp_enabled
 
+        from openavc.discovery.engine import ScanBlocked
+
         try:
             scan_id = await discovery_engine.start_scan(
                 subnets=subnets,
                 timeout=timeout,
             )
+        except ScanBlocked as e:
+            return {"error": str(e)}
         except RuntimeError:
             return {"error": "A scan is already in progress"}
         except ValueError as e:

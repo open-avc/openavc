@@ -69,6 +69,7 @@ from openavc.api.routes import network as network_routes
 from openavc.api.routes import pair as pair_routes
 from openavc.api.routes import root as root_routes
 from openavc.api.routes import setup as setup_routes
+from openavc.audit.session import AuditManager
 from openavc.core.engine import Engine
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.drivers.registry import list_registered_drivers
@@ -99,6 +100,9 @@ engine = Engine(config.PROJECT_PATH)
 
 # Create discovery engine
 discovery_engine = DiscoveryEngine()
+
+# One device audit at a time; it and a Discovery scan refuse each other.
+audit_manager = AuditManager(engine.devices, discovery_engine)
 
 
 async def _initialize_engine(app: FastAPI) -> None:
@@ -300,6 +304,12 @@ async def lifespan(app: FastAPI):
             await init_task
         except asyncio.CancelledError:
             pass
+    # End an audit first: it holds project devices paused and its own
+    # listeners open, and both are released before the engine goes down.
+    try:
+        await audit_manager.shutdown()
+    except Exception:
+        log.exception("Ending the device audit at shutdown failed")
     if app.state.engine_ready:
         await engine.stop()
     await simulator_proxy.aclose_client()
