@@ -123,6 +123,16 @@ def _connect_error(exc: BaseException) -> str:
     return str(exc) or type(exc).__name__
 
 
+# Why an exchange did not match (``ProbeObservation.miss``), in the order the
+# runner checks: a later reason means the exchange got further.
+MISS_NOT_SENT = "not_sent"          # a UDP probe could not be sent at all
+MISS_CONNECT = "connect"            # the TCP connection failed; ``error`` says how
+MISS_NO_REPLY = "no_reply"          # sent (or connected), and nothing came back
+MISS_REPLY = "reply"                # a reply came back and the matcher rejected it
+MISS_CERT_SUBJECT = "cert_subject"  # the certificate subject did not match
+MISS_FOLLOW_UP = "follow_up"        # the first exchange matched and the ``then:`` step did not
+
+
 @dataclass
 class ProbeObservation:
     """One probe exchange as it happened, whether or not it matched.
@@ -133,7 +143,9 @@ class ProbeObservation:
     one observation with an empty ``target`` and ``error`` ``"no reply"``.
     ``error`` says why no exchange happened (``refused``, ``timeout``,
     ``tls: ...``) or why one broke off; the bytes read before a break are
-    kept. Times are milliseconds from the connect or send.
+    kept. ``miss`` is the runner's own reason an exchange did not match (one
+    of the ``MISS_*`` values; empty on a match). Times are milliseconds from
+    the connect or send.
     """
 
     probe_id: str
@@ -155,6 +167,7 @@ class ProbeObservation:
     first_reply_ms: float | None = None
     elapsed_ms: float | None = None
     matched: bool = False
+    miss: str = ""
     evidence: Evidence | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -167,6 +180,7 @@ class ProbeObservation:
             "reply": _bytes_view(self.reply),
             "error": self.error,
             "matched": self.matched,
+            "miss": self.miss,
             "started_at": self.started_at,
             "connect_ms": self.connect_ms,
             "first_reply_ms": self.first_reply_ms,
@@ -359,15 +373,18 @@ async def observe_udp_probe(
     sent_to = tuple(targets)
     observations: list[ProbeObservation] = []
 
-    def _nothing(error: str) -> list[ProbeObservation]:
+    def _nothing(error: str, miss: str) -> list[ProbeObservation]:
         return [ProbeObservation(
             probe_id=spec.probe_id, kind="udp", port=spec.port, target="",
-            sent=spec.send, sent_to=sent_to, error=error,
+            sent=spec.send if miss != MISS_NOT_SENT else b"", sent_to=sent_to,
+            error=error, miss=miss,
         )]
 
     sock = _make_udp_socket(source_ip, broadcast=True)
     if sock is None:
-        return _nothing(f"could not bind a socket to {source_ip or 'any address'}")
+        return _nothing(
+            f"could not bind a socket to {source_ip or 'any address'}", MISS_NOT_SENT,
+        )
 
     matched_from: set[str] = set()
     cap_warned = False
@@ -435,6 +452,8 @@ async def observe_udp_probe(
                 )
 
             if not _matches(data, spec.response_match):
+                if obs is not None:
+                    obs.miss = MISS_REPLY
                 continue
             if obs is not None:
                 obs.matched = True
@@ -490,8 +509,8 @@ async def observe_udp_probe(
 
     if not observations:
         if send_errors and len(send_errors) == len(targets):
-            return _nothing("could not send: " + "; ".join(send_errors))
-        return _nothing("no reply")
+            return _nothing("could not send: " + "; ".join(send_errors), MISS_NOT_SENT)
+        return _nothing("no reply", MISS_NO_REPLY)
     return observations
 
 
@@ -654,6 +673,7 @@ async def observe_tcp_active_probe(
             spec.probe_id, target, spec.port, exc,
         )
         obs.error = _connect_error(exc)
+        obs.miss = MISS_CONNECT
         obs.elapsed_ms = _ms_since_start()
         return obs
     obs.connect_ms = _ms_since_start()
@@ -758,17 +778,21 @@ async def observe_tcp_active_probe(
     # payload requirement (a matched cert is signal enough on its own).
     if spec.cert_subject is not None:
         if not cert_subject_str or not spec.cert_subject.search(cert_subject_str):
+            obs.miss = MISS_CERT_SUBJECT
             return obs
     elif not payload:
+        obs.miss = MISS_NO_REPLY
         return obs
     # The payload matcher (if any) must still pass; an empty matcher passes.
     if not _matches(payload, spec.response_match):
+        obs.miss = MISS_REPLY if payload else MISS_NO_REPLY
         return obs
     if spec.follow_up is not None and follow_up_ok is not True:
         log.debug(
             "probe_runner: %s follow-up not satisfied for %s:%d",
             spec.probe_id, target, spec.port,
         )
+        obs.miss = MISS_FOLLOW_UP
         return obs
 
     reserved, extracted = _apply_extract(payload, spec.extract)

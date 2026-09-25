@@ -15,6 +15,10 @@ import ssl
 
 from openavc.discovery.hints import parse_driver_discovery
 from openavc.discovery.probe_runner import (
+    MISS_CONNECT,
+    MISS_FOLLOW_UP,
+    MISS_NO_REPLY,
+    MISS_REPLY,
     RateLimiter,
     observe_tcp_active_probe,
     observe_udp_probe,
@@ -68,7 +72,7 @@ class TestTcpObservations:
         assert obs.matched is False and obs.evidence is None
         assert obs.sent == b"ID?\r"
         assert obs.reply == b"HELLO FROM SOMETHING ELSE\r\n"
-        assert obs.error == ""
+        assert obs.error == "" and obs.miss == MISS_REPLY
         assert obs.connect_ms is not None and obs.first_reply_ms is not None
         view = obs.to_dict()
         assert view["reply"]["hex"] == b"HELLO FROM SOMETHING ELSE\r\n".hex()
@@ -79,7 +83,7 @@ class TestTcpObservations:
         async with server:
             spec = _spec("tcp", port=port, send_ascii="ID?\r", expect_regex="^ACME")
             obs = await observe_tcp_active_probe(spec, target="127.0.0.1", source_ip="")
-        assert obs.matched is True
+        assert obs.matched is True and obs.miss == ""
         assert obs.evidence is not None
         assert obs.evidence.source == "probe:custom_acme_widget_tcp"
         assert obs.evidence.data["response"]["text"] == "ACME WIDGET 3000\r\n"
@@ -95,7 +99,7 @@ class TestTcpObservations:
         # it reports the refusal, so this probe gets a longer timeout.
         spec = _spec("tcp", port=_free_port(), expect_regex="^ACME", timeout_ms=5000)
         obs = await observe_tcp_active_probe(spec, target="127.0.0.1", source_ip="")
-        assert obs.error == "refused"
+        assert obs.error == "refused" and obs.miss == MISS_CONNECT
         assert obs.reply == b"" and obs.connect_ms is None
 
     async def test_then_step_is_recorded(self):
@@ -109,7 +113,7 @@ class TestTcpObservations:
         assert obs.reply == b"ACME READY\r\n"
         assert obs.follow_up_sent == b"VER?\r"
         assert obs.follow_up_reply == b"UNEXPECTED\r\n"
-        assert obs.follow_up_ok is False
+        assert obs.follow_up_ok is False and obs.miss == MISS_FOLLOW_UP
         assert obs.matched is False and obs.evidence is None
         assert obs.to_dict()["follow_up"]["ok"] is False
 
@@ -172,7 +176,7 @@ class TestUdpObservations:
             )
         finally:
             transport.close()
-        assert obs.reply == b"SOMEONE ELSE"
+        assert obs.reply == b"SOMEONE ELSE" and obs.miss == MISS_REPLY
         assert obs.matched is False and obs.evidence is None
 
     async def test_no_reply_is_one_observation(self):
@@ -186,5 +190,6 @@ class TestUdpObservations:
             )
         finally:
             transport.close()
-        assert obs.target == "" and obs.error == "no reply"
+        assert obs.target == "" and obs.error == "no reply" and obs.miss == MISS_NO_REPLY
+        assert obs.sent == bytes.fromhex("00")
         assert obs.sent_to == ("127.0.0.1",)

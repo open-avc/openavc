@@ -420,37 +420,52 @@ class SignalIndex:
         source_id: str,
         txt: dict[str, str] | None = None,
     ) -> SignalRule | None:
-        """Look up a strong-signal rule. Returns None if no match."""
+        """Look up a strong-signal rule. Returns None if no match.
+
+        The most specific of ``find_strong_all``'s rules.
+        """
+        matching = self.find_strong_all(kind, source_id, txt)
+        return matching[0] if matching else None
+
+    def find_strong_all(
+        self,
+        kind: str,
+        source_id: str,
+        txt: dict[str, str] | None = None,
+    ) -> list[SignalRule]:
+        """Every strong-signal rule the observation satisfies, most specific first.
+
+        Two rules can both be satisfied when they share a source and filter
+        on different fields (one on ``model``, one on ``manufacturer``), or,
+        for AMX DDP, when two model globs both match the beacon.
+        """
         if kind not in _STRONG_KINDS:
-            return None
+            return []
         observed = {k.lower(): str(v) for k, v in (txt or {}).items()}
         if kind == KIND_AMX_DDP:
             # AMX-DDP source_ids are "<make>/<model_glob>" patterns, so the
             # observed concrete "<make>/<model>" must be glob-matched, not
             # looked up by exact key (which never matches a wildcard model).
-            return self._find_amx_ddp_glob(source_id, observed)
+            return self._find_amx_ddp_globs(source_id, observed)
         normalized_source = self._normalize_source_for_kind(kind, source_id)
         bucket = self._rules.get((kind, normalized_source), [])
-        if not bucket:
-            return None
-        # Filter rules: pick the one whose txt_match (if any) is satisfied.
-        # When multiple match, prefer the most-specific filter (longest dict).
+        # Filter rules: keep the ones whose txt_match (if any) is satisfied,
+        # the most-specific filter (longest dict) first.
         matching = [r for r in bucket if _txt_match_satisfied(r.txt_match, observed)]
-        if not matching:
-            return None
         matching.sort(key=lambda r: -len(r.txt_match))
-        return matching[0]
+        return matching
 
-    def _find_amx_ddp_glob(
+    def _find_amx_ddp_globs(
         self, source_id: str, observed_txt: dict[str, str],
-    ) -> SignalRule | None:
+    ) -> list[SignalRule]:
         """Glob-match an observed AMX-DDP ``<make>/<model>`` against the
         registered ``<make>/<model_pattern>`` rules, case-insensitively.
 
         A real beacon carries a concrete model (``Polycom/SoundStructureC16``)
         while rules register a glob (``Polycom/SoundStructureC*``), so this
         can't be an exact dict lookup. When several patterns match, the most
-        specific one (most literal characters, then most TXT constraints) wins.
+        specific one (most literal characters, then most TXT constraints)
+        comes first.
         """
         observed = source_id.strip().lower()
         matching = [
@@ -461,8 +476,6 @@ class SignalIndex:
             if fnmatch.fnmatchcase(observed, rule.source_id.strip().lower())
             and _txt_match_satisfied(rule.txt_match, observed_txt)
         ]
-        if not matching:
-            return None
 
         def _rank(rule: SignalRule) -> tuple[int, int, str]:
             pat = rule.source_id.strip().lower()
@@ -470,7 +483,7 @@ class SignalIndex:
             return (len(pat) - wildcards, len(rule.txt_match), pat)
 
         matching.sort(key=_rank, reverse=True)
-        return matching[0]
+        return matching
 
     def find_soft_oui(self, mac: str) -> list[str]:
         """Return driver_ids whose OUI prefix matches the MAC. May be empty."""
@@ -690,12 +703,8 @@ class TierMatcher:
 
     def _lookup_strong(self, ev: Evidence) -> SignalRule | None:
         """Find a strong-tier rule for an evidence record."""
-        kind = ev.data.get("kind")
-        source_id = ev.data.get("source_id")
-        if not isinstance(kind, str) or not isinstance(source_id, str):
-            return None
-        txt = ev.data.get("txt") if isinstance(ev.data.get("txt"), dict) else None
-        return self.index.find_strong(kind, source_id, txt)
+        rules = strong_rules(ev, self.index)
+        return rules[0] if rules else None
 
     def _collect_soft_signal_results(
         self, evidence_log: list[Evidence],
@@ -703,37 +712,19 @@ class TierMatcher:
         """Per-signal driver_id hits from every enrichment evidence record.
 
         Returns ``[(source_label, [driver_ids]), ...]`` in evidence-log
-        order. Each tuple is one signal's hit list — the smallest
-        ``len(hits)`` is the narrowest signal, used by both
-        ``_gather_soft_candidates`` (for the possible-state path) and
-        ``_pick_demotion_target`` (for cross-vendor demotion).
+        order, for the records that hit at least one driver. Each tuple is
+        one signal's hit list — the smallest ``len(hits)`` is the narrowest
+        signal, used by both ``_gather_soft_candidates`` (for the
+        possible-state path) and ``_pick_demotion_target`` (for cross-vendor
+        demotion).
         """
         results: list[tuple[str, list[str]]] = []
         for ev in evidence_log:
             if ev.tier != SignalTier.ENRICHMENT:
                 continue
-            kind = ev.data.get("kind")
-            value = ev.data.get("value")
-            if kind == KIND_OUI and isinstance(value, str):
-                hits = self.index.find_soft_oui(value)
-                if hits:
-                    results.append((f"{KIND_OUI}:{_normalize_mac_prefix(value)}", hits))
-            elif kind == KIND_SNMP_PEN and isinstance(value, int):
-                hits = self.index.find_soft_pen(value)
-                if hits:
-                    results.append((f"{KIND_SNMP_PEN}:{value}", hits))
-            elif kind == KIND_HOSTNAME and isinstance(value, str):
-                hits = self.index.find_soft_hostname(value)
-                if hits:
-                    results.append((f"{KIND_HOSTNAME}:{value}", hits))
-            elif kind == KIND_OPEN_PORT and isinstance(value, int):
-                hits = self.index.find_soft_open_port(value)
-                if hits:
-                    results.append((f"{KIND_OPEN_PORT}:{value}", hits))
-            elif kind == KIND_VENDOR_STRING and isinstance(value, str):
-                hits = self.index.find_soft_vendor_string(value)
-                if hits:
-                    results.append((f"{KIND_VENDOR_STRING}:{value}", hits))
+            hit = soft_signal_hits(ev, self.index)
+            if hit is not None and hit[1]:
+                results.append(hit)
         return results
 
     def _pick_demotion_target(
@@ -825,6 +816,45 @@ class TierMatcher:
         first = [d for d in ordered if d in narrow_set]
         rest = [d for d in ordered if d not in narrow_set]
         return first + rest, source
+
+
+def strong_rules(ev: Evidence, index: SignalIndex) -> list[SignalRule]:
+    """Every strong-signal rule one evidence record satisfies, most specific first.
+
+    The matcher takes the first; ``discovery/explain.py`` reports them all.
+    Empty for a record that is not a strong signal or that no rule claims.
+    """
+    kind = ev.data.get("kind")
+    source_id = ev.data.get("source_id")
+    if not isinstance(kind, str) or not isinstance(source_id, str):
+        return []
+    txt = ev.data.get("txt") if isinstance(ev.data.get("txt"), dict) else None
+    return index.find_strong_all(kind, source_id, txt)
+
+
+def soft_signal_hits(
+    ev: Evidence, index: SignalIndex,
+) -> tuple[str, list[str]] | None:
+    """The drivers one enrichment evidence record points at, with its label.
+
+    Returns ``(source_label, [driver_ids])``, the list empty when no driver
+    declares the signal, or None for a record that is not a soft signal the
+    matcher reads. The label (``oui:00:11:22``, ``open_port:4352``) is the
+    one the matcher reports as a ``possible`` state's ``source``.
+    """
+    kind = ev.data.get("kind")
+    value = ev.data.get("value")
+    if kind == KIND_OUI and isinstance(value, str):
+        return f"{KIND_OUI}:{_normalize_mac_prefix(value)}", index.find_soft_oui(value)
+    if kind == KIND_SNMP_PEN and isinstance(value, int):
+        return f"{KIND_SNMP_PEN}:{value}", index.find_soft_pen(value)
+    if kind == KIND_HOSTNAME and isinstance(value, str):
+        return f"{KIND_HOSTNAME}:{value}", index.find_soft_hostname(value)
+    if kind == KIND_OPEN_PORT and isinstance(value, int):
+        return f"{KIND_OPEN_PORT}:{value}", index.find_soft_open_port(value)
+    if kind == KIND_VENDOR_STRING and isinstance(value, str):
+        return f"{KIND_VENDOR_STRING}:{value}", index.find_soft_vendor_string(value)
+    return None
 
 
 # ---------------------------------------------------------------------------
