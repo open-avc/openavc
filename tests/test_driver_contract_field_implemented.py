@@ -415,6 +415,11 @@ def _mentions(source: str, name: str) -> bool:
     member, or an assignment. Requiring one of those shapes is what keeps an
     English word like "respond" from passing on a sentence in a help string.
     """
+    # Every shape below contains the name itself, and a plain substring test
+    # is far cheaper than the regex: most names appear in few files, and this
+    # runs for every field against every file.
+    if name not in source:
+        return False
     escaped = re.escape(name)
     pattern = (
         rf"\.{escaped}\b"
