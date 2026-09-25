@@ -1508,15 +1508,20 @@ class _FakeScanner:
 
     Mirrors the real scanners' contract: results accumulate on the instance and
     are exposed as a ``results`` property, which is what the engine merges from
-    — so evidence survives the listener's task being cancelled.
+    — so evidence survives the listener's task being cancelled. The collect
+    window ends by stopping the listeners (``_running`` / ``stop()``).
     """
 
     def __init__(self, results=None):
         self._results = results or {}
+        self._running = True
 
     @property
     def results(self):
         return dict(self._results)
+
+    async def stop(self):
+        self._running = False
 
 
 class TestEnginePassiveIntegration:

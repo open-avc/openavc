@@ -122,14 +122,20 @@ PHASE_WEIGHTS: dict[str, dict[str, float]] = {
 }
 
 # Passive-collect heartbeat window. The listeners run in the background the
-# whole scan; phase 7 waits for late mDNS/SSDP/AMX answers (and the SSDP XML
-# fetches) before cancelling them. How long it waits is a depth policy
-# (``DepthPolicy.passive_collect_seconds``), possibly shortened by the
-# budget; the constant below is the fallback for callers that pass no wait,
-# and is module-level so tests can shrink the otherwise-untestable 5–30s
-# window.
+# whole scan; phase 7 keeps them listening for late mDNS/SSDP/AMX answers,
+# then stops them and waits for the SSDP XML fetches. How long it listens is
+# a depth policy (``DepthPolicy.passive_collect_seconds``), possibly
+# shortened by the budget; the constant below is the fallback for callers
+# that pass no wait, and these are module-level so tests can shrink the
+# otherwise-untestable 5–30s window.
 _PASSIVE_COLLECT_TICK_SECONDS: float = 1.0
 _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS: float = 15.0
+# Ceiling on the wait after the listeners are told to stop: mDNS and AMX DDP
+# exit within half a second, and SSDP fetches description XML ten at a time
+# with a 3 s timeout each, so this covers two full rounds of slow fetches.
+# The phase's budget already covers it: SNMP, which the budget allows 5 s
+# after the window, has usually finished during the window itself.
+_LISTENER_DRAIN_SECONDS: float = 6.0
 
 # Minimum spacing between intra-phase progress pushes. The sweep phases tick
 # once per host; the bar only needs to look alive, so one message a second is
@@ -1035,13 +1041,9 @@ class DiscoveryEngine:
             # --- Phase 7: Collect Passive + SNMP Results ---
             await self._set_phase(7, "passive_collect", "Collecting passive and SNMP results...")
 
-            # Signal passive listeners to stop. They exit their receive
-            # loops within 0.5s; SSDP then fetches UPnP XML descriptions
-            # for everything it found before the task completes.
-            mdns_scanner._running = False
-            ssdp_scanner._running = False
-            await amx_ddp_scanner.stop()
-
+            # The listeners keep running through the collect window and are
+            # stopped at its end (see _collect_passive_results).
+            #
             # The collect half of phase 7 narrows by waiting less rather than
             # by dropping work — the announcements it gathers are the
             # strongest identification signal a scan gets, so shortening the
@@ -1549,14 +1551,24 @@ class DiscoveryEngine:
         amx_ddp_task: asyncio.Task,
         wait_seconds: float | None = None,
     ) -> None:
-        """Wait for passive listeners and append their evidence to each device.
+        """Listen through the collect window, stop the listeners, then merge.
+
+        The listeners have been running since phase 2 and keep running for
+        the whole window: late mDNS answers, SSDP NOTIFYs and AMX DDP beacons
+        (sent every 30 to 60 seconds) arrive only while a socket is open to
+        hear them. At the end of the window they are told to stop; mDNS and
+        AMX DDP leave their receive loops within half a second, and SSDP then
+        fetches the UPnP description XML for everything it heard, which gets
+        its own ceiling (``_LISTENER_DRAIN_SECONDS``).
 
         Uses a 1-second heartbeat loop so the progress bar moves steadily
-        instead of appearing stuck while waiting for SSDP XML fetches.
+        with a countdown rather than appearing stuck.
 
         ``wait_seconds`` is the window the scan budget granted (the depth
         policy's value, possibly shortened to leave room for driver probes).
-        None falls back to the module default.
+        None falls back to the module default. The window ends early only
+        when every listener has already exited (for example, none could open
+        its socket), since nothing is left to hear anything.
         """
         total_wait = (
             wait_seconds if wait_seconds is not None
@@ -1578,7 +1590,17 @@ class DiscoveryEngine:
                 f"Collecting passive results... ({secs_left}s remaining)",
             )
 
-        # Cancel any listeners still running past the collect window. gather()
+        # The window is over: stop listening, and give SSDP its description
+        # fetches. Awaited with a ceiling so one unresponsive web server can't
+        # hold the scan; a fetch still running at the ceiling is cancelled
+        # below, and every description already parsed stays on its result.
+        await self._stop_passive_listeners()
+        if remaining_tasks:
+            _, remaining_tasks = await asyncio.wait(
+                remaining_tasks, timeout=_LISTENER_DRAIN_SECONDS,
+            )
+
+        # Cancel any listeners still running past the drain ceiling. gather()
         # with return_exceptions swallows each task's own CancelledError but
         # still propagates a cancellation aimed at THIS coroutine — so a
         # stop_scan()/timeout cancellation isn't silently eaten here (which
@@ -1601,6 +1623,19 @@ class DiscoveryEngine:
                     log.debug("%s listener failed", label, exc_info=exc)
 
         await self.merge_passive_results()
+
+    async def _stop_passive_listeners(self) -> None:
+        """Tell this scan's passive listeners to leave their receive loops."""
+        scanners = self._passive_scanners
+        if scanners is None:
+            return
+        mdns_scanner, ssdp_scanner, amx_ddp_scanner = scanners
+        # mDNS and SSDP check the flag between receives (every 0.5 s). SSDP's
+        # task then fetches descriptions before it finishes, so it is not
+        # stopped outright the way AMX DDP is.
+        mdns_scanner._running = False
+        ssdp_scanner._running = False
+        await amx_ddp_scanner.stop()
 
     async def merge_passive_results(self) -> int:
         """Merge whatever the passive listeners have heard into ``self.results``.

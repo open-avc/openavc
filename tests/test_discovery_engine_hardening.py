@@ -266,12 +266,15 @@ class TestCollectCancellation:
         # Shrink the otherwise 5–30s passive-collect window for the tests.
         self._tick = engine_mod._PASSIVE_COLLECT_TICK_SECONDS
         self._wait = engine_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS
+        self._drain = engine_mod._LISTENER_DRAIN_SECONDS
         engine_mod._PASSIVE_COLLECT_TICK_SECONDS = 0.01
         engine_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS = 0.02
+        engine_mod._LISTENER_DRAIN_SECONDS = 0.02
 
     def teardown_method(self):
         engine_mod._PASSIVE_COLLECT_TICK_SECONDS = self._tick
         engine_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS = self._wait
+        engine_mod._LISTENER_DRAIN_SECONDS = self._drain
 
     async def test_child_cancellation_is_swallowed(self):
         """Listeners still pending past the window are cancelled and the
