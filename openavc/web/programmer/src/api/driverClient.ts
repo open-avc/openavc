@@ -93,6 +93,13 @@ export interface TestCommandResult {
    * send-and-wait path, which runs no driver.
    */
   contract_errors?: string[];
+  /**
+   * Replies the device sent that no response rule matched, as text (an OSC
+   * message as its address and arguments). The runtime drops these, so this
+   * is how an author tells a missing rule from a rule that did not fit.
+   * Absent on the raw send-and-wait path, which runs no driver.
+   */
+  unmatched?: string[];
 }
 
 /**

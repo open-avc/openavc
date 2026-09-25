@@ -24,6 +24,10 @@ from openavc.core.condition_eval import _coerce_bool, eval_operator
 from openavc.core.state_store import VALID_KEY_PREFIXES
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
+    CHILD_UNREGISTERED,
+    COERCION_FAILURE,
+    UNKNOWN_COMMAND,
+    UNMATCHED_RESPONSE,
     WAKE_ON_LAN_PORT,
     BaseDriver,
     ConnectionFaultError,
@@ -1250,6 +1254,7 @@ class ConfigurableDriver(BaseDriver):
 
         if cmd_def is None:
             log.warning(f"[{self.device_id}] Unknown command: {command}")
+            self._observe(UNKNOWN_COMMAND, command=command)
             return None
 
         # Runtime gate: trim + validate the supplied params against the
@@ -1880,7 +1885,7 @@ class ConfigurableDriver(BaseDriver):
                     # Static value mapping (no regex group needed)
                     if "value" in mapping:
                         static = mapping["value"]
-                        coerced = self._coerce_value(str(static), mapping.get("type", "string"))
+                        coerced = self._convert_value(str(static), mapping.get("type", "string"))
                         self.set_state(state_key, coerced)
                         continue
 
@@ -1914,9 +1919,9 @@ class ConfigurableDriver(BaseDriver):
                     # hostile list/dict map target to a flat primitive, keeping
                     # the state store's flat-primitives invariant intact.
                     if value_map and raw_value in value_map:
-                        coerced = self._coerce_value(str(value_map[raw_value]), value_type)
+                        coerced = self._convert_value(str(value_map[raw_value]), value_type)
                     else:
-                        coerced = self._coerce_value(raw_value, value_type)
+                        coerced = self._convert_value(raw_value, value_type)
 
                     self.set_state(state_key, coerced)
 
@@ -1929,6 +1934,7 @@ class ConfigurableDriver(BaseDriver):
                 return  # Stop at first match
 
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
+        self._observe(UNMATCHED_RESPONSE, text=text)
 
     def _apply_child_mappings(
         self, match: re.Match[str], child_mappings: list[dict[str, Any]]
@@ -1969,12 +1975,13 @@ class ConfigurableDriver(BaseDriver):
                     f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
                     f"registered — skipping"
                 )
+                self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
                 continue
             updates: dict[str, Any] = {}
             for pm in cm["props"]:
                 value_type = pm.get("type", "string")
                 if "value" in pm:
-                    updates[pm["prop"]] = self._coerce_value(
+                    updates[pm["prop"]] = self._convert_value(
                         str(pm["value"]), value_type
                     )
                     continue
@@ -1986,11 +1993,11 @@ class ConfigurableDriver(BaseDriver):
                     continue
                 value_map = pm.get("map")
                 if value_map and raw_value in value_map:
-                    updates[pm["prop"]] = self._coerce_value(
+                    updates[pm["prop"]] = self._convert_value(
                         str(value_map[raw_value]), value_type
                     )
                 else:
-                    updates[pm["prop"]] = self._coerce_value(raw_value, value_type)
+                    updates[pm["prop"]] = self._convert_value(raw_value, value_type)
             if updates:
                 self.set_child_state_batch(ctype, local_id, updates)
 
@@ -2054,13 +2061,13 @@ class ConfigurableDriver(BaseDriver):
                     if value_map:
                         str_val = str(raw_value)
                         if str_val in value_map:
-                            coerced = self._coerce_value(
+                            coerced = self._convert_value(
                                 str(value_map[str_val]), value_type
                             )
                         else:
-                            coerced = self._coerce_osc_value(raw_value, value_type)
+                            coerced = self._convert_osc_value(raw_value, value_type)
                     else:
-                        coerced = self._coerce_osc_value(raw_value, value_type)
+                        coerced = self._convert_osc_value(raw_value, value_type)
 
                     self.set_state(state_key, coerced)
 
@@ -2072,6 +2079,11 @@ class ConfigurableDriver(BaseDriver):
 
             if not matched:
                 log.debug(f"[{self.device_id}] Unmatched OSC: {address}")
+                self._observe(
+                    UNMATCHED_RESPONSE, address=address,
+                    args=[value if isinstance(value, (str, int, float, bool)) else repr(value)
+                          for _tag, value in args],
+                )
 
     def _apply_osc_child_mappings(
         self,
@@ -2112,12 +2124,13 @@ class ConfigurableDriver(BaseDriver):
                     f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
                     f"registered — skipping"
                 )
+                self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
                 continue
             updates: dict[str, Any] = {}
             for pm in cm["props"]:
                 value_type = pm.get("type", "string")
                 if "value" in pm:
-                    updates[pm["prop"]] = self._coerce_value(
+                    updates[pm["prop"]] = self._convert_value(
                         str(pm["value"]), value_type
                     )
                     continue
@@ -2127,11 +2140,11 @@ class ConfigurableDriver(BaseDriver):
                 _, raw_value = args[arg_index]
                 value_map = pm.get("map")
                 if value_map is not None and str(raw_value) in value_map:
-                    updates[pm["prop"]] = self._coerce_value(
+                    updates[pm["prop"]] = self._convert_value(
                         str(value_map[str(raw_value)]), value_type
                     )
                 else:
-                    updates[pm["prop"]] = self._coerce_osc_value(
+                    updates[pm["prop"]] = self._convert_osc_value(
                         raw_value, value_type
                     )
             if updates:
@@ -2274,11 +2287,11 @@ class ConfigurableDriver(BaseDriver):
             for mapping, value in resolved:
                 value_map = mapping.get("map")
                 if value_map and str(value) in value_map:
-                    coerced = self._coerce_value(
+                    coerced = self._convert_value(
                         str(value_map[str(value)]), mapping.get("type", "string")
                     )
                 else:
-                    coerced = self._coerce_json_value(value, mapping.get("type", "string"))
+                    coerced = self._convert_json_value(value, mapping.get("type", "string"))
                 self.set_state(mapping["state"], coerced)
                 applied = True
             for ctype, local_id, updates in child_writes:
@@ -2325,6 +2338,7 @@ class ConfigurableDriver(BaseDriver):
                     f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
                     f"registered — skipping"
                 )
+                self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
                 continue
             updates: dict[str, Any] = {}
             for pm in cm["props"]:
@@ -2334,11 +2348,11 @@ class ConfigurableDriver(BaseDriver):
                 value_map = pm.get("map")
                 value_type = pm.get("type", "string")
                 if value_map and str(value) in value_map:
-                    updates[pm["prop"]] = self._coerce_value(
+                    updates[pm["prop"]] = self._convert_value(
                         str(value_map[str(value)]), value_type
                     )
                 else:
-                    updates[pm["prop"]] = self._coerce_json_value(
+                    updates[pm["prop"]] = self._convert_json_value(
                         value, value_type
                     )
             if updates:
@@ -2350,6 +2364,44 @@ class ConfigurableDriver(BaseDriver):
     # before ``_coerce_json_value`` sees them.
     _coerce_json_value = staticmethod(compiled_protocol.coerce_json_value)
     _coerce_osc_value = staticmethod(compiled_protocol.coerce_osc_value)
+
+    # What the response paths call: the shared coercers, plus a word to a
+    # contract observer when a value did not convert. The coercers keep the
+    # value as it came (a number) or read it as False (a flag), which is right
+    # for the room and invisible to the author.
+    def _convert_value(self, raw: str, value_type: str) -> Any:
+        coerced = self._coerce_value(raw, value_type)
+        if self.contract_observer is not None:
+            self._note_coercion(raw, value_type, coerced)
+        return coerced
+
+    def _convert_json_value(self, value: Any, value_type: str) -> Any:
+        coerced = self._coerce_json_value(value, value_type)
+        if self.contract_observer is not None:
+            self._note_coercion(value, value_type, coerced)
+        return coerced
+
+    def _convert_osc_value(self, value: Any, value_type: str) -> Any:
+        coerced = self._coerce_osc_value(value, value_type)
+        if self.contract_observer is not None:
+            self._note_coercion(value, value_type, coerced)
+        return coerced
+
+    def _note_coercion(self, raw: Any, value_type: str, coerced: Any) -> None:
+        if raw is None:
+            return
+        failed = (
+            (value_type == "integer" and not isinstance(coerced, int))
+            or (value_type in ("float", "number") and not isinstance(coerced, (int, float)))
+            or (value_type == "boolean" and not isinstance(raw, bool)
+                and not compiled_protocol.is_bool_token(raw))
+        )
+        if failed:
+            self._observe(
+                COERCION_FAILURE, raw=raw if isinstance(raw, (str, int, float)) else repr(raw),
+                type=value_type, stored=coerced if isinstance(coerced, (str, int, float, bool))
+                else repr(coerced),
+            )
 
     async def set_device_setting(self, key: str, value: Any) -> Any:
         """

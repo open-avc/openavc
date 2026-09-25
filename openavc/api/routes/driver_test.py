@@ -9,8 +9,9 @@ Three ways to run a command, in descending fidelity:
 
 * **Live via the real runtime** (`definition` + `command_name`) — instantiates
   the actual `ConfigurableDriver`, runs auth and on_connect, sends, and
-  reports the response, state changes, and driver-contract violations. What
-  works here works when the driver is wired to a real device.
+  reports the response, state changes, driver-contract violations and the
+  replies no response rule matched. What works here works when the driver is
+  wired to a real device.
 * **Dry run** (`dry_run`) — the same construction, but the transport records
   instead of transmitting. The reported wire is what the runtime handed the
   transport, so the preview cannot drift from the send the way a second
@@ -235,7 +236,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             "error": str(e),
         }
 
-    from openavc.drivers.base import UndeclaredStateError
+    from openavc.drivers.base import UNMATCHED_RESPONSE, UndeclaredStateError
 
     driver = built.driver
     config = built.config
@@ -254,6 +255,22 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         """Record a violation once; the same rule fires on every poll."""
         if str(e) not in contract_errors:
             contract_errors.append(str(e))
+
+    # Replies no response rule matched: the runtime drops them with a debug
+    # line, so without this the author sees the bytes arrive and nothing
+    # happen, and cannot tell a missing rule from a rule that did not fit.
+    unmatched: list[str] = []
+
+    def observe(kind: str, detail: dict[str, Any]) -> None:
+        if kind != UNMATCHED_RESPONSE:
+            return
+        text = detail.get("text")
+        if text is None:  # an OSC message: its address and arguments
+            args = detail.get("args") or []
+            text = f"{detail.get('address', '')} {args}" if args else detail.get("address", "")
+        unmatched.append(str(text))
+
+    driver.contract_observer = observe
 
     # Capture state changes so the panel can show what the command moved.
     initial_state: dict[str, Any] = (
@@ -299,6 +316,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 "state_changes": {},
                 "error": f"Connect failed: {e}",
                 "contract_errors": contract_errors,
+                "unmatched": unmatched,
             }
 
         cmd_def = (definition.get("commands") or {}).get(body.command_name)
@@ -310,6 +328,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
                 "state_changes": {},
                 "error": f"Unknown command '{body.command_name}'",
                 "contract_errors": contract_errors,
+                "unmatched": unmatched,
             }
 
         sent_repr = _describe_outgoing(definition, cmd_def, config, body.params or {})
@@ -374,6 +393,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
         "state_changes": state_changes,
         "error": error_text,
         "contract_errors": contract_errors,
+        "unmatched": unmatched,
     }
 
 

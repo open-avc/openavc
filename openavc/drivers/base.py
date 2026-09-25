@@ -76,6 +76,20 @@ log = get_logger(__name__)
 # the suite the author is already running instead of shipping silently.
 STRICT_DRIVER_STATE_ENV = "OPENAVC_STRICT_DRIVER_STATE"
 
+# What a contract observer (BaseDriver.contract_observer) can be told. Each is
+# something the runtime already notices and then keeps to itself: a debug
+# line, a warning once per key, a value stored as it came.
+UNMATCHED_RESPONSE = "unmatched_response"   # a reply no response rule matched
+UNDECLARED_STATE = "undeclared_state"       # a write to an undeclared variable
+TYPE_MISMATCH = "type_mismatch"             # a value not of its declared type
+COERCION_FAILURE = "coercion_failure"       # a reply that would not convert
+UNKNOWN_COMMAND = "unknown_command"         # a command the driver does not have
+CHILD_UNREGISTERED = "child_unregistered"   # state for a child never registered
+CONTRACT_EVENTS: tuple[str, ...] = (
+    UNMATCHED_RESPONSE, UNDECLARED_STATE, TYPE_MISMATCH, COERCION_FAILURE,
+    UNKNOWN_COMMAND, CHILD_UNREGISTERED,
+)
+
 
 def strict_driver_state() -> bool:
     """True when the platform should hard-fail on a driver contract violation
@@ -172,6 +186,22 @@ class UndeclaredStateError(ValueError):
     ``BaseDriver._check_undeclared_state`` for why this is a warning at
     runtime and a raise where the author is iterating.
     """
+
+
+def _type_problem(declared: str, value: Any, var_def: dict[str, Any]) -> str:
+    """Why ``value`` is not of its ``declared`` type, or "" when it is."""
+    if declared == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
+        return f"declared integer, got {type(value).__name__}"
+    if declared in ("number", "float") and (
+        isinstance(value, bool) or not isinstance(value, (int, float))
+    ):
+        return f"declared {declared}, got {type(value).__name__}"
+    if declared == "boolean" and not isinstance(value, bool):
+        return f"declared boolean, got {type(value).__name__}"
+    if declared == "enum" and "values" in var_def:
+        if str(value) not in [str(v) for v in var_def["values"]]:
+            return "not one of the declared values"
+    return ""
 
 
 def validate_device_setting_value(key: str, sdef: Any, value: Any) -> Any:
@@ -607,6 +637,13 @@ class BaseDriver(ABC):
         "Connected, but the device stopped answering keep-alive probes."
     )
 
+    #: Told about contract faults as they happen: ``observer(kind, detail)``,
+    #: ``kind`` one of ``CONTRACT_EVENTS``. None in production, where each
+    #: check costs one comparison; a device audit and the Driver Builder's
+    #: test set it on the one driver they run. An observer must not block,
+    #: and its failures are its own.
+    contract_observer: Callable[[str, dict[str, Any]], None] | None = None
+
     #: The state variable a driver writes when the device reports a problem
     #: it can still describe — a rejected command, a response it could not
     #: parse. A convention rather than a platform field: drivers declare it in
@@ -733,6 +770,16 @@ class BaseDriver(ABC):
         # test — runs this constructor, and both halves it needs (the resolved
         # config and the driver's own config_schema) are already in hand.
         self._register_config_secrets()
+
+    def _observe(self, kind: str, **detail: Any) -> None:
+        """Tell the contract observer, if there is one, about ``kind``."""
+        observer = self.contract_observer
+        if observer is None:
+            return
+        try:
+            observer(kind, detail)
+        except Exception:
+            log.debug(f"[{self.device_id}] Contract observer failed", exc_info=True)
 
     def _register_config_secrets(self) -> None:
         """Publish this device's config credentials to the redaction registry."""
@@ -2922,6 +2969,8 @@ class BaseDriver(ABC):
         """
         if property_name in self._PLATFORM_STATE_PROPS:
             return
+        # Every write, not once per key: an observer counts them.
+        self._observe(UNDECLARED_STATE, state=property_name)
         driver_id = self.DRIVER_INFO.get("id", "?")
         summary = (
             f"[{self.device_id}] driver '{driver_id}' wrote state "
@@ -2952,6 +3001,14 @@ class BaseDriver(ABC):
         if not var_def or value is None:
             return
         declared = var_def.get("type", "string")
+        if self.contract_observer is not None:
+            problem = _type_problem(declared, value, var_def)
+            if problem:
+                self._observe(
+                    TYPE_MISMATCH, state=prop_label, declared=declared,
+                    value=value if isinstance(value, (str, int, float, bool)) else repr(value),
+                    problem=problem,
+                )
         if declared == "integer" and not isinstance(value, int):
             log.debug(
                 f"[{self.device_id}] State '{prop_label}' declared as "
@@ -3548,6 +3605,9 @@ class BaseDriver(ABC):
                 f"{child_type}/{local_id} (prop {prop!r}) skipped — call "
                 f"register_child first"
             )
+            self._observe(
+                CHILD_UNREGISTERED, child_type=child_type, local_id=local_id, props=[prop],
+            )
             return
         self._validate_child_prop(child_type, local_id, prop)
         schema = self._effective_child_schema(child_type, local_id)
@@ -3634,6 +3694,10 @@ class BaseDriver(ABC):
                 f"child {child_type}/{local_id} skipped — call register_child "
                 f"first"
             )
+            self._observe(
+                CHILD_UNREGISTERED, child_type=child_type, local_id=local_id,
+                props=sorted(updates),
+            )
             return
         for prop in updates:
             self._validate_child_prop(child_type, local_id, prop)
@@ -3662,6 +3726,10 @@ class BaseDriver(ABC):
                     f"[{self.device_id}] set_children_state_batch entry for "
                     f"unregistered child {child_type}/{local_id} skipped — "
                     f"call register_child first"
+                )
+                self._observe(
+                    CHILD_UNREGISTERED, child_type=child_type, local_id=local_id,
+                    props=sorted(child_updates),
                 )
                 continue
             live.append((child_type, local_id, child_updates))

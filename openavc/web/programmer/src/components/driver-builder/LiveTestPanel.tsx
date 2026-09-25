@@ -52,6 +52,8 @@ interface ResultEntry {
    * avoid.
    */
   contract_errors?: string[];
+  /** Replies no response rule matched (see TestCommandResult.unmatched). */
+  unmatched?: string[];
   /** Set when the request hit the 2s rate limit (A82). */
   throttled?: boolean;
   timestamp: number;
@@ -471,6 +473,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           state_changes: result.state_changes,
           error: result.error,
           contract_errors: result.contract_errors ?? [],
+          unmatched: result.unmatched ?? [],
           timestamp: Date.now(),
         },
         ...prev,
@@ -901,6 +904,21 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
       {entry.received.map((r, j) => (
         <div key={j} style={{ color: "var(--color-success, #4caf50)" }}>
           ← {visibleBytes(r)}
+        </div>
+      ))}
+      {(entry.unmatched ?? []).map((text, j) => (
+        <div
+          key={`unmatched-${j}`}
+          style={{
+            color: "var(--color-warning, #e8b250)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 4,
+            marginTop: 4,
+          }}
+        >
+          <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>No response rule matched this reply: {visibleBytes(text)}</span>
         </div>
       ))}
       {Object.entries(entry.state_changes).length > 0 && (

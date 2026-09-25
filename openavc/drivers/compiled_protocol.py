@@ -626,6 +626,19 @@ _TRUE_WORDS = frozenset({"true", "yes", "on"})
 _FALSE_WORDS = frozenset({"false", "no", "off"})
 
 
+def is_bool_token(raw: Any) -> bool:
+    """True when ``coerce_bool_token`` reads ``raw`` rather than defaulting:
+    a true/false word or a number. Anything else becomes False unannounced."""
+    text = str(raw).strip().lower()
+    if text in _TRUE_WORDS or text in _FALSE_WORDS:
+        return True
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
 def coerce_bool_token(raw: Any) -> bool:
     """Read a device's boolean token.
 
