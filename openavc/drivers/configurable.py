@@ -21,7 +21,7 @@ import time
 from typing import Any
 
 from openavc.core.condition_eval import _coerce_bool, eval_operator
-from openavc.core.state_store import VALID_KEY_PREFIXES
+from openavc.core.state_store import VALID_KEY_PREFIXES, is_flat_primitive
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
     CHILD_UNREGISTERED,
@@ -2089,7 +2089,7 @@ class ConfigurableDriver(BaseDriver):
                 log.debug(f"[{self.device_id}] Unmatched OSC: {address}")
                 self._observe(
                     UNMATCHED_RESPONSE, address=address,
-                    args=[value if isinstance(value, (str, int, float, bool)) else repr(value)
+                    args=[value if is_flat_primitive(value) else repr(value)
                           for _tag, value in args],
                 )
 
@@ -2406,9 +2406,8 @@ class ConfigurableDriver(BaseDriver):
         )
         if failed:
             self._observe(
-                COERCION_FAILURE, raw=raw if isinstance(raw, (str, int, float)) else repr(raw),
-                type=value_type, stored=coerced if isinstance(coerced, (str, int, float, bool))
-                else repr(coerced),
+                COERCION_FAILURE, raw=raw if is_flat_primitive(raw) else repr(raw),
+                type=value_type, stored=coerced if is_flat_primitive(coerced) else repr(coerced),
             )
 
     async def set_device_setting(self, key: str, value: Any) -> Any:

@@ -48,7 +48,7 @@ from openavc.drivers.spec import (
     CHILD_RESERVED_PROP_SCHEMA,
     CHILD_RESERVED_PROPS,
 )
-from openavc.core.state_store import StateStore
+from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
 from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import collect_secret_values, get_secret_registry
@@ -3006,7 +3006,7 @@ class BaseDriver(ABC):
             if problem:
                 self._observe(
                     TYPE_MISMATCH, state=prop_label, declared=declared,
-                    value=value if isinstance(value, (str, int, float, bool)) else repr(value),
+                    value=value if is_flat_primitive(value) else repr(value),
                     problem=problem,
                 )
         if declared == "integer" and not isinstance(value, int):

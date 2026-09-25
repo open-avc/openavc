@@ -69,7 +69,6 @@ NOT_ON_DRIVER_INFO = {
     # Catalog metadata: describes the driver to the library, and is never
     # asked of a running one.
     "min_platform_version": "catalog gate, checked before install",
-    "compatible_models": "catalog metadata",
     "deprecated": "catalog metadata",
     "replacement_id": "catalog metadata",
     "ports": "catalog metadata",
