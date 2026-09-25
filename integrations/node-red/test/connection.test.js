@@ -66,6 +66,34 @@ describe("role and credential", () => {
     expect(server.headers["x-api-key"]).toBe("secret-key");
   });
 
+  it("is refused with 4010 by a system that admits approved panels only, and says to enter the key", async () => {
+    await fake.stop();
+    fake = await new FakeOpenAVC({ approvedOnly: true }).start();
+    const errors = [];
+    const statuses = [];
+    const c = connect({ logger: { log() {}, warn() {}, error: (m) => errors.push(m) } });
+    c.on("status", (status, detail) => statuses.push([status, detail]));
+    const [code] = await once(c, "close");
+    expect(code).toBe(4010);
+    const why = "this system only admits approved panels; enter the API key in the server settings";
+    expect(c.detail).toBe(why);
+    expect(statuses.at(-1)).toEqual(["disconnected", why]);
+    expect(errors).toEqual([`OpenAVC 127.0.0.1:${fake.port}: ${why}`]);
+    // It keeps trying (the setting can change under it) but says why once.
+    await once(c, "close");
+    expect(fake.refused).toBe(2);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("is admitted by that same system with a key", async () => {
+    await fake.stop();
+    fake = await new FakeOpenAVC({ approvedOnly: true }).start();
+    const c = connect({ apiKey: "k-123" });
+    await once(c, "open");
+    expect(c.status).toBe("connected");
+    expect(fake.refused).toBe(0);
+  });
+
   it("carries the key on the editor's REST lookups too", async () => {
     const c = connect({ apiKey: "secret-key" });
     await once(c, "open");

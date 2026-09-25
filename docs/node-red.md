@@ -41,15 +41,15 @@ In Node-RED, open **Manage palette › Install** and search for `@open-avc/node-
 npm install @open-avc/node-red-openavc
 ```
 
-You need Node-RED 4.0 or later and OpenAVC 0.33 or later. Node-RED can run anywhere that can reach the OpenAVC system: the same computer, a server in the rack, a container.
+You need Node-RED 4.0 or later and OpenAVC 0.33 or later. Node-RED can run anywhere that can reach the OpenAVC system: the same computer, a server in the rack, a container. Anywhere but the same computer needs an API key (below).
 
 ## Connect to a system
 
-Drag any OpenAVC node onto a flow, open it, and add a new **openavc-server**. Enter the host and port you open the Programmer on (`192.168.1.50` and `8080`, say). Tick **HTTPS** if the system has it turned on; leave **Verify the certificate** off unless the system has a cloud-issued or company certificate. Then **deploy**.
+Drag any OpenAVC node onto a flow, open it, and add a new **openavc-server**. Enter the host and port you open the Programmer on (`192.168.1.50` and `8080`, say). Tick **HTTPS** if the system has it turned on; leave **Verify the certificate** off unless the system has a cloud-issued or company certificate. Paste an **API key**. Then **deploy**.
 
-**With no API key**, the connection joins the system the way a panel does. It can read all state, send device commands, run and cancel macros, write `var.*` and `plugin.*` variables, and emit `custom.*` events. That is everything a flow needs to be the room's logic.
+**The API key** is required unless Node-RED runs on the OpenAVC host. Generate one in the Programmer under **Settings › Access** (a key needs a Programmer password set as well). It is stored as a Node-RED credential and never shown in the browser again. With it, the connection joins as the Programmer: it reads all state, sends device commands, runs and cancels macros, writes any state namespace and hears every event on the bus.
 
-**With an API key**, the connection joins as the Programmer: everything above, plus writing any state namespace and hearing every event on the bus. Generate a key in the Programmer under **Settings › Access** (a key needs a Programmer password set as well). It is stored as a Node-RED credential and never shown in the browser again.
+**With no API key**, the connection joins the system the way a panel does: it reads all state, sends device commands, runs and cancels macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. A system admits a panel from another machine only when its Panel access is set to **Anyone on the network** (Settings › Access); from the OpenAVC host itself, the connection is the box's own screen and is always admitted.
 
 All the nodes on one server share a single connection, and it reconnects on its own if the system restarts or the network drops. Two systems in one flow are two server nodes.
 
@@ -88,7 +88,7 @@ The script editor marks a `custom.` handler that nothing in the project emits. I
 Everything the nodes do is ordinary API usage, so Node-RED's built-in nodes reach OpenAVC too:
 
 - An **http request** node with an `X-API-Key` header calls any REST endpoint: `POST /api/devices/{id}/command`, `POST /api/macros/{id}/execute`, `PUT /api/state/var.status`, `POST /api/events`.
-- A **websocket** client node on `ws://host:8080/ws?client=panel&events=custom.*` receives the live state stream (`state.snapshot`, then `state.update` batches) and the events named, and can send `command`, `macro.execute`, `macro.cancel`, `state.set` and `event.emit` frames. Add an `X-API-Key` header to the node to connect as the Programmer.
+- A **websocket** client node on `ws://host:8080/ws?client=panel&events=custom.*` receives the live state stream (`state.snapshot`, then `state.update` batches) and the events named, and can send `command`, `macro.execute`, `macro.cancel`, `state.set` and `event.emit` frames. An `X-API-Key` header on the node is required unless Node-RED runs on the OpenAVC host; with it the node connects as the Programmer.
 - The **MQTT Bridge** plugin publishes chosen state keys to a broker and accepts commands back, which Node-RED's MQTT nodes speak natively.
 
 The nodes exist because a flow should hold one socket rather than make HTTP calls (the REST API allows a few calls a second; the socket allows hundreds), and because picking a device from a list beats typing its id.
@@ -108,6 +108,7 @@ Inside the flow, every OpenAVC node shows the connection on its status dot, and 
 - **The device or macro list is empty.** Deploy the server node first; the lists come from the system through its connection.
 - **The dialog says the system asks for an API key before it will list this.** The system has a Programmer password, and the server node has no key. Devices and state keys still list; commands and macros need the key. Add it to the server node, or type the id.
 - **Every node shows "disconnected: the server refused the API key", and the Node-RED log says the same.** The key is wrong or was regenerated. Paste the current one from **Settings › Access**.
+- **Every node shows "disconnected: this system only admits approved panels; enter the API key in the server settings".** The server node has no key and Node-RED is on another machine. Paste a key from **Settings › Access** into the server node, or set the system's Panel access to **Anyone on the network**.
 - **HTTPS is on and the connection never opens.** Untick **Verify the certificate** for a self-signed certificate. For a certificate signed by your own company CA, keep it ticked and add a **TLS configuration** on the server node with the CA certificate in it.
 - **A `set variable` node is refused.** Without an API key, only `var.*` and `plugin.*` keys can be written. Device state is written by the device's driver, never by hand. A message that does not carry the property the node reads (`msg.payload` by default) is refused too, rather than written as `null`.
 - **An `emit event` node is refused.** Events from outside are always `custom.<name>`. The node adds the prefix; something else naming `device.` or `cloud.` events is refused on purpose.

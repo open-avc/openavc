@@ -1371,11 +1371,12 @@ class Engine:
         a press runs a macro, which commands a group — so the renderer could
         not work it out from the page it is given even if we wanted it to.
 
-        **The panel lock PIN is not in what comes back.** A panel client is
-        unauthenticated by design, so everything this returns reaches every
-        panel on the LAN — and this is the payload the lock screen used to be
-        handed the code it was checking in. It leaves as ``lock_enabled``, and
-        the attempt goes to ``POST /api/panel/unlock``.
+        **The panel lock PIN is not in what comes back.** A panel client holds
+        no programmer credential (the panel gate admits it, and in open mode
+        that is anyone on the LAN), so everything this returns reaches every
+        panel the gate admits — and this is the payload the lock screen used to
+        be handed the code it was checking in. It leaves as ``lock_enabled``,
+        and the attempt goes to ``POST /api/panel/unlock``.
         """
         if not self.project:
             return {}
@@ -1393,8 +1394,9 @@ class Engine:
         """Whether ``code`` is this project's panel lock PIN.
 
         The server checks it because the server is the only side that can:
-        a panel is unauthenticated, so handing it the PIN to compare against
-        published the PIN to every client on the LAN, and the "lock" was a
+        a panel holds no programmer credential, so handing it the PIN to
+        compare against published the PIN to every admitted panel, and the
+        "lock" was a
         courtesy the same server had already given away. Constant-time, which
         costs nothing on a six-digit string and means a wrong PIN takes the
         same time whatever it got right.

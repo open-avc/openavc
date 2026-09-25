@@ -234,11 +234,13 @@ def verify_guest_token(token: str, plugin_id: str, scope: str) -> bool:
 # Panel tokens + panel-reachable ext paths
 # ---------------------------------------------------------------------------
 # A third token family so a STANDALONE room panel (wall tablet, kiosk, panel
-# app — unauthenticated by design) can reach the plugin ext routes its panel
-# elements need on a claimed instance, without downgrading the rest of the
-# plugin's ext surface: the token only passes the guard for routes the plugin
-# explicitly declared panel-reachable via ``register_router(panel_paths=...)``.
-# CRUD/admin ext routes stay programmer-only.
+# app — it holds no programmer credential; the panel gate admits it) can reach
+# the plugin ext routes its panel elements need on a claimed instance, without
+# downgrading the rest of the plugin's ext surface: the token only passes the
+# guard for routes the plugin explicitly declared panel-reachable via
+# ``register_router(panel_paths=...)``. CRUD/admin ext routes stay
+# programmer-only. The token is minted only for a panel the gate admits
+# (``api/plugins.py`` ext-token); a panel still waiting for approval gets none.
 #
 # Panel tokens sign with the bare per-process ``_SECRET`` (like guest tokens,
 # domain-separated by the "panel:" prefix): they authenticate the panel
@@ -392,8 +394,9 @@ def mount_plugin_router(
     """Mount a plugin's APIRouter under ``/api/plugins/{id}/ext/*`` (idempotent).
 
     ``panel_paths``: optional patterns (see :func:`parse_panel_paths`) marking
-    routes reachable with a panel token from a standalone, unauthenticated
-    room panel on a claimed instance.
+    routes reachable with a panel token from a standalone room panel (one the
+    panel gate admits; it holds no programmer credential) on a claimed
+    instance.
 
     ``media_paths``: optional patterns, same shape, marking routes that
     carry a continuous media stream and so belong on the rate limiter's

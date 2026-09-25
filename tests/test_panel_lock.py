@@ -1,8 +1,9 @@
 """The panel lock PIN stays on the server.
 
-A panel client is unauthenticated by design — `api/ws.py` falls back to
-`client_type = "panel"` when auth fails, because a wall tablet holds no
-credential. Every panel on the LAN is then sent `ui.definition`, which carried
+A panel client holds no programmer credential — `api/ws.py` falls back to
+`client_type = "panel"` when auth fails, because a wall tablet holds none (the
+panel gate admits it instead). Every admitted panel is then sent
+`ui.definition`, which carried
 the whole of `engine.panel_ui()`, settings included. So the PIN the lock screen
 was about to check was published to the client doing the checking, and
 `panel.js` compared the typed attempt against it locally. The flow worked and

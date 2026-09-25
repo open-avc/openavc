@@ -36,7 +36,8 @@ open_router = APIRouter()
 
 @open_router.post("/panel/unlock")
 async def panel_unlock(body: PanelUnlockRequest) -> dict[str, Any]:
-    """Check a panel lock PIN. Open, because a panel holds no credential.
+    """Check a panel lock PIN. Open, because a panel holds no programmer
+    credential (it is admitted by the panel gate, never by a password).
 
     The lock used to be enforced entirely in the browser against a value the
     same server had published to it: ``ui.definition`` carried

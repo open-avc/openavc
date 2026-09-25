@@ -1,8 +1,11 @@
 """
 OpenAVC programmer/admin authentication — secure by default with first-run claim.
 
-The room panel (/panel) is always open — end users never see auth. The
-Programmer IDE and the mutating/admin API require a credential. A fresh shipped
+The room panel page (/panel) is served openly and end users never see auth;
+whether a panel may CONNECT is the panel gate (`api/panel_access.py`: Panel
+access mode, a credential, the box's own screen, a cloud tunnel, or an approved
+panel's cookie), not a login. The Programmer IDE and the mutating/admin API
+require a credential. A fresh shipped
 deployment ships with no credential and is *unclaimed*: the first visit to the
 Programmer shows a "create admin password" screen (POST /api/auth/setup), after
 which login is required. A git development checkout stays open on localhost for

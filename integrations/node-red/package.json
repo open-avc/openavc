@@ -1,6 +1,6 @@
 {
   "name": "@open-avc/node-red-openavc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Node-RED nodes for OpenAVC: read room state and events, send device commands, run macros, write variables, emit events.",
   "license": "MIT",
   "author": "OpenAVC",

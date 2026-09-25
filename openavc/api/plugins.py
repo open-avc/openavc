@@ -106,9 +106,10 @@ async def list_installed() -> dict[str, Any]:
 
 # Open router (no auth): the panel runtime fetches this on every load to learn
 # each plugin panel-element's sandbox permissions before the first render. The
-# room panel is unauthenticated by design, so requiring auth here returns 401
-# WWW-Authenticate: Basic to a standalone panel, which makes the browser pop its
-# native HTTP Basic dialog (an unfillable username/password prompt). The payload
+# room panel holds no programmer credential (the panel gate admits it), so
+# requiring auth here returns 401 WWW-Authenticate: Basic to a standalone panel,
+# which makes the browser pop its native HTTP Basic dialog (an unfillable
+# username/password prompt). The payload
 # is read-only UI metadata — the same security shape as the plugin panel/files
 # assets already on the open router. Registered before the protected
 # /plugins/{plugin_id}, and the open router is mounted first, so "extensions" is

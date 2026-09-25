@@ -67,7 +67,7 @@
   </div>
   <div class="form-row">
     <label for="node-config-input-apiKey"><i class="fa fa-key"></i> API key</label>
-    <input type="password" id="node-config-input-apiKey" placeholder="leave blank to connect as a panel" />
+    <input type="password" id="node-config-input-apiKey" placeholder="required unless Node-RED runs on the OpenAVC host" />
   </div>
   <div class="form-row">
     <label for="node-config-input-clientName"><i class="fa fa-heartbeat"></i> Announce as</label>
@@ -79,10 +79,12 @@
     reading or a trigger can tell when the flow is not there.
   </div>
   <div class="form-tips">
-    Without an API key this connection can do what a panel can: read all state, send
-    commands, run macros, write <code>var.*</code> variables and emit <code>custom.*</code>
-    events. With one it can also write any state namespace and hear every event. Generate
-    a key in the Programmer under Settings &rsaquo; Access.
+    An API key is required unless Node-RED runs on the OpenAVC host. With one this
+    connection joins as the Programmer: it reads all state, sends commands, runs macros,
+    writes any state namespace and hears every event. Generate a key in the Programmer
+    under Settings &rsaquo; Access. Without one, a connection from the OpenAVC host itself
+    can do what a panel can: read all state, send commands, run macros, write
+    <code>var.*</code> variables and emit <code>custom.*</code> events.
   </div>
 </script>
 
@@ -95,11 +97,13 @@ One OpenAVC system. Every OpenAVC node points at one of these, and all the nodes
 
 ### API key
 
-Leave it blank and the connection joins as a **panel**: it reads all state, sends device commands, runs and cancels macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. That is enough for a flow that acts as the room's logic.
+An API key is required unless Node-RED runs on the OpenAVC host. Generate one in the Programmer under **Settings › Access** (a key needs a Programmer password set as well). It is stored as a Node-RED credential and never sent to the browser.
 
-Give it a key and the connection joins as the **Programmer**: everything above, plus writing any state namespace and hearing every event on the bus. Generate one in the Programmer under **Settings › Access** (a key needs a Programmer password set as well). It is stored as a Node-RED credential and never sent to the browser.
+With a key the connection joins as the **Programmer**: it reads all state, sends device commands, runs and cancels macros, writes any state namespace and hears every event on the bus.
 
-If the key is wrong, every node on this server shows **disconnected: the server refused the API key** and the Node-RED log says the same.
+Without a key the connection joins as a **panel**: it reads all state, sends device commands, runs and cancels macros, writes `var.*` and `plugin.*` variables, and emits `custom.*` events. A system admits a panel from another machine only when its Panel access is set to **Anyone on the network**; from the OpenAVC host itself the connection is the box's own screen and is always admitted.
+
+If the key is wrong, every node on this server shows **disconnected: the server refused the API key** and the Node-RED log says the same. If there is no key and Node-RED is on another machine, every node shows **disconnected: this system only admits approved panels; enter the API key in the server settings**.
 
 ### Announce as
 

@@ -3,7 +3,8 @@
 // A stand-in OpenAVC that speaks the real WebSocket protocol and the four REST
 // reads the editor makes. Enough to drive every node end to end without a
 // Python process, and to make the server misbehave on purpose (drop clients,
-// refuse a command, fail a macro, stall, rate-limit, demand a key).
+// refuse a command, fail a macro, stall, rate-limit, demand a key, admit
+// approved panels only).
 //
 // Like the real server it reads each connection's frames ONE AT A TIME and
 // answers each before reading the next, which is the fact the connection's
@@ -24,6 +25,12 @@ class FakeOpenAVC {
     // claimed: a password-protected system. REST answers 401 without the
     // key, and a programmer socket without it is refused at the upgrade.
     this.claimed = !!opts.claimed;
+    // approvedOnly: a system whose Panel access is "approved panels only",
+    // seen from another machine. A keyless (panel) socket is accepted and
+    // then closed with 4010, which is the one refusal that arrives as a close
+    // code; a keyed (programmer) socket is unaffected.
+    this.approvedOnly = !!opts.approvedOnly;
+    this.refused = 0;
     this.apiKey = opts.apiKey || "k-123";
     // stallMs: every device command takes this long, holding the loop.
     this.stallMs = opts.stallMs || 0;
@@ -138,6 +145,11 @@ class FakeOpenAVC {
   _onConnection(ws, req) {
     const url = new URL(req.url, "http://x");
     const role = url.searchParams.get("client") || "panel";
+    if (this.approvedOnly && role === "panel") {
+      this.refused += 1;
+      ws.close(4010, "Panel not approved");
+      return;
+    }
     const conn = { ws, url: req.url, headers: req.headers, role, patterns: [], name: url.searchParams.get("name") || "", frames: 0, queue: Promise.resolve() };
     const events = url.searchParams.get("events");
     if (events) conn.patterns = events.split(",").map((s) => s.trim()).filter(Boolean);

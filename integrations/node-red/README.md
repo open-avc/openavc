@@ -33,7 +33,7 @@ Needs Node-RED 4.0 or later and OpenAVC 0.33 or later.
 
 ## Connect
 
-Add an **openavc-server**, enter the host and port the Programmer opens on, and deploy. Leave the API key blank to connect as a panel (read all state, send commands, run macros, write `var.*`, emit `custom.*` events), or paste a key from the Programmer's **Settings › Access** to connect as the Programmer, which can also write any state namespace and hear every event.
+Add an **openavc-server**, enter the host and port the Programmer opens on, paste an API key from the Programmer's **Settings › Access**, and deploy. The connection joins as the Programmer: it reads all state, sends commands, runs macros, writes any state namespace and hears every event. A key is required unless Node-RED runs on the OpenAVC host; there, a keyless connection joins as a panel (read all state, send commands, run macros, write `var.*`, emit `custom.*` events).
 
 Give the server node a name under **Announce as** and OpenAVC publishes `system.integration.<name>.connected`, so a panel light or an alert can say when the flow is not there.
 

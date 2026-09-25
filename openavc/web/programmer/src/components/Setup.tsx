@@ -95,7 +95,8 @@ export function Setup({ onComplete }: SetupProps) {
           <h2 style={{ margin: 0, fontSize: 20 }}>Set up OpenAVC</h2>
           <p style={{ marginTop: 6, fontSize: 13, opacity: 0.7, lineHeight: 1.4 }}>
             Choose an admin username and password. You'll use these to open the
-            Programmer. The room panel stays open and never asks for a login.
+            Programmer. The room panel never asks for a login; a new panel waits
+            until you approve it here.
           </p>
         </div>
 

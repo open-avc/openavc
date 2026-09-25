@@ -124,13 +124,17 @@ export function connect(): void {
     for (const handler of disconnectHandlers) {
       handler();
     }
-    // Auth rejection: the server returns 4001 after accepting the upgrade, or
-    // (behind a proxy that authenticates at the HTTP layer) rejects the upgrade
-    // with 401, which the browser surfaces as 1006 (abnormal close, no message).
-    // 4001 is unambiguous — bounce to login immediately. A pre-open 1006 is NOT:
-    // it's equally the symptom of a server still starting up or a transient
-    // blip, so retry with backoff and only treat persistent pre-open 1006s as an
-    // auth failure (otherwise a slow-starting server wipes valid credentials).
+    // Auth rejection. The server closes an unauthenticated programmer socket
+    // with 4001 BEFORE accepting the upgrade (ws.py), so a browser never sees
+    // that code: it reports 1006 (abnormal close, no message), the same as a
+    // proxy that refuses the upgrade with 401. An explicit 4001 arrives only
+    // from a server that accepts first; it is unambiguous, so bounce to login
+    // immediately. A pre-open 1006 is NOT: it's equally the symptom of a server
+    // still starting up or a transient blip, so retry with backoff and only
+    // treat persistent pre-open 1006s as an auth failure (otherwise a
+    // slow-starting server wipes valid credentials). The panel's own refusal,
+    // 4010, is accepted then closed so panel.js can read it; it never reaches
+    // this client, which connects as the programmer.
     if (ev.code === 4001) {
       requestLogin(ev.code);
       return;

@@ -1,7 +1,8 @@
 """The room panel must never trigger authentication.
 
-The panel (/panel) is unauthenticated by design — end users open it on a wall
-tablet or phone and never see a login. It is a static page that, on load,
+The panel (/panel) holds no programmer credential — end users open it on a wall
+tablet or phone and never see a login (the panel gate decides whether it may
+connect; that is approval, not a credential). It is a static page that, on load,
 fetches a small set of read-only endpoints (its theme, plugin panel-element
 metadata, assets). If any of those sit behind programmer auth, a *claimed*
 instance answers a standalone panel with 401 ``WWW-Authenticate: Basic``, and

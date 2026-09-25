@@ -21,6 +21,7 @@ const SILENCE_MS = 90000;
 const CLOSE_REASONS = {
   4001: "the server refused the API key",
   4003: "the server did not recognise the client type",
+  4010: "this system only admits approved panels; enter the API key in the server settings",
   1011: "the server's engine has not finished starting",
   1013: "the server has too many connections open",
 };
@@ -49,7 +50,11 @@ const KIND_TYPES = {
  *
  * The role is derived from the credential, not chosen: an API key connects as
  * `programmer` (what the Programmer can do), none connects as `panel` (what a
- * panel can do). The server decides what each may see and write.
+ * panel can do). The server decides what each may see and write. A panel
+ * connection from another machine is admitted only where the system's Panel
+ * access is open; otherwise the server accepts it and closes it with 4010,
+ * which is the one refusal that arrives as a close code. On the OpenAVC host
+ * itself a keyless connection is the box's own screen and is admitted.
  *
  * Reply routing rests on one fact about the server: it reads a client's
  * frames one at a time and answers each before reading the next, so receipts
@@ -166,11 +171,10 @@ class OpenAVCConnection extends EventEmitter {
     this._setStatus("connecting");
     const ws = new WebSocket(this.url, { headers: this.headers(), ...this._tlsOpts() });
     this._ws = ws;
+    this._heard = false;
     ws.on("open", () => {
-      this._backoff = RECONNECT_MIN_MS;
       this.legacy = false;
       this.detail = "";
-      this._lastLogged = "";
       this._lastFrameAt = Date.now();
       this._startWatchdog(ws);
       this._setStatus("connected");
@@ -178,6 +182,16 @@ class OpenAVCConnection extends EventEmitter {
       this.emit("open");
     });
     ws.on("message", (data) => {
+      // The upgrade completing is not admission: the server accepts a panel
+      // it is about to refuse and closes it with 4010 in the same breath. So
+      // the backoff and the say-it-once marker reset on the first frame the
+      // server sends (always the state snapshot), not on open; a refusal
+      // backs off like a fault and is logged once.
+      if (!this._heard) {
+        this._heard = true;
+        this._backoff = RECONNECT_MIN_MS;
+        this._lastLogged = "";
+      }
       this._lastFrameAt = Date.now();
       this._onMessage(data);
     });
