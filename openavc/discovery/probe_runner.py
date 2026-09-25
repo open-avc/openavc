@@ -43,6 +43,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
+from openavc.discovery.certificates import (
+    certificate_match_text,
+    read_peer_certificate,
+)
 from openavc.discovery.hints import (
     CustomProbeSpec,
     ExtractRule,
@@ -103,45 +107,6 @@ def _make_probe_tls_context() -> ssl.SSLContext:
 _PROBE_TLS_CONTEXT = _make_probe_tls_context()
 
 
-def _read_peer_cert_subject(writer: asyncio.StreamWriter) -> str:
-    """Return the peer TLS certificate's subject as an RFC4514 string, plus any
-    SAN DNS names, or "" if unavailable.
-
-    Discovery uses a permissive (CERT_NONE) context, so ``getpeercert()`` returns
-    an empty dict — the DER form is still available and cryptography parses it.
-    Many AV devices ship a self-signed cert whose subject/SAN carries the model
-    (Crestron NVX: ``CN=DM-NVX-E20-<mac>``), which is a strong pre-auth signal.
-    """
-    ssl_obj = writer.get_extra_info("ssl_object")
-    if ssl_obj is None:
-        return ""
-    try:
-        der = ssl_obj.getpeercert(binary_form=True)
-    except (ValueError, OSError):
-        return ""
-    if not der:
-        return ""
-    try:
-        from cryptography import x509
-        from cryptography.x509.oid import ExtensionOID
-
-        cert = x509.load_der_x509_certificate(der)
-        parts = [cert.subject.rfc4514_string()]
-        try:
-            san = cert.extensions.get_extension_for_oid(
-                ExtensionOID.SUBJECT_ALTERNATIVE_NAME
-            ).value
-            names = san.get_values_for_type(x509.DNSName)
-            if names:
-                parts.append("SAN:" + ",".join(names))
-        except x509.ExtensionNotFound:
-            pass
-        return " ".join(parts)
-    except Exception as exc:  # malformed cert / parse failure — treat as no signal
-        log.debug("probe_runner: peer cert parse failed: %s", exc)
-        return ""
-
-
 def _bytes_view(data: bytes) -> dict[str, str]:
     """Raw bytes as both hex and text, the way a report shows them."""
     return {"hex": data.hex(), "text": data.decode("latin-1", errors="replace")}
@@ -181,6 +146,7 @@ class ProbeObservation:
     error: str = ""
     tls: bool = False
     cert_subject: str = ""
+    certificate: dict[str, Any] | None = None
     follow_up_sent: bytes = b""
     follow_up_reply: bytes = b""
     follow_up_ok: bool | None = None
@@ -211,6 +177,7 @@ class ProbeObservation:
         if self.tls:
             out["tls"] = True
             out["cert_subject"] = self.cert_subject
+            out["certificate"] = self.certificate
         if self.follow_up_sent or self.follow_up_ok is not None:
             out["follow_up"] = {
                 "sent": _bytes_view(self.follow_up_sent),
@@ -714,7 +681,8 @@ async def observe_tcp_active_probe(
         # The observation reads it on every TLS probe; the evidence uses it
         # only when the probe matches on the cert or extracts from it.
         if spec.tls:
-            obs.cert_subject = _read_peer_cert_subject(writer)
+            obs.certificate = read_peer_certificate(writer)
+            obs.cert_subject = certificate_match_text(obs.certificate)
             if spec.cert_subject is not None or spec.extract:
                 cert_subject_str = obs.cert_subject
 

@@ -56,6 +56,7 @@ from openavc.transport.snmp_codec import (  # noqa: F401
     build_snmp_getnext,
     parse_snmp_request_id,
     parse_snmp_response,
+    parse_snmp_response_octets,
 )
 
 
@@ -83,6 +84,13 @@ ENTITY_COLUMNS = {
     "entPhysicalFirmwareRev": "1.3.6.1.2.1.47.1.1.1.1.9",
 }
 ENT_PHYSICAL_CONTAINED_IN = "1.3.6.1.2.1.47.1.1.1.1.4"
+
+# Capture mode only (a single-device check): how long the device has been up,
+# and the MAC of each interface, which names the device even from another
+# network segment where ARP cannot.
+SYS_UPTIME = "1.3.6.1.2.1.1.3.0"
+IF_PHYS_ADDRESS = "1.3.6.1.2.1.2.2.1.6"
+IF_PHYS_WALK_LIMIT = 16
 
 # Upper bound on entPhysicalContainedIn walk steps. The top-level entity is
 # almost always among the first table rows (indexes ascend from the chassis),
@@ -128,6 +136,9 @@ class SNMPInfo:
     entity_serial: str = ""
     entity_hardware_rev: str = ""
     entity_firmware_rev: str = ""
+    # Capture mode only
+    sys_uptime: str = ""                     # TimeTicks (hundredths of a second)
+    if_phys_addresses: dict[str, str] | None = None   # ifIndex -> MAC
 
     def to_dict(self) -> dict[str, str]:
         d: dict[str, str] = {}
@@ -147,6 +158,12 @@ class SNMPInfo:
             d["entPhysicalModelName"] = self.entity_model
         if self.entity_serial:
             d["entPhysicalSerialNum"] = self.entity_serial
+        if self.entity_hardware_rev:
+            d["entPhysicalHardwareRev"] = self.entity_hardware_rev
+        if self.entity_firmware_rev:
+            d["entPhysicalFirmwareRev"] = self.entity_firmware_rev
+        if self.sys_uptime:
+            d["sysUpTime"] = self.sys_uptime
         return d
 
     @property
@@ -256,12 +273,17 @@ class SNMPScanner:
 
     DEFAULT_COMMUNITY = "public"
 
-    def __init__(self, source_ip: str = "") -> None:
+    def __init__(self, source_ip: str = "", capture: bool = False) -> None:
         """``source_ip``: bind every query to this local address (the
         control interface), so replies come back on a multi-homed host.
-        Empty lets the OS pick."""
+        Empty lets the OS pick.
+
+        ``capture``: also read sysUpTime and walk ifPhysAddress (a
+        single-device check). Off in normal scans, where it would add a
+        bounded walk per responding device."""
         self._results: dict[str, SNMPInfo] = {}
         self._source_ip = source_ip
+        self._capture = capture
 
     @property
     def results(self) -> dict[str, SNMPInfo]:
@@ -284,6 +306,8 @@ class SNMPScanner:
         """
         request_id = random.randint(1, 2**31 - 1)
         oid_list = list(OIDS.values())
+        if self._capture:
+            oid_list.append(SYS_UPTIME)
 
         packet = build_snmp_get(community, oid_list, request_id)
         response = await self._udp_query(ip, packet, timeout, request_id)
@@ -318,7 +342,43 @@ class SNMPScanner:
         if entity_mib:
             await self._query_entity_mib(ip, community, timeout, info)
 
+        if self._capture:
+            info.sys_uptime = values.get(SYS_UPTIME, "")
+            info.if_phys_addresses = await self._walk_if_phys_address(
+                ip, community, timeout,
+            )
+
         return info
+
+    async def _walk_if_phys_address(
+        self, ip: str, community: str, timeout: float,
+    ) -> dict[str, str]:
+        """ifIndex -> MAC for each interface that has one (bounded walk).
+
+        Loopback and other interfaces without a hardware address report an
+        empty value and are left out.
+        """
+        prefix = IF_PHYS_ADDRESS + "."
+        current_oid = IF_PHYS_ADDRESS
+        macs: dict[str, str] = {}
+        for _ in range(IF_PHYS_WALK_LIMIT):
+            request_id = random.randint(1, 2**31 - 1)
+            packet = build_snmp_getnext(community, [current_oid], request_id)
+            response = await self._udp_query(ip, packet, timeout, request_id)
+            if not response:
+                break
+            octets = parse_snmp_response_octets(response)
+            names = parse_snmp_response(response)
+            if not names:
+                break
+            oid_str = next(iter(names))
+            if not oid_str.startswith(prefix):
+                break  # walked past the column
+            raw = octets.get(oid_str, b"")
+            if len(raw) == 6 and any(raw):
+                macs[oid_str[len(prefix):]] = ":".join(f"{b:02x}" for b in raw)
+            current_oid = oid_str
+        return macs
 
     async def _query_entity_mib(
         self, ip: str, community: str, timeout: float, info: SNMPInfo,

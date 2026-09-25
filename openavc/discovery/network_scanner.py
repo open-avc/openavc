@@ -9,7 +9,7 @@ import platform
 import re
 import socket
 import struct
-from typing import Callable, Awaitable
+from typing import Any, Awaitable, Callable
 
 from openavc.discovery import icmp
 from openavc.utils.spawn import CREATE_NO_WINDOW
@@ -550,10 +550,14 @@ def _build_nbstat_request() -> bytes:
     return xid + flags + counts + name + qtype
 
 
-def _parse_nbstat_response(data: bytes) -> dict[str, str] | None:
+def _parse_nbstat_response(data: bytes) -> dict[str, Any] | None:
     """Parse a NetBIOS Node Status Response.
 
-    Returns dict with 'hostname' and optionally 'workgroup', or None.
+    Returns a dict with 'hostname', and when present 'workgroup', 'names'
+    (every name in the reply: its text, its suffix byte as two hex digits,
+    and whether it is a group name) and 'mac' (the unit ID from the
+    statistics that follow the names; left out when it is all zeros, as
+    Samba sends). None when the reply carries no unique host name.
     """
     if len(data) < 57:  # Minimum valid response
         return None
@@ -567,22 +571,27 @@ def _parse_nbstat_response(data: bytes) -> dict[str, str] | None:
 
         hostname = None
         workgroup = None
+        names: list[dict[str, Any]] = []
+        complete = True
 
         for _ in range(name_count):
             if offset + 18 > len(data):
+                complete = False
                 break
             name_bytes = data[offset:offset + 15]
             name_type = data[offset + 15]
-            # name_flags = struct.unpack(">H", data[offset + 16:offset + 18])
+            flag_word = struct.unpack(">H", data[offset + 16:offset + 18])[0]
             offset += 18
 
             name = name_bytes.decode("ascii", errors="replace").rstrip()
             if not name or name.startswith("\x00"):
                 continue
+            is_group = bool(flag_word & 0x8000)
+            names.append({
+                "name": name, "suffix": f"{name_type:02x}", "group": is_group,
+            })
 
             if name_type == 0x00:
-                flag_word = struct.unpack(">H", data[offset - 2:offset])[0]
-                is_group = bool(flag_word & 0x8000)
                 if is_group and workgroup is None:
                     workgroup = name
                 elif not is_group and hostname is None:
@@ -591,9 +600,13 @@ def _parse_nbstat_response(data: bytes) -> dict[str, str] | None:
         if not hostname:
             return None
 
-        result = {"hostname": hostname}
+        result: dict[str, Any] = {"hostname": hostname}
         if workgroup:
             result["workgroup"] = workgroup
+        result["names"] = names
+        unit_id = data[offset:offset + 6] if complete else b""
+        if len(unit_id) == 6 and any(unit_id):
+            result["mac"] = ":".join(f"{b:02x}" for b in unit_id)
         return result
     except (IndexError, struct.error):
         return None
@@ -603,7 +616,7 @@ async def netbios_query(
     ip: str,
     timeout: float = 1.0,
     source_ip: str = "",
-) -> dict[str, str] | None:
+) -> dict[str, Any] | None:
     """Query a device for its NetBIOS name via UDP 137.
 
     Returns dict with 'hostname' and optionally 'workgroup', or None.
@@ -645,9 +658,9 @@ async def netbios_sweep(
     concurrency: int = 30,
     timeout: float = 1.0,
     source_ip: str = "",
-) -> dict[str, dict[str, str]]:
-    """Query multiple IPs for NetBIOS names. Returns {ip: {hostname, workgroup}}."""
-    results: dict[str, dict[str, str]] = {}
+) -> dict[str, dict[str, Any]]:
+    """Query multiple IPs for NetBIOS names. Returns {ip: netbios_query result}."""
+    results: dict[str, dict[str, Any]] = {}
     sem = asyncio.Semaphore(concurrency)
 
     async def query_one(ip: str) -> None:

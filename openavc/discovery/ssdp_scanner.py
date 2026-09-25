@@ -77,6 +77,12 @@ MAX_SSDP_SOURCES = 512
 # a connection-flood / internal-port-scan amplifier.
 MAX_DESCRIPTION_FETCHES = 10
 
+# Capture mode bounds: header sets kept per device (one per response or
+# NOTIFY; an ssdp:all responder sends one per type), and the description
+# document's size.
+MAX_CAPTURED_HEADER_SETS = 64
+CAPTURE_DESCRIPTION_BYTES = 256 * 1024
+
 
 @dataclass
 class SSDPResult:
@@ -101,6 +107,11 @@ class SSDPResult:
     model_number: str | None = None
     serial_number: str | None = None
     udn: str | None = None         # Unique Device Name
+    # Capture mode only (SSDPScanner(capture=True)): every header set this
+    # device sent, and its description document as fetched.
+    raw_headers: list[dict[str, str]] = dataclass_field(default_factory=list)
+    description_head: str | None = None
+    description_xml: str | None = None
 
     def note_device_type(self, value: str | None) -> None:
         """Record one observed UPnP type identifier, deduplicated.
@@ -238,11 +249,17 @@ class SSDPScanner:
     Uses only stdlib (socket, asyncio, xml).
     """
 
-    def __init__(self, control_ip: str = "") -> None:
+    def __init__(self, control_ip: str = "", capture: bool = False) -> None:
         """``control_ip``: bind outbound multicast to this interface IP.
         Empty = OS default route. Required for the multi-NIC AV scenario
         where the control VLAN is not the default route.
+
+        ``capture``: keep every header set each device sent and its whole
+        description document (status line and headers included, up to
+        ``CAPTURE_DESCRIPTION_BYTES``), for a single-device check. Off in
+        normal scans, which keep only what they parse.
         """
+        self._capture = capture
         # Two sockets with distinct jobs. ``_search_sock`` is bound to an
         # ephemeral port: it sends the M-SEARCH and receives the unicast
         # replies. ``_sock`` is bound to the well-known SSDP port 1900 and
@@ -444,6 +461,8 @@ class SSDPScanner:
             self._results[sender_ip] = SSDPResult(ip=sender_ip)
 
         result = self._results[sender_ip]
+        if self._capture and len(result.raw_headers) < MAX_CAPTURED_HEADER_SETS:
+            result.raw_headers.append(dict(headers))
         result.usn = headers.get("usn", result.usn)
         # ST is present on M-SEARCH replies; NT carries the type on NOTIFY.
         type_urn = headers.get("st") or headers.get("nt")
@@ -512,9 +531,18 @@ class SSDPScanner:
             return
 
         try:
-            xml_text = await _http_get(
-                result.location, timeout=3.0, source_ip=self._control_ip,
-            )
+            if self._capture:
+                fetched = await _http_fetch(
+                    result.location, timeout=3.0, source_ip=self._control_ip,
+                    max_bytes=CAPTURE_DESCRIPTION_BYTES, read_to_end=True,
+                )
+                xml_text = fetched[1] if fetched else None
+                if fetched:
+                    result.description_head, result.description_xml = fetched
+            else:
+                xml_text = await _http_get(
+                    result.location, timeout=3.0, source_ip=self._control_ip,
+                )
             if xml_text:
                 _parse_upnp_xml(result, xml_text)
         except Exception:
@@ -693,7 +721,24 @@ async def _http_get(
 
     Only supports http:// (not https) — UPnP descriptions are always HTTP.
     ``source_ip`` binds the connection to that local address (the control
-    interface); empty lets the OS pick.
+    interface); empty lets the OS pick. Returns the body of the first read.
+    """
+    fetched = await _http_fetch(url, timeout=timeout, source_ip=source_ip)
+    return fetched[1] if fetched else None
+
+
+async def _http_fetch(
+    url: str,
+    timeout: float = 3.0,
+    source_ip: str = "",
+    max_bytes: int = 16384,
+    read_to_end: bool = False,
+) -> tuple[str, str] | None:
+    """``_http_get`` returning (status line and headers, body).
+
+    A scan takes the first read of up to 16 KB. ``read_to_end`` keeps
+    reading until the server closes, ``max_bytes``, or the timeout, for a
+    capture that wants the whole document.
     """
     match = re.match(r"http://([^/:]+)(?::(\d+))?(/.*)$", url)
     if not match:
@@ -725,18 +770,34 @@ async def _http_get(
         await writer.drain()
 
         response = await asyncio.wait_for(
-            reader.read(16384),
+            reader.read(max_bytes),
             timeout=timeout,
         )
+        if read_to_end:
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + timeout
+            chunks = [response]
+            size = len(response)
+            while response and size < max_bytes and loop.time() < deadline:
+                try:
+                    response = await asyncio.wait_for(
+                        reader.read(max_bytes - size),
+                        timeout=max(0.05, deadline - loop.time()),
+                    )
+                except asyncio.TimeoutError:
+                    break
+                chunks.append(response)
+                size += len(response)
+            response = b"".join(chunks)
         writer.close()
 
         text = response.decode("utf-8", errors="replace")
 
-        # Skip HTTP headers — body starts after \r\n\r\n
+        # Split the HTTP head from the body at the first blank line
         header_end = text.find("\r\n\r\n")
         if header_end >= 0:
-            return text[header_end + 4:]
-        return text
+            return text[:header_end], text[header_end + 4:]
+        return "", text
     except (asyncio.TimeoutError, OSError):
         return None
     finally:

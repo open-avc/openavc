@@ -328,13 +328,39 @@ def parse_snmp_response(data: bytes) -> dict[str, str]:
     Returns dict of {oid_string: value_string}.
     """
     result: dict[str, str] = {}
+    for oid_str, value_offset in _response_varbinds(data):
+        value_str, _ = ber_decode_any_value(data, value_offset)
+        result[oid_str] = value_str
+    return result
+
+
+def parse_snmp_response_octets(data: bytes) -> dict[str, bytes]:
+    """The OCTET STRING values of a GET-RESPONSE as raw bytes, by OID.
+
+    ``parse_snmp_response`` decodes strings as text, which loses binary
+    values such as a MAC address (``ifPhysAddress``). Other value types are
+    left out.
+    """
+    result: dict[str, bytes] = {}
+    for oid_str, offset in _response_varbinds(data):
+        if offset >= len(data) or data[offset] != ASN1_OCTET_STRING:
+            continue
+        length, start = ber_decode_length(data, offset + 1)
+        if start + length <= len(data):
+            result[oid_str] = data[start:start + length]
+    return result
+
+
+def _response_varbinds(data: bytes) -> list[tuple[str, int]]:
+    """(oid, value offset) for each varbind of an error-free GET-RESPONSE."""
+    varbinds: list[tuple[str, int]] = []
 
     try:
         offset = 0
 
         # Outer SEQUENCE
         if offset >= len(data) or data[offset] != ASN1_SEQUENCE:
-            return result
+            return varbinds
         offset += 1
         _msg_len, offset = ber_decode_length(data, offset)
 
@@ -346,7 +372,7 @@ def parse_snmp_response(data: bytes) -> dict[str, str]:
 
         # PDU — should be GetResponse (0xA2)
         if offset >= len(data) or data[offset] != SNMP_GET_RESPONSE:
-            return result
+            return varbinds
         offset += 1
         _pdu_len, offset = ber_decode_length(data, offset)
 
@@ -356,14 +382,14 @@ def parse_snmp_response(data: bytes) -> dict[str, str]:
         # Error status
         error_status, offset = ber_decode_integer(data, offset)
         if error_status != 0:
-            return result
+            return varbinds
 
         # Error index
         _error_index, offset = ber_decode_integer(data, offset)
 
         # VarBindList (SEQUENCE)
         if offset >= len(data) or data[offset] != ASN1_SEQUENCE:
-            return result
+            return varbinds
         offset += 1
         varbind_list_len, offset = ber_decode_length(data, offset)
         varbind_end = offset + varbind_list_len
@@ -379,15 +405,16 @@ def parse_snmp_response(data: bytes) -> dict[str, str]:
             oid_str, offset = ber_decode_oid(data, offset)
 
             # Value (any type)
-            value_str, offset = ber_decode_any_value(data, offset)
+            value_offset = offset
+            _value_str, offset = ber_decode_any_value(data, offset)
 
             if oid_str:
-                result[oid_str] = value_str
+                varbinds.append((oid_str, value_offset))
 
     except (ValueError, IndexError, KeyError):
         log.debug("Failed to parse SNMP response", exc_info=True)
 
-    return result
+    return varbinds
 
 
 def parse_snmp_request_id(data: bytes) -> int | None:

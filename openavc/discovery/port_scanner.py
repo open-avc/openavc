@@ -13,6 +13,11 @@ import asyncio
 import logging
 from typing import Callable, Awaitable
 
+PORT_OPEN = "open"
+PORT_REFUSED = "refused"    # the host answered with a reset: it is there, the port is closed
+PORT_FILTERED = "filtered"  # no answer inside the timeout: dropped, or nothing there
+PORT_ERROR = "error"        # the connect failed locally (unreachable network, bind failure)
+
 log = logging.getLogger("discovery.ports")
 
 # Universal baseline ports always included in every scan. These cover
@@ -54,11 +59,31 @@ async def scan_host_ports(
     ``source_ip`` binds every connection to that local address (the
     control interface); empty lets the OS pick.
     """
+    states = await scan_host_port_states(
+        ip, ports, timeout=timeout, stagger_ms=stagger_ms, source_ip=source_ip,
+    )
+    return sorted(p for p, state in states.items() if state == PORT_OPEN)
+
+
+async def scan_host_port_states(
+    ip: str,
+    ports: list[int],
+    timeout: float = 1.0,
+    stagger_ms: float = 20.0,
+    source_ip: str = "",
+) -> dict[int, str]:
+    """``scan_host_ports``, keeping how each port answered.
+
+    Returns {port: state}, the state one of ``PORT_OPEN``, ``PORT_REFUSED``
+    (a reset: the host is there and the port is closed), ``PORT_FILTERED``
+    (silence until the timeout) or ``PORT_ERROR`` (the connect failed on
+    this side). The same connects as a scan, nothing more.
+    """
     if not ports:
-        return []
+        return {}
     local_addr = _local_addr(source_ip)
 
-    async def _check(port: int, delay: float) -> int | None:
+    async def _check(port: int, delay: float) -> tuple[int, str]:
         if delay > 0:
             await asyncio.sleep(delay)
         try:
@@ -68,15 +93,19 @@ async def scan_host_ports(
             )
             writer.close()
             await writer.wait_closed()
-            return port
-        except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
-            return None
+            return port, PORT_OPEN
+        except asyncio.TimeoutError:
+            return port, PORT_FILTERED
+        except ConnectionRefusedError:
+            return port, PORT_REFUSED
+        except OSError:
+            return port, PORT_ERROR
 
     stagger = stagger_ms / 1000.0
     results = await asyncio.gather(
         *[_check(p, i * stagger) for i, p in enumerate(ports)]
     )
-    return sorted(p for p in results if p is not None)
+    return dict(sorted(results))
 
 
 async def scan_multiple_hosts(
