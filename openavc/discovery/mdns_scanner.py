@@ -316,6 +316,11 @@ class MDNSResult:
     the most recently resolved service, kept for callers that read one
     service per host, such as the plugin API's ``mdns_browse``. Discovery
     reads ``services``.
+
+    ``address_name`` is the host name the device gave in a reverse-address
+    record (``9.0.77.10.in-addr.arpa. PTR widget.local.``). That record
+    names a host, not a service, so it never becomes one; it stands in for
+    the device name and host name when no service supplied them.
     """
     ip: str
     hostname: str | None = None
@@ -324,6 +329,7 @@ class MDNSResult:
     instance_name: str | None = None      # e.g., "<vendor> <model>"
     txt_records: dict[str, str] = field(default_factory=dict)
     services: dict[str, MDNSService] = field(default_factory=dict)
+    address_name: str | None = None       # e.g., "widget.local", from a reverse-address PTR
 
     def service_list(self) -> list[MDNSService]:
         """Every advertised service, first heard first.
@@ -347,10 +353,14 @@ class MDNSResult:
         info: dict[str, Any] = {}
         if self.hostname:
             info["hostname"] = self.hostname
+        elif self.address_name:
+            info["hostname"] = _display_hostname(self.address_name)
 
         # Extract manufacturer/model from instance name or TXT records
         if self.instance_name:
             info["device_name"] = self.instance_name
+        elif self.address_name:
+            info["device_name"] = self.address_name
 
         # Common TXT record keys used by AV devices
         txt = self.txt_records
@@ -714,6 +724,19 @@ class MDNSScanner:
                     self._track_enumerated_type(sender_ip, instance_name)
                     continue
 
+                # Reverse-address record (an address's name, as a device
+                # announces its own): a host name, never a service. It goes
+                # through the pending path like any record from this packet,
+                # so the device is found at the same address as before.
+                if _is_reverse_address_name(service_type):
+                    key = instance_name.lower()
+                    entry = self._pending_entry(key)
+                    if entry is None:
+                        continue
+                    touched.add(key)
+                    entry["address_name"] = instance_name.rstrip(".")
+                    continue
+
                 # Extract human-readable name (everything before the service type)
                 readable = _extract_instance_name(instance_name, service_type)
 
@@ -837,14 +860,20 @@ class MDNSScanner:
                 self._results[ip] = MDNSResult(ip=ip)
 
             result = self._results[ip]
+            address_name = pending.get("address_name")
+            if isinstance(address_name, str) and address_name:
+                # A device can name itself once per address (IPv4, each
+                # IPv6); the first name heard stands.
+                if not result.address_name:
+                    result.address_name = address_name
+                if not any(k != "address_name" for k in pending):
+                    # Nothing but the name: no service slot to fill.
+                    resolved_keys.append(key)
+                    continue
             if pending.get("hostname"):
                 hostname_str = pending["hostname"]
                 if isinstance(hostname_str, str):
-                    # Strip .local. suffix for cleaner display
-                    clean = hostname_str.rstrip(".")
-                    if clean.endswith(".local"):
-                        clean = clean[:-6]
-                    result.hostname = clean
+                    result.hostname = _display_hostname(hostname_str)
             if pending.get("port"):
                 result.port = pending["port"]
             if pending.get("service_type"):
@@ -1002,6 +1031,20 @@ def _create_mdns_socket(control_ip: str = "") -> tuple[socket.socket, list[str]]
         raise
 
     return sock, joined
+
+
+def _is_reverse_address_name(name: str) -> bool:
+    """Is ``name`` a reverse-address name (``...in-addr.arpa``, ``...ip6.arpa``)?"""
+    lowered = name.lower().rstrip(".")
+    return lowered.endswith(".in-addr.arpa") or lowered.endswith(".ip6.arpa")
+
+
+def _display_hostname(name: str) -> str:
+    """A host name without its trailing dot or ``.local`` suffix."""
+    clean = name.rstrip(".")
+    if clean.endswith(".local"):
+        clean = clean[:-6]
+    return clean
 
 
 def _extract_instance_name(full_name: str, service_type: str) -> str | None:
