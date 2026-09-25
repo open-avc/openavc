@@ -400,8 +400,10 @@ class AuditStartRequest(BaseModel):
     ``pause`` lists the project devices to hold paused for the audit (the ones
     ``GET /api/audit/conflicts`` found at this address). ``extended`` is the
     slower check (ports 1 to 1024 as well, and a full SNMP read);
-    ``snmp_communities`` are read communities to try after ``public``. Unknown
-    fields are refused, so a field the server does not read cannot vanish.
+    ``snmp_communities`` are read communities to try after ``public``.
+    ``from_device`` is the project device whose page started the audit; it is
+    recorded only while that device connects to ``address``. Unknown fields
+    are refused, so a field the server does not read cannot vanish.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -410,6 +412,7 @@ class AuditStartRequest(BaseModel):
     pause: list[str] = Field(default_factory=list, max_length=64)
     extended: bool = False
     snmp_communities: list[str] = Field(default_factory=list, max_length=8)
+    from_device: str | None = Field(default=None, max_length=200)
 
 
 class AuditDriverRequest(BaseModel):

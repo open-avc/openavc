@@ -18,6 +18,7 @@ import {
 /** Step 1: which device, and what is already using it. */
 export function TargetStep() {
   const preset = useAuditStore((s) => s.presetAddress);
+  const presetDevice = useAuditStore((s) => s.presetDevice);
   const [address, setAddress] = useState(preset);
   const [extended, setExtended] = useState(false);
   const [communities, setCommunities] = useState("");
@@ -31,6 +32,24 @@ export function TargetStep() {
     setConflicts(null);
   }, [address]);
 
+  // From a device page, say up front which project devices the audit pauses.
+  const fromDevice = presetDevice && address.trim() === preset ? presetDevice : "";
+  useEffect(() => {
+    if (!fromDevice || !preset) return;
+    let alive = true;
+    audit
+      .getAuditConflicts(preset)
+      .then((found) => {
+        if (alive && found.devices.length > 0) setConflicts(found);
+      })
+      .catch(() => {
+        /* the check runs again on Continue */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [fromDevice, preset]);
+
   const start = useCallback(
     async (pause: string[]) => {
       const { session } = await audit.startAudit({
@@ -38,6 +57,7 @@ export function TargetStep() {
         pause,
         extended,
         snmp_communities: parseCommunities(communities),
+        from_device: fromDevice || null,
       });
       const store = useAuditStore.getState();
       store.setSession(session);
@@ -45,7 +65,7 @@ export function TargetStep() {
       store.setSession(running);
       store.setStep("network");
     },
-    [address, extended, communities],
+    [address, extended, communities, fromDevice],
   );
 
   const onContinue = useCallback(async () => {

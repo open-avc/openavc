@@ -19,13 +19,15 @@ interface AuditStoreState {
   open: boolean;
   /** The address an entry point filled in (a Discovery result, say). */
   presetAddress: string;
+  /** The project device whose page opened the wizard ("" otherwise). */
+  presetDevice: string;
   step: AuditStep;
   session: AuditSessionState | null;
   timeline: AuditTimelineEntry[];
   /** The driver's traffic as it arrives (the newest few hundred entries). */
   traffic: AuditTrafficEntry[];
 
-  openWizard: (opts?: { address?: string }) => void;
+  openWizard: (opts?: { address?: string; deviceId?: string }) => void;
   closeWizard: () => void;
   setStep: (step: AuditStep) => void;
   setSession: (session: AuditSessionState | null) => void;
@@ -35,6 +37,7 @@ interface AuditStoreState {
 export const useAuditStore = create<AuditStoreState>((set) => ({
   open: false,
   presetAddress: "",
+  presetDevice: "",
   step: "target",
   session: null,
   timeline: [],
@@ -44,6 +47,7 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
     set({
       open: true,
       presetAddress: opts?.address ?? "",
+      presetDevice: opts?.deviceId ?? "",
       step: "target",
       timeline: [],
       traffic: [],

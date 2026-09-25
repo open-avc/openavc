@@ -11,8 +11,9 @@
 
 - ``report_version``; ``generator``: the OpenAVC version, the OS, the Python
   version and how OpenAVC was installed.
-- ``session``: id, start and end, status, the steps run, and the tester's
-  name, company, email and notes (all optional).
+- ``session``: id, start and end, status, the steps run, the project device
+  whose page started the audit (``origin``: id, name and driver, or null), and
+  the tester's name, company, email and notes (all optional).
 - ``target``: the address as typed, the address it resolved to, the reverse
   DNS name, whether it is on one of this computer's subnets, the local
   address and adapter the check used, and the serial port (none yet).
@@ -218,6 +219,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
             "ended_at": session.ended_at,
             "status": session.status,
             "steps": list(session.steps),
+            "origin": dict(session.origin) if getattr(session, "origin", None) else None,
             "tester": tester,
         },
         "target": {

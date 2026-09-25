@@ -125,7 +125,7 @@ def wired(monkeypatch, tmp_path):
 
 def test_the_request_models_declare_every_field_and_refuse_others():
     assert set(AuditStartRequest.model_fields) == {
-        "address", "pause", "extended", "snmp_communities",
+        "address", "pause", "extended", "snmp_communities", "from_device",
     }
     assert set(AuditTesterRequest.model_fields) == {
         "name", "company", "email", "notes", "leave_out_serial",

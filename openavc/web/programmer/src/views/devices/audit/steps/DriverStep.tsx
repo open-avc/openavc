@@ -96,9 +96,10 @@ export function DriverStep() {
     if (device?.manufacturer) {
       setFirmware(device.firmware ?? "");
     }
+    // From a device page, the driver that device uses; otherwise the verdict's.
     const pick = preselect(
       options,
-      result?.verdict.identification.driver_id ?? null,
+      session.origin?.driver || result?.verdict.identification.driver_id || null,
       result?.verdict.identification.candidates ?? [],
       { manufacturer: result?.device?.manufacturer, model: result?.device?.model },
     );
@@ -156,10 +157,17 @@ export function DriverStep() {
   return (
     <div style={{ maxWidth: 720 }}>
       <h2 style={headingStyle}>Which driver?</h2>
-      {verdict?.identification.driver_id && (
+      {session.origin ? (
         <p style={{ ...hintStyle, fontSize: "var(--font-size-sm)", marginTop: 0 }}>
-          {verdict.sentence} It is selected below; change it if the device is something else.
+          The driver {session.origin.name} uses is selected below. Choose another to test it
+          instead.
         </p>
+      ) : (
+        verdict?.identification.driver_id && (
+          <p style={{ ...hintStyle, fontSize: "var(--font-size-sm)", marginTop: 0 }}>
+            {verdict.sentence} It is selected below; change it if the device is something else.
+          </p>
+        )
       )}
       {catalogError && (
         <ErrorLine

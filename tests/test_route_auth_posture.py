@@ -185,6 +185,7 @@ def test_representative_admin_routes_stay_protected(method, path):
 # project devices: the privilege of adding a device, never open.
 AUDIT_ROUTES = {
     ("GET", "/api/audit/conflicts"),
+    ("GET", "/api/audit/devices/{device_id}"),
     ("POST", "/api/audit/sessions"),
     ("GET", "/api/audit/sessions/current"),
     ("DELETE", "/api/audit/sessions/{session_id}"),

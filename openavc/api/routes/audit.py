@@ -9,6 +9,9 @@ turns a refusal into its sentence.
 - ``GET /audit/conflicts?address=``: the project devices that connect to that
   host (``core.device_config.devices_at_host``), to pause before anything is
   sent.
+- ``GET /audit/devices/{device_id}``: what "Audit this device" on a device
+  page starts from (``audit/origin.py``): the address and the driver, or why
+  that device cannot be audited.
 - ``POST /audit/sessions``, ``GET /audit/sessions/current``,
   ``DELETE /audit/sessions/{id}`` (``?cancel=true`` for Cancel).
 - ``POST /audit/sessions/{id}/network-check``;
@@ -47,6 +50,7 @@ from openavc.api.models import (
 )
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
 from openavc.audit.listen import start_listen
+from openavc.audit.origin import device_target, origin_for
 from openavc.audit.passes import (
     choose_driver,
     current_run,
@@ -157,6 +161,17 @@ async def audit_conflicts(address: str) -> dict[str, Any]:
     }
 
 
+@router.get("/devices/{device_id}")
+async def audit_device_target(device_id: str) -> dict[str, Any]:
+    """What an audit of this project device starts from, or why it cannot."""
+    target = device_target(getattr(_get_engine(), "project", None), device_id)
+    if target is None:
+        raise HTTPException(
+            status_code=404, detail=f"No device named '{device_id}' in this project.",
+        )
+    return target
+
+
 @router.post("/sessions")
 async def start_session(body: AuditStartRequest) -> dict[str, Any]:
     """Start an audit of ``address``, pausing the listed project devices."""
@@ -174,7 +189,7 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
     engine = _get_engine()
     project = getattr(engine, "project", None)
     names = {d.id: d.name for d in project.devices} if project is not None else {}
-    for device_id in body.pause:
+    for device_id in [*body.pause, *([body.from_device] if body.from_device else [])]:
         if device_id not in names:
             raise HTTPException(
                 status_code=404, detail=f"No device named '{device_id}' in this project.",
@@ -184,6 +199,7 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
             AuditTarget(address=address, ip=ip),
             AuditOptions(extended=body.extended, snmp_communities=list(body.snmp_communities)),
             pause=[(device_id, names[device_id]) for device_id in body.pause],
+            origin=origin_for(project, body.from_device, [address, ip]),
         )
     except AuditBusy as exc:
         raise HTTPException(status_code=409, detail=str(exc))

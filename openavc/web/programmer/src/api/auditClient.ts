@@ -305,6 +305,26 @@ export interface AuditDriverBody {
   firmware: string;
 }
 
+/** The project device whose page started the audit. */
+export interface AuditOrigin {
+  device_id: string;
+  name: string;
+  driver: string;
+}
+
+/** What "Audit this device" on a device page starts from. */
+export interface AuditDeviceTarget {
+  device_id: string;
+  name: string;
+  driver: string;
+  /** Where the device really connects ("" when it cannot be audited). */
+  address: string;
+  transport: string;
+  auditable: boolean;
+  /** Why it cannot be audited, in words. */
+  reason: string;
+}
+
 export interface AuditSessionState {
   session_id: string;
   status: AuditSessionStatus;
@@ -314,6 +334,7 @@ export interface AuditSessionState {
   ended_at: number | null;
   steps: string[];
   paused: { device_id: string; name: string; owned: boolean }[];
+  origin?: AuditOrigin | null;
   report_name: string | null;
   tester: AuditTester;
   check: AuditCheckState | null;
@@ -336,6 +357,8 @@ export interface AuditStartBody {
   pause: string[];
   extended: boolean;
   snmp_communities: string[];
+  /** The project device whose page started the audit. */
+  from_device?: string | null;
 }
 
 export interface AuditReportFile {
@@ -377,6 +400,10 @@ export interface AuditReport {
 
 export function getAuditConflicts(address: string): Promise<AuditConflicts> {
   return request(`/audit/conflicts?${new URLSearchParams({ address }).toString()}`);
+}
+
+export function getAuditDeviceTarget(deviceId: string): Promise<AuditDeviceTarget> {
+  return request(`/audit/devices/${encodeURIComponent(deviceId)}`);
 }
 
 export function startAudit(body: AuditStartBody): Promise<{ session: AuditSessionState }> {

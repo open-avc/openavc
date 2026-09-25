@@ -217,32 +217,52 @@ def _secret_keys(config: dict[str, Any], schema: dict[str, Any]) -> set[str]:
     return {k for k in config if k in declared or is_secret_key(k)}
 
 
-def saved_settings(session: "AuditSession", project: Any) -> list[dict[str, Any]]:
-    """The paused project devices whose settings the current driver can use.
+def _offered_devices(session: "AuditSession", project: Any) -> dict[str, str]:
+    """The project devices whose saved settings this audit may use, by id:
+    every device it paused at this address, and the device whose page started
+    it while that device still connects here (a disabled one holds no
+    connection, so it was never paused)."""
+    from openavc.audit.origin import connects_to
 
-    Only a device the audit paused at this address, on the same driver: its
-    settings are the ones a production system dials this device with. Secret
-    values stay here; the browser learns which are set, never what they are.
+    offered = {p.device_id: p.name for p in session.paused}
+    origin = getattr(session, "origin", None)
+    if origin and origin["device_id"] not in offered:
+        target = session.target
+        if connects_to(project, origin["device_id"], [target.address, target.ip]):
+            offered[origin["device_id"]] = origin["name"]
+    return offered
+
+
+def saved_settings(session: "AuditSession", project: Any) -> list[dict[str, Any]]:
+    """The project devices at this address whose settings the current driver can use.
+
+    Only a device the audit paused at this address, or the one it was started
+    from, on the same driver: its settings are the ones a production system
+    dials this device with. The device the audit was started from comes
+    first. Secret values stay here; the browser learns which are set, never
+    what they are.
     """
     from openavc.core.device_config import resolve_device_config
 
     run = current_run(session)
     if run is None or project is None:
         return []
-    paused = {p.device_id: p.name for p in session.paused}
+    offered = _offered_devices(session, project)
     schema = _driver_info(run.choice.driver_id).get("config_schema") or {}
+    origin_id = (getattr(session, "origin", None) or {}).get("device_id")
     out = []
     for device in getattr(project, "devices", []):
-        if device.id not in paused or device.driver != run.choice.driver_id:
+        if device.id not in offered or device.driver != run.choice.driver_id:
             continue
         config = resolve_device_config(device, project)["config"]
         secret_keys = _secret_keys(config, schema)
         out.append({
             "device_id": device.id,
-            "name": paused[device.id],
+            "name": offered[device.id],
             "config": {k: v for k, v in config.items() if k not in secret_keys},
             "secrets_set": sorted(k for k in secret_keys if config.get(k) not in (None, "")),
         })
+    out.sort(key=lambda d: d["device_id"] != origin_id)
     return out
 
 

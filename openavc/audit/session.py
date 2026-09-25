@@ -189,6 +189,9 @@ class AuditSession:
         # The steps the person has been through, in order, for the report.
         self.steps: list[str] = []
         self.paused: list[PausedDevice] = []
+        # The project device whose page the audit was started from
+        # (``audit/origin.py``): ``{"device_id", "name", "driver"}``, or None.
+        self.origin: dict[str, str] | None = None
         self.timeline: list[TimelineEntry] = []
         # Set by the network check (``footprint.open_for_session``) and the
         # report builder.
@@ -310,6 +313,7 @@ class AuditSession:
             "ended_at": self.ended_at,
             "steps": list(self.steps),
             "paused": [p.to_dict() for p in self.paused],
+            "origin": dict(self.origin) if self.origin else None,
             "report_name": self.report_name,
             "tester": {k: v for k, v in self.tester.items()},
         }
@@ -383,8 +387,11 @@ class AuditManager:
         target: AuditTarget,
         options: AuditOptions | None = None,
         pause: list[tuple[str, str]] | None = None,
+        origin: dict[str, str] | None = None,
     ) -> AuditSession:
         """Open a session on ``target``, pausing the ``(device_id, name)`` pairs.
+
+        ``origin`` is the project device whose page started the audit, if any.
 
         Refused while another session is active or a Discovery scan runs. A
         pause that fails undoes the ones before it, so a refused start holds
@@ -399,6 +406,7 @@ class AuditManager:
                 secrets.token_hex(6), target, options or AuditOptions(),
                 clock=self._clock,
             )
+            session.origin = dict(origin) if origin else None
             try:
                 await self._pause_all(session, pause or [])
             except Exception:
@@ -406,8 +414,11 @@ class AuditManager:
                 raise
             self._current = session
             session.enter_step("target")
+            started = f"Audit started on {target.address}"
+            if session.origin:
+                started += f", from {session.origin['name']}'s device page"
             session.add_timeline(
-                "session.started", f"Audit started on {target.address}.",
+                "session.started", started + ".",
                 address=target.address, ip=target.ip,
             )
             session.track_task(asyncio.create_task(self._watch(session)))

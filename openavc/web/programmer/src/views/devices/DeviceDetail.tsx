@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
@@ -8,6 +8,8 @@ import { commandOptions } from "../../components/shared/pickerOptions";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
+import { getAuditDeviceTarget } from "../../api/auditClient";
+import { useAuditStore } from "../../store/auditStore";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../../components/shared/ParamInput";
 import {
@@ -63,6 +65,9 @@ export function DeviceDetail({
     latency_ms: number | null;
   } | null>(null);
   const [testing, setTesting] = useState(false);
+  // Why "Audit this device" could not start (a device on a serial port, say).
+  const [auditRefusal, setAuditRefusal] = useState("");
+  const [openingAudit, setOpeningAudit] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   // Which Live State row has its Monitor limits open. One at a time: the panel
@@ -127,6 +132,25 @@ export function DeviceDetail({
       setTestResult({ success: false, error: String(e), latency_ms: null });
     } finally {
       setTesting(false);
+    }
+  };
+
+  // Open the Device Audit wizard on this device: its address, driver and
+  // saved settings filled in, and the device paused while the audit runs.
+  const handleAudit = async () => {
+    setAuditRefusal("");
+    setOpeningAudit(true);
+    try {
+      const target = await getAuditDeviceTarget(deviceId);
+      if (!target.auditable) {
+        setAuditRefusal(target.reason);
+        return;
+      }
+      useAuditStore.getState().openWizard({ address: target.address, deviceId });
+    } catch (e) {
+      setAuditRefusal(parseApiError(e));
+    } finally {
+      setOpeningAudit(false);
     }
   };
 
@@ -370,6 +394,23 @@ export function DeviceDetail({
           >
             <Wifi size={14} /> {testing ? "Testing..." : "Test"}
           </button>
+          <button
+            onClick={() => void handleAudit()}
+            disabled={openingAudit}
+            title="Check this device in detail and write a report about it"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-xs)",
+              padding: "var(--space-xs) var(--space-md)",
+              borderRadius: "var(--border-radius)",
+              background: "var(--bg-hover)",
+              fontSize: "var(--font-size-sm)",
+              opacity: openingAudit ? 0.6 : 1,
+            }}
+          >
+            <ClipboardCheck size={14} /> Audit this device
+          </button>
           {!connected && isEnabled && (
             <button
               onClick={handleReconnect}
@@ -605,6 +646,35 @@ export function DeviceDetail({
           failed={reconnectFailed}
           hint={connectionHint}
         />
+      )}
+
+      {/* Why "Audit this device" did not open the wizard */}
+      {auditRefusal && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            marginBottom: "var(--space-md)",
+            fontSize: "var(--font-size-sm)",
+            background: "var(--bg-hover)",
+            color: "var(--text-secondary)",
+          }}
+        >
+          <ClipboardCheck size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{auditRefusal}</span>
+          <button
+            onClick={() => setAuditRefusal("")}
+            aria-label="Dismiss"
+            title="Dismiss"
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-muted)" }}
+          >
+            <X size={14} />
+          </button>
+        </div>
       )}
 
       {/* Test connection result */}
