@@ -1623,13 +1623,21 @@ class DiscoveryEngine:
             else _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS
         )
         remaining_tasks = {mdns_task, ssdp_task, amx_ddp_task}
-        elapsed = 0.0
         tick = _PASSIVE_COLLECT_TICK_SECONDS
+        # The window is measured on the loop's clock, not by counting ticks:
+        # where the clock is coarser than a tick (15.6 ms on Windows before
+        # Python 3.13), a short timeout fires at once and a count of ticks
+        # would end the window before any time had passed.
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        elapsed = 0.0
 
         while elapsed < total_wait and remaining_tasks:
-            _, pending = await asyncio.wait(remaining_tasks, timeout=tick)
+            _, pending = await asyncio.wait(
+                remaining_tasks, timeout=min(tick, total_wait - elapsed),
+            )
             remaining_tasks = pending
-            elapsed += tick
+            elapsed = loop.time() - started
             fraction = min(elapsed / total_wait, 1.0)
             await self._update_intra_progress(fraction)
             secs_left = max(0, int(total_wait - elapsed))
