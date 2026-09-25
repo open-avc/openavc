@@ -165,6 +165,40 @@ export interface AuditDriverChoice {
   verdict_agreement: AuditVerdictAgreement;
 }
 
+/** One step of what connecting sends, from the driver's own code run
+ *  against a transport that records. */
+export type AuditPreviewStep =
+  | { stage: AuditPreviewStage; kind: "wait"; pattern: string }
+  | { stage: AuditPreviewStage; kind: "send"; hex: string; text: string }
+  | {
+      stage: AuditPreviewStage;
+      kind: "request";
+      method: string;
+      target: string;
+      headers: Record<string, string>;
+      body: string;
+    };
+
+export type AuditPreviewStage = "sign_in" | "start_up" | "poll" | "keep_alive";
+
+export interface AuditConnectPreview {
+  /** false for a driver whose steps are code; `reason` says so. */
+  available: boolean;
+  reason: string;
+  steps: AuditPreviewStep[];
+  poll_interval: number;
+  keep_alive_interval: number;
+}
+
+/** The connection settings as recorded, secrets masked. */
+export interface AuditConnection {
+  config: Record<string, unknown>;
+  transport: string;
+  /** The project device whose saved settings were used, or "". */
+  saved_from: string;
+  preview: AuditConnectPreview;
+}
+
 /** One driver tested against the device. */
 export interface AuditDriverRun {
   index: number;
@@ -173,6 +207,17 @@ export interface AuditDriverRun {
   finished_at: number | null;
   /** True while its driver is connected to the device. */
   active: boolean;
+  connection: AuditConnection | null;
+}
+
+/** A paused project device whose saved settings the chosen driver can use. */
+export interface AuditSavedSettings {
+  device_id: string;
+  name: string;
+  /** Every setting but the secrets. */
+  config: Record<string, unknown>;
+  /** The secret fields that have a saved value (never the values). */
+  secrets_set: string[];
 }
 
 export interface AuditDriverBody {
@@ -293,6 +338,23 @@ export function setAuditDriver(
 export function nextAuditDriver(sessionId: string): Promise<{ session: AuditSessionState }> {
   return request(`/audit/sessions/${encodeURIComponent(sessionId)}/next-driver`, {
     method: "POST",
+  });
+}
+
+export function getAuditSavedSettings(
+  sessionId: string,
+): Promise<{ devices: AuditSavedSettings[] }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/saved-settings`);
+}
+
+export function setAuditConnection(
+  sessionId: string,
+  config: Record<string, unknown>,
+  useSaved: string | null,
+): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/connection`, {
+    method: "POST",
+    body: JSON.stringify({ config, use_saved: useSaved }),
   });
 }
 

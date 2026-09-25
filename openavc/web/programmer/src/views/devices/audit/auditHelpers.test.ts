@@ -12,6 +12,9 @@ import {
   fileSize,
   parseCommunities,
   pauseNotice,
+  currentRun,
+  displayBytes,
+  previewStageLabel,
   stepFor,
   summaryLines,
   verdictDrivers,
@@ -196,5 +199,23 @@ describe("the on-screen summary", () => {
       { id: "acme_widget", name: "Acme Widget", sources: ["probe:x"] },
       { id: "acme_gadget", name: "acme_gadget", sources: ["oui:aa"] },
     ]);
+  });
+});
+
+describe("showing bytes and the connection preview", () => {
+  it("writes text out with its line endings, and anything else as hex", () => {
+    expect(displayBytes("PWR?\r", "5057523f0d")).toBe('"PWR?\\r"');
+    expect(displayBytes("\xaa\x11\x01", "aa1101")).toBe("aa 11 01");
+    expect(displayBytes("", "")).toBe("");
+  });
+  it("names each stage, with its cadence", () => {
+    expect(previewStageLabel("sign_in", 0, 0)).toBe("Sign in");
+    expect(previewStageLabel("poll", 10, 0)).toBe("Status polling, every 10 seconds");
+    expect(previewStageLabel("poll", 1, 0)).toBe("Status polling, every second");
+    expect(previewStageLabel("keep_alive", 0, 30)).toBe("Keep-alive check, every 30 seconds");
+  });
+  it("takes the last run as the current one", () => {
+    expect(currentRun(null)).toBeNull();
+    expect(currentRun(session({ runs: [] }))).toBeNull();
   });
 });

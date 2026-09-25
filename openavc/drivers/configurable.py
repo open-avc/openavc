@@ -577,6 +577,17 @@ class ConfigurableDriver(BaseDriver):
                 f"[{self.device_id}] Failed to register declared children"
             )
 
+        await self._run_on_connect()
+
+        if saved_poll_interval > 0:
+            await self.start_polling(saved_poll_interval)
+
+    async def _run_on_connect(self) -> None:
+        """Send the declared start-up steps (``on_connect``).
+
+        Its own method so a device audit's connection preview can run exactly
+        these steps against a transport that records (``drivers/dry_run.py``).
+        """
         on_connect = self._definition.get("on_connect", [])
         if on_connect and self.transport and self.transport.connected:
             transport_type = self._definition.get("transport")
@@ -647,9 +658,6 @@ class ConfigurableDriver(BaseDriver):
                                 await asyncio.sleep(delay)
                         except Exception as e:
                             log.warning(f"[{self.device_id}] on_connect command failed: {e}")
-
-        if saved_poll_interval > 0:
-            await self.start_polling(saved_poll_interval)
 
     async def _dispatch_query(self, query: str) -> None:
         """Send one query string for the active (non-OSC) transport.

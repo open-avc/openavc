@@ -397,128 +397,6 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     }
 
 
-class _CaptureTransport:
-    """Byte-stream stand-in (TCP, UDP, serial) that records instead of sending.
-
-    Every ConfigurableDriver command route finishes at a transport call, so
-    recording at that boundary yields the finished wire form — prefix/suffix
-    framing, substituted placeholders, decoded escapes, computed send_frame
-    header and all — without re-deriving any of it.
-    """
-
-    def __init__(self) -> None:
-        self.frames: list[bytes] = []
-
-    @property
-    def connected(self) -> bool:
-        return True
-
-    async def send(self, data: bytes) -> None:
-        self.frames.append(bytes(data))
-
-    async def close(self) -> None:
-        return None
-
-
-class _CaptureUdp:
-    """Stands in for the ad-hoc UDP socket BaseDriver.send_udp opens."""
-
-    def __init__(self) -> None:
-        self.sent: list[tuple[bytes, str, int]] = []
-
-    async def send_to(self, data: bytes, host: str, port: int) -> None:
-        self.sent.append((bytes(data), host, port))
-
-    async def close(self) -> None:
-        return None
-
-
-def _capture_osc_transport() -> Any:
-    """OSC capture double.
-
-    Subclasses OSCTransport rather than duck-typing it: the OSC sender
-    refuses a transport that isn't one (and so does the OSC device-setting
-    write), so a stand-in has to pass the isinstance check.
-    """
-    from openavc.transport.osc import OSCTransport
-
-    class _CaptureOSCTransport(OSCTransport):
-        def __init__(self) -> None:
-            super().__init__()
-            self.frames: list[bytes] = []
-
-        @property
-        def connected(self) -> bool:
-            return True
-
-        async def send(self, data: bytes) -> None:
-            self.frames.append(bytes(data))
-
-        async def close(self) -> None:
-            return None
-
-    return _CaptureOSCTransport()
-
-
-def _capture_http_transport() -> Any:
-    """HTTP capture double — subclasses for the same reason as the OSC one.
-
-    Records the request the driver built and hands back an empty response, so
-    the send path completes normally without anything leaving the process.
-    """
-    from openavc.transport.http_client import HTTPClientTransport, HTTPResponse
-
-    class _CaptureHTTPTransport(HTTPClientTransport):
-        def __init__(self) -> None:
-            super().__init__(base_url="http://device")
-            self.requests: list[dict[str, Any]] = []
-
-        @property
-        def connected(self) -> bool:
-            return True
-
-        async def request(
-            self,
-            method: str,
-            path: str,
-            params: dict[str, Any] | None = None,
-            json_body: Any = None,
-            form_data: dict[str, str] | None = None,
-            content: bytes | None = None,
-            headers: dict[str, str] | None = None,
-            timeout: Any = None,
-        ) -> Any:
-            import httpx
-
-            if not path.startswith("/"):
-                path = "/" + path
-            # Let httpx assemble the request exactly as it would for a real
-            # send, so the query string and the encoded body are the genuine
-            # article rather than a second rendering of them.
-            req = httpx.Request(
-                method.upper(),
-                httpx.URL(self.base_url).join(path),
-                params=params,
-                json=json_body,
-                data=form_data,
-                content=content,
-                headers=headers,
-            )
-            self.requests.append({
-                "method": req.method,
-                # raw_path is the request-line target: "/api/x?verbose=1".
-                "target": req.url.raw_path.decode("ascii", "replace"),
-                "headers": dict(headers or {}),
-                "body": req.content.decode("utf-8", "replace"),
-            })
-            return HTTPResponse(status_code=0, headers={}, text="", ok=True)
-
-        async def close(self) -> None:
-            return None
-
-    return _CaptureHTTPTransport()
-
-
 async def _dry_run_command(body: TestCommandRequest) -> dict:
     """Build a command through the real driver and report what it would send.
 
@@ -551,28 +429,10 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     # from the command's declared fields — not from the driver's transport.
     # The panel reports a shape/transport mismatch on its own; here we follow
     # the command so the author still sees what the command would build.
-    udp_capture: _CaptureUdp | None = None
-    if "address" in cmd_def:
-        route = "osc"
-        capture = _capture_osc_transport()
-    elif "path" in cmd_def or "method" in cmd_def:
-        route = "http"
-        capture = _capture_http_transport()
-    elif isinstance(cmd_def.get("udp"), dict):
-        # The side channel never touches driver.transport: the driver opens
-        # a socket for the send. Hand it one that records instead.
-        route = "udp"
-        capture = _CaptureTransport()
-        udp_capture = _CaptureUdp()
+    from openavc.drivers.dry_run import capture_command_transport
 
-        async def _open_capture() -> _CaptureUdp:
-            return udp_capture
-
-        driver._open_udp = _open_capture  # type: ignore[method-assign]
-    else:
-        route = "raw"
-        capture = _CaptureTransport()
-    driver.transport = capture
+    captured = capture_command_transport(driver, cmd_def)
+    route, capture, udp_capture = captured.route, captured.transport, captured.udp
 
     try:
         await driver.send_command(command, body.params or {})

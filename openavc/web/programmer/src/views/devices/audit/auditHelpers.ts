@@ -6,18 +6,21 @@ import type {
   AuditActivity,
   AuditActivityKey,
   AuditConflictDevice,
+  AuditDriverRun,
+  AuditPreviewStage,
   AuditReport,
   AuditSessionState,
   AuditTimelineEntry,
 } from "../../../api/auditClient";
 
-export type AuditStep = "target" | "network" | "driver" | "report";
+export type AuditStep = "target" | "network" | "driver" | "connection" | "report";
 
 /** The steps this wizard has, in order, with their rail labels. */
 export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
   { key: "target", label: "Device" },
   { key: "network", label: "Network check" },
   { key: "driver", label: "Driver" },
+  { key: "connection", label: "Connection" },
   { key: "report", label: "Report" },
 ];
 
@@ -40,6 +43,7 @@ export const ACTIVITY_ORDER: AuditActivityKey[] = [
 export function stepFor(session: AuditSessionState | null): AuditStep {
   if (!session) return "target";
   if (session.steps.includes("report")) return "report";
+  if (session.steps.includes("connection")) return "connection";
   if (session.steps.includes("driver")) return "driver";
   return "network";
 }
@@ -112,6 +116,46 @@ export function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} bytes`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The current driver run: the last one. */
+export function currentRun(session: AuditSessionState | null): AuditDriverRun | null {
+  const runs = session?.runs ?? [];
+  return runs.length > 0 ? runs[runs.length - 1] : null;
+}
+
+/** Bytes as a person reads them: the text with its control characters
+ *  written out when it is text, otherwise the hex in pairs. */
+export function displayBytes(text: string, hex: string): string {
+  const printable = [...text].every((c) => {
+    const code = c.charCodeAt(0);
+    return (code >= 0x20 && code < 0x7f) || c === "\r" || c === "\n" || c === "\t";
+  });
+  if (printable && text.length > 0) {
+    return `"${text.replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
+  }
+  return (hex.match(/.{1,2}/g) ?? []).join(" ");
+}
+
+/** What each preview stage is called on screen. */
+export function previewStageLabel(
+  stage: AuditPreviewStage,
+  pollInterval: number,
+  keepAliveInterval: number,
+): string {
+  if (stage === "sign_in") return "Sign in";
+  if (stage === "start_up") return "Start-up steps";
+  if (stage === "poll") {
+    return pollInterval > 0 ? `Status polling, every ${seconds(pollInterval)}` : "Status polling";
+  }
+  return keepAliveInterval > 0
+    ? `Keep-alive check, every ${seconds(keepAliveInterval)}`
+    : "Keep-alive check";
+}
+
+function seconds(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return rounded === 1 ? "second" : `${rounded} seconds`;
 }
 
 /** One line of the on-screen summary. */

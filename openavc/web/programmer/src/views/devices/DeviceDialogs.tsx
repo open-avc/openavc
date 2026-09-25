@@ -18,7 +18,9 @@ import { parseApiError } from "../../api/errors";
 
 // --- Typed Config Fields ---
 
-function ConfigFieldInputs({
+// Shared with the Device Audit's connection step, which asks for the same
+// fields the same way.
+export function ConfigFieldInputs({
   configKeys,
   driverInfo,
   configValues,
@@ -254,7 +256,7 @@ export function driverIrCapable(d: DriverInfo | undefined): boolean {
 // and is never a raw field. The Edit dialog falls back to a device's existing
 // config keys when a driver has no config_schema (e.g. generic_ir), so without
 // this an IR device would leak ir_codes/bridge/bridge_port as editable text.
-function hiddenRawConfigKeys(driverInfo: DriverInfo | undefined): Set<string> {
+export function hiddenRawConfigKeys(driverInfo: DriverInfo | undefined): Set<string> {
   if (driverIrCapable(driverInfo)) return IR_PICKER_FIELDS;
   if (driverSerialCapable(driverInfo)) return SERIAL_PICKER_FIELDS;
   return new Set(["ir_codes"]);
@@ -431,13 +433,14 @@ function SerialPortPicker({
   );
 }
 
-function ConnectionModePicker({
+export function ConnectionModePicker({
   driverInfo,
   configValues,
   setConfigValues,
   devices,
   drivers,
   selfId,
+  allowBridge = true,
 }: {
   driverInfo: DriverInfo | undefined;
   configValues: Record<string, string>;
@@ -445,6 +448,9 @@ function ConnectionModePicker({
   devices: DeviceConfig[];
   drivers: DriverInfo[];
   selfId?: string;
+  /** Offer "Through a bridge" (the Device Audit's connection step does not
+   *  yet reach a device through a bridge). */
+  allowBridge?: boolean;
 }) {
   const [mode, setMode] = useState<ConnMode>(() => inferConnMode(configValues, driverInfo));
 
@@ -474,7 +480,7 @@ function ConnectionModePicker({
     if (netCapable) modes.push({ id: "network", label: "Network (IP)" });
     modes.push({ id: "serial", label: "Direct serial" });
   }
-  modes.push({ id: "bridge", label: "Through a bridge" });
+  if (allowBridge || isIr) modes.push({ id: "bridge", label: "Through a bridge" });
 
   const modeHelp: Record<ConnMode, string> = {
     network: "Reach the device over the network by IP address.",

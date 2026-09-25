@@ -15,6 +15,10 @@ turns a refusal into its sentence.
   ``PATCH /audit/sessions/{id}/tester``.
 - ``POST /audit/sessions/{id}/driver`` (the driver chosen, or none yet) and
   ``POST /audit/sessions/{id}/next-driver`` ("Test another driver").
+- ``GET /audit/sessions/{id}/saved-settings`` (paused project devices whose
+  settings the chosen driver can use, secrets withheld) and
+  ``POST /audit/sessions/{id}/connection`` (the settings, and what connecting
+  will send).
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -31,9 +35,20 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from openavc.api._engine import _get_engine
-from openavc.api.models import AuditDriverRequest, AuditStartRequest, AuditTesterRequest
+from openavc.api.models import (
+    AuditConnectionRequest,
+    AuditDriverRequest,
+    AuditStartRequest,
+    AuditTesterRequest,
+)
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
-from openavc.audit.passes import choose_driver, next_driver, open_runs
+from openavc.audit.passes import (
+    choose_driver,
+    next_driver,
+    open_runs,
+    saved_settings,
+    set_connection,
+)
 from openavc.audit.report import (
     ReportStore,
     build_report,
@@ -247,6 +262,29 @@ async def test_another_driver(session_id: str) -> dict[str, Any]:
     """Finish with the current driver (its results stay) to choose another."""
     session = _session(session_id)
     await next_driver(session)
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.get("/sessions/{session_id}/saved-settings")
+async def get_saved_settings(session_id: str) -> dict[str, Any]:
+    """Paused project devices on the chosen driver, their settings without
+    the secrets (which are named, never sent)."""
+    session = _session(session_id)
+    return {"devices": saved_settings(session, getattr(_get_engine(), "project", None))}
+
+
+@router.post("/sessions/{session_id}/connection")
+async def set_session_connection(session_id: str, body: AuditConnectionRequest) -> dict[str, Any]:
+    """The connection settings for the chosen driver, and what connecting sends."""
+    session = _session(session_id)
+    try:
+        await set_connection(
+            session, dict(body.config), use_saved=body.use_saved,
+            project=getattr(_get_engine(), "project", None),
+        )
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     session.publish_state()
     return {"session": session.to_dict()}
 

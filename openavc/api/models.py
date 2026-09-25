@@ -426,6 +426,19 @@ class AuditDriverRequest(BaseModel):
     firmware: str = Field(default="", max_length=200)
 
 
+class AuditConnectionRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/connection``: the driver's
+    connection settings (its ``config_schema`` fields, host and port among
+    them). ``use_saved`` names a paused project device whose saved settings
+    are the base, so its credentials never pass through the browser: a
+    secret field left empty keeps the saved value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, Any] = Field(default_factory=dict, max_length=128)
+    use_saved: str | None = Field(default=None, max_length=200)
+
+
 class AuditTesterRequest(BaseModel):
     """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
     report, all optional, and whether to leave the serial number out."""

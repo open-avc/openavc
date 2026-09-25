@@ -59,6 +59,7 @@ EXPECTED_CONTROL = {
     ("POST", "/api/audit/sessions/{session_id}/network-check"),
     ("POST", "/api/audit/sessions/{session_id}/driver"),
     ("POST", "/api/audit/sessions/{session_id}/next-driver"),
+    ("POST", "/api/audit/sessions/{session_id}/connection"),
     ("DELETE", "/api/devices/{device_id}"),
     ("DELETE", "/api/driver-definitions/{driver_id}"),
     ("DELETE", "/api/drivers/installed/{driver_id}"),

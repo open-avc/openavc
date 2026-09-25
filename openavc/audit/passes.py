@@ -38,6 +38,9 @@ RUN_IN_PROGRESS = (
     "{driver} is still connected to the device. Choose Test another driver to "
     "finish with it first."
 )
+NO_DRIVER_CHOSEN = "Choose the driver to test first."
+NOT_SAVED_HERE = "That device's saved settings are not available to this audit."
+
 
 
 @dataclass
@@ -49,7 +52,14 @@ class DriverRun:
     started_at: float | None = None
     finished_at: float | None = None
     sandbox: "DriverSandbox | None" = None
-    # Filled by the later steps (the connection, connect and listen).
+    # The connection settings, as the driver will get them (secrets included;
+    # never sent to a browser), and the credential values among them.
+    config: dict[str, Any] | None = None
+    secrets: set[str] = field(default_factory=set)
+    # What the connection step shows: the settings with secrets masked, where
+    # they came from, and what connecting will send.
+    connection: dict[str, Any] | None = None
+    # Filled by the later steps (connect and listen).
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -63,6 +73,7 @@ class DriverRun:
             "started_at": self.started_at,
             "finished_at": self.finished_at,
             "active": self.active,
+            "connection": self.connection,
         }
         for key, provider in self.extra.items():
             try:
@@ -176,6 +187,164 @@ def choose_driver(
         modified=choice.identity.get("modified"),
     )
     return run
+
+
+def _driver_info(driver_id: str) -> dict[str, Any]:
+    cls = get_driver_class(driver_id)
+    return dict(getattr(cls, "DRIVER_INFO", {}) or {})
+
+
+def _masked(config: dict[str, Any], secret_keys: set[str]) -> dict[str, Any]:
+    return {
+        key: ("***" if key in secret_keys and value not in (None, "") else value)
+        for key, value in config.items()
+    }
+
+
+def _secret_keys(config: dict[str, Any], schema: dict[str, Any]) -> set[str]:
+    from openavc.utils.log_redaction import is_secret_key
+
+    declared = {
+        k for k, spec in (schema or {}).items()
+        if isinstance(spec, dict) and spec.get("secret") is True
+    }
+    return {k for k in config if k in declared or is_secret_key(k)}
+
+
+def saved_settings(session: "AuditSession", project: Any) -> list[dict[str, Any]]:
+    """The paused project devices whose settings the current driver can use.
+
+    Only a device the audit paused at this address, on the same driver: its
+    settings are the ones a production system dials this device with. Secret
+    values stay here; the browser learns which are set, never what they are.
+    """
+    from openavc.core.device_config import resolve_device_config
+
+    run = current_run(session)
+    if run is None or project is None:
+        return []
+    paused = {p.device_id: p.name for p in session.paused}
+    schema = _driver_info(run.choice.driver_id).get("config_schema") or {}
+    out = []
+    for device in getattr(project, "devices", []):
+        if device.id not in paused or device.driver != run.choice.driver_id:
+            continue
+        config = resolve_device_config(device, project)["config"]
+        secret_keys = _secret_keys(config, schema)
+        out.append({
+            "device_id": device.id,
+            "name": paused[device.id],
+            "config": {k: v for k, v in config.items() if k not in secret_keys},
+            "secrets_set": sorted(k for k in secret_keys if config.get(k) not in (None, "")),
+        })
+    return out
+
+
+def _saved_config(session: "AuditSession", project: Any, device_id: str) -> dict[str, Any]:
+    from openavc.core.device_config import resolve_device_config
+
+    offered = {s["device_id"] for s in saved_settings(session, project)}
+    if device_id not in offered:
+        raise AuditError(NOT_SAVED_HERE)
+    device = next(d for d in project.devices if d.id == device_id)
+    return dict(resolve_device_config(device, project)["config"])
+
+
+async def set_connection(
+    session: "AuditSession",
+    config: dict[str, Any],
+    *,
+    use_saved: str | None = None,
+    project: Any = None,
+) -> DriverRun:
+    """Record the connection settings for the current driver and preview
+    what connecting will send.
+
+    With ``use_saved``, a paused project device's saved settings are the base
+    and what the person entered goes on top; a secret field they left empty
+    keeps the saved value. The sandbox's own checks run now (a serial port
+    that would simulate is refused here, before anything connects).
+    """
+    from openavc.audit.sandbox import DriverSandbox, audit_device_id
+    from openavc.utils.log_redaction import collect_secret_values
+
+    run = current_run(session)
+    if run is None or not run.choice.driver_id:
+        raise AuditError(NO_DRIVER_CHOSEN)
+    if run.active:
+        raise AuditError(RUN_IN_PROGRESS.format(driver=run.choice.identity.get("name")))
+    entered = {k: v for k, v in config.items() if v not in (None, "")}
+    base: dict[str, Any] = {}
+    saved_name = ""
+    if use_saved:
+        base = _saved_config(session, project, use_saved)
+        saved_name = next((p.name for p in session.paused if p.device_id == use_saved), use_saved)
+    merged = {**base, **entered}
+
+    info = _driver_info(run.choice.driver_id)
+    sandbox = DriverSandbox(audit_device_id(session.id), run.choice.driver_id, merged)
+    resolved = sandbox.prepare()  # raises AuditError with the sentence
+    effective = resolved["config"]
+    secret_keys = _secret_keys(effective, info.get("config_schema") or {})
+
+    run.config = merged
+    run.secrets = collect_secret_values(effective, info.get("config_schema")) | {
+        str(effective[k]) for k in secret_keys
+        if isinstance(effective.get(k), str) and effective[k]
+    }
+    preview = await _preview(session, run, effective)
+    run.connection = {
+        "config": _masked(effective, secret_keys),
+        "transport": sandbox.transport,
+        "saved_from": saved_name,
+        "preview": preview,
+    }
+    session.enter_step("connection")
+    text = (
+        f"Connection settings chosen, from {saved_name}'s saved settings."
+        if saved_name else "Connection settings chosen."
+    )
+    session.add_timeline("driver.connection", text, transport=sandbox.transport)
+    return run
+
+
+async def _preview(
+    session: "AuditSession", run: DriverRun, config: dict[str, Any],
+) -> dict[str, Any]:
+    """What connecting sends, masked for the browser."""
+    from openavc.core.device_traffic import TrafficRedactor
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.dry_run import preview_connect
+    from openavc.utils.log_redaction import get_secret_registry
+
+    cls = get_driver_class(run.choice.driver_id)
+    preview_id = f"audit-{session.id}-preview"
+    try:
+        driver = cls(preview_id, dict(config), StateStore(), EventBus())
+        result = await preview_connect(driver)
+    except Exception as exc:
+        log.debug("Connection preview failed", exc_info=True)
+        return {"available": False, "reason": f"The preview could not be built: {exc}",
+                "steps": [], "poll_interval": 0, "keep_alive_interval": 0}
+    finally:
+        get_secret_registry().forget(preview_id)
+    redactor = TrafficRedactor(run.secrets)
+    steps = []
+    for step in result.steps:
+        if step["kind"] == "send":
+            data = redactor.data(step["data"])
+            steps.append({"stage": step["stage"], "kind": "send",
+                          "hex": data.hex(), "text": data.decode("latin-1")})
+        else:
+            steps.append(redactor.value(dict(step)))
+    return {
+        "available": result.available,
+        "reason": result.reason,
+        "steps": steps,
+        "poll_interval": result.poll_interval,
+        "keep_alive_interval": result.keep_alive_interval,
+    }
 
 
 async def next_driver(session: "AuditSession") -> None:

@@ -143,7 +143,7 @@ export function DriverStep() {
         firmware: firmware.trim(),
       });
       useAuditStore.getState().setSession(next);
-      useAuditStore.getState().setStep("report");
+      useAuditStore.getState().setStep(id ? "connection" : "report");
     } catch (e) {
       setError(parseApiError(e));
     } finally {
