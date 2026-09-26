@@ -195,7 +195,9 @@ async def dispatch(
     }
     if cut:
         meta["truncated"] = True
-    record_traffic(sub.name, RX, data, channel="http_listener", meta=meta)
+    # Under the device, not the log name: a driver with one subscription per
+    # service names each one for its log lines ("<device>:<service>").
+    record_traffic(sub.device_id, RX, data, channel="http_listener", meta=meta)
     try:
         result = sub._callback(request)
         if hasattr(result, "__await__"):

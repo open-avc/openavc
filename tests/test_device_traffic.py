@@ -450,6 +450,21 @@ async def test_push_channels_record_what_arrives():
     assert entry.channel == "http_listener" and entry.data == b"<e/>"
     assert entry.meta["method"] == "NOTIFY" and ["sid", "uuid:1"] in entry.meta["headers"]
 
+    # A subscription named for its log lines still records under its device.
+    labelled = await http_listener.subscribe(
+        "acme_hl2", "127.0.0.1", lambda r: None, "acme_hl2:events", label="events",
+    )
+    try:
+        await http_listener.dispatch(
+            "acme_hl2", "events",
+            http_listener.HTTPPushRequest(body=b"<e/>", method="NOTIFY", headers={},
+                                          source_ip="127.0.0.1"),
+        )
+    finally:
+        await labelled.close()
+    assert [e.meta["label"] for e in _entries("acme_hl2")] == ["events"]
+    assert _entries("acme_hl2:events") == []
+
 
 async def test_a_driver_that_owns_its_connection_reports_through_record_traffic():
     from openavc.core.event_bus import EventBus
