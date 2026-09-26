@@ -22,7 +22,10 @@ export interface DriverOption {
   brand: string;
   /** The models the driver lists for that manufacturer. */
   models: string[];
+  /** The strongest confidence the driver gives any model of this manufacturer. */
   confidence: ModelConfidence | null;
+  /** The confidence the driver gives each listed model, by lower-cased model. */
+  modelConfidence: Record<string, ModelConfidence>;
   /** A driver named for another manufacturer (a generic protocol driver). */
   isVia: boolean;
   verified: boolean;
@@ -42,6 +45,37 @@ export interface DriverOption {
 const CONFIDENCE_RANK: Record<string, number> = { full: 3, partial: 2, untested: 1 };
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Each model's confidence under one manufacturer. A driver that names one
+ *  manufacturer only is shown under that name, whatever case its model
+ *  groups spell it in, so every group counts there. */
+function confidenceByModel(
+  groups: CommunityDriver["compatible_models"],
+  brand: string,
+): Record<string, ModelConfidence> {
+  const list = groups ?? [];
+  const single = new Set(list.map((g) => g.manufacturer.trim().toLowerCase())).size <= 1;
+  const out: Record<string, ModelConfidence> = {};
+  for (const group of list) {
+    if (!single && !same(group.manufacturer, brand)) continue;
+    const confidence = group.confidence as ModelConfidence;
+    for (const model of group.models ?? []) {
+      const key = model.trim().toLowerCase();
+      const held = out[key];
+      if (!held || (CONFIDENCE_RANK[confidence] ?? 0) > (CONFIDENCE_RANK[held] ?? 0)) {
+        out[key] = confidence;
+      }
+    }
+  }
+  return out;
+}
+
+/** The confidence to show for a driver: the chosen model's when one is
+ *  chosen and listed, else the manufacturer-wide one. */
+export function optionConfidence(o: DriverOption, model: string | null): ModelConfidence | null {
+  if (model) return o.modelConfidence[model.trim().toLowerCase()] ?? null;
+  return o.confidence;
+}
 
 /** Every entry the picker can offer: catalog drivers per brand, then the
  *  installed drivers the catalog does not list. */
@@ -67,6 +101,7 @@ export function buildDriverOptions(
         brand: card.brand,
         models: card.brandModels,
         confidence: card.brandConfidence,
+        modelConfidence: confidenceByModel(driver.compatible_models, card.brand),
         isVia: card.isViaCard,
         verified: !!driver.verified,
         source: "catalog",
@@ -97,6 +132,7 @@ export function buildDriverOptions(
         brand: card.brand,
         models: card.brandModels,
         confidence: card.brandConfidence,
+        modelConfidence: confidenceByModel(reg.compatible_models, card.brand),
         isVia: card.isViaCard,
         verified: false,
         source: inRepo.has(reg.id) ? "imported" : "built_in",

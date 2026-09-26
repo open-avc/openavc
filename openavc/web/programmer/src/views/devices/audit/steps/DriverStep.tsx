@@ -13,6 +13,7 @@ import {
   installState,
   manufacturers,
   modelsFor,
+  optionConfidence,
   preselect,
   type DriverOption,
 } from "../driverPicker";
@@ -258,6 +259,7 @@ export function DriverStep() {
                     <DriverRow
                       key={d.id}
                       option={d}
+                      confidence={optionConfidence(d, notListed || !model ? null : model)}
                       selected={d.id === driverId}
                       onSelect={() => setDriverId(d.id)}
                       onInstall={() => void install(d)}
@@ -330,12 +332,15 @@ export function DriverStep() {
 
 function DriverRow({
   option,
+  confidence,
   selected,
   onSelect,
   onInstall,
   installing,
 }: {
   option: DriverOption;
+  /** The chosen model's confidence, or the manufacturer's with no model chosen. */
+  confidence: DriverOption["confidence"];
   selected: boolean;
   onSelect: () => void;
   onInstall: () => void;
@@ -390,7 +395,7 @@ function DriverRow({
               <ShieldCheck size={12} /> Verified
             </span>
           )}
-          {confidenceText(option.confidence) && <span>{confidenceText(option.confidence)}</span>}
+          {confidenceText(confidence) && <span>{confidenceText(confidence)}</span>}
           {option.isVia && <span>A general driver that also covers {option.brand}</span>}
           {source && <span>{source}</span>}
           {option.deprecated && <span>No longer maintained</span>}

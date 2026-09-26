@@ -7,6 +7,7 @@ import {
   manufacturers,
   matchModel,
   modelsFor,
+  optionConfidence,
   preselect,
 } from "./driverPicker";
 
@@ -123,5 +124,26 @@ describe("the first selection", () => {
     expect(matchModel(["W-100"], "w-100")).toBe("W-100");
     expect(matchModel(["W-100"], "W-1000")).toBeNull();
     expect(matchModel(["W-100"], "")).toBeNull();
+  });
+});
+
+describe("the confidence a driver row shows", () => {
+  const split = catalogDriver({
+    id: "acme_amp",
+    name: "Acme Amp",
+    compatible_models: [
+      { manufacturer: "Acme", models: ["A-84", "A-352D"], confidence: "untested" },
+      { manufacturer: "Acme", models: ["A-352D"], confidence: "full" },
+    ],
+  });
+  const [option] = buildDriverOptions([split], [], [], "1.0.0");
+
+  it("is the chosen model's, not the first group's", () => {
+    expect(optionConfidence(option, "A-352D")).toBe("full");
+    expect(optionConfidence(option, "a-84")).toBe("untested");
+  });
+  it("is nothing for a model the driver does not list, and the brand's with no model", () => {
+    expect(optionConfidence(option, "A-999")).toBeNull();
+    expect(optionConfidence(option, null)).toBe(option.confidence);
   });
 });
