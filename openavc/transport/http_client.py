@@ -22,15 +22,17 @@ TLS:
       almost every AV device with HTTPS uses self-signed certs
 
 Traffic: every request and response is recorded for the device
-(``core/device_traffic.py``, channel ``http``). A driver that opens its own
-``httpx`` client records the same way through :func:`traffic_event_hooks`
-(``BaseDriver.http_traffic_hooks``), so both kinds of HTTP driver read alike
-in a device's traffic.
+(``core/device_traffic.py``, channel ``http``). A Python driver that opens its
+own ``httpx.AsyncClient`` is recorded the same way with nothing in the driver:
+:func:`capture_driver_clients` attaches :func:`traffic_event_hooks` to a
+client created by a driver's code, so both kinds of HTTP driver read alike in
+a device's traffic.
 """
 
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json as json_module
 import re
 import zlib
@@ -215,7 +217,87 @@ def traffic_event_hooks(name: str) -> dict[str, list[Callable[..., Awaitable[Non
         except Exception:
             log.debug("HTTP response record failed", exc_info=True)
 
+    on_request.records_traffic = True  # type: ignore[attr-defined]
+    on_response.records_traffic = True  # type: ignore[attr-defined]
     return {"request": [on_request], "response": [on_response]}
+
+
+# ---------------------------------------------------------------------------
+# A driver's own httpx client, recorded with nothing in the driver
+# ---------------------------------------------------------------------------
+
+# How far up the call stack a new client looks for the driver that made it: a
+# driver's method, a helper it calls, a client class the helper builds.
+_OWNER_SEARCH_DEPTH = 12
+
+_original_client_init: Callable[..., None] | None = None
+
+
+def _owning_device(frame: Any) -> str | None:
+    """The device whose driver is creating a client, from the calling frames.
+
+    The nearest ``self`` that is a driver names the device. A client the
+    platform's own HTTP transport creates is left alone (the transport
+    records its traffic itself), and so is one nothing driver-shaped created
+    (a route, the updater, the cloud agent, a plugin).
+    """
+    from openavc.drivers.base import BaseDriver
+
+    for _ in range(_OWNER_SEARCH_DEPTH):
+        if frame is None:
+            return None
+        owner = frame.f_locals.get("self")
+        if isinstance(owner, HTTPClientTransport):
+            return None
+        if isinstance(owner, BaseDriver):
+            return owner.device_id or None
+        frame = frame.f_back
+    return None
+
+
+def _already_recording(hooks: Any) -> bool:
+    if not isinstance(hooks, dict):
+        return False
+    return any(
+        getattr(fn, "records_traffic", False)
+        for fns in hooks.values() for fn in (fns or [])
+    )
+
+
+def capture_driver_clients() -> None:
+    """Record every ``httpx.AsyncClient`` a driver creates, under its device.
+
+    Most Python HTTP drivers own their client (for a login session, cookies,
+    their own retries), which none of the platform's recording code sits in
+    the path of. Rather than ask each driver to pass hooks, the client's
+    constructor adds :func:`traffic_event_hooks` when a driver's code is
+    creating it, found from the calling frames (:func:`_owning_device`). A
+    client that already records is left as it is. Idempotent; called once
+    when the driver base class is imported.
+    """
+    global _original_client_init
+    if _original_client_init is not None:
+        return
+    _original_client_init = httpx.AsyncClient.__init__
+
+    def init(client: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+        try:
+            frame = inspect.currentframe()
+            device_id = _owning_device(frame.f_back if frame is not None else None)
+            hooks = kwargs.get("event_hooks")
+            if device_id and not _already_recording(hooks):
+                merged = {kind: list(fns or []) for kind, fns in (hooks or {}).items()}
+                for kind, fns in traffic_event_hooks(device_id).items():
+                    merged.setdefault(kind, []).extend(fns)
+                kwargs["event_hooks"] = merged
+        except Exception:  # recording must never cost a client
+            log.debug("Could not attach traffic recording to a client", exc_info=True)
+        finally:
+            frame = None
+        _original_client_init(client, *args, **kwargs)
+
+    init.__wrapped__ = _original_client_init  # type: ignore[attr-defined]
+    httpx.AsyncClient.__init__ = init  # type: ignore[method-assign]
 
 
 class SSEEventStream:
