@@ -20,6 +20,12 @@ TLS:
     - HTTPS with trusted certs (verify_ssl=True)
     - HTTPS with self-signed certs (verify_ssl=False) — critical because
       almost every AV device with HTTPS uses self-signed certs
+
+Traffic: every request and response is recorded for the device
+(``core/device_traffic.py``, channel ``http``). A driver that opens its own
+``httpx`` client records the same way through :func:`traffic_event_hooks`
+(``BaseDriver.http_traffic_hooks``), so both kinds of HTTP driver read alike
+in a device's traffic.
 """
 
 from __future__ import annotations
@@ -27,12 +33,15 @@ from __future__ import annotations
 import asyncio
 import json as json_module
 import re
+import zlib
+from collections.abc import AsyncIterator, Awaitable
 from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
 
 from openavc.core.device_traffic import (
+    BODY_LIMIT,
     RX,
     TX,
     body_part,
@@ -42,6 +51,171 @@ from openavc.core.device_traffic import (
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Recording a request and its response (the transport and the hooks share it)
+# ---------------------------------------------------------------------------
+
+
+def request_target(req: httpx.Request, fallback: str = "") -> str:
+    """The request target as it goes on the wire (path and query)."""
+    try:
+        return req.url.raw_path.decode("ascii", "replace")
+    except Exception:
+        return fallback
+
+
+def record_http_request(name: str, req: httpx.Request, target: str) -> None:
+    """Record ``req`` under ``name`` as it is sent: method, target, headers
+    (credentials masked) and the body, up to ``BODY_LIMIT``."""
+    try:
+        content = bytes(req.content)
+    except Exception:  # a streamed body not read yet
+        content = b""
+    data, cut = body_part(content)
+    meta: dict[str, Any] = {
+        "method": req.method,
+        "target": target,
+        "headers": header_pairs(req.headers),
+    }
+    if cut:
+        meta["truncated"] = True
+    record_traffic(name, TX, data, channel="http", meta=meta)
+
+
+def record_http_response(
+    name: str,
+    method: str,
+    target: str,
+    response: httpx.Response,
+    body: bytes,
+    *,
+    cut: bool = False,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Record ``response`` to ``method target`` under ``name``, with its body."""
+    data, over = body_part(body)
+    meta: dict[str, Any] = {
+        "method": method,
+        "target": target,
+        "status": response.status_code,
+        "reason": response.reason_phrase,
+        "headers": header_pairs(response.headers),
+    }
+    if cut or over:
+        meta["truncated"] = True
+    if extra:
+        meta.update(extra)
+    record_traffic(name, RX, data, channel="http", meta=meta)
+
+
+def _decode_body(raw: bytes, encoding: str) -> bytes | None:
+    """``raw`` as the reader of the response gets it, for the encodings the
+    standard library decodes (a part is enough); None for any other."""
+    enc = encoding.strip().lower()
+    if enc in ("", "identity"):
+        return raw
+    try:
+        if enc in ("gzip", "x-gzip"):
+            return zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(raw)
+        if enc == "deflate":
+            try:
+                return zlib.decompressobj().decompress(raw)
+            except zlib.error:
+                return zlib.decompressobj(-zlib.MAX_WBITS).decompress(raw)
+    except zlib.error:
+        return None
+    return None
+
+
+class _RecordedBody(httpx.AsyncByteStream):
+    """A response body that records itself once, as it is read.
+
+    Wrapping the stream (rather than reading the body in the hook) leaves a
+    streamed response streamed: the caller reads it at its own pace, and the
+    record is written when the body ends or is closed, or as soon as the
+    recorded part reaches ``BODY_LIMIT`` (a stream that never ends is still
+    recorded).
+    """
+
+    def __init__(
+        self,
+        inner: httpx.AsyncByteStream,
+        on_done: Callable[[bytes, bool], None],
+    ) -> None:
+        self._inner = inner
+        self._on_done = on_done
+        self._kept = bytearray()
+        self._done = False
+
+    def _finish(self, cut: bool) -> None:
+        if not self._done:
+            self._done = True
+            self._on_done(bytes(self._kept), cut)
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        async for chunk in self._inner:
+            if not self._done:
+                self._kept.extend(chunk)
+                if len(self._kept) >= BODY_LIMIT:
+                    self._finish(True)
+            yield chunk
+        self._finish(False)
+
+    async def aclose(self) -> None:
+        try:
+            await self._inner.aclose()
+        finally:
+            self._finish(False)
+
+
+def traffic_event_hooks(name: str) -> dict[str, list[Callable[..., Awaitable[None]]]]:
+    """``event_hooks`` for an ``httpx.AsyncClient`` that record its traffic
+    under ``name`` exactly as :class:`HTTPClientTransport` records its own.
+
+    Each request is recorded as it is sent. Each response is recorded once
+    its body has been read (or closed unread), with the body decoded for
+    ``gzip`` and ``deflate``; any other content encoding is recorded as
+    received and says so. A request that got no response at all raises in the
+    caller before any response hook runs, so it appears as sent only.
+    """
+
+    async def on_request(request: httpx.Request) -> None:
+        try:
+            record_http_request(name, request, request_target(request, request.url.path))
+        except Exception:  # recording must never cost a request
+            log.debug("HTTP request record failed", exc_info=True)
+
+    async def on_response(response: httpx.Response) -> None:
+        try:
+            request = response.request
+            method, target = request.method, request_target(request, request.url.path)
+            encoding = response.headers.get("content-encoding", "")
+
+            def done(raw: bytes, cut: bool) -> None:
+                decoded = _decode_body(raw, encoding)
+                extra = None if decoded is not None else {"content_encoding": encoding}
+                record_http_response(
+                    name, method, target, response,
+                    decoded if decoded is not None else raw, cut=cut, extra=extra,
+                )
+
+            if response.is_stream_consumed:
+                # Already read (a response built from bytes): the content is there.
+                try:
+                    body = response.content
+                except httpx.ResponseNotRead:
+                    body = b""
+                record_http_response(name, method, target, response, body)
+            elif isinstance(response.stream, httpx.AsyncByteStream):
+                response.stream = _RecordedBody(response.stream, done)
+            else:
+                record_http_response(name, method, target, response, b"")
+        except Exception:
+            log.debug("HTTP response record failed", exc_info=True)
+
+    return {"request": [on_request], "response": [on_response]}
 
 
 class SSEEventStream:
@@ -697,23 +871,8 @@ class HTTPClientTransport:
         """Record a request as it will be sent; returns its request target."""
         if not self._traffic_name:
             return path
-        try:
-            target = req.url.raw_path.decode("ascii", "replace")
-        except Exception:
-            target = path
-        try:
-            content = bytes(req.content)
-        except Exception:  # a streamed body not read yet
-            content = b""
-        data, cut = body_part(content)
-        meta: dict[str, Any] = {
-            "method": req.method,
-            "target": target,
-            "headers": header_pairs(req.headers),
-        }
-        if cut:
-            meta["truncated"] = True
-        record_traffic(self._traffic_name, TX, data, channel="http", meta=meta)
+        target = request_target(req, path)
+        record_http_request(self._traffic_name, req, target)
         return target
 
     def _record_response(
@@ -721,17 +880,7 @@ class HTTPClientTransport:
     ) -> None:
         if not self._traffic_name:
             return
-        data, cut = body_part(body)
-        meta: dict[str, Any] = {
-            "method": method,
-            "target": target,
-            "status": response.status_code,
-            "reason": response.reason_phrase,
-            "headers": header_pairs(response.headers),
-        }
-        if cut:
-            meta["truncated"] = True
-        record_traffic(self._traffic_name, RX, data, channel="http", meta=meta)
+        record_http_response(self._traffic_name, method, target, response, body)
 
     def _record_failure(self, method: str, path: str, error: str) -> None:
         """A request that got no response: an empty entry saying why."""

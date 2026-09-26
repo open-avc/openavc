@@ -78,8 +78,8 @@ DOC_PATH = Path(__file__).resolve().parents[1] / "docs" / "creating-drivers.md"
 # own the name, and a wrong claim hides a rename.
 EXAMPLE_HELPERS = {
     "_api_post": "The HTTP example driver's own request helper.",
-    "_client": "The httpx client the example driver opens in connect(): a session "
-               "the driver owns, which is why it reports its own traffic.",
+    "_ws": "The websocket the example driver owns, which is why it reports its "
+           "own traffic.",
     "_detail_due": "The controller example's slower-cadence gate — its own "
                    "bookkeeping, not a platform hook.",
     "_identify": "The example driver's identity read, called from _initial_sync.",

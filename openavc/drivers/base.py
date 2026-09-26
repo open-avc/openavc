@@ -50,6 +50,7 @@ from openavc.drivers.spec import (
 )
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
+from openavc.transport.http_client import traffic_event_hooks
 from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import collect_secret_values, get_secret_registry
 from openavc.utils.logger import get_logger
@@ -842,6 +843,22 @@ class BaseDriver(ABC):
             self.device_id, "rx" if direction == "rx" else "tx", payload,
             channel="driver", meta=meta,
         )
+
+    def http_traffic_hooks(self) -> dict[str, list[Callable[..., Awaitable[None]]]]:
+        """``event_hooks`` that record an ``httpx`` client this driver owns.
+
+        A driver that opens its own ``httpx.AsyncClient`` (for a session, a
+        cookie jar or its own retry rules) passes these when it creates it,
+        and every request and response is recorded for the device exactly as
+        the platform's HTTP transport records its own::
+
+            self._client = httpx.AsyncClient(
+                base_url=url, event_hooks=self.http_traffic_hooks(),
+            )
+
+        A driver with hooks of its own adds these to its lists.
+        """
+        return traffic_event_hooks(self.device_id)
 
     def set_project_child_entities(
         self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,

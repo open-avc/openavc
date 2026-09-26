@@ -2741,7 +2741,11 @@ class RestDeviceDriver(BaseDriver):
         # phantom connection the watchdog has to time out.
         if not await self._verify_reachable(host, self.config.get("port", 443)):
             raise ConnectionError(f"{host} is not responding")
-        self._client = httpx.AsyncClient(base_url=f"https://{host}", verify=False)
+        self._client = httpx.AsyncClient(
+            base_url=f"https://{host}", verify=False,
+            # Record every request and response for this device.
+            event_hooks=self.http_traffic_hooks(),
+        )
 
     async def _post_connect(self) -> None:
         # Authenticate and prove the device answers before `connected`
@@ -2761,14 +2765,22 @@ Everything else — the clean-slate reset, the connected declare and event, poll
 
 **Important**: If you do build a platform transport by hand anywhere, always pass `name=self.device_id` so sent and received data appears in the device log under the right device.
 
-**Report the traffic of a session you own.** Every platform transport records what it sends and receives for its device, and a device audit reports that record. A session your driver owns (an `httpx` client, a websocket library, a socket of its own) is invisible to that record unless you report it: call `self.record_traffic("tx", data)` after each send and `self.record_traffic("rx", data)` for each message you receive. `data` is bytes or text; an optional `meta` dict says what the bytes do not, such as a message type or a URL. The device's credentials are masked when the traffic is shown, as on every other channel. A device audit of a driver that never reports its traffic says so in its report rather than showing an empty record.
+**Report the traffic of a session you own.** Every platform transport records what it sends and receives for its device, and a device audit reports that record. A session your driver owns is invisible to that record unless you report it. A device audit of a driver that never reports its traffic says so in its report rather than showing an empty record.
+
+- **An `httpx` client:** pass `event_hooks=self.http_traffic_hooks()` when you create it, as in the example above. Every request and response is then recorded exactly as the platform's HTTP transport records its own: method, target, headers (an `Authorization` header masked), status and body. If your client has hooks of its own, add these to its lists.
+- **Anything else** (a websocket library, a socket of its own): call `self.record_traffic("tx", data)` after each send and `self.record_traffic("rx", data)` for each message you receive. `data` is bytes or text; an optional `meta` dict says what the bytes do not, such as a message type.
+
+The device's credentials are masked when the traffic is shown, as on every other channel.
 
 ```python
-async def _request(self, method: str, path: str, body: dict | None = None) -> dict:
-    self.record_traffic("tx", json.dumps(body or {}), meta={"method": method, "path": path})
-    response = await self._client.request(method, path, json=body)
-    self.record_traffic("rx", response.content, meta={"status": response.status_code})
-    return response.json()
+async def _send_message(self, message: dict) -> None:
+    frame = json.dumps(message)
+    await self._ws.send(frame)
+    self.record_traffic("tx", frame)
+
+async def _on_frame(self, frame: str) -> None:
+    self.record_traffic("rx", frame)
+    self.set_state("power", json.loads(frame).get("power") == "on")
 ```
 
 ### A datagram beside the transport: `send_udp` and `wake_on_lan`
