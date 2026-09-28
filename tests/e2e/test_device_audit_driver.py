@@ -7,9 +7,10 @@ wizard on its address with the pause notice up front; the network check runs;
 offers its saved settings and shows what connecting sends; Connect brings the
 driver up, the status table and the traffic fill in live; on Commands one
 command is sent, its declared effect is read back and the person says the
-device did it; and the report's download carries the driver section, the
-traffic, the command, and the driver file. Finish reconnects the project
-device.
+device did it, a device setting is written, read back and put back, and
+"What changed" names what the command changed; and the report's download
+carries the driver section, the traffic, the command, the setting, and the
+driver file. Finish reconnects the project device.
 
 Slow for the same reason as ``test_device_audit.py``: the network check runs
 for real, listening for a minute from the session's start.
@@ -70,6 +71,16 @@ state_variables:
   input:
     type: string
     label: Input
+  display_label:
+    type: string
+    label: Display label
+device_settings:
+  display_label:
+    type: string
+    label: Display label
+    state_key: display_label
+    write:
+      send: "LABEL {value}\\r"
 commands:
   set_input:
     label: Set Input
@@ -84,6 +95,7 @@ commands:
 polling:
   queries:
     - "PWR?\\r"
+    - "LABEL?\\r"
 responses:
   - match: "PWR=(\\\\w+)"
     set:
@@ -91,15 +103,19 @@ responses:
   - match: "INPUT=(\\\\w+)"
     set:
       input: "$1"
+  - match: "LABEL=(.+)"
+    set:
+      display_label: "$1"
 """
 
 
 class _Widget(socketserver.BaseRequestHandler):
-    """Answers each query with its power and a line no rule matches, and an
-    input change with the input it now has."""
+    """Answers each query with its power and a line no rule matches, an input
+    change with the input it now has, and keeps a label it can be told."""
 
     def handle(self) -> None:
         buf = b""
+        label = b"Lobby"
         try:
             while True:
                 data = self.request.recv(1024)
@@ -110,6 +126,10 @@ class _Widget(socketserver.BaseRequestHandler):
                     line, buf = buf.split(b"\r", 1)
                     if line.startswith(b"INPUT "):
                         self.request.sendall(b"INPUT=" + line[6:] + b"\r")
+                    elif line.startswith(b"LABEL"):
+                        if line.startswith(b"LABEL "):
+                            label = line[6:]
+                        self.request.sendall(b"LABEL=" + label + b"\r")
                     else:
                         self.request.sendall(b"PWR=on\rLAMP=450\r")
         except OSError:
@@ -210,7 +230,7 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_text("Replies no response rule matched", exact=False)).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    expect(dialog.get_by_text("Status values (1 of 2 reported)")).to_be_visible(
+    expect(dialog.get_by_text("Status values (2 of 3 reported)")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
     dialog.get_by_role("button", name="Continue", exact=True).click()
@@ -234,6 +254,20 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
         "aria-pressed", "true", timeout=EXPECT_TIMEOUT,
     )
+
+    # A device setting: written, read back, put back.
+    dialog.get_by_placeholder("New value").fill("Boardroom")
+    dialog.get_by_role("button", name="Write Display label, then put it back").click()
+    expect(dialog.get_by_text(re.compile(
+        r"^Wrote Display label = Boardroom: the device reported it back after .* "
+        r"Put Display label back to Lobby: the device reported it back after"
+    ))).to_be_visible(timeout=EXPECT_TIMEOUT)
+
+    # What changed: the input, by the command; the label is back as it was.
+    expect(dialog.get_by_text(
+        "Input: not reported before, hdmi2 now (after 1. Set Input)",
+    )).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_text(re.compile(r"^Display label:"))).to_have_count(0)
     dialog.get_by_role("button", name="Continue", exact=True).click()
 
     # The report says what the driver did.
@@ -241,10 +275,12 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("row", name=re.compile(r"^Driver Acme Audit Widget 1\.0\.0"))).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    # The command set the input, so the device has now reported both values.
-    expect(dialog.get_by_role("row", name="Status values 2 of 2 reported")).to_be_visible()
+    # The command set the input, so the device has now reported every value.
+    expect(dialog.get_by_role("row", name="Status values 3 of 3 reported")).to_be_visible()
     expect(dialog.get_by_role("row", name="Commands sent 1")).to_be_visible()
     expect(dialog.get_by_role("row", name="Did the device do it 1 yes")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Settings written 1: 1 read back, 1 put back")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Values changed Input")).to_be_visible()
 
     with page.expect_download(timeout=EXPECT_TIMEOUT) as info:
         dialog.get_by_role("button", name="Download report").click()
@@ -283,6 +319,10 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     assert trial["answer"]["answer"] == "yes"
     assert [bytes.fromhex(e["hex"]) for e in trial["traffic"]["entries"]
             if e["direction"] == "tx"][:1] == [b"INPUT hdmi2\r"]
+    assert [c["key"] for c in section["commands"]["changed"]] == ["input"]
+    (setting,) = section["settings"]["trials"]
+    assert setting["write"]["confirmed"] and setting["restore"]["confirmed"]
+    assert setting["original"] == "Lobby" and setting["value"] == "Boardroom"
     assert re.search(r'tx tcp +"PWR\?\\r"', timeline)
 
     # Finish ends the audit and the project device comes back.

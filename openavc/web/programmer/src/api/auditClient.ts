@@ -372,6 +372,16 @@ export interface AuditCommandTrial {
 
 export type AuditCommandAnswer = "yes" | "no" | "partly" | "cant_tell";
 
+/** A status value that reads differently from before the first command or
+ *  setting, and the command whose window saw it move (null: none was). */
+export interface AuditChangedValue {
+  key: string;
+  label: string;
+  before: unknown;
+  now: unknown;
+  by: { number: number; label: string } | null;
+}
+
 /** The commands step for one driver. */
 export interface AuditCommands {
   catalog: AuditCommandInfo[];
@@ -381,6 +391,8 @@ export interface AuditCommands {
   /** The number of the command being sent or watched, if any. */
   current: number | null;
   trials: AuditCommandTrial[];
+  /** What changed since the first command or setting. */
+  changed: AuditChangedValue[];
 }
 
 /** One device setting the driver declares, as the audit can test it. */
@@ -544,7 +556,7 @@ export interface AuditReportDriver {
   run: number;
   driver: { id: string; name: string; version: string; modified: boolean };
   attempts: AuditReportAttempt[];
-  commands?: { trials: AuditCommandTrial[] } | null;
+  commands?: { trials: AuditCommandTrial[]; changed?: AuditChangedValue[] } | null;
   settings?: { trials: AuditSettingTrial[] } | null;
 }
 

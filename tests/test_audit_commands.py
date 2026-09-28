@@ -26,7 +26,13 @@ from openavc.api.models import (
     AuditStartRequest,
 )
 from openavc.api.routes import audit as routes
-from openavc.audit.commands import DONE, commands_for, same_value, trial_sentence
+from openavc.audit.commands import (
+    DONE,
+    changed_values,
+    commands_for,
+    same_value,
+    trial_sentence,
+)
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import DONE as LISTEN_DONE
 from openavc.audit.listen import start_listen
@@ -580,3 +586,36 @@ async def test_the_pickers_read_the_audited_driver(wired):  # noqa: F811
     finally:
         _DRIVER_REGISTRY.pop("acme_zones", None)
         await wired.manager.shutdown()
+
+
+async def test_what_changed_lists_each_value_with_what_it_was(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        assert changed_values(run) == []  # nothing sent, nothing to compare
+        await _until(lambda: run.listen.sandbox.device_state().get("volume") == 20)
+        await _sent(commands, "power_on")
+        await _sent(commands, "set_input", {"source": "hdmi2"})
+        changed = changed_values(run)
+        assert changed == [
+            {"key": "input", "label": "Input", "before": None, "now": "hdmi1",
+             "by": {"number": 2, "label": "Set Input"}},
+            {"key": "power", "label": "Power", "before": None, "now": True,
+             "by": {"number": 1, "label": "Power On"}},
+        ]
+        # A value that moved while nothing was watched still counts, by nobody.
+        run.listen.sandbox.state.set(f"device.{run.listen.sandbox.device_id}.volume", 35)
+        assert {"key": "volume", "label": "Volume", "before": 20, "now": 35, "by": None} in (
+            changed_values(run)
+        )
+        assert commands.to_dict()["changed"] == changed_values(run)
+    finally:
+        await run.stop()
+        server.close()
+    # Kept as it stood when the driver stopped, for the report and its summary.
+    record = build_report(session)["drivers"][0]["commands"]
+    assert [c["key"] for c in record["changed"]] == ["input", "power", "volume"]
+    summary = render_summary(build_report(session))
+    assert "What the audit changed" in summary
+    assert "not reported before, true now (after 1. Power On)" in summary

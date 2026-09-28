@@ -5,6 +5,7 @@
 import type {
   AuditActivity,
   AuditActivityKey,
+  AuditChangedValue,
   AuditCommandAnswer,
   AuditCommandInfo,
   AuditCommands,
@@ -164,7 +165,7 @@ export function mergeCommands(
   update: Partial<AuditCommands>,
 ): AuditCommands {
   const base: AuditCommands = before ?? {
-    catalog: [], picker_state: {}, batch: null, current: null, trials: [],
+    catalog: [], picker_state: {}, batch: null, current: null, trials: [], changed: [],
   };
   let trials = base.trials;
   for (const t of update.trials ?? []) {
@@ -177,7 +178,17 @@ export function mergeCommands(
     batch: update.batch !== undefined ? update.batch : base.batch,
     current: update.current !== undefined ? update.current : base.current,
     trials,
+    changed: update.changed ?? base.changed,
   };
+}
+
+/** A changed value as a line reads it: "Input: not reported before, hdmi2
+ *  now (after 3. Set Input)". */
+export function changedText(item: AuditChangedValue): string {
+  const show = (v: unknown) =>
+    v === null || v === undefined ? "not reported" : typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+  const by = item.by ? ` (after ${item.by.number}. ${item.by.label})` : "";
+  return `${item.label}: ${show(item.before)} before, ${show(item.now)} now${by}`;
 }
 
 /** The driver's status queries and its other commands, each in the driver's order. */
@@ -471,6 +482,13 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
         lines.push({
           label: `Sent nothing${suffix}`,
           value: `${silent.join(", ")}: the driver said it succeeded, but nothing was sent`,
+        });
+      }
+      const changed = d.commands?.changed ?? [];
+      if (changed.length > 0) {
+        lines.push({
+          label: `Values changed${suffix}`,
+          value: changed.map((c) => c.label).join(", "),
         });
       }
       const answered = answerCounts(trials);

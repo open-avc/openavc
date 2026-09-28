@@ -65,6 +65,13 @@ is their answer, kept beside what the device reported, never merged into it:
 a display that said "input hdmi2" while the screen stayed black is exactly
 the disagreement a report exists to show.
 
+**What changed** (:func:`changed_values`): every status value that reads
+differently now from before the first command or setting the audit sent,
+with what it was and the command whose window saw it move. A command cannot
+be undone in general, so the wizard lists these for the person to put back
+themselves if they need to; the settings the audit wrote it puts back on its
+own (``audit/settings.py``).
+
 Every command sent is kept for the report (:meth:`CommandPass.report_record`):
 what was asked, what the driver's ``send_command`` returned or raised, the
 traffic from the moment it was sent to the end of its window, and what the
@@ -887,16 +894,24 @@ class CommandPass:
             "batch": dict(self.batch) if self.batch else None,
             "current": current.number if current is not None else None,
             "trials": [self._trial_view(t, every_entry=False) for t in self.trials],
+            "changed": changed_values(self.run),
         }
 
     def report_record(self) -> dict[str, Any]:
         """The commands as the report keeps them: the list the driver
-        declared, and every command sent with all of its window's traffic."""
+        declared, every command sent with all of its window's traffic, and
+        what changed."""
         return {
             "catalog": self.catalog(),
             "batch": dict(self.batch) if self.batch else None,
             "trials": [self._trial_view(t, every_entry=True) for t in self.trials],
+            "changed": changed_values(self.run),
         }
+
+    def publish_update(self) -> None:
+        """Tell the wizard the batch, what is current and what changed (a
+        setting written elsewhere moves "what changed" too)."""
+        self._publish()
 
     def _publish(self, trial: CommandTrial | None = None) -> None:
         """Tell the wizard what moved: the trial that changed (merged by its
@@ -907,6 +922,7 @@ class CommandPass:
             "batch": dict(self.batch) if self.batch else None,
             "current": current.number if current is not None else None,
             "trials": [self._trial_view(trial, every_entry=False)] if trial is not None else [],
+            "changed": changed_values(self.run),
         }
         catalog = self.catalog()
         if catalog != self._catalog_sent:
@@ -917,6 +933,53 @@ class CommandPass:
             update["picker_state"] = pickers
             self._pickers_sent = pickers
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
+
+
+def changed_values(run: Any) -> list[dict[str, Any]]:
+    """Status values that read differently now from before the audit sent
+    its first command or setting in this run, each ``{"key", "label",
+    "before", "now", "by"}``. ``by`` is the command whose window saw the
+    value move last (``{"number", "label"}``), or null when it moved while
+    nothing was being watched (at the device itself, say). A value the
+    device has stopped reporting is left out: there is nothing to compare.
+    """
+    firsts: list[tuple[float, dict[str, Any]]] = []
+    commands = getattr(run, "commands", None)
+    settings = getattr(run, "settings", None)
+    if commands is not None:
+        firsts += [(t.sent_at, t.before) for t in commands.trials]
+    if settings is not None:
+        firsts += [(t.started_at, t.before) for t in settings.trials]
+    listen = getattr(run, "listen", None)
+    if not firsts or listen is None:
+        return []
+    baseline = min(firsts, key=lambda pair: pair[0])[1]
+    if listen.sandbox.started:
+        now = listen.sandbox.device_state()
+    else:
+        now = _final_values(listen.status_table())
+    labels = {v["name"]: v["label"] for v in listen.status_table()["variables"]}
+    moved_by: dict[str, dict[str, Any]] = {}
+    for trial in commands.trials if commands is not None else []:
+        for change in trial.changes:
+            moved_by[change["key"]] = {"number": trial.number, "label": trial.label}
+    out = []
+    for key in sorted(now):
+        value = now[key]
+        prop = key.rsplit(".", 1)[-1]
+        if prop in _PLATFORM_KEYS or prop == "label" or value is None:
+            continue
+        before = baseline.get(key)
+        if before == value and type(before) is type(value):
+            continue
+        out.append({
+            "key": key,
+            "label": labels.get(key, key),
+            "before": _shown(before),
+            "now": _shown(value),
+            "by": moved_by.get(key),
+        })
+    return out
 
 
 def _final_values(table: dict[str, Any]) -> dict[str, Any]:

@@ -369,6 +369,9 @@ class SettingsPass:
         }
 
     def _publish(self, trial: SettingTrial | None = None) -> None:
+        commands = self.run.commands
+        if commands is not None:
+            commands.publish_update()  # "what changed" moves with a setting too
         current = self.current()
         self.session.publish({
             "type": "audit.settings",

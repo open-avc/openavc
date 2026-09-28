@@ -81,7 +81,11 @@
     ``send_command`` returned), ``error`` and ``error_type`` (what it
     raised, in words and by class) and ``traffic`` (``sent``,
     ``received``, and every entry from the send to the end of its window,
-    in the ``attempts`` traffic form). What the window showed:
+    in the ``attempts`` traffic form); ``changed``, every status value that
+    read differently when the report was taken from before the first command
+    or setting (``key``, ``label``, ``before``, ``now``, and ``by``, the command
+    whose window saw it move: ``number`` and ``label``, or null). Each trial
+    also keeps what its window showed:
     ``since_previous`` (the command sent before it and how many seconds
     before), ``extended`` (seconds "Wait longer" added), ``stopped_early``
     ("Stop watching"), ``changes`` (every status value that moved:
@@ -1051,11 +1055,12 @@ def _trial_outcome(trial: dict[str, Any]) -> str:
 
 
 def _render_commands(commands: dict[str, Any] | None) -> list[str]:
-    """The commands sent, for summary.html."""
+    """The commands sent, and what they changed, for summary.html."""
     from openavc.audit.commands import ANSWERS
 
     if not commands or not commands.get("trials"):
         return []
+    changed = commands.get("changed") or []
     parts = ["<h3>Commands sent</h3><table>"]
     for trial in commands["trials"]:
         params = trial.get("params") or {}
@@ -1075,7 +1080,24 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
                 outcome += f" ({said['note']})"
         parts.append(_row(label, _e(outcome)))
     parts.append("</table>")
+    if changed:
+        parts.append("<h3>What the audit changed</h3><table>")
+        for item in changed:
+            by = item.get("by")
+            parts.append(_row(str(item.get("label") or item.get("key")), _e(
+                f"{_value_text(item.get('before'))} before, {_value_text(item.get('now'))} now"
+                + (f" (after {by['number']}. {by['label']})" if by else "")
+            )))
+        parts.append("</table>")
     return parts
+
+
+def _value_text(value: Any) -> str:
+    if value is None:
+        return "not reported"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def build_zip(

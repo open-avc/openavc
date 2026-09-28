@@ -14,6 +14,7 @@ import { SearchableSelect, type SelectGroup } from "../../../../components/share
 import {
   ANSWER_CHOICES,
   batchableQueries,
+  changedText,
   changeText,
   commandGroups,
   currentRun,
@@ -294,6 +295,28 @@ export function CommandsStep() {
           settings={run.settings}
           busy={commands?.current != null || commands?.batch?.status === "running"}
         />
+      )}
+
+      {(trials.length > 0 || (run.settings?.trials.length ?? 0) > 0) && (
+        <div style={{ ...panelStyle, marginTop: "var(--space-lg)", fontSize: "var(--font-size-sm)" }}>
+          <div style={labelStyle}>What changed</div>
+          {(commands?.changed ?? []).length === 0 ? (
+            <div>Nothing the device reports has changed since the first command.</div>
+          ) : (
+            <>
+              <div>These values changed during the audit:</div>
+              <ul style={{ margin: "var(--space-xs) 0", paddingLeft: "var(--space-lg)" }}>
+                {(commands?.changed ?? []).map((c) => (
+                  <li key={c.key} style={{ overflowWrap: "anywhere" }}>{changedText(c)}</li>
+                ))}
+              </ul>
+              <div style={hintStyle}>
+                The audit puts back the settings it wrote, but it cannot undo a command. Set these
+                back on the device yourself if you need to.
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>

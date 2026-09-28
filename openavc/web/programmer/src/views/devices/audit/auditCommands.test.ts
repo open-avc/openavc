@@ -10,6 +10,7 @@ import {
   answerCounts,
   applyAuditMessage,
   batchableQueries,
+  changedText,
   changeText,
   commandGroups,
   driverLines,
@@ -123,6 +124,7 @@ describe("following the commands step", () => {
     const catalog = [command("power_on")];
     const before = {
       catalog, picker_state: {}, batch: null, current: 1, trials: [trial({ status: "watching" })],
+      changed: [],
     };
     const done = trial({ status: "done", summary: "power is now true." });
     const after = mergeCommands(before, { batch: null, current: null, trials: [done] });
@@ -135,7 +137,7 @@ describe("following the commands step", () => {
   });
 
   const commands: AuditCommands = {
-    catalog: [], picker_state: {}, batch: null, current: 1, trials: [trial()],
+    catalog: [], picker_state: {}, batch: null, current: 1, trials: [trial()], changed: [],
   };
 
   it("picks up on the commands step once a command was sent", () => {
@@ -202,5 +204,24 @@ describe("did the device do it", () => {
       trial(),
     ])).toBe("2 yes, 1 no, 1 could not tell");
     expect(answerCounts([trial()])).toBe("");
+  });
+});
+
+describe("what changed", () => {
+  it("says what each value was, is, and which command moved it", () => {
+    expect(changedText({
+      key: "input", label: "Input", before: null, now: "hdmi2", by: { number: 3, label: "Set Input" },
+    })).toBe("Input: not reported before, hdmi2 now (after 3. Set Input)");
+    expect(changedText({ key: "power", label: "Power", before: false, now: true, by: null }))
+      .toBe("Power: false before, true now");
+  });
+
+  it("keeps the last list when an update does not carry one", () => {
+    const changed = [{ key: "power", label: "Power", before: false, now: true, by: null }];
+    const before = {
+      catalog: [], picker_state: {}, batch: null, current: null, trials: [], changed,
+    };
+    expect(mergeCommands(before, { current: 1 }).changed).toBe(changed);
+    expect(mergeCommands(before, { changed: [] }).changed).toEqual([]);
   });
 });
