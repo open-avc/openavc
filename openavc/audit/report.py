@@ -102,6 +102,16 @@
     the person's own: ``{"answer", "note", "at"}``, the answer ``yes``,
     ``no``, ``partly`` or ``cant_tell`` ("Did the device do it?"), or null
     when they did not say.
+  - ``settings`` (null when the driver never connected): ``catalog``, each
+    device setting the driver declares (``key``, ``label``, ``help``,
+    ``definition``, ``state_key``, ``value`` as last read, ``can_write`` and
+    the ``reason`` it cannot be tested: its value cannot be read back, so it
+    could not be put back), and ``trials``, each setting written: ``number``,
+    ``key``, ``label``, ``original``, ``value``, ``started_at``, ``status``,
+    ``write`` and ``restore`` (each ``{"at", "error", "confirmed", "value",
+    "after"}``, the value read back and how many seconds after the write;
+    ``restore.automatic`` when the audit put it back as the driver stopped)
+    and ``summary``.
 
 - ``timeline``: every session event in order, typed and timestamped.
 - ``limits``: what the audit could not see, and why.
@@ -321,6 +331,7 @@ def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
         if run.connection else None,
         "attempts": [attempt.report_record() for attempt in run.listens],
         "commands": run.commands.report_record() if getattr(run, "commands", None) else None,
+        "settings": run.settings.report_record() if getattr(run, "settings", None) else None,
     }
 
 
@@ -1016,6 +1027,18 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
                 )
             parts.append("<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>")
     parts.extend(_render_commands(section.get("commands")))
+    parts.extend(_render_settings(section.get("settings")))
+    return parts
+
+
+def _render_settings(settings: dict[str, Any] | None) -> list[str]:
+    """The device settings written, for summary.html."""
+    if not settings or not settings.get("trials"):
+        return []
+    parts = ["<h3>Device settings written</h3><table>"]
+    for trial in settings["trials"]:
+        parts.append(_row(str(trial.get("label") or trial.get("key")), _e(trial.get("summary"))))
+    parts.append("</table>")
     return parts
 
 

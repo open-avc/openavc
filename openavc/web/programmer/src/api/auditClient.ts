@@ -383,6 +383,54 @@ export interface AuditCommands {
   trials: AuditCommandTrial[];
 }
 
+/** One device setting the driver declares, as the audit can test it. */
+export interface AuditSettingInfo {
+  key: string;
+  label: string;
+  help: string;
+  /** Its type and allowed values, the way a parameter declares them. */
+  definition: Partial<DriverParamDef> & { regex?: string };
+  state_key: string;
+  /** The value it has now, as the device last reported it. */
+  value: unknown;
+  can_write: boolean;
+  /** Why it cannot be tested ("" when it can). */
+  reason: string;
+}
+
+/** One half of a setting's round trip: the write, or putting it back. */
+export interface AuditSettingHalf {
+  at?: number;
+  error: string;
+  confirmed: boolean;
+  /** What the device reported afterwards. */
+  value: unknown;
+  /** Seconds from the write to the read-back. */
+  after?: number;
+  automatic?: boolean;
+}
+
+/** One setting written, read back and put back. */
+export interface AuditSettingTrial {
+  number: number;
+  key: string;
+  label: string;
+  original: unknown;
+  value: unknown;
+  started_at: number;
+  status: "writing" | "restoring" | "done";
+  write: AuditSettingHalf | Record<string, never>;
+  restore: AuditSettingHalf | null;
+  summary: string;
+}
+
+/** The device settings of one driver. */
+export interface AuditSettings {
+  catalog: AuditSettingInfo[];
+  current: number | null;
+  trials: AuditSettingTrial[];
+}
+
 /** One driver tested against the device. */
 export interface AuditDriverRun {
   index: number;
@@ -394,6 +442,7 @@ export interface AuditDriverRun {
   connection: AuditConnection | null;
   listen?: AuditListen;
   commands?: AuditCommands;
+  settings?: AuditSettings;
 }
 
 /** A paused project device whose saved settings the chosen driver can use. */
@@ -496,6 +545,7 @@ export interface AuditReportDriver {
   driver: { id: string; name: string; version: string; modified: boolean };
   attempts: AuditReportAttempt[];
   commands?: { trials: AuditCommandTrial[] } | null;
+  settings?: { trials: AuditSettingTrial[] } | null;
 }
 
 /** The report record (report.json). Only the parts the wizard reads are typed. */
@@ -640,6 +690,29 @@ export function listAuditChildren(
 ): Promise<{ child_type: string; children: ChildEntityEntry[] }> {
   return request(
     `/audit/sessions/${encodeURIComponent(sessionId)}/children/${encodeURIComponent(childType)}`,
+  );
+}
+
+/** Write a device setting, read it back, put the old value back. */
+export function writeAuditSetting(
+  sessionId: string,
+  key: string,
+  value: unknown,
+): Promise<{ session: AuditSessionState }> {
+  return request(
+    `/audit/sessions/${encodeURIComponent(sessionId)}/settings/${encodeURIComponent(key)}`,
+    { method: "POST", body: JSON.stringify({ value }) },
+  );
+}
+
+/** "Put it back": retry a setting's restore that did not read back. */
+export function putAuditSettingBack(
+  sessionId: string,
+  key: string,
+): Promise<{ session: AuditSessionState }> {
+  return request(
+    `/audit/sessions/${encodeURIComponent(sessionId)}/settings/${encodeURIComponent(key)}/restore`,
+    { method: "POST" },
   );
 }
 

@@ -23,6 +23,7 @@ import {
   trialOutcome,
 } from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
+import { SettingsPanel } from "./SettingsPanel";
 import {
   buttonStyle,
   headingStyle,
@@ -79,7 +80,10 @@ export function CommandsStep() {
   // `active` is only as fresh as the last full state.
   const connected = !!run.listen?.active;
   const trials = commands?.trials ?? [];
-  const working = commands?.current != null || commands?.batch?.status === "running";
+  // A setting being written holds the device too.
+  const settingBusy = run.settings?.current != null;
+  const working =
+    commands?.current != null || commands?.batch?.status === "running" || settingBusy;
   const command = catalog.find((c) => c.name === selected);
   const params = command?.params ?? {};
   // A parameter starts at the value the driver declares, else empty: the
@@ -282,6 +286,14 @@ export function CommandsStep() {
             ))}
           </ol>
         </div>
+      )}
+
+      {connected && run.settings && (
+        <SettingsPanel
+          sessionId={sessionId}
+          settings={run.settings}
+          busy={commands?.current != null || commands?.batch?.status === "running"}
+        />
       )}
 
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>

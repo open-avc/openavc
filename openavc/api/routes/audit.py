@@ -32,6 +32,10 @@ turns a refusal into its sentence.
   ``POST /audit/sessions/{id}/answers`` ("Did the device do it?"), and
   ``GET /audit/sessions/{id}/children/{child_type}`` (the driver's own
   children, for a command's child picker); ``audit/commands.py``.
+- ``POST /audit/sessions/{id}/settings/{key}`` (write a device setting, read
+  it back, put the old value back) and
+  ``POST /audit/sessions/{id}/settings/{key}/restore`` ("Put it back");
+  ``audit/settings.py``.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -54,6 +58,7 @@ from openavc.api.models import (
     AuditConnectionRequest,
     AuditDriverRequest,
     AuditFrontPanelRequest,
+    AuditSettingRequest,
     AuditStartRequest,
     AuditTesterRequest,
 )
@@ -61,6 +66,7 @@ from openavc.audit.commands import commands_for
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
 from openavc.audit.listen import start_listen
 from openavc.audit.origin import device_target, origin_for
+from openavc.audit.settings import settings_for
 from openavc.audit.passes import (
     choose_driver,
     current_run,
@@ -448,6 +454,31 @@ async def list_audit_children(session_id: str, child_type: str) -> dict[str, Any
             for local_id in driver.list_children(child_type)
         ],
     }
+
+
+@router.post("/sessions/{session_id}/settings/{key}")
+async def write_setting(session_id: str, key: str, body: AuditSettingRequest) -> dict[str, Any]:
+    """Write a device setting, read it back, put the old value back and read
+    that back; progress arrives over ``audit.subscribe``."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        await settings_for(session, run).write(key, body.value)
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/settings/{key}/restore")
+async def put_setting_back(session_id: str, key: str) -> dict[str, Any]:
+    """Put back a setting whose original value did not read back."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        await settings_for(session, run).put_back(key)
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
 
 
 @router.post("/sessions/{session_id}/answers")

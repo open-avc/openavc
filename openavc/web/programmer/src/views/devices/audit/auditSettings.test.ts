@@ -1,0 +1,79 @@
+import { describe, expect, it } from "vitest";
+import type {
+  AuditReportDriver,
+  AuditSessionState,
+  AuditSettingTrial,
+  AuditSettings,
+} from "../../../api/auditClient";
+import { applyAuditMessage, driverLines, mergeSettings, needsPuttingBack } from "./auditHelpers";
+
+function trial(extra: Partial<AuditSettingTrial> = {}): AuditSettingTrial {
+  return {
+    number: 1, key: "device_name", label: "Device name", original: "Lobby", value: "Boardroom",
+    started_at: 1, status: "done",
+    write: { at: 1, error: "", confirmed: true, value: "Boardroom", after: 0.4 },
+    restore: { at: 2, error: "", confirmed: true, value: "Lobby", after: 0.3, automatic: false },
+    summary: "Wrote Device name = Boardroom: the device reported it back after 0.4 s.",
+    ...extra,
+  };
+}
+
+describe("device settings", () => {
+  it("merges an update by trial number and keeps the list", () => {
+    const catalog = [{
+      key: "device_name", label: "Device name", help: "", definition: { type: "string" },
+      state_key: "device_name", value: "Lobby", can_write: true, reason: "",
+    }];
+    const before: AuditSettings = { catalog, current: 1, trials: [trial({ status: "writing" })] };
+    const done = trial();
+    const after = mergeSettings(before, { current: null, trials: [done] });
+    expect(after.trials).toEqual([done]);
+    expect(after.current).toBeNull();
+    expect(mergeSettings(after, { catalog: [] }).catalog).toEqual([]);
+  });
+
+  it("offers Put it back only when the write landed and the original did not come back", () => {
+    expect(needsPuttingBack(trial())).toBe(false);
+    expect(needsPuttingBack(trial({
+      restore: { at: 2, error: "", confirmed: false, value: "Boardroom", after: 5 },
+    }))).toBe(true);
+    expect(needsPuttingBack(trial({ restore: null }))).toBe(true);
+    // A write that never happened has nothing to put back.
+    expect(needsPuttingBack(trial({
+      write: { at: 1, error: "The device is not connected.", confirmed: false, value: null },
+      restore: null,
+    }))).toBe(false);
+    expect(needsPuttingBack(trial({ status: "restoring", restore: null }))).toBe(false);
+    expect(needsPuttingBack(undefined)).toBe(false);
+  });
+
+  it("follows a run's settings from a message", () => {
+    const session: AuditSessionState = {
+      session_id: "abc123", status: "active", target: { address: "10.0.0.5", ip: "10.0.0.5" },
+      options: { extended: false, snmp_communities: 0 }, started_at: 1, ended_at: null,
+      steps: [], paused: [], report_name: null, tester: {}, check: null,
+      runs: [{ index: 0, choice: {} as never, started_at: 1, finished_at: null, active: true,
+        connection: null }],
+    };
+    const { session: after } = applyAuditMessage(session, [], {
+      type: "audit.settings", session_id: "abc123", run: 0,
+      settings: { catalog: [], current: 1, trials: [trial({ status: "writing" })] },
+    });
+    expect(after!.runs![0].settings!.current).toBe(1);
+  });
+
+  it("counts the settings written in the report's summary", () => {
+    const d = {
+      run: 0, driver: { id: "acme", name: "Acme", version: "1.0.0", modified: false },
+      attempts: [{
+        status: "done", error: "", started_at: 1, connected_at: 1.5, declared: 2, reported: 2,
+        offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
+        traffic: { count: 4, not_captured: false },
+      }],
+      settings: { trials: [trial(), trial({ number: 2, restore: null })] },
+    } as unknown as AuditReportDriver;
+    expect(driverLines([d]).find((l) => l.label === "Settings written")).toEqual({
+      label: "Settings written", value: "2: 2 read back, 1 put back",
+    });
+  });
+});

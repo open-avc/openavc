@@ -63,8 +63,10 @@ class DriverRun:
     # attempt in order (a failed sign-in, then the one after the fix).
     listen: Any = None
     listens: list[Any] = field(default_factory=list)
-    # The commands step (``audit/commands.py``), made when first used.
+    # The commands step (``audit/commands.py``) and the device settings
+    # (``audit/settings.py``), made when the driver first connects.
     commands: Any = None
+    settings: Any = None
     # State the later steps add to ``to_dict`` (name -> value or provider).
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -74,9 +76,12 @@ class DriverRun:
 
     async def end_attempt(self) -> None:
         """End the current connection: first what the commands step is
-        sending or watching, then the connection itself. Results stay."""
+        sending or watching, then every setting the audit changed goes back
+        (it needs the connection), then the connection itself. Results stay."""
         if self.commands is not None:
             await self.commands.stop()
+        if self.settings is not None:
+            await self.settings.stop()
         if self.listen is not None:
             await self.listen.stop()
 

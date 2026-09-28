@@ -477,6 +477,16 @@ class AuditAnswerRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
+class AuditSettingRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/settings/{key}``: the value
+    to write, read back and put back. The platform's device-setting gate
+    checks it (and puts it in the setting's declared type)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: Any
+
+
 class AuditTesterRequest(BaseModel):
     """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
     report, all optional, and whether to leave the serial number out."""

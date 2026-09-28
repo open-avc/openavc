@@ -320,3 +320,22 @@ def test_window_is_capped():
 )
 def test_readback_agreement(sdef, expected, actual, agrees):
     assert _readback_confirms("k", sdef, expected, actual) is agrees
+
+
+# ── A live write waits by the same rule ─────────────────────────────────────
+
+
+async def test_a_live_write_is_read_back_by_the_same_rule(dm):
+    """``await_setting_readback`` is the rule above for a caller that wrote
+    live (a device audit): agree in the device's own form, else say what the
+    device still reports when the window closes."""
+    driver = await _device(dm)
+    await dm.set_device_setting("dev", "mode", "Auto")
+    assert await dm.await_setting_readback("dev", "mode", "1") == (True, "1")
+
+    driver.echo = False
+    driver.set_state("brightness", 55)
+    await dm.set_device_setting("dev", "brightness", 70)
+    assert await dm.await_setting_readback("dev", "brightness", 70) == (False, 55)
+    # No declared state variable to read it by: nothing to wait for.
+    assert await dm.await_setting_readback("dev", "label", "x") == (False, None)

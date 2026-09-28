@@ -1246,6 +1246,43 @@ class DeviceManager:
         await self._clear_applied_pending(device_id, [key], {})
         return result
 
+    async def await_setting_readback(
+        self, device_id: str, key: str, expected: Any, *, timeout: float | None = None,
+    ) -> tuple[bool, Any]:
+        """Wait for a device setting just written to read back.
+
+        The rule a queued write is confirmed by (:func:`_readback_confirms`
+        within :meth:`_confirm_window`), for a caller that wrote the setting
+        live and wants to know the same thing: ``(True, value)`` once the
+        device reports ``expected`` (in its own form, if it likes), else
+        ``(False, last value)`` when the window closes, the device drops or it
+        goes. ``expected`` is the value as written, after
+        ``validate_device_setting_value``. ``timeout`` shortens the window.
+
+        A setting whose ``state_key`` is not a declared state variable has
+        nothing to read back: ``(False, None)`` at once.
+        """
+        driver = self._devices.get(device_id)
+        if driver is None:
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        sdef = driver.DRIVER_INFO.get("device_settings", {}).get(key)
+        state_key = sdef.get("state_key", key) if isinstance(sdef, dict) else key
+        if state_key not in driver.DRIVER_INFO.get("state_variables", {}):
+            return False, None
+        window = self._confirm_window(driver)
+        deadline = time.monotonic() + (window if timeout is None else min(window, timeout))
+        while True:
+            actual = driver.get_state(state_key)
+            if _readback_confirms(key, sdef, expected, actual):
+                return True, actual
+            if (
+                time.monotonic() >= deadline
+                or self._devices.get(device_id) is not driver
+                or not driver.get_state("connected")
+            ):
+                return False, actual
+            await asyncio.sleep(_CONFIRM_POLL_STEP)
+
     def get_driver(self, device_id: str) -> BaseDriver | None:
         """Return the live driver instance for a device, or ``None`` if the
         device is unknown, orphaned (driver not installed), or disabled.

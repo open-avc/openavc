@@ -150,7 +150,7 @@ def _shown(value: Any) -> Any:
     return value if is_flat_primitive(value) else repr(value)
 
 
-def _error_sentence(exc: BaseException) -> str:
+def error_sentence(exc: BaseException) -> str:
     """What the person reads when a Send raised.
 
     The platform's own refusals (a parameter out of range, a command the
@@ -484,6 +484,8 @@ class CommandPass:
         if self.batch is not None and self.batch.get("status") == "running":
             raise AuditError(BATCH_BUSY)
         busy = self.current()
+        if busy is None and self.run.settings is not None:
+            busy = self.run.settings.current()
         if busy is not None:
             raise AuditError(BUSY.format(label=busy.label))
 
@@ -694,7 +696,7 @@ class CommandPass:
                 trial.error = "The audit stopped before the command finished."
                 raise
             except Exception as exc:
-                trial.error = _error_sentence(exc)
+                trial.error = error_sentence(exc)
                 trial.error_type = type(exc).__name__
             finally:
                 trial.returned_at = time.time()

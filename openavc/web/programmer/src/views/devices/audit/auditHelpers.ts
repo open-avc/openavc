@@ -18,6 +18,8 @@ import type {
   AuditReport,
   AuditReportDriver,
   AuditSessionState,
+  AuditSettings,
+  AuditSettingTrial,
   AuditTimelineEntry,
 } from "../../../api/auditClient";
 
@@ -114,7 +116,42 @@ export function applyAuditMessage(
     );
     return { session: { ...session, runs }, timeline };
   }
+  if (msg.type === "audit.settings" && typeof msg.run === "number" && msg.settings && session.runs) {
+    const index = msg.run;
+    if (!session.runs.some((r) => r.index === index)) return { session, timeline };
+    const update = msg.settings as Partial<AuditSettings>;
+    const runs = session.runs.map((r) =>
+      r.index === index ? { ...r, settings: mergeSettings(r.settings, update) } : r,
+    );
+    return { session: { ...session, runs }, timeline };
+  }
   return { session, timeline };
+}
+
+/** An ``audit.settings`` update applied to a run's settings: the setting
+ *  trial that changed (merged by its number) and the list as it stands. */
+export function mergeSettings(
+  before: AuditSettings | undefined,
+  update: Partial<AuditSettings>,
+): AuditSettings {
+  const base: AuditSettings = before ?? { catalog: [], current: null, trials: [] };
+  let trials = base.trials;
+  for (const t of update.trials ?? []) {
+    const at = trials.findIndex((x) => x.number === t.number);
+    trials = at >= 0 ? trials.map((x, i) => (i === at ? t : x)) : [...trials, t];
+  }
+  return {
+    catalog: update.catalog ?? base.catalog,
+    current: update.current !== undefined ? update.current : base.current,
+    trials,
+  };
+}
+
+/** The setting's last write, if it still needs putting back ("Put it back"). */
+export function needsPuttingBack(trial: AuditSettingTrial | undefined): boolean {
+  if (!trial || trial.status !== "done") return false;
+  const wrote = "at" in trial.write && !trial.write.error;
+  return wrote && !trial.restore?.confirmed;
 }
 
 /**
@@ -408,6 +445,15 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       lines.push({
         label: `Replies not understood${suffix}`,
         value: `${unmatched} matched none of the driver's rules`,
+      });
+    }
+    const written = d.settings?.trials ?? [];
+    if (written.length > 0) {
+      const readBack = written.filter((t) => "confirmed" in t.write && t.write.confirmed).length;
+      const back = written.filter((t) => t.restore?.confirmed).length;
+      lines.push({
+        label: `Settings written${suffix}`,
+        value: `${written.length}: ${readBack} read back, ${back} put back`,
       });
     }
     const trials = d.commands?.trials ?? [];

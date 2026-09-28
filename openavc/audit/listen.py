@@ -596,6 +596,7 @@ async def start_listen(
         raise AuditError(NO_CONNECTION_SET)
     await run.end_attempt()
     from openavc.audit.commands import commands_for
+    from openavc.audit.settings import settings_for
 
     listen = ListenPass(session, run, **timings)
     run.sandbox = listen.sandbox
@@ -603,6 +604,7 @@ async def start_listen(
     run.listens.append(listen)
     run.extra["listen"] = listen.to_dict
     commands_for(session, run)  # the next step's command list, from the live driver
+    settings_for(session, run)
     session.enter_step("listen")
     listen.task = session.track_task(asyncio.create_task(listen.execute()))
     return listen
