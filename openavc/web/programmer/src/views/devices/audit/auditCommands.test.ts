@@ -121,7 +121,9 @@ describe("before a command is sent", () => {
 describe("following the commands step", () => {
   it("merges an update by trial number and keeps the list it did not send", () => {
     const catalog = [command("power_on")];
-    const before = { catalog, batch: null, current: 1, trials: [trial({ status: "watching" })] };
+    const before = {
+      catalog, picker_state: {}, batch: null, current: 1, trials: [trial({ status: "watching" })],
+    };
     const done = trial({ status: "done", summary: "power is now true." });
     const after = mergeCommands(before, { batch: null, current: null, trials: [done] });
     expect(after.catalog).toBe(catalog);
@@ -132,7 +134,9 @@ describe("following the commands step", () => {
     expect(mergeCommands(undefined, { catalog }).catalog).toBe(catalog);
   });
 
-  const commands: AuditCommands = { catalog: [], batch: null, current: 1, trials: [trial()] };
+  const commands: AuditCommands = {
+    catalog: [], picker_state: {}, batch: null, current: 1, trials: [trial()],
+  };
 
   it("picks up on the commands step once a command was sent", () => {
     const s = session([]);

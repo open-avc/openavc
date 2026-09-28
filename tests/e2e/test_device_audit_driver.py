@@ -5,9 +5,11 @@ device this test serves on loopback. "Audit this device" on its page opens the
 wizard on its address with the pause notice up front; the network check runs;
 "Which driver?" starts from the device's own driver; the Connection step
 offers its saved settings and shows what connecting sends; Connect brings the
-driver up, the status table and the traffic fill in live; and the report's
-download carries the driver section, the traffic, and the driver file. Finish
-reconnects the project device.
+driver up, the status table and the traffic fill in live; on Commands one
+command is sent, its declared effect is read back and the person says the
+device did it; and the report's download carries the driver section, the
+traffic, the command, and the driver file. Finish reconnects the project
+device.
 
 Slow for the same reason as ``test_device_audit.py``: the network check runs
 for real, listening for a minute from the session's start.
@@ -68,7 +70,17 @@ state_variables:
   input:
     type: string
     label: Input
-commands: {}
+commands:
+  set_input:
+    label: Set Input
+    send: "INPUT {input}\\r"
+    params:
+      input:
+        type: enum
+        values: [hdmi1, hdmi2]
+        required: true
+    sets:
+      input: "{input}"
 polling:
   queries:
     - "PWR?\\r"
@@ -83,7 +95,8 @@ responses:
 
 
 class _Widget(socketserver.BaseRequestHandler):
-    """Answers each query with its power and a line no rule matches."""
+    """Answers each query with its power and a line no rule matches, and an
+    input change with the input it now has."""
 
     def handle(self) -> None:
         buf = b""
@@ -94,8 +107,11 @@ class _Widget(socketserver.BaseRequestHandler):
                     return
                 buf += data
                 while b"\r" in buf:
-                    _line, buf = buf.split(b"\r", 1)
-                    self.request.sendall(b"PWR=on\rLAMP=450\r")
+                    line, buf = buf.split(b"\r", 1)
+                    if line.startswith(b"INPUT "):
+                        self.request.sendall(b"INPUT=" + line[6:] + b"\r")
+                    else:
+                        self.request.sendall(b"PWR=on\rLAMP=450\r")
         except OSError:
             return
 
@@ -199,12 +215,36 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     )
     dialog.get_by_role("button", name="Continue", exact=True).click()
 
+    # Commands: one sent, its declared effect read back, and the person's answer.
+    expect(dialog.get_by_role("heading", name="Commands", exact=True)).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+    dialog.get_by_test_id("audit-command-picker").click()
+    page.get_by_role("option", name=re.compile("^Set Input")).click()
+    dialog.get_by_role("button", name="Select...", exact=True).click()
+    page.get_by_role("option", name=re.compile("^hdmi2")).click()
+    dialog.get_by_role("button", name="Send", exact=True).click()
+    dialog.get_by_role("button", name="Stop watching").click(timeout=EXPECT_TIMEOUT)
+    # The widget's polls answer inside the window too, so the sentence goes on.
+    expect(dialog.get_by_text(
+        re.compile(r"^Input is now hdmi2, as the driver says it should be"),
+    )).to_be_visible(timeout=EXPECT_TIMEOUT)
+    answers = dialog.get_by_role("group", name="Did the device do Set Input?")
+    answers.get_by_role("button", name="Yes").click()
+    expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
+        "aria-pressed", "true", timeout=EXPECT_TIMEOUT,
+    )
+    dialog.get_by_role("button", name="Continue", exact=True).click()
+
     # The report says what the driver did.
     expect(dialog.get_by_role("heading", name="Report")).to_be_visible(timeout=EXPECT_TIMEOUT)
     expect(dialog.get_by_role("row", name=re.compile(r"^Driver Acme Audit Widget 1\.0\.0"))).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    expect(dialog.get_by_role("row", name="Status values 1 of 2 reported")).to_be_visible()
+    # The command set the input, so the device has now reported both values.
+    expect(dialog.get_by_role("row", name="Status values 2 of 2 reported")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Commands sent 1")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Did the device do it 1 yes")).to_be_visible()
 
     with page.expect_download(timeout=EXPECT_TIMEOUT) as info:
         dialog.get_by_role("button", name="Download report").click()
@@ -235,8 +275,14 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     assert b"PWR?\r" in sent
     table = {v["name"]: v for v in attempt["status_table"]["variables"]}
     assert table["power"]["value"] is True
-    assert table["input"]["reported"] is False
+    assert table["input"]["value"] == "hdmi2"
     assert "no_driver_tested" not in [x["id"] for x in report["limits"]]
+    (trial,) = section["commands"]["trials"]
+    assert trial["command"] == "set_input" and trial["params"] == {"input": "hdmi2"}
+    assert [e["outcome"] for e in trial["effects"]] == ["confirmed"]
+    assert trial["answer"]["answer"] == "yes"
+    assert [bytes.fromhex(e["hex"]) for e in trial["traffic"]["entries"]
+            if e["direction"] == "tx"][:1] == [b"INPUT hdmi2\r"]
     assert re.search(r'tx tcp +"PWR\?\\r"', timeline)
 
     # Finish ends the audit and the project device comes back.

@@ -1,7 +1,7 @@
 import { request } from "./base";
 import type { DiscoveredDevice, DiscoveryEvidence, IdentificationMatch } from "./discoveryClient";
 import { downloadFromApi } from "./downloadFile";
-import type { DriverParamDef } from "./types";
+import type { ChildEntityEntry, DriverParamDef } from "./types";
 
 // --- Device Audit (/api/audit) ---
 
@@ -236,6 +236,8 @@ export interface AuditStatusVariable {
 
 export interface AuditListen {
   status: AuditListenStatus;
+  /** The driver is running against the device, so commands can be sent. */
+  active: boolean;
   error: string;
   started_at: number;
   connected_at: number | null;
@@ -373,6 +375,8 @@ export type AuditCommandAnswer = "yes" | "no" | "partly" | "cant_tell";
 /** The commands step for one driver. */
 export interface AuditCommands {
   catalog: AuditCommandInfo[];
+  /** The status values the parameter pickers read (`options_state`), by key. */
+  picker_state: Record<string, unknown>;
   batch: { status: "running" | "done"; total: number; sent: number; skipped: string[] } | null;
   /** The number of the command being sent or watched, if any. */
   current: number | null;
@@ -625,6 +629,17 @@ export function sendAuditCommand(
   return request(
     `/audit/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(name)}`,
     { method: "POST", body: JSON.stringify(again ? { again } : { params }) },
+  );
+}
+
+/** The children the audited driver has registered, of one type (a command's
+ *  child picker). */
+export function listAuditChildren(
+  sessionId: string,
+  childType: string,
+): Promise<{ child_type: string; children: ChildEntityEntry[] }> {
+  return request(
+    `/audit/sessions/${encodeURIComponent(sessionId)}/children/${encodeURIComponent(childType)}`,
   );
 }
 

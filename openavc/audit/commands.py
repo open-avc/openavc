@@ -430,8 +430,9 @@ class CommandPass:
         self._task: asyncio.Task | None = None
         # The command list as it stood when the driver stopped, for the report.
         self._final_catalog: list[dict[str, Any]] | None = None
-        # The command list as the wizard last heard it.
+        # The command list, and the picker values, as the wizard last heard them.
         self._catalog_sent: list[dict[str, Any]] | None = None
+        self._pickers_sent: dict[str, Any] | None = None
 
     # -- where it runs --------------------------------------------------------
 
@@ -456,6 +457,19 @@ class CommandPass:
         if self._final_catalog is not None and (listen is None or not listen.sandbox.started):
             return self._final_catalog
         return command_catalog(self._driver())
+
+    def picker_state(self) -> dict[str, Any]:
+        """The status values the command list's parameter pickers read
+        (``options_state``), from the device as it reports them now."""
+        keys = {
+            pdef["options_state"]
+            for entry in self.catalog()
+            for pdef in (entry.get("params") or {}).values()
+            if isinstance(pdef, dict) and isinstance(pdef.get("options_state"), str)
+        }
+        listen = self.run.listen
+        state = listen.sandbox.device_state() if listen is not None and listen.sandbox.started else {}
+        return {key: _shown(state.get(key)) for key in sorted(keys)}
 
     def _driver_name(self) -> str:
         return self.run.choice.identity.get("name") or self.run.choice.driver_id
@@ -867,6 +881,7 @@ class CommandPass:
         current = self.current()
         return {
             "catalog": self.catalog(),
+            "picker_state": self.picker_state(),
             "batch": dict(self.batch) if self.batch else None,
             "current": current.number if current is not None else None,
             "trials": [self._trial_view(t, every_entry=False) for t in self.trials],
@@ -883,7 +898,8 @@ class CommandPass:
 
     def _publish(self, trial: CommandTrial | None = None) -> None:
         """Tell the wizard what moved: the trial that changed (merged by its
-        number), the batch, and the command list only when it changed."""
+        number), the batch, and the command list and picker values only when
+        they changed."""
         current = self.current()
         update: dict[str, Any] = {
             "batch": dict(self.batch) if self.batch else None,
@@ -894,6 +910,10 @@ class CommandPass:
         if catalog != self._catalog_sent:
             update["catalog"] = catalog
             self._catalog_sent = catalog
+        pickers = self.picker_state()
+        if pickers != self._pickers_sent:
+            update["picker_state"] = pickers
+            self._pickers_sent = pickers
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
 
 
@@ -974,7 +994,10 @@ def trial_sentence(trial: dict[str, Any]) -> str:
             parts.append("the connection stayed up")
     if refusals.get("unmatched"):
         n = refusals["unmatched"]
-        parts.append(f"{n} {'reply' if n == 1 else 'replies'} matched none of the driver's rules")
+        parts.append(
+            f"{n} {'reply' if n == 1 else 'replies'} while it was watched matched none of "
+            "the driver's rules"
+        )
     if not parts:
         received = (trial.get("traffic") or {}).get("received", 0)
         parts.append(

@@ -11,7 +11,12 @@ import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
-import { ParamInput } from "../../components/shared/ParamInput";
+import { CommandParamForm } from "../../components/shared/CommandParamForm";
+import {
+  commandParamsBlocked,
+  seedCommandParams,
+  type CommandParamDefs,
+} from "../../components/shared/commandParams";
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
@@ -20,10 +25,6 @@ import { scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
 import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { normalizeOptionList, optionLabel, parseStateOptionList } from "../../components/shared/paramOptions";
-import {
-  hasInvalidParams,
-  hasMissingRequiredParams,
-} from "../../components/shared/paramValidation";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { ChildEntities } from "./ChildEntities";
@@ -310,9 +311,7 @@ export function DeviceDetail({
   // Block Send on an invalid literal param (out of range / pattern mismatch)
   // or a required one left blank — the per-field inline error says which.
   // Authoring aid; the runtime gates both too.
-  const sendBlocked =
-    hasInvalidParams(commandParamDefs, commandParams) ||
-    hasMissingRequiredParams(commandParamDefs, commandParams);
+  const sendBlocked = commandParamsBlocked(commandParamDefs, commandParams);
 
   // Bridge: when this device's driver advertises bridge ports, it's a bridge
   // other devices route through. The card below lists each port + what's bound
@@ -1028,22 +1027,11 @@ export function DeviceDetail({
                   value={selectedCommand}
                   onChange={(cmd) => {
                     setSelectedCommand(cmd);
-                    // Seed defaults so enum params show a real selection (not a
-                    // blank box) and booleans default to No.
+                    // Seed so enum params show a real selection (not a blank
+                    // box) and booleans default to No.
                     const pdefs = (commands[cmd] as Record<string, unknown>)
-                      ?.params as Record<string, Record<string, unknown>> | undefined;
-                    const defaults: Record<string, string> = {};
-                    for (const [name, d] of Object.entries(pdefs ?? {})) {
-                      const t = String(d?.type ?? "string");
-                      // values may be {value, label} — seed the first wire value.
-                      const opts = Array.isArray(d?.values)
-                        ? normalizeOptionList(d.values as unknown[])
-                        : [];
-                      if (t === "enum" && opts.length > 0) defaults[name] = opts[0].value;
-                      else if (t === "boolean") defaults[name] = "false";
-                      else defaults[name] = "";
-                    }
-                    setCommandParams(defaults);
+                      ?.params as CommandParamDefs | undefined;
+                    setCommandParams(seedCommandParams(pdefs ?? {}, { firstOption: true }));
                     setCommandResult(null);
                   }}
                 />
@@ -1078,49 +1066,13 @@ export function DeviceDetail({
               {/* Param fields */}
               {paramKeys.length > 0 && (
                 <div style={{ marginBottom: "var(--space-md)" }}>
-                  {paramKeys.map((paramName) => {
-                    const pDef = (commands[selectedCommand] as Record<string, unknown>)?.params as Record<string, Record<string, unknown>> | undefined;
-                    const def = (pDef?.[paramName] ?? {}) as Partial<DriverParamDef>;
-                    const paramHelp = def.help ?? def.description;
-                    const current = commandParams[paramName] ?? "";
-                    const setParam = (val: string) =>
-                      setCommandParams((p) => ({ ...p, [paramName]: val }));
-                    return (
-                    <div
-                      key={paramName}
-                      style={{
-                        marginBottom: "var(--space-sm)",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                      <label
-                        style={{
-                          width: 120,
-                          fontSize: "var(--font-size-sm)",
-                          color: "var(--text-secondary)",
-                        }}
-                      >
-                        {paramName}
-                      </label>
-                      <ParamInput
-                        def={def}
-                        value={current}
-                        onChange={setParam}
-                        deviceId={deviceId}
-                        values={commandParams}
-                        params={pDef as Record<string, Partial<DriverParamDef>> | undefined}
-                        placeholder={paramName}
-                        style={{ flex: 1 }}
-                      />
-                      </div>
-                      {paramHelp && (
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, marginLeft: 120 }}>
-                          {paramHelp}
-                        </div>
-                      )}
-                    </div>
-                    );
-                  })}
+                  <CommandParamForm
+                    layout="inline"
+                    params={commandParamDefs}
+                    values={commandParams}
+                    onChange={(name, val) => setCommandParams((p) => ({ ...p, [name]: val }))}
+                    deviceId={deviceId}
+                  />
                 </div>
               )}
 

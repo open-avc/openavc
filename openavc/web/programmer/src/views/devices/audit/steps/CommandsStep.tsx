@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Loader2, RotateCcw, Send } from "lucide-react";
 import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
-import type { DriverParamDef } from "../../../../api/types";
 import { useAuditStore } from "../../../../store/auditStore";
-import { ParamInput } from "../../../../components/shared/ParamInput";
-import { SearchableSelect, type SelectGroup } from "../../../../components/shared/SearchableSelect";
+import { CommandParamForm } from "../../../../components/shared/CommandParamForm";
 import {
-  hasInvalidParams,
-  hasMissingRequiredParams,
-} from "../../../../components/shared/paramValidation";
-import { coerceParam } from "../../actionParamFields";
+  coerceCommandParams,
+  commandParamsBlocked,
+  seedCommandParams,
+} from "../../../../components/shared/commandParams";
+import type { ParamPickers } from "../../../../components/shared/ParamInput";
+import { SearchableSelect, type SelectGroup } from "../../../../components/shared/SearchableSelect";
 import {
   ANSWER_CHOICES,
   batchableQueries,
@@ -33,30 +33,6 @@ import {
   spinStyle,
 } from "../auditStyles";
 
-/** A parameter starts at the value the driver declares, else empty: the
- *  audit never picks a value the person did not choose, because it sends to
- *  a real device. */
-function seedValues(params: Record<string, Partial<DriverParamDef>>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [name, def] of Object.entries(params)) {
-    out[name] = def.default !== undefined && def.default !== null ? String(def.default) : "";
-  }
-  return out;
-}
-
-function typedValues(
-  params: Record<string, Partial<DriverParamDef>>,
-  values: Record<string, string>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [name, def] of Object.entries(params)) {
-    const raw = values[name] ?? "";
-    if (raw === "") continue;
-    out[name] = coerceParam(raw, def.type);
-  }
-  return out;
-}
-
 type Call = () => Promise<{ session: audit.AuditSessionState }>;
 
 /** Step 6: send the driver's commands, one at a time, and see what each does. */
@@ -71,6 +47,17 @@ export function CommandsStep() {
   const [pending, setPending] = useState<{ text: string; label: string; call: Call } | null>(null);
 
   const catalog = useMemo(() => run?.commands?.catalog ?? [], [run?.commands?.catalog]);
+  const pickerState = run?.commands?.picker_state;
+  const sessionId = session?.session_id ?? "";
+  // The pickers read the audited driver, which is not a project device.
+  const pickers = useMemo<ParamPickers>(
+    () => ({
+      loadChildren: (childType) =>
+        audit.listAuditChildren(sessionId, childType).then((r) => r.children),
+      stateValue: (key) => pickerState?.[key],
+    }),
+    [sessionId, pickerState],
+  );
   const groups = useMemo<SelectGroup[]>(() => {
     const { queries, commands } = commandGroups(catalog);
     const option = (c: audit.AuditCommandInfo) => ({
@@ -87,15 +74,17 @@ export function CommandsStep() {
   }, [catalog]);
 
   if (!session || !run) return null;
-  const sessionId = session.session_id;
   const commands = run.commands;
-  const connected = run.active;
+  // Read from the listen state, which the live updates carry; the run's own
+  // `active` is only as fresh as the last full state.
+  const connected = !!run.listen?.active;
   const trials = commands?.trials ?? [];
   const working = commands?.current != null || commands?.batch?.status === "running";
   const command = catalog.find((c) => c.name === selected);
   const params = command?.params ?? {};
-  const blocked =
-    !command || hasInvalidParams(params, values) || hasMissingRequiredParams(params, values);
+  // A parameter starts at the value the driver declares, else empty: the
+  // audit never picks a value the person did not choose (commandParams.ts).
+  const blocked = !command || commandParamsBlocked(params, values);
   const queryCount = batchableQueries(catalog);
 
   const act = async (kind: "send" | "queries" | "watch", call: Call) => {
@@ -123,7 +112,7 @@ export function CommandsStep() {
     setSelected(name);
     setPending(null);
     const def = catalog.find((c) => c.name === name);
-    setValues(seedValues(def?.params ?? {}));
+    setValues(seedCommandParams(def?.params ?? {}));
   };
 
   const again = (trial: audit.AuditCommandTrial) =>
@@ -210,26 +199,12 @@ export function CommandsStep() {
             {command?.help && <div style={hintStyle}>{command.help}</div>}
             {command && Object.keys(params).length > 0 && (
               <div style={{ marginTop: "var(--space-sm)" }}>
-                {Object.entries(params).map(([name, def]) => (
-                  <div key={name} style={{ marginBottom: "var(--space-sm)" }}>
-                    <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: 2 }}>
-                      {def.label || name}
-                      {def.required ? " *" : ""}
-                    </div>
-                    <ParamInput
-                      def={def}
-                      value={values[name] ?? ""}
-                      onChange={(v) => setValues((prev) => ({ ...prev, [name]: v }))}
-                      values={values}
-                      params={params}
-                      placeholder={name}
-                      style={{ width: "100%" }}
-                    />
-                    {(def.help || def.description) && (
-                      <div style={hintStyle}>{def.help || def.description}</div>
-                    )}
-                  </div>
-                ))}
+                <CommandParamForm
+                  params={params}
+                  values={values}
+                  onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
+                  pickers={pickers}
+                />
               </div>
             )}
             <div style={{ marginTop: "var(--space-sm)" }}>
@@ -238,7 +213,7 @@ export function CommandsStep() {
                 onClick={() =>
                   command &&
                   sendOrWarn(command, command.label, () =>
-                    audit.sendAuditCommand(sessionId, command.name, typedValues(params, values)),
+                    audit.sendAuditCommand(sessionId, command.name, coerceCommandParams(params, values)),
                   )
                 }
                 disabled={blocked || busy !== "" || working || pending !== null}

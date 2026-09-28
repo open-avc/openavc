@@ -505,3 +505,78 @@ async def test_the_person_says_what_the_device_did(driver):
         server.close()
     summary = render_summary(build_report(session))
     assert "The person said the device partly did it." in summary
+
+
+class _AcmeZones:
+    """A driver with zones and a preset list the device publishes: what a
+    command's child picker and state-fed picker read."""
+
+    @staticmethod
+    def cls():
+        from openavc.drivers.base import BaseDriver
+
+        class AcmeZones(BaseDriver):
+            DRIVER_INFO = {
+                "id": "acme_zones", "name": "Acme Zones", "transport": "tcp",
+                "state_variables": {"presets": {"type": "string"}},
+                "child_entity_types": {
+                    "zone": {
+                        "label": "Zone", "id_format": {"type": "integer", "min": 1, "max": 8},
+                        "state_variables": {"name": {"type": "string"}},
+                        "label_field": "name",
+                    },
+                },
+                "commands": {
+                    "set_zone_volume": {"label": "Set Zone Volume", "params": {
+                        "zone": {"type": "child_id", "child_type": "zone", "required": True},
+                    }},
+                    "recall_preset": {"label": "Recall Preset", "params": {
+                        "preset": {"type": "string", "options_state": "presets"},
+                    }},
+                },
+            }
+
+            async def _create_transport(self, transport_type):
+                pass  # its own session: nothing to dial
+
+            def _link_alive(self):
+                return True
+
+            async def _initial_sync(self):
+                self.register_child("zone", 2, initial_state={"name": "Lobby"})
+                self.set_state("presets", '["Morning", "Evening"]')
+
+            async def send_command(self, command, params=None):
+                return None
+
+        return AcmeZones
+
+
+async def test_the_pickers_read_the_audited_driver(wired):  # noqa: F811
+    _DRIVER_REGISTRY["acme_zones"] = _AcmeZones.cls()
+    try:
+        started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+        session_id = started["session"]["session_id"]
+        await routes.run_network_check(session_id)
+        await _until(lambda: wired.manager.current().footprint is not None)
+        await routes.set_driver(session_id, AuditDriverRequest(driver_id="acme_zones"))
+        wired.engine.state.set("device.lobby.paused", True)
+        await routes.set_session_connection(session_id, AuditConnectionRequest(
+            config={"host": "127.0.0.1", "port": 9},
+        ))
+        await routes.connect_and_listen(session_id)
+        session = wired.manager.current()
+        await _until(lambda: session.runs[0].listen.connected_at is not None)
+        await _until(lambda: "presets" in session.runs[0].listen.sandbox.device_state())
+
+        listed = await routes.list_audit_children(session_id, "zone")
+        assert [(c["local_id"], c["display_name"]) for c in listed["children"]] == [(2, "Lobby")]
+        with pytest.raises(HTTPException) as exc:
+            await routes.list_audit_children(session_id, "speaker")
+        assert exc.value.status_code == 404
+        commands = session.runs[0].commands.to_dict()
+        assert commands["picker_state"] == {"presets": '["Morning", "Evening"]'}
+        await routes.end_session(session_id, cancel=True)
+    finally:
+        _DRIVER_REGISTRY.pop("acme_zones", None)
+        await wired.manager.shutdown()

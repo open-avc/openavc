@@ -120,13 +120,15 @@ export function applyAuditMessage(
 /**
  * An ``audit.commands`` update applied to a run's commands: it carries the
  * trial that changed (merged by its number), the batch and what is current,
- * and the command list only when that changed.
+ * and the command list and the picker values only when those changed.
  */
 export function mergeCommands(
   before: AuditCommands | undefined,
   update: Partial<AuditCommands>,
 ): AuditCommands {
-  const base: AuditCommands = before ?? { catalog: [], batch: null, current: null, trials: [] };
+  const base: AuditCommands = before ?? {
+    catalog: [], picker_state: {}, batch: null, current: null, trials: [],
+  };
   let trials = base.trials;
   for (const t of update.trials ?? []) {
     const at = trials.findIndex((x) => x.number === t.number);
@@ -134,6 +136,7 @@ export function mergeCommands(
   }
   return {
     catalog: update.catalog ?? base.catalog,
+    picker_state: update.picker_state ?? base.picker_state,
     batch: update.batch !== undefined ? update.batch : base.batch,
     current: update.current !== undefined ? update.current : base.current,
     trials,

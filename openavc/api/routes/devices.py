@@ -862,10 +862,14 @@ def _project_child_entry(
     }
 
 
-def _build_child_entry(
+def build_child_entry(
     driver: Any, project_device: Any, child_type: str, local_id: int | str,
 ) -> dict[str, Any]:
     """Build the response shape for one registered child.
+
+    Public because the device audit lists its own driver's children through
+    it (``project_device`` None: a device outside the project has no labels
+    or config of its own), so a child picker there reads what one here does.
 
     Combines the driver-padded id, the driver-owned live state, and the
     project-owned label + config. ``label`` in the top-level response is
@@ -974,7 +978,7 @@ async def list_child_entities(device_id: str) -> dict[str, Any]:
     for ctype in types:
         ids = driver.list_children(ctype)
         children[ctype] = [
-            _build_child_entry(driver, project_device, ctype, lid)
+            build_child_entry(driver, project_device, ctype, lid)
             for lid in ids
         ]
     return {
@@ -1001,7 +1005,7 @@ async def list_child_entities_by_type(
         )
     ids = driver.list_children(child_type)
     entries = [
-        _build_child_entry(driver, project_device, child_type, lid)
+        build_child_entry(driver, project_device, child_type, lid)
         for lid in ids
     ]
     return {
@@ -1040,7 +1044,7 @@ async def get_child_entity(
             detail=f"Child {child_type} {local_id} is not currently "
                    f"registered on device '{device_id}'",
         )
-    entry = _build_child_entry(driver, project_device, child_type, local_id)
+    entry = build_child_entry(driver, project_device, child_type, local_id)
     return {"device_id": device_id, "child_type": child_type, **entry}
 
 
@@ -1130,7 +1134,7 @@ async def update_child_entity(
 
     await engine.apply_project_edit(mutate)
 
-    entry = _build_child_entry(driver, result_device, child_type, local_id)
+    entry = build_child_entry(driver, result_device, child_type, local_id)
     return {"device_id": device_id, "child_type": child_type, **entry}
 
 

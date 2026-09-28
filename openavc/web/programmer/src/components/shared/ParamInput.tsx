@@ -43,7 +43,19 @@ import { VariableKeyPicker } from "./VariableKeyPicker";
  *   - everything else -> text input
  *  With `allowDynamic`, a "$" toggle swaps the static control for a state-key
  *  picker ($var/$state, plus $trigger when `showTriggerContext`) — for surfaces
- *  whose runtime resolves $-prefixed values (macro steps). */
+ *  whose runtime resolves $-prefixed values (macro steps).
+ *
+ *  The live pickers read a project device (`deviceId`) unless `pickers` says
+ *  where else to read: the device audit runs its driver outside the project,
+ *  so its children and status values come from the audit, not the project. */
+
+/** Where a parameter's live pickers read from, when not a project device. */
+export interface ParamPickers {
+  /** The children of one type the driver has registered. */
+  loadChildren: (childType: string) => Promise<ChildEntityEntry[]>;
+  /** A device-relative status value (`options_state`). */
+  stateValue: (key: string) => unknown;
+}
 
 export interface ParamInputProps {
   def: Partial<DriverParamDef>;
@@ -71,6 +83,8 @@ export interface ParamInputProps {
   placeholder?: string;
   /** Style for the widget row (e.g. { flex: 1 }). */
   style?: CSSProperties;
+  /** Where the live pickers read, in place of the project device `deviceId`. */
+  pickers?: ParamPickers;
 }
 
 /** A param value is a dynamic state reference (and should render the picker). */
@@ -104,8 +118,11 @@ export function ParamInput({
   eventContext,
   placeholder,
   style,
+  pickers,
 }: ParamInputProps) {
   const type = def.type || "string";
+  // Something to read live children and status values from.
+  const live = !!deviceId || !!pickers;
   const optionsFrom =
     def.options_from?.source === "child_schema" ? def.options_from : undefined;
 
@@ -140,13 +157,15 @@ export function ParamInput({
     undefined,
   );
   useEffect(() => {
-    if (!fetchChildType || !deviceId) return;
+    if (!fetchChildType || !live) return;
     let cancelled = false;
-    api
-      .listChildEntitiesByType(deviceId, fetchChildType)
-      .then((resp) => {
+    const load = pickers
+      ? pickers.loadChildren(fetchChildType)
+      : api.listChildEntitiesByType(deviceId!, fetchChildType).then((resp) => resp.children);
+    load
+      .then((found) => {
         if (!cancelled) {
-          setChildren(resp.children);
+          setChildren(found);
         }
       })
       .catch(() => {
@@ -155,17 +174,22 @@ export function ParamInput({
     return () => {
       cancelled = true;
     };
-  }, [fetchChildType, deviceId]);
+    // `pickers` is read at load time; a new object for the same source must
+    // not refetch on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchChildType, deviceId, live]);
 
   // State-sourced options: a device-relative key (`options_state`), resolved
-  // against this device.
+  // against this device, or read from `pickers`.
   const stateOptionKey =
-    def.options_state && deviceId
+    def.options_state && deviceId && !pickers
       ? `device.${deviceId}.${def.options_state}`
       : undefined;
-  const stateOptionRaw = useConnectionStore((s) =>
+  const storeOptionRaw = useConnectionStore((s) =>
     stateOptionKey ? s.liveState[stateOptionKey] : undefined,
   );
+  const stateOptionRaw =
+    pickers && def.options_state ? pickers.stateValue(def.options_state) : storeOptionRaw;
 
   const rowStyle: CSSProperties = {
     display: "flex",
@@ -225,7 +249,7 @@ export function ParamInput({
   let comboOptions: ParamOption[] | undefined;
   let comboHint: string | undefined;
   if (optionsFrom) {
-    if (!deviceId || !siblingChildType) {
+    if (!live || !siblingChildType) {
       comboOptions = []; // unresolvable here -> behaves as forgiving free text
     } else {
       const siblingValue = values?.[optionsFrom.param];
@@ -309,17 +333,23 @@ export function ParamInput({
       </div>
     );
   } else if (effType === "boolean") {
+    // A flag nobody has set holds nothing, and says so. An optional one keeps
+    // "(none)" as a real choice (send nothing); a required one shows it is
+    // still unset, like a required enum, instead of reading "No" while the
+    // form holds nothing and refuses to send.
     widget = (
-      <select
-        value={value || "false"}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ flex: 1 }}
-      >
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ flex: 1 }}>
+        {!def.required && <option value="">(none)</option>}
+        {def.required && !value && (
+          <option value="" disabled>
+            Select...
+          </option>
+        )}
         <option value="true">Yes</option>
         <option value="false">No</option>
       </select>
     );
-  } else if (ownChildType && deviceId) {
+  } else if (ownChildType && live) {
     const registered = (children ?? []).filter((c) => c.registered);
     widget = (
       <div style={{ flex: 1 }}>
@@ -352,8 +382,9 @@ export function ParamInput({
           <div
             style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}
           >
-            No registered {ownChildType} entries on this device yet. See the
-            Child Entities tab.
+            {pickers
+              ? `The driver has not registered any ${ownChildType} entries yet.`
+              : `No registered ${ownChildType} entries on this device yet. See the Child Entities tab.`}
           </div>
         )}
       </div>

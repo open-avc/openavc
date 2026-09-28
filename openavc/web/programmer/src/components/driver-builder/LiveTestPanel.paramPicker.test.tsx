@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 // What shipped broken: the Test harness's enum picker displayed a value the
 // form did not hold. A native <select> always shows SOME option, and a
@@ -12,6 +12,11 @@ import { render, screen } from "@testing-library/react";
 //
 // It was never the falsy-zero bug: the enum below starts at wire value "0" on
 // purpose, and a picker whose first option is "1" behaved identically.
+//
+// The harness now draws its parameters with the shared CommandParamForm, the
+// same picker as every other command form. Its trigger reads the placeholder
+// whenever the value matches no option, so the guarantee is the picker's own;
+// these tests hold it to it here.
 
 import { CommandPreview, seedParamValues } from "./LiveTestPanel";
 import type { DriverCommandDef } from "../../api/types";
@@ -67,25 +72,23 @@ function renderForm(
   );
 }
 
-/** The Source picker. Found by its own options rather than its label: the
- *  form's labels are styled `<label>`s with no `htmlFor`, so nothing in the
- *  DOM ties one to its control. */
-function sourceSelect(): HTMLSelectElement {
-  const found = [...document.querySelectorAll("select")].find((s) =>
-    [...s.options].some((o) => o.text === "Mic"),
-  );
-  if (!found) throw new Error("no Source picker rendered");
-  return found;
+/** The Source picker's trigger: the one button reading a Source value. */
+function sourceTrigger(text: RegExp): HTMLElement {
+  return screen.getByRole("button", { name: text });
+}
+
+/** Open the Source picker and read its rows. */
+function sourceRows(trigger: HTMLElement): string[] {
+  fireEvent.click(trigger);
+  return screen.getAllByRole("option").map((o) => o.textContent ?? "");
 }
 
 describe("the Test harness's enum picker", () => {
   it("does not display a real option for a required enum nobody has chosen", () => {
     // The finding, stated as an assertion: the control must not read "Mic".
     renderForm(SET_SOURCE, { channel: "1", source: "" });
-    const select = sourceSelect();
-    expect(select.value).toBe("");
-    expect(select.options[select.selectedIndex].text).toBe("Select...");
-    expect(select.options[select.selectedIndex].text).not.toBe("Mic");
+    expect(sourceTrigger(/Select\.\.\./)).toBeTruthy();
+    expect(screen.queryByText("Mic")).toBeNull();
   });
 
   it("cannot contradict the refusal printed underneath it", () => {
@@ -93,39 +96,31 @@ describe("the Test harness's enum picker", () => {
     // preview says so, and the picker must not simultaneously show a value.
     renderForm(SET_SOURCE, { channel: "1", source: "" }, "'set_input_source': 'source' is required");
     expect(screen.getByText(/'source' is required/)).toBeTruthy();
-    const shown = sourceSelect();
-    expect(shown.options[shown.selectedIndex].value).toBe("");
+    expect(sourceTrigger(/Select\.\.\./)).toBeTruthy();
   });
 
-  it("still offers every real option, and the placeholder cannot be chosen", () => {
-    // A placeholder that swallowed an option, or that could be selected as a
-    // way to empty a required param, would be a different bug.
+  it("still offers every real option, and nothing that empties a required one", () => {
+    // A placeholder that swallowed an option, or a row that could be chosen
+    // as a way to empty a required param, would be a different bug.
     renderForm(SET_SOURCE, { channel: "1", source: "" });
-    const select = sourceSelect();
-    expect([...select.options].map((o) => o.value)).toEqual(["", "0", "1"]);
-    expect(select.options[0].disabled).toBe(true);
-    expect(select.options[1].disabled).toBe(false);
+    expect(sourceRows(sourceTrigger(/Select\.\.\./))).toEqual(["Mic0", "Line1"]);
   });
 
-  it("drops the placeholder once a value is chosen", () => {
+  it("shows the value once one is chosen", () => {
     // Including wire value "0", which is the falsy one and must still count as
     // chosen — a placeholder that reappeared here would be the zero bug.
     renderForm(SET_SOURCE, { channel: "1", source: "0" });
-    const select = sourceSelect();
-    expect(select.value).toBe("0");
-    expect(select.options[select.selectedIndex].text).toBe("Mic");
-    expect([...select.options].map((o) => o.value)).toEqual(["0", "1"]);
+    expect(sourceTrigger(/Mic/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Select\.\.\./ })).toBeNull();
   });
 
   it("leaves an optional enum its (none) row, which is a real choice", () => {
     // "(none)" means send nothing and that is valid; the placeholder means
     // you have not chosen yet. They must not be confused for one another.
     renderForm(OPTIONAL_SOURCE, { source: "" });
-    const select = sourceSelect();
-    expect(select.value).toBe("");
-    expect(select.options[0].text).toBe("(none)");
-    expect(select.options[0].disabled).toBe(false);
-    expect([...select.options].map((o) => o.text)).not.toContain("Select...");
+    const rows = sourceRows(sourceTrigger(/\(none\)/));
+    expect(rows[0]).toBe("(none)");
+    expect(rows).not.toContain("Select...");
   });
 });
 
@@ -158,8 +153,7 @@ describe("what the form starts with", () => {
 
   it("a defaulted enum therefore shows its default, not the placeholder", () => {
     renderForm(SET_SOURCE, { channel: "1", source: "1" });
-    const select = sourceSelect();
-    expect(select.options[select.selectedIndex].text).toBe("Line");
-    expect([...select.options].map((o) => o.text)).not.toContain("Select...");
+    expect(sourceTrigger(/Line/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Select\.\.\./ })).toBeNull();
   });
 });

@@ -29,8 +29,9 @@ turns a refusal into its sentence.
   again), ``POST /audit/sessions/{id}/queries`` (run every status query),
   ``POST /audit/sessions/{id}/watch/extend`` ("Wait longer") and
   ``POST /audit/sessions/{id}/watch/stop`` ("Stop watching") and
-  ``POST /audit/sessions/{id}/answers`` ("Did the device do it?");
-  ``audit/commands.py``.
+  ``POST /audit/sessions/{id}/answers`` ("Did the device do it?"), and
+  ``GET /audit/sessions/{id}/children/{child_type}`` (the driver's own
+  children, for a command's child picker); ``audit/commands.py``.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -420,6 +421,33 @@ async def stop_watching(session_id: str) -> dict[str, Any]:
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"session": session.to_dict()}
+
+
+@router.get("/sessions/{session_id}/children/{child_type}")
+async def list_audit_children(session_id: str, child_type: str) -> dict[str, Any]:
+    """The children the audited driver has registered, of one type, as a
+    project device lists its own: what a command's child picker offers."""
+    from openavc.api.routes.devices import build_child_entry
+
+    session = _session(session_id)
+    run = _listening_run(session)
+    driver = run.listen.sandbox.driver if run.listen.sandbox.started else None
+    if driver is None:
+        raise HTTPException(status_code=409, detail="Connect the driver first.")
+    types = driver.get_child_entity_types()
+    if child_type not in types:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{run.choice.identity.get('name') or run.choice.driver_id} has no "
+                   f"'{child_type}' children.",
+        )
+    return {
+        "child_type": child_type,
+        "children": [
+            build_child_entry(driver, None, child_type, local_id)
+            for local_id in driver.list_children(child_type)
+        ],
+    }
 
 
 @router.post("/sessions/{session_id}/answers")

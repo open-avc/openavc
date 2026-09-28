@@ -10,10 +10,10 @@ import {
 import type {
   DriverDefinition,
   DriverCommandDef,
-  DriverParamDef,
 } from "../../api/types";
 import * as api from "../../api/restClient";
-import { normalizeOptionList } from "../shared/paramOptions";
+import { CommandParamForm } from "../shared/CommandParamForm";
+import { coerceCommandParams, seedCommandParams } from "../shared/commandParams";
 import { BASE } from "../../api/base";
 import { ApiError } from "../../api/errors";
 import type {
@@ -336,7 +336,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           transport,
           definition: draft,
           command_name: selectedCommand,
-          params: coerceParams(paramValues, command.params ?? {}),
+          params: coerceCommandParams(command.params ?? {}, paramValues),
           config_overrides: overrides,
         })
         .then((result) => {
@@ -453,7 +453,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               transport,
               definition: draft,
               command_name: selectedCommand,
-              params: coerceParams(paramValues, command?.params ?? {}),
+              params: coerceCommandParams(command?.params ?? {}, paramValues),
               config_overrides: overrides,
               timeout: 5,
             };
@@ -1185,13 +1185,6 @@ export function CommandPreview({
 }) {
   const params = Object.entries(command.params ?? {});
 
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "11px",
-    color: "var(--text-muted)",
-    marginBottom: 2,
-  };
-
   return (
     <div
       style={{
@@ -1213,38 +1206,13 @@ export function CommandPreview({
           >
             Parameters
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: "var(--space-sm)",
-              marginBottom: "var(--space-md)",
-            }}
-          >
-            {params.map(([name, def]) => (
-              <div key={name}>
-                <label style={labelStyle}>
-                  {def.label || name}
-                  {def.required ? " *" : ""}
-                </label>
-                <ParamInput
-                  def={def}
-                  value={paramValues[name] ?? ""}
-                  onChange={(v) => onParamChange(name, v)}
-                />
-                {(def.help || def.description) && (
-                  <div
-                    style={{
-                      fontSize: "10px",
-                      color: "var(--text-muted)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {def.help || def.description}
-                  </div>
-                )}
-              </div>
-            ))}
+          <div style={{ marginBottom: "var(--space-md)" }}>
+            <CommandParamForm
+              layout="grid"
+              params={command.params ?? {}}
+              values={paramValues}
+              onChange={onParamChange}
+            />
           </div>
         </>
       ) : (
@@ -1370,129 +1338,13 @@ function WirePreview({
   );
 }
 
-/** What the parameter form starts with when a command is chosen.
- *
- *  A param that declares a default starts there. One that does NOT starts
- *  EMPTY and has to stay that way: seeding it with the first enum option would
- *  put a value in the form the author never picked, and this harness sends to
- *  real hardware over a socket it opens itself. An unchosen required param is
- *  supposed to stop the send — that is what the wire preview is for.
- */
-export function seedParamValues(
-  command: DriverCommandDef,
-): Record<string, string> {
-  const seeded: Record<string, string> = {};
-  for (const [name, def] of Object.entries(command.params ?? {})) {
-    seeded[name] = def.default !== undefined ? String(def.default) : "";
-  }
-  return seeded;
-}
-
-function ParamInput({
-  def,
-  value,
-  onChange,
-}: {
-  def: DriverParamDef;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  if (def.type === "enum" && def.values) {
-    // Options may be plain strings or {value, label} — show the label, send
-    // the wire value (the preview + runtime both work off the value).
-    const options = normalizeOptionList(def.values);
-    // A native <select> always displays SOME option. With no empty option
-    // present, a param that is unset ("" — every required enum that declares
-    // no default) matched nothing, so the browser fell back to options[0] and
-    // the control showed a real, plausible value this form did not hold: the
-    // picker read "Mic" while the wire preview under it said 'source' is
-    // required. The placeholder is what lets the control say "unset" out loud.
-    //
-    // It is NOT the optional param's "(none)". That is a genuine choice —
-    // clear this and send nothing. This one is disabled and present only until
-    // something is chosen, so a required param still has no way to be emptied,
-    // which is the rule `shared/ParamInput.tsx` already follows.
-    const unset = !value;
-    return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ width: "100%" }}
-      >
-        {!def.required && <option value="">(none)</option>}
-        {def.required && unset && (
-          <option value="" disabled>
-            Select...
-          </option>
-        )}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  if (def.type === "boolean") {
-    return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ width: "100%" }}
-      >
-        <option value="">(none)</option>
-        <option value="true">true</option>
-        <option value="false">false</option>
-      </select>
-    );
-  }
-  if (def.type === "integer" || def.type === "number") {
-    return (
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        min={def.min}
-        max={def.max}
-        step={def.type === "integer" ? 1 : "any"}
-        style={{ width: "100%" }}
-      />
-    );
-  }
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-    />
-  );
-}
-
-function coerceParams(
-  raw: Record<string, string>,
-  defs: Record<string, DriverParamDef>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [name, val] of Object.entries(raw)) {
-    if (val === "") continue;
-    const def = defs[name];
-    if (!def) {
-      out[name] = val;
-      continue;
-    }
-    if (def.type === "integer") {
-      const n = parseInt(val, 10);
-      if (!Number.isNaN(n)) out[name] = n;
-    } else if (def.type === "number") {
-      const n = parseFloat(val);
-      if (!Number.isNaN(n)) out[name] = n;
-    } else if (def.type === "boolean") {
-      out[name] = val === "true";
-    } else {
-      out[name] = val;
-    }
-  }
-  return out;
+/** What the parameter form starts with when a command is chosen: each
+ *  param's declared default, else EMPTY (`seedCommandParams`). This harness
+ *  sends to real hardware over a socket it opens itself, so it never puts a
+ *  value in the form the author did not pick; an unchosen required param is
+ *  supposed to stop the send, which is what the wire preview is for. */
+export function seedParamValues(command: DriverCommandDef): Record<string, string> {
+  return seedCommandParams(command.params ?? {});
 }
 
 function visibleBytes(s: string): string {
