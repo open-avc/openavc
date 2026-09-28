@@ -28,7 +28,8 @@ turns a refusal into its sentence.
 - ``POST /audit/sessions/{id}/commands/{name}`` (Send one command, or Try
   again), ``POST /audit/sessions/{id}/queries`` (run every status query),
   ``POST /audit/sessions/{id}/watch/extend`` ("Wait longer") and
-  ``POST /audit/sessions/{id}/watch/stop`` ("Stop watching");
+  ``POST /audit/sessions/{id}/watch/stop`` ("Stop watching") and
+  ``POST /audit/sessions/{id}/answers`` ("Did the device do it?");
   ``audit/commands.py``.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
@@ -47,6 +48,7 @@ from fastapi.responses import FileResponse
 
 from openavc.api._engine import _get_engine
 from openavc.api.models import (
+    AuditAnswerRequest,
     AuditCommandRequest,
     AuditConnectionRequest,
     AuditDriverRequest,
@@ -415,6 +417,20 @@ async def stop_watching(session_id: str) -> dict[str, Any]:
     run = _listening_run(session)
     try:
         commands_for(session, run).end_now()
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/answers")
+async def answer_command(session_id: str, body: AuditAnswerRequest) -> dict[str, Any]:
+    """Record what the person saw the device do for one command."""
+    session = _session(session_id)
+    run = current_run(session)
+    if run is None or run.commands is None:
+        raise HTTPException(status_code=409, detail="Send a command first.")
+    try:
+        run.commands.answer(body.trial, body.answer, body.note.strip())
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"session": session.to_dict()}

@@ -466,6 +466,17 @@ class AuditCommandRequest(BaseModel):
     again: int | None = Field(default=None, ge=1)
 
 
+class AuditAnswerRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/answers``: "Did the device do
+    it?" for command number ``trial``, and an optional note."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trial: int = Field(ge=1)
+    answer: Literal["yes", "no", "partly", "cant_tell"]
+    note: str = Field(default="", max_length=2000)
+
+
 class AuditTesterRequest(BaseModel):
     """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
     report, all optional, and whether to leave the serial number out."""

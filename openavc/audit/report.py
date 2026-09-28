@@ -98,7 +98,10 @@
     its traffic is not captured at all) and ``restart``, for a command that
     declares ``restarts_device_for`` (``declared_seconds``,
     ``went_away_after``, ``back_after`` and ``away_for`` in seconds, and
-    ``within_declared``); ``summary`` says it in a sentence.
+    ``within_declared``); ``summary`` says it in a sentence. ``answer`` is
+    the person's own: ``{"answer", "note", "at"}``, the answer ``yes``,
+    ``no``, ``partly`` or ``cant_tell`` ("Did the device do it?"), or null
+    when they did not say.
 
 - ``timeline``: every session event in order, typed and timestamped.
 - ``limits``: what the audit could not see, and why.
@@ -1026,6 +1029,8 @@ def _trial_outcome(trial: dict[str, Any]) -> str:
 
 def _render_commands(commands: dict[str, Any] | None) -> list[str]:
     """The commands sent, for summary.html."""
+    from openavc.audit.commands import ANSWERS
+
     if not commands or not commands.get("trials"):
         return []
     parts = ["<h3>Commands sent</h3><table>"]
@@ -1039,7 +1044,13 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
         before = trial.get("since_previous")
         if trial.get("attempt", 1) > 1 and before:
             label += f", again {before['seconds']:.1f} s after {before['label']}"
-        parts.append(_row(label, _e(_trial_outcome(trial))))
+        said = trial.get("answer") or {}
+        outcome = _trial_outcome(trial)
+        if said.get("answer"):
+            outcome += " " + ANSWERS[said["answer"]]
+            if said.get("note"):
+                outcome += f" ({said['note']})"
+        parts.append(_row(label, _e(outcome)))
     parts.append("</table>")
     return parts
 

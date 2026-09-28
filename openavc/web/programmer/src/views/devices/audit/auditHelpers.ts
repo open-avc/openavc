@@ -5,6 +5,7 @@
 import type {
   AuditActivity,
   AuditActivityKey,
+  AuditCommandAnswer,
   AuditCommandInfo,
   AuditCommands,
   AuditCommandTrial,
@@ -423,6 +424,8 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
           value: `${silent.join(", ")}: the driver said it succeeded, but nothing was sent`,
         });
       }
+      const answered = answerCounts(trials);
+      if (answered) lines.push({ label: `Did the device do it${suffix}`, value: answered });
       for (const t of trials) {
         const r = t.restart;
         if (!r || r.back_after === null) continue;
@@ -468,4 +471,27 @@ export function sendWarning(command: AuditCommandInfo): string {
 export function changeText(change: { key: string; old: unknown; new: unknown }): string {
   const show = (v: unknown) => (v === null || v === undefined ? "nothing" : String(v));
   return `${change.key}: ${show(change.old)} to ${show(change.new)}`;
+}
+
+/** The buttons of "Did the device do it?", in order. */
+export const ANSWER_CHOICES: { key: AuditCommandAnswer; label: string }[] = [
+  { key: "yes", label: "Yes" },
+  { key: "no", label: "No" },
+  { key: "partly", label: "Partly" },
+  { key: "cant_tell", label: "Can't tell from here" },
+];
+
+/** The person's answers across the commands: "2 yes, 1 no", or "" when
+ *  none was given. */
+export function answerCounts(trials: AuditCommandTrial[]): string {
+  const words: Record<AuditCommandAnswer, string> = {
+    yes: "yes", no: "no", partly: "partly", cant_tell: "could not tell",
+  };
+  const counts = new Map<AuditCommandAnswer, number>();
+  for (const t of trials) {
+    if (t.answer) counts.set(t.answer.answer, (counts.get(t.answer.answer) ?? 0) + 1);
+  }
+  return ANSWER_CHOICES.filter((c) => counts.has(c.key))
+    .map((c) => `${counts.get(c.key)} ${words[c.key]}`)
+    .join(", ");
 }

@@ -7,6 +7,7 @@ import type {
   AuditSessionState,
 } from "../../../api/auditClient";
 import {
+  answerCounts,
   applyAuditMessage,
   batchableQueries,
   changeText,
@@ -34,7 +35,7 @@ function trial(extra: Partial<AuditCommandTrial> = {}): AuditCommandTrial {
     finished_at: 12, status: "done", result: null, error: "", error_type: "",
     traffic: { sent: 1, received: 1, entries: [] }, since_previous: null, extended: 0,
     stopped_early: false, changes: [], device_errors: [], effects: [], query: null, refusals: {},
-    sent_nothing: false, restart: null, summary: "", ...extra,
+    sent_nothing: false, restart: null, summary: "", answer: null, ...extra,
   };
 }
 
@@ -183,5 +184,19 @@ describe("following the commands step", () => {
       { label: "Sent nothing", value: "Power On: the driver said it succeeded, but nothing was sent" },
       { label: "Restart", value: "Reboot: back 48.4 s after the command (the driver declares 60 s)" },
     ]);
+  });
+});
+
+describe("did the device do it", () => {
+  it("counts the answers in the buttons' order", () => {
+    const at = 1;
+    expect(answerCounts([
+      trial({ answer: { answer: "no", note: "", at } }),
+      trial({ answer: { answer: "yes", note: "", at } }),
+      trial({ answer: { answer: "yes", note: "", at } }),
+      trial({ answer: { answer: "cant_tell", note: "", at } }),
+      trial(),
+    ])).toBe("2 yes, 1 no, 1 could not tell");
+    expect(answerCounts([trial()])).toBe("");
   });
 });

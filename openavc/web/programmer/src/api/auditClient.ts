@@ -364,7 +364,11 @@ export interface AuditCommandTrial {
   } | null;
   /** What it did, in a sentence, once its window closed ("" before). */
   summary: string;
+  /** The person's answer to "Did the device do it?", or null. */
+  answer: { answer: AuditCommandAnswer; note: string; at: number } | null;
 }
+
+export type AuditCommandAnswer = "yes" | "no" | "partly" | "cant_tell";
 
 /** The commands step for one driver. */
 export interface AuditCommands {
@@ -622,6 +626,19 @@ export function sendAuditCommand(
     `/audit/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(name)}`,
     { method: "POST", body: JSON.stringify(again ? { again } : { params }) },
   );
+}
+
+/** "Did the device do it?" for command number `trial`. */
+export function answerAuditCommand(
+  sessionId: string,
+  trial: number,
+  answer: AuditCommandAnswer,
+  note: string,
+): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/answers`, {
+    method: "POST",
+    body: JSON.stringify({ trial, answer, note }),
+  });
 }
 
 /** "Wait longer": keep watching the command just sent. */

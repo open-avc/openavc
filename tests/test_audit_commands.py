@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from openavc.api.models import (
+    AuditAnswerRequest,
     AuditCommandRequest,
     AuditConnectionRequest,
     AuditDriverRequest,
@@ -280,6 +281,9 @@ async def test_stopping_the_driver_ends_the_command_being_watched(driver):
 
 def test_the_request_declares_every_field():
     assert set(AuditCommandRequest.model_fields) == {"params", "again"}
+    assert set(AuditAnswerRequest.model_fields) == {"trial", "answer", "note"}
+    with pytest.raises(ValidationError):
+        AuditAnswerRequest(trial=1, answer="maybe")
     with pytest.raises(ValidationError):
         AuditCommandRequest(params={}, retry=True)
 
@@ -327,6 +331,13 @@ async def test_the_routes(wired, driver):  # noqa: F811
         assert exc.value.status_code == 409
         result = await routes.send_command(session_id, "power_on", AuditCommandRequest(again=1))
         assert result["session"]["runs"][0]["commands"]["trials"][1]["attempt"] == 2
+        answered = await routes.answer_command(
+            session_id, AuditAnswerRequest(trial=1, answer="yes", note="  It came on.  "),
+        )
+        assert answered["session"]["runs"][0]["commands"]["trials"][0]["answer"]["note"] == "It came on."
+        with pytest.raises(HTTPException) as exc:
+            await routes.answer_command(session_id, AuditAnswerRequest(trial=9, answer="yes"))
+        assert exc.value.status_code == 409
         await routes.end_session(session_id, cancel=True)
         assert all(t.status == DONE for t in session.runs[0].commands.trials)
     finally:
@@ -470,3 +481,27 @@ def test_a_value_the_device_spells_its_own_way_still_counts():
     assert same_value(True, "on") and same_value(True, 1) and not same_value(True, "off")
     assert same_value(40, "40") and same_value("hdmi1", "HDMI1")
     assert not same_value(40, None) and not same_value(True, "standby")
+
+
+async def test_the_person_says_what_the_device_did(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        with pytest.raises(AuditError, match="no command number 1"):
+            commands.answer(1, "yes")
+        trial = await _sent(commands, "set_input", {"source": "hdmi2"})
+        commands.answer(trial.number, "no", "The screen stayed on HDMI 1.")
+        assert trial.answer["answer"] == "no" and trial.answer["note"] == "The screen stayed on HDMI 1."
+        assert session.timeline[-1].text == (
+            "Set Input: The person said the device did not do it. Note: The screen stayed on HDMI 1."
+        )
+        # Answering again replaces it; the timeline keeps both.
+        commands.answer(trial.number, "partly")
+        assert trial.answer["answer"] == "partly" and trial.answer["note"] == ""
+        assert commands.to_dict()["trials"][0]["answer"]["answer"] == "partly"
+    finally:
+        await run.stop()
+        server.close()
+    summary = render_summary(build_report(session))
+    assert "The person said the device partly did it." in summary

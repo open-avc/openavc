@@ -12,6 +12,7 @@ import {
 } from "../../../../components/shared/paramValidation";
 import { coerceParam } from "../../actionParamFields";
 import {
+  ANSWER_CHOICES,
   batchableQueries,
   changeText,
   commandGroups,
@@ -22,7 +23,15 @@ import {
   trialOutcome,
 } from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
-import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
+import {
+  buttonStyle,
+  headingStyle,
+  hintStyle,
+  inputStyle,
+  labelStyle,
+  panelStyle,
+  spinStyle,
+} from "../auditStyles";
 
 /** A parameter starts at the value the driver declares, else empty: the
  *  audit never picks a value the person did not choose, because it sends to
@@ -291,6 +300,9 @@ export function CommandsStep() {
                 onAgain={() => again(t)}
                 onWaitLonger={() => void act("watch", () => audit.waitLonger(sessionId))}
                 onStop={() => void act("watch", () => audit.stopWatching(sessionId))}
+                onAnswer={(answer, note) =>
+                  void act("watch", () => audit.answerAuditCommand(sessionId, t.number, answer, note))
+                }
               />
             ))}
           </ol>
@@ -317,14 +329,17 @@ function TrialRow({
   onAgain,
   onWaitLonger,
   onStop,
+  onAnswer,
 }: {
   trial: audit.AuditCommandTrial;
   disabled: boolean;
   onAgain: () => void;
   onWaitLonger: () => void;
   onStop: () => void;
+  onAnswer: (answer: audit.AuditCommandAnswer, note: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [note, setNote] = useState(() => trial.answer?.note ?? "");
   const [now, setNow] = useState(() => Date.now() / 1000);
   const watching = trial.status === "watching";
   useEffect(() => {
@@ -408,6 +423,49 @@ function TrialRow({
               </button>
             )}
           </div>
+          {!running && !trial.batch && (
+            <div style={{ marginTop: "var(--space-sm)" }}>
+              <div style={{ fontWeight: 600 }}>Did the device do it?</div>
+              <div
+                role="group"
+                aria-label={`Did the device do ${trial.label}?`}
+                style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", marginTop: 2 }}
+              >
+                {ANSWER_CHOICES.map((choice) => {
+                  const chosen = trial.answer?.answer === choice.key;
+                  return (
+                    <button
+                      key={choice.key}
+                      type="button"
+                      aria-pressed={chosen}
+                      onClick={() => onAnswer(choice.key, note.trim())}
+                      style={{
+                        ...buttonStyle(chosen ? "primary" : "muted"),
+                        padding: "2px var(--space-sm)",
+                      }}
+                    >
+                      {chosen && <Check size={12} />}
+                      {choice.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onBlur={() => {
+                  if (trial.answer && note.trim() !== trial.answer.note) {
+                    onAnswer(trial.answer.answer, note.trim());
+                  }
+                }}
+                placeholder="A note about what you saw (optional)"
+                aria-label={`A note about ${trial.label}`}
+                maxLength={2000}
+                style={{ ...inputStyle, marginTop: "var(--space-xs)" }}
+              />
+            </div>
+          )}
           {open && (
             <div
               role="log"

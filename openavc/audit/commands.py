@@ -59,6 +59,12 @@ that refuses a command for a few seconds after a related one shows up.
 The driver's own confirmation text for a command (an ``actions`` entry's
 ``confirm``) is part of the command list, for the wizard to show first.
 
+**"Did the device do it?"** Then the person says what they saw on the device
+itself (``yes``, ``no``, ``partly``, ``cant_tell``) with an optional note. It
+is their answer, kept beside what the device reported, never merged into it:
+a display that said "input hdmi2" while the screen stayed black is exactly
+the disagreement a report exists to show.
+
 Every command sent is kept for the report (:meth:`CommandPass.report_record`):
 what was asked, what the driver's ``send_command`` returned or raised, the
 traffic from the moment it was sent to the end of its window, and what the
@@ -119,6 +125,16 @@ NO_QUERIES = "{driver} declares no status queries that can run without a value."
 NOT_WATCHING = "No command is being watched."
 WATCH_CAP = "A command is watched for {span} at most."
 NO_SUCH_TRIAL = "There is no command number {number} to send again."
+NO_TRIAL_TO_ANSWER = "There is no command number {number} to answer for."
+NOT_SENT_YET = "Wait for {label} to be sent before saying what the device did."
+
+# The person's answers to "Did the device do it?", in words for the timeline.
+ANSWERS = {
+    "yes": "The person said the device did it.",
+    "no": "The person said the device did not do it.",
+    "partly": "The person said the device partly did it.",
+    "cant_tell": "The person could not tell from where they were.",
+}
 
 # The keys the platform writes for every device: not what a command changed.
 _PLATFORM_KEYS = frozenset({
@@ -340,6 +356,8 @@ class CommandTrial:
     refusals: dict[str, Any] = field(default_factory=dict)
     sent_nothing: bool | None = None
     restart: dict[str, Any] | None = None
+    # The person's answer to "Did the device do it?": {"answer", "note", "at"}.
+    answer: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def window_end(self) -> float:
@@ -378,6 +396,7 @@ class CommandTrial:
             "refusals": dict(self.refusals),
             "sent_nothing": self.sent_nothing,
             "restart": self.restart,
+            "answer": dict(self.answer) if self.answer else None,
             **self.extra,
         }
 
@@ -479,6 +498,23 @@ class CommandPass:
         if earlier is None or (name is not None and earlier.command != name):
             raise AuditError(NO_SUCH_TRIAL.format(number=number))
         return await self.send(earlier.command, dict(earlier.params))
+
+    def answer(self, number: int, answer: str, note: str = "") -> CommandTrial:
+        """Record what the person saw the device do for command ``number``.
+        Answering again replaces the answer (the timeline keeps both)."""
+        trial = next((t for t in self.trials if t.number == number), None)
+        if trial is None:
+            raise AuditError(NO_TRIAL_TO_ANSWER.format(number=number))
+        if trial.status == SENDING:
+            raise AuditError(NOT_SENT_YET.format(label=trial.label))
+        trial.answer = {"answer": answer, "note": note, "at": time.time()}
+        self.session.add_timeline(
+            "command.answer",
+            f"{trial.label}: {ANSWERS[answer]}{' Note: ' + note if note else ''}",
+            run=self.run.index, trial=trial.number, command=trial.command, answer=answer,
+        )
+        self._publish(trial)
+        return trial
 
     def extend(self, seconds: float = EXTEND_SECONDS) -> None:
         """"Wait longer": keep watching the current command."""
