@@ -200,6 +200,8 @@ AUDIT_ROUTES = {
     ("POST", "/api/audit/sessions/{session_id}/front-panel"),
     ("POST", "/api/audit/sessions/{session_id}/commands/{name}"),
     ("POST", "/api/audit/sessions/{session_id}/queries"),
+    ("POST", "/api/audit/sessions/{session_id}/watch/extend"),
+    ("POST", "/api/audit/sessions/{session_id}/watch/stop"),
     ("GET", "/api/audit/sessions/{session_id}/report"),
     ("GET", "/api/audit/reports"),
     ("GET", "/api/audit/reports/{name}"),

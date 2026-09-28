@@ -293,6 +293,18 @@ export interface AuditCommandInfo {
   restarts_device_for: number;
   /** A required parameter has no value yet, so it cannot run in the batch. */
   needs_input: boolean;
+  /** The driver's own confirmation for this command ("" when it asks none). */
+  confirm: string;
+}
+
+/** A declared effect (``sets``) checked against what the device reports. */
+export interface AuditCommandEffect {
+  state: string;
+  state_key: string;
+  expected: unknown;
+  has_value: boolean;
+  value: unknown;
+  outcome: "confirmed" | "already" | "different" | "unchanged" | "not_reported" | "no_value";
 }
 
 export type AuditTrialStatus = "sending" | "watching" | "done";
@@ -318,6 +330,40 @@ export interface AuditCommandTrial {
   error: string;
   error_type: string;
   traffic: { sent: number; received: number; entries: AuditTrafficEntry[] };
+  /** The command sent before this one, and how long before. */
+  since_previous: { number: number; command: string; label: string; seconds: number } | null;
+  /** Seconds "Wait longer" added. */
+  extended: number;
+  stopped_early: boolean;
+  /** Status values that changed while it was watched (the newest 20). */
+  changes: { t: number; key: string; old: unknown; new: unknown }[];
+  device_errors: { t: number; error: string }[];
+  effects: AuditCommandEffect[];
+  query: {
+    state: string;
+    state_key: string;
+    value: unknown;
+    changed: boolean;
+    outcome: "reported" | "not_reported" | "no_reply";
+  } | null;
+  refusals: {
+    device_errors?: number;
+    last_error?: string | null;
+    last_error_writes?: number;
+    unmatched?: number;
+    unmatched_examples?: string[];
+  };
+  /** True: the driver said it succeeded and nothing was sent. Null: not known. */
+  sent_nothing: boolean | null;
+  restart: {
+    declared_seconds: number;
+    went_away_after: number | null;
+    back_after: number | null;
+    away_for: number | null;
+    within_declared: boolean | null;
+  } | null;
+  /** What it did, in a sentence, once its window closed ("" before). */
+  summary: string;
 }
 
 /** The commands step for one driver. */
@@ -563,16 +609,33 @@ export function answerFrontPanel(
   });
 }
 
-/** Send one of the driver's commands; what it does arrives over the WebSocket. */
+/** Send one of the driver's commands; what it does arrives over the WebSocket.
+ *  `again` is "Try again": the number of an earlier send of this command,
+ *  whose values the server still holds. */
 export function sendAuditCommand(
   sessionId: string,
   name: string,
   params: Record<string, unknown>,
+  again: number | null = null,
 ): Promise<{ session: AuditSessionState }> {
   return request(
     `/audit/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(name)}`,
-    { method: "POST", body: JSON.stringify({ params }) },
+    { method: "POST", body: JSON.stringify(again ? { again } : { params }) },
   );
+}
+
+/** "Wait longer": keep watching the command just sent. */
+export function waitLonger(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/watch/extend`, {
+    method: "POST",
+  });
+}
+
+/** "Stop watching": close the command's window now. */
+export function stopWatching(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/watch/stop`, {
+    method: "POST",
+  });
 }
 
 /** Send every status query the driver declares, one after another. */

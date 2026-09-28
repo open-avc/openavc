@@ -455,11 +455,15 @@ class AuditFrontPanelRequest(BaseModel):
 class AuditCommandRequest(BaseModel):
     """Body for ``POST /api/audit/sessions/{id}/commands/{name}``: the
     command's parameters as the person filled them in. The platform's own
-    parameter check runs on them before anything is sent."""
+    parameter check runs on them before anything is sent. ``again`` is "Try
+    again": the number of an earlier send of this command, whose values the
+    server still holds (so a secret one never comes back from the browser);
+    ``params`` is ignored with it."""
 
     model_config = ConfigDict(extra="forbid")
 
     params: dict[str, Any] = Field(default_factory=dict, max_length=64)
+    again: int | None = Field(default=None, ge=1)
 
 
 class AuditTesterRequest(BaseModel):

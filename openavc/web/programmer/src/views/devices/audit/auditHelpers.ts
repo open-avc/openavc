@@ -107,12 +107,36 @@ export function applyAuditMessage(
   if (msg.type === "audit.commands" && typeof msg.run === "number" && msg.commands && session.runs) {
     const index = msg.run;
     if (!session.runs.some((r) => r.index === index)) return { session, timeline };
+    const update = msg.commands as Partial<AuditCommands>;
     const runs = session.runs.map((r) =>
-      r.index === index ? { ...r, commands: msg.commands as AuditCommands } : r,
+      r.index === index ? { ...r, commands: mergeCommands(r.commands, update) } : r,
     );
     return { session: { ...session, runs }, timeline };
   }
   return { session, timeline };
+}
+
+/**
+ * An ``audit.commands`` update applied to a run's commands: it carries the
+ * trial that changed (merged by its number), the batch and what is current,
+ * and the command list only when that changed.
+ */
+export function mergeCommands(
+  before: AuditCommands | undefined,
+  update: Partial<AuditCommands>,
+): AuditCommands {
+  const base: AuditCommands = before ?? { catalog: [], batch: null, current: null, trials: [] };
+  let trials = base.trials;
+  for (const t of update.trials ?? []) {
+    const at = trials.findIndex((x) => x.number === t.number);
+    trials = at >= 0 ? trials.map((x, i) => (i === at ? t : x)) : [...trials, t];
+  }
+  return {
+    catalog: update.catalog ?? base.catalog,
+    batch: update.batch !== undefined ? update.batch : base.batch,
+    current: update.current !== undefined ? update.current : base.current,
+    trials,
+  };
 }
 
 /** The driver's status queries and its other commands, each in the driver's order. */
@@ -135,10 +159,15 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** One command's outcome in a sentence, as it stands now. */
+/** One command's outcome in a sentence, as it stands now. Once its window
+ *  has closed the server's sentence is the word (the timeline and the report
+ *  say the same). */
 export function trialOutcome(trial: AuditCommandTrial): string {
   if (trial.status === "sending") return "Sending.";
   if (trial.error) return `Not accepted: ${trial.error}`;
+  if (trial.status === "done" && trial.summary) {
+    return trial.summary.charAt(0).toUpperCase() + trial.summary.slice(1);
+  }
   const { sent, received } = trial.traffic;
   const went = `Sent ${plural(sent, "message", "messages")}`;
   const back =
@@ -387,6 +416,23 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
             ? `${trials.length}, ${refused} not accepted`
             : String(trials.length),
       });
+      const silent = [...new Set(trials.filter((t) => t.sent_nothing).map((t) => t.label))];
+      if (silent.length > 0) {
+        lines.push({
+          label: `Sent nothing${suffix}`,
+          value: `${silent.join(", ")}: the driver said it succeeded, but nothing was sent`,
+        });
+      }
+      for (const t of trials) {
+        const r = t.restart;
+        if (!r || r.back_after === null) continue;
+        lines.push({
+          label: `Restart${suffix}`,
+          value:
+            `${t.label}: back ${r.back_after} s after the command ` +
+            `(the driver declares ${r.declared_seconds} s)`,
+        });
+      }
     }
   });
   return lines;
@@ -402,4 +448,24 @@ export function verdictDrivers(
     name: names[id]?.name || id,
     sources,
   }));
+}
+
+/** What pressing Send on this command should say first, or "" to send at
+ *  once: the driver's own confirmation, and a restart warning. */
+export function sendWarning(command: AuditCommandInfo): string {
+  const parts: string[] = [];
+  if (command.confirm) parts.push(command.confirm);
+  if (command.restarts_device_for > 0) {
+    parts.push(
+      `This command restarts the device: the driver says it is off the network for up to ` +
+        `${command.restarts_device_for} seconds. The audit times how long it takes to come back.`,
+    );
+  }
+  return parts.join(" ");
+}
+
+/** A status value change as a line reads it: "power: false to true". */
+export function changeText(change: { key: string; old: unknown; new: unknown }): string {
+  const show = (v: unknown) => (v === null || v === undefined ? "nothing" : String(v));
+  return `${change.key}: ${show(change.old)} to ${show(change.new)}`;
 }

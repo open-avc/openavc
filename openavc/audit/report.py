@@ -81,7 +81,24 @@
     ``send_command`` returned), ``error`` and ``error_type`` (what it
     raised, in words and by class) and ``traffic`` (``sent``,
     ``received``, and every entry from the send to the end of its window,
-    in the ``attempts`` traffic form).
+    in the ``attempts`` traffic form). What the window showed:
+    ``since_previous`` (the command sent before it and how many seconds
+    before), ``extended`` (seconds "Wait longer" added), ``stopped_early``
+    ("Stop watching"), ``changes`` (every status value that moved:
+    ``t``, ``key``, ``old``, ``new``), ``device_errors`` (errors the driver
+    published for the device), ``effects`` (each declared ``sets`` entry:
+    ``state``, ``state_key``, ``expected``, ``has_value``, ``value`` and
+    ``outcome``, one of ``confirmed``, ``already``, ``different``,
+    ``unchanged``, ``not_reported``, ``no_value``), ``query`` (a status
+    query's ``state``, ``state_key``, ``value``, ``changed`` and
+    ``outcome``: ``reported``, ``not_reported`` or ``no_reply``),
+    ``refusals`` (``device_errors``, ``last_error``, ``last_error_writes``,
+    ``unmatched`` and ``unmatched_examples``), ``sent_nothing`` (true when
+    the driver returned success while nothing left for the device; null when
+    its traffic is not captured at all) and ``restart``, for a command that
+    declares ``restarts_device_for`` (``declared_seconds``,
+    ``went_away_after``, ``back_after`` and ``away_for`` in seconds, and
+    ``within_declared``); ``summary`` says it in a sentence.
 
 - ``timeline``: every session event in order, typed and timestamped.
 - ``limits``: what the audit could not see, and why.
@@ -1000,18 +1017,11 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
 
 
 def _trial_outcome(trial: dict[str, Any]) -> str:
-    """One command's outcome in a sentence."""
-    if trial.get("error"):
-        return f"Not accepted: {trial['error']}"
-    traffic = trial.get("traffic") or {}
-    received = traffic.get("received", 0)
-    sent = traffic.get("sent", 0)
-    text = f"Sent {sent} {'message' if sent == 1 else 'messages'}"
-    if received:
-        text += f"; the device sent {received} {'reply' if received == 1 else 'replies'}"
-    else:
-        text += "; nothing came back"
-    return text + "."
+    """One command's outcome in a sentence (the timeline's words)."""
+    from openavc.audit.commands import trial_sentence
+
+    text = trial.get("summary") or trial_sentence(trial)
+    return text[:1].upper() + text[1:]
 
 
 def _render_commands(commands: dict[str, Any] | None) -> list[str]:
@@ -1026,6 +1036,9 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
             label += " (" + ", ".join(f"{k} {v}" for k, v in params.items()) + ")"
         if trial.get("batch"):
             label += ", with the status queries"
+        before = trial.get("since_previous")
+        if trial.get("attempt", 1) > 1 and before:
+            label += f", again {before['seconds']:.1f} s after {before['label']}"
         parts.append(_row(label, _e(_trial_outcome(trial))))
     parts.append("</table>")
     return parts

@@ -9,9 +9,12 @@ import type {
 import {
   applyAuditMessage,
   batchableQueries,
+  changeText,
   commandGroups,
   driverLines,
+  mergeCommands,
   paramsText,
+  sendWarning,
   stepFor,
   trialOutcome,
 } from "./auditHelpers";
@@ -19,7 +22,8 @@ import {
 function command(name: string, extra: Partial<AuditCommandInfo> = {}): AuditCommandInfo {
   return {
     name, label: name, help: "", params: {}, query: false, query_for: "", polled: false,
-    sets: {}, available_offline: false, restarts_device_for: 0, needs_input: false, ...extra,
+    sets: {}, available_offline: false, restarts_device_for: 0, needs_input: false, confirm: "",
+    ...extra,
   };
 }
 
@@ -28,7 +32,9 @@ function trial(extra: Partial<AuditCommandTrial> = {}): AuditCommandTrial {
     number: 1, command: "set_volume", label: "Set Volume", params: { level: 40 }, attempt: 1,
     batch: false, connect_attempt: 0, sent_at: 10, returned_at: 10.1, ends_at: 12,
     finished_at: 12, status: "done", result: null, error: "", error_type: "",
-    traffic: { sent: 1, received: 1, entries: [] }, ...extra,
+    traffic: { sent: 1, received: 1, entries: [] }, since_previous: null, extended: 0,
+    stopped_early: false, changes: [], device_errors: [], effects: [], query: null, refusals: {},
+    sent_nothing: false, restart: null, summary: "", ...extra,
   };
 }
 
@@ -73,6 +79,14 @@ describe("what a command did, in words", () => {
     expect(trialOutcome(trial({ status: "sending" }))).toBe("Sending.");
   });
 
+  it("takes the server's sentence once the window has closed", () => {
+    expect(trialOutcome(trial({ summary: "volume is now 40, as the driver says it should be." })))
+      .toBe("Volume is now 40, as the driver says it should be.");
+    // While it is watched the counts are what there is.
+    expect(trialOutcome(trial({ status: "watching", summary: "" })))
+      .toBe("Sent 1 message; the device sent 1 reply.");
+  });
+
   it("gives the refusal when the command was not accepted", () => {
     expect(trialOutcome(trial({ error: "'set_volume': 'level' must be at most 100, got 150" })))
       .toBe("Not accepted: 'set_volume': 'level' must be at most 100, got 150");
@@ -84,7 +98,39 @@ describe("what a command did, in words", () => {
   });
 });
 
+describe("before a command is sent", () => {
+  it("sends at once when the driver asks nothing", () => {
+    expect(sendWarning(command("power_on"))).toBe("");
+  });
+
+  it("says the driver's confirmation and the restart first", () => {
+    expect(sendWarning(command("reboot", { confirm: "The device restarts.", restarts_device_for: 60 })))
+      .toBe(
+        "The device restarts. This command restarts the device: the driver says it is off the " +
+          "network for up to 60 seconds. The audit times how long it takes to come back.",
+      );
+  });
+
+  it("writes a change the way a line reads it", () => {
+    expect(changeText({ key: "power", old: false, new: true })).toBe("power: false to true");
+    expect(changeText({ key: "input", old: null, new: "hdmi1" })).toBe("input: nothing to hdmi1");
+  });
+});
+
 describe("following the commands step", () => {
+  it("merges an update by trial number and keeps the list it did not send", () => {
+    const catalog = [command("power_on")];
+    const before = { catalog, batch: null, current: 1, trials: [trial({ status: "watching" })] };
+    const done = trial({ status: "done", summary: "power is now true." });
+    const after = mergeCommands(before, { batch: null, current: null, trials: [done] });
+    expect(after.catalog).toBe(catalog);
+    expect(after.trials).toEqual([done]);
+    expect(after.current).toBeNull();
+    const next = mergeCommands(after, { current: 2, trials: [trial({ number: 2 })] });
+    expect(next.trials.map((t) => t.number)).toEqual([1, 2]);
+    expect(mergeCommands(undefined, { catalog }).catalog).toBe(catalog);
+  });
+
   const commands: AuditCommands = { catalog: [], batch: null, current: 1, trials: [trial()] };
 
   it("picks up on the commands step once a command was sent", () => {
@@ -101,7 +147,7 @@ describe("following the commands step", () => {
     const { session: after } = applyAuditMessage(before, [], {
       type: "audit.commands", session_id: "abc123", run: 0, commands,
     });
-    expect(after!.runs![0].commands).toBe(commands);
+    expect(after!.runs![0].commands).toEqual(commands);
     // A run the wizard does not have is left alone.
     const same = applyAuditMessage(before, [], {
       type: "audit.commands", session_id: "abc123", run: 5, commands,
@@ -120,5 +166,22 @@ describe("following the commands step", () => {
       commands: { trials: [trial(), trial({ number: 2, error: "No." })] },
     } as unknown as AuditReportDriver;
     expect(driverLines([d]).at(-1)).toEqual({ label: "Commands sent", value: "2, 1 not accepted" });
+    const found = {
+      ...d,
+      commands: {
+        trials: [
+          trial({ label: "Power On", sent_nothing: true }),
+          trial({
+            number: 2, label: "Reboot",
+            restart: { declared_seconds: 60, went_away_after: 4, back_after: 48.4, away_for: 44.4,
+              within_declared: true },
+          }),
+        ],
+      },
+    } as unknown as AuditReportDriver;
+    expect(driverLines([found]).slice(-2)).toEqual([
+      { label: "Sent nothing", value: "Power On: the driver said it succeeded, but nothing was sent" },
+      { label: "Restart", value: "Reboot: back 48.4 s after the command (the driver declares 60 s)" },
+    ]);
   });
 });

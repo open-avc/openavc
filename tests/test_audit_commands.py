@@ -4,7 +4,10 @@ Against a loopback fake device that understands a few commands: the command
 list as the live driver declares it, one Send and what came back, the
 platform's own gates (a parameter out of range never reaches the device), one
 command at a time, the status queries run together, a secret parameter kept
-out of every record, and the report's commands section.
+out of every record, and the report's commands section. Then the window: the
+declared effect checked against what the device reports, a refusal, a command
+that sent nothing, a restart timed, "Wait longer", "Stop watching" and "Try
+again".
 """
 
 from __future__ import annotations
@@ -22,12 +25,12 @@ from openavc.api.models import (
     AuditStartRequest,
 )
 from openavc.api.routes import audit as routes
-from openavc.audit.commands import DONE, commands_for
+from openavc.audit.commands import DONE, commands_for, same_value, trial_sentence
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import DONE as LISTEN_DONE
 from openavc.audit.listen import start_listen
 from openavc.audit.passes import DriverRun
-from openavc.audit.report import build_report
+from openavc.audit.report import build_report, render_summary
 from openavc.audit.session import AuditError, AuditOptions, AuditSession, AuditTarget
 from openavc.core.device_traffic import get_traffic_recorder
 from openavc.drivers.configurable import create_configurable_driver_class
@@ -45,6 +48,8 @@ DRIVER = {
     "state_variables": {
         "power": {"type": "boolean", "label": "Power"},
         "volume": {"type": "integer", "label": "Volume"},
+        "input": {"type": "enum", "values": ["hdmi1", "hdmi2"], "label": "Input"},
+        "last_error": {"type": "string", "label": "Last error"},
     },
     "commands": {
         "power_on": {"label": "Power On", "send": "PWR 1\\r", "sets": {"power": True}},
@@ -61,16 +66,28 @@ DRIVER = {
             "send": "CODE {pin}\\r",
             "params": {"pin": {"type": "string", "secret": True, "required": True}},
         },
+        "set_input": {
+            "label": "Set Input",
+            "send": "INP {source}\\r",
+            "params": {"source": {"type": "enum", "values": ["hdmi1", "hdmi2"], "required": True}},
+            "sets": {"input": "{source}"},
+        },
+        "reboot": {"label": "Reboot", "send": "REBOOT\\r", "restarts_device_for": 5},
     },
+    "actions": [
+        {"id": "reboot", "kind": "command", "confirm": "The device restarts."},
+    ],
     "polling": {"queries": ["query_volume"]},
     "responses": [
         {"match": r"PWR=(\w+)", "set": {"power": "$1"}},
         {"match": r"VOL=(\d+)", "set": {"volume": "$1"}},
+        {"match": r"INP=(\w+)", "set": {"input": "$1"}},
+        {"match": r"ERR", "set": {"last_error": "refused"}},
     ],
 }
 
 FAST = {"min_seconds": 0.3, "min_cycles": 1, "max_seconds": 5.0, "flush_seconds": 0.05}
-WINDOW = {"window_seconds": 0.3, "flush_seconds": 0.05}
+WINDOW = {"window_seconds": 0.3, "query_window_seconds": 0.2, "flush_seconds": 0.05}
 
 
 @pytest.fixture
@@ -103,6 +120,12 @@ async def _fake_device():
                     reply = f"VOL={state['volume']}\r".encode()
                 elif line.startswith("CODE "):
                     reply = b"ERR\r"
+                elif line.startswith("INP "):
+                    # This unit has one input: it answers hdmi1 whatever it is asked.
+                    reply = b"INP=hdmi1\rLAMP=450\r"
+                elif line == "REBOOT":
+                    writer.close()
+                    return
                 if reply:
                     writer.write(reply)
                     await writer.drain()
@@ -142,13 +165,18 @@ def test_the_command_list_is_the_drivers_own(driver):
     from openavc.audit.commands import command_catalog
 
     catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
-    assert list(catalog) == ["power_on", "set_volume", "query_power", "query_volume", "set_code"]
+    assert list(catalog) == [
+        "power_on", "set_volume", "query_power", "query_volume", "set_code", "set_input", "reboot",
+    ]
     assert catalog["query_power"]["query"] and catalog["query_power"]["query_for"] == "power"
     # Polled by name: a status query though it declares no query_for.
     assert catalog["query_volume"]["query"] and catalog["query_volume"]["polled"]
     assert not catalog["power_on"]["query"]
     assert catalog["power_on"]["sets"] == {"power": True}
     assert catalog["set_volume"]["needs_input"] and not catalog["power_on"]["needs_input"]
+    # The driver's own confirmation, from the action that wraps the command.
+    assert catalog["reboot"]["confirm"] == "The device restarts."
+    assert catalog["reboot"]["restarts_device_for"] == 5 and catalog["power_on"]["confirm"] == ""
 
 
 async def test_a_command_is_sent_through_the_production_door(driver):
@@ -197,6 +225,11 @@ async def test_the_status_queries_run_together(driver):
         assert [t.command for t in commands.trials] == ["query_power", "query_volume"]
         assert all(t.batch and t.status == DONE for t in commands.trials)
         assert run.listen.sandbox.device_state()["power"] is False
+        # A status query's declared variable is read back from its reply.
+        assert commands.trials[0].query == {
+            "state": "power", "state_key": "power", "value": False, "changed": True,
+            "outcome": "reported",
+        }
     finally:
         await run.stop()
         server.close()
@@ -246,7 +279,7 @@ async def test_stopping_the_driver_ends_the_command_being_watched(driver):
 
 
 def test_the_request_declares_every_field():
-    assert set(AuditCommandRequest.model_fields) == {"params"}
+    assert set(AuditCommandRequest.model_fields) == {"params", "again"}
     with pytest.raises(ValidationError):
         AuditCommandRequest(params={}, retry=True)
 
@@ -277,8 +310,163 @@ async def test_the_routes(wired, driver):  # noqa: F811
         with pytest.raises(HTTPException) as exc:
             await routes.run_status_queries(session_id)
         assert exc.value.status_code == 409 and "Wait for Power On" in exc.value.detail
+        first = session.runs[0].commands.trials[0]
+        await _until(lambda: first.status == "watching")
+        await routes.wait_longer(session_id)
+        assert first.extended == pytest.approx(10.0)
+        await routes.stop_watching(session_id)
+        await _until(lambda: first.status == DONE)
+        assert first.stopped_early
+        with pytest.raises(HTTPException) as exc:
+            await routes.stop_watching(session_id)
+        assert exc.value.status_code == 409
+
+        # Try again names an earlier send of this command, not another's.
+        with pytest.raises(HTTPException) as exc:
+            await routes.send_command(session_id, "set_volume", AuditCommandRequest(again=1))
+        assert exc.value.status_code == 409
+        result = await routes.send_command(session_id, "power_on", AuditCommandRequest(again=1))
+        assert result["session"]["runs"][0]["commands"]["trials"][1]["attempt"] == 2
         await routes.end_session(session_id, cancel=True)
-        assert session.runs[0].commands.trials[0].status == DONE
+        assert all(t.status == DONE for t in session.runs[0].commands.trials)
     finally:
         server.close()
         await wired.manager.shutdown()
+
+
+async def _sent(commands, name, params=None, *, again=None):
+    trial = await (commands.send_again(again) if again else commands.send(name, params))
+    await _until(lambda: trial.status == DONE)
+    return trial
+
+
+async def test_the_declared_effect_is_checked_against_what_the_device_reports(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        first = await _sent(commands, "power_on")
+        assert first.effects == [{
+            "state": "power", "state_key": "power", "expected": True, "has_value": True,
+            "value": True, "outcome": "confirmed",
+        }]
+        assert first.sent_nothing is False
+        # Again: it already was on, so the audit cannot tell it did anything.
+        second = await _sent(commands, "power_on")
+        assert second.effects[0]["outcome"] == "already"
+        assert second.attempt == 2
+        assert second.since_previous["command"] == "power_on"
+        assert second.since_previous["seconds"] > 0
+
+        # A device that answers something else: it changed, but not to that.
+        wrong = await _sent(commands, "set_input", {"source": "hdmi2"})
+        assert wrong.effects[0]["outcome"] == "different"
+        assert wrong.effects[0]["value"] == "hdmi1"
+        assert wrong.refusals["unmatched"] == 1
+        assert wrong.refusals["unmatched_examples"] == ["LAMP=450"]
+        assert "input changed to hdmi1, not hdmi2" in session.timeline[-1].text
+        # The same again: it is still hdmi1.
+        again = await _sent(commands, "set_input", again=wrong.number)
+        assert again.params == {"source": "hdmi2"}
+        assert again.effects[0]["outcome"] == "unchanged"
+    finally:
+        await run.stop()
+        server.close()
+    # The summary says what the timeline says.
+    summary = render_summary(build_report(session))
+    assert "Power is now true, as the driver says it should be." in summary
+    assert "4. Set Input (source hdmi2), again" in summary
+
+
+async def test_a_refusal_is_caught(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        refused = await _sent(commands, "set_code", {"pin": "7391"})
+        assert refused.error == ""  # the driver took it; the device did not
+        assert refused.refusals["last_error"] == "refused"
+        assert refused.refusals["last_error_writes"] == 1
+        assert "the device refused it: refused" in session.timeline[-1].text
+        # Try again reuses the secret value the browser never had.
+        again = await _sent(commands, "set_code", again=refused.number)
+        assert again.params == {"pin": "7391"} and again.to_dict()["params"] == {"pin": "***"}
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_a_command_that_sent_nothing_is_flagged(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        await _until(lambda: run.listen.sandbox.observer.frames())  # the first poll
+        live = run.listen.sandbox.driver
+        original = live.send_command
+
+        async def quiet(command, params=None):
+            if command == "power_on":
+                return None  # "handled", and nothing sent
+            return await original(command, params)
+
+        live.send_command = quiet
+        trial = await _sent(commands, "power_on")
+        assert trial.sent_nothing is True
+        assert "contract.command_sent_nothing" in [e.kind for e in session.timeline]
+        assert "nothing was sent" in trial_sentence(trial.to_dict())
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_a_restart_is_timed_against_the_declared_window(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(
+            session, run, **WINDOW, restart_margin_seconds=10.0, after_reconnect_seconds=0.2,
+        )
+        trial = await commands.send("reboot")
+        await _until(lambda: trial.status == DONE, timeout=15.0)
+        restart = trial.restart
+        assert restart["declared_seconds"] == 5
+        assert restart["went_away_after"] is not None
+        assert restart["back_after"] is not None and restart["within_declared"] is True
+        assert restart["away_for"] <= restart["back_after"]
+        assert "came back" in trial_sentence(trial.to_dict())
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_wait_longer_and_stop_watching(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, window_seconds=30.0, max_window_seconds=40.0,
+                                flush_seconds=0.05)
+        with pytest.raises(AuditError, match="No command is being watched"):
+            commands.extend()
+        trial = await commands.send("power_on")
+        await _until(lambda: trial.status == "watching")
+        before = trial.ends_at
+        commands.extend()
+        assert trial.ends_at == pytest.approx(before + 10.0)
+        assert trial.extended == pytest.approx(10.0)
+        # 30 seconds and one more wait reach the 40-second ceiling.
+        with pytest.raises(AuditError, match="for 40 seconds at most"):
+            commands.extend()
+        commands.end_now()
+        await _until(lambda: trial.status == DONE)
+        assert trial.stopped_early
+        assert trial.effects[0]["outcome"] == "confirmed"
+    finally:
+        await run.stop()
+        server.close()
+
+
+def test_a_value_the_device_spells_its_own_way_still_counts():
+    assert same_value(True, "on") and same_value(True, 1) and not same_value(True, "off")
+    assert same_value(40, "40") and same_value("hdmi1", "HDMI1")
+    assert not same_value(40, None) and not same_value(True, "standby")

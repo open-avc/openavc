@@ -25,8 +25,10 @@ turns a refusal into its sentence.
 - ``POST /audit/sessions/{id}/connect`` (connect and listen),
   ``POST /audit/sessions/{id}/listen/extend`` ("Keep listening") and
   ``POST /audit/sessions/{id}/front-panel`` (the front-panel check's answer).
-- ``POST /audit/sessions/{id}/commands/{name}`` (Send one command) and
-  ``POST /audit/sessions/{id}/queries`` (run every status query);
+- ``POST /audit/sessions/{id}/commands/{name}`` (Send one command, or Try
+  again), ``POST /audit/sessions/{id}/queries`` (run every status query),
+  ``POST /audit/sessions/{id}/watch/extend`` ("Wait longer") and
+  ``POST /audit/sessions/{id}/watch/stop`` ("Stop watching");
   ``audit/commands.py``.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
@@ -382,11 +384,39 @@ async def send_command(session_id: str, name: str, body: AuditCommandRequest) ->
     arrives over ``audit.subscribe``."""
     session = _session(session_id)
     run = _listening_run(session)
+    commands = commands_for(session, run)
     try:
-        await commands_for(session, run).send(name, dict(body.params))
+        if body.again is not None:
+            await commands.send_again(body.again, name)
+        else:
+            await commands.send(name, dict(body.params))
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/watch/extend")
+async def wait_longer(session_id: str) -> dict[str, Any]:
+    """Keep watching the command just sent (up to two minutes)."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        commands_for(session, run).extend()
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/watch/stop")
+async def stop_watching(session_id: str) -> dict[str, Any]:
+    """Close the command's window now."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        commands_for(session, run).end_now()
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return {"session": session.to_dict()}
 
 
