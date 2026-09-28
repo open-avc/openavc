@@ -26,8 +26,15 @@ every socket handshake and the entropy is the defence; see
 approval issues a new one, so the value a device held while waiting never
 becomes a credential. The approved secret reaches the device on its next
 check-in, which still presents the pending one: that handoff is remembered in
-memory only, for 15 minutes, then dropped. A restart inside that window sends
-the device back to pending and the programmer approves it again.
+memory only, for 15 minutes, then dropped. It is honoured every time the
+pending value is presented inside that window, not once, because a tablet's
+browser writes cookies to disk on a timer: a tablet restarted seconds after
+approval comes back holding the pending cookie it had for a minute, not the
+approved one it had for five seconds, and collecting the same approved secret
+again is what keeps it approved instead of waiting with a new code (measured
+on Android WebView, where a restart seven seconds after approval lost the
+cookie and one 46 seconds after kept it). A server restart inside the window
+forgets the handoff and the programmer approves the device again.
 
 **Access mode.** ``panels.access`` in ``system.json`` is ``approved`` or
 ``open``; ``access_mode()`` reads it and fails closed, so anything other than
@@ -494,9 +501,10 @@ class PanelDeviceStore:
 
         A device presenting an approved cookie is approved (and its cookie
         re-issued when a day old); one presenting its pending cookie keeps
-        its code; a just-approved one collects its real cookie; a denied one
-        is told so. Anything else is a new device, which gets a pending
-        record and a code, within the caps.
+        its code; a just-approved one collects its real cookie, as often as
+        it asks while the handoff lasts; a denied one is told so. Anything
+        else is a new device, which gets a pending record and a code, within
+        the caps.
         """
         now = time.monotonic()
         stamp = _now_iso()
@@ -505,8 +513,9 @@ class PanelDeviceStore:
             device.last_checkin = now
             if device.status == STATUS_APPROVED:
                 if how == "handoff":
+                    # Kept, not cleared: the device may lose this write and
+                    # present the pending value again (module docstring).
                     secret = device.handoff_secret
-                    self._clear_handoff(device)
                     device.cookie_issued_at = stamp
                     device.last_seen = stamp
                     device.last_seen_written = now
@@ -618,10 +627,10 @@ class PanelDeviceStore:
 
     def mark_delivered(self, device_id: str) -> None:
         """The approved secret reached the device in the same response
-        (the claim route); nothing is left to hand over."""
+        (the claim route). The handoff stays for its window all the same,
+        for the device that loses that write."""
         device = self._devices.get(device_id)
         if device is not None and device.status == STATUS_APPROVED:
-            self._clear_handoff(device)
             device.cookie_issued_at = _now_iso()
             self.save()
 
@@ -655,7 +664,7 @@ class PanelDeviceStore:
 
     def expire(self) -> list[PanelDevice]:
         """Drop pending records idle for 15 minutes and denied ones a day
-        old, and forget a handoff nobody collected. Returns what was dropped
+        old, and forget a handoff past its window. Returns what was dropped
         so the caller can tell the Programmer."""
         now = time.monotonic()
         dropped: list[PanelDevice] = []

@@ -200,10 +200,14 @@ def test_approval_rotates_the_secret_and_the_pending_value_collects_it(store):
     assert handoff.cookie_max_age == pd.COOKIE_MAX_AGE_SECONDS
     assert store.verify(handoff.set_cookie) is device
 
-    # And the pending value is spent: presenting it again is a new device.
+    # Presenting the pending value again inside the window collects the same
+    # secret again: a tablet restarted before its browser wrote the approved
+    # cookie to disk still holds the pending one, and it stays approved rather
+    # than waiting as a new device with a new code.
     again = store.check_in(pending_cookie, address="10.1.1.50", user_agent=UA_IPAD)
-    assert again.status == "pending" and again.created
-    assert again.device.id != device.id
+    assert again.status == "approved" and not again.created
+    assert again.device is device
+    assert again.set_cookie == handoff.set_cookie
 
 
 def test_a_wrong_secret_for_a_known_id_is_a_stranger(store):
@@ -220,15 +224,34 @@ def test_the_claim_path_delivers_the_secret_in_the_same_response(store):
     device, secret = store.approve(result.device.id, "Wall", "admin password on the panel")
     store.mark_delivered(device.id)
     assert store.verify(f"{device.id}.{secret}") is device
-    # Nothing left to hand over, so the pending value is spent at once.
+    # The pending value still collects the same secret inside the window, for
+    # the device that loses the write it was handed here.
     again = store.check_in(result.set_cookie, address="10.1.1.50", user_agent=UA_IPAD)
-    assert again.status == "pending" and again.created
+    assert again.status == "approved" and not again.created
+    assert again.set_cookie == f"{device.id}.{secret}"
 
 
 def test_a_handoff_nobody_collected_is_forgotten(store, clock):
     result = _new_device(store)
     store.approve(result.device.id, "Wall", "admin")
     clock.advance(HANDOFF_TTL_SECONDS + 1)
+    store.expire()
+    again = store.check_in(result.set_cookie, address="10.1.1.50", user_agent=UA_IPAD)
+    assert again.status == "pending" and again.created
+
+
+def test_a_collected_handoff_lasts_its_window_and_no_longer(store, clock):
+    result = _new_device(store)
+    store.approve(result.device.id, "Wall", "admin")
+    collected = store.check_in(result.set_cookie, address="10.1.1.50", user_agent=UA_IPAD)
+    assert collected.status == "approved"
+
+    clock.advance(HANDOFF_TTL_SECONDS - 1)
+    store.expire()
+    still = store.check_in(result.set_cookie, address="10.1.1.50", user_agent=UA_IPAD)
+    assert still.status == "approved" and still.set_cookie == collected.set_cookie
+
+    clock.advance(2)
     store.expire()
     again = store.check_in(result.set_cookie, address="10.1.1.50", user_agent=UA_IPAD)
     assert again.status == "pending" and again.created
