@@ -5,6 +5,9 @@
 import type {
   AuditActivity,
   AuditActivityKey,
+  AuditCommandInfo,
+  AuditCommands,
+  AuditCommandTrial,
   AuditConflictDevice,
   AuditDriverRun,
   AuditListen,
@@ -17,7 +20,14 @@ import type {
   AuditTimelineEntry,
 } from "../../../api/auditClient";
 
-export type AuditStep = "target" | "network" | "driver" | "connection" | "listen" | "report";
+export type AuditStep =
+  | "target"
+  | "network"
+  | "driver"
+  | "connection"
+  | "listen"
+  | "commands"
+  | "report";
 
 /** The steps this wizard has, in order, with their rail labels. */
 export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
@@ -26,6 +36,7 @@ export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
   { key: "driver", label: "Driver" },
   { key: "connection", label: "Connection" },
   { key: "listen", label: "Connect and listen" },
+  { key: "commands", label: "Commands" },
   { key: "report", label: "Report" },
 ];
 
@@ -48,6 +59,7 @@ export const ACTIVITY_ORDER: AuditActivityKey[] = [
 export function stepFor(session: AuditSessionState | null): AuditStep {
   if (!session) return "target";
   if (session.steps.includes("report")) return "report";
+  if (session.steps.includes("commands")) return "commands";
   if (session.steps.includes("listen")) return "listen";
   if (session.steps.includes("connection")) return "connection";
   if (session.steps.includes("driver")) return "driver";
@@ -92,7 +104,57 @@ export function applyAuditMessage(
     );
     return { session: { ...session, runs }, timeline };
   }
+  if (msg.type === "audit.commands" && typeof msg.run === "number" && msg.commands && session.runs) {
+    const index = msg.run;
+    if (!session.runs.some((r) => r.index === index)) return { session, timeline };
+    const runs = session.runs.map((r) =>
+      r.index === index ? { ...r, commands: msg.commands as AuditCommands } : r,
+    );
+    return { session: { ...session, runs }, timeline };
+  }
   return { session, timeline };
+}
+
+/** The driver's status queries and its other commands, each in the driver's order. */
+export function commandGroups(catalog: AuditCommandInfo[]): {
+  queries: AuditCommandInfo[];
+  commands: AuditCommandInfo[];
+} {
+  return {
+    queries: catalog.filter((c) => c.query),
+    commands: catalog.filter((c) => !c.query),
+  };
+}
+
+/** How many status queries "Run all status queries" would send. */
+export function batchableQueries(catalog: AuditCommandInfo[]): number {
+  return catalog.filter((c) => c.query && !c.needs_input).length;
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** One command's outcome in a sentence, as it stands now. */
+export function trialOutcome(trial: AuditCommandTrial): string {
+  if (trial.status === "sending") return "Sending.";
+  if (trial.error) return `Not accepted: ${trial.error}`;
+  const { sent, received } = trial.traffic;
+  const went = `Sent ${plural(sent, "message", "messages")}`;
+  const back =
+    received > 0
+      ? `the device sent ${plural(received, "reply", "replies")}`
+      : trial.status === "watching"
+        ? "waiting for a reply"
+        : "nothing came back";
+  return `${went}; ${back}.`;
+}
+
+/** A command's parameters as a line reads them: "level 40, input hdmi1". */
+export function paramsText(params: Record<string, unknown>): string {
+  return Object.entries(params)
+    .map(([k, v]) => `${k} ${String(v)}`)
+    .join(", ");
 }
 
 /** The live traffic the wizard keeps (the report has all of it). */
@@ -313,6 +375,17 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       lines.push({
         label: `Replies not understood${suffix}`,
         value: `${unmatched} matched none of the driver's rules`,
+      });
+    }
+    const trials = d.commands?.trials ?? [];
+    if (trials.length > 0) {
+      const refused = trials.filter((t) => t.error).length;
+      lines.push({
+        label: `Commands sent${suffix}`,
+        value:
+          refused > 0
+            ? `${trials.length}, ${refused} not accepted`
+            : String(trials.length),
       });
     }
   });

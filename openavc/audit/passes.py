@@ -63,12 +63,22 @@ class DriverRun:
     # attempt in order (a failed sign-in, then the one after the fix).
     listen: Any = None
     listens: list[Any] = field(default_factory=list)
+    # The commands step (``audit/commands.py``), made when first used.
+    commands: Any = None
     # State the later steps add to ``to_dict`` (name -> value or provider).
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def active(self) -> bool:
         return self.sandbox is not None and self.sandbox.started
+
+    async def end_attempt(self) -> None:
+        """End the current connection: first what the commands step is
+        sending or watching, then the connection itself. Results stay."""
+        if self.commands is not None:
+            await self.commands.stop()
+        if self.listen is not None:
+            await self.listen.stop()
 
     def to_dict(self) -> dict[str, Any]:
         out = {
@@ -90,8 +100,7 @@ class DriverRun:
         """Stop the sandbox, if one is running. Results stay."""
         import time
 
-        if self.listen is not None:
-            await self.listen.stop()
+        await self.end_attempt()
         sandbox = self.sandbox
         if sandbox is not None and sandbox.started:
             await sandbox.stop()
@@ -298,8 +307,7 @@ async def set_connection(
     if run is None or not run.choice.driver_id:
         raise AuditError(NO_DRIVER_CHOSEN)
     # New settings end a connection made with the old ones.
-    if run.listen is not None:
-        await run.listen.stop()
+    await run.end_attempt()
     entered = {k: v for k, v in config.items() if v not in (None, "")}
     base: dict[str, Any] = {}
     saved_name = ""

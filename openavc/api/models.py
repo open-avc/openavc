@@ -452,6 +452,16 @@ class AuditFrontPanelRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
+class AuditCommandRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/commands/{name}``: the
+    command's parameters as the person filled them in. The platform's own
+    parameter check runs on them before anything is sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    params: dict[str, Any] = Field(default_factory=dict, max_length=64)
+
+
 class AuditTesterRequest(BaseModel):
     """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
     report, all optional, and whether to leave the serial number out."""

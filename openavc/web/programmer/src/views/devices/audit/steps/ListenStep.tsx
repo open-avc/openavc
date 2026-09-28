@@ -184,7 +184,7 @@ export function ListenStep() {
         <div style={{ marginTop: "var(--space-lg)" }}>
           <button
             type="button"
-            onClick={() => useAuditStore.getState().setStep("report")}
+            onClick={() => useAuditStore.getState().setStep("commands")}
             disabled={listen.status === "connecting"}
             style={buttonStyle("primary", listen.status === "connecting")}
           >

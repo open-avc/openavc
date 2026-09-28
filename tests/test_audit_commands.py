@@ -1,0 +1,284 @@
+"""Commands: each of the driver's commands sent through the production door.
+
+Against a loopback fake device that understands a few commands: the command
+list as the live driver declares it, one Send and what came back, the
+platform's own gates (a parameter out of range never reaches the device), one
+command at a time, the status queries run together, a secret parameter kept
+out of every record, and the report's commands section.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+from fastapi import HTTPException
+from pydantic import ValidationError
+
+from openavc.api.models import (
+    AuditCommandRequest,
+    AuditConnectionRequest,
+    AuditDriverRequest,
+    AuditStartRequest,
+)
+from openavc.api.routes import audit as routes
+from openavc.audit.commands import DONE, commands_for
+from openavc.audit.driver_choice import DriverChoice
+from openavc.audit.listen import DONE as LISTEN_DONE
+from openavc.audit.listen import start_listen
+from openavc.audit.passes import DriverRun
+from openavc.audit.report import build_report
+from openavc.audit.session import AuditError, AuditOptions, AuditSession, AuditTarget
+from openavc.core.device_traffic import get_traffic_recorder
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.registry import _DRIVER_REGISTRY
+from openavc.utils.log_redaction import get_secret_registry
+from tests.test_audit_api import wired  # noqa: F401  (the fixture)
+
+DRIVER = {
+    "id": "acme_commands",
+    "name": "Acme Commands",
+    "manufacturer": "Acme",
+    "category": "utility",
+    "transport": "tcp",
+    "default_config": {"port": 1, "poll_interval": 30},
+    "state_variables": {
+        "power": {"type": "boolean", "label": "Power"},
+        "volume": {"type": "integer", "label": "Volume"},
+    },
+    "commands": {
+        "power_on": {"label": "Power On", "send": "PWR 1\\r", "sets": {"power": True}},
+        "set_volume": {
+            "label": "Set Volume",
+            "send": "VOL {level}\\r",
+            "params": {"level": {"type": "integer", "min": 0, "max": 100, "required": True}},
+            "sets": {"volume": "{level}"},
+        },
+        "query_power": {"label": "Query Power", "send": "PWR?\\r", "query_for": "power"},
+        "query_volume": {"label": "Query Volume", "send": "VOL?\\r"},
+        "set_code": {
+            "label": "Set Code",
+            "send": "CODE {pin}\\r",
+            "params": {"pin": {"type": "string", "secret": True, "required": True}},
+        },
+    },
+    "polling": {"queries": ["query_volume"]},
+    "responses": [
+        {"match": r"PWR=(\w+)", "set": {"power": "$1"}},
+        {"match": r"VOL=(\d+)", "set": {"volume": "$1"}},
+    ],
+}
+
+FAST = {"min_seconds": 0.3, "min_cycles": 1, "max_seconds": 5.0, "flush_seconds": 0.05}
+WINDOW = {"window_seconds": 0.3, "flush_seconds": 0.05}
+
+
+@pytest.fixture
+def driver():
+    _DRIVER_REGISTRY["acme_commands"] = create_configurable_driver_class(DRIVER)
+    yield
+    _DRIVER_REGISTRY.pop("acme_commands", None)
+    get_traffic_recorder().clear()
+    get_secret_registry().clear()
+
+
+async def _fake_device():
+    """A device with a power flag and a volume, answering the driver's words."""
+    state = {"power": "off", "volume": "20"}
+
+    async def handle(reader, writer):
+        try:
+            while True:
+                line = (await reader.readuntil(b"\r")).decode().strip()
+                reply = b""
+                if line == "PWR 1":
+                    state["power"] = "on"
+                    reply = b"PWR=on\r"
+                elif line == "PWR?":
+                    reply = f"PWR={state['power']}\r".encode()
+                elif line.startswith("VOL "):
+                    state["volume"] = line[4:]
+                    reply = f"VOL={state['volume']}\r".encode()
+                elif line == "VOL?":
+                    reply = f"VOL={state['volume']}\r".encode()
+                elif line.startswith("CODE "):
+                    reply = b"ERR\r"
+                if reply:
+                    writer.write(reply)
+                    await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    return server, server.sockets[0].getsockname()[1]
+
+
+async def _until(predicate, timeout: float = 8.0) -> None:
+    loop = asyncio.get_running_loop()
+    end = loop.time() + timeout
+    while not predicate():
+        if loop.time() > end:
+            raise AssertionError("condition not met in time")
+        await asyncio.sleep(0.02)
+
+
+async def _connected(port: int):
+    session = AuditSession("cmd1", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    heard: list[dict] = []
+    session.subscribe(heard.append)
+    run = DriverRun(index=0, choice=DriverChoice(
+        driver_id="acme_commands", identity={"name": "Acme Commands", "version": "1.0.0"},
+    ))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+    listen = await start_listen(session, run, **FAST)
+    await _until(lambda: listen.connected_at is not None)
+    return session, run, heard
+
+
+def test_the_command_list_is_the_drivers_own(driver):
+    from openavc.audit.commands import command_catalog
+
+    catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
+    assert list(catalog) == ["power_on", "set_volume", "query_power", "query_volume", "set_code"]
+    assert catalog["query_power"]["query"] and catalog["query_power"]["query_for"] == "power"
+    # Polled by name: a status query though it declares no query_for.
+    assert catalog["query_volume"]["query"] and catalog["query_volume"]["polled"]
+    assert not catalog["power_on"]["query"]
+    assert catalog["power_on"]["sets"] == {"power": True}
+    assert catalog["set_volume"]["needs_input"] and not catalog["power_on"]["needs_input"]
+
+
+async def test_a_command_is_sent_through_the_production_door(driver):
+    server, port = await _fake_device()
+    session, run, heard = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        trial = await commands.send("set_volume", {"level": 40})
+        # Sending a command ends the listening window, which promised none.
+        assert run.listen.status == LISTEN_DONE
+        assert "listen.ended_early" in [e.kind for e in session.timeline]
+        with pytest.raises(AuditError, match="Wait for Set Volume"):
+            await commands.send("power_on")
+        await _until(lambda: trial.status == DONE)
+
+        view = commands.to_dict()["trials"][0]
+        assert view["error"] == "" and view["attempt"] == 1 and not view["batch"]
+        assert view["traffic"]["sent"] == 1 and view["traffic"]["received"] == 1
+        texts = [e["text"] for e in view["traffic"]["entries"]]
+        assert texts == ["VOL 40\r", "VOL=40"]  # a reply as framed: no delimiter
+        assert run.listen.sandbox.device_state()["volume"] == 40
+        kinds = [e.kind for e in session.timeline]
+        assert "command.sent" in kinds and "command.done" in kinds
+        assert any(m["type"] == "audit.commands" for m in heard)
+        assert "commands" in session.steps
+
+        # The platform's parameter check refuses before anything is sent.
+        refused = await commands.send("set_volume", {"level": 150})
+        await _until(lambda: refused.status == DONE)
+        assert "at most 100" in refused.error and refused.error_type == "CommandParamError"
+        assert refused.attempt == 2
+        assert commands.to_dict()["trials"][1]["traffic"]["sent"] == 0
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_the_status_queries_run_together(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        await commands.run_queries()
+        await _until(lambda: commands.batch["status"] == "done")
+        assert commands.batch["sent"] == 2 and commands.batch["total"] == 2
+        assert [t.command for t in commands.trials] == ["query_power", "query_volume"]
+        assert all(t.batch and t.status == DONE for t in commands.trials)
+        assert run.listen.sandbox.device_state()["power"] is False
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_a_secret_parameter_stays_out_of_every_record(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, **WINDOW)
+        trial = await commands.send("set_code", {"pin": "7391"})
+        await _until(lambda: trial.status == DONE)
+        view = commands.to_dict()["trials"][0]
+        assert view["params"] == {"pin": "***"}
+        assert "7391" not in str(view)
+        assert all("7391" not in e.text for e in session.timeline)
+    finally:
+        await run.stop()
+        server.close()
+    report = build_report(session)
+    assert report["drivers"][0]["commands"]["trials"][0]["command"] == "set_code"
+    assert "7391" not in str(report)
+
+
+async def test_nothing_is_sent_before_the_driver_connects(driver):
+    session = AuditSession("cmd2", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    run = DriverRun(index=0, choice=DriverChoice(driver_id="acme_commands"))
+    with pytest.raises(AuditError, match="Connect the driver first"):
+        await commands_for(session, run).send("power_on")
+
+
+async def test_stopping_the_driver_ends_the_command_being_watched(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, window_seconds=30.0, flush_seconds=0.05)
+        trial = await commands.send("power_on")
+        await _until(lambda: trial.returned_at is not None)
+    finally:
+        await run.stop()
+        server.close()
+    assert trial.status == DONE and trial.finished_at is not None
+    # The command list outlives the driver, for the report.
+    assert [c["name"] for c in commands.catalog()][0] == "power_on"
+    record = build_report(session)["drivers"][0]["commands"]
+    assert record["trials"][0]["traffic"]["entries"][0]["text"] == "PWR 1\r"
+
+
+def test_the_request_declares_every_field():
+    assert set(AuditCommandRequest.model_fields) == {"params"}
+    with pytest.raises(ValidationError):
+        AuditCommandRequest(params={}, retry=True)
+
+
+async def test_the_routes(wired, driver):  # noqa: F811
+    server, port = await _fake_device()
+    try:
+        started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+        session_id = started["session"]["session_id"]
+        await routes.run_network_check(session_id)
+        await _until(lambda: wired.manager.current().footprint is not None)
+        await routes.set_driver(session_id, AuditDriverRequest(driver_id="acme_commands"))
+        with pytest.raises(HTTPException) as exc:
+            await routes.send_command(session_id, "power_on", AuditCommandRequest())
+        assert exc.value.status_code == 409
+        wired.engine.state.set("device.lobby.paused", True)
+        await routes.set_session_connection(session_id, AuditConnectionRequest(
+            config={"host": "127.0.0.1", "port": port},
+        ))
+        await routes.connect_and_listen(session_id)
+        session = wired.manager.current()
+        await _until(lambda: session.runs[0].listen.connected_at is not None)
+
+        result = await routes.send_command(session_id, "power_on", AuditCommandRequest())
+        commands = result["session"]["runs"][0]["commands"]
+        assert commands["trials"][0]["command"] == "power_on"
+        assert commands["current"] == 1
+        with pytest.raises(HTTPException) as exc:
+            await routes.run_status_queries(session_id)
+        assert exc.value.status_code == 409 and "Wait for Power On" in exc.value.detail
+        await routes.end_session(session_id, cancel=True)
+        assert session.runs[0].commands.trials[0].status == DONE
+    finally:
+        server.close()
+        await wired.manager.shutdown()

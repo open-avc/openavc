@@ -95,7 +95,11 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     ``actions._command_availability``). A field dropped here is therefore
     inert for a YAML driver while working for a Python one, which sets
     DRIVER_INFO itself. Anything else those two ever read must be added here
-    too.
+    too. ``restarts_device_for`` is the next one: the commanded-restart window
+    (``DeviceManager._arm_restart_window``) reads it off DRIVER_INFO, and until
+    it was carried here a YAML driver's declared window never opened. ``sets``
+    and ``query_for`` are read off the live driver by the device audit, which
+    checks a command's declared effect against what the device then reports.
     """
     commands_meta: dict[str, Any] = {}
     for cmd_name, cmd_def in (commands_def or {}).items():
@@ -107,7 +111,7 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
         }
         for key in (
             "method", "path", "body", "address", "args", "help",
-            "available_offline",
+            "available_offline", "restarts_device_for", "sets", "query_for",
         ):
             if key in cmd_def:
                 cmd_meta[key] = cmd_def[key]

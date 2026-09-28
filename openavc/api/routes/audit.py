@@ -25,6 +25,9 @@ turns a refusal into its sentence.
 - ``POST /audit/sessions/{id}/connect`` (connect and listen),
   ``POST /audit/sessions/{id}/listen/extend`` ("Keep listening") and
   ``POST /audit/sessions/{id}/front-panel`` (the front-panel check's answer).
+- ``POST /audit/sessions/{id}/commands/{name}`` (Send one command) and
+  ``POST /audit/sessions/{id}/queries`` (run every status query);
+  ``audit/commands.py``.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -42,12 +45,14 @@ from fastapi.responses import FileResponse
 
 from openavc.api._engine import _get_engine
 from openavc.api.models import (
+    AuditCommandRequest,
     AuditConnectionRequest,
     AuditDriverRequest,
     AuditFrontPanelRequest,
     AuditStartRequest,
     AuditTesterRequest,
 )
+from openavc.audit.commands import commands_for
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
 from openavc.audit.listen import start_listen
 from openavc.audit.origin import device_target, origin_for
@@ -367,6 +372,33 @@ async def front_panel_check(session_id: str, body: AuditFrontPanelRequest) -> di
     session = _session(session_id)
     run = _listening_run(session)
     run.listen.answer_front_panel(body.answer, body.note.strip())
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/commands/{name}")
+async def send_command(session_id: str, name: str, body: AuditCommandRequest) -> dict[str, Any]:
+    """Send one of the driver's commands and watch what it does; progress
+    arrives over ``audit.subscribe``."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        await commands_for(session, run).send(name, dict(body.params))
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/queries")
+async def run_status_queries(session_id: str) -> dict[str, Any]:
+    """Send every status query the driver declares, one after another."""
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        await commands_for(session, run).run_queries()
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     session.publish_state()
     return {"session": session.to_dict()}
 

@@ -278,6 +278,15 @@ class ListenPass:
         )
         self._dirty = True
 
+    def end_window_now(self, why: str) -> None:
+        """End the listening window early, because the audit is about to send
+        something the window promised not to (a command). ``why`` starts the
+        timeline's sentence."""
+        if self.status not in (LISTENING, NOT_CONNECTED):
+            return
+        self._timeline("listen.ended_early", f"{why}, so listening ended early.")
+        self._end_window()
+
     def answer_front_panel(self, answer: str, note: str = "") -> None:
         """The person changed something on the device: did OpenAVC show it?"""
         since = self.connected_at or self.started_at
@@ -583,13 +592,15 @@ async def start_listen(
     """
     if run.config is None:
         raise AuditError(NO_CONNECTION_SET)
-    if run.listen is not None:
-        await run.listen.stop()
+    await run.end_attempt()
+    from openavc.audit.commands import commands_for
+
     listen = ListenPass(session, run, **timings)
     run.sandbox = listen.sandbox
     run.listen = listen
     run.listens.append(listen)
     run.extra["listen"] = listen.to_dict
+    commands_for(session, run)  # the next step's command list, from the live driver
     session.enter_step("listen")
     listen.task = session.track_task(asyncio.create_task(listen.execute()))
     return listen

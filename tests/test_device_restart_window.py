@@ -250,3 +250,34 @@ def test_the_sentence_singularises_its_last_second():
     assert friendly_error(device_restarting("w", 1), "Lobby Display") == (
         "Lobby Display is restarting. It should be back in about 1 second."
     )
+
+
+# --- the YAML half ------------------------------------------------------------
+#
+# Everything above builds DRIVER_INFO by hand, the way a Python driver does. A
+# .avcdriver's commands reach DRIVER_INFO through _build_commands_meta, so a
+# field it does not carry is inert however right the window is.
+
+
+def test_a_yaml_drivers_declared_restart_opens_the_window():
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    cls = create_configurable_driver_class({
+        "id": "acme_yaml_restart", "name": "Acme", "manufacturer": "Acme",
+        "category": "utility", "transport": "tcp", "state_variables": {},
+        "commands": {
+            "reboot": {"send": "REBOOT", "restarts_device_for": RESTART_SECONDS},
+            "set_level": {"send": "LVL"},
+        },
+        "responses": [],
+    })
+    commands = cls.DRIVER_INFO["commands"]
+    assert commands["reboot"]["restarts_device_for"] == RESTART_SECONDS
+    assert "restarts_device_for" not in commands["set_level"]
+
+    state = StateStore()
+    dm = DeviceManager(state=state, events=EventBus())
+    driver = cls("widget", {"host": "10.0.0.9", "port": 4001}, state, EventBus())
+    dm._devices["widget"] = driver
+    dm._arm_restart_window("widget", driver, "reboot")
+    assert dm.restart_seconds_left("widget") == RESTART_SECONDS

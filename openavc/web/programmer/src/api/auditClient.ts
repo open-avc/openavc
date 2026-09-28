@@ -1,6 +1,7 @@
 import { request } from "./base";
 import type { DiscoveredDevice, DiscoveryEvidence, IdentificationMatch } from "./discoveryClient";
 import { downloadFromApi } from "./downloadFile";
+import type { DriverParamDef } from "./types";
 
 // --- Device Audit (/api/audit) ---
 
@@ -275,6 +276,59 @@ export interface AuditListen {
   } | null;
 }
 
+/** One of the driver's commands, as the live driver declares it. */
+export interface AuditCommandInfo {
+  name: string;
+  label: string;
+  help: string;
+  params: Record<string, Partial<DriverParamDef>>;
+  /** A status query: it declares query_for, or the driver polls it by name. */
+  query: boolean;
+  query_for: string;
+  polled: boolean;
+  /** What the driver says the command changes, e.g. {power: true}. */
+  sets: Record<string, unknown>;
+  available_offline: boolean;
+  /** Seconds the command takes the device off the network (0: it does not). */
+  restarts_device_for: number;
+  /** A required parameter has no value yet, so it cannot run in the batch. */
+  needs_input: boolean;
+}
+
+export type AuditTrialStatus = "sending" | "watching" | "done";
+
+/** One command sent, and what came of it. */
+export interface AuditCommandTrial {
+  number: number;
+  command: string;
+  label: string;
+  params: Record<string, unknown>;
+  /** The how-manyth time this command was sent (1 = the first). */
+  attempt: number;
+  /** Sent with the status queries rather than on its own. */
+  batch: boolean;
+  connect_attempt: number;
+  sent_at: number;
+  returned_at: number | null;
+  ends_at: number | null;
+  finished_at: number | null;
+  status: AuditTrialStatus;
+  result: unknown;
+  /** Why it was not accepted, in words ("" when it was). */
+  error: string;
+  error_type: string;
+  traffic: { sent: number; received: number; entries: AuditTrafficEntry[] };
+}
+
+/** The commands step for one driver. */
+export interface AuditCommands {
+  catalog: AuditCommandInfo[];
+  batch: { status: "running" | "done"; total: number; sent: number; skipped: string[] } | null;
+  /** The number of the command being sent or watched, if any. */
+  current: number | null;
+  trials: AuditCommandTrial[];
+}
+
 /** One driver tested against the device. */
 export interface AuditDriverRun {
   index: number;
@@ -285,6 +339,7 @@ export interface AuditDriverRun {
   active: boolean;
   connection: AuditConnection | null;
   listen?: AuditListen;
+  commands?: AuditCommands;
 }
 
 /** A paused project device whose saved settings the chosen driver can use. */
@@ -386,6 +441,7 @@ export interface AuditReportDriver {
   run: number;
   driver: { id: string; name: string; version: string; modified: boolean };
   attempts: AuditReportAttempt[];
+  commands?: { trials: AuditCommandTrial[] } | null;
 }
 
 /** The report record (report.json). Only the parts the wizard reads are typed. */
@@ -505,6 +561,23 @@ export function answerFrontPanel(
     method: "POST",
     body: JSON.stringify({ answer, note }),
   });
+}
+
+/** Send one of the driver's commands; what it does arrives over the WebSocket. */
+export function sendAuditCommand(
+  sessionId: string,
+  name: string,
+  params: Record<string, unknown>,
+): Promise<{ session: AuditSessionState }> {
+  return request(
+    `/audit/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(name)}`,
+    { method: "POST", body: JSON.stringify({ params }) },
+  );
+}
+
+/** Send every status query the driver declares, one after another. */
+export function runAuditQueries(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/queries`, { method: "POST" });
 }
 
 export function setAuditTester(

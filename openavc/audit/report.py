@@ -67,6 +67,21 @@
     "text", "chunk"?, "meta"?}``, ``chunk`` marking a raw receive chunk
     before framing and ``meta`` what the bytes do not say (an HTTP method,
     target, status and headers; a peer; a topic).
+  - ``commands`` (null when the driver never connected): ``catalog``, the
+    driver's commands as it declared them while connected (``name``,
+    ``label``, ``help``, ``params``, ``query`` with ``query_for`` and
+    ``polled``, ``sets``, ``available_offline``, ``restarts_device_for``,
+    ``needs_input``); ``batch``, the status queries run together
+    (``total``, ``sent``, ``skipped``); and ``trials``, every command sent,
+    in order: ``number``, ``command``, ``label``, ``params`` (secret ones
+    ``***``), ``attempt`` (the how-manyth time this command was sent),
+    ``batch``, ``connect_attempt`` (the index into ``attempts`` whose
+    connection carried it), the times (``sent_at``, ``returned_at``,
+    ``ends_at``, ``finished_at``), ``result`` (what the driver's
+    ``send_command`` returned), ``error`` and ``error_type`` (what it
+    raised, in words and by class) and ``traffic`` (``sent``,
+    ``received``, and every entry from the send to the end of its window,
+    in the ``attempts`` traffic form).
 
 - ``timeline``: every session event in order, typed and timestamped.
 - ``limits``: what the audit could not see, and why.
@@ -285,6 +300,7 @@ def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
         "connection": json.loads(json.dumps(run.connection, default=str))
         if run.connection else None,
         "attempts": [attempt.report_record() for attempt in run.listens],
+        "commands": run.commands.report_record() if getattr(run, "commands", None) else None,
     }
 
 
@@ -979,6 +995,39 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
                     f"{' (first: <code>' + _e(str(shown)[:200]) + '</code>)' if shown else ''}</li>"
                 )
             parts.append("<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>")
+    parts.extend(_render_commands(section.get("commands")))
+    return parts
+
+
+def _trial_outcome(trial: dict[str, Any]) -> str:
+    """One command's outcome in a sentence."""
+    if trial.get("error"):
+        return f"Not accepted: {trial['error']}"
+    traffic = trial.get("traffic") or {}
+    received = traffic.get("received", 0)
+    sent = traffic.get("sent", 0)
+    text = f"Sent {sent} {'message' if sent == 1 else 'messages'}"
+    if received:
+        text += f"; the device sent {received} {'reply' if received == 1 else 'replies'}"
+    else:
+        text += "; nothing came back"
+    return text + "."
+
+
+def _render_commands(commands: dict[str, Any] | None) -> list[str]:
+    """The commands sent, for summary.html."""
+    if not commands or not commands.get("trials"):
+        return []
+    parts = ["<h3>Commands sent</h3><table>"]
+    for trial in commands["trials"]:
+        params = trial.get("params") or {}
+        label = f"{trial.get('number')}. {trial.get('label')}"
+        if params:
+            label += " (" + ", ".join(f"{k} {v}" for k, v in params.items()) + ")"
+        if trial.get("batch"):
+            label += ", with the status queries"
+        parts.append(_row(label, _e(_trial_outcome(trial))))
+    parts.append("</table>")
     return parts
 
 
