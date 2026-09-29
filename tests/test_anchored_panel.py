@@ -16,7 +16,10 @@ through `ParamCombobox` -- the one caller with no store or API dependency.
 One of them guards a defect the merge found rather than introduced: every copy
 closes on a capture-phase scroll, but four ignored scrolls that started inside
 the panel and the combobox did not, so a list longer than the panel could not be
-scrolled to the bottom.
+scrolled to the bottom. Two more pin that an outside scroll closes the panel
+only when it moved the trigger: a scroll that moved nothing (another list
+scrolling itself, or the late event of the scroll that brought the trigger into
+view) leaves it open.
 
 Two more guard the panels that are NOT list dropdowns. A colour wheel is
 whatever size a colour wheel is, so its panel is measured rather than estimated
@@ -92,6 +95,7 @@ SCENARIOS = [
     # Closing rules.
     "scrolling_the_list_keeps_it_open",
     "scrolling_the_page_closes_it",
+    "a_scroll_that_moves_nothing_keeps_it_open",
     "click_outside_closes",
     "click_inside_keeps_it_open",
     # Horizontal placement.

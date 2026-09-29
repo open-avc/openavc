@@ -218,12 +218,26 @@ const tests = {
     assert(container.querySelector("ul"), "scrolling inside the panel must not close it");
   },
 
+  // A fixed panel does not follow a scrolled page, so a scroll that carried the
+  // trigger away closes it.
   async scrolling_the_page_closes_it() {
+    const { input } = await openComboboxAt({ left: 100, top: 200, width: 200, height: 24 });
+    stubRect(input, { left: 100, top: 140, width: 200, height: 24 });
+    await act(async () => {
+      document.getElementById("outside").dispatchEvent(new window.Event("scroll", { bubbles: false }));
+    });
+    assert(!container.querySelector("ul"), "a scroll that moved the trigger must close the panel");
+  },
+
+  // A scroll that moved nothing -- another list scrolling itself as live entries
+  // arrive, or the late event of the scroll that brought the trigger into view
+  // before the click opened the panel -- must leave it open.
+  async a_scroll_that_moves_nothing_keeps_it_open() {
     await openComboboxAt({ left: 100, top: 200, width: 200, height: 24 });
     await act(async () => {
       document.getElementById("outside").dispatchEvent(new window.Event("scroll", { bubbles: false }));
     });
-    assert(!container.querySelector("ul"), "a scroll outside the panel must close it");
+    assert(container.querySelector("ul"), "a scroll that did not move the trigger must not close it");
   },
 
   async click_outside_closes() {
