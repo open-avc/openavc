@@ -247,18 +247,18 @@ async def test_a_secret_parameter_stays_out_of_every_record(driver):
     session, run, _ = await _connected(port)
     try:
         commands = commands_for(session, run, **WINDOW)
-        trial = await commands.send("set_code", {"pin": "7391"})
+        trial = await commands.send("set_code", {"pin": "tulip-7391"})
         await _until(lambda: trial.status == DONE)
         view = commands.to_dict()["trials"][0]
         assert view["params"] == {"pin": "***"}
-        assert "7391" not in str(view)
-        assert all("7391" not in e.text for e in session.timeline)
+        assert "tulip-7391" not in str(view)
+        assert all("tulip-7391" not in e.text for e in session.timeline)
     finally:
         await run.stop()
         server.close()
     report = build_report(session)
     assert report["drivers"][0]["commands"]["trials"][0]["command"] == "set_code"
-    assert "7391" not in str(report)
+    assert "tulip-7391" not in str(report)
 
 
 async def test_nothing_is_sent_before_the_driver_connects(driver):
@@ -400,14 +400,14 @@ async def test_a_refusal_is_caught(driver):
     session, run, _ = await _connected(port)
     try:
         commands = commands_for(session, run, **WINDOW)
-        refused = await _sent(commands, "set_code", {"pin": "7391"})
+        refused = await _sent(commands, "set_code", {"pin": "tulip-7391"})
         assert refused.error == ""  # the driver took it; the device did not
         assert refused.refusals["last_error"] == "refused"
         assert refused.refusals["last_error_writes"] == 1
         assert "the device refused it: refused" in session.timeline[-1].text
         # Try again reuses the secret value the browser never had.
         again = await _sent(commands, "set_code", again=refused.number)
-        assert again.params == {"pin": "7391"} and again.to_dict()["params"] == {"pin": "***"}
+        assert again.params == {"pin": "tulip-7391"} and again.to_dict()["params"] == {"pin": "***"}
     finally:
         await run.stop()
         server.close()

@@ -152,6 +152,14 @@ configuration.
 A secret shorter than three characters is not searched for, since it would
 match ordinary text everywhere; the report never writes a typed secret into a
 field of its own, so such a value could only appear if the device repeated it.
+A secret made only of hex digits (a numeric PIN, say) is replaced in its
+plain forms only where it stands alone, never inside a longer run of hex
+digits or after a decimal point: otherwise a PIN would be cut out of a
+timestamp (breaking the JSON), a SHA-256 or a hex dump. Its hex forms are
+replaced wherever they appear, since that is where its own bytes show in a
+hex dump. The cost: such a PIN, echoed glued to hex letters (``A7391``), stays
+in that text; the traffic was already masked byte by byte as it was
+serialized, before this pass.
 
 **Recent reports** are kept in ``{data_dir}/audit_reports/``, the newest
 ``REPORTS_KEPT``, so closing a browser tab does not lose one.
@@ -198,38 +206,55 @@ class Redaction:
     replacement: str = REDACTED
 
 
-def _forms(redaction: Redaction) -> list[tuple[str, str]]:
-    """Each way ``value`` can be written in a report, with its replacement."""
+_HEX_DIGITS = re.compile(r"[0-9A-Fa-f]+")
+
+
+def _forms(redaction: Redaction) -> list[tuple[str, str, bool]]:
+    """Each way ``value`` can be written in a report, with its replacement,
+    and whether it is replaced only where it stands alone (see the module
+    docstring: a hex-digit secret's plain forms)."""
     value, repl = redaction.value, redaction.replacement
-    pairs = [
-        (value, repl),
-        (json.dumps(value)[1:-1], json.dumps(repl)[1:-1]),
-        (html.escape(value), html.escape(repl)),
-        (value.encode("utf-8").hex(), repl.encode("utf-8").hex()),
-        (value.encode("utf-8").hex().upper(), repl.encode("utf-8").hex().upper()),
+    alone = bool(_HEX_DIGITS.fullmatch(value))
+    triples = [
+        (value, repl, alone),
+        (json.dumps(value)[1:-1], json.dumps(repl)[1:-1], alone),
+        (html.escape(value), html.escape(repl), alone),
+        (value.encode("utf-8").hex(), repl.encode("utf-8").hex(), False),
+        (value.encode("utf-8").hex().upper(), repl.encode("utf-8").hex().upper(), False),
     ]
-    seen: dict[str, str] = {}
-    for form, replacement in pairs:
+    seen: dict[str, tuple[str, bool]] = {}
+    for form, replacement, bounded in triples:
         if form and form not in seen:
-            seen[form] = replacement
-    return sorted(seen.items(), key=lambda kv: -len(kv[0]))
+            seen[form] = (replacement, bounded)
+    return sorted(
+        ((form, replacement, bounded) for form, (replacement, bounded) in seen.items()),
+        key=lambda triple: -len(triple[0]),
+    )
 
 
 class Redactor:
     """Replaces each secret in a text, whatever form it was written in."""
 
     def __init__(self, redactions: list[Redaction]) -> None:
-        self._pairs: list[tuple[str, str]] = []
+        self._pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
         for redaction in redactions:
             if len(redaction.value) < _MIN_SECRET_LENGTH:
                 continue
-            self._pairs.extend(_forms(redaction))
-        self._pairs.sort(key=lambda kv: -len(kv[0]))
+            for form, replacement, bounded in _forms(redaction):
+                pattern = (
+                    re.compile(rf"(?<![0-9A-Fa-f.]){re.escape(form)}(?![0-9A-Fa-f])")
+                    if bounded else None
+                )
+                self._pairs.append((form, replacement, pattern))
+        self._pairs.sort(key=lambda triple: -len(triple[0]))
 
     def text(self, value: str) -> str:
-        for form, replacement in self._pairs:
+        for form, replacement, pattern in self._pairs:
             if form in value:
-                value = value.replace(form, replacement)
+                value = (
+                    pattern.sub(lambda _m, r=replacement: r, value) if pattern is not None
+                    else value.replace(form, replacement)
+                )
         return value
 
     def tree(self, value: Any) -> Any:

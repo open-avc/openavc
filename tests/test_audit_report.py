@@ -128,6 +128,27 @@ async def test_a_typed_secret_is_in_no_file_in_any_form(monkeypatch):
     assert SECRET.upper() in files["report.json"]
 
 
+def test_a_numeric_secret_is_masked_without_cutting_into_numbers():
+    """A PIN is hex digits: masked where it stands alone, never inside a
+    timestamp (which would break the JSON), a hash or a hex dump; its own
+    bytes in a hex dump are masked by their hex form."""
+    from openavc.audit.report import Redaction, Redactor
+
+    redactor = Redactor([Redaction("7391")])
+    record = {
+        "t": "1790643142.167391", "sha256": "ab7391cd", "hex": "20" + "7391".encode().hex(),
+        "text": "CODE 7391\r", "note": "PIN=7391, then 17391",
+    }
+    out = redactor.tree(record)
+    assert out["t"] == "1790643142.167391" and out["sha256"] == "ab7391cd"
+    assert out["hex"] == "20" + "[redacted]".encode().hex()
+    assert out["text"] == "CODE [redacted]\r"
+    assert out["note"] == "PIN=[redacted], then 17391"
+    # In a JSON text a number keeps its digits, so the file still parses.
+    text = redactor.text(json.dumps({"t": 1790643142.167391, "pin": "7391"}))
+    assert json.loads(text) == {"t": 1790643142.167391, "pin": "[redacted]"}
+
+
 async def test_the_serial_number_can_be_left_out_everywhere():
     manager, session = await _session(leave_out_serial=True)
     try:
