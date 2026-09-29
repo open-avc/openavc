@@ -5,7 +5,7 @@
  * device-property picker, the param combobox, the colour swatch, the surface
  * preset list — used to carry its own copy of this: measure the trigger, decide
  * whether to flip up, place a `position: fixed` panel, close on an outside
- * click or an outside scroll. Five copies, and they had already drifted apart:
+ * click or on a scroll that carries the trigger away. Five copies, and they had already drifted apart:
  * the flip-up threshold was 250px in two of them and 220px in the others, the
  * width floor was 320px in two and absent in a third, and only two of the five
  * clamped the panel back into the viewport — which is the one that matters,
@@ -29,6 +29,13 @@
  * Vertical placement is recomputed every render from a fresh trigger rect, so
  * the panel stays glued to its trigger when the pane reflows underneath it.
  * That is inherited from the two big pickers and is load-bearing.
+ *
+ * A scroll closes the panel only when it moved the trigger: a `fixed` panel
+ * does not follow a scrolled pane, so it would float away from what opened
+ * it. A scroll that moved nothing -- another list scrolling itself as live
+ * entries arrive, or the scroll event of the very scroll that brought the
+ * trigger into view, which the browser delivers a frame later, after the
+ * click has opened the panel -- leaves it open.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
@@ -112,6 +119,8 @@ export function useAnchoredPanel<T extends HTMLElement, P extends HTMLElement = 
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<T>(null);
   const panelRef = useRef<P>(null);
+  // Where the trigger was when the panel was last placed against it.
+  const placedAt = useRef<{ top: number; left: number } | null>(null);
 
   // The close listeners below subscribe once per open, not once per render, and
   // read the current `onClose` through this ref. A listener re-added *during* a
@@ -128,6 +137,7 @@ export function useAnchoredPanel<T extends HTMLElement, P extends HTMLElement = 
   const openPanel = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
+      placedAt.current = { top: rect.top, left: rect.left };
       const spaceBelow = window.innerHeight - rect.bottom;
       const flipUp = spaceBelow < wantsHeight && rect.top > spaceBelow;
       // An intrinsic panel has no width yet -- it has not rendered. It opens at
@@ -161,8 +171,17 @@ export function useAnchoredPanel<T extends HTMLElement, P extends HTMLElement = 
     );
   });
 
-  // Close on a click or a scroll that happened outside the panel. Scrolling
-  // *inside* it must not close it — the list is the thing being scrolled.
+  // The panel is re-placed from a fresh trigger rect on every render (below),
+  // so that is where it now sits against the trigger.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) placedAt.current = { top: rect.top, left: rect.left };
+  });
+
+  // Close on a click outside the panel, and on a scroll outside it that moved
+  // the trigger. Scrolling *inside* it must not close it — the list is the
+  // thing being scrolled.
   useEffect(() => {
     if (!open) return;
     const isOutside = (e: Event) =>
@@ -171,7 +190,13 @@ export function useAnchoredPanel<T extends HTMLElement, P extends HTMLElement = 
       if (isOutside(e)) close();
     };
     const onScroll = (e: Event) => {
-      if (isOutside(e)) close();
+      if (!isOutside(e)) return;
+      const rect = triggerRef.current?.getBoundingClientRect();
+      const at = placedAt.current;
+      if (rect && at && Math.abs(rect.top - at.top) < 0.5 && Math.abs(rect.left - at.left) < 0.5) {
+        return;
+      }
+      close();
     };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("scroll", onScroll, true);
