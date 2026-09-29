@@ -337,6 +337,44 @@ async def test_the_check_records_everything_the_device_says(discovery, bench):
     json.dumps(fp.to_dict())
 
 
+async def test_a_companion_is_judged_by_whether_it_ran(monkeypatch, bench):
+    """Only an installed driver's Python companion runs; a catalog driver's
+    never does, and its check says so rather than "reported nothing"."""
+    raw = json.loads(_catalog(bench))
+    raw["drivers"][0]["discovery"]["python"] = "acme_widget_discovery.py"
+    raw["drivers"][1]["discovery"]["python"] = "acme_gadget_discovery.py"
+
+    async def fetch(_path):
+        return json.dumps(raw).encode(), ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([])
+    ran: list[str] = []
+
+    async def gadget_probe(ctx):
+        ran.append(ctx.driver_id)
+
+    engine._discovery_companions = {"acme_gadget": gadget_probe}
+    check, _ = _check(engine, bench)
+    fp = await check.run()
+
+    assert ran == ["acme_gadget"] and fp.companions_run == ["acme_gadget"]
+    assert fp.to_dict()["companions_run"] == ["acme_gadget"]
+
+    def companion(driver_id):
+        [found] = [c for c in fp.verdict["checks"][driver_id] if c["kind"] == "companion"]
+        return found["detail"]
+
+    assert companion("acme_widget") == (
+        "The driver's Python companion did not run: a scan runs one only for an "
+        "installed driver."
+    )
+    assert companion("acme_gadget") == (
+        "The driver's Python companion reported nothing about the device."
+    )
+
+
 async def test_a_silent_network_is_a_limit_not_a_finding(discovery, bench):
     """No announcement from anyone means the listeners may have been blocked;
     the report must not say the device does not announce."""

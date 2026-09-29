@@ -306,6 +306,24 @@ class TestProbes:
         [check] = evaluate_driver_signals(hint, DeviceObservations(evidence=[ev]))
         assert check.status == MATCHED
 
+    def test_a_companion_that_never_ran_is_not_a_negative(self):
+        hint = _hint("acme_widget", python="acme_widget_discovery.py")
+
+        def detail(ran):
+            [check] = evaluate_driver_signals(hint, DeviceObservations(companions_run=ran))
+            assert check.status == NOT_OBSERVED
+            return check.detail
+
+        assert detail(None) == "The driver's Python companion was not run."
+        # Not installed: its companion is not loaded, so it never ran.
+        assert detail(frozenset({"acme_panel"})) == (
+            "The driver's Python companion did not run: a scan runs one only for an "
+            "installed driver."
+        )
+        assert detail(frozenset({"acme_widget"})) == (
+            "The driver's Python companion reported nothing about the device."
+        )
+
 
 class TestHints:
     def test_open_port_three_ways(self):
@@ -340,6 +358,16 @@ class TestHints:
         assert _by_kind(checks, "snmp_pen").status == MATCHED
         assert _by_kind(checks, "hostname").status == MATCHED
         assert not any(c.strong for c in checks)
+
+    def test_an_unseen_host_name_says_which_names_count(self):
+        # An mDNS name is not one of them: the card shows it, the hint never sees it.
+        hint = _hint("acme_widget", hostname=["^widget-"])
+        [check] = evaluate_driver_signals(hint, DeviceObservations())
+        assert check.status == NOT_OBSERVED
+        assert check.detail == (
+            "No reverse-DNS or NetBIOS name was found for the device, and a host name pattern "
+            "is matched against those names only."
+        )
 
     def test_every_declaration_gets_one_check_in_rule_order(self):
         hint = _hint(

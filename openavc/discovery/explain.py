@@ -198,11 +198,16 @@ class DeviceObservations:
       (``observe_tcp_active_probe`` / ``observe_udp_probe``).
     - ``port_states``: how each scanned TCP port answered
       (``scan_host_port_states``).
+    - ``companions_run``: the drivers whose Python companion ran against the
+      device; ``None`` when no companion was run at all. A scan runs only an
+      installed driver's companion, so a catalog driver's never ran, and
+      "it reported nothing" would be a negative nobody tested.
     """
 
     evidence: list[Evidence] = field(default_factory=list)
     probes: list[ProbeObservation] = field(default_factory=list)
     port_states: dict[int, str] = field(default_factory=dict)
+    companions_run: frozenset[str] | None = None
 
 
 @dataclass
@@ -261,7 +266,7 @@ def evaluate_driver_signals(
         ):
             if not companion_done:
                 companion_done = True
-                checks.append(_check_companion(hint, evidence))
+                checks.append(_check_companion(hint, evidence, observed.companions_run))
         elif rule.kind in (KIND_ACTIVE_PROBE, KIND_BROADCAST):
             spec = hint.tcp_probe if rule.kind == KIND_ACTIVE_PROBE else hint.udp_probe
             if spec is not None:
@@ -513,7 +518,9 @@ def _check_probe(
     )
 
 
-def _check_companion(hint: DiscoveryHint, evidence: list[Evidence]) -> SignalCheck:
+def _check_companion(
+    hint: DiscoveryHint, evidence: list[Evidence], ran: frozenset[str] | None,
+) -> SignalCheck:
     py = hint.python_probe
     assert py is not None
     ids = {py.broadcast_probe_id, py.active_probe_id}
@@ -529,10 +536,18 @@ def _check_companion(hint: DiscoveryHint, evidence: list[Evidence]) -> SignalChe
             status=MATCHED, observed=list(dict.fromkeys(ev.source for ev in hits)),
             detail="The driver's Python companion identified the device.",
         )
+    if ran is None:
+        detail = "The driver's Python companion was not run."
+    elif hint.driver_id not in ran:
+        detail = (
+            "The driver's Python companion did not run: a scan runs one only for an "
+            "installed driver."
+        )
+    else:
+        detail = "The driver's Python companion reported nothing about the device."
     return SignalCheck(
         kind="companion", declared=declared, strong=True, cross_vendor=py.cross_vendor,
-        status=NOT_OBSERVED, observed=[],
-        detail="The driver's Python companion reported nothing about the device.",
+        status=NOT_OBSERVED, observed=[], detail=detail,
     )
 
 
@@ -548,7 +563,10 @@ _SOFT_DECLARED = {
 _SOFT_UNSEEN = {
     KIND_OUI: "No MAC address was seen for the device.",
     KIND_SNMP_PEN: "The device gave no SNMP enterprise number.",
-    KIND_HOSTNAME: "No host name was seen for the device.",
+    KIND_HOSTNAME: (
+        "No reverse-DNS or NetBIOS name was found for the device, and a host name pattern "
+        "is matched against those names only."
+    ),
     KIND_VENDOR_STRING: "No probe reply or announcement named a manufacturer.",
 }
 

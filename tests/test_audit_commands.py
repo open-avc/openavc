@@ -165,6 +165,9 @@ async def _connected(port: int):
     session.runs.append(run)
     listen = await start_listen(session, run, **FAST)
     await _until(lambda: listen.connected_at is not None)
+    # The connect-time poll's answer lands before a test sends anything, so a
+    # slow runner cannot count it in the first command's window.
+    await _until(lambda: listen.sandbox.device_state().get("volume") is not None)
     return session, run, heard
 
 

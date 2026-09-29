@@ -224,6 +224,8 @@ class Footprint:
     snmp: dict[str, Any] = field(default_factory=dict)
     probes: list[ProbeObservation] = field(default_factory=list)
     companion_evidence: list[dict[str, Any]] = field(default_factory=list)
+    # The drivers whose Python companion ran; None until the driver checks run.
+    companions_run: list[str] | None = None
     listeners: dict[str, dict[str, Any]] = field(default_factory=dict)
     evidence: list[Evidence] = field(default_factory=list)
     device: DiscoveredDevice | None = None
@@ -243,6 +245,9 @@ class Footprint:
             evidence=list(self.evidence),
             probes=list(self.probes),
             port_states=dict(self.port_states),
+            companions_run=(
+                None if self.companions_run is None else frozenset(self.companions_run)
+            ),
         )
 
     def answered(self) -> bool:
@@ -294,6 +299,9 @@ class Footprint:
             "snmp": self.snmp,
             "probes": [p.to_dict() for p in self.probes],
             "companions": list(self.companion_evidence),
+            "companions_run": (
+                None if self.companions_run is None else list(self.companions_run)
+            ),
             "listeners": self.listeners,
             "evidence": [ev.to_dict() for ev in self.evidence],
             "device": self.device.to_dict() if self.device else None,
@@ -887,6 +895,8 @@ class NetworkCheck:
         ]
         udp_specs = [h.udp_probe for h in self.discovery.discovery_hints if h.udp_probe is not None]
         companions = self.discovery.discovery_companions
+        # Only an installed driver's companion is loaded; the checks say which ran.
+        fp.companions_run = sorted(companions)
         total = len(tcp_specs) + len(udp_specs) + len(companions)
         if not total:
             self._set("probes", SKIPPED, "No driver declares a check this device could answer.")
