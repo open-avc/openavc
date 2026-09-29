@@ -13,6 +13,7 @@ import { DriverStep } from "./steps/DriverStep";
 import { ConnectionStep } from "./steps/ConnectionStep";
 import { ListenStep } from "./steps/ListenStep";
 import { CommandsStep } from "./steps/CommandsStep";
+import { OutageStep } from "./steps/OutageStep";
 import { ReportStep } from "./steps/ReportStep";
 import { buttonStyle } from "./auditStyles";
 import { ErrorLine } from "./auditParts";
@@ -160,6 +161,8 @@ export function DeviceAuditWizard() {
             <ListenStep />
           ) : step === "commands" ? (
             <CommandsStep />
+          ) : step === "outage" ? (
+            <OutageStep />
           ) : (
             <ReportStep />
           )}

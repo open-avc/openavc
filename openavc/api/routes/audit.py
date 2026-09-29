@@ -36,6 +36,10 @@ turns a refusal into its sentence.
   it back, put the old value back) and
   ``POST /audit/sessions/{id}/settings/{key}/restore`` ("Put it back");
   ``audit/settings.py``.
+- ``POST /audit/sessions/{id}/power-cycle`` (start the test),
+  ``POST /audit/sessions/{id}/outage/mark`` (the person's "it is off" and "it
+  is back on") and ``POST /audit/sessions/{id}/outage/stop``;
+  ``audit/outage.py``.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
@@ -58,6 +62,7 @@ from openavc.api.models import (
     AuditConnectionRequest,
     AuditDriverRequest,
     AuditFrontPanelRequest,
+    AuditOutageMarkRequest,
     AuditSettingRequest,
     AuditStartRequest,
     AuditTesterRequest,
@@ -66,6 +71,7 @@ from openavc.audit.commands import commands_for
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
 from openavc.audit.listen import start_listen
 from openavc.audit.origin import device_target, origin_for
+from openavc.audit.outage import POWER_CYCLE, current_outage, start_outage
 from openavc.audit.settings import settings_for
 from openavc.audit.passes import (
     choose_driver,
@@ -478,6 +484,48 @@ async def put_setting_back(session_id: str, key: str) -> dict[str, Any]:
         await settings_for(session, run).put_back(key)
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
+
+
+async def _start_outage(session_id: str, kind: str) -> dict[str, Any]:
+    session = _session(session_id)
+    run = _listening_run(session)
+    try:
+        start_outage(session, run, kind)
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/power-cycle")
+async def start_power_cycle(session_id: str) -> dict[str, Any]:
+    """Start the power cycle test; progress arrives over ``audit.subscribe``."""
+    return await _start_outage(session_id, POWER_CYCLE)
+
+
+@router.post("/sessions/{session_id}/outage/mark")
+async def mark_outage(session_id: str, body: AuditOutageMarkRequest) -> dict[str, Any]:
+    """The person says the device is off, or back on."""
+    session = _session(session_id)
+    test = current_outage(_listening_run(session))
+    if test is None:
+        raise HTTPException(status_code=409, detail="No power or cable test is running.")
+    try:
+        test.mark(body.mark)
+    except AuditError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"session": session.to_dict()}
+
+
+@router.post("/sessions/{session_id}/outage/stop")
+async def stop_outage(session_id: str) -> dict[str, Any]:
+    """End the running power or cable test; what it measured stays."""
+    session = _session(session_id)
+    test = current_outage(_listening_run(session))
+    if test is None:
+        raise HTTPException(status_code=409, detail="No power or cable test is running.")
+    await test.stop()
     return {"session": session.to_dict()}
 
 

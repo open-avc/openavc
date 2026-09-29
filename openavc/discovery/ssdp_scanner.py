@@ -19,7 +19,7 @@ import select
 import socket
 import struct
 from dataclasses import dataclass, field as dataclass_field
-from typing import Any
+from typing import Any, Callable
 from defusedxml.ElementTree import fromstring as _safe_xml_fromstring, ParseError as _XMLParseError
 from xml.etree import ElementTree
 
@@ -250,7 +250,12 @@ class SSDPScanner:
     Uses only stdlib (socket, asyncio, xml).
     """
 
-    def __init__(self, control_ip: str = "", capture: bool = False) -> None:
+    def __init__(
+        self,
+        control_ip: str = "",
+        capture: bool = False,
+        on_message: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> None:
         """``control_ip``: bind outbound multicast to this interface IP.
         Empty = OS default route. Required for the multi-NIC AV scenario
         where the control VLAN is not the default route.
@@ -259,8 +264,17 @@ class SSDPScanner:
         description document (status line and headers included, up to
         ``CAPTURE_DESCRIPTION_BYTES``), for a single-device check. Off in
         normal scans, which keep only what they parse.
+
+        ``on_message``: called with the sender's address and what one
+        message said, for every message this listener accepts, before it is
+        folded into the results (which keep the latest only). For a check
+        that needs to know when a device said something (the device audit's
+        power cycle hears a device announce itself as it boots). A failing
+        callback is logged and ignored. A byebye is passed on too: it is
+        what a device says as it leaves.
         """
         self._capture = capture
+        self._on_message = on_message
         # Two sockets with distinct jobs. ``_search_sock`` is bound to an
         # ephemeral port: it sends the M-SEARCH and receives the unicast
         # replies. ``_sock`` is bound to the well-known SSDP port 1900 and
@@ -453,6 +467,15 @@ class SSDPScanner:
         # Skip if this is our own M-SEARCH being echoed back
         if text.startswith("M-SEARCH"):
             return
+
+        if self._on_message is not None:
+            try:
+                self._on_message(sender_ip, {
+                    "kind": "notify" if text.startswith("NOTIFY") else "response",
+                    **{k: headers[k] for k in ("nts", "nt", "st", "usn", "location") if k in headers},
+                })
+            except Exception:
+                log.debug("SSDP message callback failed", exc_info=True)
 
         # Unsolicited NOTIFY beacons carry the advertised type in NT (not ST,
         # which only M-SEARCH replies use) and announce departures via NTS.

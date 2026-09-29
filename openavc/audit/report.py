@@ -116,6 +116,25 @@
     "after"}``, the value read back and how many seconds after the write;
     ``restore.automatic`` when the audit put it back as the driver stopped)
     and ``summary``.
+  - ``outages``: each power cycle and cable pull, in order: ``number``,
+    ``kind`` (``power_cycle``, ``cable_pull``), ``status`` (``done`` or
+    ``stopped``, with ``end_reason``), ``connect_attempt``; the clocks, each a
+    time or null: ``started_at``, the person's marks ``off_at`` and ``on_at``,
+    the device's own answers ``unreachable_at`` and ``reachable_at`` (from a
+    ping once a second, when ``ping.used``; ``ping.why`` says why not),
+    ``noticed_at`` (the driver's disconnect), ``reconnected_at``,
+    ``not_noticed_at`` (the ``notice_ceiling_seconds`` passed first),
+    ``ends_at``, ``finished_at``; ``watch`` (``liveness_probe``,
+    ``probe_every``, ``poll_interval``: how the driver notices a device that
+    went quiet); ``reason`` (the first offline reason after it noticed:
+    ``code``, ``detail``) and every one in ``reasons``; ``measured``, in
+    seconds (``noticed_after``, negative when OpenAVC noticed before the
+    device stopped answering ping; ``away_for``; ``answered_after_on``;
+    ``reconnected_after_back``); ``before`` (the status values that had a
+    value going in) and ``repopulated`` (``reported_again``,
+    ``not_reported_again``: written after the reconnect, changed or not);
+    ``announcements`` (what the device announced during the test:
+    ``t``, ``protocol``, ``detail``); ``summary`` says it in a sentence.
 
 - ``timeline``: every session event in order, typed and timestamped.
 - ``limits``: what the audit could not see, and why.
@@ -336,6 +355,7 @@ def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
         "attempts": [attempt.report_record() for attempt in run.listens],
         "commands": run.commands.report_record() if getattr(run, "commands", None) else None,
         "settings": run.settings.report_record() if getattr(run, "settings", None) else None,
+        "outages": [test.record() for test in getattr(run, "outages", None) or []],
     }
 
 
@@ -368,6 +388,15 @@ def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
                 "id": "traffic_not_captured", "run": run.index,
                 "text": f"{name} manages its own connection, so its traffic was not captured.",
             })
+        for test in getattr(run, "outages", None) or []:
+            if not test.ping.get("used"):
+                limits.append({
+                    "id": "outage_by_marks", "run": run.index,
+                    "text": f"The device does not answer ping, so when it went away and came back "
+                            f"in {name}'s {test.to_dict()['kind'].replace('_', ' ')} test are the "
+                            "person's own marks.",
+                })
+                break
         if any(attempt.sandbox.observer.truncated_at is not None for attempt in run.listens):
             limits.append({
                 "id": "traffic_truncated", "run": run.index,
@@ -1032,6 +1061,23 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
             parts.append("<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>")
     parts.extend(_render_commands(section.get("commands")))
     parts.extend(_render_settings(section.get("settings")))
+    parts.extend(_render_outages(section.get("outages")))
+    return parts
+
+
+def _render_outages(outages: list[dict[str, Any]] | None) -> list[str]:
+    """Each power cycle and cable pull, for summary.html."""
+    from openavc.audit.outage import WORDS, outage_sentence
+
+    if not outages:
+        return []
+    parts = ["<h3>Power and cable</h3><table>"]
+    for test in outages:
+        name = WORDS.get(test.get("kind"), {}).get("name") or str(test.get("kind"))
+        parts.append(_row(
+            f"{test.get('number')}. {name}", _e(test.get("summary") or outage_sentence(test)),
+        ))
+    parts.append("</table>")
     return parts
 
 

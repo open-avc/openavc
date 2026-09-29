@@ -30,6 +30,11 @@ remove it, and simulation redirects the engine's devices only.
 - Its log lines carry the ``[audit-...]`` prefix; its web-UI probe runs, as
   in production.
 
+**Its state store notes every write** (:class:`AuditStateStore`): a state
+store tells its listeners only about changes, and a device that reports the
+same value again after a reconnect has still reported it. The store is the
+sandbox's own, so production's is untouched.
+
 **Nothing is written on connect**: the device carries no pending settings.
 
 **A serial port that would simulate is refused** (a ``SIM:`` path, or serial
@@ -44,6 +49,7 @@ fault it caused. The contract observer records every such write instead
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -70,6 +76,25 @@ NO_SERIAL_SUPPORT = (
     "is not installed. Reinstall OpenAVC, then run the audit again."
 )
 NOT_INSTALLED = "The driver {driver} is not installed. Install it, then try again."
+
+
+class AuditStateStore(StateStore):
+    """The sandbox's state store: production's, noting when each key was
+    last written, a write of the value it already had included."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.written: dict[str, float] = {}
+
+    def set(self, key: str, value: Any, source: str = "system") -> None:
+        self.written[key] = time.time()
+        super().set(key, value, source)
+
+    def set_batch(self, updates: dict[str, Any], source: str = "system") -> None:
+        now = time.time()
+        for key in updates:
+            self.written[key] = now
+        super().set_batch(updates, source)
 
 
 def audit_device_id(session_id: str) -> str:
@@ -133,7 +158,7 @@ class DriverSandbox:
         self.name = name
         self.config = dict(config)
         self.project_view = project_view or AuditProjectView()
-        self.state = StateStore()
+        self.state = AuditStateStore()
         self.events = EventBus()
         self.state.set_event_bus(self.events)
         self.manager = DeviceManager(self.state, self.events)
@@ -228,3 +253,12 @@ class DriverSandbox:
 
     def connected(self) -> bool:
         return bool(self.state.get(f"device.{self.device_id}.connected"))
+
+    def written_since(self, since: float) -> set[str]:
+        """The device's state keys (without the ``device.<id>.`` prefix)
+        written at or after ``since``, whether or not the value changed."""
+        prefix = f"device.{self.device_id}."
+        return {
+            key[len(prefix):] for key, t in self.state.written.items()
+            if t >= since and key.startswith(prefix)
+        }

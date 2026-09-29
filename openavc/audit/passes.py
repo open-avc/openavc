@@ -67,6 +67,8 @@ class DriverRun:
     # (``audit/settings.py``), made when the driver first connects.
     commands: Any = None
     settings: Any = None
+    # Power cycles and cable pulls (``audit/outage.py``), in order.
+    outages: list[Any] = field(default_factory=list)
     # State the later steps add to ``to_dict`` (name -> value or provider).
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -75,9 +77,12 @@ class DriverRun:
         return self.sandbox is not None and self.sandbox.started
 
     async def end_attempt(self) -> None:
-        """End the current connection: first what the commands step is
-        sending or watching, then every setting the audit changed goes back
-        (it needs the connection), then the connection itself. Results stay."""
+        """End the current connection: first a power or cable test and what
+        the commands step is sending or watching, then every setting the
+        audit changed goes back (it needs the connection), then the
+        connection itself. Results stay."""
+        for test in self.outages:
+            await test.stop("The driver was stopped.")
         if self.commands is not None:
             await self.commands.stop()
         if self.settings is not None:

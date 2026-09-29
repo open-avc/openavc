@@ -16,7 +16,7 @@ import logging
 import socket
 import struct
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from openavc.discovery.multicast import (
     join_group_on_interfaces,
@@ -36,6 +36,11 @@ DNS_TYPE_PTR = 12    # Domain name pointer (service discovery)
 DNS_TYPE_TXT = 16    # Text records (key=value metadata)
 DNS_TYPE_SRV = 33    # Service location (host + port)
 DNS_TYPE_AAAA = 28   # IPv6 address (parsed but not used for discovery)
+# Record types by name, for a caller's view of one message (``on_message``).
+_RECORD_NAMES = {
+    DNS_TYPE_A: "A", DNS_TYPE_PTR: "PTR", DNS_TYPE_TXT: "TXT", DNS_TYPE_SRV: "SRV",
+    DNS_TYPE_AAAA: "AAAA",
+}
 
 DNS_CLASS_IN = 1
 
@@ -488,6 +493,7 @@ class MDNSScanner:
         service_types: list[str] | None = None,
         query_enumerated_types: bool = False,
         enumerated_from: Iterable[str] = (),
+        on_message: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         """``control_ip``: bind multicast group join to this interface IP.
         Empty string means INADDR_ANY (default route, all interfaces).
@@ -511,7 +517,15 @@ class MDNSScanner:
         types these addresses list, so a single-device check chases the
         device's own types and not every type the network offers. Empty
         means every source.
+
+        ``on_message``: called with the sender's address and what one
+        message said, for every message this listener accepts, before it is
+        folded into the results (which keep the latest only). For a check
+        that needs to know when a device said something (the device audit's
+        power cycle hears a device announce itself as it boots). A failing
+        callback is logged and ignored.
         """
+        self._on_message = on_message
         self._sock: socket.socket | None = None
         self._running = False
         self._results: dict[str, MDNSResult] = {}  # keyed by IP
@@ -707,6 +721,17 @@ class MDNSScanner:
 
         if not records:
             return
+
+        if self._on_message is not None:
+            try:
+                self._on_message(sender_ip, {
+                    "records": [
+                        {"type": _RECORD_NAMES.get(rec.rtype, str(rec.rtype)), "name": rec.name}
+                        for rec in records[:20]
+                    ],
+                })
+            except Exception:
+                log.debug("mDNS message callback failed", exc_info=True)
 
         # First pass: collect A records for hostname resolution. New
         # hostnames are dropped past the cap; known ones keep updating.

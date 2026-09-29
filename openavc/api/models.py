@@ -487,6 +487,15 @@ class AuditSettingRequest(BaseModel):
     value: Any
 
 
+class AuditOutageMarkRequest(BaseModel):
+    """Body for ``POST /api/audit/sessions/{id}/outage/mark``: the person says
+    the device went off (turned off, cable out) or is back on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mark: Literal["off", "on"]
+
+
 class AuditTesterRequest(BaseModel):
     """Body for ``PATCH /api/audit/sessions/{id}/tester``: "About you" on the
     report, all optional, and whether to leave the serial number out."""

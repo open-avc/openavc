@@ -35,7 +35,7 @@ import logging
 import re
 import socket
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from openavc.discovery.multicast import join_group_on_interfaces, set_shared_port_reuse
 from openavc.discovery.result import Evidence
@@ -165,8 +165,21 @@ class AMXDDPScanner:
     sources are capped at MAX_BEACON_SOURCES per scan window.
     """
 
-    def __init__(self, control_ip: str = "") -> None:
-        """``control_ip``: bind to this interface. Empty = default route."""
+    def __init__(
+        self,
+        control_ip: str = "",
+        on_message: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> None:
+        """``control_ip``: bind to this interface. Empty = default route.
+
+        ``on_message``: called with the sender's address and what one
+        message said, for every message this listener accepts, before it is
+        folded into the results (which keep the latest only). For a check
+        that needs to know when a device said something (the device audit's
+        power cycle hears a device announce itself as it boots). A failing
+        callback is logged and ignored.
+        """
+        self._on_message = on_message
         self._sock: socket.socket | None = None
         self._running = False
         self._results: dict[str, DDPBeacon] = {}
@@ -241,6 +254,13 @@ class AMXDDPScanner:
         beacon = parse_ddp_beacon(data, sender_ip)
         if not beacon:
             return
+        if self._on_message is not None:
+            try:
+                self._on_message(sender_ip, {
+                    "make": beacon.make, "model": beacon.model, "uuid": beacon.uuid,
+                })
+            except Exception:
+                log.debug("AMX DDP message callback failed", exc_info=True)
         if sender_ip not in self._results and len(self._results) >= MAX_BEACON_SOURCES:
             if not self._cap_warned:
                 self._cap_warned = True

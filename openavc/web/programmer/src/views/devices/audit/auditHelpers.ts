@@ -13,6 +13,7 @@ import type {
   AuditConflictDevice,
   AuditDriverRun,
   AuditListen,
+  AuditOutage,
   AuditPreviewStage,
   AuditStatusVariable,
   AuditTrafficEntry,
@@ -31,6 +32,7 @@ export type AuditStep =
   | "connection"
   | "listen"
   | "commands"
+  | "outage"
   | "report";
 
 /** The steps this wizard has, in order, with their rail labels. */
@@ -41,6 +43,7 @@ export const AUDIT_STEPS: { key: AuditStep; label: string }[] = [
   { key: "connection", label: "Connection" },
   { key: "listen", label: "Connect and listen" },
   { key: "commands", label: "Commands" },
+  { key: "outage", label: "Power and cable" },
   { key: "report", label: "Report" },
 ];
 
@@ -63,6 +66,7 @@ export const ACTIVITY_ORDER: AuditActivityKey[] = [
 export function stepFor(session: AuditSessionState | null): AuditStep {
   if (!session) return "target";
   if (session.steps.includes("report")) return "report";
+  if (session.steps.includes("outage")) return "outage";
   if (session.steps.includes("commands")) return "commands";
   if (session.steps.includes("listen")) return "listen";
   if (session.steps.includes("connection")) return "connection";
@@ -115,6 +119,21 @@ export function applyAuditMessage(
     const runs = session.runs.map((r) =>
       r.index === index ? { ...r, commands: mergeCommands(r.commands, update) } : r,
     );
+    return { session: { ...session, runs }, timeline };
+  }
+  if (msg.type === "audit.outage" && typeof msg.run === "number" && msg.outage && session.runs) {
+    const index = msg.run;
+    if (!session.runs.some((r) => r.index === index)) return { session, timeline };
+    const outage = msg.outage as AuditOutage;
+    const runs = session.runs.map((r) => {
+      if (r.index !== index) return r;
+      const kept = r.outages ?? [];
+      const at = kept.findIndex((o) => o.number === outage.number);
+      return {
+        ...r,
+        outages: at >= 0 ? kept.map((o, i) => (i === at ? outage : o)) : [...kept, outage],
+      };
+    });
     return { session: { ...session, runs }, timeline };
   }
   if (msg.type === "audit.settings" && typeof msg.run === "number" && msg.settings && session.runs) {
@@ -426,6 +445,7 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
   const tested = drivers.filter((d) => d.attempts.length > 0);
   const several = tested.length > 1;
   tested.forEach((d, i) => {
+    const outageNames: Record<string, string> = { power_cycle: "Power cycle", cable_pull: "Cable pull" };
     const suffix = several ? ` (${i + 1})` : "";
     const name = [d.driver.name, d.driver.version].filter(Boolean).join(" ");
     lines.push({
@@ -504,6 +524,10 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
         });
       }
     }
+    for (const o of d.outages ?? []) {
+      if (!o.summary) continue;
+      lines.push({ label: `${outageNames[o.kind] ?? o.kind}${suffix}`, value: o.summary });
+    }
   });
   return lines;
 }
@@ -561,4 +585,62 @@ export function answerCounts(trials: AuditCommandTrial[]): string {
   return ANSWER_CHOICES.filter((c) => counts.has(c.key))
     .map((c) => `${counts.get(c.key)} ${words[c.key]}`)
     .join(", ");
+}
+
+/** The seconds from `from` to `to` (or now), one decimal, or null. */
+export function secondsBetween(from: number | null, to: number | null): number | null {
+  if (from === null || to === null) return null;
+  return Math.round((to - from) * 10) / 10;
+}
+
+/** Where a power or cable test stands, one line per clock, as the step shows it. */
+export function outageProgress(o: AuditOutage, now: number): { label: string; value: string }[] {
+  const lines: { label: string; value: string }[] = [];
+  const gone = o.unreachable_at ?? o.off_at;
+  const back = o.reachable_at ?? o.on_at;
+  const offWord = o.kind === "power_cycle" ? "Turned off" : "Cable out";
+  const onWord = o.kind === "power_cycle" ? "Turned back on" : "Cable back in";
+  if (o.ping.used) {
+    lines.push({
+      label: "Answers ping",
+      value: o.unreachable_at === null
+        ? "yes"
+        : o.reachable_at === null
+          ? `no, for ${secondsBetween(o.unreachable_at, now)} s`
+          : `again, after ${secondsBetween(o.unreachable_at, o.reachable_at)} s without`,
+    });
+  }
+  if (o.off_at !== null) lines.push({ label: offWord, value: "you said so" });
+  if (o.noticed_at !== null) {
+    const after = secondsBetween(gone, o.noticed_at);
+    const why = o.reason?.detail || o.reason?.code;
+    lines.push({
+      label: "OpenAVC noticed",
+      value: `${after !== null ? `${Math.max(0, after)} s after it went` : "yes"}${why ? ` (${why})` : ""}`,
+    });
+  } else if (o.not_noticed_at !== null) {
+    lines.push({
+      label: "OpenAVC noticed",
+      value: `not within ${Math.round(o.notice_ceiling_seconds / 60) || 1} minutes`,
+    });
+  } else if (gone !== null && o.status === "running") {
+    const waited = secondsBetween(gone, now) ?? 0;
+    const left = Math.max(0, Math.ceil(o.notice_ceiling_seconds - waited));
+    lines.push({ label: "OpenAVC noticed", value: `not yet (${waited} s; ${left} s left)` });
+  }
+  if (o.on_at !== null) lines.push({ label: onWord, value: "you said so" });
+  if (o.reconnected_at !== null) {
+    const after = secondsBetween(back, o.reconnected_at);
+    lines.push({
+      label: "Driver reconnected",
+      value: after !== null && after >= 0 ? `${after} s after the device was back` : "yes",
+    });
+    const again = o.repopulated.reported_again.length;
+    const total = again + o.repopulated.not_reported_again.length;
+    if (total > 0) lines.push({ label: "Values reported again", value: `${again} of ${total}` });
+  }
+  if (o.announcements.length > 0) {
+    lines.push({ label: "Announcements heard", value: String(o.announcements.length) });
+  }
+  return lines;
 }

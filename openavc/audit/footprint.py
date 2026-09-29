@@ -135,6 +135,8 @@ SNMP_WALK_LIMIT = 5000
 WEB_BODY_BYTES = 16384
 # How long the listeners run at most. The session ends them first.
 _LISTENER_CEILING_SECONDS = 24 * 3600.0
+# Messages from the audited device the listeners keep, with their times.
+HEARD_KEPT = 5000
 
 # Ports that serve a web page by convention, and the scheme each speaks.
 WEB_PORTS: dict[int, str] = {
@@ -402,6 +404,10 @@ class NetworkCheck:
         self._ssdp: SSDPScanner | None = None
         self._amx: AMXDDPScanner | None = None
         self._listener_tasks: list[asyncio.Task] = []
+        # Every message the audited device sent the listeners, with when it
+        # arrived (``heard_since``): what a device says as it leaves and as
+        # it boots. Other devices' messages are not kept.
+        self.heard: list[dict[str, Any]] = []
         self._listeners_started: float | None = None
         self._catalog_identity: dict[str, Any] = {}
         self._catalog_forced = False
@@ -441,9 +447,12 @@ class NetworkCheck:
         self._mdns = MDNSScanner(
             control_ip=self._source_ip, service_types=types,
             query_enumerated_types=True, enumerated_from=[ip] if ip else [],
+            on_message=self._hear("mdns"),
         )
-        self._ssdp = SSDPScanner(control_ip=self._source_ip, capture=True)
-        self._amx = AMXDDPScanner(control_ip=self._source_ip)
+        self._ssdp = SSDPScanner(
+            control_ip=self._source_ip, capture=True, on_message=self._hear("ssdp"),
+        )
+        self._amx = AMXDDPScanner(control_ip=self._source_ip, on_message=self._hear("amx_ddp"))
         self._listeners_started = asyncio.get_running_loop().time()
         self._listener_tasks = [
             asyncio.create_task(self._mdns.start(duration=_LISTENER_CEILING_SECONDS)),
@@ -452,6 +461,27 @@ class NetworkCheck:
             )),
             asyncio.create_task(self._amx.start(duration=_LISTENER_CEILING_SECONDS)),
         ]
+
+    def _hear(self, protocol: str) -> Callable[[str, dict[str, Any]], None]:
+        """A listener's ``on_message``: keep what the audited device said."""
+
+        def heard(sender_ip: str, detail: dict[str, Any]) -> None:
+            if sender_ip == self.footprint.ip and len(self.heard) < HEARD_KEPT:
+                self.heard.append({"t": time.time(), "protocol": protocol, "detail": detail})
+
+        return heard
+
+    def heard_since(self, since: float, until: float | None = None) -> list[dict[str, Any]]:
+        """What the audited device announced between ``since`` and ``until``."""
+        return [
+            dict(m) for m in self.heard
+            if m["t"] >= since and (until is None or m["t"] <= until)
+        ]
+
+    @property
+    def source_ip(self) -> str:
+        """The local address the check sends from ("" for the default route)."""
+        return self._source_ip
 
     async def stop_listeners(self) -> None:
         """Close the listeners (the session's teardown calls this)."""

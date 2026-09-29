@@ -443,6 +443,47 @@ export interface AuditSettings {
   trials: AuditSettingTrial[];
 }
 
+export type AuditOutageKind = "power_cycle" | "cable_pull";
+
+/** One power cycle or cable pull: the clocks, what they measured, what came back. */
+export interface AuditOutage {
+  number: number;
+  kind: AuditOutageKind;
+  status: "running" | "done" | "stopped";
+  end_reason: string;
+  connect_attempt: number;
+  started_at: number;
+  finished_at: number | null;
+  /** The person's marks. */
+  off_at: number | null;
+  on_at: number | null;
+  /** The device's own answers to ping (null when ping is not used). */
+  unreachable_at: number | null;
+  reachable_at: number | null;
+  /** The driver: when OpenAVC noticed, and when it was connected again. */
+  noticed_at: number | null;
+  reconnected_at: number | null;
+  /** When the ceiling passed with OpenAVC not having noticed. */
+  not_noticed_at: number | null;
+  ends_at: number | null;
+  notice_ceiling_seconds: number;
+  ping: { used: boolean; why: string };
+  watch: { liveness_probe: boolean; probe_every: number; poll_interval: number };
+  reason: { code: string; detail: string } | null;
+  reasons: { t: number; code: string; detail: string }[];
+  measured: {
+    noticed_after: number | null;
+    away_for: number | null;
+    answered_after_on: number | null;
+    reconnected_after_back: number | null;
+  };
+  before: string[];
+  repopulated: { reported_again: string[]; not_reported_again: string[] };
+  announcements: { t: number; protocol: string; detail: Record<string, unknown> }[];
+  /** What it showed, in a sentence, once it has ended ("" before). */
+  summary: string;
+}
+
 /** One driver tested against the device. */
 export interface AuditDriverRun {
   index: number;
@@ -455,6 +496,7 @@ export interface AuditDriverRun {
   listen?: AuditListen;
   commands?: AuditCommands;
   settings?: AuditSettings;
+  outages?: AuditOutage[];
 }
 
 /** A paused project device whose saved settings the chosen driver can use. */
@@ -558,6 +600,7 @@ export interface AuditReportDriver {
   attempts: AuditReportAttempt[];
   commands?: { trials: AuditCommandTrial[]; changed?: AuditChangedValue[] } | null;
   settings?: { trials: AuditSettingTrial[] } | null;
+  outages?: AuditOutage[];
 }
 
 /** The report record (report.json). Only the parts the wizard reads are typed. */
@@ -726,6 +769,31 @@ export function putAuditSettingBack(
     `/audit/sessions/${encodeURIComponent(sessionId)}/settings/${encodeURIComponent(key)}/restore`,
     { method: "POST" },
   );
+}
+
+/** Start the power cycle test; what it measures arrives over the WebSocket. */
+export function startPowerCycle(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/power-cycle`, {
+    method: "POST",
+  });
+}
+
+/** The person says the device went off, or is back on. */
+export function markOutage(
+  sessionId: string,
+  mark: "off" | "on",
+): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/outage/mark`, {
+    method: "POST",
+    body: JSON.stringify({ mark }),
+  });
+}
+
+/** End the power or cable test that is running. */
+export function stopOutage(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/outage/stop`, {
+    method: "POST",
+  });
 }
 
 /** "Did the device do it?" for command number `trial`. */

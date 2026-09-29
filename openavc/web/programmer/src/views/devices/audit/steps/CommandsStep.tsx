@@ -322,7 +322,7 @@ export function CommandsStep() {
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
         <button
           type="button"
-          onClick={() => useAuditStore.getState().setStep("report")}
+          onClick={() => useAuditStore.getState().setStep("outage")}
           disabled={working}
           style={buttonStyle("primary", working)}
         >
