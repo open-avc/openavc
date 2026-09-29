@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { decideProjectReload, type ProjectReloadMessage } from "./projectReload";
 import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
@@ -166,22 +167,21 @@ export function useWebSocket() {
         useUiFilesStore.getState().bump();
       }
 
-      // Project was modified (by AI, fleet push, or other source) — refetch
+      // Project was modified: by this tab through a dedicated endpoint, by
+      // another session, the AI, a fleet push. projectReload.ts decides which.
       if (msg.type === "project.reloaded") {
         const store = useProjectStore.getState();
-        // If we're mid-save, this is our own save echoing back via the
-        // server's reload broadcast.  Ignore it — the PUT response will
-        // update our revision, and real conflicts are caught by the 409.
-        if (store.saving) return;
-        const serverRevision = (msg as any).revision;
-        if (store.dirty) {
-          if (serverRevision != null && store.revision != null && serverRevision !== store.revision) {
-            showInfo("Project modified by another session. Save may trigger a conflict. Consider reloading.");
-          } else {
-            showInfo("Project modified externally. Your unsaved changes may conflict");
-          }
-        } else {
+        const decision = decideProjectReload(store, msg as unknown as ProjectReloadMessage);
+        // Our own change: a save in flight takes its revision from the PUT
+        // response, and a device page save re-syncs the store itself.
+        // Nothing to refetch and nothing to warn about.
+        if (decision === "own") return;
+        if (decision === "refetch") {
           debouncedProjectReload();
+        } else if (decision === "warn-other-session") {
+          showInfo("Project modified by another session. Save may trigger a conflict. Consider reloading.");
+        } else {
+          showInfo("Project modified externally. Your unsaved changes may conflict");
         }
       }
 

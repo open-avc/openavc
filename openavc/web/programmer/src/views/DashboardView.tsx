@@ -1163,6 +1163,10 @@ export function DashboardView() {
                 <a href="https://docs.openavc.com/getting-started" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
                   Read the Getting Started guide
                 </a>
+                {" "}or take the Foundations course at{" "}
+                <a href="https://academy.openavc.com" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                  OpenAVC Academy
+                </a>
               </div>
             </div>
           )}

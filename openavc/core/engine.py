@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc import config, runtime_flags
+from openavc.core.client_origin import reload_origin
 from openavc.core.device_config import bridge_first, resolve_device_config
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
@@ -828,6 +829,7 @@ class Engine:
         await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": self._project_revision,
+            **reload_origin(),
         })
 
         await self.events.emit("system.project.reloaded")
@@ -1251,6 +1253,7 @@ class Engine:
         await self.broadcast_ws({
             "type": "project.reloaded",
             "revision": revision,
+            **reload_origin(),
         })
         return revision
 

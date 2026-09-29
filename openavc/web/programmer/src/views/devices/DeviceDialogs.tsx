@@ -6,14 +6,7 @@ import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
 import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
-import {
-  coerceConfigValue,
-  configFieldKind,
-  isSecretConfigField,
-  splitConnectionFields,
-  SERIAL_PICKER_FIELDS,
-  IR_PICKER_FIELDS,
-} from "./deviceConfigCoerce";
+import { coerceConfigValue, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 
 // --- Typed Config Fields ---
@@ -975,15 +968,9 @@ export function AddDeviceDialog({
             onChange={(newDriverId) => {
               setSelectedDriver(newDriverId);
               const newDriver = drivers.find((d) => d.id === newDriverId);
-              const defaults = newDriver?.default_config ?? {};
-              const prefilled: Record<string, string> = {};
-              for (const [k, v] of Object.entries(defaults)) {
-                // Never pre-fill a password/secret field — a masked default is
-                // an easy way to save a password by accident.
-                if (isSecretConfigField(newDriver?.config_schema, k)) continue;
-                if (v !== "" && v != null) prefilled[k] = String(v);
-              }
-              setConfigValues(prefilled);
+              setConfigValues(
+                prefillConfigValues(newDriver?.default_config, newDriver?.config_schema),
+              );
               if (newDriver) {
                 const generated = generateDeviceDefaults(newDriver, devices ?? []);
                 if (!idTouchedByUser) setDeviceId(generated.id);
@@ -1208,13 +1195,9 @@ export function EditDeviceDialog({
     setSelectedDriver(newDriver);
     if (newDriver !== device.driver) {
       const newDriverInfo = drivers.find((d) => d.id === newDriver);
-      const defaults = newDriverInfo?.default_config ?? {};
-      const prefilled: Record<string, string> = {};
-      for (const [k, v] of Object.entries(defaults)) {
-        if (isSecretConfigField(newDriverInfo?.config_schema, k)) continue;
-        if (v !== "" && v != null) prefilled[k] = String(v);
-      }
-      setConfigValues(prefilled);
+      setConfigValues(
+        prefillConfigValues(newDriverInfo?.default_config, newDriverInfo?.config_schema),
+      );
     }
   };
 

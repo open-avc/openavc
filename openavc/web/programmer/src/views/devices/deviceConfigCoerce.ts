@@ -25,6 +25,28 @@ export function isSecretConfigField(
   return f?.type === "password" || f?.secret === true;
 }
 
+// The dialog form is a flat string map, so a driver's default_config is
+// flattened into it when a driver is picked. A scalar becomes its string. An
+// array or object (a `table` field's default rows, an object field's default
+// map) becomes JSON, which coerceConfigValue parses straight back into the
+// typed value on save: String() on an array gave "[object Object],..." which
+// the table coercion could not parse, so a driver's declared default roster
+// (the Tesira block list, for one) was saved as an empty list. Secrets are
+// never pre-filled, and an empty default is left unset so the driver's own
+// default applies.
+export function prefillConfigValues(
+  defaults: Record<string, unknown> | undefined,
+  schema: Record<string, unknown> | undefined,
+): Record<string, string> {
+  const prefilled: Record<string, string> = {};
+  for (const [k, v] of Object.entries(defaults ?? {})) {
+    if (isSecretConfigField(schema, k)) continue;
+    if (v === "" || v == null) continue;
+    prefilled[k] = typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
+  return prefilled;
+}
+
 // Which input widget a config field renders as. Centralised so the dialogs
 // can't disagree with the coercion rules below — and so `secret: true`
 // (the Driver Builder's Secret checkbox, e.g. generic_http's passwords and

@@ -423,6 +423,11 @@ app.add_middleware(
 # form (instead of the browser's native Basic auth dialog, which can't pass
 # credentials to WebSocket upgrades on most browsers).
 
+# Which Programmer tab a request came from, so its own project.reloaded
+# echo is recognisable (core/client_origin.py).
+from openavc.middleware.client_origin import ClientOriginMiddleware
+app.add_middleware(ClientOriginMiddleware)
+
 # Per-IP rate limiting (outermost — runs before auth)
 from openavc.middleware.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)

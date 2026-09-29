@@ -18,6 +18,7 @@
  * is sliding — an active session stays signed in, an idle one ages out.
  */
 
+import { CLIENT_HEADER, CLIENT_ID } from "./clientId";
 import { getTunnelPrefix } from "./base";
 
 const STORAGE_KEY = "openavc.programmer.session";
@@ -189,17 +190,20 @@ export function installFetchAuth(): void {
     let finalInit = init;
 
     if (attach) {
+      const headers = new Headers(
+        init?.headers ??
+          (input instanceof Request ? input.headers : undefined),
+      );
       const auth = getAuthHeader();
-      if (auth) {
-        const headers = new Headers(
-          init?.headers ??
-            (input instanceof Request ? input.headers : undefined),
-        );
-        if (!headers.has("Authorization")) {
-          headers.set("Authorization", auth);
-        }
-        finalInit = { ...(init || {}), headers };
+      if (auth && !headers.has("Authorization")) {
+        headers.set("Authorization", auth);
       }
+      // Names this tab, so the project.reloaded echo of an edit made here
+      // is recognisable as our own (api/clientId.ts).
+      if (!headers.has(CLIENT_HEADER)) {
+        headers.set(CLIENT_HEADER, CLIENT_ID);
+      }
+      finalInit = { ...(init || {}), headers };
     }
 
     const res = await original(input, finalInit);
