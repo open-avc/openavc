@@ -37,9 +37,12 @@ const TESTS: Record<
 };
 
 /** How each test starts. */
-const START: Partial<Record<audit.AuditOutageKind, (sessionId: string) => Promise<{ session: audit.AuditSessionState }>>> = {
+const START: Record<audit.AuditOutageKind, (sessionId: string) => Promise<{ session: audit.AuditSessionState }>> = {
   power_cycle: audit.startPowerCycle,
+  cable_pull: audit.startCablePull,
 };
+
+const KINDS: audit.AuditOutageKind[] = ["power_cycle", "cable_pull"];
 
 /** Step 7: power cycle and cable pull, each optional. */
 export function OutageStep() {
@@ -73,8 +76,6 @@ export function OutageStep() {
     }
   };
 
-  const kinds: audit.AuditOutageKind[] = ["power_cycle"];
-
   return (
     <div style={{ maxWidth: 820 }}>
       <h2 style={headingStyle}>Power and cable</h2>
@@ -84,7 +85,7 @@ export function OutageStep() {
       </p>
       {error && <ErrorLine text={error} />}
 
-      {kinds.map((kind) => {
+      {KINDS.map((kind) => {
         const words = TESTS[kind];
         const tests = (run.outages ?? []).filter((o) => o.kind === kind);
         const last = tests[tests.length - 1];
@@ -153,7 +154,7 @@ export function OutageStep() {
                 <div style={{ marginTop: "var(--space-sm)" }}>
                   <button
                     type="button"
-                    onClick={() => void act(kind, () => START[kind]!(sessionId))}
+                    onClick={() => void act(kind, () => START[kind](sessionId))}
                     disabled={busy !== "" || !connected || !!running}
                     style={buttonStyle("muted", busy !== "" || !connected || !!running)}
                   >

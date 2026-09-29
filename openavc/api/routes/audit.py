@@ -36,7 +36,8 @@ turns a refusal into its sentence.
   it back, put the old value back) and
   ``POST /audit/sessions/{id}/settings/{key}/restore`` ("Put it back");
   ``audit/settings.py``.
-- ``POST /audit/sessions/{id}/power-cycle`` (start the test),
+- ``POST /audit/sessions/{id}/power-cycle`` and
+  ``POST /audit/sessions/{id}/cable-pull`` (start a test),
   ``POST /audit/sessions/{id}/outage/mark`` (the person's "it is off" and "it
   is back on") and ``POST /audit/sessions/{id}/outage/stop``;
   ``audit/outage.py``.
@@ -71,7 +72,7 @@ from openavc.audit.commands import commands_for
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
 from openavc.audit.listen import start_listen
 from openavc.audit.origin import device_target, origin_for
-from openavc.audit.outage import POWER_CYCLE, current_outage, start_outage
+from openavc.audit.outage import CABLE_PULL, POWER_CYCLE, current_outage, start_outage
 from openavc.audit.settings import settings_for
 from openavc.audit.passes import (
     choose_driver,
@@ -502,6 +503,12 @@ async def _start_outage(session_id: str, kind: str) -> dict[str, Any]:
 async def start_power_cycle(session_id: str) -> dict[str, Any]:
     """Start the power cycle test; progress arrives over ``audit.subscribe``."""
     return await _start_outage(session_id, POWER_CYCLE)
+
+
+@router.post("/sessions/{session_id}/cable-pull")
+async def start_cable_pull(session_id: str) -> dict[str, Any]:
+    """Start the cable pull test; progress arrives over ``audit.subscribe``."""
+    return await _start_outage(session_id, CABLE_PULL)
 
 
 @router.post("/sessions/{session_id}/outage/mark")

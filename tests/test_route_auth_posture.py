@@ -206,6 +206,7 @@ AUDIT_ROUTES = {
     ("POST", "/api/audit/sessions/{session_id}/settings/{key}"),
     ("POST", "/api/audit/sessions/{session_id}/settings/{key}/restore"),
     ("POST", "/api/audit/sessions/{session_id}/power-cycle"),
+    ("POST", "/api/audit/sessions/{session_id}/cable-pull"),
     ("POST", "/api/audit/sessions/{session_id}/outage/mark"),
     ("POST", "/api/audit/sessions/{session_id}/outage/stop"),
     ("GET", "/api/audit/sessions/{session_id}/children/{child_type}"),

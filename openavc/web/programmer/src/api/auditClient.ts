@@ -778,6 +778,13 @@ export function startPowerCycle(sessionId: string): Promise<{ session: AuditSess
   });
 }
 
+/** Start the cable pull test; what it measures arrives over the WebSocket. */
+export function startCablePull(sessionId: string): Promise<{ session: AuditSessionState }> {
+  return request(`/audit/sessions/${encodeURIComponent(sessionId)}/cable-pull`, {
+    method: "POST",
+  });
+}
+
 /** The person says the device went off, or is back on. */
 export function markOutage(
   sessionId: string,

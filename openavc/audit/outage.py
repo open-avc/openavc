@@ -91,22 +91,34 @@ TEST_RUNNING = "Finish the test that is running first."
 NOT_RUNNING = "No power or cable test is running."
 MARK_ORDER = "Say when it went off before saying it is back on."
 
-# The words for each test: what to do, and the person's two marks.
+# The words for each test: its name, the person's two marks, and how the
+# sentence says the device came back.
 WORDS = {
     POWER_CYCLE: {
         "name": "Power cycle",
         "off": "The person said they turned the device off.",
         "on": "The person said they turned the device back on.",
+        "back": "it was turned back on",
     },
     CABLE_PULL: {
         "name": "Cable pull",
         "off": "The person said they unplugged the network cable.",
         "on": "The person said they plugged the network cable back in.",
+        "back": "the cable was plugged back in",
     },
 }
 
 # Pings the audited device once; True when it answered.
 Pinger = Callable[[], Awaitable[bool]]
+
+
+def span_text(seconds: float) -> str:
+    """"5 minutes", "1 minute", "40 seconds"."""
+    if seconds >= 60 and seconds % 60 == 0:
+        minutes = int(seconds // 60)
+        return f"{minutes} minute{'' if minutes == 1 else 's'}"
+    whole = round(seconds)
+    return f"{whole} second{'' if whole == 1 else 's'}"
 
 
 def _since(t: float | None, start: float | None) -> float | None:
@@ -313,7 +325,7 @@ class OutageTest:
             self._timeline(
                 "outage.not_noticed",
                 f"OpenAVC did not notice the device was gone within "
-                f"{round(self.notice_ceiling_seconds / 60) or 1} minutes.",
+                f"{span_text(self.notice_ceiling_seconds)}.",
             )
         if self.ends_at is None and self.reconnected_at is not None:
             poll = float(self.run.listen.poll_interval or 0)
@@ -472,9 +484,9 @@ def outage_sentence(record: dict[str, Any]) -> str:
             when = ""
         parts.append("OpenAVC noticed the device was gone" + when + (f" ({why})" if why else ""))
     elif record.get("not_noticed_at") or record.get("status") == DONE:
-        minutes = round((record.get("notice_ceiling_seconds") or NOTICE_CEILING_SECONDS) / 60) or 1
+        ceiling = span_text(record.get("notice_ceiling_seconds") or NOTICE_CEILING_SECONDS)
         text = (
-            f"OpenAVC did not notice the device was gone within {minutes} minutes"
+            f"OpenAVC did not notice the device was gone within {ceiling}"
             if record.get("not_noticed_at")
             else "OpenAVC did not notice the device was gone"
         )
@@ -485,8 +497,8 @@ def outage_sentence(record: dict[str, Any]) -> str:
             )
         parts.append(text)
     if measured.get("answered_after_on") is not None:
-        parts.append(f"the device answered again {measured['answered_after_on']} s after it was "
-                     "turned back on")
+        back = WORDS.get(record.get("kind"), WORDS[POWER_CYCLE])["back"]
+        parts.append(f"the device answered again {measured['answered_after_on']} s after {back}")
     if record.get("reconnected_at"):
         after = measured.get("reconnected_after_back")
         parts.append(

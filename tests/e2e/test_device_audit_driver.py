@@ -10,7 +10,7 @@ command is sent, its declared effect is read back and the person says the
 device did it, a device setting is written, read back and put back, and
 "What changed" names what the command changed; and the report's download
 carries the driver section, the traffic, the command, the setting, a power
-cycle started and stopped, and the driver file. Finish reconnects the
+cycle and a cable pull each started and stopped, and the driver file. Finish reconnects the
 project device.
 
 Slow for the same reason as ``test_device_audit.py``: the network check runs
@@ -285,6 +285,19 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_text(re.compile(r"The test was stopped\.$"))).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
+    # And the cable pull, the same way.
+    dialog.get_by_role("button", name="Start the cable pull test").click()
+    dialog.get_by_role("button", name="I unplugged it").click(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_role("row", name="Cable out you said so")).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+    expect(dialog.get_by_role("row", name=re.compile(r"^OpenAVC noticed not yet"))).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+    dialog.get_by_role("button", name="Stop the test").click()
+    expect(dialog.get_by_text(re.compile(r"The test was stopped\.$"))).to_have_count(
+        2, timeout=EXPECT_TIMEOUT,
+    )
     dialog.get_by_role("button", name="Continue", exact=True).click()
 
     # The report says what the driver did.
@@ -337,9 +350,10 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     assert [bytes.fromhex(e["hex"]) for e in trial["traffic"]["entries"]
             if e["direction"] == "tx"][:1] == [b"INPUT hdmi2\r"]
     assert [c["key"] for c in section["commands"]["changed"]] == ["input"]
-    (cycle,) = section["outages"]
+    cycle, pull = section["outages"]
     assert cycle["kind"] == "power_cycle" and cycle["status"] == "stopped"
-    assert cycle["off_at"] is not None
+    assert pull["kind"] == "cable_pull" and pull["status"] == "stopped"
+    assert cycle["off_at"] is not None and pull["off_at"] is not None
     (setting,) = section["settings"]["trials"]
     assert setting["write"]["confirmed"] and setting["restore"]["confirmed"]
     assert setting["original"] == "Lobby" and setting["value"] == "Boardroom"

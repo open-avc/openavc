@@ -31,10 +31,12 @@ from openavc.audit.commands import commands_for
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import start_listen
 from openavc.audit.outage import (
+    CABLE_PULL,
     DONE,
     POWER_CYCLE,
     STOPPED,
     outage_sentence,
+    span_text,
     start_outage,
 )
 from openavc.audit.passes import DriverRun
@@ -83,10 +85,12 @@ def driver():
 
 
 class Unit:
-    """A device on loopback that can be switched off and on at its port."""
+    """A device on loopback that can be switched off and on at its port, or
+    unplugged: its connections stay open and it simply stops answering."""
 
     def __init__(self) -> None:
         self.on = True
+        self.unplugged = False
         self.port = 0
         self._server: asyncio.base_events.Server | None = None
         self._writers: list[asyncio.StreamWriter] = []
@@ -100,6 +104,8 @@ class Unit:
         try:
             while True:
                 line = (await reader.readuntil(b"\r")).decode().strip()
+                if self.unplugged:
+                    continue  # nothing gets through, and nothing closes
                 if line == "PWR?":
                     writer.write(b"PWR=on\r")
                 elif line == "VOL?":
@@ -138,7 +144,7 @@ async def _until(predicate, timeout: float = 15.0) -> None:
         await asyncio.sleep(0.02)
 
 
-async def _connected(unit: Unit, heard: list | None = None):
+async def _connected(unit: Unit, heard: list | None = None, driver_id: str = "acme_outage"):
     session = AuditSession("out1", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
     session.check = SimpleNamespace(
         source_ip="",
@@ -147,7 +153,7 @@ async def _connected(unit: Unit, heard: list | None = None):
         ],
     )
     run = DriverRun(index=0, choice=DriverChoice(
-        driver_id="acme_outage", identity={"name": "Acme Outage", "version": "1.0.0"},
+        driver_id=driver_id, identity={"name": "Acme Outage", "version": "1.0.0"},
     ))
     run.config = {"host": "127.0.0.1", "port": unit.port}
     session.runs.append(run)
@@ -329,6 +335,82 @@ async def test_a_device_that_does_not_answer_ping_is_timed_by_the_marks(driver):
     assert "outage_by_marks" in limits
 
 
+async def test_a_pulled_cable_the_driver_never_notices_is_said_plainly(driver):
+    """No liveness probe: polls go out, nothing comes back, nothing fails."""
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit)
+
+    async def pinger() -> bool:
+        return not unit.unplugged
+
+    try:
+        test = start_outage(
+            session, run, CABLE_PULL, pinger=pinger, notice_ceiling_seconds=1.0,
+            back_unnoticed_seconds=0.3, **QUICK,
+        )
+        assert not test.watch["liveness_probe"]
+        test.mark("off")
+        unit.unplugged = True
+        await _until(lambda: test.not_noticed_at is not None)
+        assert test.noticed_at is None and run.listen.sandbox.connected()
+        unit.unplugged = False
+        test.mark("on")
+        await _until(lambda: test.status == DONE)
+        record = test.record()
+        assert record["unreachable_at"] and record["reachable_at"]
+        assert record["summary"].startswith(
+            "OpenAVC did not notice the device was gone within 1 second. This driver has no "
+            "liveness probe, so it notices a device that stops answering only when something "
+            "it sends fails"
+        )
+        assert "outage.not_noticed" in [e.kind for e in session.timeline]
+    finally:
+        await run.stop()
+        await unit.close()
+
+
+async def test_a_driver_with_a_liveness_probe_notices_a_pulled_cable(driver):
+    watched = dict(DRIVER, id="acme_watched", liveness={
+        "send": "PWR?\\r", "interval": 1, "timeout": 0.3, "max_failures": 1,
+    })
+    _DRIVER_REGISTRY["acme_watched"] = create_configurable_driver_class(watched)
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit, driver_id="acme_watched")
+
+    async def pinger() -> bool:
+        return not unit.unplugged
+
+    try:
+        test = start_outage(session, run, CABLE_PULL, pinger=pinger, **QUICK)
+        assert test.watch["liveness_probe"] and test.watch["probe_every"] == 1.0
+        test.mark("off")
+        unit.unplugged = True
+        await _until(lambda: test.noticed_at is not None, timeout=20.0)
+        assert test.reason["code"] == "no_response"
+        unit.unplugged = False
+        test.mark("on")
+        await _until(lambda: test.status == DONE, timeout=30.0)
+        record = test.record()
+        assert record["reconnected_at"] is not None
+        assert "OpenAVC noticed the device was gone" in record["summary"]
+        # Plugged back in before the next ping, so the ping clock follows the mark.
+        assert "answered again" in record["summary"]
+        assert "after the cable was plugged back in" in record["summary"]
+    finally:
+        await run.stop()
+        await unit.close()
+        _DRIVER_REGISTRY.pop("acme_watched", None)
+
+
+def test_the_ceiling_reads_right_at_any_length():
+    assert span_text(300.0) == "5 minutes"
+    assert span_text(60.0) == "1 minute"
+    assert span_text(1.0) == "1 second"
+    assert span_text(40.0) == "40 seconds"
+
+
 def test_the_mark_request_declares_every_field():
     assert set(AuditOutageMarkRequest.model_fields) == {"mark"}
     with pytest.raises(ValidationError):
@@ -360,8 +442,14 @@ async def test_the_routes(wired, driver):  # noqa: F811
         assert result["session"]["runs"][0]["outages"][0]["kind"] == "power_cycle"
         await routes.mark_outage(session_id, AuditOutageMarkRequest(mark="off"))
         assert run.outages[0].off_at is not None
+        with pytest.raises(HTTPException) as exc:
+            await routes.start_cable_pull(session_id)
+        assert exc.value.status_code == 409
         await routes.stop_outage(session_id)
         assert run.outages[0].status == STOPPED
+        result = await routes.start_cable_pull(session_id)
+        assert result["session"]["runs"][0]["outages"][1]["kind"] == "cable_pull"
+        await routes.stop_outage(session_id)
         with pytest.raises(HTTPException) as exc:
             await routes.stop_outage(session_id)
         assert exc.value.status_code == 409
@@ -370,3 +458,67 @@ async def test_the_routes(wired, driver):  # noqa: F811
         await unit.close()
         await wired.manager.shutdown()
 
+
+
+async def test_both_tests_against_the_simulator(driver):
+    """The platform's own simulator: its no_response error mode is a pulled
+    cable (the connection stays, nothing answers), and stopping and starting
+    it is a power cycle (the connection closes, the port refuses)."""
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    definition = dict(
+        DRIVER, id="acme_simulated",
+        polling={"queries": [
+            {"send": "PWR?\r", "query_for": "power"},
+            {"send": "VOL?\r", "query_for": "volume"},
+        ]},
+        liveness={"send": "PWR?\r", "interval": 1, "timeout": 0.3, "max_failures": 1},
+        simulator={
+            "initial_state": {"power": True, "volume": 30},
+            "error_modes": {"unplugged": {"behavior": "no_response", "description": "No network"}},
+        },
+    )
+    _DRIVER_REGISTRY["acme_simulated"] = create_configurable_driver_class(definition)
+    sim = YAMLAutoSimulator("sim1", {}, driver_def=definition)
+    await sim.start(0)
+    port = sim.port
+    session = AuditSession("out3", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    session.check = SimpleNamespace(source_ip="", heard_since=lambda since, until=None: [])
+    run = DriverRun(index=0, choice=DriverChoice(driver_id="acme_simulated"))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+    powered = {"on": True}
+
+    async def pinger() -> bool:
+        return powered["on"] and not sim.has_error_behavior("no_response")
+
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.sandbox.device_state().get("volume") == 30)
+
+        pull = start_outage(session, run, CABLE_PULL, pinger=pinger, **QUICK)
+        pull.mark("off")
+        sim.inject_error("unplugged")
+        await _until(lambda: pull.noticed_at is not None, timeout=20.0)
+        assert pull.reason["code"] == "no_response"
+        sim.clear_error("unplugged")
+        pull.mark("on")
+        await _until(lambda: pull.status == DONE, timeout=30.0)
+        assert pull.reconnected_at is not None
+        assert pull.record()["repopulated"]["reported_again"] == ["power", "volume"]
+
+        cycle = start_outage(session, run, POWER_CYCLE, pinger=pinger, **QUICK)
+        cycle.mark("off")
+        powered["on"] = False
+        await sim.stop()
+        await _until(lambda: cycle.noticed_at is not None)
+        powered["on"] = True
+        cycle.mark("on")
+        await sim.start(port)
+        await _until(lambda: cycle.status == DONE, timeout=30.0)
+        assert cycle.reconnected_at is not None and cycle.reason is not None
+        assert [o.kind for o in run.outages] == ["cable_pull", "power_cycle"]
+    finally:
+        await run.stop()
+        await sim.stop()
+        _DRIVER_REGISTRY.pop("acme_simulated", None)

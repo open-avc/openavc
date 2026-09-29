@@ -71,6 +71,7 @@ EXPECTED_CONTROL = {
     ("POST", "/api/audit/sessions/{session_id}/settings/{key}"),
     ("POST", "/api/audit/sessions/{session_id}/settings/{key}/restore"),
     ("POST", "/api/audit/sessions/{session_id}/power-cycle"),
+    ("POST", "/api/audit/sessions/{session_id}/cable-pull"),
     ("POST", "/api/audit/sessions/{session_id}/outage/mark"),
     ("POST", "/api/audit/sessions/{session_id}/outage/stop"),
     ("DELETE", "/api/devices/{device_id}"),
