@@ -13,6 +13,7 @@ again".
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 from fastapi import HTTPException
@@ -39,7 +40,7 @@ from openavc.audit.listen import start_listen
 from openavc.audit.passes import DriverRun
 from openavc.audit.report import build_report, render_summary
 from openavc.audit.session import AuditError, AuditOptions, AuditSession, AuditTarget
-from openavc.core.device_traffic import get_traffic_recorder
+from openavc.core.device_traffic import RX, get_traffic_recorder
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.registry import _DRIVER_REGISTRY
 from openavc.utils.log_redaction import get_secret_registry
@@ -262,6 +263,27 @@ async def test_a_secret_parameter_stays_out_of_every_record(driver):
     report = build_report(session)
     assert report["drivers"][0]["commands"]["trials"][0]["command"] == "set_code"
     assert "tulip-7391" not in str(report)
+
+
+async def test_a_reply_before_the_send_is_not_the_commands_on_a_coarse_clock(driver):
+    """``time.time()`` ticks every 15.6 ms on Windows before Python 3.13, so a
+    reply that landed just before a send can carry the send's own timestamp;
+    the window is cut by position, so it stays out."""
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        last = run.listen.sandbox.observer.frames()[-1]
+        assert last.direction == RX  # VOL=20, the connect-time poll's answer
+        last.t = time.time() + 0.05  # stamped as a coarse clock can
+        commands = commands_for(session, run, **WINDOW)
+        trial = await commands.send("set_volume", {"level": 40})
+        await _until(lambda: trial.status == DONE)
+        view = commands.to_dict()["trials"][0]
+        assert [e["text"] for e in view["traffic"]["entries"]] == ["VOL 40\r", "VOL=40"]
+        assert view["sent_nothing"] is False
+    finally:
+        await run.stop()
+        server.close()
 
 
 async def test_nothing_is_sent_before_the_driver_connects(driver):

@@ -366,12 +366,28 @@ class CommandTrial:
     # The person's answer to "Did the device do it?": {"answer", "note", "at"}.
     answer: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+    # Where the observer's traffic and event lists stood as the command was
+    # sent, and as its window closed. The window is cut by position, not by
+    # clock: the lists only grow, while ``time.time()`` ticks every 15.6 ms
+    # on Windows before Python 3.13, so a reply that landed just before the
+    # send can carry the send's own timestamp.
+    marks: dict[str, int] = field(default_factory=dict)
+    end_marks: dict[str, int] = field(default_factory=dict)
 
     def window_end(self) -> float:
         return self.finished_at or time.time()
 
-    def in_window(self, t: float) -> bool:
-        return self.sent_at <= t <= self.window_end()
+    def mark(self, observer: Any, into: dict[str, int]) -> None:
+        into["traffic"] = len(observer.traffic)
+        into["events"] = len(observer.events)
+
+    def traffic_in(self, observer: Any) -> list[Any]:
+        """The observer's traffic from the send to the end of the window."""
+        return observer.traffic[self.marks.get("traffic", 0):self.end_marks.get("traffic")]
+
+    def events_in(self, observer: Any) -> list[Any]:
+        """The contract events from the send to the end of the window."""
+        return observer.events[self.marks.get("events", 0):self.end_marks.get("events")]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -693,6 +709,7 @@ class CommandPass:
         handles = self._watch(trial, sandbox)
         driver = sandbox.driver
         errors_before = getattr(driver, "_last_error_writes", 0)
+        trial.mark(sandbox.observer, trial.marks)
         try:
             try:
                 result = await sandbox.manager.send_command(
@@ -729,6 +746,9 @@ class CommandPass:
         if trial.status == DONE:
             return
         trial.finished_at = time.time()
+        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        if attempt is not None:
+            trial.mark(attempt.sandbox.observer, trial.end_marks)
         trial.status = DONE
         self._conclude(trial)
         self.session.add_timeline(
@@ -797,8 +817,8 @@ class CommandPass:
         events = []
         if attempt is not None:
             events = [
-                e for e in attempt.sandbox.observer.events
-                if e.kind == "unmatched_response" and trial.in_window(e.t)
+                e for e in trial.events_in(attempt.sandbox.observer)
+                if e.kind == "unmatched_response"
             ]
         last_error_changes = [c for c in trial.changes if c["key"] == "last_error" and c["new"]]
         trial.refusals.update({
@@ -815,8 +835,8 @@ class CommandPass:
                 trial.sent_nothing = None  # its traffic is not captured at all
             else:
                 trial.sent_nothing = command_sent_nothing(
-                    attempt.sandbox.observer.traffic, trial.sent_at,
-                    trial.returned_at or trial.sent_at,
+                    trial.traffic_in(attempt.sandbox.observer), trial.sent_at,
+                    trial.returned_at or trial.sent_at, started_inclusive=True,
                 )
 
         declared = trial.declared.get("restarts_device_for")
@@ -859,7 +879,7 @@ class CommandPass:
         attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
         if attempt is None:
             return []
-        return [e for e in attempt.sandbox.observer.frames() if trial.in_window(e.t)]
+        return [e for e in trial.traffic_in(attempt.sandbox.observer) if not e.chunk]
 
     def _redactor(self, trial: CommandTrial):
         return self.run.listens[trial.connect_attempt].sandbox.observer.redactor()

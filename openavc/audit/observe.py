@@ -184,12 +184,18 @@ def command_sent_nothing(
     finished: float,
     *,
     grace: float = 0.5,
+    started_inclusive: bool = False,
 ) -> bool:
     """True when no byte went to the device between ``started`` and
-    ``finished`` (plus ``grace`` for a send completing after the call)."""
+    ``finished`` (plus ``grace`` for a send completing after the call).
+    ``started_inclusive``: ``entries`` already begin at the send (cut by
+    position), so none is dropped for a clock that ticked too coarsely to
+    put it after ``started``."""
     end = finished + grace
     return not any(
-        e.direction == TX and not e.chunk and started <= e.t <= end for e in entries
+        e.direction == TX and not e.chunk
+        and (started_inclusive or started <= e.t) and e.t <= end
+        for e in entries
     )
 
 
