@@ -63,6 +63,32 @@ def test_oui_hint_matches_regardless_of_separator_style():
             assert "acme_widget" in result.candidates
 
 
+def test_a_medium_ieee_block_claims_only_the_macs_inside_it():
+    """A maker whose only IEEE block is an MA-M claims its 28 bits, not the
+    /24 the Registration Authority split among other companies."""
+    matcher = _matcher({"oui": ["00:11:22:4"]})
+    inside = matcher.match([evidence_oui("00:11:22:4a:bb:cc")])
+    assert inside.state == DeviceState.POSSIBLE and "acme_widget" in inside.candidates
+    outside = matcher.match([evidence_oui("00:11:22:5a:bb:cc")])
+    assert "acme_widget" not in outside.candidates
+
+
+def test_the_longest_declared_block_wins_over_a_claim_on_the_whole_24():
+    widget = parse_driver_discovery({
+        "id": "acme_widget", "name": "Acme Widget", "discovery": {"oui": ["00:11:22:4"]},
+    })
+    wide = parse_driver_discovery({
+        "id": "bolt_panel", "name": "Bolt Panel", "discovery": {"oui": ["00:11:22"]},
+    })
+    index = build_signal_index([widget, wide])
+    assert index.find_soft_oui_block("00:11:22:4a:bb:cc") == ("00:11:22:4", ["acme_widget"])
+    assert index.find_soft_oui_block("00:11:22:5a:bb:cc") == ("00:11:22", ["bolt_panel"])
+    assert index.find_soft_oui_block("00:11:22:4") == ("00:11:22:4", ["acme_widget"])
+    assert index.find_soft_oui_block("99:88:77:66:55:44") == ("99:88:77", [])
+    result = TierMatcher(index).match([evidence_oui("00:11:22:4a:bb:cc")])
+    assert result.candidates == ["acme_widget"]
+
+
 def test_invalid_oui_entry_is_skipped_not_fatal():
     """A garbage OUI entry is dropped (with a warning); the driver's other
     hints still load — parse must not reject the whole driver over one bad OUI.

@@ -31,6 +31,7 @@ from openavc.discovery.hints import (
     describe_response_match,
     signal_rules,
 )
+from openavc.discovery.oui_database import mac_prefix_keys
 from openavc.discovery.port_scanner import PORT_OPEN
 from openavc.discovery.probe_runner import (
     MISS_CERT_SUBJECT,
@@ -578,13 +579,20 @@ _SOFT_NOUN = {
 }
 
 
-def _observed_soft(ev: Evidence) -> str:
+def _observed_soft(ev: Evidence, rule: SignalRule | None = None) -> str:
     kind = ev.data.get("kind")
     if kind == KIND_VENDOR_STRING:
         return str(ev.data.get("raw") or ev.data.get("value"))
     if kind == KIND_OUI:
         vendor = ev.data.get("vendor")
         value = str(ev.data.get("value"))
+        mac = ev.data.get("mac")
+        if rule is not None and isinstance(mac, str) and mac:
+            # A 28 or 36-bit block is judged against the MAC's prefix of
+            # the same length, so the sentence shows that one.
+            keys = [k for k in mac_prefix_keys(mac) if len(k) == len(rule.source_id)]
+            if keys and keys[0] != value:
+                return keys[0]
         return f"{value} ({vendor})" if vendor else value
     return str(ev.data.get("value"))
 
@@ -604,7 +612,7 @@ def _check_soft(
         hit = soft_signal_hits(ev, single)
         if hit is not None and hit[1]:
             hits.append(ev)
-    shown = list(dict.fromkeys(_observed_soft(ev) for ev in (hits or same_kind)))
+    shown = list(dict.fromkeys(_observed_soft(ev, rule) for ev in (hits or same_kind)))
     noun = _SOFT_NOUN[rule.kind]
     if hits:
         return _check(

@@ -945,6 +945,10 @@ function HintsSection({
         onChange={(next) => update({ ...cfg, oui: next })}
         placeholder="00:0e:dd"
       />
+      <div style={HELP}>
+        The first three bytes of the MAC address. If the maker's only IEEE block is a
+        smaller one, enter its 7 or 9 characters instead (18:66:96:1).
+      </div>
 
       <label style={LABEL}>Hostname patterns (regex)</label>
       <StringList

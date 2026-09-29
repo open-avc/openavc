@@ -359,6 +359,18 @@ class TestHints:
         assert _by_kind(checks, "hostname").status == MATCHED
         assert not any(c.strong for c in checks)
 
+    def test_a_medium_block_is_judged_on_the_macs_prefix_of_its_length(self):
+        hint = _hint("acme_widget", oui=["00:11:22:4"])
+        [inside] = evaluate_driver_signals(hint, DeviceObservations(evidence=[
+            evidence_oui("00:11:22:4a:bb:cc"),
+        ]))
+        assert inside.status == MATCHED and inside.declared == "MAC address prefix 00:11:22:4"
+        [outside] = evaluate_driver_signals(hint, DeviceObservations(evidence=[
+            evidence_oui("00:11:22:5a:bb:cc"),
+        ]))
+        assert outside.status == NOT_MATCHED
+        assert outside.detail == "The device's MAC address prefix is 00:11:22:5."
+
     def test_an_unseen_host_name_says_which_names_count(self):
         # An mDNS name is not one of them: the card shows it, the hint never sees it.
         hint = _hint("acme_widget", hostname=["^widget-"])

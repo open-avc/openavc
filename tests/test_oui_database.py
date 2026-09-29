@@ -9,7 +9,7 @@ repo.
 
 from __future__ import annotations
 
-from openavc.discovery.oui_database import OUIDatabase, normalize_oui_prefix
+from openavc.discovery.oui_database import OUIDatabase, mac_prefix_keys, normalize_oui_prefix
 
 
 def test_normalize_accepts_common_formats():
@@ -68,3 +68,40 @@ def test_add_prefix_earlier_registration_wins():
     db.add_prefix("00:11:22", "First", "audio")
     db.add_prefix("001122", "Second", "display")
     assert db.lookup("00:11:22:33:44:55") == ("First", "audio")
+
+
+def test_a_medium_or_small_ieee_block_keeps_its_length():
+    """7 or 9 hex digits name an MA-M or MA-S block; anything else longer
+    than 6 (a full MAC, a stray eighth digit) keeps three octets, as before."""
+    assert normalize_oui_prefix("00-11-22-4") == "00:11:22:4"
+    assert normalize_oui_prefix("0011224") == "00:11:22:4"
+    assert normalize_oui_prefix("00:11:22:4A:B") == "00:11:22:4a:b"
+    assert normalize_oui_prefix("00:11:22:44") == "00:11:22"
+    assert normalize_oui_prefix("00:11:22:4a:bb:cc") == "00:11:22"
+
+
+def test_a_mac_answers_to_its_three_prefix_lengths_longest_first():
+    assert mac_prefix_keys("00-11-22-4A-BB-CC") == ["00:11:22:4a:b", "00:11:22:4", "00:11:22"]
+    assert mac_prefix_keys("00:11:22:4") == ["00:11:22:4", "00:11:22"]
+    assert mac_prefix_keys("00:11:22") == ["00:11:22"]
+
+
+def test_a_mac_falls_in_the_longest_registered_block():
+    """The /24 is split among companies; the one holding the smaller block
+    names the MACs in it, and the /24's claim keeps the rest."""
+    db = OUIDatabase()
+    db.add_prefix("00:11:22", "Wide Co", "audio")
+    db.add_prefix("00-11-22-4", "Acme", "display")
+    db.add_prefix("00:11:22:5a:b", "Small Co", "video")
+    assert db.lookup("00:11:22:4a:bb:cc") == ("Acme", "display")
+    assert db.lookup_block("00:11:22:4a:bb:cc") == ("00:11:22:4", "Acme", "display")
+    assert db.lookup("00:11:22:5a:bb:cc") == ("Small Co", "video")
+    assert db.lookup("00:11:22:5a:cc:dd") == ("Wide Co", "audio")
+    assert db.lookup_block("00:11:22:66:77:88") == ("00:11:22", "Wide Co", "audio")
+
+
+def test_a_block_alone_claims_nothing_outside_it():
+    db = OUIDatabase()
+    db.add_prefix("00:11:22:4", "Acme", "display")
+    assert db.lookup("00:11:22:4a:bb:cc") == ("Acme", "display")
+    assert db.lookup("00:11:22:5a:bb:cc") is None

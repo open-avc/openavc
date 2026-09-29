@@ -106,6 +106,22 @@ class TestOUIEvidence:
 # ===== Hostname -> enrichment evidence (engine-emitted) =====
 
 
+class TestOUIBlockEvidence:
+    def test_the_record_names_the_block_its_vendor_came_from(self):
+        from openavc.discovery.engine import mac_info_and_evidence
+        from openavc.discovery.oui_database import OUIDatabase
+
+        db = OUIDatabase()
+        db.add_prefix("00:11:22", "Wide Co", "audio")
+        db.add_prefix("00:11:22:4", "Acme", "display")
+        info, ev = mac_info_and_evidence("00:11:22:4a:bb:cc", db)
+        assert info["manufacturer"] == "Acme"
+        assert ev.data["value"] == "00:11:22:4" and ev.data["vendor"] == "Acme"
+        assert ev.source == "oui:00:11:22:4"
+        info, ev = mac_info_and_evidence("00:11:22:66:77:88", db)
+        assert ev.data["value"] == "00:11:22" and ev.data["vendor"] == "Wide Co"
+
+
 class TestHostnameEvidence:
     def test_basic_hostname(self):
         ev = evidence_hostname("QSYS-Core110f")

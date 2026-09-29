@@ -47,7 +47,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from openavc.discovery.oui_database import normalize_oui_prefix
+from openavc.discovery.oui_database import mac_prefix_keys, normalize_oui_prefix
 from openavc.discovery.result import (
     Evidence,
     IdentificationMatch,
@@ -118,7 +118,8 @@ class SignalRule:
               declarative ``tcp_probe:`` or
               ``custom_<driver_id>_companion_tcp`` for a Python
               companion's active ID.
-            - ``KIND_OUI``: 6-char OUI prefix, lowercase, e.g. ``"00:0c:4d"``
+            - ``KIND_OUI``: OUI prefix, lowercase, e.g. ``"00:0c:4d"``, or
+              a 28/36-bit IEEE block, e.g. ``"18:66:96:1"``
             - ``KIND_SNMP_PEN``: integer Private Enterprise Number as string
             - ``KIND_HOSTNAME``: regex source string (compiled lazily by the index)
             - ``KIND_OPEN_PORT``: port number as string, e.g. ``"4352"``
@@ -311,7 +312,8 @@ def _normalize_service_type(service: str) -> str:
 
 
 def _normalize_mac_prefix(prefix: str) -> str:
-    """Normalize an OUI prefix or MAC to canonical ``xx:xx:xx``.
+    """Normalize an OUI prefix or MAC to canonical ``xx:xx:xx`` (a 28 or
+    36-bit block keeps its length: ``oui_database.normalize_oui_prefix``).
 
     Delegates to the shared canonicalizer so rule registration (``for_oui``)
     and lookup (``find_soft_oui`` / ``evidence_oui``) always agree on the key
@@ -487,11 +489,24 @@ class SignalIndex:
 
     def find_soft_oui(self, mac: str) -> list[str]:
         """Return driver_ids whose OUI prefix matches the MAC. May be empty."""
-        if not mac:
-            return []
-        prefix = _normalize_mac_prefix(mac)
-        rules = self._rules.get((KIND_OUI, prefix), [])
-        return [r.driver_id for r in rules]
+        return self.find_soft_oui_block(mac)[1]
+
+    def find_soft_oui_block(self, mac: str) -> tuple[str, list[str]]:
+        """The declared prefix a MAC falls in and the drivers declaring it.
+
+        The longest declared prefix wins: a maker's own MA-M or MA-S block
+        (``18:66:96:1``) over a driver claiming the whole /24 around it,
+        which the IEEE Registration Authority has split among other
+        companies. With none declared, the MAC's three-octet prefix and no
+        drivers. ``mac`` may be a full MAC or a prefix; a prefix reaches
+        only the blocks its digits cover.
+        """
+        keys = mac_prefix_keys(mac) if mac else []
+        for key in keys:
+            rules = self._rules.get((KIND_OUI, key), [])
+            if rules:
+                return key, [r.driver_id for r in rules]
+        return (keys[-1] if keys else ""), []
 
     def find_soft_pen(self, pen: int | None) -> list[str]:
         """Return driver_ids whose SNMP PEN matches. May be empty."""
@@ -845,7 +860,11 @@ def soft_signal_hits(
     kind = ev.data.get("kind")
     value = ev.data.get("value")
     if kind == KIND_OUI and isinstance(value, str):
-        return f"{KIND_OUI}:{_normalize_mac_prefix(value)}", index.find_soft_oui(value)
+        # The whole MAC when the record has it, so a 28 or 36-bit block is
+        # reachable; the label names the block that answered.
+        mac = ev.data.get("mac")
+        prefix, drivers = index.find_soft_oui_block(mac if isinstance(mac, str) and mac else value)
+        return f"{KIND_OUI}:{prefix}", drivers
     if kind == KIND_SNMP_PEN and isinstance(value, int):
         return f"{KIND_SNMP_PEN}:{value}", index.find_soft_pen(value)
     if kind == KIND_HOSTNAME and isinstance(value, str):
@@ -973,9 +992,14 @@ def evidence_active_probe(
     )
 
 
-def evidence_oui(mac: str, vendor: str | None = None) -> Evidence:
-    """Build an Evidence record for an OUI lookup."""
-    prefix = _normalize_mac_prefix(mac)
+def evidence_oui(mac: str, vendor: str | None = None, block: str | None = None) -> Evidence:
+    """Build an Evidence record for an OUI lookup.
+
+    ``block`` is the registered prefix the vendor name came from when it is
+    longer than three octets (``OUIDatabase.lookup_block``); the record's
+    value is that block, else the MAC's three-octet prefix.
+    """
+    prefix = _normalize_mac_prefix(block) if block else _normalize_mac_prefix(mac)
     return Evidence(
         tier=SignalTier.ENRICHMENT,
         source=f"oui:{prefix}",

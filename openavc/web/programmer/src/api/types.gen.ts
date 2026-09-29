@@ -795,7 +795,10 @@ export interface DriverDiscoveryConfig {
   tcp_probe?: DriverDiscoveryProbe;
   udp_probe?: DriverDiscoveryProbe;
   python?: string | DriverDiscoveryPython;
-  /** MAC OUI prefixes (vendor) used as a soft hint. */
+  /**
+   * MAC OUI prefixes (vendor) used as a soft hint: three octets (00:0e:dd), or
+   * a maker's IEEE MA-M or MA-S block as 7 or 9 hex digits (18:66:96:1).
+   */
   oui?: string[];
   /** Hostname regex patterns used as a soft hint. */
   hostname?: string[];

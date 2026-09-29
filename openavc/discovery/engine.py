@@ -187,12 +187,13 @@ def mac_info_and_evidence(
     """
     info: dict[str, Any] = {"mac": mac}
     vendor = None
-    found = oui_db.lookup(mac)
+    block = None
+    found = oui_db.lookup_block(mac)
     if found:
-        vendor, category = found
+        block, vendor, category = found
         info["manufacturer"] = vendor
         info["category"] = category
-    return info, evidence_oui(mac, vendor=vendor)
+    return info, evidence_oui(mac, vendor=vendor, block=block)
 
 
 def derived_evidence(
