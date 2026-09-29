@@ -27,6 +27,7 @@ from openavc.discovery.mdns_scanner import (
     _extract_instance_name,
 )
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
+from openavc.discovery.tier_matcher import TierMatcher
 from openavc.discovery.ssdp_scanner import (
     SSDPScanner,
     SSDPResult,
@@ -1577,6 +1578,40 @@ class TestEnginePassiveIntegration:
         assert any(e.source == "mdns:_pjlink._tcp.local." for e in device.evidence_log)
         assert device.device_name == "NEC PA1004UL"
         assert "_pjlink._tcp.local." in device.mdns_services
+
+    @pytest.mark.asyncio
+    async def test_an_mdns_host_name_is_judged_by_host_name_hints(self):
+        """A device that publishes no reverse-DNS or NetBIOS name is matched on
+        the name it announces, bare (no ``.local``); a name reverse DNS already
+        gave is not recorded twice."""
+        from openavc.discovery.hints import build_signal_index, parse_driver_discovery
+        from openavc.discovery.tier_matcher import evidence_hostname
+
+        hint = parse_driver_discovery({
+            "id": "acme_widget", "name": "Acme Widget",
+            "discovery": {"hostname": [r"^widget-\d+(\.local)?$"]},
+        })
+        self.engine.signal_index = build_signal_index([hint])
+        self.engine.tier_matcher = TierMatcher(self.engine.signal_index)
+        mdns_results = {
+            "10.77.0.20": MDNSResult(
+                ip="10.77.0.20", address_name="widget-3000.local",
+            ),
+            "10.77.0.21": MDNSResult(ip="10.77.0.21", hostname="widget-3001"),
+        }
+        already = self.engine._get_or_create("10.77.0.21")
+        already.evidence_log.append(evidence_hostname("widget-3001", matched_pattern=None))
+        self._use_scanners(mdns=mdns_results)
+        await self.engine.merge_passive_results()
+
+        first = self.engine.results["10.77.0.20"]
+        names = [e for e in first.evidence_log if e.data.get("kind") == "hostname"]
+        assert [(e.data["value"], e.data.get("matched_pattern")) for e in names] == [
+            ("widget-3000", r"^widget-\d+(\.local)?$"),
+        ]
+        assert self.engine.tier_matcher.match(first.evidence_log).candidates == ["acme_widget"]
+        second = self.engine.results["10.77.0.21"]
+        assert len([e for e in second.evidence_log if e.data.get("kind") == "hostname"]) == 1
 
     @pytest.mark.asyncio
     async def test_collect_passive_results_ssdp(self):

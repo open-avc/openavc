@@ -372,13 +372,11 @@ class TestHints:
         assert outside.detail == "The device's MAC address prefix is 00:11:22:5."
 
     def test_an_unseen_host_name_says_which_names_count(self):
-        # An mDNS name is not one of them: the card shows it, the hint never sees it.
         hint = _hint("acme_widget", hostname=["^widget-"])
         [check] = evaluate_driver_signals(hint, DeviceObservations())
         assert check.status == NOT_OBSERVED
         assert check.detail == (
-            "No reverse-DNS or NetBIOS name was found for the device, and a host name pattern "
-            "is matched against those names only."
+            "No reverse-DNS, NetBIOS or mDNS host name was found for the device."
         )
 
     def test_every_declaration_gets_one_check_in_rule_order(self):

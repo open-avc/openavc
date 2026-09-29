@@ -375,6 +375,25 @@ async def test_a_companion_is_judged_by_whether_it_ran(monkeypatch, bench):
     )
 
 
+async def test_the_mdns_name_counts_as_the_host_name(monkeypatch, bench):
+    """The check judges a host-name hint against the name the device
+    announced over mDNS (``widget.local``, matched bare), as a scan does."""
+    raw = json.loads(_catalog(bench))
+    raw["drivers"][1]["discovery"]["hostname"] = ["^widget$"]
+
+    async def fetch(_path):
+        return json.dumps(raw).encode(), ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([])
+    check, _ = _check(engine, bench)
+    fp = await check.run()
+
+    [row] = [c for c in fp.verdict["checks"]["acme_gadget"] if c["kind"] == "hostname"]
+    assert row["status"] == "matched" and row["observed"] == ["widget"]
+
+
 async def test_a_silent_network_is_a_limit_not_a_finding(discovery, bench):
     """No announcement from anyone means the listeners may have been blocked;
     the report must not say the device does not announce."""

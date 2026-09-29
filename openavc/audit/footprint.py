@@ -68,6 +68,7 @@ from openavc.discovery.engine import (
     _resolve_hostnames,
     derived_evidence,
     hostname_evidence,
+    mdns_hostname_evidence,
     mac_info_and_evidence,
 )
 from openavc.discovery.explain import (
@@ -1030,6 +1031,7 @@ class NetworkCheck:
         if self._mdns is not None and fp.ip in self._mdns.results:
             result = self._mdns.results[fp.ip]
             evidence.extend(result.to_evidence_records())
+            evidence.extend(mdns_hostname_evidence(result, index, evidence))
             merge_device_info(device, result.to_device_info(), "mdns")
         if self._ssdp is not None and fp.ip in self._ssdp.results:
             result = self._ssdp.results[fp.ip]

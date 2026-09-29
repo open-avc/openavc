@@ -40,6 +40,7 @@ from openavc.discovery.companion import (
     run_companion,
 )
 from openavc.discovery.tier_matcher import (
+    KIND_HOSTNAME,
     SignalIndex,
     TierMatcher,
     evidence_hostname,
@@ -174,6 +175,28 @@ def hostname_evidence(hostname: str, index: SignalIndex) -> list:
     if patterns:
         return [evidence_hostname(hostname, matched_pattern=pat) for pat in patterns]
     return [evidence_hostname(hostname)]
+
+
+def mdns_hostname_evidence(result: Any, index: SignalIndex, evidence: list) -> list:
+    """The host-name evidence for the name a device announces over mDNS.
+
+    The bare name (``controller``, never ``controller.local``), as the
+    device card shows it; nothing when the device announced no name or a
+    record for the same name is already in ``evidence`` (reverse DNS or
+    NetBIOS gave it first). Many AV devices publish no reverse-DNS or
+    NetBIOS name, so without this a ``hostname:`` hint written for the
+    name the device actually announces never fires.
+    """
+    name = result.to_device_info().get("hostname")
+    if not name:
+        return []
+    seen = {
+        str(ev.data.get("value") or "").lower()
+        for ev in evidence if ev.data.get("kind") == KIND_HOSTNAME
+    }
+    if name.lower() in seen:
+        return []
+    return hostname_evidence(name, index)
 
 
 def mac_info_and_evidence(
@@ -1792,6 +1815,9 @@ class DiscoveryEngine:
             # identifies a device is often only one of the types it
             # announces, and packet order must not decide which survives.
             device.evidence_log.extend(mdns_result.to_evidence_records())
+            device.evidence_log.extend(
+                mdns_hostname_evidence(mdns_result, self.signal_index, device.evidence_log)
+            )
             merge_device_info(device, mdns_result.to_device_info(), "mdns")
             await self._emit_device_update(device, "mdns")
             merged += 1
