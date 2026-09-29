@@ -159,8 +159,11 @@ Here is the recommended order for building a new room:
 
 Steps 4-7 are iterative. You will go back and forth between macros, variables, and UI bindings as you refine the system.
 
+[Tutorial: Your First Space](tutorial-first-space.md) is the short version of this order on a starter project. The Associate course at [OpenAVC Academy](academy.md) walks it in full on a complete space.
+
 ## See Also
 
+- [OpenAVC Academy](academy.md). Self-paced courses: Foundations, then the Associate certification.
 - [Devices and Drivers](devices-and-drivers.md). Adding equipment, testing commands, driver library, device discovery.
 - [UI Builder](ui-builder.md). Visual panel designer for touch panels.
 - [Macros and Triggers](macros-and-triggers.md). Command sequences and automation conditions.

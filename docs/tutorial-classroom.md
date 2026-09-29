@@ -1,356 +1,324 @@
 # Tutorial: Build a Classroom with Scripts
 
-This tutorial walks you through building a classroom control system using Python scripts. You will control a projector, display, and DSP, and use scripting to add logic that macros cannot handle.
+This tutorial builds a classroom control system with a projector, a confidence display and a DSP, and uses a Python script for the logic a macro cannot express: a decision that reads two devices at once, a volume ceiling that depends on the state of the room, and a startup that copes with a projector that does not answer.
 
-**Estimated time:** 30-45 minutes.
+**Estimated time:** 45 minutes. Everything runs against the Simulator, so no equipment is needed.
 
-If you completed the conference room tutorial, you already know how to create projects, add devices, and build macros. This tutorial picks up where that one left off, introducing scripts for situations where macros are not enough.
+If you built [your first space](tutorial-first-space.md), you already know how to add devices, create variables and wire a control. This tutorial picks up there and introduces scripts.
 
 ## What You'll Build
 
-A classroom with three devices:
+Three devices:
 
 - **Projector** (PJLink), the main display for the instructor
-- **Display** (Samsung MDC), a confidence monitor or secondary screen
-- **DSP** (Biamp Tesira), audio processing for room microphones and speakers
+- **Confidence display** (Samsung MDC), the small screen facing the instructor
+- **DSP** (Biamp Tesira), program audio for the room
 
-The system needs logic that macros cannot express:
+And one script, `room_control`, that provides:
 
-- **Volume mapping**: convert a UI slider (0-100) to the DSP's decibel range (-100 to 0 dB)
-- **State-reactive UI**: show different status text as the projector warms up, runs, and cools down
-- **Error handling**: show a meaningful message when a device is offline
-- **Timed monitoring**: check room occupancy every 5 minutes and log a warning if the system is running in an empty room
+- **Startup that follows the projector.** The input is switched the moment the projector reports it is on, and a projector that does not answer produces a clear message instead of a stuck sequence.
+- **A status line from two devices.** "Ready" only when both the projector and the confidence display are on.
+- **A volume ceiling.** When the presenter's microphone is live, program audio is capped.
+- **A check that repeats** every five minutes.
+
+## When a Script Earns Its Place
+
+Macros do more than they used to, so be honest about which tool you need:
+
+| A macro or a control setting handles it | A script earns its place |
+|---|---|
+| A sequence of commands with delays | A decision that combines several state values |
+| Waiting for a device to report a state (**Wait Until**) | Arithmetic beyond scaling a range |
+| One if/else on a state value (**Conditional**, **Skip if**) | `try`/`except` with a fallback the operator can see |
+| Stopping when a command fails (**Stop on Error**) | Something that repeats on a timer |
+| Scaling or tapering a slider's value (its **Output Min/Max** and **Response**) | Calling a service outside OpenAVC |
+
+If a macro can express it, use the macro: the next programmer can read it without opening a code editor.
 
 ## Prerequisites
 
-- Completed the conference room tutorial (or equivalent experience with the Programmer IDE)
-- OpenAVC running (`python -m openavc.main`)
-- A browser open to the Programmer IDE at `http://localhost:8080/programmer`
-
-## When Scripts Beat Macros
-
-| Use a Macro When | Use a Script When |
-|-----------------|-------------------|
-| Simple sequence of commands | Need if/else conditional logic |
-| Fixed delays between steps | Need to check state mid-sequence |
-| No error handling needed | Need try/except error handling |
-| Quick one-off actions | Need loops or complex timing |
-| Non-programmers will maintain it | Need to call external APIs or do math |
-
-If your automation needs any of the items in the right column, reach for a script.
+- OpenAVC running and the Programmer open in your browser.
+- [Your first space](tutorial-first-space.md) completed, or equivalent time in the Programmer.
 
 ## Step 1: Set Up the Project
 
-Create a new project and add the three devices. You have done this before, so here is the quick version:
+### Create the project and install the drivers
 
-1. Click **Program** in the sidebar, then **New**
-2. Name it `classroom_101`
-3. Click **Devices** in the sidebar, then **Add Device**
-4. Add a PJLink projector. Set the ID to `projector_main`, enter the IP address, and use the PJLink driver.
-5. Add a second device for the display. Set the ID to `display_confidence`, use the Samsung MDC driver.
-6. Add a third device for the DSP. Set the ID to `dsp1`, use the Biamp Tesira driver.
+1. Click **Program** in the sidebar, then **New**. Name the project `Classroom 101` and click **Create**.
+2. Click **Devices**, then the **Drivers** tab, then **Browse Community**. Search for and **Install** each of these: **PJLink Class 1 Projector**, **Samsung MDC Display** and **Biamp Tesira TTP**.
 
-If you do not have real hardware, the devices will show as disconnected. That is fine. Scripts still run and you can test the logic using variables and the state panel.
+### Add the three devices
 
-## Step 2: Your First Script
+Back on the **Devices** tab, click **Add Device** three times. Pick the driver by searching, set the ID and name, and give each an IP address (any address will do; the Simulator takes over in a moment). Leave the port at its default.
 
-Now create a script file:
+| Driver | Device ID | Display Name | IP Address |
+|---|---|---|---|
+| PJLink Class 1 Projector | `projector_main` | `Projector` | `192.168.1.100` |
+| Samsung MDC Display | `display_confidence` | `Confidence Display` | `192.168.1.101` |
+| Biamp Tesira TTP | `dsp1` | `Room DSP` | `192.168.1.102` |
 
-1. Click **Code** in the sidebar
-2. Click **New Script**
-3. Name it `room_control`
-4. The Monaco code editor opens with a blank file
+### Tell the DSP which blocks it has
 
-Type the following code:
+A Tesira exposes whatever the designer built in its configuration, so the driver needs to know the blocks you want to control. Click **Room DSP** in the device list and find **DSP Block List** on its page. Make sure it has these two rows, adding them with **Add block** if the list is empty, then click **Save**:
+
+| Instance Tag | Block Type | Channels |
+|---|---|---|
+| `PgmLvl` | Level / Fader | `1` |
+| `PgmMute` | Mute | `1` |
+
+On a real Tesira the tags come from the design file (right-click a block in Tesira software and choose Properties). The Simulator's DSP already has these two.
+
+### Start the Simulator
+
+Click **Simulate Devices** (the play button at the bottom of the sidebar), then **Start Simulation**. All three devices show Online on the Devices tab, and the Simulator tab shows a card for each.
+
+## Step 2: Declare the Variables
+
+A script can write any `var.` key, but the Builder's pickers only list variables the project declares. Click **State**, then **New Variable**, and create four:
+
+| ID | Type | Label |
+|---|---|---|
+| `room_active` | Boolean | `Room Active` |
+| `projector_status_text` | String | `Projector Status` |
+| `mic_live` | Boolean | `Mic Live` |
+| `program_level` | Number | `Program Level` |
+
+## Step 3: Your First Script
+
+1. Click **Code** in the sidebar.
+2. Click **+** next to Scripts, enter the Script ID `room_control` and click **Create**.
+
+The editor opens with a two-line start. Replace it with:
 
 ```python
-from openavc import on_event, devices, state, log
+from openavc import devices, state, log
 
-@on_event("ui.press.btn_system_on")
-async def system_on(event):
-    log.info("System ON triggered")
+
+async def system_on():
     state.set("var.room_active", True)
     await devices.send("projector_main", "power_on")
+    await devices.send("display_confidence", "power_on", {"display": 1})
+    log.info("System on")
 ```
 
-Before anything else, here is what each part means:
+What each part means:
 
-- `from openavc import ...` loads the tools you need. You do not install anything. OpenAVC provides these automatically.
-- `@on_event("ui.press.btn_system_on")` tells OpenAVC to run this function when a button called `btn_system_on` is pressed on the panel.
-- `async def system_on(event):` defines the function. The `async` keyword is required on every handler. Just include it and OpenAVC handles the rest.
-- `log.info(...)` prints a message to the console in the Script Editor.
-- `state.set(...)` saves a value that the UI and other scripts can read.
-- `await devices.send(...)` sends a command to a device. The `await` keyword means "wait for this to finish before continuing."
+- `from openavc import ...` loads the tools you need. Nothing to install.
+- `async def system_on():` is an ordinary function. A control on the panel can call it directly, which is how you will run it in the next step.
+- `await devices.send(...)` sends a command to a device and waits for it to finish. The `async` and `await` keywords go together: use them on anything that talks to equipment.
+- Command parameters go in a dictionary, `{"display": 1}`. The Samsung driver addresses each display on its chain by its Set ID, so its power commands need one.
+- `log.info(...)` writes to the Console at the bottom of the Code view.
 
-Click **Save & Reload** at the top of the editor. This saves and hot-reloads the script without restarting the server. You should see "Script loaded" in the console panel.
+Click **Save & Reload Script**. The Console reports `Script 'room_control' reloaded, 0 handler(s) registered`. Zero is right: a handler is a function that reacts to an event, and this one waits to be called.
 
-## Step 3: Add a Delay and Sequence
+## Step 4: Wire a Button to It
 
-Projectors need time to warm up before they accept input commands. Expand the handler to wait 15 seconds, then switch to HDMI 1:
+1. Click **UI Builder**. In the **Elements** list, click **Button** and set its **Text** to `System On`.
+2. Under **Bindings > Does**, click **Press Action**. Set the Action Type to **Script Function** and the Function to **system_on**.
+3. Click **Preview**, press the button, and watch the Simulator tab: the projector and the display both turn on. Click **Stop**.
+
+Every control with a **Does** bucket can call a function this way. The Builder reads the function's parameters from the script itself, so the names always match.
+
+## Step 5: Follow the Projector, and Cope When It Does Not Answer
+
+Two things are missing from the startup. It never switches the projector's input, and if the projector is unplugged the operator learns nothing.
+
+Switching the input needs a wait: a projector ignores input commands while it warms up, and a real one takes 30 to 60 seconds. A fixed delay is a guess, and a function called from a control is stopped after 30 seconds anyway. The better shape is to react to the projector's own report. Add a handler that runs whenever the projector's power state changes, and extend `system_on` with error handling:
 
 ```python
-from openavc import on_event, devices, state, log, delay
+from openavc import devices, state, log, on_state_change
 
-@on_event("ui.press.btn_system_on")
-async def system_on(event):
-    log.info("System ON triggered")
+
+async def system_on():
     state.set("var.room_active", True)
-    await devices.send("projector_main", "power_on")
-    await devices.send("display_confidence", "power_on")
-    await delay(15)
-    await devices.send("projector_main", "set_input", {"input": "hdmi1"})
-    log.info("System ON complete")
-```
-
-Key details:
-
-- `await delay(15)` pauses this handler for 15 seconds. Other handlers keep running normally during the wait.
-- Never use `time.sleep()`. It freezes the entire system. Always use `await delay()`.
-- Device command parameters are passed as a dictionary: `{"input": "hdmi1"}`. Do not use keyword arguments.
-
-## Step 4: Volume Mapping
-
-This is where scripts earn their keep. A UI slider sends values from 0 to 100, but the DSP expects decibels from -100.0 to 0.0. That math conversion is impossible in a macro.
-
-First, you will create the slider in Step 8. For now, write the handler:
-
-```python
-@on_event("ui.change.vol_slider")
-async def volume_changed(event):
-    # UI slider: 0-100
-    # DSP expects: -100.0 to 0.0 dB
-    db = (event.value / 100.0) * 100.0 - 100.0
-    await devices.send("dsp1", "set_fader", {"channel": "program", "level": db})
-    log.info(f"Volume: {event.value}% = {db:.1f} dB")
-```
-
-When the slider is at 0, the math produces -100.0 dB (silence). At 100, it produces 0.0 dB (full). At 50, it produces -50.0 dB. The `f"..."` syntax is a Python formatted string that inserts variable values into text.
-
-## Step 5: State-Reactive Logic
-
-PJLink projectors report their power state as they cycle through warming, on, cooling, and off. You can react to those changes and update a status label on the panel automatically.
-
-Add this to your script:
-
-```python
-from openavc import on_state_change
-
-@on_state_change("device.projector_main.power")
-async def projector_state_changed(key, old_value, new_value):
-    status_map = {
-        "warming": "Warming up...",
-        "on": "Ready",
-        "cooling": "Cooling down...",
-        "off": "Off"
-    }
-    state.set("var.projector_status_text", status_map.get(new_value, "Unknown"))
-    log.info(f"Projector: {old_value} -> {new_value}")
-```
-
-The `@on_state_change` decorator fires whenever the specified state key changes. The handler receives three arguments: the key that changed, its previous value, and its new value.
-
-`status_map` is a Python dictionary that maps device values to human-readable text. The `.get()` method returns "Unknown" if the projector reports a value not in the map.
-
-> **Tip:** For this simple case, you could also use a variable with source binding instead of a script. In the State tab, edit a variable and set its Source to "Bound to state key" with a value map. Scripts are the right choice when you need more complex transformations or when one state change should update multiple things.
-
-## Step 6: Error Handling
-
-When a device is offline or unreachable, `devices.send()` raises an exception. Without error handling, the rest of your handler stops running. Wrap device commands in `try`/`except` to keep things working:
-
-```python
-@on_event("ui.press.btn_system_on")
-async def system_on(event):
-    state.set("var.room_active", True)
-
     try:
         await devices.send("projector_main", "power_on")
     except Exception as e:
-        log.error(f"Failed to turn on projector: {e}")
-        state.set("var.projector_status_text", "Error - check connection")
+        log.error(f"Projector did not respond: {e}")
+        state.set("var.projector_status_text", "Projector not responding")
         return
+    await devices.send("display_confidence", "power_on", {"display": 1})
+    log.info("System on")
 
-    await devices.send("display_confidence", "power_on")
-    await delay(15)
-    await devices.send("projector_main", "set_input", {"input": "hdmi1"})
-    log.info("System ON complete")
+
+@on_state_change("device.projector_main.power")
+async def projector_changed(key, old_value, new_value):
+    display_on = state.get("device.display_confidence.display.001.power") == "on"
+    if new_value == "on":
+        text = "Ready" if display_on else "Ready, confidence display off"
+        if state.get("var.room_active"):
+            await devices.send("projector_main", "set_input", {"input": "hdmi1"})
+    elif new_value == "warming":
+        text = "Warming up"
+    elif new_value == "cooling":
+        text = "Cooling down"
+    else:
+        text = "Off"
+    state.set("var.projector_status_text", text)
 ```
 
-The `try` block attempts the command. If it fails, Python jumps to the `except` block, where you log the error and update the status label. The `return` statement exits the handler early so it does not continue sending commands to a projector that is not responding.
+How it works:
 
-Even without `try`/`except`, a script error will never crash the server. OpenAVC logs the error, marks the script in the Code view with the number of times it has failed, and keeps running. But error handling lets you show useful feedback to the person operating the panel.
+- `try` attempts the command. If the projector is unreachable, `devices.send` raises, Python jumps to `except`, and the function logs the error, writes a message the panel can show, and `return`s rather than carrying on with a projector that is not there.
+- `@on_state_change("device.projector_main.power")` makes `projector_changed` a handler: OpenAVC calls it with the key, the previous value and the new value every time that key changes. The projector reports `warming`, then `on`; the input command goes out the moment `on` arrives, however long the warm-up took.
+- The status text reads two devices. A variable with a value map can translate one key; only a script can say "Ready" when both are on. The display is a child entity of the Samsung device, so its power key carries the display's Set ID: check the exact key under **State > Device States** rather than typing it from memory.
 
-## Step 7: Timers
+Click **Save & Reload Script**. The Console now reports one handler.
 
-Use `every()` to run a function on a repeating schedule. This example checks every 5 minutes whether the room is still occupied:
+## Step 6: Show the Status
+
+1. In **UI Builder**, add a **Label**. Under **Bindings > Shows > Text**, choose **State Variable** and pick **Projector Status**.
+2. Click **Preview**, press **System On**, and watch the label: Warming up, then Ready. Click **Stop**.
+
+## Step 7: Volume With a Ceiling
+
+A slider can scale and taper its own value: its **Output Min** and **Output Max** map the range, and **Response** offers a logarithmic curve for audio. What a slider cannot do is decide. Here the ceiling depends on whether the microphone is live. Add to the script:
 
 ```python
-from openavc import on_event, every, cancel_timer, state, log
+MIC_LIVE_CEILING_DB = -20.0
 
-_poll_timer = None
 
-@on_event("system.started")
-async def start_monitoring(event):
-    global _poll_timer
-
-    async def check_room():
-        if not state.get("var.room_active"):
-            return
-        occupied = state.get("device.sensor1.occupied", False)
-        if not occupied:
-            log.warning("Room active but unoccupied -- consider auto-shutdown")
-
-    _poll_timer = every(300, check_room)
-
-@on_event("system.stopping")
-async def stop_monitoring(event):
-    global _poll_timer
-    if _poll_timer:
-        cancel_timer(_poll_timer)
+async def set_volume(level):
+    db = -60 + 0.6 * float(level)
+    if state.get("var.mic_live") and db > MIC_LIVE_CEILING_DB:
+        db = MIC_LIVE_CEILING_DB
+    await devices.send("dsp1", "set_control", {"block": "PgmLvl", "control": "level_1", "value": db})
+    state.set("var.program_level", db)
+    log.info(f"Volume {level}% -> {db} dB")
 ```
 
-How this works:
+`set_volume` takes one argument, `level`. The Tesira driver's `set_control` command addresses a declared block by its tag and the control on it, so the program level is `PgmLvl` / `level_1`. Click **Save & Reload Script**.
 
-- `every(300, check_room)` calls `check_room` every 300 seconds (5 minutes) and returns a timer ID.
-- `global _poll_timer` lets both handlers access the same variable. Without it, each function would have its own separate `_poll_timer`.
-- `cancel_timer(_poll_timer)` stops the recurring timer when the system shuts down.
-- The `system.started` event fires once when OpenAVC finishes starting up. The `system.stopping` event fires when it shuts down.
+Now wire a slider to it:
 
-If you do not have an occupancy sensor, you can still test this pattern by checking other state values, like whether the projector has been on for more than 4 hours.
+1. In **UI Builder**, add a **Slider**. Under **Bindings > Does > On change**, set the Action Type to **Script Function** and the Function to **set_volume**.
+2. For the `level` parameter, click **$** and choose **value** under This control. The slider now hands the function its own position.
+3. Click **Preview** and drag the slider. The Console logs each level, and the Simulator's log shows the DSP receiving it as `PgmLvl set level 1 -24.0`. Click **Stop**.
 
-## Step 8: Build the UI
+To see the ceiling, click **State**, select **Mic Live**, and under **Current Value** set it to true. Drag the slider to the top: the level stops at -20 dB.
 
-Now create the panel page that connects to your script handlers.
+## Step 8: System Off
 
-1. Click **UI Builder** in the sidebar
-2. Click the **Add** dropdown in the toolbar, select **Page**, and name it `Main`
+Add the shutdown and wire a second button to it, the same way as System On:
 
-Add these elements by dragging from the Element Palette.
+```python
+async def system_off():
+    await devices.send("projector_main", "power_off")
+    await devices.send("display_confidence", "power_off", {"display": 1})
+    await devices.send("dsp1", "set_control", {"block": "PgmMute", "control": "mute_1", "value": True})
+    state.set("var.room_active", False)
+    log.info("System off")
+```
 
-In this tutorial the controls are driven by your **script**, not by bindings. Every control on the panel emits a `ui.<interaction>.<id>` event when touched (a button emits `ui.press.<id>`, a slider emits `ui.change.<id>`), and your script's `@on_event` handlers catch those. So you can leave the button's **Does** bucket empty. The Bindings panel will show a "no action yet" reminder on those buttons, which is expected here: the action lives in the script handler that listens for the event.
+## Step 9: A Check That Repeats
 
-**System On button:**
-- Drag a **Button** onto the canvas
-- Set ID to `btn_system_on`
-- Set Label to "System On"
-- Leave **Does** empty. Pressing it emits `ui.press.btn_system_on`, which triggers the `system_on` handler you wrote in Step 2
+`every()` runs a function on a schedule. This one logs a line every five minutes while the room is running; in a real space it might warn about a projector left on with nobody in the room.
 
-**System Off button:**
-- Drag another **Button** onto the canvas
-- Set ID to `btn_system_off`
-- Set Label to "System Off"
+```python
+from openavc import every
 
-**Volume slider:**
-- Drag a **Slider** onto the canvas
-- Set ID to `vol_slider`
-- Set Min to 0, Max to 100
-- Dragging it emits `ui.change.vol_slider`, which triggers the `volume_changed` handler from Step 4
 
-**Status label:**
-- Drag a **Label** onto the canvas
-- Set ID to `lbl_projector_status`
-- In the Properties panel, under **Shows > Text**, select **State Variable** and choose `var.projector_status_text`
-- This label updates automatically when the `projector_state_changed` handler runs
+def check_room():
+    if state.get("var.room_active") and state.get("device.projector_main.power") == "on":
+        log.info("Room check: the system is running")
 
-Switch to **Preview Mode** (toggle at the top of the canvas) to test. Press the System On button and watch the console for log messages. Move the volume slider and confirm the dB conversion appears in the console.
 
-## Step 9: Test Everything
+every(300, check_room)
+```
 
-1. Click **Save & Reload** in the Code view to hot-reload your script
-2. Open the Panel UI in another tab: `http://localhost:8080/panel`
-3. Press **System On** and watch the Script Console for log output
-4. Move the volume slider and verify the dB calculation in the logs
-5. Check the status label updates as the projector state changes
-6. Check the State panel in the Programmer IDE to see `var.room_active`, `var.projector_status_text`, and other values
+The `every(...)` call sits at the top level of the script, so it is armed each time the script loads and cleared each time it reloads. Code at the top level runs once, when the script loads, and must never loop: work that repeats belongs in `every()`.
 
-If something is not working, check the Script Console for error messages. Script errors include the line number and a description of what went wrong.
+Click **Save & Reload Script**.
+
+## Step 10: Try to Break It
+
+1. Click the play button at the bottom of the sidebar, which now reads Stop Simulation. The projector goes offline.
+2. In **UI Builder**, click **Preview** and press **System On**. The status label reads Projector not responding, and the Console shows the error you logged. Nothing else stops working.
+3. Start the simulation again and press **System On**: the sequence recovers on its own.
+
+A handler that raises an error you did not catch is also safe. OpenAVC logs it, the script's row in the Code view says how many times it has failed, and the server keeps running.
 
 ## The Complete Script
 
-Here is the full `room_control.py` with all the pieces together:
-
 ```python
-from openavc import (
-    on_event, on_state_change,
-    devices, state, log,
-    delay, every, cancel_timer
-)
+from openavc import devices, state, log, on_state_change, every
 
-_poll_timer = None
+MIC_LIVE_CEILING_DB = -20.0
 
-# --- System Power ---
 
-@on_event("ui.press.btn_system_on")
-async def system_on(event):
+# --- System power ---
+
+async def system_on():
     state.set("var.room_active", True)
     try:
         await devices.send("projector_main", "power_on")
     except Exception as e:
-        log.error(f"Failed to turn on projector: {e}")
-        state.set("var.projector_status_text", "Error - check connection")
+        log.error(f"Projector did not respond: {e}")
+        state.set("var.projector_status_text", "Projector not responding")
         return
-    await devices.send("display_confidence", "power_on")
-    await delay(15)
-    await devices.send("projector_main", "set_input", {"input": "hdmi1"})
-    log.info("System ON complete")
+    await devices.send("display_confidence", "power_on", {"display": 1})
+    log.info("System on")
 
-@on_event("ui.press.btn_system_off")
-async def system_off(event):
+
+async def system_off():
     await devices.send("projector_main", "power_off")
-    await devices.send("display_confidence", "power_off")
-    await devices.send("dsp1", "mute", {"channel": "program", "muted": True})
+    await devices.send("display_confidence", "power_off", {"display": 1})
+    await devices.send("dsp1", "set_control", {"block": "PgmMute", "control": "mute_1", "value": True})
     state.set("var.room_active", False)
-    log.info("System OFF complete")
+    log.info("System off")
+
 
 # --- Volume ---
 
-@on_event("ui.change.vol_slider")
-async def volume_changed(event):
-    db = (event.value / 100.0) * 100.0 - 100.0
-    await devices.send("dsp1", "set_fader", {"channel": "program", "level": db})
+async def set_volume(level):
+    db = -60 + 0.6 * float(level)
+    if state.get("var.mic_live") and db > MIC_LIVE_CEILING_DB:
+        db = MIC_LIVE_CEILING_DB
+    await devices.send("dsp1", "set_control", {"block": "PgmLvl", "control": "level_1", "value": db})
+    state.set("var.program_level", db)
+    log.info(f"Volume {level}% -> {db} dB")
 
-# --- Projector Status ---
+
+# --- Projector status and input ---
 
 @on_state_change("device.projector_main.power")
-async def projector_state_changed(key, old_value, new_value):
-    status_map = {
-        "warming": "Warming up...",
-        "on": "Ready",
-        "cooling": "Cooling down...",
-        "off": "Off"
-    }
-    state.set("var.projector_status_text", status_map.get(new_value, "Unknown"))
+async def projector_changed(key, old_value, new_value):
+    display_on = state.get("device.display_confidence.display.001.power") == "on"
+    if new_value == "on":
+        text = "Ready" if display_on else "Ready, confidence display off"
+        if state.get("var.room_active"):
+            await devices.send("projector_main", "set_input", {"input": "hdmi1"})
+    elif new_value == "warming":
+        text = "Warming up"
+    elif new_value == "cooling":
+        text = "Cooling down"
+    else:
+        text = "Off"
+    state.set("var.projector_status_text", text)
 
-# --- Occupancy Monitoring ---
 
-@on_event("system.started")
-async def start_monitoring(event):
-    global _poll_timer
-    async def check_room():
-        if not state.get("var.room_active"):
-            return
-        occupied = state.get("device.sensor1.occupied", False)
-        if not occupied:
-            log.warning("Room active but unoccupied")
-    _poll_timer = every(300, check_room)
+# --- Periodic check ---
 
-@on_event("system.stopping")
-async def stop_monitoring(event):
-    global _poll_timer
-    if _poll_timer:
-        cancel_timer(_poll_timer)
+def check_room():
+    if state.get("var.room_active") and state.get("device.projector_main.power") == "on":
+        log.info("Room check: the system is running")
+
+
+every(300, check_room)
 ```
 
 ## Tips
 
-- **All handlers must be `async`**. Add the keyword to every handler function.
-- **Use `await delay()`, never `time.sleep()`**. `time.sleep()` freezes the entire system.
-- **Parameters are dicts**. Write `{"input": "hdmi1"}`, not `input="hdmi1"`.
-- **Script errors are safe**. A broken handler logs an error but does not crash the server.
-- **Click Save & Reload to hot-reload**. No need to restart the server when editing scripts.
-- **Use the console**. `log.info()`, `log.warning()`, and `log.error()` all appear in the Script Console.
+- **`async def` for anything that talks to a device or waits**, with `await` on the command or the delay. A plain `def` runs inline and must stay quick.
+- **Use `await delay()`, never `time.sleep()`**. A blocking sleep freezes the whole system.
+- **Parameters are dictionaries.** Write `{"input": "hdmi1"}`, not `input="hdmi1"`.
+- **A function called from a control has 30 seconds.** Anything that waits longer belongs in a handler that reacts to the state you are waiting for.
+- **Click Save & Reload Script** after every change. The server keeps running.
+- **Read the Console.** `log.info()`, `log.warning()` and `log.error()` all appear there, with the line number when something raises.
 
 ## What's Next
 
-- [Scripting Guide](scripting-guide.md). Full API reference for all functions, decorators, and patterns.
-- [Creating Drivers](creating-drivers.md). Build custom drivers for devices not in the community library.
-- [Plugins](plugins.md). Install and configure system plugins.
+- [Scripting Guide](scripting-guide.md). Every decorator, the `devices`, `state` and `events` objects, timers, and the patterns behind this tutorial.
+- [Scripting API Reference](scripting-api-reference.md). A lookup for every function and property.
+- [Macros and Triggers](macros-and-triggers.md). Conditional steps, Wait Until and Stop on Error, for the logic that does not need a script.
+- [OpenAVC Academy](academy.md). Scripts are not yet a course; Associate covers everything a space needs without them.

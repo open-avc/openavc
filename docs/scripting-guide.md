@@ -94,7 +94,7 @@ from openavc import devices, state, log
 async def select_source(source, level=50):
     """Route a source and set the program volume."""
     await devices.send("switcher", "route", {"input": source, "output": 1})
-    await devices.send("dsp", "set_fader", {"channel": "program", "level": level})
+    await devices.send("dsp", "set_control", {"block": "PgmLvl", "control": "level_1", "value": level})
     state.set("var.current_source", source)
 ```
 
@@ -450,6 +450,7 @@ log.info(f"Cancelled {count} timers")
 | `ui.hold.<element_id>` | Button held past threshold |
 | `ui.toggle_off.<element_id>` | Toggle button turned off |
 | `ui.change.<element_id>` | Slider or select value changed (payload includes `value`) |
+| `ui.select.<element_id>` | List row selected (payload includes `value`) |
 | `ui.route.<element_id>` | Video route changed (payload includes `input`, `output`) |
 | `ui.audio_route.<element_id>` | Audio-breakaway route changed (payload includes `input`, `output`) |
 | `ui.mute_route.<element_id>` | Output mute changed via matrix (payload includes `output`, `mute`) |
@@ -493,14 +494,14 @@ async def system_on(event):
     await delay(15)
     await devices.send("projector_main", "set_input", {"input": "hdmi1"})
     await devices.send("switcher_main", "route", {"input": 3, "output": 1})
-    await devices.send("dsp1", "set_fader", {"channel": "room_mic", "level": -12.0})
+    await devices.send("dsp1", "set_control", {"block": "Level1", "control": "level_1", "value": -12.0})
 
 @on_event("ui.press.btn_system_off")
 async def system_off(event):
     await devices.send("screen_relay", "open", {"channel": 1})
     await delay(5)
     await devices.send("projector_main", "power_off")
-    await devices.send("dsp1", "mute", {"channel": "room_mic", "muted": True})
+    await devices.send("dsp1", "set_control", {"block": "Mute1", "control": "mute_1", "value": True})
     await devices.send("display_lobby", "power_off")
     state.set("var.room_active", False)
 ```
@@ -515,7 +516,7 @@ async def volume_changed(event):
     # UI slider: 0-100, DSP expects: -100.0 to 0.0 dB
     # event.value contains the slider value
     db = (event.value / 100.0) * 100.0 - 100.0
-    await devices.send("dsp1", "set_fader", {"channel": "program", "level": db})
+    await devices.send("dsp1", "set_control", {"block": "PgmLvl", "control": "level_1", "value": db})
 ```
 
 ### State-Reactive Logic
@@ -557,10 +558,10 @@ async def stop_polling(event):
 
 ## Tips
 
-- **All handler functions must be `async`**. Use `await` for device commands and delays.
+- **Use `async def` for any handler that talks to a device or waits**, with `await` on the command or delay. A plain `def` handler runs inline and must stay quick.
 - **Script errors**: if a handler throws an unhandled exception, the error is logged, a `script.error` event is broadcast to all WebSocket clients with `script_id`, `handler`, `event`, `error`, and `traceback` fields, and the script's row in the Scripts list says how many times it has failed since it last loaded. Open the script and the editor marks the line that raised. The system continues running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
-- **Hot reload**: click Run in the Script Editor to reload a script without restarting the server.
+- **Hot reload**: click **Save & Reload Script** in the Code view to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).
 - **Do not block the event loop**: use `await delay()` instead of `time.sleep()`. A blocking call freezes the entire system.
 - **Nothing at the top level should loop.** Code outside a handler runs once, when the script loads, and it gets 10 seconds. Past that the load is abandoned and the script does not run. Work that repeats belongs in `every()`. A loop that calls into the platform is stopped at its next call, so fixing the script and clicking Run clears it; a loop that calls nothing at all cannot be stopped and keeps a core busy until the server restarts, which is slow enough to make healthy devices look like they are dropping offline. The Scripts list says which one you have.

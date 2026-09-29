@@ -11,9 +11,9 @@ Use the search box at the top of the macro list to filter by name.
 ## Creating a Macro
 
 1. Click **Macros** in the sidebar
-2. Click **New Macro**
+2. Click **+** at the top of the macro list
 3. Give it a descriptive name (e.g., `system_on`, `select_laptop`, `shutdown_all`)
-4. Add steps using the **+** button:
+4. Add steps with **Add Step**:
 
 | Step Type | Description | Example |
 |-----------|-------------|---------|
@@ -344,7 +344,7 @@ Click **Convert to Script** to generate a Python script from the macro. A previe
 
 ## Triggers
 
-Triggers automatically execute macros based on conditions. Click the **Triggers** tab in the macro editor to add triggers to any macro.
+Triggers automatically execute macros based on conditions. The **Triggers** section sits above the steps in the macro editor; click **Add Trigger** to add one to any macro.
 
 | Trigger Type | Fires When | Example |
 |-------------|------------|---------|
@@ -403,7 +403,7 @@ Use the search box at the top of the script list to filter by file name.
 - File tree on the left showing project scripts (files with load errors show a red icon)
 - Monaco editor with Python syntax highlighting and autocomplete
 - Autocomplete for the OpenAVC API with return types, parameter types, and one-line examples
-- **Save** to write changes, **Run** to hot-reload without restarting (**Ctrl+Shift+R** for keyboard shortcut)
+- **Save** to write changes, **Save & Reload Script** to hot-reload without restarting (**Ctrl+Shift+R** for keyboard shortcut)
 - Console panel showing script output and full error tracebacks with clickable line numbers
 
 ## Quick Example
@@ -424,7 +424,7 @@ async def system_on(event):
 
     await devices.send("projector_main", "set_input", {"input": "hdmi1"})
     await devices.send("switcher_1", "set_route", {"input": 1, "output": 1})
-    await devices.send("dsp_1", "set_level", {"channel": "program", "level": -20})
+    await devices.send("dsp_1", "set_control", {"block": "PgmLvl", "control": "level_1", "value": -20})
 
     log.info("System ON complete")
 ```

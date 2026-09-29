@@ -197,6 +197,8 @@ Once OpenAVC is running, open a browser:
 
 When you start OpenAVC for the first time, a set of starter projects are available in the **Project Library**.
 
+> **Prefer to be taught?** [OpenAVC Academy](academy.md) covers this page and the Programmer in its Foundations course, with a guided exercise in the Simulator, and Associate then builds a complete space. Both run against simulated equipment, so you need nothing but the install you just did. If you would rather keep reading, carry on here and then build [your first space](tutorial-first-space.md).
+
 ### 1. Open the Programmer IDE
 
 Navigate to http://localhost:8080/programmer in your browser.
@@ -268,6 +270,8 @@ See the [Deployment Guide](deployment.md) for the full configuration reference.
 
 ## Next Steps
 
+- [Tutorial: Your First Space](tutorial-first-space.md). Build on a starter project in twenty minutes: feedback, source buttons and a scheduled shutdown
+- [OpenAVC Academy](academy.md). Foundations and Associate, self-paced courses that end in a certification
 - [Programmer Overview](programmer-overview.md). Learn the IDE and core concepts
 - [Devices and Drivers](devices-and-drivers.md). Add equipment and manage drivers
 - [Device Simulator](simulator.md). Test without real hardware
