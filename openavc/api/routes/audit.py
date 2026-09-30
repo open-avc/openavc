@@ -29,7 +29,7 @@ turns a refusal into its sentence.
   again), ``POST /audit/sessions/{id}/queries`` (run every status query),
   ``POST /audit/sessions/{id}/watch/extend`` ("Wait longer") and
   ``POST /audit/sessions/{id}/watch/stop`` ("Stop watching") and
-  ``POST /audit/sessions/{id}/answers`` ("Did the device do it?"), and
+  ``POST /audit/sessions/{id}/answers`` ("Did it happen?"), and
   ``GET /audit/sessions/{id}/children/{child_type}`` (the driver's own
   children, for a command's child picker); ``audit/commands.py``.
 - ``POST /audit/sessions/{id}/settings/{key}`` (write a device setting, read

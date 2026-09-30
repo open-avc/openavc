@@ -71,7 +71,7 @@
     driver's commands as it declared them while connected (``name``,
     ``label``, ``help``, ``params``, ``query`` with ``query_for`` and
     ``polled``, ``sets``, ``available_offline``, ``restarts_device_for``,
-    ``needs_input``); ``batch``, the status queries run together
+    ``needs_input``, ``confirm``, ``suggested``); ``batch``, the status queries run together
     (``total``, ``sent``, ``skipped``); and ``trials``, every command sent,
     in order: ``number``, ``command``, ``label``, ``params`` (secret ones
     ``***``), ``attempt`` (the how-manyth time this command was sent),
@@ -104,7 +104,7 @@
     ``went_away_after``, ``back_after`` and ``away_for`` in seconds, and
     ``within_declared``); ``summary`` says it in a sentence. ``answer`` is
     the person's own: ``{"answer", "note", "at"}``, the answer ``yes``,
-    ``no``, ``partly`` or ``cant_tell`` ("Did the device do it?"), or null
+    ``no``, ``partly`` or ``cant_tell`` ("Did it happen?"), or null
     when they did not say.
   - ``settings`` (null when the driver never connected): ``catalog``, each
     device setting the driver declares (``key``, ``label``, ``help``,

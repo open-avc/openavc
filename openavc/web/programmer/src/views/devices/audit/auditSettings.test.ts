@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest";
 import type {
   AuditReportDriver,
   AuditSessionState,
+  AuditSettingInfo,
   AuditSettingTrial,
   AuditSettings,
 } from "../../../api/auditClient";
-import { applyAuditMessage, driverLines, mergeSettings, needsPuttingBack } from "./auditHelpers";
+import {
+  applyAuditMessage,
+  driverLines,
+  mergeSettings,
+  needsPuttingBack,
+  suggestedSetting,
+} from "./auditHelpers";
 
 function trial(extra: Partial<AuditSettingTrial> = {}): AuditSettingTrial {
   return {
@@ -30,6 +37,18 @@ describe("device settings", () => {
     expect(after.trials).toEqual([done]);
     expect(after.current).toBeNull();
     expect(mergeSettings(after, { catalog: [] }).catalog).toEqual([]);
+  });
+
+  it("suggests a name-like setting first, else the first the audit can write", () => {
+    const setting = (key: string, type: string, can_write = true): AuditSettingInfo => ({
+      key, label: key, help: "", definition: { type } as AuditSettingInfo["definition"],
+      state_key: key, value: "x", can_write, reason: can_write ? "" : "cannot read",
+    });
+    expect(suggestedSetting([setting("standby", "enum"), setting("name", "string")])).toBe("name");
+    expect(suggestedSetting([setting("name", "string", false), setting("standby", "enum")]))
+      .toBe("standby");
+    expect(suggestedSetting([setting("name", "string", false)])).toBeNull();
+    expect(suggestedSetting([])).toBeNull();
   });
 
   it("offers Put it back only when the write landed and the original did not come back", () => {

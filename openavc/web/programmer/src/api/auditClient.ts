@@ -297,6 +297,9 @@ export interface AuditCommandInfo {
   needs_input: boolean;
   /** The driver's own confirmation for this command ("" when it asks none). */
   confirm: string;
+  /** One to try first: the driver puts it on a device page, and it neither
+   *  asks for a confirmation nor restarts the device. */
+  suggested: boolean;
 }
 
 /** A declared effect (``sets``) checked against what the device reports. */
@@ -366,7 +369,7 @@ export interface AuditCommandTrial {
   } | null;
   /** What it did, in a sentence, once its window closed ("" before). */
   summary: string;
-  /** The person's answer to "Did the device do it?", or null. */
+  /** The person's answer to "Did it happen?", or null. */
   answer: { answer: AuditCommandAnswer; note: string; at: number } | null;
 }
 
@@ -803,7 +806,7 @@ export function stopOutage(sessionId: string): Promise<{ session: AuditSessionSt
   });
 }
 
-/** "Did the device do it?" for command number `trial`. */
+/** "Did it happen?" for command number `trial`. */
 export function answerAuditCommand(
   sessionId: string,
   trial: number,

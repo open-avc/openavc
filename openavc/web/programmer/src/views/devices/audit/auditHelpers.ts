@@ -20,6 +20,7 @@ import type {
   AuditReport,
   AuditReportDriver,
   AuditSessionState,
+  AuditSettingInfo,
   AuditSettings,
   AuditSettingTrial,
   AuditTimelineEntry,
@@ -210,15 +211,23 @@ export function changedText(item: AuditChangedValue): string {
   return `${item.label}: ${show(item.before)} before, ${show(item.now)} now${by}`;
 }
 
-/** The driver's status queries and its other commands, each in the driver's order. */
-export function commandGroups(catalog: AuditCommandInfo[]): {
-  queries: AuditCommandInfo[];
-  commands: AuditCommandInfo[];
+/** The commands to try first (the ones the driver puts on a device page,
+ *  as the server marks them) and all the others, each in the driver's order. */
+export function commandSections(catalog: AuditCommandInfo[]): {
+  suggested: AuditCommandInfo[];
+  others: AuditCommandInfo[];
 } {
   return {
-    queries: catalog.filter((c) => c.query),
-    commands: catalog.filter((c) => !c.query),
+    suggested: catalog.filter((c) => c.suggested),
+    others: catalog.filter((c) => !c.suggested),
   };
+}
+
+/** A command matches a search by its label, its name or its help. */
+export function commandMatches(command: AuditCommandInfo, search: string): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  return [command.label, command.name, command.help].some((s) => s.toLowerCase().includes(q));
 }
 
 /** How many status queries "Run all status queries" would send. */
@@ -228,6 +237,50 @@ export function batchableQueries(catalog: AuditCommandInfo[]): number {
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+export type CommandStatusKey =
+  | "not_tried"
+  | "watching"
+  | "not_accepted"
+  | "batch"
+  | "waiting"
+  | AuditCommandAnswer;
+
+/** Where one command stands, from its tries (oldest first): its last try
+ *  decides, and the person's answer is the word once there is one. */
+export function commandStatus(trials: AuditCommandTrial[]): { key: CommandStatusKey; text: string } {
+  const last = trials[trials.length - 1];
+  if (!last) return { key: "not_tried", text: "Not tried" };
+  if (last.status !== "done") return { key: "watching", text: "Watching" };
+  if (last.error) return { key: "not_accepted", text: "Not accepted" };
+  if (last.batch) return { key: "batch", text: "Sent with the status queries" };
+  if (!last.answer) return { key: "waiting", text: "Waiting for your answer" };
+  const words: Record<AuditCommandAnswer, string> = {
+    yes: "Worked", no: "Did not work", partly: "Partly worked", cant_tell: "Could not tell",
+  };
+  return { key: last.answer.answer, text: words[last.answer.answer] };
+}
+
+/** How far through the commands the person is: "3 of 58 commands tried,
+ *  2 answered". A command counts as answered when its last try has an answer. */
+export function commandProgress(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): string {
+  const n = catalog.length;
+  if (n === 0) return "";
+  const names = new Set(catalog.map((c) => c.name));
+  const last = new Map<string, AuditCommandTrial>();
+  for (const t of trials) if (names.has(t.command)) last.set(t.command, t);
+  if (last.size === 0) return `${plural(n, "command", "commands")}, none tried yet.`;
+  const answered = [...last.values()].filter((t) => t.answer).length;
+  return `${last.size} of ${plural(n, "command", "commands")} tried, ${answered} answered.`;
+}
+
+/** The device setting to try first: a name-like one (a string) if the
+ *  audit can write one, else the first it can write; null when it can write none. */
+export function suggestedSetting(catalog: AuditSettingInfo[]): string | null {
+  const writable = catalog.filter((s) => s.can_write);
+  const text = writable.find((s) => (s.definition.type ?? "string") === "string");
+  return (text ?? writable[0])?.key ?? null;
 }
 
 /** One command's outcome in a sentence, as it stands now. Once its window
@@ -512,7 +565,7 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
         });
       }
       const answered = answerCounts(trials);
-      if (answered) lines.push({ label: `Did the device do it${suffix}`, value: answered });
+      if (answered) lines.push({ label: `Did it happen${suffix}`, value: answered });
       for (const t of trials) {
         const r = t.restart;
         if (!r || r.back_after === null) continue;
@@ -564,7 +617,7 @@ export function changeText(change: { key: string; old: unknown; new: unknown }):
   return `${change.key}: ${show(change.old)} to ${show(change.new)}`;
 }
 
-/** The buttons of "Did the device do it?", in order. */
+/** The buttons of "Did it happen?", in order. */
 export const ANSWER_CHOICES: { key: AuditCommandAnswer; label: string }[] = [
   { key: "yes", label: "Yes" },
   { key: "no", label: "No" },

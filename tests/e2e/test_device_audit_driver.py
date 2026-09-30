@@ -5,9 +5,10 @@ device this test serves on loopback. "Audit this device" on its page opens the
 wizard on its address with the pause notice up front; the network check runs;
 "Which driver?" starts from the device's own driver; the Connection step
 offers its saved settings and shows what connecting sends; Connect brings the
-driver up, the status table and the traffic fill in live; on Commands one
-command is sent, its declared effect is read back and the person says the
-device did it, a device setting is written, read back and put back, and
+driver up, the status table and the traffic fill in live; on Commands the list
+says where each command stands, one is opened and sent, its declared effect is
+read back, the person says it happened and the list and the count follow, a
+device setting is written, read back and put back, and
 "What changed" names what the command changed; and the report's download
 carries the driver section, the traffic, the command, the setting, a power
 cycle and a cable pull each started and stopped, and the driver file. Finish reconnects the
@@ -240,8 +241,9 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("heading", name="Commands", exact=True)).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    dialog.get_by_test_id("audit-command-picker").click()
-    page.get_by_role("option", name=re.compile("^Set Input")).click()
+    # The list says where each command stands; opening one shows what it takes.
+    expect(dialog.get_by_text("1 command, none tried yet.")).to_be_visible(timeout=EXPECT_TIMEOUT)
+    dialog.get_by_role("button", name="Set Input: Not tried").click()
     dialog.get_by_role("button", name="Select...", exact=True).click()
     page.get_by_role("option", name=re.compile("^hdmi2")).click()
     dialog.get_by_role("button", name="Send", exact=True).click()
@@ -250,11 +252,15 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_text(
         re.compile(r"^Input is now hdmi2, as the driver says it should be"),
     )).to_be_visible(timeout=EXPECT_TIMEOUT)
-    answers = dialog.get_by_role("group", name="Did the device do Set Input?")
+    answers = dialog.get_by_role("group", name="Did Set Input happen?")
     answers.get_by_role("button", name="Yes").click()
     expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
         "aria-pressed", "true", timeout=EXPECT_TIMEOUT,
     )
+    expect(dialog.get_by_role("button", name="Set Input: Worked")).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+    expect(dialog.get_by_text("1 of 1 command tried, 1 answered.")).to_be_visible()
 
     # A device setting: written, read back, put back.
     dialog.get_by_placeholder("New value").fill("Boardroom")
@@ -308,7 +314,7 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     # The command set the input, so the device has now reported every value.
     expect(dialog.get_by_role("row", name="Status values 3 of 3 reported")).to_be_visible()
     expect(dialog.get_by_role("row", name="Commands sent 1")).to_be_visible()
-    expect(dialog.get_by_role("row", name="Did the device do it 1 yes")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Did it happen 1 yes")).to_be_visible()
     expect(dialog.get_by_role("row", name="Settings written 1: 1 read back, 1 put back")).to_be_visible()
     expect(dialog.get_by_role("row", name="Values changed Input")).to_be_visible()
 

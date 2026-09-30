@@ -12,7 +12,10 @@ import {
   batchableQueries,
   changedText,
   changeText,
-  commandGroups,
+  commandMatches,
+  commandProgress,
+  commandSections,
+  commandStatus,
   driverLines,
   mergeCommands,
   paramsText,
@@ -25,7 +28,7 @@ function command(name: string, extra: Partial<AuditCommandInfo> = {}): AuditComm
   return {
     name, label: name, help: "", params: {}, query: false, query_for: "", polled: false,
     sets: {}, available_offline: false, restarts_device_for: 0, needs_input: false, confirm: "",
-    ...extra,
+    suggested: false, ...extra,
   };
 }
 
@@ -50,20 +53,63 @@ function session(runs: AuditSessionState["runs"]): AuditSessionState {
 
 describe("the command list", () => {
   const catalog = [
-    command("power_on"),
+    command("power_on", { suggested: true }),
     command("query_power", { query: true, query_for: "power" }),
     command("query_input", { query: true, needs_input: true }),
-    command("set_volume", { needs_input: true }),
+    command("set_volume", { needs_input: true, suggested: true, help: "Set the master level" }),
   ];
 
-  it("keeps status queries apart from commands, each in the driver's order", () => {
-    const { queries, commands } = commandGroups(catalog);
-    expect(queries.map((c) => c.name)).toEqual(["query_power", "query_input"]);
-    expect(commands.map((c) => c.name)).toEqual(["power_on", "set_volume"]);
+  it("puts the suggested commands first, each part in the driver's order", () => {
+    const { suggested, others } = commandSections(catalog);
+    expect(suggested.map((c) => c.name)).toEqual(["power_on", "set_volume"]);
+    expect(others.map((c) => c.name)).toEqual(["query_power", "query_input"]);
+  });
+
+  it("finds a command by its label, its name or its help", () => {
+    const volume = catalog[3];
+    expect(commandMatches(volume, "")).toBe(true);
+    expect(commandMatches(volume, "MASTER")).toBe(true);
+    expect(commandMatches(volume, "set_vol")).toBe(true);
+    expect(commandMatches(volume, "input")).toBe(false);
   });
 
   it("counts only the queries that can run without a value", () => {
     expect(batchableQueries(catalog)).toBe(1);
+  });
+});
+
+describe("where each command stands", () => {
+  it("is not tried until it is sent, then waits for the person's answer", () => {
+    expect(commandStatus([])).toEqual({ key: "not_tried", text: "Not tried" });
+    expect(commandStatus([trial({ status: "watching" })]).text).toBe("Watching");
+    expect(commandStatus([trial()])).toEqual({ key: "waiting", text: "Waiting for your answer" });
+  });
+
+  it("takes the word from the answer to its last try", () => {
+    const yes = trial({ answer: { answer: "yes", note: "", at: 1 } });
+    const no = trial({ number: 2, answer: { answer: "no", note: "", at: 2 } });
+    expect(commandStatus([yes]).text).toBe("Worked");
+    expect(commandStatus([yes, no])).toEqual({ key: "no", text: "Did not work" });
+    expect(commandStatus([no, trial({ number: 3 })]).key).toBe("waiting");
+  });
+
+  it("says when it was refused or sent with the status queries", () => {
+    expect(commandStatus([trial({ error: "Level must be at most 100." })]).text).toBe("Not accepted");
+    expect(commandStatus([trial({ batch: true })]).text).toBe("Sent with the status queries");
+  });
+
+  it("counts the commands tried and answered", () => {
+    const catalog = [command("power_on"), command("set_volume"), command("query_power")];
+    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet.");
+    const tries = [
+      trial({ command: "power_on", answer: { answer: "yes", note: "", at: 1 } }),
+      trial({ number: 2, command: "set_volume" }),
+      trial({ number: 3, command: "power_on" }),
+      trial({ number: 4, command: "set_volume", answer: { answer: "partly", note: "", at: 4 } }),
+    ];
+    // power_on's last try is unanswered, so one of the two is answered.
+    expect(commandProgress(catalog, tries)).toBe("2 of 3 commands tried, 1 answered.");
+    expect(commandProgress([], tries)).toBe("");
   });
 });
 

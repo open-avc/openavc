@@ -85,6 +85,7 @@ DRIVER = {
     "actions": [
         {"id": "reboot", "kind": "command", "confirm": "The device restarts."},
     ],
+    "quick_actions": ["power_on", "set_volume", "reboot"],
     "polling": {"queries": ["query_volume"]},
     "responses": [
         {"match": r"PWR=(\w+)", "set": {"power": "$1"}},
@@ -188,6 +189,8 @@ def test_the_command_list_is_the_drivers_own(driver):
     # The driver's own confirmation, from the action that wraps the command.
     assert catalog["reboot"]["confirm"] == "The device restarts."
     assert catalog["reboot"]["restarts_device_for"] == 5 and catalog["power_on"]["confirm"] == ""
+    # Suggested: the commands on a device page, less one that confirms or restarts.
+    assert [n for n, c in catalog.items() if c["suggested"]] == ["power_on", "set_volume"]
 
 
 async def test_a_command_is_sent_through_the_production_door(driver):

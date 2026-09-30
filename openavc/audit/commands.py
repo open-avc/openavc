@@ -17,7 +17,9 @@ each: its label, help and parameters; whether it is a **status query**
 (``query_for``, the variable its reply reports, or a command the driver's
 polling runs by name); what it says it changes (``sets``); whether it works
 with the device offline (``available_offline``); how long it takes the
-device away (``restarts_device_for``).
+device away (``restarts_device_for``). A command the driver puts on a device
+page (a quick action, or a command action) is **suggested**, one to try
+first, unless it asks for a confirmation or restarts the device.
 
 **One command at a time.** A second Send while a command is still being
 watched is refused in words, so every reply and every status change in a
@@ -59,7 +61,7 @@ that refuses a command for a few seconds after a related one shows up.
 The driver's own confirmation text for a command (an ``actions`` entry's
 ``confirm``) is part of the command list, for the wizard to show first.
 
-**"Did the device do it?"** Then the person says what they saw on the device
+**"Did it happen?"** Then the person says what they saw on the device
 itself (``yes``, ``no``, ``partly``, ``cant_tell``) with an optional note. It
 is their answer, kept beside what the device reported, never merged into it:
 a display that said "input hdmi2" while the screen stayed black is exactly
@@ -135,7 +137,7 @@ NO_SUCH_TRIAL = "There is no command number {number} to send again."
 NO_TRIAL_TO_ANSWER = "There is no command number {number} to answer for."
 NOT_SENT_YET = "Wait for {label} to be sent before saying what the device did."
 
-# The person's answers to "Did the device do it?", in words for the timeline.
+# The person's answers to "Did it happen?", in words for the timeline.
 ANSWERS = {
     "yes": "The person said the device did it.",
     "no": "The person said the device did not do it.",
@@ -184,25 +186,31 @@ def _polled_command_names(driver: Any) -> set[str]:
     return names
 
 
-def _confirm_texts(driver: Any) -> dict[str, str]:
-    """The confirmation each command's action asks for before it runs: the
-    driver's own words, or a plain one for ``confirm: true``."""
+def _command_actions(driver: Any) -> tuple[dict[str, str], set[str]]:
+    """What the driver's command actions say about its commands: the
+    confirmation each asks for before it runs (the driver's own words, or a
+    plain one for ``confirm: true``), and the commands the driver puts on a
+    device page (its quick actions and command actions)."""
     from openavc.drivers.actions import resolve_device_actions
 
     info = getattr(driver, "DRIVER_INFO", {}) or {}
     config = getattr(driver, "config", None)
-    out: dict[str, str] = {}
+    confirms: dict[str, str] = {}
+    promoted: set[str] = set()
     for action in resolve_device_actions(info, config if isinstance(config, dict) else None):
-        confirm = action.get("confirm")
         name = action.get("command")
-        if action.get("kind") != "command" or not confirm or not isinstance(name, str):
+        if action.get("kind") != "command" or not isinstance(name, str):
             continue
-        out.setdefault(
+        promoted.add(name)
+        confirm = action.get("confirm")
+        if not confirm:
+            continue
+        confirms.setdefault(
             name,
             confirm if isinstance(confirm, str)
             else f"The driver asks for a confirmation before {action.get('label') or name} runs.",
         )
-    return out
+    return confirms, promoted
 
 
 def command_catalog(driver: Any) -> list[dict[str, Any]]:
@@ -212,7 +220,7 @@ def command_catalog(driver: Any) -> list[dict[str, Any]]:
     if not isinstance(commands, dict):
         return []
     polled = _polled_command_names(driver)
-    confirms = _confirm_texts(driver)
+    confirms, promoted = _command_actions(driver)
     out = []
     for name, cdef in commands.items():
         cdef = cdef if isinstance(cdef, dict) else {}
@@ -235,6 +243,8 @@ def command_catalog(driver: Any) -> list[dict[str, Any]]:
             "restarts_device_for": restarts,
             "needs_input": bool(missing_required_params(params, {})),
             "confirm": confirms.get(name, ""),
+            # One to try first: on a device page, and nothing to warn about.
+            "suggested": name in promoted and name not in confirms and not restarts,
         })
     return out
 
@@ -363,7 +373,7 @@ class CommandTrial:
     refusals: dict[str, Any] = field(default_factory=dict)
     sent_nothing: bool | None = None
     restart: dict[str, Any] | None = None
-    # The person's answer to "Did the device do it?": {"answer", "note", "at"}.
+    # The person's answer to "Did it happen?": {"answer", "note", "at"}.
     answer: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
     # Where the observer's traffic and event lists stood as the command was
