@@ -117,7 +117,9 @@ export interface AuditCheckState {
   result: AuditCheckResult | null;
 }
 
-export type AuditSessionStatus = "active" | "finished" | "cancelled" | "expired" | "shutdown";
+/** How a session stands. "gone" is the page's own: the server it ran on
+ *  restarted and knows nothing of it. */
+export type AuditSessionStatus = "active" | "finished" | "cancelled" | "expired" | "shutdown" | "gone";
 
 export interface AuditTester {
   name?: string;

@@ -372,16 +372,23 @@ def _cleanup_audit_subscription(ws_id: int) -> None:
 
 def _subscribe_audit(ws: WebSocket, engine: Any, session_id: str) -> dict[str, Any] | None:
     """Send this client ``session_id``'s messages. Returns its state, or None
-    when that audit is not the running one."""
+    when this server knows no such audit.
+
+    An audit that has ended (its idle timeout, say, while the page's socket
+    was reconnecting) returns its final state and subscribes nothing, so the
+    page learns how it ended and which report it saved."""
     from openavc.api.routes.audit import manager_or_none
 
     ws_id = id(ws)
     _cleanup_audit_subscription(ws_id)
     manager = manager_or_none()
-    session = manager.current() if manager is not None else None
+    session = manager.latest() if manager is not None else None
     if session is None or session.id != session_id:
         return None
-    _audit_subscriptions[ws_id] = session.subscribe(lambda message: engine.ws.send(ws, message))
+    if session.active:
+        _audit_subscriptions[ws_id] = session.subscribe(
+            lambda message: engine.ws.send(ws, message),
+        )
     return session.to_dict()
 
 

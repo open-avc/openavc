@@ -325,6 +325,16 @@ async def test_a_programmer_subscribes_and_only_it_hears(wired):
         await wsmod._handle_message(panel, {"type": "audit.subscribe", "session_id": session_id},
                                     "panel")
         assert panel.sent[0]["type"] == "error"
+
+        # A page that comes back after the audit ended (its socket reconnected
+        # past the idle timeout) is told how it ended, and hears nothing more.
+        await wired.manager.finish(session_id, "expired")
+        late = FakeWS()
+        await wsmod._handle_message(late, {"type": "audit.subscribe", "session_id": session_id},
+                                    "programmer")
+        assert late.sent[0]["type"] == "audit.state"
+        assert late.sent[0]["state"]["status"] == "expired"
+        assert id(late) not in wsmod._audit_subscriptions
     wsmod._cleanup_audit_subscription(id(first))
     await wired.manager.shutdown()
 

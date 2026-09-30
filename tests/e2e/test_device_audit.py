@@ -92,3 +92,41 @@ def test_an_audit_runs_through_the_programmer_and_hands_over_its_report(
     with urlopen(f"{base}/api/audit/reports", timeout=10) as resp:
         kept = [r["name"] for r in json.loads(resp.read())["reports"]]
     assert kept == [download.suggested_filename]
+
+
+def test_an_audit_that_ends_while_the_page_is_open_says_so_and_offers_its_report(
+    openavc_server, page: Page, tmp_path,
+) -> None:
+    """The idle timeout, a second tab or a restart can end an audit under an open
+    page. The page says how it ended and offers the report it saved, in place of
+    a step whose buttons can no longer do anything."""
+    from urllib.request import Request
+
+    base = openavc_server.base_url
+    page.goto(f"{base}/programmer/#devices", wait_until="domcontentloaded")
+    page.get_by_role("tab", name="Drivers", exact=True).click()
+    page.get_by_role("button", name="Audit a Device", exact=True).click()
+    dialog = page.get_by_role("dialog", name="Audit a device")
+    expect(dialog).to_be_visible(timeout=EXPECT_TIMEOUT)
+    dialog.get_by_label("IP address or host name").fill("127.0.0.1")
+    dialog.get_by_role("button", name="Start the network check").click()
+    # The check has begun, so there is something to report.
+    expect(dialog.get_by_text("127.0.0.1 answers ping.").or_(
+        dialog.get_by_text("127.0.0.1 did not answer ping.")
+    )).to_be_visible(timeout=60_000)
+
+    # Ended from outside the page, as another tab's Finish would.
+    with urlopen(f"{base}/api/audit/sessions/current", timeout=10) as resp:
+        session_id = json.loads(resp.read())["session"]["session_id"]
+    with urlopen(Request(f"{base}/api/audit/sessions/{session_id}", method="DELETE"), timeout=30):
+        pass
+
+    expect(dialog.get_by_text("This audit is finished.")).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_text("Checking the address")).to_be_hidden()
+    expect(dialog.get_by_text(re.compile(r"^What it found up to then is saved in its report"))).to_be_visible()
+    with page.expect_download(timeout=EXPECT_TIMEOUT) as info:
+        dialog.get_by_role("button", name="Download report").click()
+    name = info.value.suggested_filename
+    assert name.startswith("openavc-device-audit-") and name.endswith(".zip")
+    expect(dialog.get_by_text(f"Saved {name}.")).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_role("button", name="Start a new audit")).to_be_visible()

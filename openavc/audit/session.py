@@ -365,6 +365,10 @@ class AuditManager:
             return self._current
         return None
 
+    def latest(self) -> AuditSession | None:
+        """The last session started, running or ended (None after a restart)."""
+        return self._current
+
     def get(self, session_id: str) -> AuditSession:
         """The active session with this id, or AuditNotFound."""
         session = self.current()
