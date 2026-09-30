@@ -135,6 +135,10 @@ TCP_CONCURRENCY = 3
 SNMP_WALK_LIMIT = 5000
 # Bytes of a web page kept.
 WEB_BODY_BYTES = 16384
+# How long a web page has to answer. One that does not is asked once more,
+# WEB_RETRY_PAUSE seconds later, with twice as long.
+WEB_TIMEOUT = 5.0
+WEB_RETRY_PAUSE = 2.0
 # How long the listeners run at most. The session ends them first.
 _LISTENER_CEILING_SECONDS = 24 * 3600.0
 # Messages from the audited device the listeners keep, with their times.
@@ -218,6 +222,9 @@ class Footprint:
     port_states: dict[int, str] = field(default_factory=dict)
     greetings: dict[int, PortGreeting] = field(default_factory=dict)
     web: dict[int, HttpExchange] = field(default_factory=dict)
+    # How many GETs each web port took (a page that did not answer is asked
+    # once more); a port asked once is not listed.
+    web_tries: dict[int, int] = field(default_factory=dict)
     certificates: dict[int, dict[str, Any]] = field(default_factory=dict)
     certificate_errors: dict[int, str] = field(default_factory=dict)
     mdns: dict[str, Any] | None = None
@@ -292,7 +299,10 @@ class Footprint:
                 },
             },
             "greetings": {str(p): g.to_dict() for p, g in sorted(self.greetings.items())},
-            "web": {str(p): _web_dict(x) for p, x in sorted(self.web.items())},
+            "web": {
+                str(p): {**_web_dict(x), "tries": self.web_tries.get(p, 1)}
+                for p, x in sorted(self.web.items())
+            },
             "certificates": {str(p): c for p, c in sorted(self.certificates.items())},
             "certificate_errors": {str(p): e for p, e in sorted(self.certificate_errors.items())},
             "mdns": self.mdns,
@@ -310,6 +320,44 @@ class Footprint:
             "verdict": self.verdict,
             "limits": [limit.to_dict() for limit in self.limits],
         }
+
+
+def _worth_asking_again(exchange: HttpExchange) -> bool:
+    """A page that got no answer, as opposed to one refused outright or one a
+    TLS handshake turned away (asking again changes neither)."""
+    error = exchange.error or ""
+    return error != "refused" and not error.startswith("tls")
+
+
+def web_summary(fp: "Footprint") -> str:
+    """The web check in one line: each port that answered (its title, or its
+    status when it has none), each that did not and why, and the certificates."""
+    answered = [
+        f"{p}: {x.title() or f'HTTP {x.status}, no title'}"
+        for p, x in sorted(fp.web.items()) if x.status is not None
+    ]
+    failed = [
+        f"{p} ({_web_failure(x.error, fp.web_tries.get(p, 1))})"
+        for p, x in sorted(fp.web.items()) if x.status is None
+    ]
+    parts = []
+    if answered:
+        parts.append(f"Pages: {'; '.join(answered)}.")
+    if failed:
+        parts.append(f"No page from {', '.join(failed)}.")
+    others = len([p for p in fp.certificates if p not in fp.web])
+    if others:
+        parts.append(f"{others} more certificate{'s' if others != 1 else ''}.")
+    return " ".join(parts) or "No web page or certificate was read."
+
+
+def _web_failure(error: str, tries: int) -> str:
+    twice = ", asked twice" if tries > 1 else ""
+    if error == "timeout":
+        return f"no answer{twice}"
+    if error == "refused":
+        return "refused"
+    return f"{error or 'no answer'}{twice}"
 
 
 def _web_dict(exchange: HttpExchange) -> dict[str, Any]:
@@ -694,10 +742,20 @@ class NetworkCheck:
 
         async def page(port: int, scheme: str) -> None:
             async with sem:
+                url = f"{scheme}://{fp.ip}:{port}/"
                 exchange = await http_get(
-                    f"{scheme}://{fp.ip}:{port}/", timeout=5.0, source_ip=self._source_ip,
+                    url, timeout=WEB_TIMEOUT, source_ip=self._source_ip,
                     max_bytes=WEB_BODY_BYTES, read_to_end=True,
                 )
+                if exchange is not None and exchange.status is None and _worth_asking_again(exchange):
+                    # A device busy with the check's other connections can miss
+                    # one, and answer the same request a moment later.
+                    await asyncio.sleep(WEB_RETRY_PAUSE)
+                    fp.web_tries[port] = 2
+                    exchange = await http_get(
+                        url, timeout=WEB_TIMEOUT * 2, source_ip=self._source_ip,
+                        max_bytes=WEB_BODY_BYTES, read_to_end=True,
+                    )
                 if exchange is None:
                     return
                 fp.web[port] = exchange
@@ -716,15 +774,7 @@ class NetworkCheck:
             *(page(p, s) for p, s in sorted(web.items())),
             *(certificate(p) for p in sorted(tls_only)),
         )
-        titles = [
-            f"{p}: {x.title()}" for p, x in sorted(fp.web.items()) if x.title()
-        ]
-        message = f"Pages: {'; '.join(titles)}." if titles else (
-            f"Read {len(fp.web)} page{'s' if len(fp.web) != 1 else ''}"
-            f" and {len(fp.certificates)} certificate"
-            f"{'s' if len(fp.certificates) != 1 else ''}."
-        )
-        self._set("web", DONE, message)
+        self._set("web", DONE, web_summary(fp))
 
     async def _announcements(self) -> None:
         """Wait out the listening window, then read what the device said."""

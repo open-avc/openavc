@@ -527,3 +527,61 @@ async def test_the_listeners_live_as_long_as_the_session(monkeypatch):
     await manager.finish(session.id)
     assert sorted(closed) == ["FakeAMX", "FakeMDNS", "FakeSSDP"]
     assert all(t.done() for t in check._listener_tasks)
+
+
+async def test_a_page_that_misses_the_first_request_is_asked_again(monkeypatch, discovery, bench):
+    """A device busy with the check's other connections can let one GET go
+    unanswered; the page is asked once more, and the line says what came of
+    each port rather than counting pages that never answered."""
+    monkeypatch.setattr(fpmod, "WEB_TIMEOUT", 0.4)
+    monkeypatch.setattr(fpmod, "WEB_RETRY_PAUSE", 0.05)
+    seen = {"slow": 0, "dead": 0}
+
+    async def request(reader, writer, key):
+        # The port scan and the greeting read connect too; only a GET counts.
+        try:
+            await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+        except (asyncio.IncompleteReadError, asyncio.TimeoutError, ConnectionError):
+            writer.close()
+            return False
+        seen[key] += 1
+        return True
+
+    async def slow(reader, writer):
+        # Ignores its first request; answers the second, with no title.
+        if not await request(reader, writer, "slow"):
+            return
+        if seen["slow"] == 1:
+            await asyncio.sleep(1.0)
+        else:
+            writer.write(b"HTTP/1.0 200 OK\r\nServer: AcmeHTTP/2\r\n\r\n<html></html>")
+            await writer.drain()
+        writer.close()
+
+    async def dead(reader, writer):
+        if await request(reader, writer, "dead"):
+            await asyncio.sleep(1.0)
+            writer.close()
+
+    slow_server, slow_port = await _serve(slow)
+    dead_server, dead_port = await _serve(dead)
+    try:
+        check, _ = _check(
+            discovery, bench,
+            port_list=[bench["web"], slow_port, dead_port],
+            web_ports={bench["web"]: "http", slow_port: "http", dead_port: "http"},
+        )
+        fp = await check.run()
+    finally:
+        for server in (slow_server, dead_server):
+            server.close()
+            await server.wait_closed()
+
+    assert fp.web[slow_port].status == 200
+    assert fp.web_tries == {slow_port: 2, dead_port: 2}
+    assert seen == {"slow": 2, "dead": 2}
+    assert fp.to_dict()["web"][str(slow_port)]["tries"] == 2
+    assert check.activities["web"].message == (
+        f"Pages: {bench['web']}: Widget 3000 Login; {slow_port}: HTTP 200, no title. "
+        f"No page from {dead_port} (no answer, asked twice)."
+    )

@@ -26,6 +26,8 @@
   fetched fresh, taken from an earlier fetch, or not available at all.
 - ``footprint``: every raw observation of the network check. Bytes appear as
   ``{"hex", "text"}`` with the text decoded latin-1, so every byte survives.
+  Each web page carries ``tries``: 2 when it did not answer the first GET
+  and was asked once more (the exchange kept is the second).
 - ``evidence``: the discovery Evidence records built from those observations.
 - ``verdict``: the matcher's identification, every driver each signal points
   at, and each named driver's declared signals judged against the device.
@@ -787,6 +789,8 @@ def render_summary(report: dict[str, Any]) -> str:
         parts.append("<h3>Web pages</h3><table>")
         for port, page in web.items():
             bits = [page.get("status_line") or page.get("error") or "no answer"]
+            if (page.get("tries") or 1) > 1:
+                bits.append("asked twice" if not page.get("status_line") else "answered when asked again")
             if page.get("title"):
                 bits.append(f"title \"{page['title']}\"")
             if page.get("server"):
