@@ -235,6 +235,39 @@ async def test_reconnect_loop_retries_on_failure(dm, core):
     assert driver.connect_calls == 3  # 2 failures + 1 success
 
 
+class DropsDuringStartUp(MockDriver):
+    """Accepts, then loses the connection while its start-up steps run, the
+    first time only: connect() returns normally (a real driver logs its
+    start-up failures rather than raising) with the device no longer
+    connected, as a device does that accepts a connection mid-boot and then
+    resets it."""
+
+    async def connect(self):
+        self.connect_calls += 1
+        self._connected = True
+        self.state.set(f"device.{self.device_id}.connected", True, source="driver")
+        if self.connect_calls == 1:
+            self._connected = False
+            self.state.set(f"device.{self.device_id}.connected", False, source="driver")
+
+
+async def test_a_connection_lost_during_start_up_is_retried(dm, core):
+    """The drop's own handler sees the reconnect loop running and leaves the
+    retry to it; the loop must not then call the attempt a success. Found on
+    hardware: an amplifier power-cycled during a device audit stayed offline
+    with "Reconnected successfully" logged and nothing retrying."""
+    state, events = core
+    driver = DropsDuringStartUp("test_dev", {}, state, events)
+    driver._connected = False
+    dm._devices["test_dev"] = driver
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        await dm._reconnect_loop("test_dev")
+
+    assert driver.connect_calls == 2
+    assert state.get("device.test_dev.connected") is True
+
+
 async def test_reconnect_loop_never_gives_up_on_a_network_fault(dm, core):
     """A device that is merely absent is retried without any ceiling.
 

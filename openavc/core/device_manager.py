@@ -2327,7 +2327,9 @@ class DeviceManager:
         attempt ceiling** — see the retry-policy constants above for why the
         old ~1 hour cap was the wrong answer for fixed AV installations. The
         only exits are success, the device going away, a permanent fault, and
-        cancellation.
+        cancellation. Success is a driver still connected once its start-up
+        has run: a connection that drops during start-up is a failed attempt,
+        because the drop's own handler leaves the retry to this loop.
 
         ``immediate`` skips the first wait: used by ``kick_reconnect`` when a
         human has just asked for this device by pressing something.
@@ -2401,11 +2403,29 @@ class DeviceManager:
                 try:
                     self._refresh_usb_serial_port(device_id, driver)
                     await driver.connect()
+                    if not driver.get_state("connected"):
+                        # The connection dropped while the driver was still
+                        # starting up (a device that accepts one as it boots,
+                        # then resets it). connect() logs its start-up steps'
+                        # failures rather than raising, and the drop's own
+                        # handler saw this loop running and left the retry to
+                        # it, so returning here would leave the device down
+                        # with nothing retrying.
+                        log.info(f"[{device_id}] The connection dropped while it was starting up; retrying")
+                        self._set_offline_reason(device_id, driver)
+                        attempt += 1
+                        continue
                     log.info(f"[{device_id}] Reconnected successfully")
                     self._last_connect_at[device_id] = time.monotonic()
                     self._clear_offline_reason(device_id)
                     self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
                     await self._apply_pending_settings(device_id)
+                    if not driver.get_state("connected"):
+                        # Dropped again while its settings were applied: the
+                        # same hand-off as above, one await later.
+                        self._set_offline_reason(device_id, driver)
+                        attempt += 1
+                        continue
                     return
                 except Exception as e:
                     if noisy:
