@@ -342,6 +342,10 @@ export interface AuditCommandTrial {
   stopped_early: boolean;
   /** Status values that changed while it was watched (the newest 20). */
   changes: { t: number; key: string; old: unknown; new: unknown }[];
+  /** The status values already changing on their own when it was sent. */
+  already_moving: string[];
+  /** Each value its window saw change, once (from every change, not the newest 20). */
+  moved: AuditMovedValue[];
   device_errors: { t: number; error: string }[];
   effects: AuditCommandEffect[];
   query: {
@@ -383,6 +387,20 @@ export interface AuditChangedValue {
   before: unknown;
   now: unknown;
   by: { number: number; label: string } | null;
+  /** It changed while nothing was being watched after that command (a meter,
+   *  a clock, a change at the device): the audit did not leave it this way. */
+  on_its_own: boolean;
+}
+
+/** A status value a command's window saw change: before the first change,
+ *  after the last, how many times, and whether it was already changing. */
+export interface AuditMovedValue {
+  key: string;
+  label: string;
+  first: unknown;
+  last: unknown;
+  times: number;
+  already_moving: boolean;
 }
 
 /** The commands step for one driver. */

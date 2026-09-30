@@ -121,6 +121,12 @@ FLUSH_SECONDS = 0.5
 # keeps them all).
 LIVE_ENTRIES = 40
 LIVE_CHANGES = 20
+# A value that changed, with nothing being watched, this long before a
+# command was sent was already moving (a meter, a clock): its changes in the
+# command's window are shown apart from what the command moved.
+ALREADY_MOVING_SECONDS = 60.0
+# The values a command moved that its sentence names; the rest are counted.
+MOVED_IN_SENTENCE = 3
 
 SENDING = "sending"
 WATCHING = "watching"
@@ -359,6 +365,8 @@ class CommandTrial:
     # The device's state when it was sent, and what changed in its window.
     before: dict[str, Any] = field(default_factory=dict)
     changes: list[dict[str, Any]] = field(default_factory=list)
+    # The status values already changing on their own when it was sent.
+    already_moving: list[str] = field(default_factory=list)
     # Errors the driver published for the device while it was watched.
     device_errors: list[dict[str, Any]] = field(default_factory=list)
     # When OpenAVC saw the device go and the driver come back (a restart).
@@ -423,6 +431,7 @@ class CommandTrial:
             "extended": self.extended,
             "stopped_early": self.stopped_early,
             "changes": list(self.changes),
+            "already_moving": list(self.already_moving),
             "device_errors": list(self.device_errors),
             "effects": list(self.effects),
             "query": self.query,
@@ -638,6 +647,8 @@ class CommandPass:
             self.run.listen.sandbox.observer.add_secrets(secret)
         previous = self.trials[-1] if self.trials else None
         now = time.time()
+        # Read before the trial is added: from then on something is watched.
+        moving = self.run.moving_since(now - ALREADY_MOVING_SECONDS)
         trial = CommandTrial(
             number=len(self.trials) + 1,
             command=name,
@@ -658,6 +669,7 @@ class CommandPass:
                 "label": previous.label, "seconds": round(now - previous.sent_at, 3),
             } if previous is not None else None,
             before=dict(self.run.listen.sandbox.device_state()),
+            already_moving=moving,
         )
         self.trials.append(trial)
         self.session.add_timeline(
@@ -911,6 +923,9 @@ class CommandPass:
             out["changes"] = redactor.value(out["changes"])
             out["device_errors"] = redactor.value(out["device_errors"])
             out["refusals"] = redactor.value(out["refusals"])
+        out["moved"] = moved_values(
+            out["changes"], trial.already_moving, getattr(self._driver(), "DRIVER_INFO", {}) or {},
+        )
         # What it did, in words, once its window has closed.
         out["summary"] = trial_sentence(out) if trial.status == DONE else ""
         if not every_entry:
@@ -989,13 +1004,57 @@ class CommandPass:
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
 
 
+def state_label(info: dict[str, Any], key: str) -> str:
+    """A status value's name as a person reads it: the driver's label, and a
+    child's with its type and id ("Channel 01 Mute")."""
+    spec = (info.get("state_variables") or {}).get(key)
+    if isinstance(spec, dict):
+        return str(spec.get("label") or key)
+    ctype, _, rest = key.partition(".")
+    local_id, _, prop = rest.partition(".")
+    cdef = (info.get("child_entity_types") or {}).get(ctype) if prop else None
+    if not isinstance(cdef, dict):
+        return key
+    pspec = (cdef.get("state_variables") or {}).get(prop)
+    plabel = pspec.get("label") if isinstance(pspec, dict) else None
+    return f"{cdef.get('label') or ctype} {local_id} {plabel or prop}"
+
+
+def moved_values(
+    changes: list[dict[str, Any]], already_moving: list[str], info: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Each status value a command's window saw change, once, in the order it
+    first moved: what it read before the first change and after the last,
+    how many times it changed, and whether it was already changing before
+    the command was sent (``already_moving``)."""
+    moving = set(already_moving)
+    out: dict[str, dict[str, Any]] = {}
+    for change in changes:
+        key = change["key"]
+        if key.rsplit(".", 1)[-1] in _PLATFORM_KEYS:
+            continue
+        item = out.get(key)
+        if item is None:
+            out[key] = {
+                "key": key, "label": state_label(info, key), "first": change["old"],
+                "last": change["new"], "times": 1, "already_moving": key in moving,
+            }
+        else:
+            item["last"] = change["new"]
+            item["times"] += 1
+    return list(out.values())
+
+
 def changed_values(run: Any) -> list[dict[str, Any]]:
     """Status values that read differently now from before the audit sent
     its first command or setting in this run, each ``{"key", "label",
-    "before", "now", "by"}``. ``by`` is the command whose window saw the
-    value move last (``{"number", "label"}``), or null when it moved while
-    nothing was being watched (at the device itself, say). A value the
-    device has stopped reporting is left out: there is nothing to compare.
+    "before", "now", "by", "on_its_own"}``. ``by`` is the command whose
+    window saw the value move last (``{"number", "label"}``), or null when it
+    moved while nothing was being watched (at the device itself, say).
+    ``on_its_own`` is true for a value that changed while nothing was being
+    watched after that command (a meter, a clock), or only then: the audit
+    did not leave it that way. A value the device has stopped reporting is
+    left out: there is nothing to compare.
     """
     firsts: list[tuple[float, dict[str, Any]]] = []
     commands = getattr(run, "commands", None)
@@ -1012,11 +1071,18 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
         now = listen.sandbox.device_state()
     else:
         now = _final_values(listen.status_table())
-    labels = {v["name"]: v["label"] for v in listen.status_table()["variables"]}
+    info = getattr(listen.sandbox.driver, "DRIVER_INFO", None) or {}
+    if not info:
+        from openavc.drivers.registry import get_driver_class
+
+        info = getattr(get_driver_class(run.choice.driver_id), "DRIVER_INFO", {}) or {}
     moved_by: dict[str, dict[str, Any]] = {}
+    sent_at: dict[str, float] = {}
     for trial in commands.trials if commands is not None else []:
         for change in trial.changes:
             moved_by[change["key"]] = {"number": trial.number, "label": trial.label}
+            sent_at[change["key"]] = trial.sent_at
+    unwatched = getattr(run, "unwatched", None) or {}
     out = []
     for key in sorted(now):
         value = now[key]
@@ -1026,12 +1092,17 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
         before = baseline.get(key)
         if before == value and type(before) is type(value):
             continue
+        # Changing without the audit: it changed unwatched after the last
+        # command that moved it (or it moved only unwatched).
+        latest = unwatched.get(key)
+        on_its_own = bool(latest) and latest[-1] > sent_at.get(key, 0.0)
         out.append({
             "key": key,
-            "label": labels.get(key, key),
+            "label": state_label(info, key),
             "before": _shown(before),
             "now": _shown(value),
             "by": moved_by.get(key),
+            "on_its_own": on_its_own,
         })
     return out
 
@@ -1100,6 +1171,24 @@ def trial_sentence(trial: dict[str, Any]) -> str:
             else "nothing came back" if q["outcome"] == "no_reply"
             else f"a reply came, but {q['state']} was not reported"
         )
+    # What else it moved, less what was already changing and what the
+    # declared effect or the query already said.
+    said = {e.get("state_key") for e in trial.get("effects") or []}
+    if trial.get("query"):
+        said.add(trial["query"].get("state_key"))
+    moved = [
+        m for m in trial.get("moved") or []
+        if not m.get("already_moving") and m.get("key") not in said
+    ]
+    if moved:
+        texts = [
+            f"{m['label']} went from {_reads(m['first'])} to {_reads(m['last'])}"
+            for m in moved[:MOVED_IN_SENTENCE]
+        ]
+        more = len(moved) - MOVED_IN_SENTENCE
+        if more > 0:
+            texts.append(f"{more} more {'value' if more == 1 else 'values'} changed")
+        parts.append(", ".join(texts))
     if trial.get("restart"):
         r = trial["restart"]
         if r["back_after"] is not None:
@@ -1119,11 +1208,21 @@ def trial_sentence(trial: dict[str, Any]) -> str:
         )
     if not parts:
         received = (trial.get("traffic") or {}).get("received", 0)
+        what = (
+            "only values that were already changing moved"
+            if any(m.get("already_moving") for m in trial.get("moved") or [])
+            else "no status value changed"
+        )
         parts.append(
-            f"the device sent {received} {'reply' if received == 1 else 'replies'}"
-            if received else "nothing came back"
+            f"{what}; the device sent {received} {'reply' if received == 1 else 'replies'}"
+            if received else f"{what}, and nothing came back"
         )
     return "; ".join(parts) + "."
+
+
+def _reads(value: Any) -> str:
+    """A value as a sentence says it ("not reported" for none)."""
+    return "not reported" if value is None else _value_text(value)
 
 
 def _params_text(params: dict[str, Any]) -> str:

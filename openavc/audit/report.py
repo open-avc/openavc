@@ -83,8 +83,10 @@
     ``received``, and every entry from the send to the end of its window,
     in the ``attempts`` traffic form); ``changed``, every status value that
     read differently when the report was taken from before the first command
-    or setting (``key``, ``label``, ``before``, ``now``, and ``by``, the command
-    whose window saw it move: ``number`` and ``label``, or null). Each trial
+    or setting (``key``, ``label``, ``before``, ``now``, ``by``, the command
+    whose window saw it move: ``number`` and ``label``, or null, and
+    ``on_its_own``, true when it changed while nothing was being watched
+    after that command: a meter, a clock, a change at the device). Each trial
     also keeps what its window showed:
     ``since_previous`` (the command sent before it and how many seconds
     before), ``extended`` (seconds "Wait longer" added), ``stopped_early``
@@ -1151,15 +1153,22 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
                 outcome += f" ({said['note']})"
         parts.append(_row(label, _e(outcome)))
     parts.append("</table>")
-    if changed:
+    left = [item for item in changed if not item.get("on_its_own")]
+    moving = [item for item in changed if item.get("on_its_own")]
+    if left:
         parts.append("<h3>What the audit changed</h3><table>")
-        for item in changed:
+        for item in left:
             by = item.get("by")
             parts.append(_row(str(item.get("label") or item.get("key")), _e(
                 f"{_value_text(item.get('before'))} before, {_value_text(item.get('now'))} now"
                 + (f" (after {by['number']}. {by['label']})" if by else "")
             )))
         parts.append("</table>")
+    if moving:
+        parts.append("<p>" + _e(
+            "Also different now, but changing without the audit: "
+            + ", ".join(str(item.get("label") or item.get("key")) for item in moving) + "."
+        ) + "</p>")
     return parts
 
 

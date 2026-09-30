@@ -511,6 +511,120 @@ async def test_wait_longer_and_stop_watching(driver):
         server.close()
 
 
+METER_DRIVER = {
+    "id": "acme_meter",
+    "name": "Acme Meter",
+    "manufacturer": "Acme",
+    "category": "audio",
+    "transport": "tcp",
+    "default_config": {"port": 1, "poll_interval": 30},
+    "state_variables": {
+        "mute": {"type": "boolean", "label": "Mute"},
+        "level": {"type": "integer", "label": "Level"},
+    },
+    "commands": {"mute_on": {"label": "Mute", "send": "MUTE 1\\r"}},
+    "responses": [
+        {"match": r"MUTE=(\d)", "set": {"mute": "$1"}},
+        {"match": r"LVL=(\d+)", "set": {"level": "$1"}},
+    ],
+}
+
+
+async def _metering_device():
+    """Pushes a level that never sits still, and mutes when told."""
+
+    async def handle(reader, writer):
+        async def meter():
+            n = 0
+            while True:
+                n += 1
+                writer.write(f"LVL={n}\r".encode())
+                await writer.drain()
+                await asyncio.sleep(0.05)
+
+        task = asyncio.create_task(meter())
+        writer.write(b"MUTE=0\r")
+        try:
+            while True:
+                line = (await reader.readuntil(b"\r")).decode().strip()
+                if line == "MUTE 1":
+                    writer.write(b"MUTE=1\r")
+                    await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            task.cancel()
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    return server, server.sockets[0].getsockname()[1]
+
+
+async def test_what_a_command_moved_is_told_from_what_moves_anyway():
+    """A level meter moves before, during and after a Mute: the command's own
+    change is what its sentence and "what changed" name, and the meter is
+    shown apart, as changing without the audit."""
+    from openavc.audit.commands import moved_values, state_label
+
+    _DRIVER_REGISTRY["acme_meter"] = create_configurable_driver_class(METER_DRIVER)
+    server, port = await _metering_device()
+    session = AuditSession("cmd9", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    run = DriverRun(index=0, choice=DriverChoice(
+        driver_id="acme_meter", identity={"name": "Acme Meter", "version": "1.0.0"},
+    ))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        # The meter moves while nothing is watched.
+        await _until(lambda: len(run.unwatched.get("level") or ()) >= 3)
+        commands = commands_for(session, run, **WINDOW)
+        trial = await commands.send("mute_on")
+        await _until(lambda: trial.status == DONE)
+        assert trial.already_moving == ["level"]
+        view = commands.to_dict()["trials"][0]
+        moved = {m["key"]: m for m in view["moved"]}
+        assert moved["mute"] == {
+            "key": "mute", "label": "Mute", "first": False, "last": True, "times": 1,
+            "already_moving": False,
+        }
+        assert moved["level"]["already_moving"] and moved["level"]["times"] > 1
+        assert view["summary"] == "Mute went from false to true."
+        # After the window the meter keeps going: it changed without the audit.
+        await _until(lambda: any(
+            c["key"] == "level" and c["on_its_own"] for c in changed_values(run)
+        ))
+        mute = next(c for c in changed_values(run) if c["key"] == "mute")
+        assert not mute["on_its_own"] and mute["by"]["label"] == "Mute"
+        assert listen.sandbox.started
+    finally:
+        await run.stop()
+        server.close()
+        _DRIVER_REGISTRY.pop("acme_meter", None)
+        get_traffic_recorder().clear()
+
+    # Only a command whose window saw nothing but the meter says so.
+    assert trial_sentence({"moved": [{"key": "level", "already_moving": True}],
+                           "traffic": {"received": 4}}) == (
+        "only values that were already changing moved; the device sent 4 replies."
+    )
+    assert trial_sentence({"moved": [], "traffic": {"received": 0}}) == (
+        "no status value changed, and nothing came back."
+    )
+    # A child's value is named with its type and id.
+    zoned = {"child_entity_types": {"zone": {
+        "label": "Zone", "state_variables": {"gain": {"type": "integer", "label": "Gain"}},
+    }}}
+    assert state_label(zoned, "zone.2.gain") == "Zone 2 Gain"
+    assert state_label(zoned, "zone.2.trim") == "Zone 2 trim"
+    assert state_label(METER_DRIVER, "level") == "Level"
+    assert state_label(METER_DRIVER, "custom_key") == "custom_key"
+    # The platform's own keys are not what a command moved.
+    assert moved_values(
+        [{"key": "connected", "old": True, "new": False}], [], METER_DRIVER,
+    ) == []
+
+
 def test_a_value_the_device_spells_its_own_way_still_counts():
     assert same_value(True, "on") and same_value(True, 1) and not same_value(True, "off")
     assert same_value(40, "40") and same_value("hdmi1", "HDMI1")
@@ -628,15 +742,17 @@ async def test_what_changed_lists_each_value_with_what_it_was(driver):
         changed = changed_values(run)
         assert changed == [
             {"key": "input", "label": "Input", "before": None, "now": "hdmi1",
-             "by": {"number": 2, "label": "Set Input"}},
+             "by": {"number": 2, "label": "Set Input"}, "on_its_own": False},
             {"key": "power", "label": "Power", "before": None, "now": True,
-             "by": {"number": 1, "label": "Power On"}},
+             "by": {"number": 1, "label": "Power On"}, "on_its_own": False},
         ]
-        # A value that moved while nothing was watched still counts, by nobody.
+        # A value that moved while nothing was watched still counts, by nobody,
+        # and it changed without the audit.
         run.listen.sandbox.state.set(f"device.{run.listen.sandbox.device_id}.volume", 35)
-        assert {"key": "volume", "label": "Volume", "before": 20, "now": 35, "by": None} in (
-            changed_values(run)
-        )
+        assert {
+            "key": "volume", "label": "Volume", "before": 20, "now": 35, "by": None,
+            "on_its_own": True,
+        } in changed_values(run)
         assert commands.to_dict()["changed"] == changed_values(run)
     finally:
         await run.stop()
@@ -647,3 +763,4 @@ async def test_what_changed_lists_each_value_with_what_it_was(driver):
     summary = render_summary(build_report(session))
     assert "What the audit changed" in summary
     assert "not reported before, true now (after 1. Power On)" in summary
+    assert "Also different now, but changing without the audit: Volume" in summary

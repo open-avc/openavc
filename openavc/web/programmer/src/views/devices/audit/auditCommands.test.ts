@@ -11,13 +11,15 @@ import {
   applyAuditMessage,
   batchableQueries,
   changedText,
-  changeText,
   commandMatches,
   commandProgress,
   commandSections,
   commandStatus,
   driverLines,
   mergeCommands,
+  movedParts,
+  movedText,
+  movingText,
   paramsText,
   sendWarning,
   stepFor,
@@ -38,7 +40,8 @@ function trial(extra: Partial<AuditCommandTrial> = {}): AuditCommandTrial {
     batch: false, connect_attempt: 0, sent_at: 10, returned_at: 10.1, ends_at: 12,
     finished_at: 12, status: "done", result: null, error: "", error_type: "",
     traffic: { sent: 1, received: 1, entries: [] }, since_previous: null, extended: 0,
-    stopped_early: false, changes: [], device_errors: [], effects: [], query: null, refusals: {},
+    stopped_early: false, changes: [], already_moving: [], moved: [], device_errors: [], effects: [],
+    query: null, refusals: {},
     sent_nothing: false, restart: null, summary: "", answer: null, ...extra,
   };
 }
@@ -160,8 +163,17 @@ describe("before a command is sent", () => {
   });
 
   it("writes a change the way a line reads it", () => {
-    expect(changeText({ key: "power", old: false, new: true })).toBe("power: false to true");
-    expect(changeText({ key: "input", old: null, new: "hdmi1" })).toBe("input: nothing to hdmi1");
+    const mute = { key: "mute", label: "Mute", first: false, last: true, times: 1, already_moving: false };
+    const level = { key: "level", label: "Level", first: 3, last: 9, times: 7, already_moving: true };
+    expect(movedText(mute)).toBe("Mute: false to true");
+    expect(movedText({ ...mute, first: null, last: "hdmi1" })).toBe("Mute: not reported to hdmi1");
+    expect(movingText(level)).toBe("Level (7 times)");
+    expect(movingText({ ...level, times: 1 })).toBe("Level");
+    // What the command moved, apart from what was already changing.
+    const { moved, moving } = movedParts(trial({ moved: [mute, level] }));
+    expect(moved).toEqual([mute]);
+    expect(moving).toEqual([level]);
+    expect(movedParts(trial({ moved: undefined as never })).moved).toEqual([]);
   });
 });
 
@@ -257,13 +269,34 @@ describe("what changed", () => {
   it("says what each value was, is, and which command moved it", () => {
     expect(changedText({
       key: "input", label: "Input", before: null, now: "hdmi2", by: { number: 3, label: "Set Input" },
+      on_its_own: false,
     })).toBe("Input: not reported before, hdmi2 now (after 3. Set Input)");
-    expect(changedText({ key: "power", label: "Power", before: false, now: true, by: null }))
-      .toBe("Power: false before, true now");
+    expect(changedText({
+      key: "power", label: "Power", before: false, now: true, by: null, on_its_own: false,
+    })).toBe("Power: false before, true now");
+  });
+
+  it("leaves what changes without the audit out of the report's count", () => {
+    const d = {
+      run: 0, driver: { id: "acme", name: "Acme", version: "1.0.0", modified: false },
+      attempts: [{
+        status: "done", error: "", started_at: 1, connected_at: 1.5, declared: 2, reported: 2,
+        offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
+        traffic: { count: 4, not_captured: false },
+      }],
+      commands: {
+        trials: [trial()],
+        changed: [
+          { key: "mute", label: "Mute", before: false, now: true, by: null, on_its_own: false },
+          { key: "level", label: "Level", before: 3, now: 9, by: null, on_its_own: true },
+        ],
+      },
+    } as unknown as AuditReportDriver;
+    expect(driverLines([d]).find((l) => l.label === "Values changed")?.value).toBe("Mute");
   });
 
   it("keeps the last list when an update does not carry one", () => {
-    const changed = [{ key: "power", label: "Power", before: false, now: true, by: null }];
+    const changed = [{ key: "power", label: "Power", before: false, now: true, by: null, on_its_own: false }];
     const before = {
       catalog: [], picker_state: {}, batch: null, current: null, trials: [], changed,
     };

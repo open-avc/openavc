@@ -392,6 +392,11 @@ class ListenPass:
                 "old": _shown(old),
                 "new": _shown(new),
             })
+        if (
+            old is not None and new is not None and prop not in _PLATFORM_KEYS
+            and self.run.listen is self and not self.run.watching()
+        ):
+            self.run.note_unwatched(prop, now)
         if prop == "offline_reason" and new:
             self._note_offline()
         if (

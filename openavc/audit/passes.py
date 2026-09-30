@@ -14,6 +14,7 @@ control connection is free when they reconnect.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +41,8 @@ RUN_IN_PROGRESS = (
 )
 NO_DRIVER_CHOSEN = "Choose the driver to test first."
 NOT_SAVED_HERE = "That device's saved settings are not available to this audit."
+# The latest changes kept per status value while nothing was being watched.
+UNWATCHED_KEPT = 8
 
 
 
@@ -71,10 +74,36 @@ class DriverRun:
     outages: list[Any] = field(default_factory=list)
     # State the later steps add to ``to_dict`` (name -> value or provider).
     extra: dict[str, Any] = field(default_factory=dict)
+    # When each status value last changed while the audit was sending and
+    # watching nothing (a meter, a clock, a knob turned at the device), the
+    # newest few per value: what tells the change a command made from the
+    # changes that happen anyway (``audit/commands.py``).
+    unwatched: dict[str, deque] = field(default_factory=dict)
 
     @property
     def active(self) -> bool:
         return self.sandbox is not None and self.sandbox.started
+
+    def watching(self) -> bool:
+        """A command, the status queries or a setting is being sent or watched."""
+        commands, settings = self.commands, self.settings
+        if commands is not None and (
+            commands.current() is not None
+            or (commands.batch or {}).get("status") == "running"
+        ):
+            return True
+        return settings is not None and settings.current() is not None
+
+    def note_unwatched(self, key: str, at: float) -> None:
+        """A status value changed while nothing was being watched."""
+        times = self.unwatched.get(key)
+        if times is None:
+            times = self.unwatched[key] = deque(maxlen=UNWATCHED_KEPT)
+        times.append(at)
+
+    def moving_since(self, since: float) -> list[str]:
+        """The status values that changed unwatched at or after ``since``."""
+        return sorted(k for k, times in self.unwatched.items() if times and times[-1] >= since)
 
     async def end_attempt(self) -> None:
         """End the current connection: first a power or cable test and what

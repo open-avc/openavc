@@ -25,13 +25,16 @@ import {
   ANSWER_CHOICES,
   batchableQueries,
   changedText,
-  changeText,
   commandMatches,
   commandProgress,
   commandSections,
   commandStatus,
   currentRun,
   displayBytes,
+  MOVED_IN_SENTENCE,
+  movedParts,
+  movedText,
+  movingText,
   paramsText,
   sendWarning,
   trialOutcome,
@@ -348,25 +351,7 @@ export function CommandsStep() {
       )}
 
       {(trials.length > 0 || (run.settings?.trials.length ?? 0) > 0) && (
-        <div style={{ ...panelStyle, marginTop: "var(--space-lg)", fontSize: "var(--font-size-sm)" }}>
-          <div style={labelStyle}>What changed</div>
-          {(commands?.changed ?? []).length === 0 ? (
-            <div>Nothing the device reports has changed since the first command.</div>
-          ) : (
-            <>
-              <div>These values changed during the audit:</div>
-              <ul style={{ margin: "var(--space-xs) 0", paddingLeft: "var(--space-lg)" }}>
-                {(commands?.changed ?? []).map((c) => (
-                  <li key={c.key} style={{ overflowWrap: "anywhere" }}>{changedText(c)}</li>
-                ))}
-              </ul>
-              <div style={hintStyle}>
-                The audit puts back the settings it wrote, but it cannot undo a command. Set these
-                back on the device yourself if you need to.
-              </div>
-            </>
-          )}
-        </div>
+        <WhatChanged changed={commands?.changed ?? []} />
       )}
 
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
@@ -379,6 +364,39 @@ export function CommandsStep() {
           Continue
         </button>
       </div>
+    </div>
+  );
+}
+
+/** What reads differently now from before the first command: what the audit
+ *  left changed, and apart from it what changes without the audit. */
+function WhatChanged({ changed }: { changed: audit.AuditChangedValue[] }) {
+  const left = changed.filter((c) => !c.on_its_own);
+  const moving = changed.filter((c) => c.on_its_own);
+  return (
+    <div style={{ ...panelStyle, marginTop: "var(--space-lg)", fontSize: "var(--font-size-sm)" }}>
+      <div style={labelStyle}>What changed</div>
+      {left.length === 0 ? (
+        <div>Nothing the audit sent has left a value changed.</div>
+      ) : (
+        <>
+          <div>These values changed during the audit:</div>
+          <ul style={{ margin: "var(--space-xs) 0", paddingLeft: "var(--space-lg)" }}>
+            {left.map((c) => (
+              <li key={c.key} style={{ overflowWrap: "anywhere" }}>{changedText(c)}</li>
+            ))}
+          </ul>
+          <div style={hintStyle}>
+            The audit puts back the settings it wrote, but it cannot undo a command. Set these
+            back on the device yourself if you need to.
+          </div>
+        </>
+      )}
+      {moving.length > 0 && (
+        <div style={{ ...hintStyle, overflowWrap: "anywhere" }}>
+          Also different now, but changing without the audit: {moving.map((c) => c.label).join(", ")}.
+        </div>
+      )}
     </div>
   );
 }
@@ -528,6 +546,7 @@ function TrialRow({
     return () => window.clearInterval(timer);
   }, [watching]);
   const params = paramsText(trial.params);
+  const { moved, moving } = movedParts(trial);
   const running = trial.status !== "done";
   const left = watching && trial.ends_at ? Math.max(0, Math.ceil(trial.ends_at - now)) : null;
   const before = trial.since_previous;
@@ -555,9 +574,12 @@ function TrialRow({
         {trialOutcome(trial)}
         {left !== null && ` Watching, ${left} s left.`}
       </div>
-      {trial.changes.length > 0 && (
+      {moved.length > MOVED_IN_SENTENCE && (
+        <div style={{ overflowWrap: "anywhere" }}>Everything it changed: {moved.map(movedText).join("; ")}</div>
+      )}
+      {moving.length > 0 && (
         <div style={{ color: "var(--text-secondary)", overflowWrap: "anywhere" }}>
-          Changed while watched: {trial.changes.map(changeText).join("; ")}
+          Already changing before it was sent, so not counted: {moving.map(movingText).join(", ")}
         </div>
       )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", marginTop: "var(--space-xs)" }}>

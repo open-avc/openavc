@@ -13,6 +13,7 @@ import type {
   AuditConflictDevice,
   AuditDriverRun,
   AuditListen,
+  AuditMovedValue,
   AuditOutage,
   AuditPreviewStage,
   AuditStatusVariable,
@@ -557,7 +558,7 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
           value: `${silent.join(", ")}: the driver said it succeeded, but nothing was sent`,
         });
       }
-      const changed = d.commands?.changed ?? [];
+      const changed = (d.commands?.changed ?? []).filter((c) => !c.on_its_own);
       if (changed.length > 0) {
         lines.push({
           label: `Values changed${suffix}`,
@@ -611,10 +612,34 @@ export function sendWarning(command: AuditCommandInfo): string {
   return parts.join(" ");
 }
 
-/** A status value change as a line reads it: "power: false to true". */
-export function changeText(change: { key: string; old: unknown; new: unknown }): string {
-  const show = (v: unknown) => (v === null || v === undefined ? "nothing" : String(v));
-  return `${change.key}: ${show(change.old)} to ${show(change.new)}`;
+/** How many of the values a command moved its sentence names (the server's
+ *  ``MOVED_IN_SENTENCE`` in openavc/audit/commands.py); past that the step
+ *  lists them all. */
+export const MOVED_IN_SENTENCE = 3;
+
+/** What a command's window saw, split: the values it moved, and the ones
+ *  that were already changing before it was sent (a meter, a clock). */
+export function movedParts(trial: AuditCommandTrial): {
+  moved: AuditMovedValue[];
+  moving: AuditMovedValue[];
+} {
+  const all = trial.moved ?? [];
+  return {
+    moved: all.filter((m) => !m.already_moving),
+    moving: all.filter((m) => m.already_moving),
+  };
+}
+
+/** A value a command moved, as a line reads it: "Mute: false to true". */
+export function movedText(m: AuditMovedValue): string {
+  const show = (v: unknown) =>
+    v === null || v === undefined ? "not reported" : typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+  return `${m.label}: ${show(m.first)} to ${show(m.last)}`;
+}
+
+/** A value that kept changing, as a line reads it: "AC Line Voltage (7 times)". */
+export function movingText(m: AuditMovedValue): string {
+  return m.times > 1 ? `${m.label} (${m.times} times)` : m.label;
 }
 
 /** The buttons of "Did it happen?", in order. */
