@@ -3,36 +3,47 @@ import { Loader2, Power, Square } from "lucide-react";
 import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
-import { currentRun, outageProgress } from "../auditHelpers";
+import { currentRun, outageNextMark, outageNowText, outageProgress } from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 
 type Call = () => Promise<{ session: audit.AuditSessionState }>;
 
-/** What each test asks the person to do, and the marks they give. */
+/** What each test checks, the steps the person takes, and the marks they give. */
 const TESTS: Record<
   audit.AuditOutageKind,
-  { title: string; intro: string; start: string; off: string; on: string; after: string }
+  { title: string; intro: string; steps: string[]; start: string; off: string; on: string }
 > = {
   power_cycle: {
     title: "Power cycle",
     intro:
-      "Turn the device off at its power switch or unplug it, wait 10 seconds, then turn it back " +
-      "on. OpenAVC times how long it takes to notice, and to reconnect once the device is back.",
+      "Checks how long OpenAVC takes to notice that the device went off, and to reconnect once " +
+      "it is back on.",
+    steps: [
+      "Press Start the power cycle test.",
+      "Turn the device off at its power switch or unplug its power, and press I turned it off.",
+      "Wait about 10 seconds, turn it back on, and press I turned it back on.",
+      "Wait while the driver reconnects. The test ends on its own.",
+    ],
     start: "Start the power cycle test",
     off: "I turned it off",
     on: "I turned it back on",
-    after: "Now turn the device off. Press the button as you do.",
   },
   cable_pull: {
     title: "Cable pull",
     intro:
-      "Unplug the device's network cable, wait for OpenAVC to notice, then plug it back in. " +
-      "A device that simply goes quiet is noticed only if the driver checks.",
+      "Checks whether OpenAVC notices when the device stops answering without warning, as when " +
+      "its network cable is pulled.",
+    steps: [
+      "Press Start the cable pull test.",
+      "Unplug the device's network cable and press I unplugged it.",
+      // The limit is NOTICE_CEILING_SECONDS in openavc/audit/outage.py.
+      "Leave it unplugged until OpenAVC notices. The table shows it. This can take up to 5 minutes.",
+      "Plug it back in and press I plugged it back in. The test ends on its own once the driver reconnects.",
+    ],
     start: "Start the cable pull test",
     off: "I unplugged it",
     on: "I plugged it back in",
-    after: "Now unplug the network cable. Press the button as you do.",
   },
 };
 
@@ -80,8 +91,8 @@ export function OutageStep() {
     <div style={{ maxWidth: 820 }}>
       <h2 style={headingStyle}>Power and cable</h2>
       <p style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)" }}>
-        Optional. These show how the driver copes when the device goes away and comes back. Run
-        them where you can reach the device.
+        These show how the driver copes when the device goes away and comes back. Each needs
+        someone at the device and takes a few minutes. Run one at a time. This step is optional.
       </p>
       {error && <ErrorLine text={error} />}
 
@@ -97,24 +108,16 @@ export function OutageStep() {
 
             {live ? (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
-                  <Loader2 size={14} style={spinStyle} />
-                  <span>
-                    {live.off_at === null && live.unreachable_at === null
-                      ? words.after
-                      : live.on_at === null && live.reachable_at === null
-                        ? "Wait about 10 seconds, then bring it back and press the button."
-                        : live.reconnected_at === null
-                          ? "Waiting for the driver to reconnect."
-                          : "Watching the status values come back."}
-                  </span>
+                <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-xs)", marginTop: "var(--space-sm)", fontWeight: 600 }}>
+                  <Loader2 size={14} style={{ ...spinStyle, flexShrink: 0, marginTop: 2 }} />
+                  <span>{outageNowText(live)}</span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
                   <button
                     type="button"
                     onClick={() => void act("off", () => audit.markOutage(sessionId, "off"))}
                     disabled={busy !== "" || live.off_at !== null}
-                    style={buttonStyle(live.off_at === null ? "primary" : "muted", busy !== "" || live.off_at !== null)}
+                    style={buttonStyle(outageNextMark(live) === "off" ? "primary" : "muted", busy !== "" || live.off_at !== null)}
                   >
                     {words.off}
                   </button>
@@ -125,7 +128,7 @@ export function OutageStep() {
                       busy !== "" || live.on_at !== null || (live.off_at === null && live.unreachable_at === null)
                     }
                     style={buttonStyle(
-                      "muted",
+                      outageNextMark(live) === "on" ? "primary" : "muted",
                       busy !== "" || live.on_at !== null || (live.off_at === null && live.unreachable_at === null),
                     )}
                   >
@@ -145,6 +148,13 @@ export function OutageStep() {
               </>
             ) : (
               <>
+                {!last && (
+                  <ol style={{ margin: "var(--space-sm) 0 0", paddingLeft: "var(--space-lg)" }}>
+                    {words.steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                )}
                 {last && (
                   <div role="status" style={{ marginTop: "var(--space-sm)", overflowWrap: "anywhere" }}>
                     {last.summary}

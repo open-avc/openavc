@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AuditOutage, AuditReportDriver, AuditSessionState } from "../../../api/auditClient";
-import { applyAuditMessage, driverLines, outageProgress, stepFor } from "./auditHelpers";
+import {
+  applyAuditMessage,
+  driverLines,
+  outageNextMark,
+  outageNowText,
+  outageProgress,
+  stepFor,
+} from "./auditHelpers";
 
 function outage(extra: Partial<AuditOutage> = {}): AuditOutage {
   return {
@@ -15,6 +22,48 @@ function outage(extra: Partial<AuditOutage> = {}): AuditOutage {
     announcements: [], summary: "", ...extra,
   };
 }
+
+describe("what to do now, while a test runs", () => {
+  it("walks a power cycle through off, back on, and the reconnect", () => {
+    const o = outage();
+    expect(outageNowText(o)).toBe("Now turn the device off, and press I turned it off as you do.");
+    expect(outageNextMark(o)).toBe("off");
+    const off = { ...o, off_at: 101 };
+    expect(outageNowText(off)).toBe(
+      "Leave it off for about 10 seconds, then turn it back on and press I turned it back on.",
+    );
+    expect(outageNextMark(off)).toBe("on");
+    const on = { ...off, on_at: 115 };
+    expect(outageNowText(on)).toBe("Waiting for the driver to reconnect.");
+    expect(outageNextMark(on)).toBe("");
+    expect(outageNowText({ ...on, reconnected_at: 120 })).toBe(
+      "Watching the status values come back. The test ends on its own.",
+    );
+  });
+
+  it("keeps a pulled cable out until OpenAVC notices or the limit passes", () => {
+    const pulled = outage({ kind: "cable_pull", off_at: 101 });
+    // No liveness check: say it may not notice, and hold the plug-in back.
+    expect(outageNowText(pulled)).toBe(
+      "Leave it unplugged until OpenAVC notices. The table below shows it. This driver does not " +
+        "check on its own whether the device is still there, so OpenAVC may not notice. The test " +
+        "says so when the 5 minutes are up.",
+    );
+    expect(outageNextMark(pulled)).toBe("");
+    const checked = { ...pulled, watch: { liveness_probe: true, probe_every: 30, poll_interval: 5 } };
+    expect(outageNowText(checked)).toBe(
+      "Leave it unplugged until OpenAVC notices. The table below shows it.",
+    );
+    for (const seen of [{ noticed_at: 130 }, { not_noticed_at: 401 }]) {
+      expect(outageNowText({ ...pulled, ...seen })).toBe(
+        "Now plug the cable back in and press I plugged it back in.",
+      );
+      expect(outageNextMark({ ...pulled, ...seen })).toBe("on");
+    }
+    // The device answering ping again means the cable is back, noticed or not.
+    expect(outageNextMark({ ...pulled, unreachable_at: 102, reachable_at: 140 })).toBe("on");
+  });
+});
 
 describe("a power or cable test as it runs", () => {
   it("says what each clock shows", () => {

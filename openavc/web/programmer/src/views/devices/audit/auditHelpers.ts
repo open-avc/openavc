@@ -671,6 +671,44 @@ export function secondsBetween(from: number | null, to: number | null): number |
   return Math.round((to - from) * 10) / 10;
 }
 
+/** What to do now, while a test runs. */
+export function outageNowText(o: AuditOutage): string {
+  const gone = o.off_at !== null || o.unreachable_at !== null;
+  const back = o.on_at !== null || o.reachable_at !== null;
+  const cable = o.kind === "cable_pull";
+  if (!gone) {
+    return cable
+      ? "Now unplug the network cable, and press I unplugged it as you do."
+      : "Now turn the device off, and press I turned it off as you do.";
+  }
+  if (!back) {
+    if (!cable) return "Leave it off for about 10 seconds, then turn it back on and press I turned it back on.";
+    if (o.noticed_at === null && o.not_noticed_at === null) {
+      const minutes = Math.round(o.notice_ceiling_seconds / 60) || 1;
+      return (
+        `Leave it unplugged until OpenAVC notices. The table below shows it.` +
+        (o.watch.liveness_probe
+          ? ""
+          : ` This driver does not check on its own whether the device is still there, so OpenAVC ` +
+            `may not notice. The test says so when the ${minutes} minutes are up.`)
+      );
+    }
+    return "Now plug the cable back in and press I plugged it back in.";
+  }
+  if (o.reconnected_at === null) return "Waiting for the driver to reconnect.";
+  return "Watching the status values come back. The test ends on its own.";
+}
+
+/** The mark the person should press next: "off", "on", or none. */
+export function outageNextMark(o: AuditOutage): "off" | "on" | "" {
+  if (o.off_at === null && o.unreachable_at === null) return "off";
+  if (o.on_at !== null) return "";
+  if (o.kind === "cable_pull" && o.noticed_at === null && o.not_noticed_at === null && o.reachable_at === null) {
+    return "";
+  }
+  return "on";
+}
+
 /** Where a power or cable test stands, one line per clock, as the step shows it. */
 export function outageProgress(o: AuditOutage, now: number): { label: string; value: string }[] {
   const lines: { label: string; value: string }[] = [];
