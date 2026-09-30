@@ -78,9 +78,13 @@ def driver():
     get_secret_registry().clear()
 
 
-async def _fake_device():
-    """Keeps a name it will change and a mode it will not."""
-    state = {"name": "Lobby", "mode": "auto"}
+async def _fake_device(state: dict | None = None):
+    """Keeps a name it will change and a mode it will not. A test that
+    passes ``state`` can change the name at the device itself."""
+    if state is None:
+        state = {}
+    state.setdefault("name", "Lobby")
+    state.setdefault("mode", "auto")
 
     async def handle(reader, writer):
         try:
@@ -211,6 +215,52 @@ async def test_a_setting_and_a_command_never_run_at_once(driver):
         with pytest.raises(AuditError, match="Wait for Device name to finish before sending"):
             await commands.send("ping")
         await _until(lambda: written.status == DONE)
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_the_wizard_hears_what_the_device_reports_after_connecting(driver):
+    """The settings list is made as the driver connects, before the device has
+    reported anything. Each value it reports later reaches the wizard with no
+    write in between, and so does a value moved at the device after a command
+    ("what changed"). Found on the bench: every setting of a device that
+    reports after connecting read "not reported" and could not be written."""
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session = AuditSession("set2", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    heard: list[dict] = []
+    session.subscribe(heard.append)
+    run = DriverRun(index=0, choice=DriverChoice(
+        driver_id="acme_settings", identity={"name": "Acme Settings", "version": "1.0.0"},
+    ))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+
+    def heard_settings() -> dict:
+        lists = [m["settings"]["catalog"] for m in heard
+                 if m["type"] == "audit.settings" and "catalog" in m["settings"]]
+        return {s["key"]: s for s in lists[-1]} if lists else {}
+
+    def heard_changed() -> list:
+        lists = [m["commands"]["changed"] for m in heard
+                 if m["type"] == "audit.commands" and "changed" in m["commands"]]
+        return lists[-1] if lists else []
+
+    try:
+        await start_listen(session, run, **FAST)
+        await _until(lambda: heard_settings().get("device_name", {}).get("can_write"))
+        assert heard_settings()["device_name"]["value"] == "Lobby"
+        assert all(m["type"] != "audit.settings" or not m["settings"].get("trials") for m in heard)
+
+        commands = commands_for(session, run, window_seconds=0.3, flush_seconds=0.05)
+        trial = await commands.send("ping")
+        await _until(lambda: trial.status == DONE)
+        device["name"] = "Changed at the device"
+        await _until(lambda: any(c["key"] == "device_name" for c in heard_changed()))
+        moved = next(c for c in heard_changed() if c["key"] == "device_name")
+        assert moved["now"] == "Changed at the device" and moved["by"] is None
+        assert heard_settings()["device_name"]["value"] == "Changed at the device"
     finally:
         await run.stop()
         server.close()

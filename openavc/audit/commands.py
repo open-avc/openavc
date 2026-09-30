@@ -453,9 +453,11 @@ class CommandPass:
         self._task: asyncio.Task | None = None
         # The command list as it stood when the driver stopped, for the report.
         self._final_catalog: list[dict[str, Any]] | None = None
-        # The command list, and the picker values, as the wizard last heard them.
+        # The command list, the picker values and "what changed", as the
+        # wizard last heard them.
         self._catalog_sent: list[dict[str, Any]] | None = None
         self._pickers_sent: dict[str, Any] | None = None
+        self._changed_sent: list[dict[str, Any]] | None = None
 
     # -- where it runs --------------------------------------------------------
 
@@ -933,17 +935,23 @@ class CommandPass:
         setting written elsewhere moves "what changed" too)."""
         self._publish()
 
-    def _publish(self, trial: CommandTrial | None = None) -> None:
-        """Tell the wizard what moved: the trial that changed (merged by its
-        number), the batch, and the command list and picker values only when
-        they changed."""
-        current = self.current()
-        update: dict[str, Any] = {
-            "batch": dict(self.batch) if self.batch else None,
-            "current": current.number if current is not None else None,
-            "trials": [self._trial_view(trial, every_entry=False)] if trial is not None else [],
-            "changed": changed_values(self.run),
-        }
+    def refresh(self) -> None:
+        """Tell the wizard whatever the device's own reports have moved since
+        it last heard: the command list (a Python driver can add commands
+        once connected), the picker values, "what changed". Called as the
+        connection's state moves; sends nothing when none of them did."""
+        update = self._lists_update()
+        changed = changed_values(self.run)
+        if changed != self._changed_sent:
+            update["changed"] = changed
+            self._changed_sent = changed
+        if update:
+            self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
+
+    def _lists_update(self) -> dict[str, Any]:
+        """The command list and the picker values, each only if it changed
+        since the wizard last heard it."""
+        update: dict[str, Any] = {}
         catalog = self.catalog()
         if catalog != self._catalog_sent:
             update["catalog"] = catalog
@@ -952,6 +960,22 @@ class CommandPass:
         if pickers != self._pickers_sent:
             update["picker_state"] = pickers
             self._pickers_sent = pickers
+        return update
+
+    def _publish(self, trial: CommandTrial | None = None) -> None:
+        """Tell the wizard what moved: the trial that changed (merged by its
+        number), the batch, and the command list and picker values only when
+        they changed."""
+        current = self.current()
+        changed = changed_values(self.run)
+        self._changed_sent = changed
+        update: dict[str, Any] = {
+            "batch": dict(self.batch) if self.batch else None,
+            "current": current.number if current is not None else None,
+            "trials": [self._trial_view(trial, every_entry=False)] if trial is not None else [],
+            "changed": changed,
+            **self._lists_update(),
+        }
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
 
 

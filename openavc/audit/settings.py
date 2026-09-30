@@ -143,6 +143,8 @@ class SettingsPass:
         self.trials: list[SettingTrial] = []
         self._task: asyncio.Task | None = None
         self._final: list[dict[str, Any]] | None = None
+        # The list as the wizard last heard it.
+        self._catalog_sent: list[dict[str, Any]] | None = None
 
     # -- what there is --------------------------------------------------------
 
@@ -368,16 +370,29 @@ class SettingsPass:
             "trials": [t.to_dict() for t in self.trials],
         }
 
+    def refresh(self) -> None:
+        """Tell the wizard the list again when the device's reports have
+        moved it: a value the device reported after the driver connected is
+        what makes a setting one the audit can put back."""
+        catalog = self.catalog()
+        if catalog != self._catalog_sent:
+            self._catalog_sent = catalog
+            self.session.publish({
+                "type": "audit.settings", "run": self.run.index, "settings": {"catalog": catalog},
+            })
+
     def _publish(self, trial: SettingTrial | None = None) -> None:
         commands = self.run.commands
         if commands is not None:
             commands.publish_update()  # "what changed" moves with a setting too
         current = self.current()
+        catalog = self.catalog()
+        self._catalog_sent = catalog
         self.session.publish({
             "type": "audit.settings",
             "run": self.run.index,
             "settings": {
-                "catalog": self.catalog(),
+                "catalog": catalog,
                 "current": current.number if current is not None else None,
                 "trials": [trial.to_dict()] if trial is not None else [],
             },

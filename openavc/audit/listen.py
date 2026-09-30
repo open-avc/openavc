@@ -25,7 +25,10 @@ driver's commands. What it records:
 Everything the driver moved is in the run's observer for the report
 (:meth:`ListenPass.report_record`). The wizard gets it live: ``audit.traffic``
 batches and ``audit.listen`` updates, each throttled, to the subscribing
-client only.
+client only. The same update keeps the Commands step current: the device
+settings and the command pickers read the device's state too, and a device
+reports most of it after the driver has connected, so each is re-sent
+whenever what the device reported has moved it.
 """
 
 from __future__ import annotations
@@ -442,6 +445,10 @@ class ListenPass:
             self.session.publish({
                 "type": "audit.listen", "run": self.run.index, "listen": self.to_dict(),
             })
+            if self.run.listen is self:
+                for step in (self.run.commands, self.run.settings):
+                    if step is not None:
+                        step.refresh()
 
     # -- reading ------------------------------------------------------------------
 
