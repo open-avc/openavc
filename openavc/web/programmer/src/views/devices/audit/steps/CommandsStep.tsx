@@ -548,7 +548,7 @@ function TrialRow({
     return () => window.clearInterval(timer);
   }, [watching]);
   const params = paramsText(trial.params);
-  const { moved, moving } = movedParts(trial);
+  const { moved, moving, wentBack } = movedParts(trial);
   const running = trial.status !== "done";
   const left = watching && trial.ends_at ? Math.max(0, Math.ceil(trial.ends_at - now)) : null;
   const before = trial.since_previous;
@@ -582,6 +582,11 @@ function TrialRow({
       {moving.length > 0 && (
         <div style={{ color: "var(--text-secondary)", overflowWrap: "anywhere" }}>
           Already changing before it was sent, so not counted: {moving.map(movingText).join(", ")}
+        </div>
+      )}
+      {wentBack.length > 0 && (
+        <div style={{ color: "var(--text-secondary)", overflowWrap: "anywhere" }}>
+          Changed and went back to where they were: {wentBack.map(movingText).join(", ")}
         </div>
       )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", marginTop: "var(--space-xs)" }}>

@@ -178,6 +178,15 @@ class AuditObserver:
         return [serialize_entry(e, redactor) for e in self.traffic]
 
 
+# The keys the platform writes for every device (and the device manager's
+# reconnect count): not status values a driver reports, so never something a
+# command changed or a value the device reported.
+PLATFORM_KEYS = frozenset({
+    "connected", "name", "enabled", "offline_reason", "offline_detail", "paused",
+    "restarting", "web_ui_url", "orphaned", "orphan_reason", "reconnect_attempt",
+})
+
+
 def command_sent_nothing(
     entries: Iterable[TrafficEntry],
     started: float,

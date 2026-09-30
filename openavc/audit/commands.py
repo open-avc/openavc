@@ -92,7 +92,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing
+from openavc.audit.observe import PLATFORM_KEYS, REPLY_WINDOW_SECONDS, command_sent_nothing
 from openavc.audit.session import AuditError
 from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.core.state_store import is_flat_primitive
@@ -155,11 +155,6 @@ ANSWERS = {
     "cant_tell": "The person could not tell from where they were.",
 }
 
-# The keys the platform writes for every device: not what a command changed.
-_PLATFORM_KEYS = frozenset({
-    "connected", "name", "enabled", "offline_reason", "offline_detail", "paused",
-    "restarting", "web_ui_url", "orphaned", "orphan_reason",
-})
 _PARAM_REF = re.compile(r"\{([^{}]+)\}")
 
 
@@ -385,6 +380,8 @@ class CommandTrial:
     refusals: dict[str, Any] = field(default_factory=dict)
     sent_nothing: bool | None = None
     restart: dict[str, Any] | None = None
+    # A drop inside the window of a command that does not declare a restart.
+    drop: dict[str, Any] | None = None
     # The person's answer to "Did it happen?": {"answer", "note", "at"}.
     answer: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -445,6 +442,7 @@ class CommandTrial:
             "refusals": dict(self.refusals),
             "sent_nothing": self.sent_nothing,
             "restart": self.restart,
+            "drop": self.drop,
             "answer": dict(self.answer) if self.answer else None,
             **self.extra,
         }
@@ -886,9 +884,16 @@ class CommandPass:
                 )
 
         declared = trial.declared.get("restarts_device_for")
+        went = trial.went_away_at
+        back = trial.back_at
+        if went and not declared:
+            # The connection dropped while it was watched: say so, rather than
+            # letting the values a reconnect rewrites read as the command's.
+            trial.drop = {
+                "after": round(went - trial.sent_at, 1),
+                "back_after": round(back - went, 1) if back else None,
+            }
         if declared and not trial.error:
-            went = trial.went_away_at
-            back = trial.back_at
             trial.restart = {
                 "declared_seconds": declared,
                 "went_away_after": round(went - trial.sent_at, 1) if went else None,
@@ -1053,7 +1058,7 @@ def moved_values(
     out: dict[str, dict[str, Any]] = {}
     for change in changes:
         key = change["key"]
-        if key.rsplit(".", 1)[-1] in _PLATFORM_KEYS:
+        if key.rsplit(".", 1)[-1] in PLATFORM_KEYS:
             continue
         item = out.get(key)
         if item is None:
@@ -1064,6 +1069,10 @@ def moved_values(
         else:
             item["last"] = change["new"]
             item["times"] += 1
+    for item in out.values():
+        # It ended where it began (a reconnect re-reading it, a pulse): not
+        # something the command left changed.
+        item["went_back"] = item["first"] == item["last"] and type(item["first"]) is type(item["last"])
     return list(out.values())
 
 
@@ -1111,7 +1120,7 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     for key in sorted(now):
         value = now[key]
         prop = key.rsplit(".", 1)[-1]
-        if prop in _PLATFORM_KEYS or prop == "label" or value is None:
+        if prop in PLATFORM_KEYS or prop == "label" or value is None:
             continue
         before = baseline.get(key)
         if before == value and type(before) is type(value):
@@ -1205,7 +1214,7 @@ def trial_sentence(trial: dict[str, Any]) -> str:
         said.add(trial["query"].get("state_key"))
     moved = [
         m for m in trial.get("moved") or []
-        if not m.get("already_moving") and m.get("key") not in said
+        if not m.get("already_moving") and not m.get("went_back") and m.get("key") not in said
     ]
     if moved:
         texts = [
@@ -1216,6 +1225,16 @@ def trial_sentence(trial: dict[str, Any]) -> str:
         if more > 0:
             texts.append(f"{more} more {'value' if more == 1 else 'values'} changed")
         parts.append(", ".join(texts))
+    if trial.get("drop"):
+        drop = trial["drop"]
+        parts.append(
+            f"the connection dropped {drop['after']} s after it was sent"
+            + (
+                f" and the driver reconnected {drop['back_after']} s later"
+                if drop["back_after"] is not None
+                else " and had not come back when the audit stopped watching"
+            )
+        )
     if trial.get("restart"):
         r = trial["restart"]
         if r["back_after"] is not None:
@@ -1235,9 +1254,12 @@ def trial_sentence(trial: dict[str, Any]) -> str:
         )
     if not parts:
         received = (trial.get("traffic") or {}).get("received", 0)
+        every = trial.get("moved") or []
         what = (
             "only values that were already changing moved"
-            if any(m.get("already_moving") for m in trial.get("moved") or [])
+            if any(m.get("already_moving") for m in every)
+            else "values changed and went back to where they were"
+            if any(m.get("went_back") for m in every)
             else "no status value changed"
         )
         parts.append(

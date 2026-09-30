@@ -375,6 +375,9 @@ export interface AuditCommandTrial {
     away_for: number | null;
     within_declared: boolean | null;
   } | null;
+  /** The connection dropped inside the window of a command that declares no
+   *  restart: seconds after the send, and after the drop until it was back. */
+  drop?: { after: number; back_after: number | null } | null;
   /** What it did, in a sentence, once its window closed ("" before). */
   summary: string;
   /** The person's answer to "Did it happen?", or null. */
@@ -405,6 +408,8 @@ export interface AuditMovedValue {
   last: unknown;
   times: number;
   already_moving: boolean;
+  /** It ended where it began (a reconnect re-reading it, a pulse). */
+  went_back?: boolean;
 }
 
 /** The commands step for one driver. */

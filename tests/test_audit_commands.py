@@ -31,6 +31,7 @@ from openavc.audit.commands import (
     DONE,
     changed_values,
     commands_for,
+    moved_values,
     same_value,
     trial_sentence,
 )
@@ -81,6 +82,9 @@ DRIVER = {
             "sets": {"input": "{source}"},
         },
         "reboot": {"label": "Reboot", "send": "REBOOT\\r", "restarts_device_for": 5},
+        # Drops the link with no restart declared (a unit that resets its
+        # control port on a command, or a network blip in the window).
+        "blip": {"label": "Blip", "send": "BLIP\\r"},
     },
     "actions": [
         {"id": "reboot", "kind": "command", "confirm": "The device restarts."},
@@ -132,7 +136,7 @@ async def _fake_device():
                 elif line.startswith("INP "):
                     # This unit has one input: it answers hdmi1 whatever it is asked.
                     reply = b"INP=hdmi1\rLAMP=450\r"
-                elif line == "REBOOT":
+                elif line in ("REBOOT", "BLIP"):
                     writer.close()
                     return
                 if reply:
@@ -179,6 +183,7 @@ def test_the_command_list_is_the_drivers_own(driver):
     catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
     assert list(catalog) == [
         "power_on", "set_volume", "query_power", "query_volume", "set_code", "set_input", "reboot",
+        "blip",
     ]
     assert catalog["query_power"]["query"] and catalog["query_power"]["query_for"] == "power"
     # Polled by name: a status query though it declares no query_for.
@@ -489,6 +494,42 @@ async def test_a_restart_is_timed_against_the_declared_window(driver):
         server.close()
 
 
+async def test_a_drop_inside_the_window_is_said_as_a_drop(driver):
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, window_seconds=8.0, flush_seconds=0.05)
+        trial = await commands.send("blip")
+        await _until(lambda: trial.back_at is not None, timeout=8.0)
+        commands.end_now()
+        await _until(lambda: trial.status == DONE)
+        assert trial.restart is None
+        assert trial.drop["after"] >= 0 and trial.drop["back_after"] is not None
+        sentence = trial_sentence(trial.to_dict())
+        assert "the connection dropped" in sentence and "the driver reconnected" in sentence
+        # The reconnect count is the platform's, not a value the command moved.
+        view = commands.to_dict()["trials"][-1]
+        assert not any("reconnect" in m["key"] for m in view["moved"])
+    finally:
+        await run.stop()
+        server.close()
+
+
+def test_a_value_that_ends_where_it_began_is_not_what_the_command_changed():
+    changes = [
+        {"t": 1, "key": "online", "old": True, "new": False},
+        {"t": 2, "key": "online", "old": False, "new": True},
+        {"t": 2, "key": "volume", "old": 20, "new": 40},
+        {"t": 3, "key": "reconnect_attempt", "old": None, "new": 1},
+    ]
+    moved = moved_values(changes, [], {})
+    assert [(m["key"], m["went_back"]) for m in moved] == [("online", True), ("volume", False)]
+    sentence = trial_sentence({"moved": moved, "traffic": {"received": 1}})
+    assert "went from 20 to 40" in sentence and "online" not in sentence.lower()
+    only_back = trial_sentence({"moved": moved[:1], "traffic": {"received": 0}})
+    assert only_back.startswith("values changed and went back to where they were")
+
+
 async def test_wait_longer_and_stop_watching(driver):
     server, port = await _fake_device()
     session, run, _ = await _connected(port)
@@ -590,7 +631,7 @@ async def test_what_a_command_moved_is_told_from_what_moves_anyway():
         moved = {m["key"]: m for m in view["moved"]}
         assert moved["mute"] == {
             "key": "mute", "label": "Mute", "first": False, "last": True, "times": 1,
-            "already_moving": False,
+            "already_moving": False, "went_back": False,
         }
         assert moved["level"]["already_moving"] and moved["level"]["times"] > 1
         assert view["summary"] == "Mute went from false to true."

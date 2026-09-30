@@ -647,11 +647,13 @@ export const MOVED_IN_SENTENCE = 3;
 export function movedParts(trial: AuditCommandTrial): {
   moved: AuditMovedValue[];
   moving: AuditMovedValue[];
+  wentBack: AuditMovedValue[];
 } {
   const all = trial.moved ?? [];
   return {
-    moved: all.filter((m) => !m.already_moving),
+    moved: all.filter((m) => !m.already_moving && !m.went_back),
     moving: all.filter((m) => m.already_moving),
+    wentBack: all.filter((m) => !m.already_moving && m.went_back),
   };
 }
 

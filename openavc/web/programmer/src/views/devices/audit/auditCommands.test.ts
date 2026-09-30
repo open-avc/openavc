@@ -193,9 +193,12 @@ describe("before a command is sent", () => {
     expect(movingText(level)).toBe("Level (7 times)");
     expect(movingText({ ...level, times: 1 })).toBe("Level");
     // What the command moved, apart from what was already changing.
-    const { moved, moving } = movedParts(trial({ moved: [mute, level] }));
+    const online = { key: "online", label: "Online", first: true, last: true, times: 2, already_moving: false, went_back: true };
+    const { moved, moving, wentBack } = movedParts(trial({ moved: [mute, level, online] }));
     expect(moved).toEqual([mute]);
     expect(moving).toEqual([level]);
+    // One that ended where it began is set apart, not counted as the command's.
+    expect(wentBack).toEqual([online]);
     expect(movedParts(trial({ moved: undefined as never })).moved).toEqual([]);
   });
 });

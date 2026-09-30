@@ -103,10 +103,14 @@
     ``refusals`` (``device_errors``, ``last_error``, ``last_error_writes``,
     ``unmatched`` and ``unmatched_examples``), ``sent_nothing`` (true when
     the driver returned success while nothing left for the device; null when
-    its traffic is not captured at all) and ``restart``, for a command that
+    its traffic is not captured at all), ``restart``, for a command that
     declares ``restarts_device_for`` (``declared_seconds``,
     ``went_away_after``, ``back_after`` and ``away_for`` in seconds, and
-    ``within_declared``); ``summary`` says it in a sentence. ``answer`` is
+    ``within_declared``), and ``drop``, when the connection dropped inside
+    the window of any other command (``after`` the send and ``back_after``
+    the drop, in seconds, null when it had not come back). ``moved`` lists
+    each value the window saw change once, ``went_back`` true when it ended
+    where it began; ``summary`` says it in a sentence. ``answer`` is
     the person's own: ``{"answer", "note", "at"}``, the answer ``yes``,
     ``no``, ``partly`` or ``cant_tell`` ("Did it happen?"), or null
     when they did not say.

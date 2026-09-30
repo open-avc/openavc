@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 from openavc.audit.observe import (
     CONTRACT_TEXT,
+    PLATFORM_KEYS,
     REPLY_WINDOW_SECONDS,
     ContractEvent,
     replies_to_nobody,
@@ -76,11 +77,6 @@ STOPPED = "stopped"
 
 NO_CONNECTION_SET = "Enter the connection settings first."
 
-# Keys the platform writes for every device; not the driver's status values.
-_PLATFORM_KEYS = frozenset({
-    "connected", "name", "enabled", "offline_reason", "offline_detail", "paused",
-    "restarting", "web_ui_url", "orphaned", "orphan_reason",
-})
 
 def _shown(value: Any) -> Any:
     """A state value as a record keeps it: as is when the store could hold
@@ -393,14 +389,14 @@ class ListenPass:
                 "new": _shown(new),
             })
         if (
-            old is not None and new is not None and prop not in _PLATFORM_KEYS
+            old is not None and new is not None and prop not in PLATFORM_KEYS
             and self.run.listen is self and not self.run.watching()
         ):
             self.run.note_unwatched(prop, now)
         if prop == "offline_reason" and new:
             self._note_offline()
         if (
-            new is not None and prop not in _PLATFORM_KEYS and "." not in prop
+            new is not None and prop not in PLATFORM_KEYS and "." not in prop
             and prop not in self.first_reported
         ):
             self.first_reported[prop] = now
