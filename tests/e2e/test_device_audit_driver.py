@@ -94,6 +94,7 @@ commands:
         required: true
     sets:
       input: "{input}"
+quick_actions: [set_input]
 polling:
   queries:
     - "PWR?\\r"
@@ -241,9 +242,12 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("heading", name="Commands", exact=True)).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    # The list says where each command stands; opening one shows what it takes.
-    expect(dialog.get_by_text("1 command, none tried yet.")).to_be_visible(timeout=EXPECT_TIMEOUT)
-    dialog.get_by_role("button", name="Set Input: Not tried").click()
+    # The list says where each command stands, the driver's key ones marked;
+    # opening one shows what it takes.
+    expect(dialog.get_by_text("1 command, none tried yet · Key: 0 of 1 tried", exact=True)).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
+    dialog.get_by_role("button", name="Set Input (key): Not tried").click()
     dialog.get_by_role("button", name="Select...", exact=True).click()
     page.get_by_role("option", name=re.compile("^hdmi2")).click()
     dialog.get_by_role("button", name="Send", exact=True).click()
@@ -257,10 +261,12 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
         "aria-pressed", "true", timeout=EXPECT_TIMEOUT,
     )
-    expect(dialog.get_by_role("button", name="Set Input: Worked")).to_be_visible(
+    expect(dialog.get_by_role("button", name="Set Input (key): Worked")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    expect(dialog.get_by_text("1 of 1 command tried, 1 answered.")).to_be_visible()
+    expect(dialog.get_by_text(
+        "1 of 1 command tried, 1 answered · Key: 1 of 1 tried", exact=True,
+    )).to_be_visible()
 
     # A device setting: written, read back, put back.
     dialog.get_by_placeholder("New value").fill("Boardroom")

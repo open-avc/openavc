@@ -212,16 +212,17 @@ export function changedText(item: AuditChangedValue): string {
   return `${item.label}: ${show(item.before)} before, ${show(item.now)} now${by}`;
 }
 
-/** The commands to try first (the ones the driver puts on a device page,
- *  as the server marks them) and all the others, each in the driver's order. */
-export function commandSections(catalog: AuditCommandInfo[]): {
-  suggested: AuditCommandInfo[];
-  others: AuditCommandInfo[];
-} {
-  return {
-    suggested: catalog.filter((c) => c.suggested),
-    others: catalog.filter((c) => !c.suggested),
-  };
+/** Every command in one list: the driver's key ones first (the ones it puts
+ *  on a device page, as the server marks them ``suggested``), then the rest,
+ *  each part in the driver's order. */
+export function commandOrder(catalog: AuditCommandInfo[]): AuditCommandInfo[] {
+  return [...catalog.filter((c) => c.suggested), ...catalog.filter((c) => !c.suggested)];
+}
+
+/** Has this command been sent yet? The "Not tried yet" filter and the count
+ *  read the same rule. */
+export function notTried(command: AuditCommandInfo, trials: AuditCommandTrial[]): boolean {
+  return !trials.some((t) => t.command === command.name);
 }
 
 /** A command matches a search by its label, its name or its help. */
@@ -264,16 +265,23 @@ export function commandStatus(trials: AuditCommandTrial[]): { key: CommandStatus
 }
 
 /** How far through the commands the person is: "3 of 58 commands tried,
- *  2 answered". A command counts as answered when its last try has an answer. */
+ *  2 answered · Key: 2 of 4 tried". A command counts as answered when its
+ *  last try has an answer; the key part is there when the driver has key ones. */
 export function commandProgress(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): string {
   const n = catalog.length;
   if (n === 0) return "";
   const names = new Set(catalog.map((c) => c.name));
   const last = new Map<string, AuditCommandTrial>();
   for (const t of trials) if (names.has(t.command)) last.set(t.command, t);
-  if (last.size === 0) return `${plural(n, "command", "commands")}, none tried yet.`;
   const answered = [...last.values()].filter((t) => t.answer).length;
-  return `${last.size} of ${plural(n, "command", "commands")} tried, ${answered} answered.`;
+  const all =
+    last.size === 0
+      ? `${plural(n, "command", "commands")}, none tried yet`
+      : `${last.size} of ${plural(n, "command", "commands")} tried, ${answered} answered`;
+  const key = catalog.filter((c) => c.suggested);
+  if (key.length === 0) return all;
+  const keyTried = key.filter((c) => last.has(c.name)).length;
+  return `${all} · Key: ${keyTried} of ${key.length} tried`;
 }
 
 /** The device setting to try first: a name-like one (a string) if the

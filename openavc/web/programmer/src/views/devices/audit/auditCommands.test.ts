@@ -12,14 +12,15 @@ import {
   batchableQueries,
   changedText,
   commandMatches,
+  commandOrder,
   commandProgress,
-  commandSections,
   commandStatus,
   driverLines,
   mergeCommands,
   movedParts,
   movedText,
   movingText,
+  notTried,
   paramsText,
   sendWarning,
   stepFor,
@@ -62,10 +63,16 @@ describe("the command list", () => {
     command("set_volume", { needs_input: true, suggested: true, help: "Set the master level" }),
   ];
 
-  it("puts the suggested commands first, each part in the driver's order", () => {
-    const { suggested, others } = commandSections(catalog);
-    expect(suggested.map((c) => c.name)).toEqual(["power_on", "set_volume"]);
-    expect(others.map((c) => c.name)).toEqual(["query_power", "query_input"]);
+  it("lists every command, the key ones first, each part in the driver's order", () => {
+    expect(commandOrder(catalog).map((c) => c.name)).toEqual(
+      ["power_on", "set_volume", "query_power", "query_input"],
+    );
+  });
+
+  it("knows a command not sent yet", () => {
+    const tries = [trial({ command: "power_on" })];
+    expect(notTried(catalog[0], tries)).toBe(false);
+    expect(notTried(catalog[1], tries)).toBe(true);
   });
 
   it("finds a command by its label, its name or its help", () => {
@@ -103,7 +110,7 @@ describe("where each command stands", () => {
 
   it("counts the commands tried and answered", () => {
     const catalog = [command("power_on"), command("set_volume"), command("query_power")];
-    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet.");
+    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet");
     const tries = [
       trial({ command: "power_on", answer: { answer: "yes", note: "", at: 1 } }),
       trial({ number: 2, command: "set_volume" }),
@@ -111,8 +118,24 @@ describe("where each command stands", () => {
       trial({ number: 4, command: "set_volume", answer: { answer: "partly", note: "", at: 4 } }),
     ];
     // power_on's last try is unanswered, so one of the two is answered.
-    expect(commandProgress(catalog, tries)).toBe("2 of 3 commands tried, 1 answered.");
+    expect(commandProgress(catalog, tries)).toBe("2 of 3 commands tried, 1 answered");
     expect(commandProgress([], tries)).toBe("");
+  });
+
+  it("counts the key commands tried apart", () => {
+    const catalog = [
+      command("power_on", { suggested: true }),
+      command("mute", { suggested: true }),
+      command("query_power"),
+    ];
+    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet · Key: 0 of 2 tried");
+    const tries = [
+      trial({ command: "query_power" }),
+      trial({ number: 2, command: "power_on", answer: { answer: "yes", note: "", at: 2 } }),
+    ];
+    expect(commandProgress(catalog, tries)).toBe(
+      "2 of 3 commands tried, 1 answered · Key: 1 of 2 tried",
+    );
   });
 });
 

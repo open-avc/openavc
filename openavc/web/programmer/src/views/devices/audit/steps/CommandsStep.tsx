@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  ListFilter,
   HelpCircle,
   Loader2,
   RotateCcw,
@@ -26,8 +27,8 @@ import {
   batchableQueries,
   changedText,
   commandMatches,
+  commandOrder,
   commandProgress,
-  commandSections,
   commandStatus,
   currentRun,
   displayBytes,
@@ -35,6 +36,7 @@ import {
   movedParts,
   movedText,
   movingText,
+  notTried,
   paramsText,
   sendWarning,
   trialOutcome,
@@ -66,8 +68,8 @@ export function CommandsStep() {
   const [error, setError] = useState<{ where: string; text: string } | null>(null);
   // A send waiting for the person to read the command's warning first.
   const [pending, setPending] = useState<{ command: string; text: string; label: string; call: Call } | null>(null);
-  const [showOthers, setShowOthers] = useState(false);
   const [search, setSearch] = useState("");
+  const [onlyNotTried, setOnlyNotTried] = useState(false);
 
   const catalog = useMemo(() => run?.commands?.catalog ?? [], [run?.commands?.catalog]);
   const pickerState = run?.commands?.picker_state;
@@ -81,7 +83,7 @@ export function CommandsStep() {
     }),
     [sessionId, pickerState],
   );
-  const { suggested, others } = useMemo(() => commandSections(catalog), [catalog]);
+  const ordered = useMemo(() => commandOrder(catalog), [catalog]);
 
   if (!session || !run) return null;
   const commands = run.commands;
@@ -94,8 +96,12 @@ export function CommandsStep() {
   const working =
     commands?.current != null || commands?.batch?.status === "running" || settingBusy;
   const queryCount = batchableQueries(catalog);
-  const othersOpen = showOthers || suggested.length === 0;
-  const shownOthers = others.filter((c) => commandMatches(c, search));
+  const keyCount = catalog.filter((c) => c.suggested).length;
+  // The open command stays in the list when it is sent, filter or not.
+  const shown = ordered.filter(
+    (c) =>
+      commandMatches(c, search) && (!onlyNotTried || notTried(c, trials) || c.name === open),
+  );
 
   const act = async (kind: "send" | "queries" | "watch", where: string, call: Call) => {
     setError(null);
@@ -209,12 +215,11 @@ export function CommandsStep() {
         a command and press Send, then watch or listen to the device and say whether it happened.
       </p>
       <ul style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)", paddingLeft: "var(--space-lg)" }}>
-        <li>Every command changes the device. Send only the ones that are safe to run on this unit.</li>
         <li>
-          {suggested.length > 0
-            ? "You don't need to try them all. Start with the suggested ones, then any others you use."
-            : "You don't need to try them all. Start with the ones you use most."}
+          Try as many commands as you're willing to run on this unit; each one is checked on the
+          real device.{keyCount > 0 && " Make sure you try the key ones."}
         </li>
+        <li>Every command changes the device. Send only the ones that are safe to run on this unit.</li>
         <li>This step is optional. Continue when you are done.</li>
       </ul>
 
@@ -284,59 +289,41 @@ export function CommandsStep() {
             </div>
           )}
 
-          {suggested.length > 0 && (
-            <section aria-label="Suggested commands" style={{ marginBottom: "var(--space-md)" }}>
-              <div style={labelStyle}>Suggested ({suggested.length})</div>
+          <section aria-label="Commands">
+            <div style={labelStyle}>All commands ({catalog.length})</div>
+            {keyCount > 0 && (
               <div style={{ ...hintStyle, marginTop: 0, marginBottom: "var(--space-xs)" }}>
-                The commands the driver puts first on a device page.
+                The key ones come first: the commands the driver puts on a device page.
               </div>
-              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{suggested.map(row)}</ul>
-            </section>
-          )}
-
-          <section aria-label={suggested.length > 0 ? "Other commands" : "All commands"}>
-            {suggested.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => setShowOthers(!showOthers)}
-                aria-expanded={othersOpen}
-                style={{
-                  ...labelStyle,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "var(--space-xs)",
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  color: "var(--text-primary)",
-                  cursor: "pointer",
-                }}
-              >
-                {othersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                Other commands ({others.length})
-              </button>
-            ) : (
-              <div style={labelStyle}>All commands ({others.length})</div>
             )}
-            {othersOpen && (
-              <>
-                {others.length > 8 && (
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search commands..."
-                    aria-label="Search commands"
-                    style={{ ...inputStyle, marginBottom: "var(--space-sm)" }}
-                  />
-                )}
-                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{shownOthers.map(row)}</ul>
-                {shownOthers.length === 0 && (
-                  <div style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
-                    No command matches "{search.trim()}".
-                  </div>
-                )}
-              </>
+            {catalog.length > 8 && (
+              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", marginBottom: "var(--space-sm)" }}>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search commands..."
+                  aria-label="Search commands"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setOnlyNotTried(!onlyNotTried)}
+                  aria-pressed={onlyNotTried}
+                  style={{ ...buttonStyle(onlyNotTried ? "primary" : "muted"), flexShrink: 0 }}
+                >
+                  <ListFilter size={14} />
+                  Not tried yet
+                </button>
+              </div>
+            )}
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{shown.map(row)}</ul>
+            {shown.length === 0 && (
+              <div style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
+                {onlyNotTried && !ordered.some((c) => notTried(c, trials))
+                  ? "Every command has been tried."
+                  : `No command ${onlyNotTried ? "not tried yet " : ""}matches "${search.trim()}".`}
+              </div>
             )}
           </section>
         </>
@@ -439,7 +426,7 @@ function CommandRow({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        aria-label={`${command.label}: ${status.text}`}
+        aria-label={`${command.label}${command.suggested ? " (key)" : ""}: ${status.text}`}
         style={{
           display: "flex",
           alignItems: "center",
@@ -458,6 +445,21 @@ function CommandRow({
         <span aria-hidden style={{ display: "inline-flex", flexShrink: 0 }}>{STATUS_ICON[status.key]}</span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ fontWeight: 600 }}>{command.label}</span>
+          {command.suggested && (
+            <span
+              style={{
+                marginLeft: "var(--space-sm)",
+                padding: "0 6px",
+                borderRadius: 8,
+                border: "1px solid var(--accent)",
+                color: "var(--accent)",
+                fontSize: "var(--font-size-xs)",
+                fontWeight: 600,
+              }}
+            >
+              Key
+            </span>
+          )}
           {tags.map((t) => (
             <span key={t} style={{ marginLeft: "var(--space-sm)", fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
               {t}
