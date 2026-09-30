@@ -88,6 +88,11 @@ export function DriverStep() {
   );
   const chosen = drivers.find((d) => d.id === driverId) ?? null;
 
+  // One driver for what was picked: it is the choice.
+  useEffect(() => {
+    if (!driverId && drivers.length === 1) setDriverId(drivers[0].id);
+  }, [driverId, drivers]);
+
   // Start from the verdict's pick and what the device reported, once.
   useEffect(() => {
     if (preselected || loading || !session) return;
@@ -213,8 +218,11 @@ export function DriverStep() {
                 value={notListed ? NOT_LISTED : model}
                 disabled={!brand}
                 onChange={(e) => {
-                  setModel(e.target.value);
-                  setDriverId("");
+                  const next = e.target.value;
+                  setModel(next);
+                  // Keep the driver chosen when it covers this model too.
+                  const covers = driversFor(options, brand, next === NOT_LISTED || !next ? null : next);
+                  if (!covers.some((d) => d.id === driverId)) setDriverId("");
                 }}
                 style={inputStyle}
               >

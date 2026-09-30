@@ -132,7 +132,8 @@ export function ConnectionStep() {
   if (!session || !run) return null;
   const connection = run.connection;
 
-  const save = async () => {
+  /** Save the settings (which also builds the preview). True when saved. */
+  const save = async (): Promise<boolean> => {
     setError("");
     setBusy(true);
     try {
@@ -141,7 +142,7 @@ export function ConnectionStep() {
         const built = buildTableValue(tables[key] ?? [], field.columns, field.rowLabel);
         if ("error" in built) {
           setError(`${field.label}: ${built.error}`);
-          return;
+          return false;
         }
         config[key] = built.rows;
       }
@@ -152,7 +153,7 @@ export function ConnectionStep() {
         const result = coerceConfigValue(raw, String(spec.type || ""), spec.secret === true);
         if (!result.ok) {
           setError(`${String(spec.label || key)}: ${result.error}`);
-          return;
+          return false;
         }
         config[key] = result.value;
       }
@@ -162,11 +163,18 @@ export function ConnectionStep() {
         useSaved || null,
       );
       useAuditStore.getState().setSession(next);
+      return true;
     } catch (e) {
       setError(parseApiError(e));
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Continue with the settings on the screen, saved first. */
+  const proceed = async () => {
+    if (await save()) useAuditStore.getState().setStep("listen");
   };
 
   return (
@@ -256,26 +264,25 @@ export function ConnectionStep() {
           type="button"
           onClick={() => void save()}
           disabled={busy || !loaded}
-          style={buttonStyle(connection ? "muted" : "primary", busy || !loaded)}
+          style={buttonStyle("muted", busy || !loaded)}
         >
           {busy && <Loader2 size={14} style={spinStyle} />}
-          {connection ? "Update the preview" : "Show what connecting sends"}
+          {connection ? "Save and update the preview" : "Save and show what connecting sends"}
         </button>
       </div>
 
       {connection && <PreviewPanel connection={connection} />}
 
-      {connection && (
-        <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
-          <button
-            type="button"
-            onClick={() => useAuditStore.getState().setStep("listen")}
-            style={buttonStyle("primary")}
-          >
-            Continue
-          </button>
-        </div>
-      )}
+      <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
+        <button
+          type="button"
+          onClick={() => void proceed()}
+          disabled={busy || !loaded}
+          style={buttonStyle("primary", busy || !loaded)}
+        >
+          Continue
+        </button>
+      </div>
     </div>
   );
 }

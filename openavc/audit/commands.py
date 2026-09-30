@@ -21,6 +21,10 @@ device away (``restarts_device_for``). A command the driver puts on a device
 page (a quick action, or a command action) is **suggested**, one to try
 first, unless it asks for a confirmation or restarts the device.
 
+A command refused before anything was sent (its parameters, the driver's own
+check) closes its window at once: there is nothing on the device to watch
+for. One that fails after sending is watched like any other.
+
 **One command at a time.** A second Send while a command is still being
 watched is refused in words, so every reply and every status change in a
 command's window belongs to that command and to nothing the audit sent after
@@ -391,6 +395,9 @@ class CommandTrial:
     # send can carry the send's own timestamp.
     marks: dict[str, int] = field(default_factory=dict)
     end_marks: dict[str, int] = field(default_factory=dict)
+    # Set once the driver's call has returned (or failed): what ``send``
+    # waits for before answering, so its answer already holds a refusal.
+    returned: asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
 
     def window_end(self) -> float:
         return self.finished_at or time.time()
@@ -547,7 +554,15 @@ class CommandPass:
         listen.end_window_now("A command was sent")
         self.session.enter_step("commands")
         trial = self._open_trial(entry, dict(params or {}), batch=False)
-        self._task = self.session.track_task(asyncio.create_task(self._send_and_watch(trial)))
+        task = self._task = self.session.track_task(asyncio.create_task(self._send_and_watch(trial)))
+        # Answer once the driver's call has returned, not as soon as it is
+        # queued: a command refused at once is then already recorded, and the
+        # caller's copy of the state is not older than what was published.
+        returned = asyncio.ensure_future(trial.returned.wait())
+        try:
+            await asyncio.wait({task, returned}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            returned.cancel()
         return trial
 
     async def send_again(self, number: int, name: str | None = None) -> CommandTrial:
@@ -751,8 +766,15 @@ class CommandPass:
                 span = self.window_seconds if window is None else window
                 if not trial.error:
                     span = max(span, self._restart_span(trial))
+                elif command_sent_nothing(
+                    trial.traffic_in(sandbox.observer), trial.sent_at, trial.returned_at,
+                    grace=0.0, started_inclusive=True,
+                ):
+                    # Refused before a byte left for the device: nothing to watch.
+                    span = 0.0
                 trial.ends_at = trial.returned_at + span
                 trial.status = WATCHING
+                trial.returned.set()
                 self._publish(trial)
             while time.time() < (trial.ends_at or 0) and sandbox.started:
                 await asyncio.sleep(

@@ -219,10 +219,14 @@ async def test_a_command_is_sent_through_the_production_door(driver):
 
         # The platform's parameter check refuses before anything is sent.
         refused = await commands.send("set_volume", {"level": 150})
-        await _until(lambda: refused.status == DONE)
+        # Refused at once, and done by the time send answers: the route's copy
+        # of the state is never older than what was published.
+        assert refused.status == DONE
         assert "at most 100" in refused.error and refused.error_type == "CommandParamError"
         assert refused.attempt == 2
         assert commands.to_dict()["trials"][1]["traffic"]["sent"] == 0
+        # Nothing left for the device, so there was no window to watch.
+        assert refused.ends_at == refused.returned_at
     finally:
         await run.stop()
         server.close()

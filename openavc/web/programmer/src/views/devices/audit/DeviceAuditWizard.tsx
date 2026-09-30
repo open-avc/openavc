@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Download, Loader2, X } from "lucide-react";
 import { Modal } from "../../../components/shared/Modal";
 import { useAuditStore } from "../../../store/auditStore";
@@ -37,6 +37,12 @@ export function DeviceAuditWizard() {
   const followId = session?.session_id ?? null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const body = useRef<HTMLDivElement>(null);
+
+  // Each step opens at its top: Continue sits at the foot of a long step.
+  useEffect(() => {
+    if (body.current) body.current.scrollTop = 0;
+  }, [step]);
 
   // Pick up a running audit, if there is one.
   useEffect(() => {
@@ -155,7 +161,7 @@ export function DeviceAuditWizard() {
             <X size={14} /> {sessionId ? "Cancel audit" : "Close"}
           </button>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-lg)" }}>
+        <div ref={body} style={{ flex: 1, overflowY: "auto", padding: "var(--space-lg)" }}>
           {error && <ErrorLine text={error} />}
           {ended && session ? (
             <EndedNotice session={session} />
