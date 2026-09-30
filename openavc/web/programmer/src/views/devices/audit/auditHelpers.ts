@@ -696,6 +696,9 @@ export function outageNowText(o: AuditOutage): string {
     return "Now plug the cable back in and press I plugged it back in.";
   }
   if (o.reconnected_at === null) return "Waiting for the driver to reconnect.";
+  if (o.dropped_again_at !== null && o.reconnected_again_at === null) {
+    return "The connection dropped again. Waiting for the driver to reconnect.";
+  }
   return "Watching the status values come back. The test ends on its own.";
 }
 
@@ -751,6 +754,18 @@ export function outageProgress(o: AuditOutage, now: number): { label: string; va
       label: "Driver reconnected",
       value: after !== null && after >= 0 ? `${after} s after the device was back` : "yes",
     });
+    if (o.dropped_again_at !== null) {
+      lines.push({
+        label: "Dropped again",
+        value: `${secondsBetween(o.reconnected_at, o.dropped_again_at)} s after reconnecting`,
+      });
+      lines.push({
+        label: "Reconnected again",
+        value: o.reconnected_again_at !== null
+          ? `${secondsBetween(o.dropped_again_at, o.reconnected_again_at)} s later`
+          : o.status === "running" ? "not yet" : "no",
+      });
+    }
     const again = o.repopulated.reported_again.length;
     const total = again + o.repopulated.not_reported_again.length;
     if (total > 0) lines.push({ label: "Values reported again", value: `${again} of ${total}` });

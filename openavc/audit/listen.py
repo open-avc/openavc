@@ -525,8 +525,10 @@ class ListenPass:
         )
         return {
             "status": self.status,
-            # The driver is running against the device (the next step can send).
+            # The driver is running against the device (the next step can send),
+            # and whether it is connected to it right now.
             "active": self.sandbox.started,
+            "connected": self.sandbox.started and self.sandbox.connected(),
             "error": self.error,
             "started_at": self.started_at,
             "connected_at": self.connected_at,

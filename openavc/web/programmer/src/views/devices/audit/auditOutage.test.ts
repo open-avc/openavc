@@ -14,10 +14,11 @@ function outage(extra: Partial<AuditOutage> = {}): AuditOutage {
     number: 1, kind: "power_cycle", status: "running", end_reason: "", connect_attempt: 0,
     started_at: 100, finished_at: null, off_at: null, on_at: null, unreachable_at: null,
     reachable_at: null, noticed_at: null, reconnected_at: null, not_noticed_at: null,
+    dropped_again_at: null, reconnected_again_at: null,
     ends_at: null, notice_ceiling_seconds: 300, ping: { used: true, why: "" },
     watch: { liveness_probe: false, probe_every: 0, poll_interval: 5 }, reason: null,
     reasons: [], measured: { noticed_after: null, away_for: null, answered_after_on: null,
-      reconnected_after_back: null },
+      reconnected_after_back: null, dropped_again_after: null, reconnected_again_after: null },
     before: ["power", "volume"], repopulated: { reported_again: [], not_reported_again: ["power", "volume"] },
     announcements: [], summary: "", ...extra,
   };
@@ -62,6 +63,35 @@ describe("what to do now, while a test runs", () => {
     }
     // The device answering ping again means the cable is back, noticed or not.
     expect(outageNextMark({ ...pulled, unreachable_at: 102, reachable_at: 140 })).toBe("on");
+  });
+});
+
+describe("a connection that drops again after the reconnect", () => {
+  const back = outage({
+    off_at: 100, unreachable_at: 100, noticed_at: 130, on_at: 140, reachable_at: 157,
+    reconnected_at: 158, dropped_again_at: 160.7,
+  });
+
+  it("says so, and waits for the driver", () => {
+    expect(outageNowText(back)).toBe(
+      "The connection dropped again. Waiting for the driver to reconnect.",
+    );
+    const lines = outageProgress(back, 170);
+    expect(lines).toContainEqual({ label: "Dropped again", value: "2.7 s after reconnecting" });
+    expect(lines).toContainEqual({ label: "Reconnected again", value: "not yet" });
+  });
+
+  it("counts how long the driver took to be back again", () => {
+    const again = { ...back, reconnected_again_at: 166.2 };
+    expect(outageProgress(again, 170)).toContainEqual({
+      label: "Reconnected again", value: "5.5 s later",
+    });
+    expect(outageNowText(again)).toBe(
+      "Watching the status values come back. The test ends on its own.",
+    );
+    expect(outageProgress({ ...back, status: "done" }, 400)).toContainEqual({
+      label: "Reconnected again", value: "no",
+    });
   });
 });
 

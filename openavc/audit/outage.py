@@ -26,6 +26,9 @@ production's backoff. Three clocks run beside it:
 
 After the driver is back the test watches the status values be reported again
 (``REPOPULATE_SECONDS`` and at least ``REPOPULATE_CYCLES`` poll cycles),
+and a connection that drops again meanwhile (a device that accepts one as it
+boots, then resets it) is recorded and waited out, so the test ends only
+once the driver has stayed connected;
 through the sandbox's own state store, which notes a value written again even
 when it did not change. What the device announced meanwhile (an SSDP byebye as
 it went, a NOTIFY, an mDNS announcement or an AMX beacon as it booted) comes
@@ -172,6 +175,9 @@ class OutageTest:
         self.reason: dict[str, str] | None = None
         self.reasons: list[dict[str, Any]] = []
         self.reconnected_at: float | None = None
+        # The connection dropping again after the reconnect, and coming back.
+        self.dropped_again_at: float | None = None
+        self.reconnected_again_at: float | None = None
         self.not_noticed_at: float | None = None
         self.ends_at: float | None = None
         # What came back after the reconnect, kept when the test ends.
@@ -209,6 +215,14 @@ class OutageTest:
             return self.reachable_at
         return self.on_at
 
+    def settled_at(self) -> float | None:
+        """When the driver was connected for good: its reconnect, or its
+        reconnect after the connection dropped again (None while it is
+        still down)."""
+        if self.dropped_again_at is not None:
+            return self.reconnected_again_at
+        return self.reconnected_at
+
     # -- running ------------------------------------------------------------------
 
     def start(self) -> None:
@@ -217,16 +231,32 @@ class OutageTest:
         prefix = f"device.{device_id}."
 
         def on_gone(_event: str, _payload: Any = None) -> None:
-            if self.status == RUNNING and self.noticed_at is None:
+            if self.status != RUNNING:
+                return
+            if self.noticed_at is None:
                 self.noticed_at = time.time()
                 gone = self.gone_at()
                 after = f", {self.noticed_at - gone:.1f} s after the device went" if gone else ""
                 self._timeline("outage.noticed", f"OpenAVC noticed the device was gone{after}.")
+            elif self.reconnected_at is not None and self.dropped_again_at is None:
+                self.dropped_again_at = time.time()
+                self.ends_at = None  # wait for the driver to come back again
+                self._timeline(
+                    "outage.dropped_again",
+                    f"The connection dropped again, "
+                    f"{self.dropped_again_at - self.reconnected_at:.1f} s after the driver "
+                    f"reconnected.",
+                )
 
         def on_back(_event: str, _payload: Any = None) -> None:
-            if self.status == RUNNING and self.noticed_at is not None and self.reconnected_at is None:
+            if self.status != RUNNING:
+                return
+            if self.noticed_at is not None and self.reconnected_at is None:
                 self.reconnected_at = time.time()
                 self._timeline("outage.reconnected", "The driver connected to the device again.")
+            elif self.dropped_again_at is not None and self.reconnected_again_at is None:
+                self.reconnected_again_at = time.time()
+                self._timeline("outage.reconnected_again", "The driver connected to the device again.")
 
         def on_state(key: str, _old: Any, new: Any, _source: str = "") -> None:
             if self.status != RUNNING or key != f"{prefix}offline_reason" or not new:
@@ -327,12 +357,13 @@ class OutageTest:
                 f"OpenAVC did not notice the device was gone within "
                 f"{span_text(self.notice_ceiling_seconds)}.",
             )
-        if self.ends_at is None and self.reconnected_at is not None:
+        settled = self.settled_at()
+        if self.ends_at is None and settled is not None:
             poll = float(self.run.listen.poll_interval or 0)
             span = min(
                 max(self.repopulate_seconds, REPOPULATE_CYCLES * poll), REPOPULATE_MAX_SECONDS,
             )
-            self.ends_at = self.reconnected_at + span
+            self.ends_at = settled + span
         back = self.back_at()
         if self.ends_at is None and self.noticed_at is None and back is not None \
                 and gone is not None and back >= gone:
@@ -392,9 +423,10 @@ class OutageTest:
         the driver reconnected (a write counts, changed or not)."""
         if self._final is not None:
             return self._final
-        if self.reconnected_at is None:
+        since = self.settled_at()
+        if since is None:
             return {"reported_again": [], "not_reported_again": sorted(self.before)}
-        written = self._sandbox.written_since(self.reconnected_at) if self._sandbox.started else set()
+        written = self._sandbox.written_since(since) if self._sandbox.started else set()
         again = sorted(name for name in self.before if name in written)
         return {
             "reported_again": again,
@@ -422,6 +454,8 @@ class OutageTest:
             "reachable_at": self.reachable_at,
             "noticed_at": self.noticed_at,
             "reconnected_at": self.reconnected_at,
+            "dropped_again_at": self.dropped_again_at,
+            "reconnected_again_at": self.reconnected_again_at,
             "not_noticed_at": self.not_noticed_at,
             "ends_at": self.ends_at,
             "notice_ceiling_seconds": self.notice_ceiling_seconds,
@@ -443,6 +477,10 @@ class OutageTest:
                 "reconnected_after_back": _since(self.reconnected_at, back)
                 if self.reconnected_at is not None and back is not None
                 and self.reconnected_at >= back else None,
+                # How long the connection held after the reconnect before it
+                # dropped again, and how long the driver took to be back.
+                "dropped_again_after": _since(self.dropped_again_at, self.reconnected_at),
+                "reconnected_again_after": _since(self.reconnected_again_at, self.dropped_again_at),
             },
             "before": sorted(self.before),
             "repopulated": repopulated,
@@ -505,6 +543,17 @@ def outage_sentence(record: dict[str, Any]) -> str:
             "the driver reconnected"
             + (f" {after} s after the device was back" if after is not None else "")
         )
+        if record.get("dropped_again_at"):
+            held = measured.get("dropped_again_after")
+            dropped = "the connection dropped again" + (f" {held} s later" if held is not None else "")
+            if record.get("reconnected_again_at"):
+                again = measured.get("reconnected_again_after")
+                dropped += ", and the driver reconnected" + (
+                    f" {again} s after that" if again is not None else ""
+                )
+            else:
+                dropped += ", and the driver had not reconnected when the test ended"
+            parts.append(dropped)
         repopulated = record.get("repopulated") or {}
         again = len(repopulated.get("reported_again") or [])
         total = again + len(repopulated.get("not_reported_again") or [])

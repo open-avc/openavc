@@ -238,6 +238,8 @@ export interface AuditListen {
   status: AuditListenStatus;
   /** The driver is running against the device, so commands can be sent. */
   active: boolean;
+  /** The driver is connected to the device right now. */
+  connected: boolean;
   error: string;
   started_at: number;
   connected_at: number | null;
@@ -484,6 +486,9 @@ export interface AuditOutage {
   /** The driver: when OpenAVC noticed, and when it was connected again. */
   noticed_at: number | null;
   reconnected_at: number | null;
+  /** The connection dropping again after the reconnect, and coming back. */
+  dropped_again_at: number | null;
+  reconnected_again_at: number | null;
   /** When the ceiling passed with OpenAVC not having noticed. */
   not_noticed_at: number | null;
   ends_at: number | null;
@@ -497,6 +502,8 @@ export interface AuditOutage {
     away_for: number | null;
     answered_after_on: number | null;
     reconnected_after_back: number | null;
+    dropped_again_after: number | null;
+    reconnected_again_after: number | null;
   };
   before: string[];
   repopulated: { reported_again: string[]; not_reported_again: string[] };

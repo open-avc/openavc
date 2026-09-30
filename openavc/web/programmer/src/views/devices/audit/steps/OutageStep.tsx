@@ -63,16 +63,22 @@ export function OutageStep() {
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now() / 1000);
   const running = (run?.outages ?? []).find((o) => o.status === "running");
+  // A boolean, not the test: each live update is a new object, and a timer
+  // reset twice a second never ticks.
+  const ticking = !!running;
 
   useEffect(() => {
-    if (!running) return;
+    if (!ticking) return;
+    setNow(Date.now() / 1000);
     const timer = window.setInterval(() => setNow(Date.now() / 1000), 1000);
     return () => window.clearInterval(timer);
-  }, [running]);
+  }, [ticking]);
 
   if (!session || !run) return null;
   const sessionId = session.session_id;
-  const connected = !!run.listen?.active;
+  // Connected right now: a driver that dropped and has not reconnected has
+  // nothing left to see drop.
+  const connected = !!run.listen?.active && run.listen.connected !== false;
 
   const act = async (key: string, call: Call) => {
     setError("");
@@ -95,6 +101,19 @@ export function OutageStep() {
         someone at the device and takes a few minutes. Run one at a time. This step is optional.
       </p>
       {error && <ErrorLine text={error} />}
+
+      {!connected && !running && (
+        <div style={{ ...panelStyle, marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
+          The driver is not connected to the device, so there is nothing to see drop.{" "}
+          <button
+            type="button"
+            onClick={() => useAuditStore.getState().setStep("listen")}
+            style={{ ...buttonStyle("muted"), display: "inline-flex", marginLeft: "var(--space-sm)" }}
+          >
+            Back to Connect and listen
+          </button>
+        </div>
+      )}
 
       {KINDS.map((kind) => {
         const words = TESTS[kind];
@@ -172,9 +191,6 @@ export function OutageStep() {
                     {last ? "Run it again" : words.start}
                   </button>
                 </div>
-                {!connected && (
-                  <div style={hintStyle}>The driver is not connected, so there is nothing to see drop.</div>
-                )}
               </>
             )}
           </div>

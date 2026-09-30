@@ -91,6 +91,9 @@ class Unit:
     def __init__(self) -> None:
         self.on = True
         self.unplugged = False
+        # Reset the next connection after its first reply, as a device does
+        # that accepts one while it is still booting.
+        self.reset_once = False
         self.port = 0
         self._server: asyncio.base_events.Server | None = None
         self._writers: list[asyncio.StreamWriter] = []
@@ -101,6 +104,7 @@ class Unit:
 
     async def _handle(self, reader, writer) -> None:
         self._writers.append(writer)
+        resetting, self.reset_once = self.reset_once, False
         try:
             while True:
                 line = (await reader.readuntil(b"\r")).decode().strip()
@@ -111,6 +115,8 @@ class Unit:
                 elif line == "VOL?":
                     writer.write(b"VOL=30\r")
                 await writer.drain()
+                if resetting:
+                    return
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
@@ -277,6 +283,50 @@ async def test_a_power_cycle_is_measured_through_production(driver):
     assert kept["kind"] == "power_cycle" and kept["status"] == DONE
     assert kept["summary"].startswith("OpenAVC noticed the device was gone")
     assert "Power and cable" in render_summary(report)
+
+
+async def test_a_connection_that_drops_again_is_waited_out(driver):
+    """A device that accepts the reconnect as it boots and then resets it (an
+    amplifier did, 2.7 s in): the test records the second drop, waits for the
+    driver to come back again, and says both; before, it said the driver had
+    reconnected and ended, while the device was down again."""
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit)
+
+    async def pinger() -> bool:
+        return unit.on
+
+    try:
+        test = start_outage(session, run, POWER_CYCLE, pinger=pinger, **QUICK)
+        test.mark("off")
+        await unit.power_off()
+        await _until(lambda: test.noticed_at is not None)
+        unit.reset_once = True
+        test.mark("on")
+        await unit.power_on()
+        await _until(lambda: test.status == DONE, timeout=30.0)
+
+        record = test.to_dict()
+        assert record["reconnected_at"] < record["dropped_again_at"] < record["reconnected_again_at"]
+        assert record["measured"]["dropped_again_after"] is not None
+        assert record["measured"]["reconnected_again_after"] is not None
+        # What came back is counted from the reconnect that held.
+        assert record["repopulated"]["not_reported_again"] == []
+        sentence = outage_sentence(record)
+        assert "the driver reconnected" in sentence
+        assert "the connection dropped again" in sentence
+        assert ", and the driver reconnected" in sentence
+        kinds = [e.kind for e in session.timeline]
+        assert "outage.dropped_again" in kinds and "outage.reconnected_again" in kinds
+    finally:
+        await run.stop()
+        await unit.close()
+
+    # Still down when the test ended: said so.
+    down = dict(record, reconnected_again_at=None)
+    down["measured"] = dict(record["measured"], reconnected_again_after=None)
+    assert "and the driver had not reconnected when the test ended" in outage_sentence(down)
 
 
 async def test_what_a_test_needs_before_it_starts(driver):
