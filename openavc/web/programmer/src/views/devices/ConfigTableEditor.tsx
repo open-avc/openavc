@@ -17,7 +17,7 @@ import { parseApiError } from "../../api/errors";
 // unit}, ...]). The save path mirrors InlineProtocolEditor: PUT the whole
 // config (device config is stored verbatim), then mirror into the project store.
 
-interface ColumnDef {
+export interface ColumnDef {
   type?: string; // string | text | integer | number | float | boolean | enum
   label?: string;
   help?: string;
@@ -30,7 +30,8 @@ interface ColumnDef {
 
 // Each row holds raw strings per column while editing (so typing "-" or ""
 // in a number cell doesn't churn types); coerced to typed values on save.
-type Row = Record<string, string>;
+export type TableRow = Record<string, string>;
+type Row = TableRow;
 
 const NUMERIC = new Set(["integer", "number", "float"]);
 
@@ -51,7 +52,8 @@ function toCell(value: unknown): string {
   return String(value);
 }
 
-function existingRows(value: unknown, colKeys: string[]): Row[] {
+/** A stored table value as editable rows, one raw string per column. */
+export function existingRows(value: unknown, colKeys: string[]): Row[] {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
     const row: Row = {};
@@ -69,6 +71,56 @@ function blankRow(columns: Record<string, ColumnDef>, colKeys: string[]): Row {
     row[k] = columns[k].default != null ? toCell(columns[k].default) : "";
   }
   return row;
+}
+
+/**
+ * The edited rows as the typed array a driver reads, or the first problem.
+ * Fully-empty rows are dropped; everything else must satisfy required /
+ * numeric / min-max per its column.
+ */
+export function buildTableValue(
+  rows: Row[],
+  columns: Record<string, ColumnDef>,
+  rowLabel: string,
+): { rows: Record<string, unknown>[] } | { error: string } {
+  const colKeys = Object.keys(columns);
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i];
+    const nonEmpty = colKeys.some((k) => (raw[k] ?? "").trim() !== "");
+    if (!nonEmpty) continue; // drop a blank row silently
+    const obj: Record<string, unknown> = {};
+    for (const k of colKeys) {
+      const col = columns[k];
+      const type = String(col.type || "string");
+      const s = (raw[k] ?? "").trim();
+      if (s === "") {
+        if (col.required) {
+          return { error: `${rowLabel} ${i + 1}: "${col.label || k}" is required.` };
+        }
+        continue; // omit empty optional cell; driver applies its default
+      }
+      if (type === "boolean") {
+        obj[k] = s === "true";
+      } else if (NUMERIC.has(type)) {
+        const n = Number(s);
+        if (!Number.isFinite(n)) {
+          return { error: `${rowLabel} ${i + 1}: "${col.label || k}" must be a number.` };
+        }
+        if (col.min != null && n < col.min) {
+          return { error: `${rowLabel} ${i + 1}: "${col.label || k}" must be ≥ ${col.min}.` };
+        }
+        if (col.max != null && n > col.max) {
+          return { error: `${rowLabel} ${i + 1}: "${col.label || k}" must be ≤ ${col.max}.` };
+        }
+        obj[k] = type === "integer" ? Math.trunc(n) : n;
+      } else {
+        obj[k] = s; // string / text / enum
+      }
+    }
+    out.push(obj);
+  }
+  return { rows: out };
 }
 
 export function ConfigTableEditor({
@@ -109,55 +161,8 @@ export function ConfigTableEditor({
     setDirty(true);
     setSaved(false);
   };
-  const setCell = (i: number, col: string, val: string) =>
-    apply(rows.map((r, idx) => (idx === i ? { ...r, [col]: val } : r)));
-  const removeRow = (i: number) => apply(rows.filter((_, idx) => idx !== i));
-  const addRow = () => apply([...rows, blankRow(columns, colKeys)]);
-
-  // Build the cleaned, typed array and validate. Fully-empty rows are dropped;
-  // everything else must satisfy required / numeric / min-max per its column.
-  const buildAndValidate = (): { rows: Record<string, unknown>[] } | { error: string } => {
-    const out: Record<string, unknown>[] = [];
-    for (let i = 0; i < rows.length; i++) {
-      const raw = rows[i];
-      const nonEmpty = colKeys.some((k) => (raw[k] ?? "").trim() !== "");
-      if (!nonEmpty) continue; // drop a blank row silently
-      const obj: Record<string, unknown> = {};
-      for (const k of colKeys) {
-        const col = columns[k];
-        const type = String(col.type || "string");
-        const s = (raw[k] ?? "").trim();
-        if (s === "") {
-          if (col.required) {
-            return { error: `${rowLabel} ${i + 1}: "${col.label || k}" is required.` };
-          }
-          continue; // omit empty optional cell; driver applies its default
-        }
-        if (type === "boolean") {
-          obj[k] = s === "true";
-        } else if (NUMERIC.has(type)) {
-          const n = Number(s);
-          if (!Number.isFinite(n)) {
-            return { error: `${rowLabel} ${i + 1}: "${col.label || k}" must be a number.` };
-          }
-          if (col.min != null && n < col.min) {
-            return { error: `${rowLabel} ${i + 1}: "${col.label || k}" must be ≥ ${col.min}.` };
-          }
-          if (col.max != null && n > col.max) {
-            return { error: `${rowLabel} ${i + 1}: "${col.label || k}" must be ≤ ${col.max}.` };
-          }
-          obj[k] = type === "integer" ? Math.trunc(n) : n;
-        } else {
-          obj[k] = s; // string / text / enum
-        }
-      }
-      out.push(obj);
-    }
-    return { rows: out };
-  };
-
   const handleSave = async () => {
-    const result = buildAndValidate();
+    const result = buildTableValue(rows, columns, rowLabel);
     if ("error" in result) {
       setError(result.error);
       return;
@@ -183,17 +188,6 @@ export function ConfigTableEditor({
       setSaving(false);
     }
   };
-
-  const cellStyle: React.CSSProperties = {
-    width: "100%",
-    fontSize: "var(--font-size-sm)",
-    fontFamily: "var(--font-mono)",
-  };
-  // A minimum width per column so many columns scroll horizontally rather than
-  // crushing (a register map is wide). The trailing 28px is the remove button.
-  const gridTemplate = `${colKeys
-    .map((k) => (NUMERIC.has(String(columns[k].type)) ? "minmax(90px, 0.7fr)" : "minmax(120px, 1fr)"))
-    .join(" ")} 28px`;
 
   return (
     <div
@@ -263,6 +257,42 @@ export function ConfigTableEditor({
         </div>
       )}
 
+      <TableRowsEditor columns={columns} rowLabel={rowLabel} rows={rows} onChange={apply} />
+    </div>
+  );
+}
+
+/** The row grid for a table field: one row per entry, a cell per column, an
+ *  Add button. Holds nothing itself; the caller keeps the rows. */
+export function TableRowsEditor({
+  columns,
+  rowLabel,
+  rows,
+  onChange,
+}: {
+  columns: Record<string, ColumnDef>;
+  rowLabel: string;
+  rows: Row[];
+  onChange: (rows: Row[]) => void;
+}) {
+  const colKeys = Object.keys(columns);
+  const setCell = (i: number, col: string, val: string) =>
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, [col]: val } : r)));
+  const removeRow = (i: number) => onChange(rows.filter((_, idx) => idx !== i));
+  const addRow = () => onChange([...rows, blankRow(columns, colKeys)]);
+  const cellStyle: React.CSSProperties = {
+    width: "100%",
+    fontSize: "var(--font-size-sm)",
+    fontFamily: "var(--font-mono)",
+  };
+  // A minimum width per column so many columns scroll horizontally rather than
+  // crushing (a register map is wide). The trailing 28px is the remove button.
+  const gridTemplate = `${colKeys
+    .map((k) => (NUMERIC.has(String(columns[k].type)) ? "minmax(90px, 0.7fr)" : "minmax(120px, 1fr)"))
+    .join(" ")} 28px`;
+
+  return (
+    <>
       <div style={{ overflowX: "auto" }}>
         <div style={{ minWidth: "min-content" }}>
           {/* Header */}
@@ -389,6 +419,6 @@ export function ConfigTableEditor({
       >
         <Plus size={12} /> Add {rowLabel}
       </button>
-    </div>
+    </>
   );
 }

@@ -12,6 +12,13 @@ import {
   hiddenRawConfigKeys,
 } from "../../DeviceDialogs";
 import { coerceConfigValue } from "../../deviceConfigCoerce";
+import {
+  buildTableValue,
+  existingRows,
+  TableRowsEditor,
+  type ColumnDef,
+  type TableRow,
+} from "../../ConfigTableEditor";
 import { currentRun, displayBytes, previewStageLabel } from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
@@ -28,6 +35,38 @@ function startingValues(driver: DriverInfo | undefined, address: string): Record
   return values;
 }
 
+/** The driver's table fields (a list of objects, a chain of units), each with
+ *  its columns and what a row is called. */
+function tableFields(driver: DriverInfo | undefined): Record<string, { columns: Record<string, ColumnDef>; rowLabel: string; label: string; help: string }> {
+  const out: Record<string, { columns: Record<string, ColumnDef>; rowLabel: string; label: string; help: string }> = {};
+  for (const [key, spec] of Object.entries((driver?.config_schema ?? {}) as Record<string, Record<string, unknown>>)) {
+    if (spec?.type !== "table") continue;
+    out[key] = {
+      columns: (spec.columns ?? {}) as Record<string, ColumnDef>,
+      rowLabel: String(spec.row_label || "row"),
+      label: String(spec.label || key),
+      help: spec.help ? String(spec.help) : "",
+    };
+  }
+  return out;
+}
+
+/** The rows each table field starts from, read out of the form's values
+ *  (a table's default or saved value arrives there as JSON). */
+function startingTables(driver: DriverInfo | undefined, values: Record<string, string>): Record<string, TableRow[]> {
+  const out: Record<string, TableRow[]> = {};
+  for (const [key, field] of Object.entries(tableFields(driver))) {
+    let value: unknown = [];
+    try {
+      value = values[key] ? JSON.parse(values[key]) : [];
+    } catch {
+      value = [];
+    }
+    out[key] = existingRows(value, Object.keys(field.columns));
+  }
+  return out;
+}
+
 /** Step 4: the driver's connection settings, and what connecting sends. */
 export function ConnectionStep() {
   const session = useAuditStore((s) => s.session);
@@ -38,6 +77,7 @@ export function ConnectionStep() {
   const [saved, setSaved] = useState<audit.AuditSavedSettings[]>([]);
   const [useSaved, setUseSaved] = useState<string>("");
   const [values, setValues] = useState<Record<string, string>>({});
+  const [tables, setTables] = useState<Record<string, TableRow[]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -54,7 +94,9 @@ export function ConnectionStep() {
         setDrivers(list);
         setSaved(savedList.devices);
         const info = list.find((d) => d.id === driverId);
-        setValues(startingValues(info, address));
+        const start = startingValues(info, address);
+        setValues(start);
+        setTables(startingTables(info, start));
         // A device the audit paused, on this driver: its settings are the
         // ones production dials this device with, so start from them.
         if (savedList.devices.length > 0) applySaved(savedList.devices[0], info);
@@ -70,7 +112,10 @@ export function ConnectionStep() {
   const driverInfo = useMemo(() => drivers.find((d) => d.id === driverId), [drivers, driverId]);
   const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
   const serialCapable = driverSerialCapable(driverInfo);
-  const fieldKeys = Object.keys(schema).filter((k) => !hiddenRawConfigKeys(driverInfo).has(k));
+  const tableSpecs = tableFields(driverInfo);
+  const fieldKeys = Object.keys(schema).filter(
+    (k) => !hiddenRawConfigKeys(driverInfo).has(k) && !(k in tableSpecs),
+  );
   const savedDevice = saved.find((s) => s.device_id === useSaved);
 
   function applySaved(device: audit.AuditSavedSettings, info: DriverInfo | undefined) {
@@ -80,6 +125,7 @@ export function ConnectionStep() {
       next[key] = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
     }
     setValues(next);
+    setTables(startingTables(info, next));
     setUseSaved(device.device_id);
   }
 
@@ -91,7 +137,16 @@ export function ConnectionStep() {
     setBusy(true);
     try {
       const config: Record<string, unknown> = {};
+      for (const [key, field] of Object.entries(tableSpecs)) {
+        const built = buildTableValue(tables[key] ?? [], field.columns, field.rowLabel);
+        if ("error" in built) {
+          setError(`${field.label}: ${built.error}`);
+          return;
+        }
+        config[key] = built.rows;
+      }
       for (const [key, raw] of Object.entries(values)) {
+        if (key in tableSpecs) continue;
         if (raw === "" && key !== "usb_serial") continue;
         const spec = schema[key] ?? {};
         const result = coerceConfigValue(raw, String(spec.type || ""), spec.secret === true);
@@ -133,7 +188,9 @@ export function ConnectionStep() {
                 if (e.target.checked) applySaved(saved[0], driverInfo);
                 else {
                   setUseSaved("");
-                  setValues(startingValues(driverInfo, address));
+                  const start = startingValues(driverInfo, address);
+                  setValues(start);
+                  setTables(startingTables(driverInfo, start));
                 }
               }}
             />
@@ -170,6 +227,21 @@ export function ConnectionStep() {
             configValues={values}
             setConfigValues={setValues}
           />
+          {Object.entries(tableSpecs).map(([key, field]) => (
+            <div key={key} style={{ ...panelStyle, marginTop: "var(--space-md)" }}>
+              <div style={labelStyle}>{field.label}</div>
+              {field.help && <div style={{ ...hintStyle, marginTop: 0 }}>{field.help}</div>}
+              <div style={{ ...hintStyle, marginTop: 0, marginBottom: "var(--space-sm)" }}>
+                Enter what this unit has: the driver works with the rows listed here.
+              </div>
+              <TableRowsEditor
+                columns={field.columns}
+                rowLabel={field.rowLabel}
+                rows={tables[key] ?? []}
+                onChange={(rows) => setTables((prev) => ({ ...prev, [key]: rows }))}
+              />
+            </div>
+          ))}
         </div>
       )}
 
