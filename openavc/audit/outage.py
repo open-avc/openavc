@@ -38,8 +38,12 @@ from the session's listeners.
 device went away to notice. Past it the result is "OpenAVC did not notice",
 a finding about the driver, said plainly: a driver with no liveness probe
 notices a device that went quiet only when something it sends fails. When the
-device is back and OpenAVC never noticed it was gone, the test ends
-``BACK_UNNOTICED_SECONDS`` later.
+device is back and OpenAVC has not noticed it was gone, the test ends
+``BACK_UNNOTICED_SECONDS`` later, or for a driver with a liveness probe once
+its probes have had time to fail (``watch.notice_within`` from when the device
+went): a device that reboots leaves the old connection dead, and the probe
+can notice after the device is back. Noticing then clears that deadline and
+the test waits for the reconnect.
 
 The test sends nothing but the pings (which the network check already sent).
 """
@@ -180,6 +184,12 @@ class OutageTest:
         self.reconnected_again_at: float | None = None
         self.not_noticed_at: float | None = None
         self.ends_at: float | None = None
+        # What set ``ends_at``: "settled" (the watch after the reconnect) or
+        # "back_unnoticed" (back, and not noticed yet).
+        self._ends_by = ""
+        # Why the test stopped early: "person", "ceiling", or "" when it ended
+        # on its own.
+        self.end_code = ""
         # What came back after the reconnect, kept when the test ends.
         self._final: dict[str, Any] | None = None
         sandbox = run.listen.sandbox
@@ -193,9 +203,15 @@ class OutageTest:
         # probe (and how often), or only its polling and its sends failing.
         driver = sandbox.driver
         probe = bool(driver is not None and getattr(driver, "_health_enabled", lambda: False)())
+        every = float(getattr(driver, "HEALTH_INTERVAL_S", 0) or 0) if probe else 0.0
+        misses = max(int(getattr(driver, "HEALTH_MAX_FAILURES", 1) or 1), 1) if probe else 0
+        wait = float(getattr(driver, "HEALTH_TIMEOUT_S", 0) or 0) if probe else 0.0
         self.watch = {
             "liveness_probe": probe,
-            "probe_every": float(getattr(driver, "HEALTH_INTERVAL_S", 0) or 0) if probe else 0.0,
+            "probe_every": every,
+            # The longest the probe takes to give up on a device that went:
+            # each missed probe's interval and its reply deadline.
+            "notice_within": round(misses * (every + wait), 1) if probe else 0.0,
             "poll_interval": float(run.listen.poll_interval or 0),
         }
         self._handles: tuple[str, list[str]] | None = None
@@ -235,12 +251,17 @@ class OutageTest:
                 return
             if self.noticed_at is None:
                 self.noticed_at = time.time()
+                if self._ends_by == "back_unnoticed":
+                    # Noticed after all: wait for the reconnect instead.
+                    self.ends_at = None
+                    self._ends_by = ""
                 gone = self.gone_at()
                 after = f", {self.noticed_at - gone:.1f} s after the device went" if gone else ""
                 self._timeline("outage.noticed", f"OpenAVC noticed the device was gone{after}.")
             elif self.reconnected_at is not None and self.dropped_again_at is None:
                 self.dropped_again_at = time.time()
                 self.ends_at = None  # wait for the driver to come back again
+                self._ends_by = ""
                 self._timeline(
                     "outage.dropped_again",
                     f"The connection dropped again, "
@@ -358,22 +379,28 @@ class OutageTest:
                 f"{span_text(self.notice_ceiling_seconds)}.",
             )
         settled = self.settled_at()
-        if self.ends_at is None and settled is not None:
+        if self._ends_by != "settled" and settled is not None:
             poll = float(self.run.listen.poll_interval or 0)
             span = min(
                 max(self.repopulate_seconds, REPOPULATE_CYCLES * poll), REPOPULATE_MAX_SECONDS,
             )
             self.ends_at = settled + span
+            self._ends_by = "settled"
         back = self.back_at()
         if self.ends_at is None and self.noticed_at is None and back is not None \
                 and gone is not None and back >= gone:
-            self.ends_at = back + self.back_unnoticed_seconds
+            # A liveness probe that notices after the device is back (the old
+            # connection died with the reboot) gets its full time to do so.
+            self.ends_at = max(
+                back + self.back_unnoticed_seconds,
+                gone + self.watch["notice_within"] + self.back_unnoticed_seconds / 3,
+            )
+            self._ends_by = "back_unnoticed"
         if self.ends_at is not None and now >= self.ends_at:
             self._finish(DONE, "")
         elif now - self.started_at >= self.max_seconds:
-            self._finish(
-                STOPPED, f"The test ended after {round(self.max_seconds / 60)} minutes.",
-            )
+            self.end_code = "ceiling"
+            self._finish(STOPPED, f"The test stopped after {span_text(self.max_seconds)}.")
 
     def mark(self, which: str) -> None:
         """The person's mark: the device went off, or it is back on."""
@@ -395,6 +422,7 @@ class OutageTest:
     async def stop(self, reason: str = "The test was stopped.") -> None:
         task = self.task
         if self.status == RUNNING:
+            self.end_code = self.end_code or "person"
             self._finish(STOPPED, reason)
         if task is not None and not task.done() and task is not asyncio.current_task():
             task.cancel()
@@ -445,6 +473,7 @@ class OutageTest:
             "kind": self.kind,
             "status": self.status,
             "end_reason": self.end_reason,
+            "end_code": self.end_code,
             "connect_attempt": self.connect_attempt,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -508,9 +537,19 @@ def outage_sentence(record: dict[str, Any]) -> str:
     and the summary say it."""
     measured = record.get("measured") or {}
     parts: list[str] = []
+    # How the sentence says the test ended: its own end, the person's Stop,
+    # or the time limit, said once, where the driver's state is.
+    code = record.get("end_code") or ""
+    end_text = (record.get("end_reason") or "").rstrip(".")
+    ended = (
+        "when " + end_text[:1].lower() + end_text[1:] if code == "ceiling" and end_text
+        else "when the test was stopped" if code == "person"
+        else "when the test ended"
+    )
+    said_end = False
     if record.get("noticed_at"):
         reason = record.get("reason") or {}
-        why = reason.get("detail") or reason.get("code")
+        why = (reason.get("detail") or reason.get("code") or "").rstrip(".")
         after = measured.get("noticed_after")
         if after is not None and after < 0:
             # The control connection went before the device stopped
@@ -552,7 +591,8 @@ def outage_sentence(record: dict[str, Any]) -> str:
                     f" {again} s after that" if again is not None else ""
                 )
             else:
-                dropped += ", and the driver had not reconnected when the test ended"
+                dropped += f", and the driver had not reconnected {ended}"
+                said_end = True
             parts.append(dropped)
         repopulated = record.get("repopulated") or {}
         again = len(repopulated.get("reported_again") or [])
@@ -560,13 +600,14 @@ def outage_sentence(record: dict[str, Any]) -> str:
         if total:
             parts.append(f"{again} of {total} status values were reported again")
     elif record.get("noticed_at"):
-        parts.append("the driver had not reconnected when the test ended")
+        parts.append(f"the driver had not reconnected {ended}")
+        said_end = True
     announced = len(record.get("announcements") or [])
     if announced:
         parts.append(f"the device announced itself {announced} "
                      f"{'time' if announced == 1 else 'times'} meanwhile")
-    if record.get("end_reason"):
-        parts.append(record["end_reason"].rstrip("."))
+    if end_text and not said_end:
+        parts.append(end_text[:1].lower() + end_text[1:])
     if not parts:
         return "Nothing was measured."
     text = "; ".join(parts) + "."

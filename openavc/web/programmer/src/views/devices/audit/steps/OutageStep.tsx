@@ -22,7 +22,7 @@ const TESTS: Record<
     steps: [
       "Press Start the power cycle test.",
       "Turn the device off at its power switch or unplug its power, and press I turned it off.",
-      "Wait about 10 seconds, turn it back on, and press I turned it back on.",
+      "Leave it off until the step says to turn it back on, then turn it on and press I turned it back on.",
       "Wait while the driver reconnects. The test ends on its own.",
     ],
     start: "Start the power cycle test",

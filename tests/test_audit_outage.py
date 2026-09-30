@@ -97,6 +97,9 @@ class Unit:
         self.port = 0
         self._server: asyncio.base_events.Server | None = None
         self._writers: list[asyncio.StreamWriter] = []
+        # Connections a reboot left dead: they stay open and answer nothing,
+        # as a unit that lost power sends no reset for them.
+        self._dead: set[int] = set()
 
     async def start(self) -> None:
         self._server = await asyncio.start_server(self._handle, "127.0.0.1", self.port)
@@ -108,7 +111,7 @@ class Unit:
         try:
             while True:
                 line = (await reader.readuntil(b"\r")).decode().strip()
-                if self.unplugged:
+                if self.unplugged or id(writer) in self._dead:
                     continue  # nothing gets through, and nothing closes
                 if line == "PWR?":
                     writer.write(b"PWR=on\r")
@@ -132,6 +135,10 @@ class Unit:
             self._server.close()
             await asyncio.wait_for(self._server.wait_closed(), timeout=5.0)
             self._server = None
+
+    def reboot_silently(self) -> None:
+        """Every open connection goes dead without closing; new ones work."""
+        self._dead |= {id(w) for w in self._writers}
 
     async def power_on(self) -> None:
         self.on = True
@@ -452,6 +459,60 @@ async def test_a_driver_with_a_liveness_probe_notices_a_pulled_cable(driver):
         await run.stop()
         await unit.close()
         _DRIVER_REGISTRY.pop("acme_watched", None)
+
+
+async def test_a_probe_that_notices_after_the_device_is_back_is_waited_for(driver):
+    """The unit was back before the liveness probe gave up on the connection
+    the reboot left dead; the probe notices after it, and the test waits for
+    the driver to reconnect rather than ending as "back, never noticed"."""
+    watched = dict(DRIVER, id="acme_watched", liveness={
+        "send": "PWR?\r", "interval": 1, "timeout": 0.3, "max_failures": 2,
+    })
+    _DRIVER_REGISTRY["acme_watched"] = create_configurable_driver_class(watched)
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit, driver_id="acme_watched")
+    answering = {"yes": True}
+
+    async def pinger() -> bool:
+        return answering["yes"]
+
+    try:
+        test = start_outage(
+            session, run, POWER_CYCLE, pinger=pinger, back_unnoticed_seconds=0.3, **QUICK,
+        )
+        assert test.watch["notice_within"] == pytest.approx(2.6)
+        test.mark("off")
+        unit.reboot_silently()
+        answering["yes"] = False
+        await _until(lambda: test.unreachable_at is not None)
+        answering["yes"] = True
+        test.mark("on")
+        await _until(lambda: test.reachable_at is not None)
+        assert test.noticed_at is None  # back before the probe gave up
+        await _until(lambda: test.status == DONE, timeout=30.0)
+        record = test.record()
+        assert record["noticed_at"] > record["reachable_at"]
+        assert record["reconnected_at"] is not None
+        assert "the driver reconnected" in record["summary"]
+    finally:
+        await run.stop()
+        await unit.close()
+        _DRIVER_REGISTRY.pop("acme_watched", None)
+
+
+def test_how_the_test_ended_is_said_once():
+    base = {"kind": POWER_CYCLE, "noticed_at": 5.0, "reason": {"code": "no_response"},
+            "measured": {"noticed_after": 3.0}}
+    ceiling = outage_sentence({**base, "status": STOPPED, "end_code": "ceiling",
+                               "end_reason": "The test stopped after 15 minutes."})
+    assert ceiling.endswith(
+        "; the driver had not reconnected when the test stopped after 15 minutes."
+    )
+    assert "; The" not in ceiling
+    stopped = outage_sentence({**base, "status": STOPPED, "end_code": "person",
+                               "end_reason": "The test was stopped."})
+    assert stopped.endswith("; the driver had not reconnected when the test was stopped.")
 
 
 def test_the_ceiling_reads_right_at_any_length():

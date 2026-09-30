@@ -481,6 +481,8 @@ export interface AuditOutage {
   kind: AuditOutageKind;
   status: "running" | "done" | "stopped";
   end_reason: string;
+  /** Why it stopped early: the person's Stop, the time limit, or "" (it ended on its own). */
+  end_code: "" | "person" | "ceiling";
   connect_attempt: number;
   started_at: number;
   finished_at: number | null;
@@ -501,7 +503,9 @@ export interface AuditOutage {
   ends_at: number | null;
   notice_ceiling_seconds: number;
   ping: { used: boolean; why: string };
-  watch: { liveness_probe: boolean; probe_every: number; poll_interval: number };
+  /** How the driver notices a device that went: a liveness probe, how often
+   *  it probes, and the longest it takes to give up (seconds). */
+  watch: { liveness_probe: boolean; probe_every: number; notice_within: number; poll_interval: number };
   reason: { code: string; detail: string } | null;
   reasons: { t: number; code: string; detail: string }[];
   measured: {

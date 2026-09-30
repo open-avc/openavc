@@ -698,6 +698,21 @@ export function secondsBetween(from: number | null, to: number | null): number |
   return Math.round((to - from) * 10) / 10;
 }
 
+/** Seconds elapsed on a running clock: never below zero, since the page's
+ *  clock and the server's times are read at different moments. */
+function elapsed(from: number, now: number): number {
+  return Math.max(0, secondsBetween(from, now) ?? 0);
+}
+
+/** A power cycle whose driver notices through its liveness probe, and has not
+ *  yet: the person waits for it before turning the device back on. */
+function awaitingProbe(o: AuditOutage): boolean {
+  return (
+    o.kind === "power_cycle" && o.watch.liveness_probe
+    && o.noticed_at === null && o.not_noticed_at === null
+  );
+}
+
 /** What to do now, while a test runs. */
 export function outageNowText(o: AuditOutage): string {
   const gone = o.off_at !== null || o.unreachable_at !== null;
@@ -709,7 +724,18 @@ export function outageNowText(o: AuditOutage): string {
       : "Now turn the device off, and press I turned it off as you do.";
   }
   if (!back) {
-    if (!cable) return "Leave it off for about 10 seconds, then turn it back on and press I turned it back on.";
+    if (awaitingProbe(o)) {
+      return (
+        `Leave it off until OpenAVC notices it is gone. This driver checks every ` +
+        `${o.watch.probe_every} s, so it can take up to ${Math.ceil(o.watch.notice_within)} s. ` +
+        `The table below shows it.`
+      );
+    }
+    if (!cable) {
+      return o.noticed_at !== null
+        ? "Now turn it back on and press I turned it back on."
+        : "Leave it off for about 10 seconds, then turn it back on and press I turned it back on.";
+    }
     if (o.noticed_at === null && o.not_noticed_at === null) {
       const minutes = Math.round(o.notice_ceiling_seconds / 60) || 1;
       return (
@@ -736,6 +762,7 @@ export function outageNextMark(o: AuditOutage): "off" | "on" | "" {
   if (o.kind === "cable_pull" && o.noticed_at === null && o.not_noticed_at === null && o.reachable_at === null) {
     return "";
   }
+  if (awaitingProbe(o) && o.reachable_at === null) return "";
   return "on";
 }
 
@@ -752,14 +779,14 @@ export function outageProgress(o: AuditOutage, now: number): { label: string; va
       value: o.unreachable_at === null
         ? "yes"
         : o.reachable_at === null
-          ? `no, for ${secondsBetween(o.unreachable_at, now)} s`
+          ? `no, for ${elapsed(o.unreachable_at, now)} s`
           : `again, after ${secondsBetween(o.unreachable_at, o.reachable_at)} s without`,
     });
   }
   if (o.off_at !== null) lines.push({ label: offWord, value: "you said so" });
   if (o.noticed_at !== null) {
     const after = secondsBetween(gone, o.noticed_at);
-    const why = o.reason?.detail || o.reason?.code;
+    const why = (o.reason?.detail || o.reason?.code || "").replace(/\.$/, "");
     lines.push({
       label: "OpenAVC noticed",
       value: `${after !== null ? `${Math.max(0, after)} s after it went` : "yes"}${why ? ` (${why})` : ""}`,
@@ -770,7 +797,7 @@ export function outageProgress(o: AuditOutage, now: number): { label: string; va
       value: `not within ${Math.round(o.notice_ceiling_seconds / 60) || 1} minutes`,
     });
   } else if (gone !== null && o.status === "running") {
-    const waited = secondsBetween(gone, now) ?? 0;
+    const waited = elapsed(gone, now);
     const left = Math.max(0, Math.ceil(o.notice_ceiling_seconds - waited));
     lines.push({ label: "OpenAVC noticed", value: `not yet (${waited} s; ${left} s left)` });
   }
