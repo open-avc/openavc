@@ -242,19 +242,58 @@ class TestPingHost:
             result = await icmp.ping_host("192.0.2.1", method=icmp.METHOD_EXEC)
         assert result == icmp.RESULT_ERROR
 
-    async def test_exec_zero_exit_is_alive(self):
+    @staticmethod
+    def _proc(returncode: int, output: bytes = b""):
         proc = AsyncMock()
-        proc.returncode = 0
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        proc.returncode = returncode
+        proc.communicate = AsyncMock(return_value=(output, None))
+        return proc
+
+    async def test_exec_zero_exit_is_alive(self, monkeypatch):
+        monkeypatch.setattr(icmp, "_IS_WINDOWS", False)
+        with patch("asyncio.create_subprocess_exec", return_value=self._proc(0)):
             result = await icmp.ping_host("192.0.2.1", method=icmp.METHOD_EXEC)
         assert result == icmp.RESULT_ALIVE
 
-    async def test_exec_nonzero_exit_is_timeout(self):
-        proc = AsyncMock()
-        proc.returncode = 1
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+    async def test_exec_nonzero_exit_is_timeout(self, monkeypatch):
+        monkeypatch.setattr(icmp, "_IS_WINDOWS", False)
+        with patch("asyncio.create_subprocess_exec", return_value=self._proc(1)):
             result = await icmp.ping_host("192.0.2.1", method=icmp.METHOD_EXEC)
         assert result == icmp.RESULT_TIMEOUT
+
+    async def test_windows_reads_the_reply_not_the_exit_code(self, monkeypatch):
+        """Windows ping.exe exits 0 on this computer's own "Destination host
+        unreachable": a host switched off read as alive again a second later."""
+        monkeypatch.setattr(icmp, "_IS_WINDOWS", True)
+        echo = b"Pinging 192.0.2.1 with 32 bytes of data:\r\nReply from 192.0.2.1: bytes=32 time=1ms TTL=64\r\n"
+        own = b"Pinging 192.0.2.1 with 32 bytes of data:\r\nReply from 192.0.2.9: Destination host unreachable.\r\n"
+        with patch("asyncio.create_subprocess_exec", return_value=self._proc(0, echo)):
+            assert await icmp.ping_host("192.0.2.1", method=icmp.METHOD_EXEC) == icmp.RESULT_ALIVE
+        with patch("asyncio.create_subprocess_exec", return_value=self._proc(0, own)):
+            assert await icmp.ping_host("192.0.2.1", method=icmp.METHOD_EXEC) == icmp.RESULT_TIMEOUT
+
+
+class TestExecReplyAlive:
+    def test_posix_trusts_the_exit_code(self):
+        assert icmp.exec_reply_alive(0, "", "192.0.2.1", windows=False)
+        assert not icmp.exec_reply_alive(1, "", "192.0.2.1", windows=False)
+        assert not icmp.exec_reply_alive(None, "", "192.0.2.1", windows=False)
+
+    def test_windows_needs_an_echo_reply_from_the_target(self):
+        def alive(line: str, rc: int = 0) -> bool:
+            return icmp.exec_reply_alive(rc, line, "192.0.2.1", windows=True)
+
+        assert alive("Reply from 192.0.2.1: bytes=32 time<1ms TTL=128")
+        # The field is not translated; the words around it are.
+        assert alive("Antwort von 192.0.2.1: Bytes=32 Zeit<1ms TTL=64")
+        assert not alive("Reply from 192.0.2.9: Destination host unreachable.")
+        assert not alive("Request timed out.", rc=1)
+        assert not alive("Reply from 192.0.2.1: TTL expired in transit.")
+        # Another host's echo, and an address that only starts the same way.
+        assert not alive("Reply from 192.0.2.10: bytes=32 time=1ms TTL=64")
+        assert not alive("Reply from 10.192.0.2.1: bytes=32 time=1ms TTL=64")
+        # A name has no address to hold the line to.
+        assert icmp.exec_reply_alive(0, "Reply from 192.0.2.1: bytes=32 TTL=64", "panel.local", windows=True)
 
 
 class TestSweepAccounting:

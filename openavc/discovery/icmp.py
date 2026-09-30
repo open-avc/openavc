@@ -10,7 +10,11 @@ reportable:
 - **Method selection** (:func:`select_ping_method`, probed once per scan):
 
   - Windows: exec the system ``ping`` (always present; raw sockets need
-    Administrator).
+    Administrator). Its exit code is not the answer: ``ping.exe`` also
+    exits 0 when the reply is this computer's own "Destination host
+    unreachable" (the target's address stopped resolving), so a host counts
+    as alive only on an echo reply from its own address
+    (:func:`exec_reply_alive`).
   - POSIX tier 1: unprivileged ICMP datagram socket
     (``socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)``) — allowed when the
     kernel's ``ping_group_range`` covers the process gid.
@@ -36,9 +40,11 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import ipaddress
 import logging
 import os
 import platform
+import re
 import shutil
 import socket
 import struct
@@ -273,6 +279,34 @@ async def _ping_socket(ip: str, timeout: float, source_ip: str, method: str) -> 
             sock.close()
 
 
+_TTL = re.compile(r"\bTTL=\d+", re.IGNORECASE)
+
+
+def exec_reply_alive(returncode: int | None, output: str, ip: str, *, windows: bool) -> bool:
+    """Whether one system ``ping`` echo got its answer.
+
+    POSIX ``ping`` exits non-zero for anything but an echo reply. Windows
+    ``ping.exe`` exits 0 for an ICMP error too, and in particular for this
+    computer's own "Reply from <this computer>: Destination host
+    unreachable." once the target's address stops resolving on the local
+    network, which reads as a live host that has just been switched off. On
+    Windows an echo reply is the line that carries a ``TTL=`` (the field is
+    not translated, the words around it are) and, for an address, names it.
+    """
+    if returncode != 0:
+        return False
+    if not windows:
+        return True
+    try:
+        literal = str(ipaddress.ip_address(ip))
+    except ValueError:
+        literal = ""
+    for line in output.splitlines():
+        if _TTL.search(line) and (not literal or re.search(rf"(?<![\d.]){re.escape(literal)}(?![\d])", line)):
+            return True
+    return False
+
+
 async def _ping_exec(ip: str, timeout: float, source_ip: str) -> str:
     """Shell out to the system ping binary (one echo)."""
     if _IS_WINDOWS:
@@ -285,12 +319,14 @@ async def _ping_exec(ip: str, timeout: float, source_ip: str) -> str:
             cmd.extend(["-I", source_ip])
     cmd.append(ip)
 
+    windows = _IS_WINDOWS
     try:
         # CREATE_NO_WINDOW: a sweep spawns one ping per address — without it,
         # a console-less server (in-app restart) pops hundreds of windows.
+        # Windows' output is read: its exit code is not the answer.
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE if windows else asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
             creationflags=CREATE_NO_WINDOW,
         )
@@ -300,9 +336,11 @@ async def _ping_exec(ip: str, timeout: float, source_ip: str) -> str:
         return RESULT_ERROR
 
     try:
-        await asyncio.wait_for(proc.wait(), timeout=timeout + 2)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout + 2)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
         return RESULT_TIMEOUT
-    return RESULT_ALIVE if proc.returncode == 0 else RESULT_TIMEOUT
+    text = out.decode(errors="replace") if isinstance(out, bytes) else ""
+    alive = exec_reply_alive(proc.returncode, text, ip, windows=windows)
+    return RESULT_ALIVE if alive else RESULT_TIMEOUT
