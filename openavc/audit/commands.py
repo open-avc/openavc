@@ -1051,9 +1051,9 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     "before", "now", "by", "on_its_own"}``. ``by`` is the command whose
     window saw the value move last (``{"number", "label"}``), or null when it
     moved while nothing was being watched (at the device itself, say).
-    ``on_its_own`` is true for a value that changed while nothing was being
-    watched after that command (a meter, a clock), or only then: the audit
-    did not leave it that way. A value the device has stopped reporting is
+    ``on_its_own`` is true for a value that was already changing when that
+    command was sent, or that changed while nothing was being watched after
+    it (a meter, a clock), or only then: the audit did not leave it that way. A value the device has stopped reporting is
     left out: there is nothing to compare.
     """
     firsts: list[tuple[float, dict[str, Any]]] = []
@@ -1078,10 +1078,12 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
         info = getattr(get_driver_class(run.choice.driver_id), "DRIVER_INFO", {}) or {}
     moved_by: dict[str, dict[str, Any]] = {}
     sent_at: dict[str, float] = {}
+    moving_then: dict[str, bool] = {}
     for trial in commands.trials if commands is not None else []:
         for change in trial.changes:
             moved_by[change["key"]] = {"number": trial.number, "label": trial.label}
             sent_at[change["key"]] = trial.sent_at
+            moving_then[change["key"]] = change["key"] in trial.already_moving
     unwatched = getattr(run, "unwatched", None) or {}
     out = []
     for key in sorted(now):
@@ -1092,10 +1094,13 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
         before = baseline.get(key)
         if before == value and type(before) is type(value):
             continue
-        # Changing without the audit: it changed unwatched after the last
-        # command that moved it (or it moved only unwatched).
+        # Changing without the audit: it was already changing when the last
+        # command that moved it was sent, or it changed unwatched after that
+        # command (or it moved only unwatched).
         latest = unwatched.get(key)
-        on_its_own = bool(latest) and latest[-1] > sent_at.get(key, 0.0)
+        on_its_own = moving_then.get(key, False) or (
+            bool(latest) and latest[-1] > sent_at.get(key, 0.0)
+        )
         out.append({
             "key": key,
             "label": state_label(info, key),

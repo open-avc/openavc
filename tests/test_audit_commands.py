@@ -625,6 +625,32 @@ async def test_what_a_command_moved_is_told_from_what_moves_anyway():
     ) == []
 
 
+def test_a_value_already_changing_is_not_left_changed_by_the_command():
+    """A clock that ticked inside a command's window, and was already ticking
+    when the command went out, is not what the command left changed, even
+    before it has ticked again with nothing watched. Seen on the bench: an
+    amplifier's uptime listed as changed by Set Output Level."""
+    from collections import deque
+    from types import SimpleNamespace as NS
+
+    trial = NS(
+        number=3, label="Set Output Level", sent_at=100.0,
+        before={"level": 0.0, "uptime": "1 min"},
+        changes=[{"key": "level"}, {"key": "uptime"}], already_moving=["uptime"],
+    )
+    listen = NS(sandbox=NS(
+        started=True, driver=NS(DRIVER_INFO={}),
+        device_state=lambda: {"level": -10.0, "uptime": "2 min"},
+    ))
+    run = NS(
+        commands=NS(trials=[trial]), settings=None, listen=listen,
+        unwatched={"uptime": deque([40.0])}, choice=NS(driver_id="acme"),
+    )
+    changed = {c["key"]: c for c in changed_values(run)}
+    assert not changed["level"]["on_its_own"]
+    assert changed["uptime"]["on_its_own"]
+
+
 def test_a_value_the_device_spells_its_own_way_still_counts():
     assert same_value(True, "on") and same_value(True, 1) and not same_value(True, "off")
     assert same_value(40, "40") and same_value("hdmi1", "HDMI1")
