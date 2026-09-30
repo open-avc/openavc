@@ -66,6 +66,7 @@ from openavc.discovery.companion import (
 from openavc.discovery.engine import (
     DiscoveryEngine,
     _resolve_hostnames,
+    banner_texts,
     derived_evidence,
     hostname_evidence,
     mdns_hostname_evidence,
@@ -1062,7 +1063,12 @@ class NetworkCheck:
             if companion_info:
                 merge_device_info(device, companion_info, "companion", fill_only=True)
 
-        evidence.extend(derived_evidence(evidence, device.open_ports, index))
+        texts = banner_texts(banners)
+        for port, exchange in sorted(fp.web.items()):
+            server = next((v for k, v in exchange.headers if k.lower() == "server"), "")
+            if server:
+                texts[f"http_server:{port}"] = server
+        evidence.extend(derived_evidence(evidence, device.open_ports, index, texts))
         device.evidence_log = evidence
         fp.evidence = evidence
         fp.device = device

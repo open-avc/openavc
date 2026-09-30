@@ -137,10 +137,12 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
     }
     case "vendor_string": {
       const value = typeof data.value === "string" ? (data.value as string) : "(unknown)";
-      const raw = typeof data.raw === "string" && data.raw !== value ? (data.raw as string) : null;
+      const raw = typeof data.raw === "string" && data.raw.toLowerCase() !== value
+        ? (data.raw as string) : null;
+      const from = typeof data.source_probe_id === "string" ? (data.source_probe_id as string) : "";
       return {
-        headline: `Manufacturer alias matched ${value}`,
-        detail: raw ? `from probe response "${raw}"` : null,
+        headline: `Manufacturer "${value}" named ${vendorStringWhere(from)}`,
+        detail: raw ? `"${raw}"` : null,
       };
     }
     case "open_port": {
@@ -152,7 +154,28 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
   }
 }
 
-export function EvidenceList({ evidence }: { evidence: DiscoveryEvidence[] }) {
+/** Where a manufacturer string came from, as a line reads it. The server keys
+ *  free text as ``greeting:<port>``, ``http_server:<port>`` or ``ssdp_server``,
+ *  and a probe reply by the probe's id. */
+function vendorStringWhere(from: string): string {
+  const [what, port] = from.split(":");
+  if (what === "greeting" && port) return `in the greeting on port ${port}`;
+  if (what === "http_server" && port) return `by the web server on port ${port}`;
+  if (from === "ssdp_server") return "in the SSDP server name";
+  return from ? `in the reply to ${from}` : "in a probe reply";
+}
+
+/**
+ * The evidence, one line each. ``pointsAt`` (the device audit's) names the
+ * drivers each signal points at, or returns null to say nothing for it.
+ */
+export function EvidenceList({
+  evidence,
+  pointsAt,
+}: {
+  evidence: DiscoveryEvidence[];
+  pointsAt?: (ev: DiscoveryEvidence) => string[] | null;
+}) {
   if (evidence.length === 0) {
     return (
       <div style={{ marginTop: 4, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
@@ -168,11 +191,19 @@ export function EvidenceList({ evidence }: { evidence: DiscoveryEvidence[] }) {
     }}>
       {evidence.map((e, i) => {
         const { headline, detail } = describeEvidence(e);
+        const drivers = pointsAt ? pointsAt(e) : null;
         return (
           <div key={i} style={{ marginBottom: 4 }}>
             <span style={{ color: "var(--text)" }}>{headline}</span>
             {detail && (
               <span style={{ marginLeft: 8, fontStyle: "italic" }}>{detail}</span>
+            )}
+            {drivers && (
+              <div style={{ paddingLeft: "var(--space-md)", overflowWrap: "anywhere" }}>
+                {drivers.length === 0
+                  ? "No driver uses this signal."
+                  : `Points at ${drivers.length === 1 ? "" : `${drivers.length} drivers: `}${drivers.join(", ")}`}
+              </div>
             )}
           </div>
         );

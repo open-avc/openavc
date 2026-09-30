@@ -540,6 +540,10 @@ class SignalIndex:
         rules = self._rules.get((KIND_VENDOR_STRING, normalized), [])
         return [r.driver_id for r in rules]
 
+    def vendor_aliases(self) -> list[str]:
+        """Every manufacturer alias some driver declares, normalized."""
+        return sorted(sid for kind, sid in self._rules if kind == KIND_VENDOR_STRING)
+
     def find_soft_hostname(self, hostname: str | None) -> list[str]:
         """Return driver_ids whose hostname pattern matches. May be empty."""
         if not hostname:
@@ -1110,6 +1114,60 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
         _record(ev.data.get("make"), probe_label)
 
     return extracted
+
+
+# Where a manufacturer alias counts in free text (a port's greeting, a web
+# server's name). The text is the device's own words, not a field that holds a
+# manufacturer, so a short alias ("at", "hp", "bss") would turn up in text that
+# means something else. An alias counts as the whole text or a whole line;
+# with three or more letters and digits, also leading a line ("BSS Soundweb");
+# with four or more, anywhere as a whole word or phrase ("... Crestron
+# Webserver").
+_ALIAS_AT_LINE_START = 3
+_ALIAS_ANYWHERE = 4
+
+
+def _alias_in_text(alias: str, text: str) -> bool:
+    size = sum(c.isalnum() for c in alias)
+    lines = [line.strip() for line in text.lower().splitlines() if line.strip()]
+    if alias in lines:
+        return True
+    bounded = re.escape(alias) + r"(?![0-9a-z])"
+    if size >= _ALIAS_AT_LINE_START and any(re.match(bounded, line) for line in lines):
+        return True
+    return size >= _ALIAS_ANYWHERE and re.search(
+        r"(?<![0-9a-z])" + bounded, text.lower(),
+    ) is not None
+
+
+def vendor_strings_in_text(texts: dict[str, str], index: SignalIndex) -> list[Evidence]:
+    """The manufacturer aliases a device names in its own free text.
+
+    ``texts`` maps where each text came from (``greeting:23`` for what a port
+    sent unprompted, ``http_server:80`` for a web server's ``Server`` header,
+    ``ssdp_server`` for an SSDP ``SERVER``) to the text. Each alias the
+    catalog declares that the text names (the rule at ``_alias_in_text``)
+    becomes one ``vendor_string`` record, its ``raw`` the line that named it,
+    unless a longer alias found in the same text contains it. Nothing is
+    recorded for text that names no alias: unlike a manufacturer field, free
+    text cannot say which of its words is a manufacturer.
+    """
+    aliases = index.vendor_aliases()
+    out: list[Evidence] = []
+    for where, text in texts.items():
+        if not isinstance(text, str) or not text.strip():
+            continue
+        found = [a for a in aliases if _alias_in_text(a, text)]
+        found = [a for a in found if not any(a != b and a in b for b in found)]
+        for alias in found:
+            line = next(
+                (ln.strip() for ln in text.splitlines() if alias in ln.lower()),
+                text.strip(),
+            )
+            ev = evidence_vendor_string(alias, where)
+            ev.data["raw"] = line[:120]
+            out.append(ev)
+    return out
 
 
 def evidence_vendor_string(value: str, source_probe_id: str) -> Evidence:

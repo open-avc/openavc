@@ -1740,7 +1740,7 @@ discovery:
   oui: ["00:0e:dd", "d8:34:ee"]              # MAC vendor blocks
   hostname: ["^MXA", "^ANI"]                  # regex patterns
   port_open: [2202]                           # vendor-specific TCP ports
-  manufacturer_alias: ["NEC", "Sharp NEC"]   # case-insensitive exact match
+  manufacturer_alias: ["NEC", "Sharp NEC"]   # case-insensitive
   snmp_pen: 17049                             # IANA Private Enterprise Number
 ```
 
@@ -1755,7 +1755,7 @@ discovery:
 | `oui` | Hint | MAC OUI prefixes (e.g. `["00:05:a6"]`). Drives the *possible* state and the "Unknown device, vendor: …" display. The IEEE registry says who holds a prefix: a maker whose only block is a medium (MA-M, 28-bit) or small (MA-S, 36-bit) one writes its 7 or 9 hex digits (`18:66:96:1`), since the three octets around it are split among many companies. A MAC falls in the longest prefix any driver declares. Check the holder before declaring a prefix read off a device: a network module's maker holds some device MACs, and its prefix appears on other brands' products. |
 | `hostname` | Hint | Regex patterns matched against the device's reverse-DNS, NetBIOS or mDNS host name (case-insensitive; an mDNS name without `.local`). |
 | `port_open` | Hint | TCP ports the device leaves open (e.g. `[1710, 4352]`). Generic web/SSH ports (22, 80, 443, 8000, 8080, 8443, 8888) are disallowed. |
-| `manufacturer_alias` | Hint | Manufacturer / make strings the device returns when a scan captures one (probe response, AMX DDP `make`, ONVIF Manufacturer field, etc.). Case-insensitive exact match after whitespace strip. List every variant. Multiple drivers may share an alias. |
+| `manufacturer_alias` | Hint | Manufacturer / make strings the device returns when a scan captures one (probe response, AMX DDP `make`, ONVIF Manufacturer field, etc.). Case-insensitive exact match after whitespace strip. The device's own words count too: what a port sends on connect, and a web or SSDP server's `Server` name. There an alias matches as a whole word or phrase; one of three letters or digits only at the start of a line, and a shorter one only as a whole line. List every variant. Multiple drivers may share an alias. |
 | `snmp_pen` | Hint | IANA Private Enterprise Number. |
 
 **Identifying a device by what it does NOT answer.** Some product families are

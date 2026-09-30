@@ -11,8 +11,14 @@ import {
 import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
-import { EvidenceList } from "../../../discoveryEvidence";
-import { ACTIVITY_LABELS, ACTIVITY_ORDER, checkStarted, verdictDrivers } from "../auditHelpers";
+import { describeEvidence, EvidenceList } from "../../../discoveryEvidence";
+import {
+  ACTIVITY_LABELS,
+  ACTIVITY_ORDER,
+  checkStarted,
+  signalDrivers,
+  verdictDrivers,
+} from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, panelStyle, spinStyle } from "../auditStyles";
 
@@ -100,7 +106,12 @@ export function NetworkCheckStep() {
           >
             <HelpCircle size={12} /> {showWhy ? "Hide evidence" : "Why?"}
           </button>
-          {showWhy && <EvidenceList evidence={result.evidence} />}
+          {showWhy && (
+            <EvidenceList
+              evidence={result.evidence}
+              pointsAt={(ev) => signalDrivers(result.verdict, ev)}
+            />
+          )}
         </div>
       )}
 
@@ -134,7 +145,7 @@ export function NetworkCheckStep() {
 }
 
 function DriverList({ result }: { result: audit.AuditCheckResult }) {
-  const listed = verdictDrivers(result.verdict.explanation.drivers, result.verdict.drivers);
+  const listed = verdictDrivers(result.verdict);
   if (listed.length === 0) return null;
   return (
     <div style={{ marginTop: "var(--space-sm)", fontSize: "var(--font-size-sm)" }}>
@@ -145,6 +156,9 @@ function DriverList({ result }: { result: audit.AuditCheckResult }) {
         {listed.map((d) => (
           <li key={d.id}>
             {d.name} <span style={{ color: "var(--text-secondary)" }}>({d.id})</span>
+            <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", overflowWrap: "anywhere" }}>
+              {d.signals.map((ev) => describeEvidence(ev).headline).join("; ")}
+            </div>
           </li>
         ))}
       </ul>

@@ -47,6 +47,7 @@ from openavc.discovery.tier_matcher import (
     evidence_open_port,
     evidence_oui,
     extract_vendor_strings,
+    vendor_strings_in_text,
 )
 from openavc.discovery.result import (
     DiscoveredDevice,
@@ -220,20 +221,45 @@ def mac_info_and_evidence(
 
 
 def derived_evidence(
-    evidence_log: list, open_ports: list[int], index: SignalIndex,
+    evidence_log: list,
+    open_ports: list[int],
+    index: SignalIndex,
+    texts: dict[str, str] | None = None,
 ) -> list:
     """The records a scan adds to a device's evidence in its last phase.
 
     An open-port record for each open port some driver's ``port_open:`` hint
     names (bare openness on a generic port is too weak to record for every
-    port), and the manufacturer strings lifted from probe replies.
+    port), the manufacturer strings lifted from probe replies, and the
+    manufacturer aliases the device names in its own words: ``texts`` (what a
+    port sent unprompted, a web server's ``Server`` header, keyed as
+    ``vendor_strings_in_text`` reads them) and an SSDP ``SERVER``. A string
+    already recorded is not recorded again.
     """
     records = [
         evidence_open_port(port) for port in open_ports
         if index.find_soft_open_port(port)
     ]
     records.extend(extract_vendor_strings(evidence_log + records))
+    all_texts = dict(texts or {})
+    for ev in evidence_log:
+        server = ev.data.get("server") if ev.data.get("kind") == "ssdp" else None
+        if isinstance(server, str) and server:
+            all_texts.setdefault("ssdp_server", server)
+    have = {
+        ev.data.get("value") for ev in evidence_log + records
+        if ev.data.get("kind") == "vendor_string"
+    }
+    for ev in vendor_strings_in_text(all_texts, index):
+        if ev.data["value"] not in have:
+            have.add(ev.data["value"])
+            records.append(ev)
     return records
+
+
+def banner_texts(banners: dict[int, str]) -> dict[str, str]:
+    """A device's port greetings keyed as ``vendor_strings_in_text`` reads them."""
+    return {f"greeting:{port}": text for port, text in sorted(banners.items()) if text}
 
 
 async def _resolve_hostnames(
@@ -1607,9 +1633,10 @@ class DiscoveryEngine:
             # and manufacturer strings mined from probe replies (so a reply
             # carrying ``manufacturer=<vendor>`` surfaces a driver that
             # claims that alias without an OUI hit).
-            device.evidence_log.extend(
-                derived_evidence(device.evidence_log, device.open_ports, self.signal_index)
-            )
+            device.evidence_log.extend(derived_evidence(
+                device.evidence_log, device.open_ports, self.signal_index,
+                banner_texts(device.banners),
+            ))
 
             device.identification = self.tier_matcher.match(device.evidence_log)
             await self._emit_device_update(device, "driver_match")

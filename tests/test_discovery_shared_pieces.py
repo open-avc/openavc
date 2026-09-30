@@ -12,6 +12,7 @@ import asyncio
 from openavc.discovery.engine import (
     THOROUGH_EXTRA_PORTS,
     DiscoveryEngine,
+    banner_texts,
     derived_evidence,
     hostname_evidence,
     mac_info_and_evidence,
@@ -20,7 +21,13 @@ from openavc.discovery.hints import build_signal_index, parse_driver_discovery
 from openavc.discovery.http_fetch import http_get, parse_head
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.port_scanner import BASELINE_PORTS, read_greeting
-from openavc.discovery.tier_matcher import evidence_active_probe
+from openavc.discovery.result import DeviceState
+from openavc.discovery.tier_matcher import (
+    TierMatcher,
+    evidence_active_probe,
+    evidence_open_port,
+    vendor_strings_in_text,
+)
 
 
 def _hint(driver_id, discovery):
@@ -71,6 +78,60 @@ def test_derived_evidence_adds_claimed_ports_and_vendor_strings():
     records = derived_evidence([probe], [23, 5001], index)
     kinds = sorted(r.data["kind"] for r in records)
     assert kinds == ["open_port", "vendor_string"]
+
+
+def _vendor_index():
+    return build_signal_index([
+        _hint("acme_widget", {"manufacturer_alias": ["acw", "acme widgets", "widgetworks"],
+                              "port_open": [5001]}),
+        _hint("acme_gadget", {"manufacturer_alias": ["ag"], "port_open": [5001]}),
+    ])
+
+
+def _named(texts):
+    return {
+        (ev.data["value"], ev.data["source_probe_id"], ev.data["raw"])
+        for ev in vendor_strings_in_text(texts, _vendor_index())
+    }
+
+
+def test_a_greeting_or_server_header_names_a_manufacturer():
+    # Leading a line, a three-letter alias counts; four or more count anywhere
+    # as a whole word; a longer alias found in the same text wins.
+    assert _named({"greeting:23": "ACW Widget (Mk II)\r\nUser-name: "}) == {
+        ("acw", "greeting:23", "ACW Widget (Mk II)"),
+    }
+    assert _named({"http_server:80": "Acme Widgets"}) == {
+        ("acme widgets", "http_server:80", "Acme Widgets"),
+    }
+    assert _named({"http_server:8080": "embedded WidgetWorks/2.1"}) == {
+        ("widgetworks", "http_server:8080", "embedded WidgetWorks/2.1"),
+    }
+
+
+def test_a_short_alias_counts_only_where_it_stands_alone():
+    # "ag" inside words, or three letters mid-line, name nobody.
+    assert _named({"greeting:23": "Login again\r\nstage 2"}) == set()
+    assert _named({"greeting:23": "Welcome to the ACW box"}) == set()
+    assert _named({"greeting:22": "not widgetworksx"}) == set()
+    # A whole line that is the alias still counts, however short.
+    assert _named({"greeting:23": "AG\r\n> "}) == {("ag", "greeting:23", "AG")}
+
+
+def test_derived_evidence_reads_greetings_and_the_ssdp_server():
+    index = _vendor_index()
+    ssdp = evidence_active_probe("custom_x_tcp", response={"text": "hi"}, port=23)
+    ssdp.data.update({"kind": "ssdp", "server": "Linux UPnP/1.0 WidgetWorks/3"})
+    records = derived_evidence(
+        [ssdp], [5001], index, banner_texts({23: "ACW Widget", 22: ""}),
+    )
+    named = {(r.data["value"], r.data["source_probe_id"]) for r in records
+             if r.data["kind"] == "vendor_string"}
+    assert named == {("acw", "greeting:23"), ("widgetworks", "ssdp_server")}
+    # Port 5001 alone would leave two drivers possible; the greeting names one.
+    match = TierMatcher(index).match([evidence_open_port(5001), *records])
+    assert match.state == DeviceState.POSSIBLE
+    assert match.candidates[0] == "acme_widget"
 
 
 def test_parse_head_keeps_order_and_repeats():

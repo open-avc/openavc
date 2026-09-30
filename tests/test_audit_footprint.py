@@ -173,6 +173,7 @@ def _catalog(bench) -> bytes:
         entry("acme_gadget", "Acme Gadget", {
             "tcp_probe": {"port": bench["web"], "send_ascii": "HELLO\r\n", "expect_regex": "GADGET"},
             "snmp_pen": 99999,
+            "manufacturer_alias": ["acmehttp"],
         }),
     ]}).encode()
 
@@ -320,6 +321,14 @@ async def test_the_check_records_everything_the_device_says(discovery, bench):
     assert verdict["drivers"]["acme_widget"]["name"] == "Acme Widget"
     statuses = {c["kind"]: c["status"] for c in verdict["checks"]["acme_widget"]}
     assert statuses == {"mdns": "matched", "probe": "matched"}
+    # The web server's name is read for a manufacturer, and says which driver.
+    named = {c["declared"]: c for c in verdict["checks"]["acme_gadget"]}
+    assert named['manufacturer name "acmehttp"']["status"] == "matched"
+    assert named['manufacturer name "acmehttp"']["observed"] == ["AcmeHTTP/2"]
+    vendor = {s["evidence"]["data"]["source_probe_id"]: s["drivers"]
+              for s in verdict["explanation"]["signals"]
+              if s["evidence"]["data"]["kind"] == "vendor_string"}
+    assert vendor[f"http_server:{bench['web']}"] == ["acme_gadget"]
     assert verdict["catalog"]["used"] == "fresh"
     assert verdict["catalog"]["driver_count"] == 2
 

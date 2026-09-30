@@ -25,7 +25,9 @@ import type {
   AuditSettings,
   AuditSettingTrial,
   AuditTimelineEntry,
+  AuditVerdict,
 } from "../../../api/auditClient";
+import type { DiscoveryEvidence } from "../../../api/discoveryClient";
 
 export type AuditStep =
   | "target"
@@ -594,16 +596,31 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
   return lines;
 }
 
-/** The driver names a verdict lists, strongest first, each once. */
+/** The drivers a verdict lists, in the server's order (the one it matched,
+ *  then its candidates, then every other driver a signal points at), each
+ *  with the signals that point at it. */
 export function verdictDrivers(
-  drivers: Record<string, string[]>,
-  names: Record<string, { name: string }>,
-): { id: string; name: string; sources: string[] }[] {
-  return Object.entries(drivers).map(([id, sources]) => ({
-    id,
-    name: names[id]?.name || id,
-    sources,
-  }));
+  verdict: Pick<AuditVerdict, "drivers" | "explanation">,
+): { id: string; name: string; signals: DiscoveryEvidence[] }[] {
+  const pointed = new Set(Object.keys(verdict.explanation.drivers));
+  return Object.entries(verdict.drivers)
+    .filter(([id]) => pointed.has(id))
+    .map(([id, d]) => ({
+      id,
+      name: d.name || id,
+      signals: verdict.explanation.signals.filter((s) => s.drivers.includes(id)).map((s) => s.evidence),
+    }));
+}
+
+/** The names of the drivers one evidence record points at, as the verdict's
+ *  explanation lists them; null for a record the explanation does not list. */
+export function signalDrivers(
+  verdict: Pick<AuditVerdict, "drivers" | "explanation">,
+  evidence: DiscoveryEvidence,
+): string[] | null {
+  const hit = verdict.explanation.signals.find((s) => s.evidence.source === evidence.source);
+  if (!hit) return null;
+  return hit.drivers.map((id) => verdict.drivers[id]?.name || id);
 }
 
 /** What pressing Send on this command should say first, or "" to send at

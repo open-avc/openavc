@@ -565,7 +565,9 @@ _SOFT_UNSEEN = {
     KIND_OUI: "No MAC address was seen for the device.",
     KIND_SNMP_PEN: "The device gave no SNMP enterprise number.",
     KIND_HOSTNAME: "No reverse-DNS, NetBIOS or mDNS host name was found for the device.",
-    KIND_VENDOR_STRING: "No probe reply or announcement named a manufacturer.",
+    KIND_VENDOR_STRING: (
+        "No probe reply, announcement, port greeting or web server named a manufacturer."
+    ),
 }
 
 _SOFT_NOUN = {
