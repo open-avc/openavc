@@ -1762,9 +1762,12 @@ class ConfigurableDriver(BaseDriver):
         Any inbound frame counts as alive — a poll reply or an unsolicited
         push arriving during the wait window proves the device is there just
         as well as a direct answer. An `expect` regex narrows that to matching
-        frames only. The reply deadline is enforced by the BaseDriver loop
-        (HEALTH_TIMEOUT_S wraps this coroutine), which cancels the await on
-        timeout; the finally clears the waiter either way.
+        frames only, so a definition's `expect` matches the device's error
+        reply to the probe as well as the good one: an error is still an
+        answer, and a miss here drops the link. The reply deadline is
+        enforced by the BaseDriver loop (HEALTH_TIMEOUT_S wraps this
+        coroutine), which cancels the await on timeout; the finally clears
+        the waiter either way.
         """
         lv = self._liveness_def
         if lv is None or self.transport is None:

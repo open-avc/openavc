@@ -87,6 +87,8 @@ EXAMPLE_HELPERS = {
               "_post_connect.",
     "_parse_status": "The controller example's roster parser.",
     "_refresh_state": "The example driver's post-command state refresh.",
+    "_request": "The liveness example driver's own send-and-await-the-reply "
+                "helper, which raises the driver's own error on an error reply.",
     "_send": "The example driver's thin wrapper over transport.send — a very "
              "common driver-side convenience, and deliberately not a platform "
              "method (the platform's is self.transport.send).",

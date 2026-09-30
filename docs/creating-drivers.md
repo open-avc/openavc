@@ -1393,14 +1393,16 @@ liveness:
   send: "STATUS?\r\n"     # probe payload — raw protocol string, same rules as polling.queries
                            # (escape sequences, {config} substitution, terminator included);
                            # on osc transport this is an OSC address (optional args: list)
-  expect: "^STATUS"        # optional regex — only matching replies count; if omitted,
+  expect: "^(STATUS|ERR)"  # optional regex — only matching replies count; if omitted,
                            # ANY inbound data during the wait counts as alive
   interval: 30             # seconds between probes (default 30)
   timeout: 5               # reply deadline per probe (default 5)
   max_failures: 2          # consecutive misses before dropping the link (default 2)
 ```
 
-Pick a probe the device always answers — a status query the driver already polls is ideal (the reply also refreshes state through normal response matching). Leave `expect` off unless the device chatters on its own so much that "any data" would mask a dead control channel.
+Pick a probe the device answers however it is set up. A status or version query the driver already polls is ideal, and its reply also refreshes state through normal response matching. Never probe with something the integrator configured, such as a zone, a preset, an object address or the first row of a table: a wrong setting then looks like a dead device, reconnecting never fixes a setting, and the device drops every minute or so for as long as it runs.
+
+Any reply proves the link is up, an error included. Leave `expect` off unless the device chatters on its own so much that "any data" would mask a dead control channel. When you do set it, make it match the device's error reply to the probe as well as the normal one (`^(STATUS|ERR)`, not `^STATUS`), and allow the whitespace the protocol allows (`"cmd"\s*:\s*"status"`, not `"cmd":"status"`).
 
 Valid on `tcp`, `serial`, `udp`, and `osc`. HTTP drivers don't need it: every HTTP poll already awaits its response, so missed polls flip the device offline on their own. Use it whenever the device is UDP/OSC-polled, or push-based over TCP with long idle gaps.
 
@@ -2692,7 +2694,7 @@ class SamsungMDCDriver(BaseDriver):
 | `_create_transport(type)` | Builds `self.transport` | Override wholesale only for a driver-owned session (see below) |
 | `_post_connect()` | Transport up, device **not yet** marked connected | Login / greeting handshakes, protocol negotiation; raise to fail the attempt |
 | `_initial_sync()` | Marked connected, before polling starts | Identity reads, child-roster registration, an initial `poll()`, starting keep-alive loops |
-| `_liveness_probe()` | Every `HEALTH_INTERVAL_S` while connected | Awaited "are you there?" for links that die silently |
+| `_liveness_probe()` | Every `HEALTH_INTERVAL_S` while connected | Awaited "are you there?" for links that die silently ([The liveness probe](#the-liveness-probe)) |
 | `_close_session()` | Every teardown path | Close driver-owned clients/sockets that live outside `self.transport` |
 | `_link_alive()` | Whenever `connected` is evaluated | Report a driver-owned session's health instead of the transport's |
 
@@ -3176,6 +3178,23 @@ Why both matter: the stashed reason is **cleared at the start of every `connect(
 **Network reasons never stop retrying.** `unreachable`, `connection_refused`, `no_response`, `write_stalled`, `bridge_offline` and `transport_disconnected` heal on their own, so the platform keeps trying for as long as the device is in the project, roughly every 5 seconds. There is no attempt limit and no give-up state: a device that is switched off overnight reconnects by itself when it comes back, with nobody opening the Programmer. This is why classifying precisely matters in both directions. Reporting a network condition as one of the permanent codes above strands a device that would have recovered on its own, and reporting a genuinely permanent fault as a network one means retrying something that can never work.
 
 Two things follow for a driver author. A `connect()` that is expensive (spawning a process, a TLS handshake, a login round trip) will be attempted repeatedly against an absent device, so keep failure cheap and fast rather than doing work before the transport is known to be up. And a command sent to an offline device now triggers an immediate reconnect attempt as a side effect, which is how a panel button press brings a device back for someone who has no access to the Programmer.
+
+### The liveness probe
+
+Override `_liveness_probe()` when the link can die without the transport noticing: a push-mostly TCP device that vanishes without closing the socket, UDP, OSC. The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered. Any exception is a miss, and after `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE` and reconnects. All four are class attributes you can override.
+
+```python
+async def _liveness_probe(self) -> None:
+    try:
+        await self._request("VERSION?")
+    except DeviceRefused:
+        return  # the device answered with an error: the link is up
+```
+
+- **Ask something every unit answers however it is set up**: a version or model query, a no-op, the protocol's own keep-alive. Never the first zone, register, object or display ID from the device's configuration. A wrong setting would look like a dead device, reconnecting never fixes a setting, and the device would drop every minute or so for as long as it runs. Report a wrong setting where it shows instead: a sub-unit's fault, `last_error`, or a typed `invalid_config`.
+- **Any reply proves the link is up, an error included.** The platform counts every exception as a miss, so catch your protocol's own error reply (a NAK, an exception response, an error frame) and return.
+- **When every message is addressed to something configured**, as on a bus of displays that each answer only their own ID, ask the address that answered most recently on this connection, then the others, and raise only when none of them answers.
+- **Never use the probe to log back in.** If the device forgets your session, log in again on the connection you have when its refusal arrives. A rejected password is `auth_failed`, which stops the retries.
 
 ### Convenience Methods
 

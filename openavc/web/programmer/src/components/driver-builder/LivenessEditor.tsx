@@ -112,7 +112,10 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
               <div style={helpStyle}>
                 Raw protocol string sent as the probe (include the terminator,
                 e.g. <code>\r</code>). On an OSC transport this is the OSC
-                address. Required.
+                address. Required. Use a status or version query the device
+                answers however it is set up, never a zone, preset or address
+                an integrator enters: a wrong entry would then drop a working
+                device every minute.
               </div>
             </div>
             <div>
@@ -127,7 +130,8 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
               />
               <div style={helpStyle}>
                 Optional regex a reply must match. Leave blank to count any
-                inbound frame as a reply, which is right for chatty devices.
+                inbound frame as a reply. If you set one, match the device's
+                error reply too: any answer means the connection is up.
               </div>
             </div>
           </div>

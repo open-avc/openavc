@@ -1257,12 +1257,19 @@ export interface DriverLivenessDef {
   /**
    * Probe payload. Same conventions as polling queries: a raw protocol string
    * with escape processing and {config} substitution (terminator included) for
-   * tcp/serial/udp, or an OSC address on osc.
+   * tcp/serial/udp, or an OSC address on osc. Ask something the device answers
+   * however it is set up (a status, version or keep-alive query), never an
+   * address the integrator configured (a zone, preset, object or first table
+   * row): a wrong setting would then drop a working device on every probe, and
+   * reconnecting never fixes a setting.
    */
   send?: string;
   /**
    * Optional regex; only inbound data matching it satisfies the probe. Without
-   * it, any inbound data counts. Checked for catastrophic backtracking.
+   * it, any inbound data counts. Any answer proves the link is up, so match
+   * the device's error reply to the probe as well as the good one, with the
+   * whitespace and case the protocol allows. Checked for catastrophic
+   * backtracking.
    */
   expect?: string;
   /** Seconds between probes. Default 30. */
