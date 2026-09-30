@@ -112,10 +112,12 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
     case "oui": {
       const prefix = typeof data.value === "string" ? (data.value as string) : "(unknown prefix)";
       const vendor = typeof data.vendor === "string" ? (data.vendor as string) : null;
+      // A vendor is there only when a driver's oui: hint names the prefix;
+      // without one the MAC was seen and matched nothing.
       return {
         headline: vendor
           ? `OUI lookup matched ${prefix} → ${vendor}`
-          : `OUI lookup matched ${prefix}`,
+          : `MAC address prefix ${prefix} seen`,
         detail: null,
       };
     }
@@ -140,8 +142,9 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
       const raw = typeof data.raw === "string" && data.raw.toLowerCase() !== value
         ? (data.raw as string) : null;
       const from = typeof data.source_probe_id === "string" ? (data.source_probe_id as string) : "";
+      const kind = typeof data.from_kind === "string" ? (data.from_kind as string) : "";
       return {
-        headline: `Manufacturer "${value}" named ${vendorStringWhere(from)}`,
+        headline: `Manufacturer "${value}" named ${vendorStringWhere(from, kind)}`,
         detail: raw ? `"${raw}"` : null,
       };
     }
@@ -156,13 +159,17 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
 
 /** Where a manufacturer string came from, as a line reads it. The server keys
  *  free text as ``greeting:<port>``, ``http_server:<port>`` or ``ssdp_server``,
- *  and a probe reply by the probe's id. */
-function vendorStringWhere(from: string): string {
+ *  and a manufacturer field by the kind of evidence that carried it (a probe's
+ *  own id is internal and never shown). */
+function vendorStringWhere(from: string, kind: string): string {
   const [what, port] = from.split(":");
   if (what === "greeting" && port) return `in the greeting on port ${port}`;
   if (what === "http_server" && port) return `by the web server on port ${port}`;
   if (from === "ssdp_server") return "in the SSDP server name";
-  return from ? `in the reply to ${from}` : "in a probe reply";
+  if (kind === "ssdp") return "in the SSDP description";
+  if (kind === "mdns") return "in an mDNS announcement";
+  if (kind === "amx_ddp") return "in the AMX beacon";
+  return "in a probe reply";
 }
 
 /**

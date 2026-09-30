@@ -238,6 +238,8 @@ class TestSSDPManufacturerVendorString:
         mined = extract_vendor_strings([ev])
         values = {e.data["value"] for e in mined if e.data["kind"] == KIND_VENDOR_STRING}
         assert "acmeav" in values
+        # Where it came from, by kind, for a line that must not name a probe's id.
+        assert {e.data["from_kind"] for e in mined} == {"ssdp"}
 
     def test_generic_device_type_alone_does_not_identify(self):
         # Without mining the manufacturer, the generic device type yields no

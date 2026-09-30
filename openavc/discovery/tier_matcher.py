@@ -1063,6 +1063,10 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
     device returned in its probe responses as ``vendor_string`` enrichment
     evidence the matcher can consult against ``vendor_aliases``.
 
+    Each record keeps the kind of evidence it came from (``from_kind``:
+    ``probe``, ``ssdp``, ...), so a line can say where without naming a
+    probe's internal id.
+
     Looks at:
     - ``data["response"]["manufacturer"]`` and ``["make"]`` (broadcast / active probes)
     - ``data["txt"]["manufacturer"]`` and ``["make"]`` (mDNS, broadcast probes)
@@ -1075,7 +1079,7 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
     seen: set[tuple[str, str]] = set()
     extracted: list[Evidence] = []
 
-    def _record(value: object, source_probe_id: str) -> None:
+    def _record(value: object, source_probe_id: str, kind: object) -> None:
         if not isinstance(value, str):
             return
         normalized = value.strip().lower()
@@ -1085,7 +1089,10 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
         if key in seen:
             return
         seen.add(key)
-        extracted.append(evidence_vendor_string(value, source_probe_id))
+        ev = evidence_vendor_string(value, source_probe_id)
+        if isinstance(kind, str):
+            ev.data["from_kind"] = kind
+        extracted.append(ev)
 
     for ev in evidence_log:
         if ev.tier == SignalTier.ENRICHMENT:
@@ -1097,21 +1104,21 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
 
         response = ev.data.get("response")
         if isinstance(response, dict):
-            _record(response.get("manufacturer"), probe_label)
-            _record(response.get("make"), probe_label)
+            _record(response.get("manufacturer"), probe_label, kind)
+            _record(response.get("make"), probe_label, kind)
 
         txt = ev.data.get("txt")
         if isinstance(txt, dict):
-            _record(txt.get("manufacturer"), probe_label)
-            _record(txt.get("make"), probe_label)
+            _record(txt.get("manufacturer"), probe_label, kind)
+            _record(txt.get("make"), probe_label, kind)
 
         # Top-level manufacturer/make. SSDP/UPnP puts the rootDesc.xml
         # <manufacturer> here — and a UPnP switch/AP often advertises only
         # the generic InternetGatewayDevice device type, so the vendor
         # string is its one usable identity signal. AMX DDP carries its
         # make here too.
-        _record(ev.data.get("manufacturer"), probe_label)
-        _record(ev.data.get("make"), probe_label)
+        _record(ev.data.get("manufacturer"), probe_label, kind)
+        _record(ev.data.get("make"), probe_label, kind)
 
     return extracted
 
