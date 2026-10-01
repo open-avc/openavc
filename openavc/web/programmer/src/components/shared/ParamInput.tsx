@@ -12,6 +12,7 @@ import { ParamCombobox } from "./ParamCombobox";
 import { SearchableSelect } from "./SearchableSelect";
 import {
   childSchemaOptions,
+  marksControls,
   findChildByValue,
   normalizeOptionList,
   parseStateOptionList,
@@ -262,8 +263,12 @@ export function ParamInput({
         comboOptions = childSchemaOptions(chosen?.schema, optionsFrom);
         if (children !== undefined && !chosen) {
           comboHint = `No "${sv}" found. Type the control name.`;
-        } else if (chosen && comboOptions.length === 0 && childSchemaOptions(chosen.schema).length > 0) {
-          comboHint = `${chosen.display_name || sv} has no controls this command works on.`;
+        } else if (chosen && comboOptions.length === 0) {
+          if (childSchemaOptions(chosen.schema).length > 0) {
+            comboHint = `${chosen.display_name || sv} has no controls this command works on.`;
+          } else if (marksControls(chosen.schema)) {
+            comboHint = `${chosen.display_name || sv} has no settable controls.`;
+          }
         }
       }
     }

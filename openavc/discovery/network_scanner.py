@@ -70,6 +70,9 @@ def get_network_adapters() -> list[dict[str, Any]]:
         [{"name": "Ethernet 2", "ip": "192.168.1.50", "subnet": "192.168.1.0/24",
           "mac": "aa:bb:cc:dd:ee:ff", "link": True}, ...]
 
+    ``name`` is the OS's own name for the adapter (Windows' connection name),
+    else ifaddr's, which on Windows is the hardware description.
+
     Excludes loopback, link-local, virtual adapters, and IPv6. An adapter with
     no link is listed with ``link: False``: it can still be chosen as the
     control interface (a port about to be cabled), but a scan skips it.
@@ -104,21 +107,26 @@ def get_network_adapters() -> list[dict[str, Any]]:
     except OSError as exc:
         log.warning("Failed to detect network adapters: %s", exc)
 
-    # Enrich with MAC addresses via psutil (if available), joined by address:
-    # on Windows psutil names an adapter "Ethernet" where ifaddr says
-    # "Realtek ... Controller", so a join by name never matches there.
+    # Name each adapter the way the OS does, and add its MAC, from psutil
+    # (if available), joined by address: on Windows psutil says "Ethernet"
+    # where ifaddr says "Realtek ... Controller", so a join by name never
+    # matches there. The virtual filter above still reads ifaddr's
+    # description ("Hyper-V Virtual Ethernet Adapter").
     try:
         import psutil
         mac_by_ip: dict[str, str] = {}
-        for addrs in psutil.net_if_addrs().values():
+        name_by_ip: dict[str, str] = {}
+        for name, addrs in psutil.net_if_addrs().items():
             mac = next(
                 (a.address for a in addrs if a.family == psutil.AF_LINK), ""
             )
             for a in addrs:
                 if a.family == socket.AF_INET:
                     mac_by_ip[a.address] = mac
+                    name_by_ip[a.address] = name
         for entry in adapters:
             entry["mac"] = mac_by_ip.get(entry["ip"], "")
+            entry["name"] = name_by_ip.get(entry["ip"]) or entry["name"]
     except ImportError:
         for entry in adapters:
             entry.setdefault("mac", "")

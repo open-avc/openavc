@@ -175,6 +175,14 @@ export function parseStateOptionRows(raw: unknown): OptionRow[] {
 // control the moment it shipped.
 const PLATFORM_CHILD_KEYS = CHILD_RESERVED_PROPS;
 
+/** Whether a child's schema says which of its vars are controls: any var
+ * carries a `control` flag, true or false. */
+export function marksControls(
+  schema: Record<string, ChildEntityStateVarDef> | undefined,
+): boolean {
+  return Object.values(schema ?? {}).some((def) => typeof def?.control === "boolean");
+}
+
 /**
  * Build the option list for a param that cascades off a sibling child's
  * schema (`options_from: { param, source: "child_schema" }`).
@@ -184,9 +192,11 @@ const PLATFORM_CHILD_KEYS = CHILD_RESERVED_PROPS;
  * controls as options. A driver can mark which state vars are settable
  * controls with `control: true`; when any entry does, only those are offered
  * (keeps a Q-SYS component's real controls separate from its metadata /
- * display-mirror vars). When nothing is flagged, every key except the
- * platform-managed `online` / `label` is offered, so a driver that hasn't
- * opted in still gets a usable list.
+ * display-mirror vars). A child that marks vars `control: false` and none
+ * `true` (a meter) has no controls, so it offers nothing. Only a child that
+ * marks nothing either way falls back to every key except the
+ * platform-managed `online` / `label`, so a driver that hasn't opted in
+ * still gets a usable list.
  *
  * A command that works on only some controls narrows the list with
  * `options_from.types` / `options_from.units` (a toggle takes `boolean`, a
@@ -203,7 +213,7 @@ export function childSchemaOptions(
   if (!schema) return [];
   const entries = Object.entries(schema);
   const flagged = entries.filter(([, def]) => def && def.control === true);
-  const offered = flagged.length > 0
+  const offered = flagged.length > 0 || marksControls(schema)
     ? flagged
     : entries.filter(([key]) => !PLATFORM_CHILD_KEYS.has(key));
   const units = narrow?.units?.map((u) => u.trim().toLowerCase());

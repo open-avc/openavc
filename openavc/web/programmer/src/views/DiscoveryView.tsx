@@ -25,6 +25,7 @@ import { useDiscoveryStore } from "../store/discoveryStore";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useAuditStore } from "../store/auditStore";
+import { useDriverBuilderStore } from "../store/driverBuilderStore";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
 import type { DriverInfo, CommunityDriver } from "../api/types";
@@ -220,8 +221,10 @@ export function DiscoveryPanel() {
     () => localStorage.getItem("openavc_discovery_extra_subnet") || ""
   );
 
-  // Driver catalogs (resolved once, used to label candidates and to route Add → install vs add)
-  const [installedDrivers, setInstalledDrivers] = useState<DriverInfo[]>([]);
+  // Driver catalogs, used to label candidates and to route Add → install vs
+  // add. The registered list is the store's, which drivers.changed refreshes,
+  // so a driver installed anywhere turns a card's Install & Add into Add.
+  const installedDrivers = useDriverBuilderStore((s) => s.registeredDrivers);
   const [communityDrivers, setCommunityDrivers] = useState<CommunityDriver[]>([]);
 
   // Settings state. The stored SNMP community is a credential the config
@@ -302,7 +305,7 @@ export function DiscoveryPanel() {
         }).catch(() => setAdapterLabel(ip));
       }
     }).catch(() => {});
-    api.listDrivers().then(setInstalledDrivers).catch(console.error);
+    useDriverBuilderStore.getState().loadRegisteredDrivers().catch(console.error);
     api.fetchCommunityDrivers().then(setCommunityDrivers).catch(console.error);
   }, [setDevices, setStatus, setPortLabels, setWarnings]);
 
@@ -968,6 +971,13 @@ function DeviceCard({
 }) {
   const [showWhy, setShowWhy] = useState(false);
   const [addedDevice, setAddedDevice] = useState<{ name: string; deviceId?: string } | null>(null);
+  // The add is written server-side, and this tab skips its own
+  // project.reloaded, so re-sync the project store here or Devices still
+  // lists the project without it.
+  const handleDeviceAdded = useCallback((info: { name: string; deviceId?: string }) => {
+    setAddedDevice(info);
+    useProjectStore.getState().load().catch(console.error);
+  }, []);
 
   const ident = device.identification;
   const state: DeviceState = ident?.state ?? "unknown";
@@ -1126,7 +1136,7 @@ function DeviceCard({
               device={device}
               installedDrivers={installedDrivers}
               driverNameLookup={driverNameLookup}
-              onDeviceAdded={setAddedDevice}
+              onDeviceAdded={handleDeviceAdded}
               onDeviceUpdated={onDeviceUpdated}
               onHide={onHide}
             />

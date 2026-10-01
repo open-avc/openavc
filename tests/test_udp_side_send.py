@@ -271,6 +271,19 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+async def _until(condition, timeout: float = 10.0) -> bool:
+    """Wait for what the simulator should have received. A loaded machine can
+    take far longer than an idle one, so the bound is generous; the caller's
+    assertions say what never arrived."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not condition():
+        if loop.time() > deadline:
+            return False
+        await asyncio.sleep(0.01)
+    return True
+
+
 def test_a_tcp_device_with_udp_commands_receives_datagrams_on_its_port():
     async def scenario():
         port = _free_port()
@@ -283,22 +296,22 @@ def test_a_tcp_device_with_udp_commands_receives_datagrams_on_its_port():
                 sock.sendto(MAGIC, ("127.0.0.1", port))
             finally:
                 sock.close()
-            for _ in range(50):
-                await asyncio.sleep(0.02)
-                if sim.get_state("power") is True and sim.get_state("greeting") == "bob":
-                    break
+            await _until(lambda: sim.get_state("power") is True
+                         and sim.get_state("greeting") == "bob")
             log = sim.get_protocol_log()
             # The TCP server is still the main link.
             reader, writer = await asyncio.open_connection("127.0.0.1", port)
             writer.write(b"BEEP\r")
             await writer.drain()
-            await asyncio.sleep(0.05)
+            beeped = await _until(lambda: any(
+                "BEEP" in e["data_text"] for e in sim.get_protocol_log()))
             writer.close()
-            return sim.get_state("greeting"), sim.get_state("power"), log
+            return sim.get_state("greeting"), sim.get_state("power"), log, beeped
         finally:
             await sim.stop()
 
-    greeting, power, log = asyncio.run(scenario())
+    greeting, power, log, beeped = asyncio.run(scenario())
+    assert beeped, "the TCP link still takes commands"
     assert greeting == "bob", "the payload ran through the command pipeline"
     assert power is True, "the magic packet applied the wake's declared sets"
     directions = [(e["direction"], e["data_text"][:9]) for e in log]

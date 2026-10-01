@@ -711,7 +711,8 @@ export interface ChildEntityStateVarDef {
   // mirror or metadata). A command param that cascades off this child type
   // (`options_from: { source: "child_schema" }`) offers only `control: true`
   // vars when any are flagged, so the picker shows real controls rather than
-  // every state key. Optional — when no var on a child is flagged, the
+  // every state key. A child with vars marked `false` and none `true` offers
+  // nothing. Optional — when no var on a child carries the flag at all, the
   // cascade offers all non-platform keys.
   control?: boolean;
 }

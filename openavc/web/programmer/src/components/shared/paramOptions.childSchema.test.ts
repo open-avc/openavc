@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ChildEntityStateVarDef } from "../../api/types";
-import { childSchemaOptions } from "./paramOptions";
+import { childSchemaOptions, marksControls } from "./paramOptions";
 
 // One block of an invented DSP, the way a driver describes it: two levels in
 // dB, two on/off controls, a delay in ms, and a read-only meter.
@@ -49,5 +49,24 @@ describe("the controls a cascade offers", () => {
       level: { type: "number", unit: "dB" },
     };
     expect(values(childSchemaOptions(unflagged, { types: ["boolean"] }))).toEqual(["mute"]);
+  });
+
+  it("offers nothing from a child whose vars are all marked not a control", () => {
+    // A meter block: readings marked control: false beside summary vars that
+    // say nothing. It has no controls, narrowed or not.
+    const meter: Record<string, ChildEntityStateVarDef> = {
+      online: { type: "boolean" },
+      name: { type: "string", label: "Name" },
+      responding: { type: "boolean", label: "Responding" },
+      peak: { type: "number", label: "Peak", unit: "dB", control: false },
+    };
+    expect(childSchemaOptions(meter)).toEqual([]);
+    expect(childSchemaOptions(meter, { types: ["boolean"] })).toEqual([]);
+    expect(marksControls(meter)).toBe(true);
+  });
+
+  it("says a child marks nothing when no var carries the flag", () => {
+    expect(marksControls({ level: { type: "number" } })).toBe(false);
+    expect(marksControls(undefined)).toBe(false);
   });
 });

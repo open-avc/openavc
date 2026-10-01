@@ -444,6 +444,33 @@ class TestAdaptersWithNoLink:
             "192.168.1.78": (True, "AA-00-00-00-00-03"),
         }
 
+    def test_the_picker_names_each_adapter_the_way_the_os_does(self, monkeypatch):
+        from openavc.discovery.network_scanner import get_network_adapters
+
+        self._fake_modules(monkeypatch)
+        names = {a["ip"]: a["name"] for a in get_network_adapters()}
+        assert names == {
+            "10.20.0.5": "Ethernet",
+            "192.168.1.123": "Ethernet 2",
+            "192.168.1.78": "Wi-Fi",
+        }
+
+    def test_an_adapter_keeps_its_description_when_psutil_cannot_name_it(self, monkeypatch):
+        import sys
+
+        from openavc.discovery.network_scanner import get_network_adapters
+
+        self._fake_modules(monkeypatch)
+
+        def no_access():
+            raise OSError("no access")
+
+        monkeypatch.setattr(sys.modules["psutil"], "net_if_addrs", no_access)
+        names = [a["name"] for a in get_network_adapters()]
+        assert names == [
+            "Acme 2.5GbE Controller", "Acme USB Ethernet Adapter", "Acme Wireless AX",
+        ]
+
     def test_nothing_is_hidden_when_link_state_is_unknown(self, monkeypatch):
         self._fake_modules(monkeypatch, psutil_fails=True)
         assert get_local_subnets() == ["10.20.0.0/24", "192.168.1.0/24"]

@@ -1161,6 +1161,18 @@ class BaseDriver(ABC):
         # Get control interface binding (if configured)
         from openavc.system_config import get_system_config
         control_ip = get_system_config().get("network", "control_interface")
+        # A device on this machine (a simulator, a local service) is reached
+        # over loopback, which a socket bound to an adapter's address cannot
+        # do: Windows refuses the connect (WinError 1214).
+        if control_ip:
+            import ipaddress
+            host = str(self.config.get("host", "")).strip().strip("[]").lower()
+            try:
+                loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                loopback = False
+            if loopback:
+                control_ip = None
 
         if transport_type == "tcp":
             from openavc.transport.tcp import TCPTransport
