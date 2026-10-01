@@ -239,7 +239,7 @@ OpenAVC includes a network discovery feature to help AV integrators find devices
 During a discovery scan, OpenAVC will:
 
 1. **Ping sweep** the local subnet(s) using ICMP echo requests. The server prefers an unprivileged ICMP datagram socket where the OS allows it, uses a raw ICMP socket where one is available (the packaged Linux service and Docker image are granted the `CAP_NET_RAW` capability for this), and falls back to the system `ping` command otherwise. Firewalls on the AV VLAN must permit ICMP echo request/reply for discovery to see hosts; a host that drops echo is still port-scanned when the ARP table or the mDNS / SSDP listeners find it.
-2. **TCP port scan** each responding host, on a list of about 50 TCP ports assembled at scan time. It is the sum of three things: a five-port baseline (22, 23, 80, 443, 8080) for banner reading and web management, every port declared by the drivers installed on this instance, and every port declared by the community driver catalog. The third source is worth noting, because it is not what most people assume: the catalog contributes the ports of drivers you have **not** installed, so the list does not narrow to the equipment in your project, and it grows as the catalog grows. Thorough depth adds eight generic alternate web, RTSP and management ports (554, 3000, 4000, 5060, 8443, 8888, 9000, 10000), for about 57 in total.
+2. **TCP port scan** each responding host, on a list of about 55 TCP ports assembled at scan time. It is the sum of three things: a five-port baseline (22, 23, 80, 443, 8080) for banner reading and web management, every port declared by the drivers installed on this instance, and every port declared by the community driver catalog. The third source is worth noting, because it is not what most people assume: the catalog contributes the ports of drivers you have **not** installed, so the list does not narrow to the equipment in your project, and it grows as the catalog grows. Thorough depth adds eight generic alternate web, RTSP and management ports (554, 3000, 4000, 5060, 8443, 8888, 9000, 10000), for about 63 in total.
 3. **SNMP query** (v2c, community string `public`, read-only) on port 161
 4. **mDNS / DNS-SD query** on multicast group 224.0.0.251:5353. Alongside the service types that installed drivers declare, the scan sends the standard DNS-SD meta-query (`_services._dns-sd._udp.local.`), which asks the segment to name every service type advertised on it rather than only the AV ones.
 5. **SSDP M-SEARCH** on multicast group 239.255.255.250:1900
@@ -265,7 +265,7 @@ How hard a scan hits the network is set by two controls in Discovery Settings: t
 | Time cap | 120 s | 300 s | 600 s | unchanged |
 | Concurrent pings | 50 | 50 | 50 | 10 |
 | Hosts port-scanned at once | 24 | 16 | 12 | 3 |
-| TCP ports per host | ~50 | ~50 | ~57 | unchanged |
+| TCP ports per host | ~55 | ~55 | ~63 | unchanged |
 | NetBIOS sweep | no | yes | yes | unchanged |
 | SNMP ENTITY-MIB detail | no | yes | yes | unchanged |
 
@@ -295,6 +295,23 @@ If a scan needs approval, the practical request is a scoped exception for one ho
 - Pin the control adapter in Settings > Network, so no scan traffic leaves the AV VLAN.
 
 There is no setting that disables the ping sweep or the port scan on their own; between them, they are what a scan is. Where a site will not permit them at all, discovery can be skipped entirely: devices are added by IP address in the Programmer, which needs no scanning and is a normal way to build a project.
+
+### Device audit (on-demand only)
+
+A [device audit](device-audit.md) tests one device and its driver, and runs only when someone starts it in the Programmer. It is aimed at one address, and everything it sends goes to that address, except its mDNS and SSDP queries and one HTTPS request to `raw.githubusercontent.com` for the driver catalog. With a control adapter pinned in Settings > Network, it all leaves through that adapter.
+
+Its network check sends, to the one device:
+
+1. A ping, a reverse DNS lookup, and a NetBIOS name query (UDP 137).
+2. A TCP connection to each port on the Thorough discovery list, started 50 ms apart. The Extended option adds every port from 1 to 1024.
+3. On each open port, a connection that sends nothing and listens for a few seconds; on web ports, `GET /` and a TLS handshake for the certificate.
+4. SNMP v2c reads (UDP 161), community `public` and any the integrator enters. The Extended option reads every value the device offers, up to a limit.
+5. mDNS and SSDP queries on their multicast groups, and listening for mDNS, SSDP and AMX DDP announcements until the audit ends. Only the audited device's announcements are kept.
+6. The driver-declared TCP and UDP identification probes of the community catalog, sent to the device's address only.
+
+The driver test that follows connects to the device the way a configured device does. During its power and cable tests, the device is pinged once a second.
+
+To network monitoring this is a port scan of one host. It does not sweep the subnet.
 
 ### Internet access (optional)
 
@@ -585,7 +602,7 @@ Add to the minimum rules:
 | Rule | Direction | Source | Destination | Port | Protocol |
 |------|-----------|--------|-------------|------|----------|
 | ICMP (discovery) | Outbound | OpenAVC host | Local subnet | ICMP | Echo request |
-| TCP port scan (discovery) | Outbound | OpenAVC host | Responding hosts on local subnet | ~50 ports per host | TCP SYN. The baseline 22, 23, 80, 443, 8080 plus every port declared by the installed drivers and by the community driver catalog; Thorough depth adds eight more |
+| TCP port scan (discovery) | Outbound | OpenAVC host | Responding hosts on local subnet | ~55 ports per host | TCP SYN. The baseline 22, 23, 80, 443, 8080 plus every port declared by the installed drivers and by the community driver catalog; Thorough depth adds eight more |
 | NetBIOS (discovery) | Outbound | OpenAVC host | Local subnet | 137/udp | NetBIOS name query (Standard / Thorough only) |
 | SNMP (discovery) | Outbound | OpenAVC host | Local subnet | 161/udp | SNMP v2c |
 | mDNS (discovery) | Outbound + Inbound | OpenAVC host | 224.0.0.251 | 5353/udp | mDNS |
@@ -662,7 +679,8 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 | OpenAVC staff access | None, ever, until granted | Nobody at OpenAVC can reach a paired system by default. Access comes only from a support session your own account creates: one named system, one support request, one to twenty-four hours, visible while live, revocable instantly, and every action recorded against the named staff member in your portal. See Remote access tunnels. |
 | Privileged access | None required | Runs as standard user, no root/admin |
 | External dependencies at runtime | None | No external database, message broker, or third-party service required |
-| Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). A scan performs a ping sweep, a ~50-port TCP scan of responding hosts, SNMP and NetBIOS queries, multicast queries and directed-broadcast probes. See Discovery scan intensity and How a discovery scan looks to network monitoring. |
+| Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). A scan performs a ping sweep, a ~55-port TCP scan of responding hosts, SNMP and NetBIOS queries, multicast queries and directed-broadcast probes. See Discovery scan intensity and How a discovery scan looks to network monitoring. |
+| Device audits | On-demand only | Started by an integrator in the Programmer, aimed at one device: a port scan of that host, its web pages, SNMP, the drivers' identification probes, then a driver test against it. See Device audit. |
 | Background multicast/broadcast | mDNS advertising only | mDNS on 5353, on by default, re-announcing every 60 s (disable with `discovery.advertise: false`). ISC UDP broadcast on 19872 is off unless ISC is enabled in the project. |
 | Data exfiltration risk | Low | No data leaves the site unless cloud is explicitly paired. When paired: automatic telemetry plus on-demand config pulls (both itemized above). |
 
