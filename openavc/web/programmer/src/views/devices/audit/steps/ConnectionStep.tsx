@@ -20,7 +20,7 @@ import {
   type TableRow,
 } from "../../ConfigTableEditor";
 import { currentRun, displayBytes, previewStageLabel } from "../auditHelpers";
-import { ErrorLine } from "../auditParts";
+import { BackButton, ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 
 /** The config values a form starts from: the driver's defaults, then the
@@ -274,6 +274,9 @@ export function ConnectionStep() {
       {connection && <PreviewPanel connection={connection} />}
 
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
+        {/* Another driver can be chosen until this one has connected; after
+            that, Test another driver on the report is the way. */}
+        <BackButton to={run?.started_at ? "listen" : "driver"} disabled={busy} />
         <button
           type="button"
           onClick={() => void proceed()}

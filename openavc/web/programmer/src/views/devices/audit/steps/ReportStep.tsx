@@ -4,7 +4,7 @@ import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
 import { summaryLines } from "../auditHelpers";
-import { ErrorLine } from "../auditParts";
+import { BackButton, ErrorLine } from "../auditParts";
 import {
   buttonStyle,
   headingStyle,
@@ -214,6 +214,7 @@ export function ReportStep() {
       )}
 
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+        <BackButton to={session.no_driver ? "driver" : "outage"} disabled={!active || busy !== ""} />
         <button
           type="button"
           onClick={() => void download()}

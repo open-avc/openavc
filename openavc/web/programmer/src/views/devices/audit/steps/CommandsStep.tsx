@@ -42,7 +42,7 @@ import {
   trialOutcome,
   type CommandStatusKey,
 } from "../auditHelpers";
-import { ErrorLine } from "../auditParts";
+import { BackButton, ErrorLine } from "../auditParts";
 import { SettingsPanel } from "./SettingsPanel";
 import {
   buttonStyle,
@@ -342,6 +342,7 @@ export function CommandsStep() {
       )}
 
       <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
+        <BackButton to="listen" disabled={working} />
         <button
           type="button"
           onClick={() => useAuditStore.getState().setStep("outage")}

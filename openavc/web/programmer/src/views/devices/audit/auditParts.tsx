@@ -1,3 +1,8 @@
+import { ArrowLeft } from "lucide-react";
+import { useAuditStore } from "../../../store/auditStore";
+import { AUDIT_STEPS, type AuditStep } from "./auditHelpers";
+import { buttonStyle } from "./auditStyles";
+
 /** Small pieces the audit wizard's steps share. */
 
 export function ErrorLine({ text }: { text: string }) {
@@ -16,5 +21,21 @@ export function ErrorLine({ text }: { text: string }) {
     >
       {text}
     </div>
+  );
+}
+
+/** Back to an earlier step. The step rail shows where the audit is but does
+ *  not move it, so each step that can go back carries this. */
+export function BackButton({ to, disabled = false }: { to: AuditStep; disabled?: boolean }) {
+  const label = AUDIT_STEPS.find((s) => s.key === to)?.label ?? "";
+  return (
+    <button
+      type="button"
+      onClick={() => useAuditStore.getState().setStep(to)}
+      disabled={disabled}
+      style={buttonStyle("muted", disabled)}
+    >
+      <ArrowLeft size={14} /> Back to {label}
+    </button>
   );
 }

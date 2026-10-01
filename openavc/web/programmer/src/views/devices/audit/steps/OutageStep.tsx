@@ -4,7 +4,7 @@ import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
 import { currentRun, outageNextMark, outageNowText, outageProgress } from "../auditHelpers";
-import { ErrorLine } from "../auditParts";
+import { BackButton, ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 
 type Call = () => Promise<{ session: audit.AuditSessionState }>;
@@ -197,7 +197,8 @@ export function OutageStep() {
         );
       })}
 
-      <div style={{ marginTop: "var(--space-lg)" }}>
+      <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
+        <BackButton to="commands" disabled={!!running} />
         <button
           type="button"
           onClick={() => useAuditStore.getState().setStep("report")}

@@ -229,6 +229,33 @@ export function preselect(
   return { brand: entry.brand, model: matchModel(entry.models, reported.model ?? ""), driverId };
 }
 
+/**
+ * What the person picked, when they come back to "Which driver?": the
+ * manufacturer and model they entered, and the driver they chose while it has
+ * not connected yet (or their answer that there is none). Null on a first
+ * visit, and after Test another driver, where the step starts again from the
+ * network check's pick. A null model is "My model is not listed".
+ */
+export function returningPick(
+  options: DriverOption[],
+  entered: { manufacturer?: string; model?: string } | undefined,
+  pendingDriver: string | null,
+  noDriver: boolean,
+): { brand: string; model: string | null; typedModel: string; driverId: string } | null {
+  const maker = entered?.manufacturer?.trim() ?? "";
+  if (!maker || (!pendingDriver && !noDriver)) return null;
+  const brand = manufacturers(options).find((b) => same(b, maker));
+  if (!brand) return null;
+  const typed = entered?.model?.trim() ?? "";
+  const listed = modelsFor(options, brand).find((m) => same(m, typed)) ?? null;
+  return {
+    brand,
+    model: listed ?? (typed ? null : ""),
+    typedModel: listed ? "" : typed,
+    driverId: pendingDriver ?? "",
+  };
+}
+
 /** The listed model a reported model string names, if any. A device often
  *  reports more than the model ("DM75E AllShare1.0"), so a listed model the
  *  report starts with, followed by a space, counts. */

@@ -6,6 +6,7 @@ import { parseApiError } from "../../../../api/errors";
 import type { CommunityDriver, DriverInfo, InstalledDriver } from "../../../../api/types";
 import { useAuditStore } from "../../../../store/auditStore";
 import { useConnectionStore } from "../../../../store/connectionStore";
+import { useDriverBuilderStore } from "../../../../store/driverBuilderStore";
 import {
   buildDriverOptions,
   confidenceText,
@@ -15,9 +16,11 @@ import {
   modelsFor,
   optionConfidence,
   preselect,
+  returningPick,
   type DriverOption,
 } from "../driverPicker";
-import { ErrorLine } from "../auditParts";
+import { currentRun } from "../auditHelpers";
+import { BackButton, ErrorLine } from "../auditParts";
 import {
   buttonStyle,
   headingStyle,
@@ -102,6 +105,21 @@ export function DriverStep() {
     if (device?.manufacturer) {
       setFirmware(device.firmware ?? "");
     }
+    // Back from a later step: what the person picked, not the verdict's guess.
+    const run = currentRun(session);
+    const back = returningPick(
+      options,
+      device,
+      run && !run.started_at ? run.choice.driver_id : null,
+      !!session.no_driver,
+    );
+    if (back) {
+      setBrand(back.brand);
+      setModel(back.model ?? NOT_LISTED);
+      setTypedModel(back.typedModel);
+      setDriverId(back.driverId);
+      return;
+    }
     // From a device page, the driver that device uses; otherwise the verdict's.
     const pick = preselect(
       options,
@@ -126,10 +144,12 @@ export function DriverStep() {
     setBusy("install");
     try {
       const url = `${CATALOG_BASE}${option.file}`;
+      // Through the store, so Drivers > Installed and Add Device see it too.
+      const drivers = useDriverBuilderStore.getState();
       if (option.installed) {
-        await driversApi.updateCommunityDriver(option.id, url, option.minPlatform);
+        await drivers.updateDriver(option.id, url, option.minPlatform);
       } else {
-        await driversApi.installCommunityDriver(option.id, url, option.minPlatform);
+        await drivers.installDriver(option.id, url, option.minPlatform);
       }
       await loadInstalled();
     } catch (e) {
@@ -310,6 +330,7 @@ export function DriverStep() {
           alignItems: "center",
         }}
       >
+        <BackButton to="network" disabled={busy !== ""} />
         <button
           type="button"
           onClick={() => void submit(chosen?.id ?? null)}

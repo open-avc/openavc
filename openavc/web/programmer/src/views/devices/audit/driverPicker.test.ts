@@ -9,6 +9,7 @@ import {
   modelsFor,
   optionConfidence,
   preselect,
+  returningPick,
 } from "./driverPicker";
 
 function catalogDriver(partial: Partial<CommunityDriver>): CommunityDriver {
@@ -124,6 +125,38 @@ describe("the first selection", () => {
     expect(matchModel(["W-100"], "w-100")).toBe("W-100");
     expect(matchModel(["W-100"], "W-1000")).toBeNull();
     expect(matchModel(["W-100"], "")).toBeNull();
+  });
+});
+
+describe("coming back to the step", () => {
+  it("shows the driver chosen before it connected, under what was entered", () => {
+    expect(
+      returningPick(options, { manufacturer: "acme", model: "w-200" }, "acme_display", false),
+    ).toEqual({ brand: "Acme", model: "W-200", typedModel: "", driverId: "acme_display" });
+  });
+
+  it("keeps a model typed in because it was not listed", () => {
+    expect(returningPick(options, { manufacturer: "Acme", model: "W-900" }, "acme_display", false)).toEqual({
+      brand: "Acme",
+      model: null,
+      typedModel: "W-900",
+      driverId: "acme_display",
+    });
+  });
+
+  it("shows the make and model after the answer that there is no driver", () => {
+    expect(returningPick(options, { manufacturer: "Acme", model: "" }, null, true)).toEqual({
+      brand: "Acme",
+      model: "",
+      typedModel: "",
+      driverId: "",
+    });
+  });
+
+  it("starts from the network check on a first visit and after another driver", () => {
+    expect(returningPick(options, undefined, null, false)).toBeNull();
+    expect(returningPick(options, { manufacturer: "Acme", model: "W-100" }, null, false)).toBeNull();
+    expect(returningPick(options, { manufacturer: "Nobody", model: "" }, "acme_display", false)).toBeNull();
   });
 });
 
