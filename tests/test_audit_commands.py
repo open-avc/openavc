@@ -835,7 +835,13 @@ async def test_the_pickers_read_the_audited_driver(wired):  # noqa: F811
         await routes.connect_and_listen(session_id)
         session = wired.manager.current()
         await _until(lambda: session.runs[0].listen.connected_at is not None)
-        await _until(lambda: "presets" in session.runs[0].listen.sandbox.device_state())
+        # Wait for the value, not the key: every declared variable exists from
+        # construction, holding None, and connected_at is set before
+        # _initial_sync runs. The preset list is written after the zone is
+        # registered, so once it holds a value both pickers have something.
+        await _until(
+            lambda: session.runs[0].listen.sandbox.device_state().get("presets") is not None
+        )
 
         listed = await routes.list_audit_children(session_id, "zone")
         assert [(c["local_id"], c["display_name"]) for c in listed["children"]] == [(2, "Lobby")]

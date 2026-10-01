@@ -85,16 +85,21 @@ def test_a_file_rewritten_within_the_same_second_is_not_cached_forever(plugin_cl
     """
     import os
 
+    # Both saves are pinned inside one whole second. Taking that second from
+    # the clock lost the race whenever it ticked over between the fixture's
+    # write and the rewrite below.
+    second = 1_700_000_000
+    path = _panel_asset(plugin_client)
+    os.utime(path, (second + 0.25, second + 0.25))
+
     first = plugin_client.get("/api/plugins/demo_plugin/panel/widget.js")
     stale_etag = first.headers["etag"]
     stale_date = first.headers["last-modified"]
 
     # Save it again inside the same second: the mtime moves by a fraction, so
     # the whole-second date the caller holds is still current.
-    path = _panel_asset(plugin_client)
     path.write_text("console.log('v2');", encoding="utf-8")
-    stat = path.stat()
-    os.utime(path, (stat.st_atime, int(stat.st_mtime) + 0.5))
+    os.utime(path, (second + 0.75, second + 0.75))
     assert plugin_client.get(
         "/api/plugins/demo_plugin/panel/widget.js"
     ).headers["last-modified"] == stale_date, "the date has to be unchanged for this to be the case it is about"
