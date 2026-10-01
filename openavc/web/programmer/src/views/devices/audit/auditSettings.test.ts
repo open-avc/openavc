@@ -11,6 +11,7 @@ import {
   driverLines,
   mergeSettings,
   needsPuttingBack,
+  settingsCount,
   suggestedSetting,
 } from "./auditHelpers";
 
@@ -26,6 +27,13 @@ function trial(extra: Partial<AuditSettingTrial> = {}): AuditSettingTrial {
 }
 
 describe("device settings", () => {
+  it("counts the settings tried, each once", () => {
+    const catalog = [{ key: "a" }, { key: "b" }, { key: "c" }] as AuditSettingInfo[];
+    expect(settingsCount({ catalog, trials: [] })).toBe("3 settings, none tried yet");
+    expect(settingsCount({ catalog, trials: [{ key: "a" }, { key: "a" }, { key: "c" }] }))
+      .toBe("2 of 3 settings tried");
+    expect(settingsCount({ catalog: catalog.slice(0, 1), trials: [] })).toBe("1 setting, none tried yet");
+  });
   it("merges an update by trial number and keeps the list", () => {
     const catalog = [{
       key: "device_name", label: "Device name", help: "", definition: { type: "string" },

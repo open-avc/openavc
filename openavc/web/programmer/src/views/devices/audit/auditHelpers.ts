@@ -288,6 +288,17 @@ export function commandProgress(catalog: AuditCommandInfo[], trials: AuditComman
 
 /** The device setting to try first: a name-like one (a string) if the
  *  audit can write one, else the first it can write; null when it can write none. */
+/** How many of the driver's settings have been written: "12 settings, none
+ *  tried yet", "2 of 12 settings tried" (a setting counts once however many
+ *  times it was written). */
+export function settingsCount(settings: { catalog: AuditSettingInfo[]; trials: { key: string }[] }): string {
+  const n = settings.catalog.length;
+  const tried = new Set(settings.trials.map((t) => t.key)).size;
+  return tried === 0
+    ? `${plural(n, "setting", "settings")}, none tried yet`
+    : `${tried} of ${plural(n, "setting", "settings")} tried`;
+}
+
 export function suggestedSetting(catalog: AuditSettingInfo[]): string | null {
   const writable = catalog.filter((s) => s.can_write);
   const text = writable.find((s) => (s.definition.type ?? "string") === "string");
