@@ -112,12 +112,21 @@ def driver():
     get_secret_registry().clear()
 
 
-async def _fake_device():
-    """A device with a power flag and a volume, answering the driver's words."""
-    state = {"power": "off", "volume": "20"}
+async def _fake_device(reset_next_connection: bool = False):
+    """A device with a power flag and a volume, answering the driver's words.
+
+    ``reset_next_connection``: after a BLIP, close the next connection too,
+    once, after its first line (a device still booting resets the reconnect).
+    """
+    state = {"power": "off", "volume": "20", "reset_next": False}
 
     async def handle(reader, writer):
         try:
+            if state["reset_next"]:
+                state["reset_next"] = False
+                await reader.readuntil(b"\r")
+                writer.close()
+                return
             while True:
                 line = (await reader.readuntil(b"\r")).decode().strip()
                 reply = b""
@@ -137,6 +146,7 @@ async def _fake_device():
                     # This unit has one input: it answers hdmi1 whatever it is asked.
                     reply = b"INP=hdmi1\rLAMP=450\r"
                 elif line in ("REBOOT", "BLIP"):
+                    state["reset_next"] = reset_next_connection and line == "BLIP"
                     writer.close()
                     return
                 if reply:
@@ -504,7 +514,8 @@ async def test_a_drop_inside_the_window_is_said_as_a_drop(driver):
         commands.end_now()
         await _until(lambda: trial.status == DONE)
         assert trial.restart is None
-        assert trial.drop["after"] >= 0 and trial.drop["back_after"] is not None
+        [drop] = trial.drops
+        assert drop["after"] >= 0 and drop["back_after"] is not None
         sentence = trial_sentence(trial.to_dict())
         assert "the connection dropped" in sentence and "the driver reconnected" in sentence
         # The reconnect count is the platform's, not a value the command moved.
@@ -513,6 +524,44 @@ async def test_a_drop_inside_the_window_is_said_as_a_drop(driver):
     finally:
         await run.stop()
         server.close()
+
+
+async def test_every_drop_in_the_window_is_said(driver):
+    """A device that resets the reconnect too (one still booting does) drops
+    twice in the window; both are recorded and said."""
+    server, port = await _fake_device(reset_next_connection=True)
+    session, run, _ = await _connected(port)
+    try:
+        commands = commands_for(session, run, window_seconds=15.0, flush_seconds=0.05)
+        trial = await commands.send("blip")
+        await _until(
+            lambda: len(trial.gone_and_back) == 2 and trial.gone_and_back[1][1] is not None,
+            timeout=15.0,
+        )
+        commands.end_now()
+        await _until(lambda: trial.status == DONE)
+        first, second = trial.drops
+        assert second["after"] >= first["after"] + first["back_after"]
+        assert second["back_after"] is not None
+        sentence = trial_sentence(trial.to_dict())
+        assert "the connection dropped" in sentence and "it dropped again" in sentence
+    finally:
+        await run.stop()
+        server.close()
+
+
+def test_the_drops_sentence():
+    from openavc.audit.commands import _drops_text
+
+    assert _drops_text([{"after": 41.9, "back_after": 8.3}]) == (
+        "the connection dropped 41.9 s after it was sent and the driver reconnected 8.3 s later"
+    )
+    assert _drops_text([
+        {"after": 41.9, "back_after": 8.3}, {"after": 54.9, "back_after": None},
+    ]) == (
+        "the connection dropped 41.9 s after it was sent and the driver reconnected 8.3 s later; "
+        "it dropped again 4.7 s after that and had not come back when the audit stopped watching"
+    )
 
 
 def test_a_value_that_ends_where_it_began_is_not_what_the_command_changed():

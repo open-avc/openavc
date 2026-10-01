@@ -380,8 +380,14 @@ class CommandTrial:
     refusals: dict[str, Any] = field(default_factory=dict)
     sent_nothing: bool | None = None
     restart: dict[str, Any] | None = None
-    # A drop inside the window of a command that does not declare a restart.
-    drop: dict[str, Any] | None = None
+    # Every drop inside the window, in order, with when the driver was back:
+    # [went, back or None]. A device rebooting can reset the first connection
+    # back too, so there can be more than one.
+    gone_and_back: list[list[float | None]] = field(default_factory=list)
+    # The drops inside the window of a command that does not declare a
+    # restart: [{"after", "back_after"}], seconds after the send and after
+    # the drop.
+    drops: list[dict[str, Any]] = field(default_factory=list)
     # The person's answer to "Did it happen?": {"answer", "note", "at"}.
     answer: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -442,7 +448,7 @@ class CommandTrial:
             "refusals": dict(self.refusals),
             "sent_nothing": self.sent_nothing,
             "restart": self.restart,
-            "drop": self.drop,
+            "drops": list(self.drops),
             "answer": dict(self.answer) if self.answer else None,
             **self.extra,
         }
@@ -715,11 +721,20 @@ class CommandPass:
                 trial.device_errors.append({"t": time.time(), "error": str(error or "")})
 
         def on_gone(_event: str, _payload: Any = None) -> None:
-            if trial.status != DONE and trial.went_away_at is None:
-                trial.went_away_at = time.time()
+            if trial.status == DONE:
+                return
+            now = time.time()
+            if trial.went_away_at is None:
+                trial.went_away_at = now
+            if not trial.gone_and_back or trial.gone_and_back[-1][1] is not None:
+                trial.gone_and_back.append([now, None])
 
         def on_back(_event: str, _payload: Any = None) -> None:
-            if trial.status == DONE or trial.went_away_at is None or trial.back_at is not None:
+            if trial.status == DONE or not trial.gone_and_back:
+                return
+            if trial.gone_and_back[-1][1] is None:
+                trial.gone_and_back[-1][1] = time.time()
+            if trial.back_at is not None:
                 return
             trial.back_at = time.time()
             if trial.declared.get("restarts_device_for") and trial.ends_at is not None:
@@ -887,12 +902,16 @@ class CommandPass:
         went = trial.went_away_at
         back = trial.back_at
         if went and not declared:
-            # The connection dropped while it was watched: say so, rather than
-            # letting the values a reconnect rewrites read as the command's.
-            trial.drop = {
-                "after": round(went - trial.sent_at, 1),
-                "back_after": round(back - went, 1) if back else None,
-            }
+            # The connection dropped while it was watched: say so, every time,
+            # rather than letting the values a reconnect rewrites read as the
+            # command's.
+            trial.drops = [
+                {
+                    "after": round(gone - trial.sent_at, 1),
+                    "back_after": round(again - gone, 1) if again else None,
+                }
+                for gone, again in trial.gone_and_back
+            ]
         if declared and not trial.error:
             trial.restart = {
                 "declared_seconds": declared,
@@ -1185,6 +1204,26 @@ def effect_sentence(effect: dict[str, Any]) -> str:
     )
 
 
+def _drops_text(drops: list[dict[str, Any]]) -> str:
+    """Each drop in a command's window, the later ones timed from the
+    reconnect before them (a device rebooting can reset that one too)."""
+    texts = []
+    for i, drop in enumerate(drops):
+        if i == 0:
+            head = f"the connection dropped {drop['after']} s after it was sent"
+        else:
+            prev = drops[i - 1]
+            since = max(round(drop["after"] - prev["after"] - (prev["back_after"] or 0), 1), 0.0)
+            head = f"it dropped again {since} s after that"
+        tail = (
+            f" and the driver reconnected {drop['back_after']} s later"
+            if drop["back_after"] is not None
+            else " and had not come back when the audit stopped watching"
+        )
+        texts.append(head + tail)
+    return "; ".join(texts)
+
+
 def trial_sentence(trial: dict[str, Any]) -> str:
     """What one command did, as the timeline, the wizard and the summary say
     it. Takes the trial as its record holds it (``report.json`` included)."""
@@ -1225,16 +1264,8 @@ def trial_sentence(trial: dict[str, Any]) -> str:
         if more > 0:
             texts.append(f"{more} more {'value' if more == 1 else 'values'} changed")
         parts.append(", ".join(texts))
-    if trial.get("drop"):
-        drop = trial["drop"]
-        parts.append(
-            f"the connection dropped {drop['after']} s after it was sent"
-            + (
-                f" and the driver reconnected {drop['back_after']} s later"
-                if drop["back_after"] is not None
-                else " and had not come back when the audit stopped watching"
-            )
-        )
+    if trial.get("drops"):
+        parts.append(_drops_text(trial["drops"]))
     if trial.get("restart"):
         r = trial["restart"]
         if r["back_after"] is not None:

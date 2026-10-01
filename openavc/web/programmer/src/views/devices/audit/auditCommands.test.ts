@@ -43,7 +43,7 @@ function trial(extra: Partial<AuditCommandTrial> = {}): AuditCommandTrial {
     traffic: { sent: 1, received: 1, entries: [] }, since_previous: null, extended: 0,
     stopped_early: false, changes: [], already_moving: [], moved: [], device_errors: [], effects: [],
     query: null, refusals: {},
-    sent_nothing: false, restart: null, summary: "", answer: null, ...extra,
+    sent_nothing: false, restart: null, drops: [], summary: "", answer: null, ...extra,
   };
 }
 

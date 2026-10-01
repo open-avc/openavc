@@ -375,9 +375,10 @@ export interface AuditCommandTrial {
     away_for: number | null;
     within_declared: boolean | null;
   } | null;
-  /** The connection dropped inside the window of a command that declares no
-   *  restart: seconds after the send, and after the drop until it was back. */
-  drop?: { after: number; back_after: number | null } | null;
+  /** Each time the connection dropped inside the window of a command that
+   *  declares no restart, in order: seconds after the send, and after the
+   *  drop until it was back. Empty when it stayed up. */
+  drops: { after: number; back_after: number | null }[];
   /** What it did, in a sentence, once its window closed ("" before). */
   summary: string;
   /** The person's answer to "Did it happen?", or null. */
