@@ -862,7 +862,7 @@ DEFS = {
             },
             'control': {
                 'type': 'boolean',
-                'doc': "Marks a settable control (not a read-only mirror or metadata). The UI Builder's value picker and the options_from: child_schema command cascade list flagged fields first.",
+                'doc': "Marks a settable control (not a read-only mirror or metadata). The UI Builder's value picker lists flagged fields first; an options_from: child_schema cascade offers only them (every field when a child marks none either way).",
             },
             'default': ANY,
             'cloud_priority': {
