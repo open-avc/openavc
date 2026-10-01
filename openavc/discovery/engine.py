@@ -786,7 +786,7 @@ class DiscoveryEngine:
             elif control_ip:
                 log.info("Control interface set to %s — filtering subnets to this adapter", control_ip)
             else:
-                log.info("No control interface set — scanning all physical adapters")
+                log.info("No control interface set — scanning every adapter that has a link")
             targets = subnets if subnets else get_local_subnets(
                 interface_ip=control_ip or None
             )
