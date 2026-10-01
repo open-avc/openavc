@@ -358,8 +358,15 @@ class ScanBlocked(RuntimeError):
 def _ip_in_subnets(ip: str, subnets: list[str]) -> bool:
     """True if ``ip`` parses as an address inside one of ``subnets``.
 
-    Keeps community Python discovery companions from fabricating device
-    records for IPs outside the scanned ranges (see ``_run_custom_probes``).
+    A scan contacts only addresses inside the subnets it was asked to scan.
+    The passive listeners hear devices anywhere on the attached networks, and
+    those are listed from what they announced, but nothing is sent to them: no
+    port scan, no driver probe, no UPnP description fetch. Without that, a scan
+    aimed at one address would probe every device that announced itself while
+    it listened, and a device that serves one control connection at a time
+    would lose its controller's. This also keeps community
+    Python discovery companions from fabricating device records for IPs
+    outside the scanned ranges (see ``_run_custom_probes``).
     A malformed ``ip`` or CIDR is treated as "not in range" — the parse is
     guarded so one bad value can't raise into the probe path.
     """
@@ -996,7 +1003,10 @@ class DiscoveryEngine:
         mdns_service_types = list(BASELINE_SERVICE_TYPES) + driver_service_types
 
         mdns_scanner = MDNSScanner(service_types=mdns_service_types, control_ip=control_ip)
-        ssdp_scanner = SSDPScanner(control_ip=control_ip)
+        ssdp_scanner = SSDPScanner(
+            control_ip=control_ip,
+            fetch_scope=lambda ip: _ip_in_subnets(ip, subnets),
+        )
         amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
 
         # Reachable from _run_scan so a truncated scan can still merge what the
@@ -1532,11 +1542,13 @@ class DiscoveryEngine:
         # custom-probe pass sees their open ports. "Not scanned yet" is
         # the test, not "no open ports": an mDNS SRV port already sits in
         # open_ports, and a device that drops ping but advertises one
-        # service must still have its other ports found and probed.
+        # service must still have its other ports found and probed. Only
+        # inside the scanned subnets (``_ip_in_subnets``).
         ping_found = set(alive_ips) if alive_ips else set()
         passive_only = [
             ip for ip, dev in self.results.items()
             if dev.alive and ip not in ping_found and ip not in self._port_scanned
+            and _ip_in_subnets(ip, self.scan_status.subnets)
         ]
         if passive_only:
             log.info(
@@ -1570,8 +1582,8 @@ class DiscoveryEngine:
             if spec is None:
                 continue
             tcp_jobs += sum(
-                1 for dev in self.results.values()
-                if spec.port in (dev.open_ports or [])
+                1 for ip, dev in self.results.items()
+                if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets)
             )
         return tcp_jobs, udp_sends, len(self._discovery_companions)
 
@@ -2040,7 +2052,7 @@ class DiscoveryEngine:
             for spec in tcp_specs:
                 hosts = [
                     ip for ip, dev in self.results.items()
-                    if spec.port in (dev.open_ports or [])
+                    if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets)
                 ]
                 for idx, ip in enumerate(hosts):
                     tcp_jobs.append(_run_one_tcp(spec, ip, idx))

@@ -255,10 +255,16 @@ class SSDPScanner:
         control_ip: str = "",
         capture: bool = False,
         on_message: Callable[[str, dict[str, Any]], None] | None = None,
+        fetch_scope: Callable[[str], bool] | None = None,
     ) -> None:
         """``control_ip``: bind outbound multicast to this interface IP.
         Empty = OS default route. Required for the multi-NIC AV scenario
         where the control VLAN is not the default route.
+
+        ``fetch_scope``: the addresses whose UPnP description this scanner
+        may fetch (None: every device it hears). A scan passes the subnets
+        it was asked to scan: a device heard outside them is listed from its
+        announcement and nothing is sent to it.
 
         ``capture``: keep every header set each device sent and its whole
         description document (status line and headers included, up to
@@ -275,6 +281,7 @@ class SSDPScanner:
         """
         self._capture = capture
         self._on_message = on_message
+        self._fetch_scope = fetch_scope
         # Two sockets with distinct jobs. ``_search_sock`` is bound to an
         # ephemeral port: it sends the M-SEARCH and receives the unicast
         # replies. ``_sock`` is bound to the well-known SSDP port 1900 and
@@ -543,6 +550,7 @@ class SSDPScanner:
             fetch_guarded(result)
             for result in self._results.values()
             if result.location
+            and (self._fetch_scope is None or self._fetch_scope(result.ip))
         ]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)

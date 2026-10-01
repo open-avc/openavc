@@ -258,6 +258,80 @@ class TestCompanionSubnetGuard:
         assert "8.8.8.8" not in engine.results
 
 
+class TestScanContactsOnlyItsSubnets:
+    """A scan sends nothing to an address outside the subnets it was asked to
+    scan. The listeners hear devices anywhere; a scan aimed at one address
+    must not port-scan, probe or fetch from the others, or a device serving
+    one control connection loses its controller's."""
+
+    def _engine_with_probe(self):
+        from openavc.discovery.hints import parse_driver_discovery
+
+        engine = DiscoveryEngine()
+        engine.discovery_hints = [parse_driver_discovery({
+            "id": "acme_ctl", "name": "acme_ctl", "manufacturer": "Acme",
+            "category": "audio", "transport": "tcp",
+            "discovery": {"tcp_probe": {
+                "port": 4321, "send_ascii": "id\r\n",
+                "expect": "Acme", "timeout_ms": 500,
+            }},
+        })]
+        for ip in ("10.77.0.5", "192.168.9.12"):  # scanned; heard elsewhere
+            dev = engine._get_or_create(ip)
+            dev.alive = True
+            dev.open_ports = [4321]
+        return engine
+
+    async def test_driver_probes_go_only_to_scanned_hosts(self):
+        engine = self._engine_with_probe()
+        probed: list[str] = []
+
+        async def fake_probe(spec, *, target, source_ip, stagger_ms=0.0, rate_limiter=None):
+            probed.append(target)
+            return None
+
+        assert engine._count_probe_jobs(["10.77.0.5/32"])[0] == 1
+        with patch.object(engine_mod, "run_tcp_active_probe", fake_probe):
+            await engine._run_custom_probes(["10.77.0.5/32"], "")
+        assert probed == ["10.77.0.5"]
+        assert "192.168.9.12" in engine.results  # still listed
+
+    async def test_follow_up_port_scan_stays_inside(self):
+        engine = DiscoveryEngine()
+        engine.scan_status.subnets = ["10.77.0.0/24"]
+        for ip in ("10.77.0.20", "192.168.9.12"):  # both heard, neither pinged
+            engine._get_or_create(ip).alive = True
+        scanned: list[str] = []
+
+        async def fake_port_scan(hosts, *args, **kwargs):
+            scanned.extend(hosts)
+
+        with patch.object(engine, "_collect_passive_results", new_callable=AsyncMock), \
+             patch.object(engine, "_collect_snmp_results", new_callable=AsyncMock), \
+             patch.object(engine, "_late_arp_harvest", new_callable=AsyncMock), \
+             patch.object(engine, "_port_scan_hosts", fake_port_scan):
+            await engine._collect_phase(
+                None, None, None, None, None, passive_wait=0, alive_ips=[],
+                port_list=[80], concurrency=1, gentle=False,
+            )
+        assert scanned == ["10.77.0.20"]
+
+    async def test_upnp_description_fetched_only_in_scope(self):
+        from openavc.discovery.ssdp_scanner import SSDPResult, SSDPScanner
+
+        scanner = SSDPScanner(fetch_scope=lambda ip: _ip_in_subnets(ip, ["10.77.0.0/24"]))
+        for ip in ("10.77.0.30", "192.168.9.12"):
+            scanner._results[ip] = SSDPResult(ip=ip, location=f"http://{ip}:49152/d.xml")
+        fetched: list[str] = []
+
+        async def fake_fetch(result):
+            fetched.append(result.ip)
+
+        with patch.object(scanner, "_fetch_single_description", fake_fetch):
+            await scanner._fetch_descriptions()
+        assert fetched == ["10.77.0.30"]
+
+
 # --- M-104: collect cleanup preserves cooperative cancellation --------------
 
 
