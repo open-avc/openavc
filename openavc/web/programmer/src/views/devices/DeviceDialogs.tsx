@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useId } from "react";
 import { useProjectStore } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import { getSerialPorts, type SerialPortInfo } from "../../api/systemClient";
@@ -33,6 +33,9 @@ export function ConfigFieldInputs({
   // present, one click away, and pre-filled with its default.
   const plainKeys = configKeys.filter((k) => schemaFor(k).advanced !== true);
   const advancedKeys = configKeys.filter((k) => schemaFor(k).advanced === true);
+  // Each label names its field: a screen reader reads it, and a click on it
+  // focuses the input.
+  const idPrefix = useId();
 
   const renderKey = (key: string) => {
         const schema = schemaFor(key);
@@ -62,10 +65,14 @@ export function ConfigFieldInputs({
           : key === "baud_rate" || key === "baudrate" ? "9600"
           : defaultVal != null && defaultVal !== "" ? String(defaultVal)
           : label;
+        const fieldId = `${idPrefix}-${key}`;
+        const helpId = description ? `${fieldId}-help` : undefined;
+        const labelled = { id: fieldId, "aria-describedby": helpId, "aria-required": isRequired || undefined };
 
         return (
           <div key={key} style={{ marginBottom: "var(--space-sm)" }}>
             <label
+              htmlFor={kind === "table" ? undefined : fieldId}
               style={{
                 display: "block",
                 fontSize: "var(--font-size-sm)",
@@ -75,11 +82,15 @@ export function ConfigFieldInputs({
             >
               {label}
               {isRequired && (
-                <span style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
+                <span aria-hidden="true" style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
               )}
             </label>
             {kind === "boolean" ? (
               <button
+                type="button"
+                id={fieldId}
+                aria-pressed={configValues[key] === "true"}
+                aria-describedby={helpId}
                 onClick={() =>
                   setConfigValues((v) => ({
                     ...v,
@@ -102,6 +113,7 @@ export function ConfigFieldInputs({
               </button>
             ) : kind === "password" ? (
               <input
+                {...labelled}
                 type="password"
                 autoComplete="new-password"
                 value={configValues[key] ?? ""}
@@ -113,6 +125,7 @@ export function ConfigFieldInputs({
               />
             ) : kind === "select" ? (
               <select
+                {...labelled}
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
                   setConfigValues((v) => ({ ...v, [key]: e.target.value }))
@@ -128,6 +141,7 @@ export function ConfigFieldInputs({
               </select>
             ) : kind === "number" ? (
               <input
+                {...labelled}
                 type="number"
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
@@ -151,6 +165,7 @@ export function ConfigFieldInputs({
               </div>
             ) : kind === "textarea" ? (
               <textarea
+                {...labelled}
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
                   setConfigValues((v) => ({ ...v, [key]: e.target.value }))
@@ -168,6 +183,7 @@ export function ConfigFieldInputs({
               />
             ) : (
               <input
+                {...labelled}
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
                   setConfigValues((v) => ({ ...v, [key]: e.target.value }))
@@ -177,7 +193,7 @@ export function ConfigFieldInputs({
               />
             )}
             {description && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              <div id={helpId} style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {description}
               </div>
             )}
@@ -644,10 +660,12 @@ export function ConnectionModePicker({
 const CATEGORY_ORDER = ["projector", "display", "audio", "switcher", "camera", "lighting", "control", "utility", "other"];
 
 function DriverSearchSelect({
+  id,
   drivers,
   value,
   onChange,
 }: {
+  id?: string;
   drivers: DriverInfo[];
   value: string;
   onChange: (driverId: string) => void;
@@ -694,6 +712,7 @@ function DriverSearchSelect({
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <input
+        id={id}
         value={open ? search : (selected ? (selected.name || selected.id) : "")}
         onChange={(e) => { setSearch(e.target.value); if (!open) setOpen(true); }}
         onFocus={() => { setOpen(true); setSearch(""); }}
@@ -803,6 +822,7 @@ export function AddDeviceDialog({
   const devices = useProjectStore((s) => s.project?.devices);
   const update = useProjectStore((s) => s.update);
   const save = useProjectStore((s) => s.save);
+  const formId = useId();
 
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceId, setDeviceId] = useState(prefill ? "" : "");
@@ -953,6 +973,7 @@ export function AddDeviceDialog({
 
         <div style={{ marginBottom: "var(--space-md)" }}>
           <label
+            htmlFor={`${formId}-driver`}
             style={{
               display: "block",
               fontSize: "var(--font-size-sm)",
@@ -960,9 +981,10 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Driver <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
+            Driver <span aria-hidden="true" style={{ color: "var(--color-error, #ef4444)" }}>*</span>
           </label>
           <DriverSearchSelect
+            id={`${formId}-driver`}
             drivers={drivers}
             value={selectedDriver}
             onChange={(newDriverId) => {
@@ -1000,6 +1022,7 @@ export function AddDeviceDialog({
 
         <div style={{ marginBottom: "var(--space-md)" }}>
           <label
+            htmlFor={`${formId}-device-id`}
             style={{
               display: "block",
               fontSize: "var(--font-size-sm)",
@@ -1007,9 +1030,12 @@ export function AddDeviceDialog({
               marginBottom: "var(--space-xs)",
             }}
           >
-            Device ID <span style={{ color: "var(--color-error, #ef4444)" }}>*</span>
+            Device ID <span aria-hidden="true" style={{ color: "var(--color-error, #ef4444)" }}>*</span>
           </label>
           <input
+            id={`${formId}-device-id`}
+            aria-required
+            aria-describedby={`${formId}-device-id-help`}
             value={deviceId}
             onChange={(e) => {
               setIdTouchedByUser(true);
@@ -1022,7 +1048,7 @@ export function AddDeviceDialog({
                 ? "var(--color-error, #ef4444)" : undefined,
             }}
           />
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+          <div id={`${formId}-device-id-help`} style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
             Lowercase letters, numbers, and underscores only.
             {deviceId && (
               <span style={{ marginLeft: 6 }}>
@@ -1037,6 +1063,7 @@ export function AddDeviceDialog({
 
         <div style={{ marginBottom: "var(--space-md)" }}>
           <label
+            htmlFor={`${formId}-name`}
             style={{
               display: "block",
               fontSize: "var(--font-size-sm)",
@@ -1047,6 +1074,7 @@ export function AddDeviceDialog({
             Display Name
           </label>
           <input
+            id={`${formId}-name`}
             value={deviceName}
             onChange={(e) => {
               setNameTouchedByUser(true);
@@ -1150,6 +1178,7 @@ export function EditDeviceDialog({
   onSaved: () => void;
 }) {
   const devices = useProjectStore((s) => s.project?.devices);
+  const formId = useId();
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceName, setDeviceName] = useState(device.name);
   const [selectedDriver, setSelectedDriver] = useState(device.driver);
@@ -1283,6 +1312,7 @@ export function EditDeviceDialog({
 
         <div style={{ marginBottom: "var(--space-md)" }}>
           <label
+            htmlFor={`${formId}-device-id`}
             style={{
               display: "block",
               fontSize: "var(--font-size-sm)",
@@ -1292,8 +1322,15 @@ export function EditDeviceDialog({
           >
             Device ID
           </label>
-          <input value={device.id} disabled style={{ width: "100%", opacity: 0.6 }} />
+          <input
+            id={`${formId}-device-id`}
+            aria-describedby={`${formId}-device-id-help`}
+            value={device.id}
+            disabled
+            style={{ width: "100%", opacity: 0.6 }}
+          />
           <div
+            id={`${formId}-device-id-help`}
             style={{
               fontSize: "11px",
               color: "var(--text-muted)",
@@ -1306,6 +1343,7 @@ export function EditDeviceDialog({
 
         <div style={{ marginBottom: "var(--space-md)" }}>
           <label
+            htmlFor={`${formId}-driver`}
             style={{
               display: "block",
               fontSize: "var(--font-size-sm)",
@@ -1316,6 +1354,7 @@ export function EditDeviceDialog({
             Driver
           </label>
           <DriverSearchSelect
+            id={`${formId}-driver`}
             drivers={
               // Include current driver if not in the loaded list
               selectedDriver && !drivers.some(d => d.id === selectedDriver)
@@ -1329,6 +1368,7 @@ export function EditDeviceDialog({
 
         <div style={{ marginBottom: "var(--space-md)" }}>
           <label
+            htmlFor={`${formId}-name`}
             style={{
               display: "block",
               fontSize: "var(--font-size-sm)",
@@ -1339,6 +1379,7 @@ export function EditDeviceDialog({
             Display Name
           </label>
           <input
+            id={`${formId}-name`}
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}
             placeholder="e.g., Main Projector"
