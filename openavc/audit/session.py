@@ -38,10 +38,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
+
+from openavc.utils.log_redaction import get_secret_registry
 
 log = logging.getLogger("audit.session")
 
@@ -169,6 +172,58 @@ class TimelineEntry:
 Subscriber = Callable[[dict[str, Any]], None]
 
 
+# The most log lines one audit keeps for its report's log.txt.
+LOG_LINES_KEPT = 5000
+
+
+class SessionLog(logging.Handler):
+    """OpenAVC's own log lines about one audit, for the report's ``log.txt``.
+
+    Kept: every line from the audit's own loggers, and every line naming the
+    audit's device (``[audit-<session>]``, the prefix the driver, the device
+    manager and the transports put on theirs) or the address under audit (a
+    transport's "connection lost to <ip>:<port>" carries no device id).
+    INFO and up only: the DEBUG lines are the traffic, which the report
+    already holds byte for byte. Each line passes the log redaction the log
+    files use; the report redacts again before writing.
+    """
+
+    def __init__(self, device_id: str, addresses: list[str], keep: int = LOG_LINES_KEPT) -> None:
+        super().__init__(level=logging.INFO)
+        names = [device_id] + [a for a in addresses if a]
+        # Whole names only: 192.168.1.1 must not match inside 192.168.1.10.
+        self._pattern = re.compile("|".join(
+            r"(?<![0-9A-Za-z.-])" + re.escape(name) + r"(?![0-9A-Za-z-]|\.[0-9A-Za-z])"
+            for name in dict.fromkeys(names)
+        ))
+        self.keep = keep
+        self.lines: list[str] = []
+        self.dropped = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = record.getMessage()
+            ours = record.name.startswith(("openavc.audit", "audit."))
+            if not ours and not self._pattern.search(message):
+                return
+            if len(self.lines) >= self.keep:
+                self.dropped += 1
+                return
+            if record.exc_info:
+                message += "\n" + logging.Formatter().formatException(record.exc_info)
+            stamp = time.strftime("%H:%M:%S", time.localtime(record.created))
+            line = (
+                f"{stamp}.{int(record.msecs):03d} {record.levelname:<7} "
+                f"[{record.name}] {message}"
+            )
+            self.lines.append(get_secret_registry().redact_any(line))
+        except Exception:
+            self.handleError(record)
+
+    def text(self) -> str:
+        return "\n".join(self.lines) + ("\n" if self.lines else "")
+
+
 class AuditSession:
     """One audit: what it is looking at, what it holds, and what happened."""
 
@@ -214,6 +269,9 @@ class AuditSession:
         self._tasks: set[asyncio.Task] = set()
         self._teardown_hooks: list[Callable[[], Awaitable[None]]] = []
         self._state_providers: list[Callable[[], dict[str, Any]]] = []
+        # OpenAVC's log lines about this audit, attached to the root logger
+        # while the session lives (``AuditManager``).
+        self.log = SessionLog(f"audit-{session_id}", [target.address, target.ip or ""])
 
     # -- activity -----------------------------------------------------------
 
@@ -417,6 +475,7 @@ class AuditManager:
                 await self._resume_owned(session)
                 raise
             self._current = session
+            logging.getLogger().addHandler(session.log)
             session.enter_step("target")
             started = f"Audit started on {target.address}"
             if session.origin:
@@ -452,13 +511,14 @@ class AuditManager:
         await session.stop_everything(spare=asyncio.current_task())
         await self._resume_owned(session)
         session.add_timeline("session.ended", self._end_text(status), status=status)
+        log.info("Device audit %s ended (%s)", session.id, status)
         for hook in self._end_hooks:
             try:
                 await hook(session)
             except Exception:
                 log.warning("Audit end hook failed", exc_info=True)
+        logging.getLogger().removeHandler(session.log)
         session.publish_state()
-        log.info("Device audit %s ended (%s)", session.id, status)
 
     def _end_text(self, status: str) -> str:
         if status == EXPIRED:

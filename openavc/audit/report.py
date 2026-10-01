@@ -7,23 +7,29 @@
       report.json      the complete record
       timeline.txt     every event in order, the driver's traffic included
       driver/<files>   the exact driver file(s) that ran
+      log.txt          OpenAVC's own log lines about the audit, INFO and up
+                       (``session.SessionLog``)
 
 ``report.json`` (``report_version`` 1) holds:
 
-- ``report_version``; ``generator``: the OpenAVC version, the OS, the Python
-  version and how OpenAVC was installed.
-- ``session``: id, start and end, status, the steps run, the project device
-  whose page started the audit (``origin``: id, name and driver, or null), and
-  the tester's name, company, email and notes (all optional).
-- ``target``: the address as typed, the address it resolved to, the reverse
-  DNS name, whether it is on one of this computer's subnets, the local
-  address and adapter the check used, and the serial port (none yet).
+- ``report_version``; ``generator``: ``openavc_version``, ``os``,
+  ``python`` and ``deployment_type`` (how OpenAVC was installed).
+- ``session``: ``id``, ``started_at`` and ``ended_at``, ``status``, the
+  ``steps`` run, the project device whose page started the audit (``origin``:
+  id, name and driver, or null), ``no_driver`` (the person said no driver
+  exists yet), and the ``tester``'s name, company, email and notes (all
+  optional).
+- ``target``: the ``address`` as typed, the ``ip`` it resolved to, the reverse
+  DNS ``hostname``, ``same_subnet`` (on one of this computer's subnets), the
+  ``local_ip`` and ``interface`` the check used, and ``serial_port`` (none
+  yet).
 - ``device``: manufacturer, model and firmware as the person entered them on
   "Which driver?" (``entered``, null where left empty), and the identity the
   device reported to the network check (``reported``).
-- ``catalog``: where the driver catalog came from, when it was fetched, the
-  SHA-256 of its ``index.json``, its driver count, and whether it was
-  fetched fresh, taken from an earlier fetch, or not available at all.
+- ``catalog``: where the driver catalog came from, when it was fetched
+  (``fetched_at``, ``last_attempt``), the ``sha256`` of its ``index.json``, its
+  ``driver_count``, whether it was ``reachable``, and ``used``: ``fresh``,
+  ``cached`` (from an earlier fetch) or ``none``.
 - ``footprint``: every raw observation of the network check. Bytes appear as
   ``{"hex", "text"}`` with the text decoded latin-1, so every byte survives.
   Each web page carries ``tries``: 2 when it did not answer the first GET
@@ -41,28 +47,33 @@
     it (``in_report``, under ``driver/``) and whether redaction changed that
     copy (``redacted_in_report``); ``modified`` is true when a file differs
     from the catalog's; ``catalog`` says whether and at what version the
-    catalog lists it.
+    catalog lists it, and whether it is ``verified``; ``catalog_files_missing``
+    names any file the catalog lists that the installed copy lacks.
   - ``entered`` (the make, model and firmware given with this choice),
     ``model_listing`` (``listed``: whether the driver lists that model, null
     when none was typed; ``confidence``), ``verdict_agreement`` (``agrees``,
     ``candidate``, ``differs``, ``no_verdict``).
   - ``connection``: ``config`` with every credential shown as ``***``,
     ``transport``, ``saved_from`` (the project device whose saved settings
-    were used, or empty) and ``preview`` (what connecting was shown to send).
+    were used, or empty) and ``preview`` (what connecting was shown to send:
+    each ``steps`` entry with its ``stage``, and the ``keep_alive_interval``).
   - ``attempts``: every connect and listen, in order: ``status``
     (``listening``, ``not_connected``, ``done``, ``failed``, ``stopped``),
-    ``error``, the times (``started_at``, ``first_tx_at``, ``first_rx_at``,
-    ``connected_at``, ``ends_at``, ``finished_at``), ``poll_interval``,
+    ``active``, ``error``, the times (``started_at``, ``first_tx_at``,
+    ``first_rx_at``, ``connected_at``, ``ends_at``, ``max_ends_at`` (how far
+    "Keep listening" can take it), ``finished_at``), ``poll_interval``,
     ``reconnects``, ``drops``, ``offline`` (``code``, ``detail``,
     ``next_step``), ``declared`` and ``reported`` counts, ``status_table``
     (every declared value with ``value``, ``reported``,
     ``first_reported_at``, ``problem`` and ``sources``, the response rules
-    that would set it; ``children``; ``settings``), ``contract`` (``counts``
+    that would set it; ``children``; ``settings``, each with ``populated``),
+    ``contract`` (``counts``
     by kind and the ``events`` kept, the first 50 of each kind),
     ``unprompted_replies`` (a hint: the ``seq`` of each reply with no request
     in the ``window_seconds`` before it), ``state_changes`` (``t``, ``key``,
-    ``old``, ``new``), ``front_panel`` (``answer``, ``note``, ``changes``)
-    and ``traffic``: ``count``, ``sent``, ``received``, ``bytes``,
+    ``old``, ``new``), ``front_panel`` (``answer``, ``note``, ``changes``),
+    ``push_callbacks`` (each URL the driver asked the device to send its events
+    to, through OpenAVC's HTTP listener) and ``traffic``: ``count``, ``sent``, ``received``, ``bytes``,
     ``truncated_at``, ``dropped_entries``, ``not_captured`` (values changed
     while no traffic was recorded: a driver that manages its own connection)
     and ``entries``, each ``{"seq", "t", "direction", "channel", "hex",
@@ -93,7 +104,8 @@
     ``since_previous`` (the command sent before it and how many seconds
     before), ``extended`` (seconds "Wait longer" added), ``stopped_early``
     ("Stop watching"), ``changes`` (every status value that moved:
-    ``t``, ``key``, ``old``, ``new``), ``device_errors`` (errors the driver
+    ``t``, ``key``, ``old``, ``new``), ``already_moving`` (the values that
+    were already changing when it was sent), ``device_errors`` (errors the driver
     published for the device), ``effects`` (each declared ``sets`` entry:
     ``state``, ``state_key``, ``expected``, ``has_value``, ``value`` and
     ``outcome``, one of ``confirmed``, ``already``, ``different``,
@@ -127,19 +139,25 @@
     and ``summary``.
   - ``outages``: each power cycle and cable pull, in order: ``number``,
     ``kind`` (``power_cycle``, ``cable_pull``), ``status`` (``done`` or
-    ``stopped``, with ``end_reason``), ``connect_attempt``; the clocks, each a
-    time or null: ``started_at``, the person's marks ``off_at`` and ``on_at``,
-    the device's own answers ``unreachable_at`` and ``reachable_at`` (from a
-    ping once a second, when ``ping.used``; ``ping.why`` says why not),
-    ``noticed_at`` (the driver's disconnect), ``reconnected_at``,
-    ``not_noticed_at`` (the ``notice_ceiling_seconds`` passed first),
+    ``stopped``, with ``end_reason`` and ``end_code``: ``person`` when Stop
+    was pressed, ``ceiling`` when the 15-minute limit stopped it),
+    ``connect_attempt``; the clocks, each a time or null: ``started_at``, the
+    person's marks ``off_at`` and ``on_at``, the device's own answers
+    ``unreachable_at`` and ``reachable_at`` (from a ping once a second, when
+    ``ping.used``; ``ping.why`` says why not), ``noticed_at`` (the driver's
+    disconnect), ``reconnected_at``, ``dropped_again_at`` and
+    ``reconnected_again_at`` (the connection dropping again after the
+    reconnect, as a device still booting can do, and the reconnect that
+    held), ``not_noticed_at`` (the ``notice_ceiling_seconds`` passed first),
     ``ends_at``, ``finished_at``; ``watch`` (``liveness_probe``,
-    ``probe_every``, ``poll_interval``: how the driver notices a device that
-    went quiet); ``reason`` (the first offline reason after it noticed:
-    ``code``, ``detail``) and every one in ``reasons``; ``measured``, in
-    seconds (``noticed_after``, negative when OpenAVC noticed before the
-    device stopped answering ping; ``away_for``; ``answered_after_on``;
-    ``reconnected_after_back``); ``before`` (the status values that had a
+    ``probe_every``, ``notice_within``: the longest its probe can take to
+    notice, ``poll_interval``: how the driver notices a device that went
+    quiet); ``reason`` (the first offline reason after it noticed: ``code``,
+    ``detail``) and every one in ``reasons``; ``measured``, in seconds
+    (``noticed_after``, negative when OpenAVC noticed before the device
+    stopped answering ping; ``away_for``; ``answered_after_on``;
+    ``reconnected_after_back``; ``dropped_again_after``,
+    ``reconnected_again_after``); ``before`` (the status values that had a
     value going in) and ``repopulated`` (``reported_again``,
     ``not_reported_again``: written after the reconnect, changed or not);
     ``announcements`` (what the device announced during the test:
@@ -395,7 +413,7 @@ def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
 
 def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
     """What the driver test could not see, per run."""
-    from openavc.audit.observe import TRAFFIC_CAP_BYTES
+    from openavc.audit.observe import EVENT_DETAIL_KEPT, TRAFFIC_CAP_BYTES
 
     runs = list(getattr(session, "runs", None) or [])
     limits: list[dict[str, Any]] = []
@@ -437,7 +455,61 @@ def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
                 "text": f"{name}'s traffic passed {cap_mb} MB, so the report keeps the "
                         f"first {cap_mb} MB of it.",
             })
+        for attempt in run.listens:
+            urls = attempt.sandbox.push_callbacks()
+            heard = any(
+                e.channel == "http_listener" and e.direction == "rx"
+                for e in attempt.sandbox.observer.traffic
+            )
+            if urls and not heard:
+                limits.append({
+                    "id": "push_never_arrived", "run": run.index, "callbacks": urls,
+                    "text": _push_never_arrived(name, urls),
+                })
+                break
+        if any(
+            count > EVENT_DETAIL_KEPT
+            for attempt in run.listens
+            for count in attempt.sandbox.observer.event_counts.values()
+        ):
+            limits.append({
+                "id": "events_capped", "run": run.index,
+                "text": f"Where {name} did the same thing wrong more than {EVENT_DETAIL_KEPT} "
+                        "times, the report keeps the first "
+                        f"{EVENT_DETAIL_KEPT} in full and counts the rest.",
+            })
+    log_lines = getattr(session, "log", None)
+    if log_lines is not None and log_lines.dropped:
+        limits.append({
+            "id": "log_capped",
+            "text": f"OpenAVC wrote more than {log_lines.keep} log lines about this audit; "
+                    f"log.txt keeps the first {log_lines.keep}.",
+        })
     return limits
+
+
+def _push_never_arrived(name: str, urls: list[str]) -> str:
+    """The limit for a driver that asked the device to send its events to
+    OpenAVC and heard none: where it asked, and the likeliest reason."""
+    from openavc import config
+
+    where = urls[0] if len(urls) == 1 else f"{urls[0]} and {len(urls) - 1} more"
+    text = (
+        f"{name} asked the device to send its events to {where}, and none arrived while "
+        "the audit ran, so the driver saw only what it asked for itself."
+    )
+    if config.loopback_only():
+        text += (
+            f" OpenAVC is listening on {config.BIND_ADDRESS} only, so the device cannot "
+            "reach it: set the Bind address in Settings > Network to 0.0.0.0, restart, "
+            "and run the audit again."
+        )
+    else:
+        text += (
+            " A firewall on this computer, or between it and the device, may be blocking "
+            "the device's connection."
+        )
+    return text
 
 
 def generator_info() -> dict[str, Any]:
@@ -720,16 +792,21 @@ def render_summary(report: dict[str, Any]) -> str:
     parts.append(f"<div class=\"verdict\">{_e(verdict.get('sentence', ''))}</div>")
     signals = (verdict.get("explanation") or {}).get("signals", [])
     names = verdict.get("drivers", {})
-    if signals:
+    pointing = [sig for sig in signals if sig.get("drivers")]
+    unused = [sig for sig in signals if not sig.get("drivers")]
+    if pointing:
         items = []
-        for sig in signals:
-            drivers = [str(names.get(d, {}).get("name") or d) for d in sig.get("drivers", [])]
-            strength = "strong" if sig.get("strong") else "hint"
-            items.append(
-                f"<li><code>{_e(sig.get('source'))}</code> ({strength}): "
-                f"{_e(_join(drivers)) if drivers else 'no driver claims it'}</li>"
-            )
+        for sig in pointing:
+            drivers = [str(names.get(d, {}).get("name") or d) for d in sig["drivers"]]
+            verb = "identifies" if sig.get("strong") else "suggests"
+            items.append(f"<li><code>{_e(sig.get('source'))}</code> {verb} {_e(_join(drivers))}</li>")
         parts.append("<h3>Why</h3><ul>" + "".join(items) + "</ul>")
+    if unused:
+        parts.append(
+            "<p class=\"meta\">Also seen, and no catalog driver uses "
+            f"{'it' if len(unused) == 1 else 'them'}: "
+            + ", ".join(f"<code>{_e(sig.get('source'))}</code>" for sig in unused) + ".</p>"
+        )
     parts.append(
         f"<p class=\"meta\">Checked against {_e(catalog.get('driver_count'))} catalog drivers"
         f" ({_e({'fresh': 'fetched for this audit', 'cached': 'from an earlier fetch', 'none': 'catalog unavailable'}.get(catalog.get('used'), ''))})"
@@ -804,6 +881,8 @@ def render_summary(report: dict[str, Any]) -> str:
                 bits.append(f"asks for sign-in: {page['www_authenticate']}")
             if page.get("location"):
                 bits.append(f"redirects to {page['location']}")
+            if str(port) not in {str(p) for p in ports.get("open", [])}:
+                bits.append("a port the device named in an announcement, not one the port check covers")
             parts.append(_row(f"Port {port} ({page.get('url', '')})", _e("; ".join(bits))))
         parts.append("</table>")
     certs = fp.get("certificates", {})
@@ -820,7 +899,15 @@ def render_summary(report: dict[str, Any]) -> str:
         parts.append("</table>")
 
     parts.append("<h2>Announcements</h2>")
+    if fp.get("started_at") and fp.get("finished_at"):
+        listened = round(fp["finished_at"] - fp["started_at"])
+        parts.append(
+            f"<p class=\"meta\">The network check listened for {listened} seconds; the "
+            "listeners kept running while the audit did.</p>"
+        )
     mdns = fp.get("mdns")
+    if not mdns and (fp.get("ssdp") or fp.get("amx_ddp")):
+        parts.append("<p>mDNS: none heard.</p>")
     if mdns:
         rows = []
         for svc in mdns.get("services", []):
@@ -840,10 +927,26 @@ def render_summary(report: dict[str, Any]) -> str:
         for key, label in (
             ("friendly_name", "Name"), ("manufacturer", "Manufacturer"),
             ("model_name", "Model"), ("model_number", "Model number"),
-            ("server", "Server header"), ("location", "Description at"),
+            ("server", "Server header"),
         ):
             if ssdp.get(key):
                 parts.append(_row(label, _e(ssdp[key])))
+        # A device can announce several root devices, each with its own
+        # description; the check reads one (the last announced).
+        locations = list(dict.fromkeys(
+            [h.get("location") for h in ssdp.get("raw_headers") or [] if isinstance(h, dict)]
+            + [ssdp.get("location")]
+        ))
+        locations = [loc for loc in locations if loc]
+        if locations:
+            read = ssdp.get("location")
+            parts.append(_row(
+                "Descriptions at" if len(locations) > 1 else "Description at",
+                _e("; ".join(
+                    loc + (" (the one read)" if len(locations) > 1 and loc == read else "")
+                    for loc in locations
+                )),
+            ))
         parts.append("</table>")
     amx = fp.get("amx_ddp")
     if amx:
@@ -904,8 +1007,9 @@ def render_summary(report: dict[str, Any]) -> str:
         parts.append("</table>")
 
     parts.append(
-        "<footer>The complete record is report.json, and every event in order is "
-        "timeline.txt, both in the same file as this page.</footer></main></body></html>"
+        "<footer>The complete record is report.json, every event in order is "
+        "timeline.txt, and OpenAVC's own log lines about the audit are log.txt, all in "
+        "the same file as this page.</footer></main></body></html>"
     )
     return "".join(parts)
 
@@ -1077,7 +1181,7 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
             for setting in settings:
                 value = setting.get("value")
                 parts.append(_row(setting.get("label") or setting.get("key"), _e(
-                    value if setting.get("populated") else "not read back"
+                    _value_text(value) if setting.get("populated") else "not read back"
                 )))
             parts.append("</table>")
         counts = (attempt.get("contract") or {}).get("counts") or {}
@@ -1193,14 +1297,17 @@ def build_zip(
     report: dict[str, Any],
     redactor: Redactor | None = None,
     driver_files: list[PlacedFile] | None = None,
+    log_text: str = "",
 ) -> bytes:
     """The report zip. ``redactor`` runs once more over every file's text;
-    ``driver_files`` are already redacted (``place_driver_files``)."""
+    ``driver_files`` are already redacted (``place_driver_files``);
+    ``log_text`` is the session's own log lines (``SessionLog``)."""
     files = {
         "summary.html": render_summary(report),
         "report.json": json.dumps(report, indent=2, ensure_ascii=False, default=str),
         "timeline.txt": render_timeline(report),
     }
+    files["log.txt"] = log_text or "OpenAVC wrote no log lines about this audit.\n"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, text in files.items():
@@ -1220,7 +1327,11 @@ def report_zip(session: "AuditSession") -> tuple[str, bytes]:
     report = build_report(session)
     name = report_filename(report)
     redactor = Redactor(redactions_for(session))
-    return name, build_zip(report, redactor, place_driver_files(session, redactor))
+    log_lines = getattr(session, "log", None)
+    return name, build_zip(
+        report, redactor, place_driver_files(session, redactor),
+        log_text=log_lines.text() if log_lines is not None else "",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -167,6 +167,9 @@ class DriverSandbox:
         self.resolved: dict[str, Any] = {}
         self.transport = ""
         self.started = False
+        # Where the driver asked the device to send its events, kept as the
+        # device is removed (which drops the subscriptions).
+        self._push_callbacks: list[str] = []
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -234,6 +237,7 @@ class DriverSandbox:
         recorded ring go, and the observer keeps what the report needs."""
         if not self.started:
             return
+        self._push_callbacks = self.push_callbacks()
         self.started = False
         self.observer.snapshot_secrets()
         try:
@@ -253,6 +257,16 @@ class DriverSandbox:
 
     def connected(self) -> bool:
         return bool(self.state.get(f"device.{self.device_id}.connected"))
+
+    def push_callbacks(self) -> list[str]:
+        """The URLs the driver asked the device to send its events to (each
+        callback it registered with OpenAVC's HTTP listener)."""
+        if not self.started:
+            return list(self._push_callbacks)
+        from openavc.transport import http_listener
+
+        host = str((self.resolved.get("config") or {}).get("host") or "")
+        return http_listener.callback_urls_for(self.device_id, host)
 
     def written_since(self, since: float) -> set[str]:
         """The device's state keys (without the ``device.<id>.`` prefix)

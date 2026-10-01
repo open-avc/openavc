@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import zipfile
 
 import pytest
@@ -109,11 +110,14 @@ async def test_a_typed_secret_is_in_no_file_in_any_form(monkeypatch):
 
     manager, session = await _session(name="Pat", email="pat@example.com")
     try:
+        # A line OpenAVC logs about the audit lands in log.txt, redacted too.
+        logging.getLogger("openavc.audit.test").warning("The device said %s", SECRET)
         name, data = report_zip(session)
     finally:
         await manager.shutdown()
     files = _files(data)
-    assert set(files) == {"summary.html", "report.json", "timeline.txt"}
+    assert set(files) == {"summary.html", "report.json", "timeline.txt", "log.txt"}
+    assert REDACTED in files["log.txt"]
     for fname, text in files.items():
         for form in _forms(SECRET):
             assert form not in text, f"{fname} holds the secret as {form!r}"
@@ -230,6 +234,41 @@ def test_the_summary_is_self_contained_and_says_the_verdict():
     assert "OpenAVC can see this device but does not recognize it." in page
     assert "&lt;Widget&gt;" in page and "<Widget>" not in page
     assert "IPv6 was not checked." in page
+    # It answered over SSDP, so the missing mDNS is said.
+    assert "mDNS: none heard." in page
+
+
+def test_the_summary_says_why_only_with_the_signals_that_point_somewhere():
+    """A signal no driver uses is not listed as a reason; the leftover ones are
+    one line, so an SSDP device's dozen service types do not read as
+    invitations to claim them."""
+    report = {
+        "generator": {}, "session": {"started_at": 1_700_000_000.0, "tester": {}},
+        "target": {"address": "widget.local"}, "device": {"reported": {}},
+        "catalog": {"used": "none"}, "complete": True, "limits": [],
+        "footprint": {"ssdp": {
+            "device_types": ["urn:acme-com:device:Widget:1"],
+            "location": "http://10.0.0.50:1400/b.xml",
+            "raw_headers": [{"location": "http://10.0.0.50:1400/a.xml"},
+                            {"location": "http://10.0.0.50:1400/b.xml"}],
+        }},
+        "verdict": {
+            "sentence": "OpenAVC recognizes this device: Acme Widget.",
+            "drivers": {"acme_widget": {"name": "Acme Widget"}},
+            "explanation": {"signals": [
+                {"source": "ssdp:urn:acme-com:device:Widget:1", "strong": True,
+                 "drivers": ["acme_widget"]},
+                {"source": "ssdp:upnp:rootdevice", "strong": True, "drivers": []},
+                {"source": "oui:aa:bb:cc", "strong": False, "drivers": []},
+            ]},
+        },
+    }
+    page = render_summary(report)
+    assert "<code>ssdp:urn:acme-com:device:Widget:1</code> identifies Acme Widget" in page
+    assert ("Also seen, and no catalog driver uses them: <code>ssdp:upnp:rootdevice</code>, "
+            "<code>oui:aa:bb:cc</code>.") in page
+    assert "no driver claims it" not in page
+    assert ("http://10.0.0.50:1400/a.xml; http://10.0.0.50:1400/b.xml (the one read)") in page
 
 
 def test_the_file_name_is_manufacturer_model_and_time():

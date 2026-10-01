@@ -581,6 +581,7 @@ class ListenPass:
                 "seq": [e.seq for e in unprompted],
             },
             "state_changes": [redactor.value(dict(c)) for c in self.changes],
+            "push_callbacks": self.sandbox.push_callbacks(),
             "traffic": {
                 "count": len(frames),
                 "sent": live["traffic"]["sent"],

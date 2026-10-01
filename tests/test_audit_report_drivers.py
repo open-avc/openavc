@@ -217,7 +217,8 @@ async def test_a_driver_run_is_the_whole_story_and_no_secret_leaves(driver):
         assert name.startswith("openavc-device-audit-acme-w-100-")
         texts = _zip_texts(data)
         assert set(texts) == {
-            "summary.html", "report.json", "timeline.txt", "driver/acme_report.avcdriver",
+            "summary.html", "report.json", "timeline.txt", "log.txt",
+            "driver/acme_report.avcdriver",
         }
         for secret in (PASSWORD, USERNAME):
             for form in (secret, secret.encode().hex(), secret.encode().hex().upper()):
@@ -268,13 +269,19 @@ def test_an_updated_driver_keeps_both_files():
     ]
 
 
+def _limit_attempt(not_captured=False, truncated=None, callbacks=(), traffic=(), counts=None):
+    observer = SimpleNamespace(
+        truncated_at=truncated, traffic=list(traffic), event_counts=dict(counts or {}),
+    )
+    return SimpleNamespace(
+        to_dict=lambda: {"traffic": {"not_captured": not_captured}},
+        sandbox=SimpleNamespace(observer=observer, push_callbacks=lambda: list(callbacks)),
+    )
+
+
 def test_limits_for_traffic_the_audit_could_not_keep():
     def attempt(not_captured: bool, truncated: float | None):
-        observer = SimpleNamespace(truncated_at=truncated)
-        return SimpleNamespace(
-            to_dict=lambda: {"traffic": {"not_captured": not_captured}},
-            sandbox=SimpleNamespace(observer=observer),
-        )
+        return _limit_attempt(not_captured, truncated)
 
     run = SimpleNamespace(
         index=0, choice=SimpleNamespace(identity={"name": "Acme Socket"}, driver_id="x"),
@@ -287,6 +294,65 @@ def test_limits_for_traffic_the_audit_could_not_keep():
     assert limits[0]["text"] == (
         "Acme Socket manages its own connection, so its traffic was not captured."
     )
+
+
+def test_a_push_the_device_never_sent_is_a_limit_naming_where(monkeypatch):
+    """The driver asked the device to send its events to OpenAVC, and none
+    came: the report says where it asked, and why when OpenAVC listens only
+    on this machine."""
+    from openavc import config
+
+    url = "http://192.168.1.20:8080/api/push/audit-x"
+    heard = SimpleNamespace(channel="http_listener", direction="rx")
+    run = SimpleNamespace(
+        index=0, choice=SimpleNamespace(identity={"name": "Acme Speaker"}, driver_id="x"),
+        listens=[_limit_attempt(callbacks=[url])],
+    )
+    monkeypatch.setattr(config, "BIND_ADDRESS", "127.0.0.1")
+    [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    assert limit["id"] == "push_never_arrived" and limit["callbacks"] == [url]
+    assert limit["text"].startswith(f"Acme Speaker asked the device to send its events to {url}")
+    assert "listening on 127.0.0.1 only" in limit["text"]
+
+    monkeypatch.setattr(config, "BIND_ADDRESS", "0.0.0.0")
+    [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    assert "firewall" in limit["text"]
+
+    run.listens = [_limit_attempt(callbacks=[url], traffic=[heard])]
+    assert _driver_limits(SimpleNamespace(runs=[run], no_driver=False)) == []
+
+
+def test_kept_events_and_log_lines_say_when_they_stopped_keeping():
+    from openavc.audit.observe import EVENT_DETAIL_KEPT
+
+    run = SimpleNamespace(
+        index=0, choice=SimpleNamespace(identity={"name": "Acme Socket"}, driver_id="x"),
+        listens=[_limit_attempt(counts={"unmatched_response": EVENT_DETAIL_KEPT + 1})],
+    )
+    log = SimpleNamespace(dropped=3, keep=5000)
+    ids = [x["id"] for x in _driver_limits(SimpleNamespace(runs=[run], no_driver=False, log=log))]
+    assert ids == ["events_capped", "log_capped"]
+
+
+def test_the_session_log_keeps_lines_about_this_audit_only():
+    import logging
+
+    from openavc.audit.session import SessionLog
+
+    handler = SessionLog("audit-abc", ["192.168.1.1", "widget.local"], keep=3)
+    other = logging.getLogger("openavc.transport.tcp")
+
+    def emit(logger, text):
+        handler.handle(logger.makeRecord(logger.name, logging.INFO, "", 0, text, (), None))
+
+    emit(other, "[audit-abc] Connected via tcp")
+    emit(other, "TCP connection lost to 192.168.1.1:23")
+    emit(other, "TCP connection lost to 192.168.1.10:23")  # another device
+    emit(other, "[audit-abcd] not this session's device")
+    emit(logging.getLogger("audit.session"), "Device audit abc ended")
+    emit(other, "Resolved widget.local")
+    assert len(handler.lines) == 3 and handler.dropped == 1
+    assert "192.168.1.10" not in handler.text() and "audit-abcd" not in handler.text()
 
 
 def test_traffic_lines_say_what_the_bytes_do_not():

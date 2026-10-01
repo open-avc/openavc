@@ -121,6 +121,9 @@ class _Registry:
     def get(self, device_id: str, label: str) -> HTTPListenerSubscription | None:
         return self._subs.get((device_id, label))
 
+    def for_device(self, device_id: str) -> list[HTTPListenerSubscription]:
+        return [sub for (dev, _), sub in self._subs.items() if dev == device_id]
+
     def close_all(self) -> None:
         """Drop every subscription (tests / shutdown)."""
         for sub in self._subs.values():
@@ -262,3 +265,10 @@ def _local_ip_for(device_host: str) -> str:
 def close_all() -> None:
     """Drop every subscription (used by tests and engine shutdown)."""
     _registry.close_all()
+
+
+def callback_urls_for(device_id: str, device_host: str) -> list[str]:
+    """The callback URL of every subscription ``device_id`` holds now, as
+    :func:`callback_url` builds it (a device audit reports where the device
+    was asked to send its events)."""
+    return [callback_url(device_host, sub.path) for sub in _registry.for_device(device_id)]
