@@ -803,6 +803,17 @@ class DiscoveryEngine:
                 # the generic message sent one integrator hunting a phantom
                 # subnet — name the pin and where to clear it.
                 if control_ip and not subnets:
+                    from openavc.discovery.network_scanner import get_network_adapters
+                    pinned = next(
+                        (a for a in get_network_adapters() if a["ip"] == control_ip),
+                        None,
+                    )
+                    if pinned is not None and not pinned.get("link", True):
+                        raise ValueError(
+                            f"Control interface {control_ip} ({pinned['name']}) "
+                            "has no link. Connect its cable, or pick another "
+                            "adapter (or Auto) in Settings > Network."
+                        )
                     raise ValueError(
                         f"Control interface {control_ip} is set in Settings > "
                         "Network but no adapter on this machine has that "

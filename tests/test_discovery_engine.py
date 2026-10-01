@@ -834,6 +834,22 @@ class TestEmptySubnetErrors:
         assert "Settings > Network" in str(exc.value)
 
     @pytest.mark.asyncio
+    async def test_pin_on_an_adapter_with_no_link_says_so(self):
+        """The adapter is on the machine, just unplugged: "no adapter has that
+        address" would send the user looking for the wrong fault."""
+        adapters = [{"name": "Ethernet", "ip": "192.0.2.77",
+                     "subnet": "192.0.2.0/24", "mac": "", "link": False}]
+        with patch.object(self.engine, "_get_control_interface", return_value="192.0.2.77"), \
+             patch("openavc.discovery.engine.get_local_subnets", return_value=[]), \
+             patch("openavc.discovery.network_scanner.get_network_adapters", return_value=adapters):
+            with pytest.raises(ValueError) as exc:
+                await self.engine.start_scan()
+        assert str(exc.value) == (
+            "Control interface 192.0.2.77 (Ethernet) has no link. Connect its "
+            "cable, or pick another adapter (or Auto) in Settings > Network."
+        )
+
+    @pytest.mark.asyncio
     async def test_no_pin_keeps_generic_message(self):
         with patch.object(self.engine, "_get_control_interface", return_value=""), \
              patch("openavc.discovery.engine.get_local_subnets", return_value=[]):

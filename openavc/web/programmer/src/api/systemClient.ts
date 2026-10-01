@@ -494,6 +494,8 @@ export interface NetworkAdapter {
   ip: string;
   subnet: string;
   mac: string;
+  /** False when the adapter has no link (cable out, radio off): a scan skips it. */
+  link: boolean;
 }
 
 export async function getNetworkAdapters(): Promise<{ adapters: NetworkAdapter[] }> {

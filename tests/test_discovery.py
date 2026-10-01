@@ -365,6 +365,90 @@ class TestGetLocalSubnets:
             assert not subnet.startswith("127.")
 
 
+class TestAdaptersWithNoLink:
+    """An unplugged port keeps its static address, and ifaddr cannot tell.
+
+    A laptop with Wi-Fi up and two unplugged Ethernet ports, one on another
+    subnet and one duplicating the Wi-Fi's: the scan covers only the Wi-Fi's
+    subnet and joins multicast only on its address, while the control-interface
+    picker still lists every adapter, saying which have no link. ifaddr names
+    the adapters by description and psutil by connection name (as on Windows),
+    so only the address can join the two.
+    """
+
+    @staticmethod
+    def _fake_modules(monkeypatch, *, psutil_fails: bool = False):
+        import socket as _socket
+        import sys
+        import types
+
+        def ifaddr_adapter(name, ip, prefix):
+            return types.SimpleNamespace(
+                nice_name=name,
+                ips=[types.SimpleNamespace(ip=ip, network_prefix=prefix)],
+            )
+
+        ifaddr = types.ModuleType("ifaddr")
+        ifaddr.get_adapters = lambda: [
+            ifaddr_adapter("Acme 2.5GbE Controller", "10.20.0.5", 24),
+            ifaddr_adapter("Acme USB Ethernet Adapter", "192.168.1.123", 24),
+            ifaddr_adapter("Acme Wireless AX", "192.168.1.78", 24),
+        ]
+        monkeypatch.setitem(sys.modules, "ifaddr", ifaddr)
+
+        psutil = types.ModuleType("psutil")
+        psutil.AF_LINK = -1
+
+        def addr(family, address):
+            return types.SimpleNamespace(family=family, address=address)
+
+        def net_if_addrs():
+            return {
+                "Ethernet": [addr(-1, "AA-00-00-00-00-01"), addr(_socket.AF_INET, "10.20.0.5")],
+                "Ethernet 2": [addr(-1, "AA-00-00-00-00-02"), addr(_socket.AF_INET, "192.168.1.123")],
+                "Wi-Fi": [addr(-1, "AA-00-00-00-00-03"), addr(_socket.AF_INET, "192.168.1.78")],
+            }
+
+        def net_if_stats():
+            if psutil_fails:
+                raise OSError("no access")
+            return {
+                "Ethernet": types.SimpleNamespace(isup=False),
+                "Ethernet 2": types.SimpleNamespace(isup=False),
+                "Wi-Fi": types.SimpleNamespace(isup=True),
+            }
+
+        psutil.net_if_addrs = net_if_addrs
+        psutil.net_if_stats = net_if_stats
+        monkeypatch.setitem(sys.modules, "psutil", psutil)
+
+    def test_the_scan_covers_only_connected_adapters(self, monkeypatch):
+        from openavc.discovery.network_scanner import get_interface_ips
+
+        self._fake_modules(monkeypatch)
+        assert get_local_subnets() == ["192.168.1.0/24"]
+        assert get_interface_ips() == ["192.168.1.78"]
+
+    def test_a_pin_on_an_unplugged_adapter_scans_nothing(self, monkeypatch):
+        self._fake_modules(monkeypatch)
+        assert get_local_subnets(interface_ip="10.20.0.5") == []
+
+    def test_the_picker_lists_every_adapter_with_its_link_and_mac(self, monkeypatch):
+        from openavc.discovery.network_scanner import get_network_adapters
+
+        self._fake_modules(monkeypatch)
+        listed = {a["ip"]: (a["link"], a["mac"]) for a in get_network_adapters()}
+        assert listed == {
+            "10.20.0.5": (False, "AA-00-00-00-00-01"),
+            "192.168.1.123": (False, "AA-00-00-00-00-02"),
+            "192.168.1.78": (True, "AA-00-00-00-00-03"),
+        }
+
+    def test_nothing_is_hidden_when_link_state_is_unknown(self, monkeypatch):
+        self._fake_modules(monkeypatch, psutil_fails=True)
+        assert get_local_subnets() == ["10.20.0.0/24", "192.168.1.0/24"]
+
+
 # ===== Ranked Address Tests =====
 
 

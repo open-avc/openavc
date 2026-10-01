@@ -242,10 +242,11 @@ export function DiscoveryPanel() {
   // Active control interface
   const [controlInterface, setControlInterface] = useState("");
   const [adapterLabel, setAdapterLabel] = useState("");
-  // The pinned control interface no longer matches any adapter on this
-  // machine (the box changed networks since it was set). The scan would
-  // refuse; offer a one-off "scan what's actually here" instead.
-  const [pinStale, setPinStale] = useState(false);
+  // Why the pinned control interface cannot scan: its address is on no
+  // adapter here (the box changed networks since it was set), or its adapter
+  // has no link. The scan would refuse; offer a one-off "scan what's actually
+  // here" instead. Null when the pin is usable.
+  const [pinProblem, setPinProblem] = useState<"missing" | "no_link" | null>(null);
   const [adapterSubnets, setAdapterSubnets] = useState<string[]>([]);
 
   // Load subnets + config + driver catalogs on mount
@@ -282,13 +283,21 @@ export function DiscoveryPanel() {
       if (ip) {
         api.getNetworkAdapters().then((r) => {
           const match = r.adapters.find((a) => a.ip === ip);
-          if (match) setAdapterLabel(`${match.name} (${match.ip}/${match.subnet.split("/")[1] || "24"})`);
-          // No current adapter has the pinned address — say so here, because
-          // the pin otherwise looks like a live scan target.
-          else {
+          // The escape hatch scans what can actually be reached: adapters
+          // with a link.
+          const connected = r.adapters.filter((a) => a.link !== false);
+          if (match && match.link !== false) {
+            setAdapterLabel(`${match.name} (${match.ip}/${match.subnet.split("/")[1] || "24"})`);
+          } else if (match) {
+            setAdapterLabel(`${match.name} (${match.ip}/${match.subnet.split("/")[1] || "24"}, no link)`);
+            setPinProblem("no_link");
+            setAdapterSubnets([...new Set(connected.map((a) => a.subnet).filter(Boolean))]);
+          } else {
+            // No current adapter has the pinned address — say so here, because
+            // the pin otherwise looks like a live scan target.
             setAdapterLabel(`${ip} (adapter not found on this machine, fix in Settings > Network)`);
-            setPinStale(true);
-            setAdapterSubnets(r.adapters.map((a) => a.subnet).filter(Boolean));
+            setPinProblem("missing");
+            setAdapterSubnets([...new Set(connected.map((a) => a.subnet).filter(Boolean))]);
           }
         }).catch(() => setAdapterLabel(ip));
       }
@@ -696,7 +705,12 @@ export function DiscoveryPanel() {
       {!showSettings && (
         <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
           <Wifi size={12} />
-          <span>Scanning on: {controlInterface ? adapterLabel || controlInterface : "Auto (default route)"}</span>
+          <span>
+            Scanning on:{" "}
+            {controlInterface
+              ? adapterLabel || controlInterface
+              : `every connected adapter (${subnets.length > 0 ? subnets.join(", ") : "none has a link"})`}
+          </span>
           <span style={{ color: "var(--text-muted)" }}>&middot;</span>
           <button
             type="button"
@@ -718,7 +732,7 @@ export function DiscoveryPanel() {
 
       {/* Stale pin escape hatch: the pinned adapter is gone, so the normal
           scan will refuse. Offer scanning what is actually on the machine. */}
-      {!showSettings && pinStale && !isRunning && (
+      {!showSettings && pinProblem && !isRunning && (
         <div
           style={{
             display: "flex",
@@ -730,13 +744,17 @@ export function DiscoveryPanel() {
           }}
         >
           <AlertTriangle size={12} />
-          <span>The pinned adapter is not on this machine, so a scan will find nothing.</span>
+          <span>
+            {pinProblem === "no_link"
+              ? "The pinned adapter has no link, so a scan will find nothing."
+              : "The pinned adapter is not on this machine, so a scan will find nothing."}
+          </span>
           <button
             type="button"
             className="btn btn-sm"
             onClick={handleScanCurrentAdapters}
             disabled={adapterSubnets.length === 0}
-            title={adapterSubnets.length === 0 ? "No physical adapters detected" : "Scan the subnets of the adapters currently on this machine, without changing the setting"}
+            title={adapterSubnets.length === 0 ? "No connected adapters detected" : "Scan the subnets of the connected adapters on this machine, without changing the setting"}
           >
             Scan current adapters instead
           </button>

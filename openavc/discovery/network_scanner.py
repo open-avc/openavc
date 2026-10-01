@@ -32,15 +32,50 @@ _VIRTUAL_ADAPTER_PATTERNS = re.compile(
 )
 
 
-def get_network_adapters() -> list[dict[str, str]]:
+def ips_without_link() -> set[str]:
+    """IPv4 addresses held by an adapter that has no link (cable out, radio off).
+
+    ifaddr says which addresses an adapter holds, not whether it is connected,
+    and an unplugged adapter keeps a static address on Windows and Linux alike.
+    psutil reports link state (on Windows the adapter's operational status, on
+    Linux and macOS its RUNNING flag), keyed on Windows by a different adapter
+    name than ifaddr's, so the two are joined by address. An address any
+    connected adapter also holds stays. Empty when psutil cannot say, so
+    nothing is ever hidden on a guess.
+    """
+    try:
+        import psutil
+
+        stats = psutil.net_if_stats()
+        addrs = psutil.net_if_addrs()
+    except (ImportError, OSError, RuntimeError) as exc:
+        log.debug("Adapter link state unavailable: %s", exc)
+        return set()
+    down: set[str] = set()
+    up: set[str] = set()
+    for name, entries in addrs.items():
+        st = stats.get(name)
+        if st is None:
+            continue
+        for entry in entries:
+            if entry.family == socket.AF_INET:
+                (up if st.isup else down).add(entry.address)
+    return down - up
+
+
+def get_network_adapters() -> list[dict[str, Any]]:
     """Return all physical network adapters with IP and subnet info.
 
     Returns list of dicts, e.g.:
-        [{"name": "Ethernet 2", "ip": "192.168.1.50", "subnet": "192.168.1.0/24", "mac": "aa:bb:cc:dd:ee:ff"}, ...]
+        [{"name": "Ethernet 2", "ip": "192.168.1.50", "subnet": "192.168.1.0/24",
+          "mac": "aa:bb:cc:dd:ee:ff", "link": True}, ...]
 
-    Excludes loopback, link-local, virtual adapters, and IPv6.
+    Excludes loopback, link-local, virtual adapters, and IPv6. An adapter with
+    no link is listed with ``link: False``: it can still be chosen as the
+    control interface (a port about to be cabled), but a scan skips it.
     """
-    adapters: list[dict[str, str]] = []
+    adapters: list[dict[str, Any]] = []
+    no_link = ips_without_link()
     try:
         import ifaddr
 
@@ -60,6 +95,7 @@ def get_network_adapters() -> list[dict[str, str]]:
                         "name": adapter.nice_name,
                         "ip": addr,
                         "subnet": str(network),
+                        "link": addr not in no_link,
                     })
                 except (ValueError, TypeError):
                     continue
@@ -68,17 +104,21 @@ def get_network_adapters() -> list[dict[str, str]]:
     except OSError as exc:
         log.warning("Failed to detect network adapters: %s", exc)
 
-    # Enrich with MAC addresses via psutil (if available)
+    # Enrich with MAC addresses via psutil (if available), joined by address:
+    # on Windows psutil names an adapter "Ethernet" where ifaddr says
+    # "Realtek ... Controller", so a join by name never matches there.
     try:
         import psutil
-        mac_map: dict[str, str] = {}
-        for name, addrs in psutil.net_if_addrs().items():
-            for addr in addrs:
-                if addr.family.name == "AF_LINK":
-                    mac_map[name] = addr.address
-                    break
+        mac_by_ip: dict[str, str] = {}
+        for addrs in psutil.net_if_addrs().values():
+            mac = next(
+                (a.address for a in addrs if a.family == psutil.AF_LINK), ""
+            )
+            for a in addrs:
+                if a.family == socket.AF_INET:
+                    mac_by_ip[a.address] = mac
         for entry in adapters:
-            entry["mac"] = mac_map.get(entry["name"], "")
+            entry["mac"] = mac_by_ip.get(entry["ip"], "")
     except ImportError:
         for entry in adapters:
             entry.setdefault("mac", "")
@@ -90,13 +130,14 @@ def get_network_adapters() -> list[dict[str, str]]:
 
 
 def get_interface_ips() -> list[str]:
-    """Non-loopback, non-link-local IPv4 addresses of physical adapters.
+    """Non-loopback, non-link-local IPv4 addresses of connected physical adapters.
 
     Used for per-interface multicast group joins and sends (see
     ``discovery.multicast``). Same adapter filtering as
     ``get_local_subnets``.
     """
     ips: list[str] = []
+    no_link = ips_without_link()
     try:
         import ifaddr
 
@@ -108,6 +149,8 @@ def get_interface_ips() -> list[str]:
                     continue  # Skip IPv6 tuples
                 addr = ip_info.ip
                 if addr.startswith("127.") or addr.startswith("169.254."):
+                    continue
+                if addr in no_link:
                     continue
                 if addr not in ips:
                     ips.append(addr)
@@ -173,12 +216,16 @@ def get_local_subnets(interface_ip: str | None = None) -> list[str]:
 
     Args:
         interface_ip: If set, only return the subnet for this specific IP.
-            If empty or None, return all physical adapter subnets.
+            If empty or None, return the subnet of every connected physical
+            adapter.
 
     Returns list of CIDR strings, e.g., ["192.168.1.0/24"].
-    Excludes loopback, link-local, and virtual adapter addresses.
+    Excludes loopback, link-local and virtual adapter addresses, and adapters
+    with no link: an unplugged port keeps its static address, and sweeping
+    that subnet reaches nothing.
     """
     subnets: list[str] = []
+    no_link = ips_without_link()
     try:
         import ifaddr
 
@@ -194,6 +241,9 @@ def get_local_subnets(interface_ip: str | None = None) -> list[str]:
                     continue
                 # If filtering by interface IP, skip non-matching adapters
                 if interface_ip and addr != interface_ip:
+                    continue
+                if addr in no_link:
+                    log.debug("Skipping %s on %s: no link", addr, adapter.nice_name)
                     continue
                 try:
                     prefix = ip_info.network_prefix

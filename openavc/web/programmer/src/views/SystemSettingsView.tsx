@@ -968,10 +968,10 @@ export function SystemSettingsView() {
                 value={net.control_interface ?? ""}
                 onChange={(e) => update("network", "control_interface", e.target.value)}
               >
-                <option value="">Auto (use default route)</option>
+                <option value="">Auto (every connected adapter)</option>
                 {adapters.map((a) => (
                   <option key={a.ip} value={a.ip}>
-                    {a.name}: {a.ip} ({a.subnet})
+                    {a.name}: {a.ip} ({a.subnet}){a.link === false ? ", no link" : ""}
                   </option>
                 ))}
                 {/* A stored pin whose adapter is gone matches no option above;
@@ -1003,7 +1003,7 @@ export function SystemSettingsView() {
               </button>
             </div>
             <span style={helpText}>
-              Which network adapter OpenAVC uses to communicate with AV devices and run discovery scans. Changes take effect on the next device connection or scan. Does not require a restart.
+              Which network adapter OpenAVC uses to communicate with AV devices and run discovery scans. Auto scans the network of every adapter that has a link, and reaches each device through whichever adapter the computer routes it to. Changes take effect on the next device connection or scan. Does not require a restart.
             </span>
           </div>
         </div>

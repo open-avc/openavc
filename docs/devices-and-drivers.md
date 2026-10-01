@@ -295,7 +295,7 @@ The Discovery panel is inside the **Devices** view. Click **Devices** in the sid
 ### Running a Scan
 
 1. Click **Devices** in the sidebar, then select the **Discovery** tab
-2. Select the subnet(s) to scan (auto-detected from your network interfaces)
+2. Select the subnet(s) to scan (auto-detected from every network adapter that has a link; an unplugged adapter is left out even if it keeps a fixed address. With a control interface picked in **Settings > Network**, only that adapter's subnet)
 3. Click **Scan**
 
 The scan runs through several phases: ping sweep, port scanning, device probes (TCP/UDP), passive discovery (mDNS/SSDP), SNMP queries, and hostname resolution. Progress is shown in real time.
