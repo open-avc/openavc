@@ -260,6 +260,9 @@ def test_the_summary_says_why_only_with_the_signals_that_point_somewhere():
                  "drivers": ["acme_widget"]},
                 {"source": "ssdp:upnp:rootdevice", "strong": True, "drivers": []},
                 {"source": "oui:aa:bb:cc", "strong": False, "drivers": []},
+                {"source": "vendor_string:acme", "strong": False, "drivers": ["acme_widget"],
+                 "evidence": {"data": {"kind": "vendor_string", "value": "acme",
+                                       "source_probe_id": "greeting:23"}}},
             ]},
         },
     }
@@ -269,6 +272,8 @@ def test_the_summary_says_why_only_with_the_signals_that_point_somewhere():
     assert ("Also seen, and no catalog driver uses them: SSDP announcement for "
             "upnp:rootdevice; MAC address prefix aa:bb:cc seen.") in page
     assert "<code>ssdp:" not in page
+    assert ("Manufacturer &quot;acme&quot; named in the greeting on port 23 suggests "
+            "Acme Widget") in page
     assert "no driver claims it" not in page
     assert ("http://10.0.0.50:1400/a.xml; http://10.0.0.50:1400/b.xml (the one read)") in page
 

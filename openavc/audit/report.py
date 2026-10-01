@@ -1468,7 +1468,7 @@ def _signal_text(sig: dict[str, Any]) -> str:
     if kind == "snmp_pen":
         return f"SNMP enterprise number {value}"
     if kind == "vendor_string":
-        return f'Manufacturer "{value}" named in what the device sent'
+        return f'Manufacturer "{value}" named {_vendor_where(data)}'
     if kind == "open_port":
         return f"Port {value} is open"
     source = str(sig.get("source") or "")
@@ -1480,6 +1480,27 @@ def _signal_text(sig: dict[str, Any]) -> str:
     if prefix == "broadcast":
         return "A UDP identification check answered"
     return source or "A signal"
+
+
+def _vendor_where(data: dict[str, Any]) -> str:
+    """Where a manufacturer string came from (``vendorStringWhere`` in the
+    IDE). A probe's own id is internal and never shown."""
+    source = str(data.get("source_probe_id") or "")
+    kind = str(data.get("from_kind") or "")
+    what, _, port = source.partition(":")
+    if what == "greeting" and port:
+        return f"in the greeting on port {port}"
+    if what == "http_server" and port:
+        return f"by the web server on port {port}"
+    if source == "ssdp_server":
+        return "in the SSDP server name"
+    if kind == "ssdp":
+        return "in the SSDP description"
+    if kind == "mdns":
+        return "in an mDNS announcement"
+    if kind == "amx_ddp":
+        return "in the AMX DDP beacon"
+    return "in a probe reply"
 
 
 _MAC_SOURCE_TEXT = {

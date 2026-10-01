@@ -34,7 +34,8 @@ found so far is saved under **Recent reports** on the first step.
 
 ## The Steps
 
-Every step after the network check is optional, and each one has a **Back** button.
+Everything after the network check is optional, and every step after it can take you back to
+the one before.
 
 1. **Device.** The address. Under **Options**, choose **Standard** (about a minute) or
    **Extended**, which also checks every port from 1 to 1024 and reads every SNMP value. If the
